@@ -4,6 +4,7 @@
     "FunctionNaming",
     "LongMethod",
     "LongParameterList",
+    "TooManyFunctions",
 )
 
 package com.glancemap.glancemapcompanionapp.filepicker
@@ -54,6 +55,9 @@ import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,11 +67,13 @@ private enum class CompanionHomeArea {
     SEND_TO_WATCH,
     LIVE_TRACKING,
     MAP_LEGEND,
+    ROUTES,
 }
 
 @Composable
 fun FilePickerScreen(
     viewModel: FileTransferViewModel,
+    routeLibraryViewModel: RouteLibraryViewModel,
     openSendToWatchToken: Long = 0L,
     openLiveTrackingToken: Long = 0L,
     watchGpxSaveToken: Long = 0L,
@@ -77,6 +83,7 @@ fun FilePickerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val uiState by viewModel.uiState.collectAsState()
+    val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
             uiState.selectedFileUris
@@ -439,6 +446,7 @@ fun FilePickerScreen(
 
             CompanionHomeArea.HOME,
             CompanionHomeArea.MAP_LEGEND,
+            CompanionHomeArea.ROUTES,
             -> Unit
         }
     }
@@ -573,8 +581,24 @@ fun FilePickerScreen(
                 CompanionHomeArea.HOME -> {
                     CompanionHomeScreen(
                         adaptive = adaptive,
+                        selectedRoute = routeLibraryUiState.selectedRoute,
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
+                        onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                        onSendSelectedRouteToWatch = {
+                            val routeUri = routeLibraryViewModel.selectedRouteContentUri()
+                            if (routeUri == null) {
+                                Toast
+                                    .makeText(
+                                        context,
+                                        "The selected GPX is no longer available.",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                            } else {
+                                viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                            }
+                        },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
@@ -584,6 +608,30 @@ fun FilePickerScreen(
                         },
                         onOpenCreditsLegal = {
                             context.startActivity(PrivacyPolicyActivity.creditsAndLegalIntent(context))
+                        },
+                    )
+                }
+
+                CompanionHomeArea.ROUTES -> {
+                    RouteLibraryScreen(
+                        uiState = routeLibraryUiState,
+                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                        onImportRoute = routeLibraryViewModel::importRoute,
+                        onSelectRoute = routeLibraryViewModel::selectRoute,
+                        onSendToWatch = { route ->
+                            routeLibraryViewModel.selectRoute(route.id)
+                            val routeUri = routeLibraryViewModel.contentUriFor(route.id)
+                            if (routeUri == null) {
+                                Toast
+                                    .makeText(
+                                        context,
+                                        "The selected GPX is no longer available.",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                            } else {
+                                viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                            }
                         },
                     )
                 }
@@ -1045,8 +1093,11 @@ private fun SelectedFilesCompactSummary(
 @Composable
 private fun CompanionHomeScreen(
     adaptive: CompanionAdaptiveSpec,
+    selectedRoute: RouteLibraryRoute?,
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
+    onOpenRoutes: () -> Unit,
+    onSendSelectedRouteToWatch: () -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
     onOpenMapLegend: () -> Unit,
@@ -1138,6 +1189,12 @@ private fun CompanionHomeScreen(
                         .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
             ) {
+                TodayHikeCard(
+                    selectedRoute = selectedRoute,
+                    onOpenRoutes = onOpenRoutes,
+                    onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
+                )
+
                 Button(
                     onClick = onOpenSendToWatch,
                     modifier =
@@ -1156,7 +1213,7 @@ private fun CompanionHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = "Send to Watch",
+                            text = "Transfer files",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
@@ -1187,6 +1244,99 @@ private fun CompanionHomeScreen(
             }
         }
     }
+}
+
+@Composable
+private fun TodayHikeCard(
+    selectedRoute: RouteLibraryRoute?,
+    onOpenRoutes: () -> Unit,
+    onSendSelectedRouteToWatch: () -> Unit,
+) {
+    SectionCard(
+        title = "TODAY'S HIKE",
+    ) {
+        if (selectedRoute == null) {
+            Text(
+                text = "Choose a GPX route to prepare a briefing before you leave.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onOpenRoutes,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Map,
+                    contentDescription = null,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Choose a route")
+            }
+        } else {
+            Text(
+                text = selectedRoute.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = todayRouteSummary(selectedRoute),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = firstThirtyMinutesBriefing(selectedRoute),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onSendSelectedRouteToWatch,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.SendToMobile,
+                    contentDescription = null,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Send selected route to watch")
+            }
+            TextButton(
+                onClick = onOpenRoutes,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text("Change route")
+            }
+        }
+    }
+}
+
+private fun todayRouteSummary(route: RouteLibraryRoute): String =
+    listOf(
+        route.summary.distanceMeters.toKilometersText(),
+        "+${route.summary.elevationGainMeters.toInt()} m",
+        route.summary.estimatedDurationSeconds.toDurationText(),
+    ).joinToString("  •  ")
+
+private fun firstThirtyMinutesBriefing(route: RouteLibraryRoute): String =
+    "First 30 min  •  ${route.summary.firstThirtyMinutesDistanceMeters.toKilometersText()}  •  " +
+        "+${route.summary.firstThirtyMinutesAscentMeters.toInt()} m climb"
+
+private fun Double.toKilometersText(): String =
+    if (this < 1_000.0) {
+        "${toInt()} m"
+    } else {
+        "%.1f km".format(this / 1_000.0)
+    }
+
+private fun Double.toDurationText(): String {
+    val totalMinutes = (this / 60.0).toInt().coerceAtLeast(1)
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours == 0) "$minutes min" else "$hours h ${minutes.toString().padStart(2, '0')} min"
 }
 
 @Composable

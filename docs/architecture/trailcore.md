@@ -12,9 +12,15 @@ The first extraction is `com.glancemap.trailcore.geo`:
 - cumulative route distances.
 - route projection with continuity-aware matching at route crossings.
 
-The watch guidance layer adapts its Mapsforge `LatLong` values at its boundary and delegates these
-calculations to `:trailcore`. The companion depends on the same module so route planning can use
-the exact calculations when its route library is introduced.
+`com.glancemap.trailcore.profile` now adds:
+
+- `TrailPoint` and `TrailRouteProfile`, which preserve GPX track-segment boundaries.
+- distance, ascent, descent, and a transparent initial hiking-time estimate.
+- a distance-anchored time window for planning the “Next 30 minutes” briefing.
+
+The watch guidance layer adapts its Mapsforge `LatLong` values at its boundary and delegates
+geometry calculations to `:trailcore`. The companion uses the profile layer while importing its
+private GPX route library.
 
 ## Ownership Rules
 
@@ -27,6 +33,6 @@ the exact calculations when its route library is introduced.
 
 ## Planned Extensions
 
-The next additions will define platform-neutral GPX route/profile models, route windows for
-“Next 30 minutes”, and shared guidance state. Phone and watch adapters will remain responsible for
-their own file I/O and platform lifecycles.
+The next additions should define platform-neutral GPX enrichment, shared guidance state, and the
+inputs needed for live “Next 30 minutes” and turnaround advice. Phone and watch adapters remain
+responsible for their own file I/O, storage, and platform lifecycles.
