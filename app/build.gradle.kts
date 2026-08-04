@@ -258,4 +258,5 @@ dependencies {
     implementation(libs.horologist.compose.layout)
 
     implementation(project(":transfercontract"))
+    implementation(project(":trailcore"))
 }

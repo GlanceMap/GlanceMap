@@ -226,4 +226,5 @@ dependencies {
     implementation(libs.accompanist.permissions)
 
     implementation(project(":transfercontract"))
+    implementation(project(":trailcore"))
 }

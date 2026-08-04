@@ -1,16 +1,14 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.guidance
 
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
+import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.geo.buildCumulativeDistancesMeters
+import com.glancemap.trailcore.geo.haversineDistanceMeters
+import com.glancemap.trailcore.geo.initialBearingDegrees
+import com.glancemap.trailcore.geo.projectPointOntoRoute
 import org.mapsforge.core.model.LatLong
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.asin
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 enum class RouteInstructionCommand {
     CONTINUE,
@@ -516,52 +514,19 @@ fun projectLocationToRoute(
     location: LatLong,
     previousDistanceFromStartMeters: Double? = null,
 ): GuidanceProjection? {
-    if (points.size < 2) return null
-
-    val candidates = ArrayList<GuidanceProjection>(points.lastIndex)
-    for (index in 0 until points.lastIndex) {
-        val a = points[index]
-        val b = points[index + 1]
-        val projected = projectLocationToSegment(a = a, b = b, location = location)
-        val segmentLength =
-            cumulativeDistancesMeters.getOrElse(index + 1) { 0.0 } -
-                cumulativeDistancesMeters.getOrElse(index) { 0.0 }
-        val distanceFromStart =
-            cumulativeDistancesMeters.getOrElse(index) { 0.0 } +
-                segmentLength * projected.t
-        val candidate =
-            GuidanceProjection(
-                segmentIndex = index,
-                t = projected.t,
-                distanceFromStartMeters = distanceFromStart,
-                distanceToRouteMeters = projected.distanceMeters,
-            )
-        candidates += candidate
-    }
-    val globallyNearest = candidates.minByOrNull { it.distanceToRouteMeters } ?: return null
-    val previousProgress =
-        previousDistanceFromStartMeters
-            ?.takeIf { it.isFinite() && it >= 0.0 }
-            ?: return globallyNearest
-    val continuityCandidate =
-        candidates
-            .asSequence()
-            .filter {
-                it.distanceFromStartMeters >= previousProgress - ROUTE_MATCH_MAX_BACKTRACK_METERS &&
-                    it.distanceFromStartMeters <= previousProgress + ROUTE_MATCH_MAX_FORWARD_JUMP_METERS
-            }.minByOrNull { candidate ->
-                candidate.distanceToRouteMeters +
-                    abs(candidate.distanceFromStartMeters - previousProgress) * ROUTE_MATCH_PROGRESS_PENALTY
-            }
-            ?: return globallyNearest
-    return if (
-        continuityCandidate.distanceToRouteMeters <=
-        globallyNearest.distanceToRouteMeters + ROUTE_MATCH_RELOCK_ADVANTAGE_METERS
-    ) {
-        continuityCandidate
-    } else {
-        globallyNearest
-    }
+    val projection =
+        projectPointOntoRoute(
+            points = points.map(LatLong::toGeoPoint),
+            cumulativeDistancesMeters = cumulativeDistancesMeters,
+            point = location.toGeoPoint(),
+            previousDistanceFromStartMeters = previousDistanceFromStartMeters,
+        ) ?: return null
+    return GuidanceProjection(
+        segmentIndex = projection.segmentIndex,
+        t = projection.segmentFraction,
+        distanceFromStartMeters = projection.distanceFromStartMeters,
+        distanceToRouteMeters = projection.distanceToRouteMeters,
+    )
 }
 
 fun updateGuidanceOffRouteConfirmation(
@@ -612,46 +577,7 @@ fun updateGuidanceOffRouteConfirmation(
 }
 
 fun buildCumulativeDistances(points: List<LatLong>): List<Double> {
-    if (points.isEmpty()) return emptyList()
-    val cumulative = MutableList(points.size) { 0.0 }
-    var total = 0.0
-    for (index in 0 until points.lastIndex) {
-        total += haversineMeters(points[index], points[index + 1])
-        cumulative[index + 1] = total
-    }
-    return cumulative
-}
-
-private data class SegmentProjection(
-    val t: Double,
-    val distanceMeters: Double,
-)
-
-private fun projectLocationToSegment(
-    a: LatLong,
-    b: LatLong,
-    location: LatLong,
-): SegmentProjection {
-    val latRad = Math.toRadians(a.latitude)
-    val metersPerLat = 111_320.0
-    val metersPerLon = max(1.0, metersPerLat * cos(latRad))
-
-    val bx = (b.longitude - a.longitude) * metersPerLon
-    val by = (b.latitude - a.latitude) * metersPerLat
-    val px = (location.longitude - a.longitude) * metersPerLon
-    val py = (location.latitude - a.latitude) * metersPerLat
-    val len2 = bx * bx + by * by
-    val t =
-        if (len2 <= 0.0) {
-            0.0
-        } else {
-            ((px * bx + py * by) / len2).coerceIn(0.0, 1.0)
-        }
-    val cx = bx * t
-    val cy = by * t
-    val dx = px - cx
-    val dy = py - cy
-    return SegmentProjection(t = t, distanceMeters = sqrt(dx * dx + dy * dy))
+    return buildCumulativeDistancesMeters(points.map(LatLong::toGeoPoint))
 }
 
 private fun indexAtOrBeforeDistance(
@@ -690,10 +616,6 @@ private fun commandForTurn(deltaDegrees: Double): RouteInstructionCommand =
         else -> RouteInstructionCommand.CONTINUE
     }
 
-private const val ROUTE_MATCH_MAX_BACKTRACK_METERS = 45.0
-private const val ROUTE_MATCH_MAX_FORWARD_JUMP_METERS = 300.0
-private const val ROUTE_MATCH_PROGRESS_PENALTY = 0.015
-private const val ROUTE_MATCH_RELOCK_ADVANTAGE_METERS = 35.0
 private const val OFF_ROUTE_ENTRY_SAMPLE_COUNT = 2
 private const val OFF_ROUTE_RECOVERY_SAMPLE_COUNT = 2
 private const val OFF_ROUTE_STRONG_RECOVERY_THRESHOLD_FRACTION = 0.5
@@ -721,26 +643,11 @@ private fun normalizeSignedDegrees(value: Double): Double {
 fun bearingDegrees(
     from: LatLong,
     to: LatLong,
-): Double {
-    val lat1 = Math.toRadians(from.latitude)
-    val lat2 = Math.toRadians(to.latitude)
-    val dLon = Math.toRadians(to.longitude - from.longitude)
-    val y = sin(dLon) * cos(lat2)
-    val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-    return (Math.toDegrees(atan2(y, x)) + 360.0) % 360.0
-}
+): Double = initialBearingDegrees(from.toGeoPoint(), to.toGeoPoint())
 
 fun haversineMeters(
     a: LatLong,
     b: LatLong,
-): Double {
-    val r = 6_371_000.0
-    val dLat = Math.toRadians(b.latitude - a.latitude)
-    val dLon = Math.toRadians(b.longitude - a.longitude)
-    val lat1 = Math.toRadians(a.latitude)
-    val lat2 = Math.toRadians(b.latitude)
-    val h =
-        sin(dLat / 2) * sin(dLat / 2) +
-            cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
-    return 2 * r * asin(min(1.0, sqrt(h)))
-}
+): Double = haversineDistanceMeters(a.toGeoPoint(), b.toGeoPoint())
+
+private fun LatLong.toGeoPoint(): GeoPoint = GeoPoint(latitude = latitude, longitude = longitude)

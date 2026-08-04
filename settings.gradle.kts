@@ -33,6 +33,7 @@ include(":macrobenchmark")
 include(":companionmacrobenchmark")
 include(":glancemapcompanionapp")
 include(":transfercontract")
+include(":trailcore")
 include(":brouter-util")
 project(":brouter-util").projectDir = file("third_party/brouter/brouter-util")
 project(":brouter-util").buildFileName = "build.gradle.kts"
