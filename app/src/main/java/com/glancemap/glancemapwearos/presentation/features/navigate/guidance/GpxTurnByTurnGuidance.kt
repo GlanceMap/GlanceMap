@@ -576,6 +576,7 @@ fun updateGuidanceOffRouteConfirmation(
     }
 }
 
+@Suppress("ktlint:standard:function-expression-body")
 fun buildCumulativeDistances(points: List<LatLong>): List<Double> {
     return buildCumulativeDistancesMeters(points.map(LatLong::toGeoPoint))
 }

@@ -53,11 +53,13 @@ import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PrivacyPolicyActivity
 import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
+import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
+import com.glancemap.shared.transfer.ActiveHikePhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +85,7 @@ fun FilePickerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val uiState by viewModel.uiState.collectAsState()
+    val activeHikeSnapshot by viewModel.activeHikeSnapshot.collectAsState()
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
@@ -582,6 +585,7 @@ fun FilePickerScreen(
                     CompanionHomeScreen(
                         adaptive = adaptive,
                         selectedRoute = routeLibraryUiState.selectedRoute,
+                        activeHikeSnapshot = activeHikeSnapshot,
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
@@ -1094,6 +1098,7 @@ private fun SelectedFilesCompactSummary(
 private fun CompanionHomeScreen(
     adaptive: CompanionAdaptiveSpec,
     selectedRoute: RouteLibraryRoute?,
+    activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
     onOpenRoutes: () -> Unit,
@@ -1191,6 +1196,7 @@ private fun CompanionHomeScreen(
             ) {
                 TodayHikeCard(
                     selectedRoute = selectedRoute,
+                    activeHikeSnapshot = activeHikeSnapshot,
                     onOpenRoutes = onOpenRoutes,
                     onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
                 )
@@ -1249,12 +1255,19 @@ private fun CompanionHomeScreen(
 @Composable
 private fun TodayHikeCard(
     selectedRoute: RouteLibraryRoute?,
+    activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     onOpenRoutes: () -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
+    val liveHikeSnapshot =
+        activeHikeSnapshot?.takeIf { update -> update.snapshot.phase != ActiveHikePhase.IDLE }
     SectionCard(
         title = "TODAY'S HIKE",
     ) {
+        liveHikeSnapshot?.let { update -> ActiveHikeBriefing(update) }
+        if (liveHikeSnapshot != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+        }
         if (selectedRoute == null) {
             Text(
                 text = "Choose a GPX route to prepare a briefing before you leave.",
@@ -1311,6 +1324,62 @@ private fun TodayHikeCard(
                 Text("Change route")
             }
         }
+    }
+}
+
+@Composable
+private fun ActiveHikeBriefing(update: PhoneActiveHikeSnapshot) {
+    val snapshot = update.snapshot
+    Text(
+        text = "LIVE FROM WATCH",
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelMedium,
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = snapshot.routeTitle ?: "Active hike",
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Text(
+        text = activeHikeStatusText(snapshot.phase, snapshot.offRoute),
+        color =
+            if (snapshot.offRoute) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    val metrics =
+        listOfNotNull(
+            snapshot.distanceRemainingMeters?.let { distance -> "${distance.toKilometersText()} left" },
+            snapshot.estimatedRemainingSeconds?.let { duration -> "${duration.toDouble().toDurationText()} remaining" },
+            snapshot.remainingAscentMeters?.let { ascent -> "+${ascent.toInt()} m to climb" },
+        )
+    if (metrics.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = metrics.joinToString("  •  "),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+private fun activeHikeStatusText(
+    phase: ActiveHikePhase,
+    offRoute: Boolean,
+): String {
+    if (offRoute) return "Off route — check the watch"
+    return when (phase) {
+        ActiveHikePhase.WAITING_FOR_LOCATION -> "Waiting for a GPS position"
+        ActiveHikePhase.TO_START -> "Heading to the route start"
+        ActiveHikePhase.FOLLOWING_ROUTE -> "Following the route"
+        ActiveHikePhase.PAUSED -> "Navigation paused on watch"
+        ActiveHikePhase.FINISHED -> "Route complete"
+        ActiveHikePhase.IDLE -> "No active hike"
     }
 }
 

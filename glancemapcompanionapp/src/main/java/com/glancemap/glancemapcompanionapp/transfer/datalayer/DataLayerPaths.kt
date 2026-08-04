@@ -16,6 +16,7 @@ internal object DataLayerPaths {
     const val PATH_TRANSFER_ACK = TransferDataLayerContract.PATH_TRANSFER_ACK
     const val PATH_TRANSFER_STATUS = TransferDataLayerContract.PATH_TRANSFER_STATUS
     const val PATH_CANCEL_TRANSFER = TransferDataLayerContract.PATH_CANCEL_TRANSFER
+    const val PATH_ACTIVE_HIKE_SNAPSHOT = TransferDataLayerContract.PATH_ACTIVE_HIKE_SNAPSHOT
     const val PATH_CHECK_EXISTS = TransferDataLayerContract.PATH_CHECK_EXISTS
     const val PATH_CHECK_EXISTS_RESULT = TransferDataLayerContract.PATH_CHECK_EXISTS_RESULT
     const val PATH_CHECK_EXISTS_BATCH = TransferDataLayerContract.PATH_CHECK_EXISTS_BATCH

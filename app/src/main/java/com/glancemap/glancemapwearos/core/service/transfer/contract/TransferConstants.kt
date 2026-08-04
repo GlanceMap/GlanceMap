@@ -23,6 +23,7 @@ internal object TransferConstants {
 
     const val PATH_TRANSFER_STATUS = TransferDataLayerContract.PATH_TRANSFER_STATUS
     const val PATH_CANCEL_TRANSFER = TransferDataLayerContract.PATH_CANCEL_TRANSFER
+    const val PATH_ACTIVE_HIKE_SNAPSHOT = TransferDataLayerContract.PATH_ACTIVE_HIKE_SNAPSHOT
 
     const val SMALL_FILE_MAX_BYTES = 80 * 1024
 

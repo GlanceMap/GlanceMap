@@ -35,6 +35,8 @@ import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_WAKE_REFRESH_SOURCE
+import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.WatchActiveHikePublisher
+import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.toActiveHikeSnapshot
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCalibrationEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassWakeTelemetry
@@ -98,6 +100,10 @@ fun NavigateScreen(
         ),
 ) {
     val context = LocalContext.current
+    val activeHikePublisher =
+        remember(context.applicationContext) {
+            WatchActiveHikePublisher(context.applicationContext)
+        }
     val configuration = LocalConfiguration.current
     val adaptive = rememberWearAdaptiveSpec()
     val screenSize = rememberWearScreenSize()
@@ -726,6 +732,21 @@ fun NavigateScreen(
                 gpxUphillVerticalMetersPerHour = gpxUphillVerticalMetersPerHour,
                 gpxDownhillVerticalMetersPerHour = gpxDownhillVerticalMetersPerHour,
             )
+
+        LaunchedEffect(
+            guidanceRuntime.state,
+            turnByTurnGuidancePaused,
+            turnByTurnGuidanceSession?.trackId,
+            turnByTurnGuidanceSession?.trackTitle,
+        ) {
+            activeHikePublisher.publish(
+                guidanceRuntime.state.toActiveHikeSnapshot(
+                    routeId = turnByTurnGuidanceSession?.trackId,
+                    paused = turnByTurnGuidancePaused,
+                    pausedRouteTitle = turnByTurnGuidanceSession?.trackTitle,
+                ),
+            )
+        }
 
         LaunchedEffect(
             effectiveNavigationMarkerAnchorMode,

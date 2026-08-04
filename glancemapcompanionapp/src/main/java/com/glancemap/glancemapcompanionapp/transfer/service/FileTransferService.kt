@@ -13,6 +13,8 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.WatchNode
+import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
+import com.glancemap.glancemapcompanionapp.activehike.decodePhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.FileExistenceChecker
 import com.glancemap.glancemapcompanionapp.transfer.TransferStrategyFactory
@@ -46,6 +48,8 @@ class FileTransferService : LifecycleService() {
 
     private val _uiState = MutableStateFlow(FileTransferUiState())
     val uiState = _uiState.asStateFlow()
+    private val _activeHikeSnapshot = MutableStateFlow<PhoneActiveHikeSnapshot?>(null)
+    val activeHikeSnapshot = _activeHikeSnapshot.asStateFlow()
 
     private lateinit var notificationHelper: NotificationHelper
     private lateinit var existenceChecker: FileExistenceChecker
@@ -516,6 +520,7 @@ class FileTransferService : LifecycleService() {
                 it.startsWith("Message:", ignoreCase = true)
         }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun observeDataLayer() {
         dataLayerObserverJob?.cancel()
         dataLayerObserverJob =
@@ -552,6 +557,11 @@ class FileTransferService : LifecycleService() {
                             is PhoneDataLayerEvent.BatchExistsResult -> existenceChecker.handleBatchExistsResult(event.payload)
                             is PhoneDataLayerEvent.DeleteFileResult -> deleteRequester.handleDeleteResult(event.payload)
                             is PhoneDataLayerEvent.MapListResult -> installedMapsRequester.handleMapListResult(event.payload)
+                            is PhoneDataLayerEvent.ActiveHikeSnapshot ->
+                                handleActiveHikeSnapshot(
+                                    sourceNodeId = event.sourceNodeId,
+                                    payload = event.payload,
+                                )
                             is PhoneDataLayerEvent.Error -> {
                                 _uiState.update { st -> st.copy(statusMessage = event.message) }
                             }
@@ -559,6 +569,25 @@ class FileTransferService : LifecycleService() {
                     }
                 }
             }
+    }
+
+    private fun handleActiveHikeSnapshot(
+        sourceNodeId: String,
+        payload: ByteArray,
+    ) {
+        val incoming = decodePhoneActiveHikeSnapshot(sourceNodeId, payload)
+        if (incoming == null) {
+            PhoneTransferDiagnostics.warn(
+                "ActiveHike",
+                "Ignored invalid active-hike snapshot from node=$sourceNodeId",
+            )
+            return
+        }
+        val current = _activeHikeSnapshot.value
+        val currentRecordedAtEpochMillis = current?.snapshot?.recordedAtEpochMillis ?: Long.MIN_VALUE
+        if (currentRecordedAtEpochMillis > incoming.snapshot.recordedAtEpochMillis) return
+
+        _activeHikeSnapshot.value = incoming
     }
 
     private fun scheduleReconnectPauseEscalation(

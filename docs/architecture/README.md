@@ -17,6 +17,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `trailcore.md`
   - Shared, platform-neutral trail geometry boundary used by the phone and watch.
 
+- `active-hike-sync.md`
+  - Watch-owned live navigation snapshot shared with the companion dashboard.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`

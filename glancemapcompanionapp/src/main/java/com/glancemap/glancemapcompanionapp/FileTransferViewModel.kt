@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
@@ -94,6 +95,9 @@ class FileTransferViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(FileTransferUiState())
     val uiState: StateFlow<FileTransferUiState> = _uiState.asStateFlow()
 
+    private val _activeHikeSnapshot = MutableStateFlow<PhoneActiveHikeSnapshot?>(null)
+    val activeHikeSnapshot: StateFlow<PhoneActiveHikeSnapshot?> = _activeHikeSnapshot.asStateFlow()
+
     private val _isImportingRefuges = MutableStateFlow(false)
     val isImportingRefuges: StateFlow<Boolean> = _isImportingRefuges.asStateFlow()
 
@@ -154,6 +158,7 @@ class FileTransferViewModel : ViewModel() {
     private var pendingWatchMapsRefresh = false
 
     private var stateCollectJob: Job? = null
+    private var activeHikeSnapshotCollectJob: Job? = null
     private var poiImportJob: Job? = null
     private var routingDownloadJob: Job? = null
 
@@ -205,6 +210,14 @@ class FileTransferViewModel : ViewModel() {
                         }
                     }
 
+                activeHikeSnapshotCollectJob?.cancel()
+                activeHikeSnapshotCollectJob =
+                    viewModelScope.launch {
+                        boundService.activeHikeSnapshot.collect { snapshot ->
+                            _activeHikeSnapshot.value = snapshot
+                        }
+                    }
+
                 // ✅ Apply pending multi-selection
                 if (pendingFileUris.isNotEmpty()) {
                     if (!_uiState.value.isTransferring) {
@@ -223,6 +236,8 @@ class FileTransferViewModel : ViewModel() {
             override fun onServiceDisconnected(name: ComponentName) {
                 stateCollectJob?.cancel()
                 stateCollectJob = null
+                activeHikeSnapshotCollectJob?.cancel()
+                activeHikeSnapshotCollectJob = null
                 isBound = false
                 serviceRef = null
             }
@@ -1116,6 +1131,8 @@ class FileTransferViewModel : ViewModel() {
     override fun onCleared() {
         stateCollectJob?.cancel()
         stateCollectJob = null
+        activeHikeSnapshotCollectJob?.cancel()
+        activeHikeSnapshotCollectJob = null
         super.onCleared()
     }
 }

@@ -53,6 +53,11 @@ internal class PhoneDataLayerRepository(
                     DataLayerPaths.PATH_CHECK_EXISTS_BATCH_RESULT -> PhoneDataLayerEvent.BatchExistsResult(event.data)
                     DataLayerPaths.PATH_DELETE_FILE_RESULT -> PhoneDataLayerEvent.DeleteFileResult(event.data)
                     DataLayerPaths.PATH_LIST_MAPS_RESULT -> PhoneDataLayerEvent.MapListResult(event.data)
+                    DataLayerPaths.PATH_ACTIVE_HIKE_SNAPSHOT ->
+                        PhoneDataLayerEvent.ActiveHikeSnapshot(
+                            sourceNodeId = event.sourceNodeId,
+                            payload = event.data,
+                        )
                     else -> null
                 } ?: return@OnMessageReceivedListener
 

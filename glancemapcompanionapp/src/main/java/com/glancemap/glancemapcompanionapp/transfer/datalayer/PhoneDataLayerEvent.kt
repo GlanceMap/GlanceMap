@@ -33,6 +33,11 @@ internal sealed interface PhoneDataLayerEvent {
         val payload: ByteArray,
     ) : PhoneDataLayerEvent
 
+    data class ActiveHikeSnapshot(
+        val sourceNodeId: String,
+        val payload: ByteArray,
+    ) : PhoneDataLayerEvent
+
     data class Error(
         val message: String,
     ) : PhoneDataLayerEvent
