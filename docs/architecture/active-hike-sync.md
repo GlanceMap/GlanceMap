@@ -43,3 +43,20 @@ waypoints in that window.
 This forecast is route-planning information. It is hidden when the routes do not match and does
 not alter watch guidance, calculate a safety decision, or make claims about terrain, weather,
 water, or hazard conditions.
+
+## Companion Weather Context
+
+The companion can load a short weather context for the selected route through a provider-neutral
+`WeatherForecastProvider` boundary. The first provider is Open-Meteo.
+
+- A forecast request is always explicit: the companion makes no background weather requests.
+- It sends a coordinate from the locally stored GPX route, not the phone's live location. For a
+  matching active hike, the coordinate is the GPX point nearest the watch-reported route progress;
+  otherwise it is the route start. GPX elevation is sent when available.
+- The response contains only current conditions and a near-term outlook. It is held in an
+  in-memory cache for up to 30 minutes; a stale cached result may be shown if a refresh fails.
+- The UI identifies Open-Meteo, links to its site, and labels weather as context rather than a
+  navigation, turnaround, or safety decision.
+- The current public endpoint is appropriate for the present development integration. Before a
+  commercial distribution, confirm the provider's terms or arrange a suitable commercial service
+  without changing the companion's provider boundary.

@@ -60,12 +60,16 @@ import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRouteDetails
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
+import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
+import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
+import com.glancemap.shared.transfer.ActiveHikeSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private enum class CompanionHomeArea {
     HOME,
@@ -91,6 +95,7 @@ fun FilePickerScreen(
     val activeHikeSnapshot by viewModel.activeHikeSnapshot.collectAsState()
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
+    val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
             uiState.selectedFileUris
@@ -591,9 +596,13 @@ fun FilePickerScreen(
                         selectedRoute = routeLibraryUiState.selectedRoute,
                         selectedRouteDetails = selectedRouteDetails,
                         activeHikeSnapshot = activeHikeSnapshot,
+                        routeWeatherUiState = routeWeatherUiState,
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                        onLoadRouteWeather = { snapshot, forceRefresh ->
+                            routeLibraryViewModel.loadRouteWeather(snapshot, forceRefresh)
+                        },
                         onSendSelectedRouteToWatch = {
                             val routeUri = routeLibraryViewModel.selectedRouteContentUri()
                             if (routeUri == null) {
@@ -1105,9 +1114,11 @@ private fun CompanionHomeScreen(
     selectedRoute: RouteLibraryRoute?,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
+    routeWeatherUiState: RouteWeatherUiState,
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
     onOpenRoutes: () -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
@@ -1204,7 +1215,9 @@ private fun CompanionHomeScreen(
                     selectedRoute = selectedRoute,
                     selectedRouteDetails = selectedRouteDetails,
                     activeHikeSnapshot = activeHikeSnapshot,
+                    routeWeatherUiState = routeWeatherUiState,
                     onOpenRoutes = onOpenRoutes,
+                    onLoadRouteWeather = onLoadRouteWeather,
                     onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
                 )
 
@@ -1264,7 +1277,9 @@ private fun TodayHikeCard(
     selectedRoute: RouteLibraryRoute?,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
+    routeWeatherUiState: RouteWeatherUiState,
     onOpenRoutes: () -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
     val liveHikeSnapshot =
@@ -1323,6 +1338,15 @@ private fun TodayHikeCard(
                 Spacer(modifier = Modifier.height(12.dp))
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (selectedRouteDetails != null) {
+                RouteWeatherBriefing(
+                    uiState = routeWeatherUiState,
+                    onLoad = { forceRefresh ->
+                        onLoadRouteWeather(activeHikeSnapshot?.snapshot, forceRefresh)
+                    },
+                )
+                Spacer(modifier = Modifier.height(12.dp))
             }
             Button(
                 onClick = onSendSelectedRouteToWatch,
@@ -1418,6 +1442,137 @@ private fun TrailIntelligenceBriefing(intelligence: TrailIntelligence) {
         )
     }
 }
+
+@Composable
+private fun RouteWeatherBriefing(
+    uiState: RouteWeatherUiState,
+    onLoad: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    Text(
+        text = "ROUTE WEATHER",
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelMedium,
+    )
+    when {
+        uiState.isLoading -> {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+                Text(
+                    text = "Loading route forecast…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        uiState.forecast == null -> {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Load a forecast for this route. Weather is context, not a safety decision.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            uiState.message?.let { message ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = { onLoad(false) }) {
+                Text("Load route weather")
+            }
+        }
+
+        else -> {
+            val forecast = checkNotNull(uiState.forecast)
+            val outlook = forecast.nextHour
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${forecast.location.label} • ${weatherConditionText(forecast.current.weatherCode)}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val currentMetrics =
+                listOfNotNull(
+                    forecast.current.temperatureCelsius?.let { temperature -> temperature.toWeatherTemperatureText() },
+                    forecast.current.apparentTemperatureCelsius?.let { apparent ->
+                        "feels ${apparent.toWeatherTemperatureText()}"
+                    },
+                    forecast.current.windSpeedKilometersPerHour?.let { wind ->
+                        "wind ${wind.roundToInt()} km/h"
+                    },
+                    forecast.current.windGustKilometersPerHour?.let { gust ->
+                        "gusts ${gust.roundToInt()} km/h"
+                    },
+                )
+            if (currentMetrics.isNotEmpty()) {
+                Text(
+                    text = currentMetrics.joinToString("  •  "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            val nextHourMetrics =
+                listOfNotNull(
+                    outlook?.precipitationProbabilityPercent?.let { probability ->
+                        "rain ${probability.roundToInt()}%"
+                    },
+                    outlook?.windGustKilometersPerHour?.let { gust ->
+                        "gusts ${gust.roundToInt()} km/h"
+                    },
+                    outlook?.visibilityMeters?.let { visibility ->
+                        "visibility ${visibility.toKilometersText()}"
+                    },
+                    outlook?.freezingLevelHeightMeters?.let { height ->
+                        "freezing ${height.roundToInt()} m"
+                    },
+                )
+            if (nextHourMetrics.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Next hour • ${nextHourMetrics.joinToString("  •  ")}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (uiState.isStale) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Showing a cached forecast — unable to update.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            uiState.message?.let { message ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = { onLoad(true) }) {
+                Text(if (uiState.isCached) "Update weather" else "Refresh weather")
+            }
+        }
+    }
+    TextButton(onClick = { openCompanionUrl(context, OPEN_METEO_URL) }) {
+        Text("Weather data by Open-Meteo.com")
+    }
+}
+
+private fun Double.toWeatherTemperatureText(): String = "${roundToInt()}°C"
+
+private const val OPEN_METEO_URL = "https://open-meteo.com/"
 
 private fun activeHikeStatusText(
     phase: ActiveHikePhase,

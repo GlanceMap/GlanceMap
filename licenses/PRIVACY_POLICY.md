@@ -1,6 +1,6 @@
 # Privacy Policy for GlanceMap
 
-Last updated: 2026-05-31
+Last updated: 2026-08-05
 
 This Privacy Policy applies to GlanceMap, including the Wear OS watch app and its Android companion app, distributed under the GlanceMap name and package `com.glancemap.glancemapwearos`.
 
@@ -52,6 +52,8 @@ Data may leave your device in the following situations:
 
 When you request online POI, routing, elevation, map-picker previews, or similar data, the app sends the information needed to fulfill that request to the selected provider, such as a user-selected geographic area (bounding box), requested routing tile names, map display tile coordinates, or requested files.
 
+When you choose **Load route weather** in the companion app, the app sends a coordinate derived from the selected GPX route (the route start, or the matched position on that route during an active hike) and optional GPX elevation to Open-Meteo. It does not send the phone's live location for this feature. The request happens only while the app is in the foreground after you choose to load or refresh the forecast.
+
 As with normal internet requests, those providers may also receive standard request metadata such as your IP address, request time, and user-agent or similar connection information.
 
 Providers used by the current app configuration include:
@@ -62,6 +64,7 @@ Providers used by the current app configuration include:
 - `brouter.de`
 - `download.mapsforge.org`
 - `arkluz.com`
+- `api.open-meteo.com` (when you choose to load route weather)
 
 If you open third-party map or GPX download websites from the companion app, those websites operate under their own privacy policies.
 
@@ -94,7 +97,7 @@ If Firebase is enabled in a future release, Google or Firebase may process analy
 We may share data only as needed to provide app features you choose to use:
 
 - With Wear OS / Google Play services communication components used to connect the phone and watch and move data between them.
-- With third-party providers you directly use for map, POI, routing, or terrain downloads.
+- With third-party providers you directly use for map, POI, routing, or terrain downloads, and with Open-Meteo when you choose to load route weather.
 - With Arkluz when you use the optional Live Tracking feature.
 - With your chosen email or sharing app and downstream provider when you manually send diagnostics or exported files.
 - With Firebase or Google only if Firebase is enabled in the release you install.
@@ -105,6 +108,7 @@ We do not sell your personal data.
 
 - Imported maps, GPX files, POI databases, routing packs, settings, and similar working data are generally stored locally on your devices until you delete them, clear app data, or uninstall the app.
 - Temporary caches may be removed automatically or when you use built-in cleanup actions.
+- Route weather forecasts are cached only in the companion app's memory for a short period and are discarded when the app process ends.
 - Transfer history, last-used download or import parameters, and help state may remain locally until cleared, overwritten, or removed with app data.
 - Live Tracking group settings, passwords, email settings, draft comments, selected GPX reference, and queued retry positions may remain locally until cleared, overwritten, sent, removed by logout, removed by cleanup, or removed with app data.
 - Local crash and diagnostics files may remain on-device until overwritten, cleared, or the app is uninstalled.

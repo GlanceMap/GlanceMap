@@ -39,7 +39,7 @@ Repo-specific inference:
 - No `ACCESS_BACKGROUND_LOCATION` permission was found.
 - Watch app requests location permissions for foreground navigation features.
 - Companion app requests Bluetooth and notification permissions for watch discovery and transfer UX.
-- Third-party network requests exist for user-requested POI, routing, and terrain downloads.
+- Third-party network requests exist for user-requested POI, routing, terrain downloads, and route weather. Route weather sends a GPX-derived coordinate and optional GPX elevation to Open-Meteo only when the user chooses to load or refresh a forecast in the foreground; it does not use the phone's live location.
 - Optional companion Live Tracking sends location, participant/group settings, optional emails, optional GPX route, and optional comments to Arkluz when the user starts or updates a tracking session.
 - User-initiated diagnostics export exists and may include device, crash, transfer, and location-related troubleshooting details.
 - Firebase release setup documentation exists, but `google-services.json` was not found in either app module in the checked-in repo state.
@@ -68,6 +68,11 @@ Repo-specific inference:
    `docs/GOOGLE_PLAY_NATIVE_SYMBOLS.md`. The current Gradle release config
    already enables `SYMBOL_TABLE`; Play may still warn when the only bundled
    native library is the already-stripped AndroidX `libandroidx.graphics.path.so`.
+11. Re-review the Data safety form and Open-Meteo's applicable terms before any
+    release that includes route weather. The current integration transmits a
+    GPX-derived coordinate and optional elevation only after an explicit user
+    action; verify the disclosure and the provider arrangement remain accurate
+    for the exact shipped flow.
 
 ## Practical submission note
 
