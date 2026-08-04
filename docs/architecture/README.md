@@ -14,6 +14,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `wear-transfer-service.md`
   - Watch transfer handling (Data Layer + channel + LAN HTTP), session state, lock policy.
 
+- `trailcore.md`
+  - Shared, platform-neutral trail geometry boundary used by the phone and watch.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`
@@ -42,6 +45,7 @@ This folder documents the watch-side architecture and major runtime flows.
 - Core services: `app/src/main/java/com/glancemap/glancemapwearos/core/service`
 - Feature UI: `app/src/main/java/com/glancemap/glancemapwearos/presentation/features`
 - Shared transfer contract: `transfercontract/src/main/kotlin/com/glancemap/shared/transfer`
+- Shared trail core: `trailcore/src/main/kotlin/com/glancemap/trailcore`
 
 ## Contribution Rule
 
