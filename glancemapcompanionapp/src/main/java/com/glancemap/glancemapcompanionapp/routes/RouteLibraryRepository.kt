@@ -3,6 +3,8 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.glancemap.trailcore.geo.haversineDistanceMeters
+import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
 import com.glancemap.trailcore.profile.windowFromDistance
 import com.google.gson.Gson
@@ -27,6 +29,18 @@ data class RouteLibrarySummary(
     val waypointCount: Int,
     val firstThirtyMinutesDistanceMeters: Double,
     val firstThirtyMinutesAscentMeters: Double,
+)
+
+data class RouteLibraryRouteDetails(
+    val route: RouteLibraryRoute,
+    val profile: TrailRouteProfile,
+    val waypoints: List<RouteLibraryWaypoint>,
+)
+
+data class RouteLibraryWaypoint(
+    val title: String,
+    val description: String?,
+    val distanceFromStartMeters: Double,
 )
 
 data class RouteLibraryUiState(
@@ -140,6 +154,29 @@ class RouteLibraryRepository(
         }
     }
 
+    suspend fun routeDetails(routeId: String): RouteLibraryRouteDetails? =
+        mutex.withLock {
+            val route = readIndex().routes.firstOrNull { it.id == routeId } ?: return@withLock null
+            val file = File(routesDirectory, route.storedFileName)
+            if (!file.isFile) return@withLock null
+            val parsed = file.inputStream().use(CompanionGpxRouteParser::parse)
+            val profile = buildTrailRouteProfile(parsed.points)
+            RouteLibraryRouteDetails(
+                route = route,
+                profile = profile,
+                waypoints =
+                    parsed.waypoints
+                        .mapNotNull { waypoint ->
+                            val title = waypoint.title ?: waypoint.description ?: return@mapNotNull null
+                            RouteLibraryWaypoint(
+                                title = title,
+                                description = waypoint.description?.takeIf { it != title },
+                                distanceFromStartMeters = profile.nearestPointDistanceFromStart(waypoint),
+                            )
+                        }.sortedBy(RouteLibraryWaypoint::distanceFromStartMeters),
+            )
+        }
+
     private fun readIndex(): RouteLibraryIndex {
         if (!indexFile.isFile) return RouteLibraryIndex()
         return runCatching {
@@ -166,6 +203,14 @@ class RouteLibraryRepository(
             ?.replace('-', ' ')
             ?.takeIf { it.isNotBlank() }
             ?: "Imported route"
+
+    private fun TrailRouteProfile.nearestPointDistanceFromStart(waypoint: RouteWaypoint): Double {
+        val nearestPointIndex =
+            points.indices.minByOrNull { index ->
+                haversineDistanceMeters(points[index].location, waypoint.location)
+            } ?: return 0.0
+        return cumulativeDistanceMeters[nearestPointIndex]
+    }
 
     private data class RouteLibraryIndex(
         val routes: List<RouteLibraryRoute> = emptyList(),

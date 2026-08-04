@@ -16,6 +16,8 @@ class RouteLibraryViewModel(
     private val repository = RouteLibraryRepository(application)
     private val _uiState = MutableStateFlow(RouteLibraryUiState())
     val uiState: StateFlow<RouteLibraryUiState> = _uiState.asStateFlow()
+    private val _selectedRouteDetails = MutableStateFlow<RouteLibraryRouteDetails?>(null)
+    val selectedRouteDetails: StateFlow<RouteLibraryRouteDetails?> = _selectedRouteDetails.asStateFlow()
 
     init {
         refresh()
@@ -24,7 +26,7 @@ class RouteLibraryViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, message = null)
-            _uiState.value =
+            publishRouteState(
                 runCatching {
                     withContext(Dispatchers.IO) { repository.load() }
                 }.getOrElse { error ->
@@ -32,14 +34,15 @@ class RouteLibraryViewModel(
                         isLoading = false,
                         message = error.message ?: "Could not load routes.",
                     )
-                }
+                },
+            )
         }
     }
 
     fun importRoute(uri: android.net.Uri) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isImporting = true, message = null)
-            _uiState.value =
+            publishRouteState(
                 runCatching {
                     withContext(Dispatchers.IO) { repository.importRoute(uri) }
                 }.getOrElse { error ->
@@ -47,18 +50,20 @@ class RouteLibraryViewModel(
                         isImporting = false,
                         message = error.message ?: "Could not import the GPX route.",
                     )
-                }.copy(isImporting = false)
+                }.copy(isImporting = false),
+            )
         }
     }
 
     fun selectRoute(routeId: String) {
         viewModelScope.launch {
-            _uiState.value =
+            publishRouteState(
                 runCatching {
                     withContext(Dispatchers.IO) { repository.selectRoute(routeId) }
                 }.getOrElse { error ->
                     _uiState.value.copy(message = error.message ?: "Could not select the route.")
-                }
+                },
+            )
         }
     }
 
@@ -68,4 +73,23 @@ class RouteLibraryViewModel(
     }
 
     fun contentUriFor(routeId: String): android.net.Uri? = repository.contentUriFor(routeId)
+
+    private fun publishRouteState(state: RouteLibraryUiState) {
+        _uiState.value = state
+        loadSelectedRouteDetails(state.selectedRoute?.id)
+    }
+
+    private fun loadSelectedRouteDetails(routeId: String?) {
+        _selectedRouteDetails.value = null
+        if (routeId == null) return
+        viewModelScope.launch {
+            val details =
+                runCatching {
+                    withContext(Dispatchers.IO) { repository.routeDetails(routeId) }
+                }.getOrNull()
+            if (_uiState.value.selectedRouteId == routeId) {
+                _selectedRouteDetails.value = details
+            }
+        }
+    }
 }

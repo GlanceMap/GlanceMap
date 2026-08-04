@@ -57,8 +57,11 @@ import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRouteDetails
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
+import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
+import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.shared.transfer.ActiveHikePhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,6 +90,7 @@ fun FilePickerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val activeHikeSnapshot by viewModel.activeHikeSnapshot.collectAsState()
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
+    val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
             uiState.selectedFileUris
@@ -585,6 +589,7 @@ fun FilePickerScreen(
                     CompanionHomeScreen(
                         adaptive = adaptive,
                         selectedRoute = routeLibraryUiState.selectedRoute,
+                        selectedRouteDetails = selectedRouteDetails,
                         activeHikeSnapshot = activeHikeSnapshot,
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
@@ -1098,6 +1103,7 @@ private fun SelectedFilesCompactSummary(
 private fun CompanionHomeScreen(
     adaptive: CompanionAdaptiveSpec,
     selectedRoute: RouteLibraryRoute?,
+    selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
@@ -1196,6 +1202,7 @@ private fun CompanionHomeScreen(
             ) {
                 TodayHikeCard(
                     selectedRoute = selectedRoute,
+                    selectedRouteDetails = selectedRouteDetails,
                     activeHikeSnapshot = activeHikeSnapshot,
                     onOpenRoutes = onOpenRoutes,
                     onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
@@ -1255,16 +1262,23 @@ private fun CompanionHomeScreen(
 @Composable
 private fun TodayHikeCard(
     selectedRoute: RouteLibraryRoute?,
+    selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     onOpenRoutes: () -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
     val liveHikeSnapshot =
         activeHikeSnapshot?.takeIf { update -> update.snapshot.phase != ActiveHikePhase.IDLE }
+    val trailIntelligence =
+        liveHikeSnapshot?.snapshot?.let { snapshot -> selectedRouteDetails?.trailIntelligenceFor(snapshot) }
     SectionCard(
         title = "TODAY'S HIKE",
     ) {
         liveHikeSnapshot?.let { update -> ActiveHikeBriefing(update) }
+        trailIntelligence?.let { intelligence ->
+            Spacer(modifier = Modifier.height(14.dp))
+            TrailIntelligenceBriefing(intelligence)
+        }
         if (liveHikeSnapshot != null) {
             Spacer(modifier = Modifier.height(14.dp))
         }
@@ -1300,12 +1314,16 @@ private fun TodayHikeCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = firstThirtyMinutesBriefing(selectedRoute),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            if (trailIntelligence == null) {
+                Text(
+                    text = firstThirtyMinutesBriefing(selectedRoute),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             Button(
                 onClick = onSendSelectedRouteToWatch,
                 modifier = Modifier.fillMaxWidth(),
@@ -1364,6 +1382,39 @@ private fun ActiveHikeBriefing(update: PhoneActiveHikeSnapshot) {
             text = metrics.joinToString("  •  "),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun TrailIntelligenceBriefing(intelligence: TrailIntelligence) {
+    val window = intelligence.window
+    val remainingMinutes = (window.estimatedDurationSeconds / 60.0).toInt().coerceAtLeast(1)
+    Text(
+        text = if (remainingMinutes >= 30) "NEXT 30 MINUTES" else "TO FINISH • NEXT $remainingMinutes MIN",
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelMedium,
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    val metrics =
+        listOfNotNull(
+            window.distanceMeters.toKilometersText(),
+            window.ascentMeters.takeIf { it > 0.0 }?.let { ascent -> "+${ascent.toInt()} m climb" },
+            window.descentMeters.takeIf { it > 0.0 }?.let { descent -> "−${descent.toInt()} m descent" },
+        )
+    Text(
+        text = metrics.joinToString("  •  "),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    intelligence.upcomingWaypoints.forEach { waypoint ->
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Up next: ${waypoint.title} in ${waypoint.distanceAheadMeters.toKilometersText()}",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

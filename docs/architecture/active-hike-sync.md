@@ -32,3 +32,14 @@ The message is a latest-state hint, not a reliable event log:
 
 The first implementation publishes while the watch navigation screen is active. A future
 background mission session may reuse this contract without changing the companion dashboard.
+
+## Companion Trail Intelligence
+
+When the selected companion GPX matches the active watch route by transferred filename or route
+title, the companion combines the live distance-from-start with its locally stored GPX profile.
+It renders the next planned 30-minute window: distance, ascent/descent, and up to three GPX
+waypoints in that window.
+
+This forecast is route-planning information. It is hidden when the routes do not match and does
+not alter watch guidance, calculate a safety decision, or make claims about terrain, weather,
+water, or hazard conditions.
