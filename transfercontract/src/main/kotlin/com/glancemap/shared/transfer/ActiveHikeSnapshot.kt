@@ -18,6 +18,9 @@ data class ActiveHikeSnapshot(
     val estimatedRemainingSeconds: Long?,
     val remainingAscentMeters: Double?,
     val remainingDescentMeters: Double?,
+    val activeDurationSeconds: Long? = null,
+    val currentSpeedMetersPerSecond: Double? = null,
+    val currentAltitudeMeters: Double? = null,
     val offRoute: Boolean,
     val recordedAtEpochMillis: Long,
 ) {
@@ -32,6 +35,9 @@ data class ActiveHikeSnapshot(
         require(estimatedRemainingSeconds == null || estimatedRemainingSeconds >= 0L)
         requireOptionalNonNegativeFinite(remainingAscentMeters, "Remaining ascent")
         requireOptionalNonNegativeFinite(remainingDescentMeters, "Remaining descent")
+        require(activeDurationSeconds == null || activeDurationSeconds >= 0L)
+        requireOptionalNonNegativeFinite(currentSpeedMetersPerSecond, "Current speed")
+        require(currentAltitudeMeters == null || currentAltitudeMeters.isFinite())
         require(recordedAtEpochMillis >= 0L)
     }
 }
@@ -43,6 +49,8 @@ enum class ActiveHikePhase {
     FOLLOWING_ROUTE,
     PAUSED,
     FINISHED,
+    RECORDING,
+    RECORDING_PAUSED,
 }
 
 /** Shared line-based codec, kept dependency-free so both Android apps share one wire format. */
@@ -59,6 +67,9 @@ object ActiveHikeSnapshotCodec {
             appendLine("estimated_remaining=${snapshot.estimatedRemainingSeconds.orEmpty()}")
             appendLine("remaining_ascent=${encodeDouble(snapshot.remainingAscentMeters)}")
             appendLine("remaining_descent=${encodeDouble(snapshot.remainingDescentMeters)}")
+            appendLine("active_duration=${snapshot.activeDurationSeconds.orEmpty()}")
+            appendLine("current_speed=${encodeDouble(snapshot.currentSpeedMetersPerSecond)}")
+            appendLine("current_altitude=${encodeDouble(snapshot.currentAltitudeMeters)}")
             appendLine("off_route=${if (snapshot.offRoute) 1 else 0}")
             append("recorded_at=${snapshot.recordedAtEpochMillis}")
         }.toByteArray(Charsets.UTF_8)
@@ -73,7 +84,7 @@ object ActiveHikeSnapshotCodec {
                             .takeIf { '=' in it }
                             ?.let { entry -> entry.substringBefore('=') to entry.substringAfter('=') }
                     }.toMap()
-            require(values["version"]?.toIntOrNull() == CURRENT_VERSION)
+            require(values["version"]?.toIntOrNull() in SUPPORTED_VERSIONS)
             ActiveHikeSnapshot(
                 phase = values.requiredPhase(),
                 routeId = values.decodeText("route_id"),
@@ -84,6 +95,9 @@ object ActiveHikeSnapshotCodec {
                 estimatedRemainingSeconds = values.long("estimated_remaining"),
                 remainingAscentMeters = values.double("remaining_ascent"),
                 remainingDescentMeters = values.double("remaining_descent"),
+                activeDurationSeconds = values.long("active_duration"),
+                currentSpeedMetersPerSecond = values.double("current_speed"),
+                currentAltitudeMeters = values.double("current_altitude"),
                 offRoute = values.requiredBoolean("off_route"),
                 recordedAtEpochMillis = values["recorded_at"]?.toLongOrNull() ?: error("Missing timestamp."),
             )
@@ -128,7 +142,8 @@ object ActiveHikeSnapshotCodec {
 
     private fun Long?.orEmpty(): String = this?.toString().orEmpty()
 
-    private const val CURRENT_VERSION = 1
+    private const val CURRENT_VERSION = 2
+    private val SUPPORTED_VERSIONS = setOf(1, CURRENT_VERSION)
 }
 
 private fun requireOptionalNonNegativeFinite(

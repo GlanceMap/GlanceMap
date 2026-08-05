@@ -39,7 +39,7 @@ Repo-specific inference:
 - No `ACCESS_BACKGROUND_LOCATION` permission was found.
 - Watch app requests location permissions for foreground navigation features.
 - Companion app requests Bluetooth and notification permissions for watch discovery and transfer UX.
-- Third-party network requests exist for user-requested POI, routing, terrain downloads, and route weather. Route weather sends a GPX-derived coordinate and optional GPX elevation to Open-Meteo only when the user chooses to load or refresh a forecast in the foreground; it does not use the phone's live location.
+- Third-party network requests exist for user-requested POI, routing, terrain downloads, and route weather. Route weather sends a GPX-derived coordinate and optional GPX elevation to Open-Meteo only when the user chooses to load or refresh a forecast in the foreground; it does not use the phone's live location. The returned forecast and fetch time are retained only in bounded, app-private companion storage for offline use.
 - Optional companion Live Tracking sends location, participant/group settings, optional emails, optional GPX route, and optional comments to Arkluz when the user starts or updates a tracking session.
 - User-initiated diagnostics export exists and may include device, crash, transfer, and location-related troubleshooting details.
 - Firebase release setup documentation exists, but `google-services.json` was not found in either app module in the checked-in repo state.

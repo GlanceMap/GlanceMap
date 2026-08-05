@@ -30,6 +30,17 @@ class OpenMeteoWeatherForecastProviderTest {
                         "wind_gusts_10m": [32.0, 58.0],
                         "visibility": [12000, 3500],
                         "freezing_level_height": [2600, 2450]
+                      },
+                      "daily": {
+                        "time": ["2026-08-05", "2026-08-06"],
+                        "weather_code": [3, 61],
+                        "temperature_2m_min": [4.2, 5.1],
+                        "temperature_2m_max": [12.4, 13.3],
+                        "precipitation_probability_max": [25, 65],
+                        "precipitation_sum": [0.1, 4.8],
+                        "wind_gusts_10m_max": [31.0, 58.0],
+                        "sunrise": ["2026-08-05T06:02", "2026-08-06T06:03"],
+                        "sunset": ["2026-08-05T20:34", "2026-08-06T20:33"]
                       }
                     }
                     """.trimIndent(),
@@ -42,6 +53,10 @@ class OpenMeteoWeatherForecastProviderTest {
         assertEquals(65.0, forecast.nextHour?.precipitationProbabilityPercent ?: 0.0, 0.001)
         assertEquals(3_500.0, forecast.nextHour?.visibilityMeters ?: 0.0, 0.001)
         assertEquals(2_450.0, forecast.nextHour?.freezingLevelHeightMeters ?: 0.0, 0.001)
+        assertEquals(2, forecast.daily.size)
+        assertEquals("2026-08-05", forecast.daily.first().date)
+        assertEquals(12.4, forecast.daily.first().maximumTemperatureCelsius ?: 0.0, 0.001)
+        assertEquals(58.0, forecast.daily[1].windGustKilometersPerHour ?: 0.0, 0.001)
     }
 
     @Test
@@ -85,9 +100,31 @@ class OpenMeteoWeatherForecastProviderTest {
             assertEquals(2, requestCount)
             assertSame(firstForecast, initial.forecast)
             assertSame(firstForecast, cached.forecast)
-            assertEquals(WeatherForecastSource.CACHE, cached.source)
+            assertEquals(WeatherForecastSource.MEMORY_CACHE, cached.source)
             assertSame(firstForecast, stale.forecast)
             assertEquals(WeatherForecastSource.STALE_CACHE, stale.source)
+        }
+
+    @Test
+    fun `repository uses a fresh persisted snapshot and exposes its history`() =
+        runBlocking {
+            val persisted = forecast(fetchedAtEpochMillis = 1_000L)
+            val store = InMemoryWeatherForecastStore(persisted)
+            val repository =
+                WeatherForecastRepository(
+                    provider =
+                        object : WeatherForecastProvider {
+                            override suspend fun forecast(location: WeatherForecastLocation) = unexpectedNetworkCall()
+                        },
+                    store = store,
+                    nowEpochMillis = { 2_000L },
+                )
+
+            val result = repository.forecast(testLocation(), forceRefresh = false)
+
+            assertSame(persisted, result.forecast)
+            assertEquals(WeatherForecastSource.PERSISTED_CACHE, result.source)
+            assertEquals(listOf(persisted), repository.history(testLocation()))
         }
 
     private fun testLocation(): WeatherForecastLocation =
@@ -112,4 +149,23 @@ class OpenMeteoWeatherForecastProviderTest {
                 ),
             nextHour = null,
         )
+
+    private class InMemoryWeatherForecastStore(
+        initial: WeatherForecast,
+    ) : WeatherForecastStore {
+        private val snapshots = mutableListOf(initial)
+
+        override suspend fun latest(location: WeatherForecastLocation) = matching(location).firstOrNull()
+
+        override suspend fun history(location: WeatherForecastLocation) = matching(location)
+
+        override suspend fun record(forecast: WeatherForecast) {
+            snapshots.removeAll { snapshot -> snapshot.fetchedAtEpochMillis == forecast.fetchedAtEpochMillis }
+            snapshots.add(0, forecast)
+        }
+
+        private fun matching(location: WeatherForecastLocation) = snapshots.filter { it.location == location }
+    }
+
+    private fun unexpectedNetworkCall(): Nothing = error("Network should not be used.")
 }

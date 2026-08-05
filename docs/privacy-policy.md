@@ -173,8 +173,12 @@ We do not sell your personal data.
   them, clear app data, or uninstall the app.
 - Temporary caches may be removed automatically or when you use built-in cleanup
   actions.
-- Route weather forecasts are cached only in the companion app's memory for a
-  short period and are discarded when the app process ends.
+- Route weather forecasts, including the GPX-derived route-area coordinate,
+  optional route elevation, forecast values, and fetch time, are kept in
+  app-private companion storage so they remain available offline. The app keeps
+  a bounded history (up to 12 snapshots for a route area and 96 snapshots in
+  total), replaces older entries automatically, and removes it when you clear
+  companion app data or uninstall the app.
 - Transfer history, last-used download or import parameters, and help state may
   remain locally until cleared, overwritten, or removed with app data.
 - Live Tracking group settings, passwords, email settings, draft comments,

@@ -21,6 +21,7 @@ data class WeatherForecast(
     val fetchedAtEpochMillis: Long,
     val current: WeatherCurrentConditions,
     val nextHour: WeatherHourlyOutlook?,
+    val daily: List<WeatherDailyOutlook> = emptyList(),
 ) {
     init {
         require(fetchedAtEpochMillis >= 0L)
@@ -45,6 +46,18 @@ data class WeatherHourlyOutlook(
     val freezingLevelHeightMeters: Double?,
 )
 
+data class WeatherDailyOutlook(
+    val date: String,
+    val weatherCode: Int?,
+    val minimumTemperatureCelsius: Double?,
+    val maximumTemperatureCelsius: Double?,
+    val precipitationProbabilityPercent: Double?,
+    val precipitationMillimeters: Double?,
+    val windGustKilometersPerHour: Double?,
+    val sunriseIso8601: String?,
+    val sunsetIso8601: String?,
+)
+
 interface WeatherForecastProvider {
     suspend fun forecast(location: WeatherForecastLocation): WeatherForecast
 }
@@ -56,13 +69,15 @@ internal data class WeatherForecastLoad(
 
 internal enum class WeatherForecastSource {
     NETWORK,
-    CACHE,
+    MEMORY_CACHE,
+    PERSISTED_CACHE,
     STALE_CACHE,
 }
 
 /** Keeps weather available through transient connection loss without continuously re-querying a route. */
 internal class WeatherForecastRepository(
     private val provider: WeatherForecastProvider,
+    private val store: WeatherForecastStore? = null,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val cache = mutableMapOf<WeatherForecastCacheKey, WeatherForecast>()
@@ -72,13 +87,22 @@ internal class WeatherForecastRepository(
         forceRefresh: Boolean,
     ): WeatherForecastLoad {
         val cacheKey = WeatherForecastCacheKey.from(location)
-        val cached = synchronized(cache) { cache[cacheKey] }
-        return if (!forceRefresh && cached != null && cached.isFresh(nowEpochMillis())) {
-            WeatherForecastLoad(cached, WeatherForecastSource.CACHE)
+        val memoryCached = synchronized(cache) { cache[cacheKey] }
+        val persistedCached = memoryCached ?: store?.latest(location)
+        if (!forceRefresh && persistedCached != null && persistedCached.isFresh(nowEpochMillis())) {
+            val source =
+                if (memoryCached != null) {
+                    WeatherForecastSource.MEMORY_CACHE
+                } else {
+                    WeatherForecastSource.PERSISTED_CACHE
+                }
+            return WeatherForecastLoad(persistedCached, source)
         } else {
-            requestForecast(location, cacheKey, cached)
+            return requestForecast(location, cacheKey, persistedCached)
         }
     }
+
+    suspend fun history(location: WeatherForecastLocation): List<WeatherForecast> = store?.history(location).orEmpty()
 
     private suspend fun requestForecast(
         location: WeatherForecastLocation,
@@ -89,6 +113,7 @@ internal class WeatherForecastRepository(
             .fold(
                 onSuccess = { forecast ->
                     synchronized(cache) { cache[cacheKey] = forecast }
+                    store?.record(forecast)
                     WeatherForecastLoad(forecast, WeatherForecastSource.NETWORK)
                 },
                 onFailure = { error ->

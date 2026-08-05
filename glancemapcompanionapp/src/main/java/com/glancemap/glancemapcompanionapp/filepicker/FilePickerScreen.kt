@@ -4,6 +4,7 @@
     "FunctionNaming",
     "LongMethod",
     "LongParameterList",
+    "MaxLineLength",
     "TooManyFunctions",
 )
 
@@ -54,6 +55,7 @@ import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PrivacyPolicyActivity
 import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
+import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardScreen
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
@@ -75,12 +77,15 @@ import com.glancemap.shared.transfer.ActiveHikeSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 import kotlin.math.roundToInt
 
 private enum class CompanionHomeArea {
     HOME,
     SEND_TO_WATCH,
     LIVE_TRACKING,
+    LIVE_HIKE,
     MAP_LEGEND,
     MISSION_PLAN,
     ROUTES,
@@ -466,6 +471,7 @@ fun FilePickerScreen(
             }
 
             CompanionHomeArea.HOME,
+            CompanionHomeArea.LIVE_HIKE,
             CompanionHomeArea.MAP_LEGEND,
             CompanionHomeArea.MISSION_PLAN,
             CompanionHomeArea.ROUTES,
@@ -650,6 +656,7 @@ fun FilePickerScreen(
                             }
                         },
                         onOpenMissionPlan = { activeHomeArea = CompanionHomeArea.MISSION_PLAN },
+                        onOpenLiveHike = { activeHomeArea = CompanionHomeArea.LIVE_HIKE },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
@@ -702,6 +709,15 @@ fun FilePickerScreen(
                         onRemoveDay = missionPlanViewModel::removeDay,
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
                     )
+                }
+
+                CompanionHomeArea.LIVE_HIKE -> {
+                    activeHikeSnapshot?.let { update ->
+                        LiveHikeDashboardScreen(
+                            update = update,
+                            onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                        )
+                    }
                 }
 
                 CompanionHomeArea.LIVE_TRACKING -> {
@@ -1172,6 +1188,7 @@ private fun CompanionHomeScreen(
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
     onOpenMissionPlan: () -> Unit,
+    onOpenLiveHike: () -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
     onOpenMapLegend: () -> Unit,
@@ -1306,6 +1323,16 @@ private fun CompanionHomeScreen(
                     }
                 }
 
+                HomeActionButton(
+                    icon = Icons.Filled.SpatialTracking,
+                    title = "Live Hike Dashboard",
+                    description = "See live progress from the watch",
+                    onClick = onOpenLiveHike,
+                    enabled =
+                        activeHikeSnapshot?.snapshot?.let { snapshot ->
+                            snapshot.phase != ActiveHikePhase.IDLE && snapshot.phase != ActiveHikePhase.FINISHED
+                        } == true,
+                )
                 HomeActionButton(
                     icon = Icons.Filled.CalendarMonth,
                     title = "Mission Plan",
@@ -1590,6 +1617,13 @@ private fun RouteWeatherBriefing(
                 text = "${forecast.location.label} • ${weatherConditionText(forecast.current.weatherCode)}",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Text(
+                text =
+                    "Updated ${forecast.fetchedAtEpochMillis.toWeatherUpdatedText()}" +
+                        " • ${uiState.savedSnapshotCount} saved snapshot${if (uiState.savedSnapshotCount == 1) "" else "s"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
             val currentMetrics =
                 listOfNotNull(
                     forecast.current.temperatureCelsius?.let { temperature -> temperature.toWeatherTemperatureText() },
@@ -1633,6 +1667,33 @@ private fun RouteWeatherBriefing(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            if (forecast.daily.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "OUTLOOK",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                forecast.daily.take(3).forEach { day ->
+                    val dayMetrics =
+                        listOfNotNull(
+                            day.minimumTemperatureCelsius?.let { value -> "${value.toWeatherTemperatureText()} low" },
+                            day.maximumTemperatureCelsius?.let { value -> "${value.toWeatherTemperatureText()} high" },
+                            day.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
+                            day.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                        )
+                    Text(
+                        text =
+                            "${day.date} • ${weatherConditionText(day.weatherCode)}" +
+                                dayMetrics
+                                    .takeIf { metrics -> metrics.isNotEmpty() }
+                                    ?.let { metrics -> " • ${metrics.joinToString("  •  ")}" }
+                                    .orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             if (uiState.isStale) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -1661,6 +1722,8 @@ private fun RouteWeatherBriefing(
 
 private fun Double.toWeatherTemperatureText(): String = "${roundToInt()}°C"
 
+private fun Long.toWeatherUpdatedText(): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(this))
+
 private const val OPEN_METEO_URL = "https://open-meteo.com/"
 
 private fun activeHikeStatusText(
@@ -1674,6 +1737,8 @@ private fun activeHikeStatusText(
         ActiveHikePhase.FOLLOWING_ROUTE -> "Following the route"
         ActiveHikePhase.PAUSED -> "Navigation paused on watch"
         ActiveHikePhase.FINISHED -> "Route complete"
+        ActiveHikePhase.RECORDING -> "Recording on watch"
+        ActiveHikePhase.RECORDING_PAUSED -> "Recording paused on watch"
         ActiveHikePhase.IDLE -> "No active hike"
     }
 }
@@ -1709,9 +1774,11 @@ private fun HomeActionButton(
     title: String,
     description: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier =
             Modifier
                 .fillMaxWidth()

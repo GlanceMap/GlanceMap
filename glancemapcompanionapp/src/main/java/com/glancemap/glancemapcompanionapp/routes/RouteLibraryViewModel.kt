@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
 import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecast
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastRepository
@@ -21,6 +22,7 @@ data class RouteWeatherUiState(
     val forecast: WeatherForecast? = null,
     val isCached: Boolean = false,
     val isStale: Boolean = false,
+    val savedSnapshotCount: Int = 0,
     val message: String? = null,
 )
 
@@ -32,7 +34,11 @@ class RouteLibraryViewModel(
     val uiState: StateFlow<RouteLibraryUiState> = _uiState.asStateFlow()
     private val _selectedRouteDetails = MutableStateFlow<RouteLibraryRouteDetails?>(null)
     val selectedRouteDetails: StateFlow<RouteLibraryRouteDetails?> = _selectedRouteDetails.asStateFlow()
-    private val weatherForecastRepository = WeatherForecastRepository(OpenMeteoWeatherForecastProvider())
+    private val weatherForecastRepository =
+        WeatherForecastRepository(
+            provider = OpenMeteoWeatherForecastProvider(),
+            store = FileWeatherForecastStore(application),
+        )
     private val _routeWeatherUiState = MutableStateFlow(RouteWeatherUiState())
     val routeWeatherUiState: StateFlow<RouteWeatherUiState> = _routeWeatherUiState.asStateFlow()
 
@@ -110,17 +116,20 @@ class RouteLibraryViewModel(
                 )
             runCatching {
                 withContext(Dispatchers.IO) {
-                    weatherForecastRepository.forecast(
-                        location = weatherLocation,
-                        forceRefresh = forceRefresh,
-                    )
+                    val result =
+                        weatherForecastRepository.forecast(
+                            location = weatherLocation,
+                            forceRefresh = forceRefresh,
+                        )
+                    result to weatherForecastRepository.history(weatherLocation)
                 }
             }.onSuccess { result ->
                 _routeWeatherUiState.value =
                     RouteWeatherUiState(
-                        forecast = result.forecast,
-                        isCached = result.source == WeatherForecastSource.CACHE,
-                        isStale = result.source == WeatherForecastSource.STALE_CACHE,
+                        forecast = result.first.forecast,
+                        isCached = result.first.source != WeatherForecastSource.NETWORK,
+                        isStale = result.first.source == WeatherForecastSource.STALE_CACHE,
+                        savedSnapshotCount = result.second.size,
                     )
             }.onFailure { error ->
                 if (error is CancellationException) throw error

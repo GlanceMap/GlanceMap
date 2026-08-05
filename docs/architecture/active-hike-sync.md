@@ -17,8 +17,10 @@ a hike is in progress.
 versioned, dependency-free payload at `/glancemap/active_hike_snapshot`.
 
 It contains the current phase, route identity, remaining and completed distance, progress, ETA,
-remaining ascent/descent, off-route state, and a wall-clock timestamp. Optional metrics are
-explicitly encoded as empty fields. Unknown versions or malformed fields are discarded.
+remaining ascent/descent, off-route state, and a wall-clock timestamp. Version 2 also carries
+recording-only active duration, speed, and altitude. Optional metrics are explicitly encoded as
+empty fields. Version 1 remains decodable so an updated companion can show routed TBT progress
+from an older watch app; unknown versions or malformed fields are discarded.
 
 ## Delivery semantics
 
@@ -32,6 +34,13 @@ The message is a latest-state hint, not a reliable event log:
 
 The first implementation publishes while the watch navigation screen is active. A future
 background mission session may reuse this contract without changing the companion dashboard.
+
+The companion's **Live Hike Dashboard** is a presentation of this state. Routed TBT sessions show
+completed and remaining distance, time left, ETA, remaining climb/descent, progress, and off-route
+status. REC sessions intentionally show only measured distance, active duration, speed, and
+altitude because a recording has no planned destination or defensible ETA. The watch prioritizes
+an active or paused TBT session over a simultaneous recording; standalone recording metrics need
+a version-2 watch build.
 
 ## Companion Trail Intelligence
 
@@ -53,8 +62,12 @@ The companion can load a short weather context for the selected route through a 
 - It sends a coordinate from the locally stored GPX route, not the phone's live location. For a
   matching active hike, the coordinate is the GPX point nearest the watch-reported route progress;
   otherwise it is the route start. GPX elevation is sent when available.
-- The response contains only current conditions and a near-term outlook. It is held in an
-  in-memory cache for up to 30 minutes; a stale cached result may be shown if a refresh fails.
+- The response contains current conditions, a near-term hourly outlook, and a 10-day daily
+  outlook. It is fresh for 30 minutes in memory, then falls back to the latest locally saved
+  snapshot when appropriate. A failed refresh may show that saved snapshot as stale.
+- The companion keeps a bounded local forecast history (up to 12 snapshots per route-area and 96
+  snapshots overall) in app-private storage. Every weather card shows the snapshot fetch time and
+  saved-snapshot count so offline data is never presented as a live update.
 - The UI identifies Open-Meteo, links to its site, and labels weather as context rather than a
   navigation, turnaround, or safety decision.
 - The current public endpoint is appropriate for the present development integration. Before a

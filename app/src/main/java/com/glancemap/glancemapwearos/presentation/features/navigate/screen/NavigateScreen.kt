@@ -738,13 +738,31 @@ fun NavigateScreen(
             turnByTurnGuidancePaused,
             turnByTurnGuidanceSession?.trackId,
             turnByTurnGuidanceSession?.trackTitle,
+            traceRecordingState.active,
+            traceRecordingState.paused,
+            traceRecordingState.distanceMeters,
+            traceRecordingState.startedAtMillis,
+            traceRecordingState.pausedAtMillis,
+            traceRecordingState.accumulatedPausedMillis,
+            traceRecordingState.externalSpeedMps,
+            traceRecordingState.latestLivePoint,
         ) {
             activeHikePublisher.publish(
-                guidanceRuntime.state.toActiveHikeSnapshot(
-                    routeId = turnByTurnGuidanceSession?.trackId,
-                    paused = turnByTurnGuidancePaused,
-                    pausedRouteTitle = turnByTurnGuidanceSession?.trackTitle,
-                ),
+                if (guidanceRuntime.state.active || turnByTurnGuidancePaused) {
+                    guidanceRuntime.state.toActiveHikeSnapshot(
+                        routeId = turnByTurnGuidanceSession?.trackId,
+                        paused = turnByTurnGuidancePaused,
+                        pausedRouteTitle = turnByTurnGuidanceSession?.trackTitle,
+                    )
+                } else if (traceRecordingState.active) {
+                    traceRecordingState.toActiveHikeSnapshot()
+                } else {
+                    guidanceRuntime.state.toActiveHikeSnapshot(
+                        routeId = null,
+                        paused = false,
+                        pausedRouteTitle = null,
+                    )
+                },
             )
         }
 

@@ -51,8 +51,11 @@ internal class OpenMeteoWeatherForecastProvider(
             .addQueryParameter("longitude", location.longitude.toString())
             .addQueryParameter("current", CURRENT_VARIABLES)
             .addQueryParameter("hourly", HOURLY_VARIABLES)
+            .addQueryParameter("daily", DAILY_VARIABLES)
             .addQueryParameter("forecast_hours", FORECAST_HOURS.toString())
+            .addQueryParameter("forecast_days", FORECAST_DAYS.toString())
             .addQueryParameter("wind_speed_unit", "kmh")
+            .addQueryParameter("timezone", "auto")
             .apply {
                 location.elevationMeters?.let { elevation ->
                     addQueryParameter("elevation", elevation.toString())
@@ -62,11 +65,15 @@ internal class OpenMeteoWeatherForecastProvider(
     private companion object {
         const val FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
         const val FORECAST_HOURS = 3
+        const val FORECAST_DAYS = 10
         const val CURRENT_VARIABLES =
             "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m"
         const val HOURLY_VARIABLES =
             "precipitation_probability,precipitation,weather_code,wind_speed_10m," +
                 "wind_gusts_10m,visibility,freezing_level_height"
+        const val DAILY_VARIABLES =
+            "weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max," +
+                "precipitation_sum,wind_gusts_10m_max,sunrise,sunset"
 
         val defaultHttpClient: OkHttpClient =
             OkHttpClient
@@ -77,6 +84,7 @@ internal class OpenMeteoWeatherForecastProvider(
     }
 }
 
+@Suppress("TooManyFunctions")
 internal object OpenMeteoWeatherForecastParser {
     fun parse(
         body: String,
@@ -89,6 +97,7 @@ internal object OpenMeteoWeatherForecastParser {
             fetchedAtEpochMillis = fetchedAtEpochMillis,
             current = root.childObjectOrNull("current").toCurrentConditions(),
             nextHour = root.childObjectOrNull("hourly").toHourlyOutlook(),
+            daily = root.childObjectOrNull("daily").toDailyOutlook(),
         )
     }
 
@@ -114,6 +123,24 @@ internal object OpenMeteoWeatherForecastParser {
         )
     }
 
+    private fun JsonObject?.toDailyOutlook(): List<WeatherDailyOutlook> {
+        val daily = this ?: return emptyList()
+        val dates = daily.stringValues("time")
+        return dates.mapIndexed { index, date ->
+            WeatherDailyOutlook(
+                date = date,
+                weatherCode = daily.weatherCodeAt("weather_code", index),
+                minimumTemperatureCelsius = daily.finiteDoubleAt("temperature_2m_min", index),
+                maximumTemperatureCelsius = daily.finiteDoubleAt("temperature_2m_max", index),
+                precipitationProbabilityPercent = daily.finiteDoubleAt("precipitation_probability_max", index),
+                precipitationMillimeters = daily.finiteDoubleAt("precipitation_sum", index),
+                windGustKilometersPerHour = daily.finiteDoubleAt("wind_gusts_10m_max", index),
+                sunriseIso8601 = daily.stringAt("sunrise", index),
+                sunsetIso8601 = daily.stringAt("sunset", index),
+            )
+        }
+    }
+
     private fun JsonObject.childObjectOrNull(key: String): JsonObject? =
         get(key)
             ?.takeUnless(JsonElement::isJsonNull)
@@ -136,6 +163,36 @@ internal object OpenMeteoWeatherForecastParser {
             ?: getAsJsonArray(key).finiteDoubleAt(CURRENT_HOUR_INDEX)
 
     private fun JsonObject.weatherCodeForNextHour(key: String): Int? = finiteDoubleForNextHour(key)?.roundToInt()
+
+    private fun JsonObject.finiteDoubleAt(
+        key: String,
+        index: Int,
+    ): Double? = getAsJsonArray(key).finiteDoubleAt(index)
+
+    private fun JsonObject.weatherCodeAt(
+        key: String,
+        index: Int,
+    ): Int? = finiteDoubleAt(key, index)?.roundToInt()
+
+    private fun JsonObject.stringValues(key: String): List<String> =
+        getAsJsonArray(key)
+            ?.mapNotNull { value ->
+                value
+                    .takeUnless(JsonElement::isJsonNull)
+                    ?.let { item -> runCatching { item.asString }.getOrNull() }
+                    ?.takeIf(String::isNotBlank)
+            }.orEmpty()
+
+    private fun JsonObject.stringAt(
+        key: String,
+        index: Int,
+    ): String? =
+        getAsJsonArray(key)
+            ?.takeIf { values -> values.size() > index }
+            ?.get(index)
+            ?.takeUnless(JsonElement::isJsonNull)
+            ?.let { value -> runCatching { value.asString }.getOrNull() }
+            ?.takeIf(String::isNotBlank)
 
     private fun JsonArray?.finiteDoubleAt(index: Int): Double? =
         this
