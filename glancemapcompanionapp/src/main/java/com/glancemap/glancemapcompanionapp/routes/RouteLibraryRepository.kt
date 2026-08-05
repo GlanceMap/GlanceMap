@@ -54,6 +54,7 @@ data class RouteLibraryUiState(
         get() = routes.firstOrNull { it.id == selectedRouteId }
 }
 
+@Suppress("TooManyFunctions")
 class RouteLibraryRepository(
     context: Context,
 ) {
@@ -145,14 +146,33 @@ class RouteLibraryRepository(
     fun contentUriFor(routeId: String): Uri? {
         val route = readIndex().routes.firstOrNull { it.id == routeId } ?: return null
         val file = File(routesDirectory, route.storedFileName)
-        return file.takeIf(File::isFile)?.let { existingFile ->
-            FileProvider.getUriForFile(
-                appContext,
-                "${appContext.packageName}.fileprovider",
-                existingFile,
-            )
-        }
+        return file.takeIf(File::isFile)?.let(::contentUriForFile)
     }
+
+    /** Returns the source GPX for a full day, or a disposable GPX export for a route segment. */
+    suspend fun contentUriFor(day: MissionPlanDay): Uri? =
+        mutex.withLock {
+            val route = readIndex().routes.firstOrNull { it.id == day.routeId } ?: return@withLock null
+            val sourceFile = File(routesDirectory, route.storedFileName)
+            if (!sourceFile.isFile) return@withLock null
+            val parsedRoute = sourceFile.inputStream().use(CompanionGpxRouteParser::parse)
+            val profile = buildTrailRouteProfile(parsedRoute.points)
+            if (day.isWholeRoute(profile.totalDistanceMeters)) {
+                return@withLock contentUriForFile(sourceFile)
+            }
+            val exportDirectory =
+                File(appContext.cacheDir, MISSION_PLAN_EXPORT_DIRECTORY).apply(File::mkdirs)
+            val exportFile = File(exportDirectory, "mission-day-${day.id}.gpx")
+            exportFile.writeText(
+                MissionPlanGpxExporter.export(
+                    day = day,
+                    routeTitle = route.title,
+                    parsedRoute = parsedRoute,
+                    profile = profile,
+                ),
+            )
+            contentUriForFile(exportFile)
+        }
 
     suspend fun routeDetails(routeId: String): RouteLibraryRouteDetails? =
         mutex.withLock {
@@ -212,6 +232,13 @@ class RouteLibraryRepository(
         return cumulativeDistanceMeters[nearestPointIndex]
     }
 
+    private fun contentUriForFile(file: File): Uri =
+        FileProvider.getUriForFile(
+            appContext,
+            "${appContext.packageName}.fileprovider",
+            file,
+        )
+
     private data class RouteLibraryIndex(
         val routes: List<RouteLibraryRoute> = emptyList(),
         val selectedRouteId: String? = null,
@@ -220,6 +247,7 @@ class RouteLibraryRepository(
     private companion object {
         const val ROUTES_DIRECTORY_NAME = "route-library"
         const val INDEX_FILE_NAME = "routes.json"
+        const val MISSION_PLAN_EXPORT_DIRECTORY = "mission-plan-exports"
         const val NEXT_WINDOW_SECONDS = 30.0 * 60.0
     }
 }

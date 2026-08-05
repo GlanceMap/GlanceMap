@@ -62,6 +62,34 @@ class TrailRouteProfileTest {
     }
 
     @Test
+    fun boundedRouteWindowReportsOnlyTheRequestedDaySegment() {
+        val profile =
+            buildTrailRouteProfile(
+                points =
+                    listOf(
+                        point(longitude = 0.0, elevation = 100.0),
+                        point(longitude = 0.001, elevation = 150.0),
+                        point(longitude = 0.002, elevation = 120.0),
+                    ),
+                pacing =
+                    TrailPacingConfig(
+                        flatSpeedMetersPerSecond = 1.0,
+                        uphillVerticalMetersPerHour = 3_600.0,
+                    ),
+            )
+
+        val window =
+            profile.windowBetweenDistances(
+                startDistanceMeters = profile.cumulativeDistanceMeters[1],
+                endDistanceMeters = profile.cumulativeDistanceMeters[2],
+            )
+
+        assertTrue(window.distanceMeters in 110.0..115.0)
+        assertEquals(0.0, window.ascentMeters, 0.01)
+        assertEquals(30.0, window.descentMeters, 0.01)
+    }
+
+    @Test
     fun segmentBoundariesDoNotCreateArtificialDistanceOrElevation() {
         val profile =
             buildTrailRouteProfile(

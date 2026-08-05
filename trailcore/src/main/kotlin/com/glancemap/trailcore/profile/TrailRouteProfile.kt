@@ -152,6 +152,29 @@ fun TrailRouteProfile.windowFromDistance(
     )
 }
 
+/** Calculates an exact planning summary for a bounded portion of a route. */
+fun TrailRouteProfile.windowBetweenDistances(
+    startDistanceMeters: Double,
+    endDistanceMeters: Double,
+): TrailWindow {
+    val startDistance = startDistanceMeters.coerceIn(0.0, totalDistanceMeters)
+    val endDistance = endDistanceMeters.coerceIn(startDistance, totalDistanceMeters)
+    val startDuration = interpolateAtDistance(cumulativeEstimatedDurationSeconds, startDistance)
+    val endDuration = interpolateAtDistance(cumulativeEstimatedDurationSeconds, endDistance)
+    val ascentAtStart = interpolateAtDistance(cumulativeAscentMeters, startDistance)
+    val ascentAtEnd = interpolateAtDistance(cumulativeAscentMeters, endDistance)
+    val descentAtStart = interpolateAtDistance(cumulativeDescentMeters, startDistance)
+    val descentAtEnd = interpolateAtDistance(cumulativeDescentMeters, endDistance)
+    return TrailWindow(
+        startDistanceMeters = startDistance,
+        endDistanceMeters = endDistance,
+        distanceMeters = (endDistance - startDistance).coerceAtLeast(0.0),
+        ascentMeters = (ascentAtEnd - ascentAtStart).coerceAtLeast(0.0),
+        descentMeters = (descentAtEnd - descentAtStart).coerceAtLeast(0.0),
+        estimatedDurationSeconds = (endDuration - startDuration).coerceAtLeast(0.0),
+    )
+}
+
 private fun estimateSegmentDurationSeconds(
     distanceMeters: Double,
     ascentMeters: Double,

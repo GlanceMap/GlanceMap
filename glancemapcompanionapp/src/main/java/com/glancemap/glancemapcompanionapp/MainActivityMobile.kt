@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.filepicker.FilePickerScreen
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingOpenIntentContract
+import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.transfer.WatchGpxSaveIntentContract
 import com.glancemap.glancemapcompanionapp.ui.theme.GlanceMapTheme
@@ -43,6 +44,7 @@ class MainActivityMobile : ComponentActivity() {
                 ) {
                     val vm: FileTransferViewModel = viewModel()
                     val routeLibraryViewModel: RouteLibraryViewModel = viewModel()
+                    val missionPlanViewModel: MissionPlanViewModel = viewModel()
 
                     LaunchedEffect(incomingIntentToken) {
                         val uris = incomingUris
@@ -74,6 +76,7 @@ class MainActivityMobile : ComponentActivity() {
                     FilePickerScreen(
                         viewModel = vm,
                         routeLibraryViewModel = routeLibraryViewModel,
+                        missionPlanViewModel = missionPlanViewModel,
                         openSendToWatchToken = incomingIntentToken,
                         openLiveTrackingToken = openLiveTrackingToken,
                         watchGpxSaveToken = pendingWatchGpxSaveToken,

@@ -60,3 +60,19 @@ The companion can load a short weather context for the selected route through a 
 - The current public endpoint is appropriate for the present development integration. Before a
   commercial distribution, confirm the provider's terms or arrange a suitable commercial service
   without changing the companion's provider boundary.
+
+## Companion Mission Plan
+
+The companion can store one local, multi-day mission plan. Each day references an imported GPX
+route by ID and can optionally bound it by start and end route distances. This supports both a
+separate GPX for every day and multiple days drawn from one long GPX, without copying the original
+route files.
+
+- Selecting **Set today** selects the corresponding route in the companion library and makes the
+  existing Home briefing, weather context, and Send to Watch action refer to that day.
+- Day distance, ascent, descent, and estimated duration are calculated from the shared trail
+  profile over the saved distance range.
+- A full-route day sends the original GPX. A bounded day is exported as a disposable GPX in the
+  companion cache immediately before transfer; it is not added to the route library.
+- The watch receives a normal GPX through the existing transfer flow. No watch navigation logic or
+  watch-to-phone contract changes are required for this milestone.

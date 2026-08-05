@@ -12,9 +12,10 @@ import kotlin.math.abs
  */
 fun RouteLibraryRouteDetails.weatherLocationFor(
     activeHikeSnapshot: ActiveHikeSnapshot?,
+    plannedStartDistanceMeters: Double = 0.0,
 ): WeatherForecastLocation? {
     val activeDistance = activeHikeSnapshot?.matchedActiveDistanceFor(this)
-    val targetDistanceMeters = activeDistance ?: 0.0
+    val targetDistanceMeters = activeDistance ?: plannedStartDistanceMeters
     val point = profile.pointNearestToDistance(targetDistanceMeters) ?: return null
     return WeatherForecastLocation(
         latitude = point.location.latitude,

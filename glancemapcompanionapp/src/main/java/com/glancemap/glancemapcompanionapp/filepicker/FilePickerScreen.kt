@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
@@ -56,12 +57,17 @@ import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
+import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
+import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
+import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
+import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRouteDetails
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
+import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
@@ -76,6 +82,7 @@ private enum class CompanionHomeArea {
     SEND_TO_WATCH,
     LIVE_TRACKING,
     MAP_LEGEND,
+    MISSION_PLAN,
     ROUTES,
 }
 
@@ -83,6 +90,7 @@ private enum class CompanionHomeArea {
 fun FilePickerScreen(
     viewModel: FileTransferViewModel,
     routeLibraryViewModel: RouteLibraryViewModel,
+    missionPlanViewModel: MissionPlanViewModel,
     openSendToWatchToken: Long = 0L,
     openLiveTrackingToken: Long = 0L,
     watchGpxSaveToken: Long = 0L,
@@ -96,6 +104,7 @@ fun FilePickerScreen(
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
     val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
+    val missionPlanUiState by missionPlanViewModel.uiState.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
             uiState.selectedFileUris
@@ -458,6 +467,7 @@ fun FilePickerScreen(
 
             CompanionHomeArea.HOME,
             CompanionHomeArea.MAP_LEGEND,
+            CompanionHomeArea.MISSION_PLAN,
             CompanionHomeArea.ROUTES,
             -> Unit
         }
@@ -597,26 +607,49 @@ fun FilePickerScreen(
                         selectedRouteDetails = selectedRouteDetails,
                         activeHikeSnapshot = activeHikeSnapshot,
                         routeWeatherUiState = routeWeatherUiState,
+                        missionPlanUiState = missionPlanUiState,
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
-                        onLoadRouteWeather = { snapshot, forceRefresh ->
-                            routeLibraryViewModel.loadRouteWeather(snapshot, forceRefresh)
+                        onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
+                            routeLibraryViewModel.loadRouteWeather(
+                                activeHikeSnapshot = snapshot,
+                                forceRefresh = forceRefresh,
+                                plannedStartDistanceMeters = plannedStartDistanceMeters,
+                            )
                         },
                         onSendSelectedRouteToWatch = {
-                            val routeUri = routeLibraryViewModel.selectedRouteContentUri()
-                            if (routeUri == null) {
-                                Toast
-                                    .makeText(
-                                        context,
-                                        "The selected GPX is no longer available.",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                            val plannedDay = missionPlanUiState.selectedDay
+                            if (plannedDay?.route?.id == routeLibraryUiState.selectedRoute?.id) {
+                                missionPlanViewModel.prepareSelectedDayForTransfer { routeUri ->
+                                    if (routeUri == null) {
+                                        Toast
+                                            .makeText(
+                                                context,
+                                                "The planned GPX is no longer available.",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                    } else {
+                                        viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                        activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                    }
+                                }
                             } else {
-                                viewModel.loadFilesFromUris(context, listOf(routeUri))
-                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                val routeUri = routeLibraryViewModel.selectedRouteContentUri()
+                                if (routeUri == null) {
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            "The selected GPX is no longer available.",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                } else {
+                                    viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                    activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                }
                             }
                         },
+                        onOpenMissionPlan = { activeHomeArea = CompanionHomeArea.MISSION_PLAN },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
@@ -651,6 +684,23 @@ fun FilePickerScreen(
                                 activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                             }
                         },
+                    )
+                }
+
+                CompanionHomeArea.MISSION_PLAN -> {
+                    MissionPlanScreen(
+                        uiState = missionPlanUiState,
+                        routes = routeLibraryUiState.routes,
+                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                        onAddDay = missionPlanViewModel::addDay,
+                        onSetToday = { dayUi ->
+                            missionPlanViewModel.selectDay(dayUi.day.id)
+                            routeLibraryViewModel.selectRoute(dayUi.route.id)
+                            activeHomeArea = CompanionHomeArea.HOME
+                        },
+                        onUpdateSegment = missionPlanViewModel::updateSegment,
+                        onRemoveDay = missionPlanViewModel::removeDay,
+                        onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
                     )
                 }
 
@@ -1115,11 +1165,13 @@ private fun CompanionHomeScreen(
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     routeWeatherUiState: RouteWeatherUiState,
+    missionPlanUiState: MissionPlanUiState,
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
     onOpenRoutes: () -> Unit,
-    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean) -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
+    onOpenMissionPlan: () -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
     onOpenMapLegend: () -> Unit,
@@ -1216,6 +1268,11 @@ private fun CompanionHomeScreen(
                     selectedRouteDetails = selectedRouteDetails,
                     activeHikeSnapshot = activeHikeSnapshot,
                     routeWeatherUiState = routeWeatherUiState,
+                    missionDay =
+                        missionPlanUiState.selectedDay?.takeIf { dayUi ->
+                            dayUi.route.id == selectedRoute?.id
+                        },
+                    isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
                     onOpenRoutes = onOpenRoutes,
                     onLoadRouteWeather = onLoadRouteWeather,
                     onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
@@ -1250,6 +1307,15 @@ private fun CompanionHomeScreen(
                 }
 
                 HomeActionButton(
+                    icon = Icons.Filled.CalendarMonth,
+                    title = "Mission Plan",
+                    description =
+                        missionPlanUiState.selectedDay?.let { dayUi ->
+                            "Day ${dayUi.day.dayNumber}: ${dayUi.route.title}"
+                        } ?: "Plan multiple hiking days",
+                    onClick = onOpenMissionPlan,
+                )
+                HomeActionButton(
                     icon = Icons.Filled.SpatialTracking,
                     title = "Live Tracking",
                     description = "Share your GPS location",
@@ -1278,8 +1344,10 @@ private fun TodayHikeCard(
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     routeWeatherUiState: RouteWeatherUiState,
+    missionDay: MissionPlanDayUi?,
+    isPreparingMissionTransfer: Boolean,
     onOpenRoutes: () -> Unit,
-    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean) -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
     val liveHikeSnapshot =
@@ -1316,6 +1384,14 @@ private fun TodayHikeCard(
                 Text("Choose a route")
             }
         } else {
+            missionDay?.let { dayUi ->
+                Text(
+                    text = "DAY ${dayUi.day.dayNumber} • MISSION PLAN",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
             Text(
                 text = selectedRoute.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -1324,7 +1400,7 @@ private fun TodayHikeCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = todayRouteSummary(selectedRoute),
+                text = missionDay?.missionPlanTodaySummary() ?: todayRouteSummary(selectedRoute),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -1343,13 +1419,18 @@ private fun TodayHikeCard(
                 RouteWeatherBriefing(
                     uiState = routeWeatherUiState,
                     onLoad = { forceRefresh ->
-                        onLoadRouteWeather(activeHikeSnapshot?.snapshot, forceRefresh)
+                        onLoadRouteWeather(
+                            activeHikeSnapshot?.snapshot,
+                            forceRefresh,
+                            missionDay?.day?.startDistanceMeters ?: 0.0,
+                        )
                     },
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
             Button(
                 onClick = onSendSelectedRouteToWatch,
+                enabled = !isPreparingMissionTransfer,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(
@@ -1357,7 +1438,15 @@ private fun TodayHikeCard(
                     contentDescription = null,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Send selected route to watch")
+                Text(
+                    if (isPreparingMissionTransfer) {
+                        "Preparing day GPX…"
+                    } else if (missionDay != null) {
+                        "Send planned day to watch"
+                    } else {
+                        "Send selected route to watch"
+                    },
+                )
             }
             TextButton(
                 onClick = onOpenRoutes,

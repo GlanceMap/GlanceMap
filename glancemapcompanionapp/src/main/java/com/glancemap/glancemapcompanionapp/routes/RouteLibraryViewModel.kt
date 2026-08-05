@@ -94,9 +94,14 @@ class RouteLibraryViewModel(
     fun loadRouteWeather(
         activeHikeSnapshot: ActiveHikeSnapshot?,
         forceRefresh: Boolean,
+        plannedStartDistanceMeters: Double = 0.0,
     ) {
         val routeDetails = _selectedRouteDetails.value ?: return
-        val weatherLocation = routeDetails.weatherLocationFor(activeHikeSnapshot) ?: return
+        val weatherLocation =
+            routeDetails.weatherLocationFor(
+                activeHikeSnapshot = activeHikeSnapshot,
+                plannedStartDistanceMeters = plannedStartDistanceMeters,
+            ) ?: return
         viewModelScope.launch {
             _routeWeatherUiState.value =
                 _routeWeatherUiState.value.copy(
