@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
+@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package com.glancemap.glancemapcompanionapp.routes
 
@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -38,6 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -47,9 +51,11 @@ fun MissionPlanScreen(
     onBack: () -> Unit,
     onAddDay: (String) -> Unit,
     onSetToday: (MissionPlanDayUi) -> Unit,
-    onUpdateSegment: (dayId: String, startDistanceMeters: Double, endDistanceMeters: Double?) -> Unit,
+    onUpdateDay: (dayId: String, update: MissionPlanDayUpdate) -> Unit,
+    onMoveDay: (dayId: String, targetIndex: Int) -> Unit,
     onRemoveDay: (String) -> Unit,
     onOpenRoutes: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     var editedDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
 
@@ -87,7 +93,15 @@ fun MissionPlanScreen(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     ),
             ) {
-                Text(text = message, modifier = Modifier.padding(16.dp))
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(text = message)
+                    TextButton(onClick = onRetry) {
+                        Text("Try again")
+                    }
+                }
             }
         }
 
@@ -111,23 +125,26 @@ fun MissionPlanScreen(
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
-                if (uiState.days.isEmpty()) {
+                if (uiState.unavailableDayCount > 0) {
                     item {
-                        Text(
-                            text =
-                                "Add a route below to start a multi-day plan. A day can also be " +
-                                    "a section of one long GPX.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        MissionPlanUnavailableDaysCard(uiState.unavailableDayCount)
+                    }
+                }
+                if (uiState.days.isEmpty() && uiState.unavailableDayCount == 0) {
+                    item {
+                        MissionPlanEmptyState(routesAvailable = routes.isNotEmpty())
                     }
                 } else {
-                    items(uiState.days, key = { dayUi -> dayUi.day.id }) { dayUi ->
+                    itemsIndexed(uiState.days, key = { _, dayUi -> dayUi.day.id }) { index, dayUi ->
                         MissionPlanDayCard(
                             dayUi = dayUi,
                             selected = dayUi.day.id == uiState.selectedDayId,
                             onSetToday = { onSetToday(dayUi) },
-                            onEditRange = { editedDay = dayUi },
+                            onEditDay = { editedDay = dayUi },
+                            onMoveUp = { onMoveDay(dayUi.day.id, index - 1) },
+                            onMoveDown = { onMoveDay(dayUi.day.id, index + 1) },
+                            canMoveUp = index > 0,
+                            canMoveDown = index < uiState.days.lastIndex,
                             onRemove = { onRemoveDay(dayUi.day.id) },
                         )
                     }
@@ -180,11 +197,11 @@ fun MissionPlanScreen(
     }
 
     editedDay?.let { dayUi ->
-        MissionPlanSegmentDialog(
+        MissionPlanDayEditorDialog(
             dayUi = dayUi,
             onDismiss = { editedDay = null },
-            onConfirm = { startDistanceMeters, endDistanceMeters ->
-                onUpdateSegment(dayUi.day.id, startDistanceMeters, endDistanceMeters)
+            onConfirm = { update ->
+                onUpdateDay(dayUi.day.id, update)
                 editedDay = null
             },
         )
@@ -196,7 +213,11 @@ private fun MissionPlanDayCard(
     dayUi: MissionPlanDayUi,
     selected: Boolean,
     onSetToday: () -> Unit,
-    onEditRange: () -> Unit,
+    onEditDay: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onRemove: () -> Unit,
 ) {
     Card(
@@ -221,10 +242,24 @@ private fun MissionPlanDayCard(
                 style = MaterialTheme.typography.labelMedium,
             )
             Text(
-                text = dayUi.route.title,
+                text = dayUi.day.name ?: dayUi.route.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+            if (!dayUi.day.name.isNullOrBlank()) {
+                Text(
+                    text = "Route: ${dayUi.route.title}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            dayUi.day.plannedDate?.missionPlanDateLabel()?.let { date ->
+                Text(
+                    text = date,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             Text(
                 text = dayUi.briefing.missionPlanBriefingSummary(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -235,27 +270,59 @@ private fun MissionPlanDayCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+            dayUi.day.overnight?.let { overnight ->
+                Text(
+                    text = "Overnight: $overnight",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            dayUi.day.notes?.let { notes ->
+                Text(
+                    text = notes,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEditRange, modifier = Modifier.weight(1f)) {
-                    Text("Edit range")
+                OutlinedButton(onClick = onEditDay, modifier = Modifier.weight(1f)) {
+                    Text("Edit day")
                 }
                 Button(onClick = onSetToday, enabled = !selected, modifier = Modifier.weight(1f)) {
                     Text(if (selected) "Today" else "Set today")
                 }
             }
-            TextButton(onClick = onRemove, modifier = Modifier.align(Alignment.End)) {
-                Text("Remove day")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TextButton(onClick = onMoveUp, enabled = canMoveUp) {
+                        Text("Move up")
+                    }
+                    TextButton(onClick = onMoveDown, enabled = canMoveDown) {
+                        Text("Move down")
+                    }
+                }
+                TextButton(onClick = onRemove) {
+                    Text("Remove")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MissionPlanSegmentDialog(
+private fun MissionPlanDayEditorDialog(
     dayUi: MissionPlanDayUi,
     onDismiss: () -> Unit,
-    onConfirm: (startDistanceMeters: Double, endDistanceMeters: Double?) -> Unit,
+    onConfirm: (MissionPlanDayUpdate) -> Unit,
 ) {
+    var name by remember(dayUi.day.id) { mutableStateOf(dayUi.day.name.orEmpty()) }
+    var plannedDate by remember(dayUi.day.id) { mutableStateOf(dayUi.day.plannedDate.orEmpty()) }
+    var overnight by remember(dayUi.day.id) { mutableStateOf(dayUi.day.overnight.orEmpty()) }
+    var notes by remember(dayUi.day.id) { mutableStateOf(dayUi.day.notes.orEmpty()) }
     var startKilometers by remember(dayUi.day.id) {
         mutableStateOf(dayUi.day.startDistanceMeters.toMissionPlanKilometers())
     }
@@ -271,14 +338,26 @@ private fun MissionPlanSegmentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Day ${dayUi.day.dayNumber} route range") },
+        title = { Text("Edit day ${dayUi.day.dayNumber}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text =
-                        "Leave the end blank to use the rest of this GPX " +
-                            "(${routeDistanceMeters.toMissionPlanDistance()}).",
+                        "Name, date, overnight, and notes live with this mission. Leave the end blank " +
+                            "to use the rest of this GPX (${routeDistanceMeters.toMissionPlanDistance()}).",
                     style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Day name (optional)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = plannedDate,
+                    onValueChange = { plannedDate = it },
+                    label = { Text("Date (YYYY-MM-DD, optional)") },
+                    singleLine = true,
                 )
                 OutlinedTextField(
                     value = startKilometers,
@@ -286,6 +365,19 @@ private fun MissionPlanSegmentDialog(
                     label = { Text("Start (km)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                OutlinedTextField(
+                    value = overnight,
+                    onValueChange = { overnight = it },
+                    label = { Text("Overnight (optional)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes (optional)") },
+                    minLines = 2,
+                    maxLines = 4,
                 )
                 OutlinedTextField(
                     value = endKilometers,
@@ -309,8 +401,11 @@ private fun MissionPlanSegmentDialog(
                     val startMeters = startKilometers.toDoubleOrNull()?.times(1_000.0)
                     val endMeters = endKilometers.takeIf(String::isNotBlank)?.toDoubleOrNull()?.times(1_000.0)
                     val actualEndMeters = endMeters ?: routeDistanceMeters
+                    val normalizedDate = plannedDate.trim().takeIf(String::isNotEmpty)
                     error =
                         when {
+                            normalizedDate != null && normalizedDate.toMissionPlanDate() == null ->
+                                "Use a calendar date like 2026-08-12."
                             startMeters == null || !startMeters.isFinite() || startMeters < 0.0 ->
                                 "Enter a valid non-negative start distance."
                             endMeters != null && (!endMeters.isFinite() || endMeters > routeDistanceMeters) ->
@@ -318,7 +413,18 @@ private fun MissionPlanSegmentDialog(
                             startMeters >= actualEndMeters -> "The end must be after the start."
                             else -> null
                         }
-                    if (error == null) onConfirm(requireNotNull(startMeters), endMeters)
+                    if (error == null) {
+                        onConfirm(
+                            MissionPlanDayUpdate(
+                                name = name,
+                                plannedDate = normalizedDate,
+                                overnight = overnight,
+                                notes = notes,
+                                startDistanceMeters = requireNotNull(startMeters),
+                                endDistanceMeters = endMeters,
+                            ),
+                        )
+                    }
                 },
             ) {
                 Text("Save")
@@ -330,6 +436,50 @@ private fun MissionPlanSegmentDialog(
             }
         },
     )
+}
+
+@Composable
+private fun MissionPlanEmptyState(routesAvailable: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(text = "Your mission starts here", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text =
+                    if (routesAvailable) {
+                        "Add a route below for each hiking day, or add the same long GPX more than once and " +
+                            "set the range for every day."
+                    } else {
+                        "Import a GPX route first. You can then make a day from the full route or just a range."
+                    },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MissionPlanUnavailableDaysCard(unavailableDayCount: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Text(
+            text =
+                "$unavailableDayCount saved ${if (unavailableDayCount == 1) "day is" else "days are"} " +
+                    "unavailable because its GPX route cannot be read. Re-import the matching route before " +
+                    "sending that day to the watch.",
+            modifier = Modifier.padding(16.dp),
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
 }
 
 fun MissionPlanDayUi.missionPlanTodaySummary(): String = briefing.missionPlanBriefingSummary()
@@ -362,3 +512,7 @@ private fun Double.toMissionPlanDuration(): String {
 }
 
 private fun Double.toMissionPlanKilometers(): String = "%.2f".format(this / 1_000.0)
+
+private fun String.toMissionPlanDate(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
+
+private fun String.missionPlanDateLabel(): String? = toMissionPlanDate()?.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault()))

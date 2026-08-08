@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@Suppress("TooManyFunctions")
 class MissionPlanViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -50,6 +51,24 @@ class MissionPlanViewModel(
     ) {
         viewModelScope.launch {
             mutate { missionPlanRepository.updateSegment(dayId, startDistanceMeters, endDistanceMeters) }
+        }
+    }
+
+    fun updateDay(
+        dayId: String,
+        update: MissionPlanDayUpdate,
+    ) {
+        viewModelScope.launch {
+            mutate { missionPlanRepository.updateDay(dayId, update) }
+        }
+    }
+
+    fun moveDay(
+        dayId: String,
+        targetIndex: Int,
+    ) {
+        viewModelScope.launch {
+            mutate { missionPlanRepository.moveDay(dayId, targetIndex) }
         }
     }
 
@@ -117,20 +136,39 @@ class MissionPlanViewModel(
     }
 
     private suspend fun publish(index: MissionPlanRepository.MissionPlanIndex) {
-        val routeState = withContext(Dispatchers.IO) { routeLibraryRepository.load() }
+        val routeState =
+            runCatching {
+                withContext(Dispatchers.IO) { routeLibraryRepository.load() }
+            }.getOrElse { error ->
+                if (error is CancellationException) throw error
+                _uiState.value =
+                    _uiState.value.copy(
+                        isLoading = false,
+                        message = error.message ?: "Could not load routes for this mission plan.",
+                    )
+                return
+            }
         val routesById = routeState.routes.associateBy(RouteLibraryRoute::id)
         val dayUi =
             index.days.mapNotNull { day ->
                 val route = routesById[day.routeId] ?: return@mapNotNull null
                 val details =
-                    withContext(Dispatchers.IO) { routeLibraryRepository.routeDetails(route.id) }
-                        ?: return@mapNotNull null
+                    try {
+                        withContext(Dispatchers.IO) { routeLibraryRepository.routeDetails(route.id) }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        null
+                    } ?: return@mapNotNull null
                 MissionPlanDayUi(day = day, route = route, briefing = details.missionPlanBriefing(day))
             }
         _uiState.value =
             MissionPlanUiState(
                 days = dayUi,
-                selectedDayId = index.selectedDayId?.takeIf { selected -> dayUi.any { it.day.id == selected } },
+                selectedDayId =
+                    index.selectedDayId?.takeIf { selected -> dayUi.any { it.day.id == selected } }
+                        ?: dayUi.firstOrNull()?.day?.id,
+                unavailableDayCount = index.days.size - dayUi.size,
                 isLoading = false,
             )
     }

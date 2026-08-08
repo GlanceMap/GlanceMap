@@ -705,9 +705,11 @@ fun FilePickerScreen(
                             routeLibraryViewModel.selectRoute(dayUi.route.id)
                             activeHomeArea = CompanionHomeArea.HOME
                         },
-                        onUpdateSegment = missionPlanViewModel::updateSegment,
+                        onUpdateDay = missionPlanViewModel::updateDay,
+                        onMoveDay = missionPlanViewModel::moveDay,
                         onRemoveDay = missionPlanViewModel::removeDay,
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                        onRetry = missionPlanViewModel::refresh,
                     )
                 }
 

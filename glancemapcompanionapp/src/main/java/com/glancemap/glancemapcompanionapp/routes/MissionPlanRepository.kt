@@ -59,6 +59,39 @@ internal class MissionPlanRepository(
             writeIndex(current.copy(days = updatedDays))
         }
 
+    suspend fun updateDay(
+        dayId: String,
+        update: MissionPlanDayUpdate,
+    ): MissionPlanIndex =
+        mutex.withLock {
+            val current = readIndex()
+            val updatedDays =
+                current.days.map { day ->
+                    if (day.id == dayId) {
+                        day.copy(
+                            name = update.name.normalizedMissionPlanText(),
+                            plannedDate = update.plannedDate.normalizedMissionPlanText(),
+                            overnight = update.overnight.normalizedMissionPlanText(),
+                            notes = update.notes.normalizedMissionPlanText(),
+                            startDistanceMeters = update.startDistanceMeters,
+                            endDistanceMeters = update.endDistanceMeters,
+                        )
+                    } else {
+                        day
+                    }
+                }
+            writeIndex(current.copy(days = updatedDays))
+        }
+
+    suspend fun moveDay(
+        dayId: String,
+        targetIndex: Int,
+    ): MissionPlanIndex =
+        mutex.withLock {
+            val current = readIndex()
+            writeIndex(current.copy(days = current.days.moveMissionPlanDay(dayId, targetIndex)))
+        }
+
     suspend fun removeDay(dayId: String): MissionPlanIndex =
         mutex.withLock {
             val current = readIndex()
@@ -90,6 +123,11 @@ internal class MissionPlanRepository(
         }
         return index
     }
+
+    private fun String?.normalizedMissionPlanText(): String? =
+        this
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
 
     internal data class MissionPlanIndex(
         val days: List<MissionPlanDay> = emptyList(),
