@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -43,6 +44,8 @@ class MessageClientStrategy : TransferStrategy {
             val bytes =
                 try {
                     context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
                 } catch (t: Throwable) {
                     val message =
                         if (t is OutOfMemoryError) {
@@ -73,15 +76,18 @@ class MessageClientStrategy : TransferStrategy {
             val path = "$PATH_SMALL_FILE_PREFIX/${metadata.transferId}/$sha256/${Uri.encode(metadata.displayFileName)}"
 
             try {
+                val messageClient = Wearable.getMessageClient(context.applicationContext)
                 awaitIfPaused()
                 val sendStartMs = SystemClock.elapsedRealtime()
                 var lastSendException: Exception? = null
                 for (attempt in 1..MAX_SEND_ATTEMPTS) {
                     try {
                         awaitIfPaused()
-                        Wearable.getMessageClient(context).sendMessage(targetNodeId, path, bytes).await()
+                        messageClient.sendMessage(targetNodeId, path, bytes).await()
                         lastSendException = null
                         break
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
                     } catch (e: Exception) {
                         lastSendException = e
                         PhoneTransferDiagnostics.warn(
@@ -115,6 +121,8 @@ class MessageClientStrategy : TransferStrategy {
                     "Metrics file=${metadata.displayFileName} read=${readMs}ms send=${sendMs}ms ack=${ackWaitMs}ms total=${SystemClock.elapsedRealtime() - totalStartMs}ms",
                 )
                 return@withContext result ?: TransferResult(true, "Sent, but watch did not confirm save.")
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 PhoneTransferDiagnostics.error(
                     "Message",

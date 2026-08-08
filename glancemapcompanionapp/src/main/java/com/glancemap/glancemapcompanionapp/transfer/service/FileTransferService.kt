@@ -67,6 +67,8 @@ class FileTransferService : LifecycleService() {
     private lateinit var uiUpdater: UiProgressUpdater
     private lateinit var batchRunner: BatchTransferRunner
     private var dataLayerObserverJob: Job? = null
+    private var dataLayerSearchJob: Job? = null
+    private var historyLoadJob: Job? = null
     private var reconnectPauseTimeoutJob: Job? = null
     private var reconnectPauseTransferId: String? = null
 
@@ -79,6 +81,7 @@ class FileTransferService : LifecycleService() {
         fun getService(): FileTransferService = this@FileTransferService
     }
 
+    @Suppress("TooGenericExceptionCaught")
     override fun onCreate() {
         super.onCreate()
 
@@ -127,7 +130,15 @@ class FileTransferService : LifecycleService() {
                 },
             )
 
-        historyStore.load()
+        historyLoadJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    historyStore.load()
+                } catch (error: Throwable) {
+                    Log.w(TAG, "Unable to restore transfer history", error)
+                    PhoneTransferDiagnostics.error("Service", "Unable to restore transfer history", error)
+                }
+            }
         observeDataLayer()
     }
 
@@ -153,13 +164,14 @@ class FileTransferService : LifecycleService() {
     override fun onDestroy() {
         cancelReconnectPauseEscalation()
         dataLayerObserverJob?.cancel()
+        dataLayerSearchJob?.cancel()
+        historyLoadJob?.cancel()
         dataLayerRepository.stop()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
-        searchForWatches()
         return binder
     }
 
@@ -331,6 +343,7 @@ class FileTransferService : LifecycleService() {
         historyStore.save()
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun sendCancelToWatchBestEffort(
         targetNodeId: String? = activeTargetNodeId,
         transferId: String? = activeTransferId,
@@ -339,20 +352,24 @@ class FileTransferService : LifecycleService() {
         val node = targetNodeId ?: return
 
         lifecycleScope.launch(Dispatchers.IO) {
-            runCatching {
+            try {
                 PhoneTransferDiagnostics.warn("Service", "Send cancel to watch node=$node id=$id")
                 dataLayerRepository.sendCancelTransfer(node, id)
-            }.onFailure {
-                Log.w(TAG, "Cancel propagation failed: ${it.message}")
-                PhoneTransferDiagnostics.warn("Service", "Cancel propagation failed msg=${it.message}")
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                Log.w(TAG, "Cancel propagation failed: ${error.message}")
+                PhoneTransferDiagnostics.warn("Service", "Cancel propagation failed msg=${error.message}")
             }
         }
     }
 
     fun searchForWatches() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            dataLayerRepository.refreshWatches()
-        }
+        if (dataLayerSearchJob?.isActive == true) return
+        dataLayerSearchJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                dataLayerRepository.refreshWatches()
+            }
     }
 
     fun onWatchSelected(watch: WatchNode) {
@@ -520,25 +537,34 @@ class FileTransferService : LifecycleService() {
                 it.startsWith("Message:", ignoreCase = true)
         }
 
-    @Suppress("CyclomaticComplexMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "TooGenericExceptionCaught")
     private fun observeDataLayer() {
         dataLayerObserverJob?.cancel()
         dataLayerObserverJob =
             lifecycleScope.launch {
-                runCatching { dataLayerRepository.start() }
-                    .onFailure {
-                        Log.e(TAG, "DataLayer start failed", it)
-                        PhoneTransferDiagnostics.error("Service", "DataLayer start failed", it)
-                    }
-
                 launch {
                     dataLayerRepository.watches.collect { watches ->
                         _uiState.update {
                             it.copy(
                                 availableWatches = watches,
-                                statusMessage = if (watches.isNotEmpty()) "Select a watch" else "No watches found.",
+                                statusMessage =
+                                    dataLayerRepository.connectionIssue.value
+                                        ?: if (watches.isNotEmpty()) "Select a watch" else "No watches found.",
                             )
                         }
+                    }
+                }
+
+                launch {
+                    dataLayerRepository.connectionIssue.collect { issue ->
+                        val status =
+                            issue
+                                ?: if (dataLayerRepository.watches.value.isNotEmpty()) {
+                                    "Select a watch"
+                                } else {
+                                    "No watches found."
+                                }
+                        _uiState.update { it.copy(statusMessage = status) }
                     }
                 }
 
@@ -566,6 +592,17 @@ class FileTransferService : LifecycleService() {
                                 _uiState.update { st -> st.copy(statusMessage = event.message) }
                             }
                         }
+                    }
+                }
+
+                launch(Dispatchers.IO) {
+                    try {
+                        dataLayerRepository.start()
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        Log.e(TAG, "DataLayer start failed", error)
+                        PhoneTransferDiagnostics.error("Service", "DataLayer start failed", error)
                     }
                 }
             }

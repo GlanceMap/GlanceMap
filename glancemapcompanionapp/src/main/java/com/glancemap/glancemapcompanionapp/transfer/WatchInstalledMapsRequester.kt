@@ -5,6 +5,7 @@ import com.glancemap.glancemapcompanionapp.WatchInstalledCoverageArea
 import com.glancemap.glancemapcompanionapp.WatchInstalledCoverageKind
 import com.glancemap.glancemapcompanionapp.WatchInstalledMap
 import com.glancemap.glancemapcompanionapp.transfer.datalayer.DataLayerPaths
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -53,6 +54,7 @@ class WatchInstalledMapsRequester(
     private val pendingRequests =
         ConcurrentHashMap<String, CompletableDeferred<WatchInstalledSnapshot>>()
 
+    @Suppress("TooGenericExceptionCaught")
     suspend fun list(nodeId: String): Result {
         val requestId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<WatchInstalledSnapshot>()
@@ -65,11 +67,13 @@ class WatchInstalledMapsRequester(
                 .toByteArray(Charsets.UTF_8)
 
         return try {
-            runCatching {
+            try {
                 sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, ByteArray(0))
                 delay(PREWARM_SETTLE_MS)
-            }.onFailure {
-                Log.w(TAG, "Map-list prewarm failed for node=$nodeId", it)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                Log.w(TAG, "Map-list prewarm failed for node=$nodeId", error)
             }
             sendMessage(nodeId, DataLayerPaths.PATH_LIST_MAPS, payload)
             val snapshot = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
@@ -83,6 +87,8 @@ class WatchInstalledMapsRequester(
                     TimeoutException("Watch did not answer in time while reading maps."),
                 )
             }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (e: Exception) {
             Log.e(TAG, "Map list request failed for node=$nodeId", e)
             Result.Error(e)

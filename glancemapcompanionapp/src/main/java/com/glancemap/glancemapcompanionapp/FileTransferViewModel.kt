@@ -88,6 +88,8 @@ class FileTransferViewModel : ViewModel() {
     private var serviceRef: WeakReference<FileTransferService>? = null
     var isBound = false
         private set
+    private var isBinding = false
+    private var acceptsServiceConnection = false
 
     // ✅ buffer multi-selection if service not yet bound
     private var pendingFileUris: List<Uri> = emptyList()
@@ -159,19 +161,24 @@ class FileTransferViewModel : ViewModel() {
 
     private var stateCollectJob: Job? = null
     private var activeHikeSnapshotCollectJob: Job? = null
+    private var lastRequestsLoadJob: Job? = null
     private var poiImportJob: Job? = null
     private var routingDownloadJob: Job? = null
 
     private val connection =
         object : ServiceConnection {
+            @Suppress("LongMethod")
             override fun onServiceConnected(
                 className: ComponentName,
                 binder: IBinder,
             ) {
+                isBinding = false
+                if (!acceptsServiceConnection) return
                 val localBinder = binder as? FileTransferService.LocalBinder
                 if (localBinder == null) {
                     Log.e("FileTransferVM", "Unexpected binder type: ${binder::class.java.name}")
                     isBound = false
+                    acceptsServiceConnection = false
                     serviceRef = null
                     return
                 }
@@ -234,34 +241,68 @@ class FileTransferViewModel : ViewModel() {
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
-                stateCollectJob?.cancel()
-                stateCollectJob = null
-                activeHikeSnapshotCollectJob?.cancel()
-                activeHikeSnapshotCollectJob = null
+                clearServiceCollectors()
                 isBound = false
+                isBinding = false
+                acceptsServiceConnection = false
                 serviceRef = null
             }
         }
 
     fun bindService(context: Context) {
-        if (_lastRefugesRequest.value == null) {
-            _lastRefugesRequest.value = getRefugesImporter(context.applicationContext).getLastRequest()
+        val appContext = context.applicationContext
+        loadLastRequests(appContext)
+        if (isBound || isBinding) return
+
+        acceptsServiceConnection = true
+        val intent = Intent(appContext, FileTransferService::class.java)
+        isBinding = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        if (!isBinding) {
+            acceptsServiceConnection = false
+            Log.w("FileTransferVM", "Unable to bind FileTransferService")
         }
-        if (_lastRoutingRequest.value == null) {
-            _lastRoutingRequest.value = getBRouterTileDownloader(context.applicationContext).getLastRequest()
-        }
-        val intent = Intent(context, FileTransferService::class.java)
-        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
     fun unbindService(context: Context) {
-        if (isBound) {
-            runCatching { context.unbindService(connection) }
-            stateCollectJob?.cancel()
-            stateCollectJob = null
-            isBound = false
-            serviceRef = null
+        if (!isBound && !isBinding) return
+        acceptsServiceConnection = false
+        runCatching { context.applicationContext.unbindService(connection) }
+        clearServiceCollectors()
+        isBound = false
+        isBinding = false
+        serviceRef = null
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun loadLastRequests(context: Context) {
+        if (
+            (_lastRefugesRequest.value != null && _lastRoutingRequest.value != null) ||
+            lastRequestsLoadJob?.isActive == true
+        ) {
+            return
         }
+        lastRequestsLoadJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    if (_lastRefugesRequest.value == null) {
+                        _lastRefugesRequest.value = getRefugesImporter(context).getLastRequest()
+                    }
+                    if (_lastRoutingRequest.value == null) {
+                        _lastRoutingRequest.value = getBRouterTileDownloader(context).getLastRequest()
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    Log.w("FileTransferVM", "Unable to restore previous requests", error)
+                }
+            }
+    }
+
+    private fun clearServiceCollectors() {
+        stateCollectJob?.cancel()
+        stateCollectJob = null
+        activeHikeSnapshotCollectJob?.cancel()
+        activeHikeSnapshotCollectJob = null
     }
 
     fun findWatchNodes() {
@@ -1129,10 +1170,9 @@ class FileTransferViewModel : ViewModel() {
     }
 
     override fun onCleared() {
-        stateCollectJob?.cancel()
-        stateCollectJob = null
-        activeHikeSnapshotCollectJob?.cancel()
-        activeHikeSnapshotCollectJob = null
+        clearServiceCollectors()
+        lastRequestsLoadJob?.cancel()
+        lastRequestsLoadJob = null
         super.onCleared()
     }
 }

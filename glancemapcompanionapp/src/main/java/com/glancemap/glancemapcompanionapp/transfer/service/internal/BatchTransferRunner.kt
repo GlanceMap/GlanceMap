@@ -1073,6 +1073,7 @@ internal class BatchTransferRunner(
         freshHttpRetryBestSentBytes.remove(key)
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun supersedeWatchTransfer(
         targetNodeId: String,
         transferId: String,
@@ -1083,12 +1084,14 @@ internal class BatchTransferRunner(
             "Batch",
             "Supersede watch transfer file=$fileName oldId=$transferId reason=$reason",
         )
-        runCatching {
+        try {
             cancelTransferOnWatch(targetNodeId, transferId)
-        }.onFailure {
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
             PhoneTransferDiagnostics.warn(
                 "Batch",
-                "Supersede cancel failed file=$fileName oldId=$transferId reason=$reason msg=${it.message}",
+                "Supersede cancel failed file=$fileName oldId=$transferId reason=$reason msg=${error.message}",
             )
         }
         delay(SUPERSEDE_CANCEL_SETTLE_MS)

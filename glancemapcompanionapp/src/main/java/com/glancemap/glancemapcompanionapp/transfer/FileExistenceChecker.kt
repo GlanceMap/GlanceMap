@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.datalayer.DataLayerPaths
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -155,6 +156,8 @@ class FileExistenceChecker(
                 PhoneTransferDiagnostics.warn("Exists", "Check timeout file=$fileName timeoutMs=$timeoutMs")
             }
             result
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (e: Exception) {
             Log.e(TAG, "Exists check failed to send/await for '$fileName'", e)
             PhoneTransferDiagnostics.error("Exists", "Check send/await failed file=$fileName", e)
@@ -217,6 +220,8 @@ class FileExistenceChecker(
                 }
                 else -> result
             }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (e: Exception) {
             Log.e(TAG, "Batch exists check failed to send/await", e)
             PhoneTransferDiagnostics.error("Exists", "Batch check send/await failed requestId=$requestId", e)
@@ -338,12 +343,15 @@ class FileExistenceChecker(
         )
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun prewarmWatch(nodeId: String) {
-        runCatching {
+        try {
             sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, byteArrayOf())
-        }.onFailure {
-            Log.d(TAG, "Watch prewarm message failed (non-fatal): ${it.message}")
-            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed node=$nodeId msg=${it.message}")
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
+            Log.d(TAG, "Watch prewarm message failed (non-fatal): ${error.message}")
+            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed node=$nodeId msg=${error.message}")
         }
     }
 
@@ -376,6 +384,8 @@ class FileExistenceChecker(
                 PhoneTransferDiagnostics.warn("Exists", "Ping timeout node=$nodeId")
             }
             ok
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (e: Exception) {
             Log.d(TAG, "Watch ping failed for node=$nodeId: ${e.message}")
             PhoneTransferDiagnostics.error("Exists", "Ping failed node=$nodeId", e)

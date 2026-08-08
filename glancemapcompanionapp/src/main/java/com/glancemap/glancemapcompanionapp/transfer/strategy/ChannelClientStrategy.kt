@@ -48,6 +48,7 @@ class ChannelClientStrategy :
     @Volatile
     private var activeOutputStream: OutputStream? = null
 
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "TooGenericExceptionCaught")
     override suspend fun transfer(
         context: Context,
         fileUri: Uri,
@@ -60,8 +61,8 @@ class ChannelClientStrategy :
         withContext(Dispatchers.IO) {
             val totalStartMs = SystemClock.elapsedRealtime()
 
-            val channelClient = Wearable.getChannelClient(context)
-            val messageClient = Wearable.getMessageClient(context)
+            val channelClient = Wearable.getChannelClient(context.applicationContext)
+            val messageClient = Wearable.getMessageClient(context.applicationContext)
             activeChannelClient = channelClient
 
             val input =
@@ -99,18 +100,17 @@ class ChannelClientStrategy :
 
                 var prewarmSuccess = false
                 for (attempt in 1..PREWARM_MAX_ATTEMPTS) {
-                    val result =
-                        runCatching {
-                            messageClient.sendMessage(targetNodeId, PATH_PREPARE_CHANNEL, payload).await()
-                        }
-                    if (result.isSuccess) {
+                    try {
+                        messageClient.sendMessage(targetNodeId, PATH_PREPARE_CHANNEL, payload).await()
                         prewarmSuccess = true
                         break
-                    } else {
-                        Log.d(TAG, "Pre-warm attempt $attempt failed (non-fatal): ${result.exceptionOrNull()?.message}")
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        Log.d(TAG, "Pre-warm attempt $attempt failed (non-fatal): ${error.message}")
                         PhoneTransferDiagnostics.warn(
                             "Channel",
-                            "Prewarm attempt $attempt failed file=${metadata.displayFileName} msg=${result.exceptionOrNull()?.message}",
+                            "Prewarm attempt $attempt failed file=${metadata.displayFileName} msg=${error.message}",
                         )
                         if (attempt < PREWARM_MAX_ATTEMPTS) delay(PREWARM_RETRY_DELAY_MS)
                     }
@@ -192,7 +192,7 @@ class ChannelClientStrategy :
                 return@withContext TransferResult(false, "Error: ${e.localizedMessage}")
             } finally {
                 activeOutputStream = null
-                channel?.let { runCatching { channelClient.close(it).await() } }
+                channel?.let { runCatching { channelClient.close(it) } }
                 activeChannel = null
                 activeChannelClient = null
             }

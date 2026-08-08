@@ -193,7 +193,7 @@ class HttpTransferServer :
                     "Send START_WIFI_TRANSFER file=${metadata.displayFileName} node=$targetNodeId port=$port path=$downloadPath",
                 )
                 Wearable
-                    .getMessageClient(context)
+                    .getMessageClient(context.applicationContext)
                     .sendMessage(targetNodeId, DataLayerPaths.PATH_START_WIFI_TRANSFER, json.toString().toByteArray())
                     .await()
 
@@ -274,6 +274,8 @@ class HttpTransferServer :
                 )
 
                 return@withContext result
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.e(TAG, "Server Error", e)
                 PhoneTransferDiagnostics.error(

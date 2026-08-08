@@ -19,6 +19,7 @@ import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,7 +34,7 @@ private const val WATCH_GPX_MIME_TYPE = "application/gpx+xml"
 
 class WatchGpxExportListenerService : WearableListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val channelClient by lazy { Wearable.getChannelClient(this) }
+    private val channelClient by lazy { Wearable.getChannelClient(applicationContext) }
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
@@ -43,6 +44,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
         ensureNotificationChannel()
     }
 
+    @Suppress("TooGenericExceptionCaught")
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         super.onChannelOpened(channel)
         val exportPrefix = "${TransferDataLayerContract.CHANNEL_WATCH_GPX_EXPORT_PREFIX}/"
@@ -51,11 +53,14 @@ class WatchGpxExportListenerService : WearableListenerService() {
         }
 
         serviceScope.launch {
-            runCatching { receiveGpx(channel) }
-                .onFailure { error ->
-                    Log.e(TAG, "Watch GPX export failed", error)
-                    showError(error.localizedMessage?.takeIf { it.isNotBlank() } ?: "Could not receive GPX")
-                }
+            try {
+                receiveGpx(channel)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                Log.e(TAG, "Watch GPX export failed", error)
+                showError(error.localizedMessage?.takeIf { it.isNotBlank() } ?: "Could not receive GPX")
+            }
         }
     }
 
@@ -94,7 +99,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
             showCompletion(finalFile, downloadsUri)
         } finally {
             tempFile.delete()
-            runCatching { channelClient.close(channel).await() }
+            runCatching { channelClient.close(channel) }
         }
     }
 
