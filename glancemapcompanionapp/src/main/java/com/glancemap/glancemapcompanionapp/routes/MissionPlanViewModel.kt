@@ -160,7 +160,12 @@ class MissionPlanViewModel(
                     } catch (_: Throwable) {
                         null
                     } ?: return@mapNotNull null
-                MissionPlanDayUi(day = day, route = route, briefing = details.missionPlanBriefing(day))
+                MissionPlanDayUi(
+                    day = day,
+                    route = route,
+                    briefing = details.missionPlanBriefing(day),
+                    timeline = details.missionDayTimeline(day),
+                )
             }
         _uiState.value =
             MissionPlanUiState(

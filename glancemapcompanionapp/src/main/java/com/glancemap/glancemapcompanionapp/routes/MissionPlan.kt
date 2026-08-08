@@ -45,6 +45,7 @@ data class MissionPlanDayUi(
     val day: MissionPlanDay,
     val route: RouteLibraryRoute,
     val briefing: TrailWindow,
+    val timeline: MissionDayTimeline,
 )
 
 data class MissionPlanUiState(

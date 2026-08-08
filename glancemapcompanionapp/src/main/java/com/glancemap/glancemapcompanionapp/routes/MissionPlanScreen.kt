@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -58,6 +60,7 @@ fun MissionPlanScreen(
     onRetry: () -> Unit,
 ) {
     var editedDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
+    var timelineDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -140,6 +143,7 @@ fun MissionPlanScreen(
                             dayUi = dayUi,
                             selected = dayUi.day.id == uiState.selectedDayId,
                             onSetToday = { onSetToday(dayUi) },
+                            onOpenTimeline = { timelineDay = dayUi },
                             onEditDay = { editedDay = dayUi },
                             onMoveUp = { onMoveDay(dayUi.day.id, index - 1) },
                             onMoveDown = { onMoveDay(dayUi.day.id, index + 1) },
@@ -206,6 +210,13 @@ fun MissionPlanScreen(
             },
         )
     }
+
+    timelineDay?.let { dayUi ->
+        MissionDayTimelineDialog(
+            dayUi = dayUi,
+            onDismiss = { timelineDay = null },
+        )
+    }
 }
 
 @Composable
@@ -213,6 +224,7 @@ private fun MissionPlanDayCard(
     dayUi: MissionPlanDayUi,
     selected: Boolean,
     onSetToday: () -> Unit,
+    onOpenTimeline: () -> Unit,
     onEditDay: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
@@ -284,6 +296,9 @@ private fun MissionPlanDayCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            OutlinedButton(onClick = onOpenTimeline, modifier = Modifier.fillMaxWidth()) {
+                Text("View journey")
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onEditDay, modifier = Modifier.weight(1f)) {
                     Text("Edit day")
@@ -310,6 +325,72 @@ private fun MissionPlanDayCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MissionDayTimelineDialog(
+    dayUi: MissionPlanDayUi,
+    onDismiss: () -> Unit,
+) {
+    val timeline = dayUi.timeline
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Day ${dayUi.day.dayNumber} journey") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = dayUi.day.name ?: dayUi.route.title,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text =
+                        "From GPX route distance, elevation, and waypoints. It does not infer trail " +
+                            "conditions or hazards.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                timeline.events.forEach { event ->
+                    MissionDayTimelineEventRow(event)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        },
+    )
+}
+
+@Composable
+private fun MissionDayTimelineEventRow(event: MissionDayTimelineEvent) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = event.type.timelineLabel(),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Text(text = event.title, style = MaterialTheme.typography.bodyLarge)
+        event.detail?.let { detail ->
+            Text(
+                text = detail,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            text =
+                listOf(
+                    event.distanceFromDayStartMeters.toMissionPlanDistance(),
+                    event.estimatedOffsetSeconds.toMissionPlanOffset(),
+                ).joinToString("  •  "),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -511,8 +592,18 @@ private fun Double.toMissionPlanDuration(): String {
     return if (hours == 0) "$minutes min" else "$hours h ${minutes.toString().padStart(2, '0')} min"
 }
 
+private fun Double.toMissionPlanOffset(): String = if (this <= 0.0) "Start" else "+${toMissionPlanDuration()}"
+
 private fun Double.toMissionPlanKilometers(): String = "%.2f".format(this / 1_000.0)
 
 private fun String.toMissionPlanDate(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 
 private fun String.missionPlanDateLabel(): String? = toMissionPlanDate()?.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault()))
+
+private fun MissionDayTimelineEventType.timelineLabel(): String =
+    when (this) {
+        MissionDayTimelineEventType.START -> "START"
+        MissionDayTimelineEventType.CLIMB -> "CLIMB"
+        MissionDayTimelineEventType.WAYPOINT -> "GPX WAYPOINT"
+        MissionDayTimelineEventType.FINISH -> "FINISH"
+    }
