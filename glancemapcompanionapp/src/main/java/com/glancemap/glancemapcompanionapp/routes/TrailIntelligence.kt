@@ -3,12 +3,19 @@ package com.glancemap.glancemapcompanionapp.routes
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
 import com.glancemap.trailcore.profile.TrailWindow
+import com.glancemap.trailcore.profile.windowBetweenDistances
 import com.glancemap.trailcore.profile.windowFromDistance
 
 data class TrailIntelligence(
     val window: TrailWindow,
     val upcomingWaypoints: List<TrailIntelligenceWaypoint>,
+    val context: TrailIntelligenceContext,
 )
+
+enum class TrailIntelligenceContext {
+    ACTIVE_HIKE,
+    PLANNED_DAY,
+}
 
 data class TrailIntelligenceWaypoint(
     val title: String,
@@ -31,16 +38,44 @@ fun RouteLibraryRouteDetails.trailIntelligenceFor(
                 maximumDurationSeconds = NEXT_WINDOW_SECONDS,
             )
         }?.takeIf { window -> window.distanceMeters > 0.0 }
-        ?.let(::trailIntelligenceForWindow)
+        ?.let { window -> trailIntelligenceForWindow(window, TrailIntelligenceContext.ACTIVE_HIKE) }
 
-private fun RouteLibraryRouteDetails.trailIntelligenceForWindow(window: TrailWindow): TrailIntelligence =
+/**
+ * Builds the first upcoming portion of a selected mission day, never extending into its next day.
+ * It intentionally uses the same GPX pace and waypoint data as the live route projection.
+ */
+fun RouteLibraryRouteDetails.trailIntelligenceFor(day: MissionPlanDay): TrailIntelligence? {
+    val dayWindow = missionPlanBriefing(day)
+    if (dayWindow.distanceMeters <= 0.0) return null
+
+    val projectedWindow =
+        profile.windowFromDistance(
+            startDistanceMeters = dayWindow.startDistanceMeters,
+            maximumDurationSeconds = NEXT_WINDOW_SECONDS,
+        )
+    val boundedWindow =
+        profile.windowBetweenDistances(
+            startDistanceMeters = dayWindow.startDistanceMeters,
+            endDistanceMeters = minOf(projectedWindow.endDistanceMeters, dayWindow.endDistanceMeters),
+        )
+    return boundedWindow
+        .takeIf { window -> window.distanceMeters > 0.0 }
+        ?.let { window -> trailIntelligenceForWindow(window, TrailIntelligenceContext.PLANNED_DAY) }
+}
+
+private fun RouteLibraryRouteDetails.trailIntelligenceForWindow(
+    window: TrailWindow,
+    context: TrailIntelligenceContext,
+): TrailIntelligence =
     TrailIntelligence(
         window = window,
+        context = context,
         upcomingWaypoints =
             waypoints
                 .asSequence()
                 .filter { waypoint -> waypoint.distanceFromStartMeters > window.startDistanceMeters }
                 .filter { waypoint -> waypoint.distanceFromStartMeters <= window.endDistanceMeters }
+                .sortedBy { waypoint -> waypoint.distanceFromStartMeters }
                 .map { waypoint ->
                     TrailIntelligenceWaypoint(
                         title = waypoint.title,

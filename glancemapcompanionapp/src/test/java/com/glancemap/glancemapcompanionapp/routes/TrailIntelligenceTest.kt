@@ -48,6 +48,39 @@ class TrailIntelligenceTest {
     }
 
     @Test
+    fun `uses the selected day start and does not continue into the next day`() {
+        val details = routeDetails()
+        val day =
+            MissionPlanDay(
+                id = "day-2",
+                dayNumber = 2,
+                routeId = details.route.id,
+                startDistanceMeters = 1_100.0,
+                endDistanceMeters = 2_000.0,
+            )
+
+        val intelligence = details.trailIntelligenceFor(day)
+
+        requireNotNull(intelligence)
+        assertEquals(TrailIntelligenceContext.PLANNED_DAY, intelligence.context)
+        assertEquals(1_100.0, intelligence.window.startDistanceMeters, 0.1)
+        assertEquals(2_000.0, intelligence.window.endDistanceMeters, 0.1)
+        assertEquals(listOf("Water source", "Viewpoint"), intelligence.upcomingWaypoints.map { it.title })
+    }
+
+    @Test
+    fun `labels weather loaded from a later mission day as the planned day start`() {
+        val location =
+            routeDetails().weatherLocationFor(
+                activeHikeSnapshot = null,
+                plannedStartDistanceMeters = 1_100.0,
+            )
+
+        requireNotNull(location)
+        assertEquals("Planned day start", location.label)
+    }
+
+    @Test
     fun `does not forecast a different or completed route`() {
         val details = routeDetails()
         val otherRoute =

@@ -21,7 +21,12 @@ fun RouteLibraryRouteDetails.weatherLocationFor(
         latitude = point.location.latitude,
         longitude = point.location.longitude,
         elevationMeters = point.elevationMeters,
-        label = if (activeDistance == null) "Route start" else "Current route position",
+        label =
+            when {
+                activeDistance != null -> "Current route position"
+                plannedStartDistanceMeters > 0.0 -> "Planned day start"
+                else -> "Route start"
+            },
     )
 }
 

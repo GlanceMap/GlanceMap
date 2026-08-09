@@ -69,6 +69,7 @@ import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
+import com.glancemap.glancemapcompanionapp.routes.TrailIntelligenceContext
 import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
@@ -1383,13 +1384,19 @@ private fun TodayHikeCard(
         activeHikeSnapshot?.takeIf { update -> update.snapshot.phase != ActiveHikePhase.IDLE }
     val trailIntelligence =
         liveHikeSnapshot?.snapshot?.let { snapshot -> selectedRouteDetails?.trailIntelligenceFor(snapshot) }
+            ?: missionDay
+                ?.takeIf { dayUi -> dayUi.route.id == selectedRoute?.id }
+                ?.let { dayUi -> selectedRouteDetails?.trailIntelligenceFor(dayUi.day) }
     SectionCard(
         title = "TODAY'S HIKE",
     ) {
         liveHikeSnapshot?.let { update -> ActiveHikeBriefing(update) }
         trailIntelligence?.let { intelligence ->
             Spacer(modifier = Modifier.height(14.dp))
-            TrailIntelligenceBriefing(intelligence)
+            TrailIntelligenceBriefing(
+                intelligence = intelligence,
+                weatherUiState = routeWeatherUiState,
+            )
         }
         if (liveHikeSnapshot != null) {
             Spacer(modifier = Modifier.height(14.dp))
@@ -1529,11 +1536,14 @@ private fun ActiveHikeBriefing(update: PhoneActiveHikeSnapshot) {
 }
 
 @Composable
-private fun TrailIntelligenceBriefing(intelligence: TrailIntelligence) {
+private fun TrailIntelligenceBriefing(
+    intelligence: TrailIntelligence,
+    weatherUiState: RouteWeatherUiState,
+) {
     val window = intelligence.window
     val remainingMinutes = (window.estimatedDurationSeconds / 60.0).toInt().coerceAtLeast(1)
     Text(
-        text = if (remainingMinutes >= 30) "NEXT 30 MINUTES" else "TO FINISH • NEXT $remainingMinutes MIN",
+        text = intelligence.trailIntelligenceTitle(remainingMinutes),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
@@ -1558,6 +1568,66 @@ private fun TrailIntelligenceBriefing(intelligence: TrailIntelligence) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    TrailIntelligenceWeatherBriefing(weatherUiState)
+}
+
+@Composable
+private fun TrailIntelligenceWeatherBriefing(uiState: RouteWeatherUiState) {
+    Text(
+        text = "WEATHER",
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelMedium,
+    )
+    when {
+        uiState.isLoading -> {
+            Text(
+                text = "Loading route forecast…",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        uiState.forecast == null -> {
+            Text(
+                text = "Weather is not loaded for this route segment.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        else -> {
+            val forecast = checkNotNull(uiState.forecast)
+            val nextHour = forecast.nextHour
+            val metrics =
+                listOfNotNull(
+                    forecast.current.temperatureCelsius?.let { temperature -> temperature.toWeatherTemperatureText() },
+                    nextHour?.precipitationProbabilityPercent?.let { probability ->
+                        "rain ${probability.roundToInt()}%"
+                    },
+                    nextHour?.windGustKilometersPerHour?.let { gust ->
+                        "gusts ${gust.roundToInt()} km/h"
+                    },
+                )
+            Text(
+                text =
+                    "${weatherConditionText(forecast.current.weatherCode)}" +
+                        metrics
+                            .takeIf { values -> values.isNotEmpty() }
+                            ?.let { values -> " • ${values.joinToString("  •  ")}" }
+                            .orEmpty(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text =
+                    "Updated ${forecast.fetchedAtEpochMillis.toWeatherUpdatedText()}" +
+                        if (uiState.isStale) " • cached, unable to update" else "",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
@@ -1725,6 +1795,11 @@ private fun RouteWeatherBriefing(
 private fun Double.toWeatherTemperatureText(): String = "${roundToInt()}°C"
 
 private fun Long.toWeatherUpdatedText(): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(this))
+
+private fun TrailIntelligence.trailIntelligenceTitle(remainingMinutes: Int): String {
+    val windowLabel = if (remainingMinutes >= 30) "NEXT 30 MINUTES" else "TO FINISH • NEXT $remainingMinutes MIN"
+    return if (context == TrailIntelligenceContext.PLANNED_DAY) "DAY START • $windowLabel" else windowLabel
+}
 
 private const val OPEN_METEO_URL = "https://open-meteo.com/"
 
