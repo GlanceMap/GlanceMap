@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.SpatialTracking
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +56,7 @@ import com.glancemap.glancemapcompanionapp.PrivacyPolicyActivity
 import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
 import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardScreen
+import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardWaitingScreen
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
@@ -154,7 +154,7 @@ fun FilePickerScreen(
             },
         )
     }
-    var weatherRouteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var weatherRouteId by remember { mutableStateOf<String?>(null) }
     var showRefugesDialog by remember { mutableStateOf(false) }
     var showRoutingMenu by remember { mutableStateOf(false) }
     var showThemeLegendMenu by remember { mutableStateOf(false) }
@@ -761,7 +761,9 @@ fun FilePickerScreen(
                             update = update,
                             onBack = { activeHomeArea = CompanionHomeArea.HOME },
                         )
-                    }
+                    } ?: LiveHikeDashboardWaitingScreen(
+                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                    )
                 }
 
                 CompanionHomeArea.LIVE_TRACKING -> {
@@ -1371,12 +1373,18 @@ private fun CompanionHomeScreen(
                 HomeActionButton(
                     icon = Icons.Filled.SpatialTracking,
                     title = "Live Hike Dashboard",
-                    description = "See live progress from the watch",
+                    description =
+                        if (
+                            activeHikeSnapshot?.snapshot?.let { snapshot ->
+                                snapshot.phase != ActiveHikePhase.IDLE &&
+                                    snapshot.phase != ActiveHikePhase.FINISHED
+                            } == true
+                        ) {
+                            "See live progress from the watch"
+                        } else {
+                            "Open status while waiting for the watch"
+                        },
                     onClick = onOpenLiveHike,
-                    enabled =
-                        activeHikeSnapshot?.snapshot?.let { snapshot ->
-                            snapshot.phase != ActiveHikePhase.IDLE && snapshot.phase != ActiveHikePhase.FINISHED
-                        } == true,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.CalendarMonth,

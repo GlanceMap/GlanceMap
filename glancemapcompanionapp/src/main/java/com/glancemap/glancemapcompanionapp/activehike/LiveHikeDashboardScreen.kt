@@ -102,6 +102,62 @@ fun LiveHikeDashboardScreen(
 }
 
 @Composable
+fun LiveHikeDashboardWaitingScreen(onBack: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledTonalIconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to home",
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "Live Hike",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "Waiting for a watch update",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Progress will appear here as soon as the watch sends an active hike snapshot.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
+        Text(
+            text = "Start turn-by-turn navigation or recording on the watch, then keep the companion open while it connects.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = "If this stays empty, install a watch build that supports Live Hike sync. The companion never starts or estimates a watch hike on its own.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
 private fun RoutedHikeDashboard(snapshot: ActiveHikeSnapshot) {
     val completed = snapshot.distanceFromStartMeters
     val remaining = snapshot.distanceRemainingMeters
