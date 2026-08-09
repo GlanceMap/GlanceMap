@@ -61,6 +61,11 @@ personal data. We do not use your location or files for advertising.
   details, log lines, crash stack traces, transfer information, timestamps,
   selected file names, and, if diagnostic capture is enabled, location or
   GNSS-related telemetry.
+- The optional companion journey diagnostic capture also records coarse feature
+  outcomes and capability flags for GPX import, Mission Plan, route weather,
+  and Live Hike. Those entries deliberately exclude GPX text, route titles and
+  identifiers, coordinates, mission notes, planned dates/times, forecast
+  values, and live distance, pace, altitude, and ETA values.
 - Diagnostics are intended for troubleshooting and are only shared off-device
   when you explicitly choose to send or export them.
 

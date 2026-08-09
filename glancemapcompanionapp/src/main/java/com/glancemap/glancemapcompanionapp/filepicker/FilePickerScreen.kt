@@ -59,6 +59,7 @@ import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardScreen
 import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardWaitingScreen
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
+import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
@@ -672,7 +673,10 @@ fun FilePickerScreen(
                             }
                         },
                         onOpenMissionPlan = { activeHomeArea = CompanionHomeArea.MISSION_PLAN },
-                        onOpenLiveHike = { activeHomeArea = CompanionHomeArea.LIVE_HIKE },
+                        onOpenLiveHike = {
+                            CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
+                            activeHomeArea = CompanionHomeArea.LIVE_HIKE
+                        },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },

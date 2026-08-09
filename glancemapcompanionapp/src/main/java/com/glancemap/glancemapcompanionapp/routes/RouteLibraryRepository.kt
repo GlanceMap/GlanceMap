@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.trailcore.geo.haversineDistanceMeters
 import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
@@ -123,6 +124,11 @@ class RouteLibraryRepository(
                     selectedRouteId = route.id,
                 )
             writeIndex(next)
+            CompanionJourneyDiagnostics.routeImportSucceeded(
+                pointCount = parsed.points.size,
+                waypointCount = parsed.waypoints.size,
+                elevationCount = parsed.points.count { point -> point.elevationMeters != null },
+            )
             RouteLibraryUiState(
                 routes = next.routes,
                 selectedRouteId = route.id,

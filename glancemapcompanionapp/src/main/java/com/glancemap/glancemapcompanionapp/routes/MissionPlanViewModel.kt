@@ -4,6 +4,10 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
+import com.glancemap.glancemapcompanionapp.diagnostics.MissionDayUpdateDiagnosticFields
+import com.glancemap.glancemapcompanionapp.diagnostics.MissionDayWeatherDiagnosticSummary
+import com.glancemap.glancemapcompanionapp.diagnostics.MissionPlanMutationOperation
 import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
 import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastRepository
@@ -42,14 +46,16 @@ class MissionPlanViewModel(
     }
 
     fun addDay(routeId: String) {
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.ADD_DAY)
         viewModelScope.launch {
-            mutate { missionPlanRepository.addDay(routeId) }
+            mutate(MissionPlanMutationOperation.ADD_DAY) { missionPlanRepository.addDay(routeId) }
         }
     }
 
     fun selectDay(dayId: String) {
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.SELECT_DAY)
         viewModelScope.launch {
-            mutate { missionPlanRepository.selectDay(dayId) }
+            mutate(MissionPlanMutationOperation.SELECT_DAY) { missionPlanRepository.selectDay(dayId) }
         }
     }
 
@@ -58,8 +64,11 @@ class MissionPlanViewModel(
         startDistanceMeters: Double,
         endDistanceMeters: Double?,
     ) {
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.UPDATE_SEGMENT)
         viewModelScope.launch {
-            mutate { missionPlanRepository.updateSegment(dayId, startDistanceMeters, endDistanceMeters) }
+            mutate(MissionPlanMutationOperation.UPDATE_SEGMENT) {
+                missionPlanRepository.updateSegment(dayId, startDistanceMeters, endDistanceMeters)
+            }
         }
     }
 
@@ -67,8 +76,19 @@ class MissionPlanViewModel(
         dayId: String,
         update: MissionPlanDayUpdate,
     ) {
+        CompanionJourneyDiagnostics.missionDayUpdateRequested(
+            MissionDayUpdateDiagnosticFields(
+                includesName = !update.name.isNullOrBlank(),
+                includesDate = !update.plannedDate.isNullOrBlank(),
+                includesStartTime = !update.plannedStartTime.isNullOrBlank(),
+                includesOvernight = !update.overnight.isNullOrBlank(),
+                includesNotes = !update.notes.isNullOrBlank(),
+                includesSegment = update.startDistanceMeters > 0.0 || update.endDistanceMeters != null,
+            ),
+        )
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.UPDATE_DAY)
         viewModelScope.launch {
-            mutate { missionPlanRepository.updateDay(dayId, update) }
+            mutate(MissionPlanMutationOperation.UPDATE_DAY) { missionPlanRepository.updateDay(dayId, update) }
         }
     }
 
@@ -76,14 +96,16 @@ class MissionPlanViewModel(
         dayId: String,
         targetIndex: Int,
     ) {
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.REORDER_DAY)
         viewModelScope.launch {
-            mutate { missionPlanRepository.moveDay(dayId, targetIndex) }
+            mutate(MissionPlanMutationOperation.REORDER_DAY) { missionPlanRepository.moveDay(dayId, targetIndex) }
         }
     }
 
     fun removeDay(dayId: String) {
+        CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.REMOVE_DAY)
         viewModelScope.launch {
-            mutate { missionPlanRepository.removeDay(dayId) }
+            mutate(MissionPlanMutationOperation.REMOVE_DAY) { missionPlanRepository.removeDay(dayId) }
         }
     }
 
@@ -94,6 +116,7 @@ class MissionPlanViewModel(
         val dayUi = _uiState.value.days.firstOrNull { day -> day.day.id == dayId } ?: return
         val plannedDate = dayUi.day.plannedDate
         if (plannedDate == null) {
+            CompanionJourneyDiagnostics.missionDayWeatherBlockedWithoutDate()
             updateDayWeather(
                 dayId = dayId,
                 weather =
@@ -104,6 +127,10 @@ class MissionPlanViewModel(
             return
         }
 
+        CompanionJourneyDiagnostics.missionDayWeatherRequested(
+            forceRefresh = forceRefresh,
+            hasStartTime = dayUi.day.plannedStartTime != null,
+        )
         viewModelScope.launch {
             updateDayWeather(
                 dayId = dayId,
@@ -126,6 +153,7 @@ class MissionPlanViewModel(
                     }
                 }.getOrElse { error ->
                     if (error is CancellationException) throw error
+                    CompanionJourneyDiagnostics.missionDayWeatherFailed()
                     updateDayWeather(
                         dayId = dayId,
                         weather =
@@ -138,6 +166,16 @@ class MissionPlanViewModel(
                     return@launch
                 }
             val unavailableCount = samples.count { sample -> sample.forecast == null }
+            CompanionJourneyDiagnostics.missionDayWeatherCompleted(
+                MissionDayWeatherDiagnosticSummary(
+                    unavailableSampleCount = unavailableCount,
+                    sampleCount = samples.size,
+                    includesNetwork = samples.any { sample -> sample.forecast != null && !sample.isCached },
+                    includesCache = samples.any(MissionDayWeatherSampleUi::isCached),
+                    includesStaleCache = samples.any(MissionDayWeatherSampleUi::isStale),
+                    hasScheduledOutlook = samples.any { sample -> sample.scheduledOutlook != null },
+                ),
+            )
             updateDayWeather(
                 dayId = dayId,
                 weather =
@@ -158,7 +196,13 @@ class MissionPlanViewModel(
     }
 
     fun prepareSelectedDayForTransfer(onPrepared: (Uri?) -> Unit) {
-        val day = _uiState.value.selectedDay?.day ?: return onPrepared(null)
+        CompanionJourneyDiagnostics.missionDayTransferRequested()
+        val day =
+            _uiState.value.selectedDay?.day
+                ?: run {
+                    CompanionJourneyDiagnostics.missionDayTransferPrepared(success = false)
+                    return onPrepared(null)
+                }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isPreparingTransfer = true, message = null)
             val transferUri =
@@ -177,17 +221,22 @@ class MissionPlanViewModel(
                             null
                         },
                 )
+            CompanionJourneyDiagnostics.missionDayTransferPrepared(success = transferUri != null)
             onPrepared(transferUri)
         }
     }
 
-    private suspend fun mutate(operation: suspend () -> MissionPlanRepository.MissionPlanIndex) {
+    private suspend fun mutate(
+        diagnosticOperation: MissionPlanMutationOperation,
+        operation: suspend () -> MissionPlanRepository.MissionPlanIndex,
+    ) {
         _uiState.value = _uiState.value.copy(isLoading = true, message = null)
         val index =
             runCatching {
                 withContext(Dispatchers.IO) { operation() }
             }.getOrElse { error ->
                 if (error is CancellationException) throw error
+                CompanionJourneyDiagnostics.missionPlanMutationFailed(diagnosticOperation)
                 _uiState.value =
                     _uiState.value.copy(
                         isLoading = false,
@@ -196,6 +245,7 @@ class MissionPlanViewModel(
                 return
             }
         publish(index)
+        CompanionJourneyDiagnostics.missionPlanMutationSucceeded(diagnosticOperation, index.days.size)
     }
 
     private suspend fun updateFromRepository() {

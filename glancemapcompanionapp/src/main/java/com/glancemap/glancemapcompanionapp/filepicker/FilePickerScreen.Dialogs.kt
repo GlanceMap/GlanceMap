@@ -117,7 +117,7 @@ internal fun DebugCaptureDialog(
                     "Recording is active on the phone. Stop when you are done and an email draft will open for Glancemap@protonmail.com.\n\nCaptured lines: ${debugCaptureState.bufferedLines}"
                 } else {
                     buildString {
-                        append("This records redacted companion app transfer and live tracking logs on the phone. Start it before reproducing the issue, then stop it to open an email draft to Glancemap@protonmail.com.")
+                        append("This records redacted companion logs for transfers, route import, Mission Plan, weather, and Live Hike on the phone. It excludes GPX text, route names, coordinates, mission notes, dates/times, and live metric values. Start it before reproducing the issue, then stop it to open an email draft to Glancemap@protonmail.com.")
                         if (hasSavedPhoneRecording) {
                             append("\n\nA saved phone recording is available and can be resent.")
                         }

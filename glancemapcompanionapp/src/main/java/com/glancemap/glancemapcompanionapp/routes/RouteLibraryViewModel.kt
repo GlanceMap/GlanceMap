@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
 import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecast
@@ -63,17 +64,21 @@ class RouteLibraryViewModel(
     }
 
     fun importRoute(uri: android.net.Uri) {
+        CompanionJourneyDiagnostics.routeImportStarted()
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isImporting = true, message = null)
+            val result = runCatching { withContext(Dispatchers.IO) { repository.importRoute(uri) } }
+            result.onFailure { error ->
+                if (error !is CancellationException) CompanionJourneyDiagnostics.routeImportFailed()
+            }
             publishRouteState(
-                runCatching {
-                    withContext(Dispatchers.IO) { repository.importRoute(uri) }
-                }.getOrElse { error ->
-                    _uiState.value.copy(
-                        isImporting = false,
-                        message = error.message ?: "Could not import the GPX route.",
-                    )
-                }.copy(isImporting = false),
+                result
+                    .getOrElse { error ->
+                        _uiState.value.copy(
+                            isImporting = false,
+                            message = error.message ?: "Could not import the GPX route.",
+                        )
+                    }.copy(isImporting = false),
             )
         }
     }
@@ -102,12 +107,22 @@ class RouteLibraryViewModel(
         forceRefresh: Boolean,
         plannedStartDistanceMeters: Double = 0.0,
     ) {
-        val routeDetails = _selectedRouteDetails.value ?: return
+        val routeDetails =
+            _selectedRouteDetails.value
+                ?: run {
+                    CompanionJourneyDiagnostics.routeWeatherUnavailable()
+                    return
+                }
         val weatherLocation =
             routeDetails.weatherLocationFor(
                 activeHikeSnapshot = activeHikeSnapshot,
                 plannedStartDistanceMeters = plannedStartDistanceMeters,
-            ) ?: return
+            )
+                ?: run {
+                    CompanionJourneyDiagnostics.routeWeatherUnavailable()
+                    return
+                }
+        CompanionJourneyDiagnostics.routeWeatherRequested(forceRefresh)
         viewModelScope.launch {
             _routeWeatherUiState.value =
                 _routeWeatherUiState.value.copy(
@@ -124,6 +139,7 @@ class RouteLibraryViewModel(
                     result to weatherForecastRepository.history(weatherLocation)
                 }
             }.onSuccess { result ->
+                CompanionJourneyDiagnostics.routeWeatherSucceeded(result.first.source)
                 _routeWeatherUiState.value =
                     RouteWeatherUiState(
                         forecast = result.first.forecast,
@@ -133,6 +149,7 @@ class RouteLibraryViewModel(
                     )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
+                CompanionJourneyDiagnostics.routeWeatherFailed()
                 _routeWeatherUiState.value =
                     _routeWeatherUiState.value.copy(
                         isLoading = false,

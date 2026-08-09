@@ -15,6 +15,7 @@ import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.WatchNode
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.activehike.decodePhoneActiveHikeSnapshot
+import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.FileExistenceChecker
 import com.glancemap.glancemapcompanionapp.transfer.TransferStrategyFactory
@@ -614,6 +615,7 @@ class FileTransferService : LifecycleService() {
     ) {
         val incoming = decodePhoneActiveHikeSnapshot(sourceNodeId, payload)
         if (incoming == null) {
+            CompanionJourneyDiagnostics.activeHikeSnapshotRejected()
             PhoneTransferDiagnostics.warn(
                 "ActiveHike",
                 "Ignored invalid active-hike snapshot from node=$sourceNodeId",
@@ -625,6 +627,7 @@ class FileTransferService : LifecycleService() {
         if (currentRecordedAtEpochMillis > incoming.snapshot.recordedAtEpochMillis) return
 
         _activeHikeSnapshot.value = incoming
+        CompanionJourneyDiagnostics.activeHikeSnapshotAccepted(incoming.snapshot)
     }
 
     private fun scheduleReconnectPauseEscalation(
