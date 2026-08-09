@@ -9,6 +9,7 @@ import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
 import com.glancemap.trailcore.profile.windowFromDistance
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -33,20 +34,32 @@ private val COORDINATE_BOUNDS_TITLE =
     )
 
 data class RouteLibraryRoute(
+    @field:SerializedName(value = "id", alternate = ["a"])
     val id: String,
+    @field:SerializedName(value = "title", alternate = ["b"])
     val title: String,
+    @field:SerializedName(value = "storedFileName", alternate = ["c"])
     val storedFileName: String,
+    @field:SerializedName(value = "importedAtMillis", alternate = ["d"])
     val importedAtMillis: Long,
+    @field:SerializedName(value = "summary", alternate = ["e"])
     val summary: RouteLibrarySummary,
 )
 
 data class RouteLibrarySummary(
+    @field:SerializedName(value = "distanceMeters", alternate = ["a"])
     val distanceMeters: Double,
+    @field:SerializedName(value = "elevationGainMeters", alternate = ["b"])
     val elevationGainMeters: Double,
+    @field:SerializedName(value = "elevationLossMeters", alternate = ["c"])
     val elevationLossMeters: Double,
+    @field:SerializedName(value = "estimatedDurationSeconds", alternate = ["d"])
     val estimatedDurationSeconds: Double,
+    @field:SerializedName(value = "waypointCount", alternate = ["e"])
     val waypointCount: Int,
+    @field:SerializedName(value = "firstThirtyMinutesDistanceMeters", alternate = ["f"])
     val firstThirtyMinutesDistanceMeters: Double,
+    @field:SerializedName(value = "firstThirtyMinutesAscentMeters", alternate = ["g"])
     val firstThirtyMinutesAscentMeters: Double,
 )
 
@@ -264,7 +277,9 @@ class RouteLibraryRepository(
         )
 
     private data class RouteLibraryIndex(
+        @field:SerializedName(value = "routes", alternate = ["a"])
         val routes: List<RouteLibraryRoute> = emptyList(),
+        @field:SerializedName(value = "selectedRouteId", alternate = ["b"])
         val selectedRouteId: String? = null,
     )
 
