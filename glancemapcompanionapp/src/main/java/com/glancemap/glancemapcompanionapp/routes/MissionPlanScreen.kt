@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
+@file:Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package com.glancemap.glancemapcompanionapp.routes
 
@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import java.text.DateFormat
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
@@ -149,7 +150,10 @@ fun MissionPlanScreen(
                             selected = dayUi.day.id == uiState.selectedDayId,
                             weather =
                                 uiState.weatherByDayId[dayUi.day.id]
-                                    ?.takeIf { weather -> weather.plannedDate == dayUi.day.plannedDate },
+                                    ?.takeIf { weather ->
+                                        weather.plannedDate == dayUi.day.plannedDate &&
+                                            weather.plannedStartTime == dayUi.day.plannedStartTime
+                                    },
                             onSetToday = { onSetToday(dayUi) },
                             onOpenTimeline = { timelineDay = dayUi },
                             onOpenWeather = { weatherDay = dayUi },
@@ -234,7 +238,10 @@ fun MissionPlanScreen(
                 dayUi = dayUi,
                 weather =
                     uiState.weatherByDayId[dayUi.day.id]
-                        ?.takeIf { state -> state.plannedDate == dayUi.day.plannedDate },
+                        ?.takeIf { state ->
+                            state.plannedDate == dayUi.day.plannedDate &&
+                                state.plannedStartTime == dayUi.day.plannedStartTime
+                        },
                 onLoad = { forceRefresh -> onLoadDayWeather(dayUi.day.id, forceRefresh) },
                 onDismiss = { weatherDay = null },
             )
@@ -289,9 +296,12 @@ private fun MissionPlanDayCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            dayUi.day.plannedDate?.missionPlanDateLabel()?.let { date ->
+            listOfNotNull(
+                dayUi.day.plannedDate?.missionPlanDateLabel(),
+                dayUi.day.plannedStartTime?.let { time -> "Start $time" },
+            ).takeIf { schedule -> schedule.isNotEmpty() }?.let { schedule ->
                 Text(
-                    text = date,
+                    text = schedule.joinToString(" • "),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -383,7 +393,12 @@ private fun MissionDayWeatherDialog(
                     )
                 } else {
                     Text(
-                        text = "${plannedDate.missionPlanDateLabel() ?: plannedDate} • GPX start, midpoint, and finish",
+                        text =
+                            listOfNotNull(
+                                plannedDate.missionPlanDateLabel() ?: plannedDate,
+                                dayUi.day.plannedStartTime?.let { time -> "Start $time" },
+                                "GPX start, midpoint, and finish",
+                            ).joinToString(" • "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -466,7 +481,7 @@ private fun MissionDayWeatherSampleRow(
                 )
             }
 
-            sample.dailyOutlook == null -> {
+            sample.dailyOutlook == null && sample.scheduledOutlook == null -> {
                 Text(
                     text = "No forecast is available for $plannedDate at this location.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -475,24 +490,57 @@ private fun MissionDayWeatherSampleRow(
             }
 
             else -> {
-                val outlook = checkNotNull(sample.dailyOutlook)
-                Text(
-                    text = weatherConditionText(outlook.weatherCode),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                val metrics =
-                    listOfNotNull(
-                        outlook.minimumTemperatureCelsius?.let { value -> "low ${value.toMissionWeatherTemperature()}" },
-                        outlook.maximumTemperatureCelsius?.let { value -> "high ${value.toMissionWeatherTemperature()}" },
-                        outlook.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
-                        outlook.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
-                    )
-                if (metrics.isNotEmpty()) {
+                val outlook = sample.dailyOutlook
+                sample.scheduledOutlook?.let { scheduled ->
                     Text(
-                        text = metrics.joinToString("  •  "),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Around ${sample.scheduledTimeIso8601?.toMissionWeatherTimeText() ?: "planned time"}",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
                     )
+                    Text(
+                        text = weatherConditionText(scheduled.weatherCode),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    val scheduledMetrics =
+                        listOfNotNull(
+                            scheduled.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
+                            scheduled.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                            scheduled.visibilityMeters?.let { value -> "visibility ${value.toMissionPlanDistance()}" },
+                        )
+                    if (scheduledMetrics.isNotEmpty()) {
+                        Text(
+                            text = scheduledMetrics.joinToString("  •  "),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                outlook?.let { daily ->
+                    Text(
+                        text = if (sample.scheduledOutlook == null) "Daily outlook" else "Day range",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    if (sample.scheduledOutlook == null) {
+                        Text(
+                            text = weatherConditionText(daily.weatherCode),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    val dailyMetrics =
+                        listOfNotNull(
+                            daily.minimumTemperatureCelsius?.let { value -> "low ${value.toMissionWeatherTemperature()}" },
+                            daily.maximumTemperatureCelsius?.let { value -> "high ${value.toMissionWeatherTemperature()}" },
+                            daily.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
+                            daily.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                        )
+                    if (dailyMetrics.isNotEmpty()) {
+                        Text(
+                            text = dailyMetrics.joinToString("  •  "),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
                 Text(
                     text =
@@ -585,6 +633,7 @@ private fun MissionPlanDayEditorDialog(
 ) {
     var name by remember(dayUi.day.id) { mutableStateOf(dayUi.day.name.orEmpty()) }
     var plannedDate by remember(dayUi.day.id) { mutableStateOf(dayUi.day.plannedDate.orEmpty()) }
+    var plannedStartTime by remember(dayUi.day.id) { mutableStateOf(dayUi.day.plannedStartTime.orEmpty()) }
     var overnight by remember(dayUi.day.id) { mutableStateOf(dayUi.day.overnight.orEmpty()) }
     var notes by remember(dayUi.day.id) { mutableStateOf(dayUi.day.notes.orEmpty()) }
     var startKilometers by remember(dayUi.day.id) {
@@ -607,7 +656,7 @@ private fun MissionPlanDayEditorDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text =
-                        "Name, date, overnight, and notes live with this mission. Leave the end blank " +
+                        "Name, date, start time, overnight, and notes live with this mission. Leave the end blank " +
                             "to use the rest of this GPX (${routeDistanceMeters.toMissionPlanDistance()}).",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -622,6 +671,14 @@ private fun MissionPlanDayEditorDialog(
                     onValueChange = { plannedDate = it },
                     label = { Text("Date (YYYY-MM-DD, optional)") },
                     singleLine = true,
+                )
+                OutlinedTextField(
+                    value = plannedStartTime,
+                    onValueChange = { plannedStartTime = it },
+                    label = { Text("Planned start (HH:mm, optional)") },
+                    supportingText = { Text("Aligns hourly weather to the GPX start, midpoint, and finish.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 OutlinedTextField(
                     value = startKilometers,
@@ -666,10 +723,13 @@ private fun MissionPlanDayEditorDialog(
                     val endMeters = endKilometers.takeIf(String::isNotBlank)?.toDoubleOrNull()?.times(1_000.0)
                     val actualEndMeters = endMeters ?: routeDistanceMeters
                     val normalizedDate = plannedDate.trim().takeIf(String::isNotEmpty)
+                    val normalizedStartTime = plannedStartTime.trim().takeIf(String::isNotEmpty)
                     error =
                         when {
                             normalizedDate != null && normalizedDate.toMissionPlanDate() == null ->
                                 "Use a calendar date like 2026-08-12."
+                            normalizedStartTime != null && normalizedStartTime.toMissionPlanStartTime() == null ->
+                                "Use a 24-hour start time like 07:30."
                             startMeters == null || !startMeters.isFinite() || startMeters < 0.0 ->
                                 "Enter a valid non-negative start distance."
                             endMeters != null && (!endMeters.isFinite() || endMeters > routeDistanceMeters) ->
@@ -682,6 +742,7 @@ private fun MissionPlanDayEditorDialog(
                             MissionPlanDayUpdate(
                                 name = name,
                                 plannedDate = normalizedDate,
+                                plannedStartTime = normalizedStartTime,
                                 overnight = overnight,
                                 notes = notes,
                                 startDistanceMeters = requireNotNull(startMeters),
@@ -781,6 +842,8 @@ private fun Double.toMissionPlanKilometers(): String = "%.2f".format(this / 1_00
 
 private fun String.toMissionPlanDate(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 
+private fun String.toMissionPlanStartTime(): LocalTime? = runCatching { LocalTime.parse(this) }.getOrNull()
+
 private fun String.missionPlanDateLabel(): String? = toMissionPlanDate()?.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault()))
 
 private fun MissionDayTimelineEventType.timelineLabel(): String =
@@ -801,3 +864,10 @@ private fun MissionDayWeatherUiState?.missionDayWeatherActionLabel(): String =
 private fun Double.toMissionWeatherTemperature(): String = "${roundToInt()}°C"
 
 private fun Long.toMissionWeatherUpdatedText(): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(this))
+
+private fun String.toMissionWeatherTimeText(): String =
+    runCatching {
+        java.time.LocalDateTime
+            .parse(this)
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
+    }.getOrDefault(this)

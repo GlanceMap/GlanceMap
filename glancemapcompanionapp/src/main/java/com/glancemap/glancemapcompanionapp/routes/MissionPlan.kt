@@ -13,6 +13,8 @@ data class MissionPlanDay(
     val name: String? = null,
     /** ISO-8601 local date (`YYYY-MM-DD`), deliberately stored without a time zone. */
     val plannedDate: String? = null,
+    /** Local hike start time (`HH:mm`) at the GPX location; it is used to align hourly forecasts. */
+    val plannedStartTime: String? = null,
     val overnight: String? = null,
     val notes: String? = null,
     val startDistanceMeters: Double = 0.0,
@@ -35,6 +37,7 @@ data class MissionPlanDay(
 data class MissionPlanDayUpdate(
     val name: String?,
     val plannedDate: String?,
+    val plannedStartTime: String?,
     val overnight: String?,
     val notes: String?,
     val startDistanceMeters: Double,

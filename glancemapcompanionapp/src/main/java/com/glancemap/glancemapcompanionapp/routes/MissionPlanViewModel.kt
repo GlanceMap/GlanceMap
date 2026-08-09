@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@Suppress("TooManyFunctions")
+@Suppress("LongMethod", "TooManyFunctions")
 class MissionPlanViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -107,7 +107,12 @@ class MissionPlanViewModel(
         viewModelScope.launch {
             updateDayWeather(
                 dayId = dayId,
-                weather = MissionDayWeatherUiState(plannedDate = plannedDate, isLoading = true),
+                weather =
+                    MissionDayWeatherUiState(
+                        plannedDate = plannedDate,
+                        plannedStartTime = dayUi.day.plannedStartTime,
+                        isLoading = true,
+                    ),
             )
             val samples =
                 runCatching {
@@ -117,7 +122,7 @@ class MissionPlanViewModel(
                                 ?: error("This day's GPX is no longer available.")
                         val targets = details.missionDayWeatherTargets(dayUi.day)
                         if (targets.isEmpty()) error("This GPX day has no route distance to sample.")
-                        targets.map { target -> loadDayWeatherSample(target, plannedDate, forceRefresh) }
+                        targets.map { target -> loadDayWeatherSample(target, dayUi.day, forceRefresh) }
                     }
                 }.getOrElse { error ->
                     if (error is CancellationException) throw error
@@ -126,6 +131,7 @@ class MissionPlanViewModel(
                         weather =
                             MissionDayWeatherUiState(
                                 plannedDate = plannedDate,
+                                plannedStartTime = dayUi.day.plannedStartTime,
                                 message = "Day weather is unavailable. Check your connection and try again.",
                             ),
                     )
@@ -137,6 +143,7 @@ class MissionPlanViewModel(
                 weather =
                     MissionDayWeatherUiState(
                         plannedDate = plannedDate,
+                        plannedStartTime = dayUi.day.plannedStartTime,
                         samples = samples,
                         message =
                             when {
@@ -247,10 +254,12 @@ class MissionPlanViewModel(
                         ?: dayUi.firstOrNull()?.day?.id,
                 weatherByDayId =
                     _uiState.value.weatherByDayId.filter { (dayId, weather) ->
-                        dayUi
-                            .firstOrNull { day -> day.day.id == dayId }
-                            ?.day
-                            ?.plannedDate == weather.plannedDate
+                        val currentDay =
+                            dayUi
+                                .firstOrNull { day -> day.day.id == dayId }
+                                ?.day
+                        currentDay?.plannedDate == weather.plannedDate &&
+                            currentDay?.plannedStartTime == weather.plannedStartTime
                     },
                 unavailableDayCount = index.days.size - dayUi.size,
                 isLoading = false,
@@ -259,15 +268,23 @@ class MissionPlanViewModel(
 
     private suspend fun loadDayWeatherSample(
         target: MissionDayWeatherSampleTarget,
-        plannedDate: String,
+        day: MissionPlanDay,
         forceRefresh: Boolean,
     ): MissionDayWeatherSampleUi =
         try {
-            val result = weatherForecastRepository.forecast(target.location, forceRefresh)
+            val result =
+                weatherForecastRepository.forecast(
+                    location = target.location,
+                    forceRefresh = forceRefresh,
+                    requireHourlyForecast = true,
+                )
+            val scheduledTime = target.plannedDateTime(day)
             MissionDayWeatherSampleUi(
                 target = target,
                 forecast = result.forecast,
-                dailyOutlook = result.forecast.daily.firstOrNull { outlook -> outlook.date == plannedDate },
+                dailyOutlook = result.forecast.daily.firstOrNull { outlook -> outlook.date == day.plannedDate },
+                scheduledOutlook = scheduledTime?.let(result.forecast::hourlyOutlookNear),
+                scheduledTimeIso8601 = scheduledTime?.toString(),
                 isCached = result.source != WeatherForecastSource.NETWORK,
                 isStale = result.source == WeatherForecastSource.STALE_CACHE,
                 savedSnapshotCount = weatherForecastRepository.history(target.location).size,
@@ -286,7 +303,12 @@ class MissionPlanViewModel(
         weather: MissionDayWeatherUiState,
     ) {
         val day = _uiState.value.days.firstOrNull { dayUi -> dayUi.day.id == dayId } ?: return
-        if (day.day.plannedDate != weather.plannedDate) return
+        if (
+            day.day.plannedDate != weather.plannedDate ||
+            day.day.plannedStartTime != weather.plannedStartTime
+        ) {
+            return
+        }
         _uiState.value =
             _uiState.value.copy(
                 weatherByDayId = _uiState.value.weatherByDayId + (dayId to weather),

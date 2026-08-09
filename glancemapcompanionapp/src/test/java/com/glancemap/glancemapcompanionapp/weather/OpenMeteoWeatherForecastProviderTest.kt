@@ -23,6 +23,9 @@ class OpenMeteoWeatherForecastProviderTest {
                         "wind_gusts_10m": 51.2
                       },
                       "hourly": {
+                        "time": ["2026-08-05T08:00", "2026-08-05T09:00"],
+                        "temperature_2m": [7.4, 8.1],
+                        "apparent_temperature": [3.9, 4.7],
                         "precipitation_probability": [25, 65],
                         "precipitation": [0.1, 1.2],
                         "weather_code": [3, 61],
@@ -53,6 +56,9 @@ class OpenMeteoWeatherForecastProviderTest {
         assertEquals(65.0, forecast.nextHour?.precipitationProbabilityPercent ?: 0.0, 0.001)
         assertEquals(3_500.0, forecast.nextHour?.visibilityMeters ?: 0.0, 0.001)
         assertEquals(2_450.0, forecast.nextHour?.freezingLevelHeightMeters ?: 0.0, 0.001)
+        assertEquals(2, forecast.hourly.size)
+        assertEquals("2026-08-05T09:00", forecast.hourly[1].timeIso8601)
+        assertEquals(8.1, forecast.hourly[1].temperatureCelsius ?: 0.0, 0.001)
         assertEquals(2, forecast.daily.size)
         assertEquals("2026-08-05", forecast.daily.first().date)
         assertEquals(12.4, forecast.daily.first().maximumTemperatureCelsius ?: 0.0, 0.001)
@@ -125,6 +131,46 @@ class OpenMeteoWeatherForecastProviderTest {
             assertSame(persisted, result.forecast)
             assertEquals(WeatherForecastSource.PERSISTED_CACHE, result.source)
             assertEquals(listOf(persisted), repository.history(testLocation()))
+        }
+
+    @Test
+    fun `repository refreshes a legacy snapshot when planned weather needs hourly data`() =
+        runBlocking {
+            val legacySnapshot = forecast(fetchedAtEpochMillis = 1_000L)
+            val hourlySnapshot =
+                legacySnapshot.copy(
+                    hourly =
+                        listOf(
+                            WeatherHourlyOutlook(
+                                precipitationProbabilityPercent = 20.0,
+                                precipitationMillimeters = 0.0,
+                                weatherCode = 2,
+                                windSpeedKilometersPerHour = 12.0,
+                                windGustKilometersPerHour = 24.0,
+                                visibilityMeters = 10_000.0,
+                                freezingLevelHeightMeters = 2_500.0,
+                                timeIso8601 = "2026-08-05T08:00",
+                            ),
+                        ),
+                )
+            var requestCount = 0
+            val repository =
+                WeatherForecastRepository(
+                    provider =
+                        object : WeatherForecastProvider {
+                            override suspend fun forecast(location: WeatherForecastLocation): WeatherForecast {
+                                requestCount += 1
+                                return hourlySnapshot
+                            }
+                        },
+                    store = InMemoryWeatherForecastStore(legacySnapshot),
+                    nowEpochMillis = { 2_000L },
+                )
+
+            val result = repository.forecast(testLocation(), forceRefresh = false, requireHourlyForecast = true)
+
+            assertEquals(1, requestCount)
+            assertSame(hourlySnapshot, result.forecast)
         }
 
     private fun testLocation(): WeatherForecastLocation =

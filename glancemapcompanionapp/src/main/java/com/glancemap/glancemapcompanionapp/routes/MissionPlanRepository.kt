@@ -71,6 +71,7 @@ internal class MissionPlanRepository(
                         day.copy(
                             name = update.name.normalizedMissionPlanText(),
                             plannedDate = update.plannedDate.normalizedMissionPlanText(),
+                            plannedStartTime = update.plannedStartTime.normalizedMissionPlanText(),
                             overnight = update.overnight.normalizedMissionPlanText(),
                             notes = update.notes.normalizedMissionPlanText(),
                             startDistanceMeters = update.startDistanceMeters,

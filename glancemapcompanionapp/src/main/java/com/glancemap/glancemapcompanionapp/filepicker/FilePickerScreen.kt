@@ -71,6 +71,8 @@ import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligenceContext
+import com.glancemap.glancemapcompanionapp.routes.liveHikeWeatherContext
+import com.glancemap.glancemapcompanionapp.routes.matchesActiveHike
 import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
@@ -757,8 +759,27 @@ fun FilePickerScreen(
 
                 CompanionHomeArea.LIVE_HIKE -> {
                     activeHikeSnapshot?.let { update ->
+                        val activeMissionDay =
+                            missionPlanUiState.selectedDay?.takeIf { dayUi ->
+                                dayUi.matchesActiveHike(update.snapshot)
+                            }
+                        val weather =
+                            activeMissionDay?.let { dayUi ->
+                                missionPlanUiState.weatherByDayId[dayUi.day.id]
+                                    ?.takeIf { state ->
+                                        state.plannedDate == dayUi.day.plannedDate &&
+                                            state.plannedStartTime == dayUi.day.plannedStartTime
+                                    }
+                            }
                         LiveHikeDashboardScreen(
                             update = update,
+                            weather = activeMissionDay?.liveHikeWeatherContext(weather),
+                            onLoadWeather =
+                                activeMissionDay?.let { dayUi ->
+                                    { forceRefresh ->
+                                        missionPlanViewModel.loadDayWeather(dayUi.day.id, forceRefresh)
+                                    }
+                                },
                             onBack = { activeHomeArea = CompanionHomeArea.HOME },
                         )
                     } ?: LiveHikeDashboardWaitingScreen(

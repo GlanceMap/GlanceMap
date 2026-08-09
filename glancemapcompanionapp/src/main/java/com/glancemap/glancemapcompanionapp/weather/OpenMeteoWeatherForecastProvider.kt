@@ -52,7 +52,6 @@ internal class OpenMeteoWeatherForecastProvider(
             .addQueryParameter("current", CURRENT_VARIABLES)
             .addQueryParameter("hourly", HOURLY_VARIABLES)
             .addQueryParameter("daily", DAILY_VARIABLES)
-            .addQueryParameter("forecast_hours", FORECAST_HOURS.toString())
             .addQueryParameter("forecast_days", FORECAST_DAYS.toString())
             .addQueryParameter("wind_speed_unit", "kmh")
             .addQueryParameter("timezone", "auto")
@@ -64,12 +63,11 @@ internal class OpenMeteoWeatherForecastProvider(
 
     private companion object {
         const val FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
-        const val FORECAST_HOURS = 3
         const val FORECAST_DAYS = 10
         const val CURRENT_VARIABLES =
             "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m"
         const val HOURLY_VARIABLES =
-            "precipitation_probability,precipitation,weather_code,wind_speed_10m," +
+            "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m," +
                 "wind_gusts_10m,visibility,freezing_level_height"
         const val DAILY_VARIABLES =
             "weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max," +
@@ -97,6 +95,7 @@ internal object OpenMeteoWeatherForecastParser {
             fetchedAtEpochMillis = fetchedAtEpochMillis,
             current = root.childObjectOrNull("current").toCurrentConditions(),
             nextHour = root.childObjectOrNull("hourly").toHourlyOutlook(),
+            hourly = root.childObjectOrNull("hourly").toHourlyOutlooks(),
             daily = root.childObjectOrNull("daily").toDailyOutlook(),
         )
     }
@@ -121,6 +120,24 @@ internal object OpenMeteoWeatherForecastParser {
             visibilityMeters = hourly.finiteDoubleForNextHour("visibility"),
             freezingLevelHeightMeters = hourly.finiteDoubleForNextHour("freezing_level_height"),
         )
+    }
+
+    private fun JsonObject?.toHourlyOutlooks(): List<WeatherHourlyOutlook> {
+        val hourly = this ?: return emptyList()
+        return hourly.stringValues("time").mapIndexed { index, time ->
+            WeatherHourlyOutlook(
+                precipitationProbabilityPercent = hourly.finiteDoubleAt("precipitation_probability", index),
+                precipitationMillimeters = hourly.finiteDoubleAt("precipitation", index),
+                weatherCode = hourly.weatherCodeAt("weather_code", index),
+                windSpeedKilometersPerHour = hourly.finiteDoubleAt("wind_speed_10m", index),
+                windGustKilometersPerHour = hourly.finiteDoubleAt("wind_gusts_10m", index),
+                visibilityMeters = hourly.finiteDoubleAt("visibility", index),
+                freezingLevelHeightMeters = hourly.finiteDoubleAt("freezing_level_height", index),
+                timeIso8601 = time,
+                temperatureCelsius = hourly.finiteDoubleAt("temperature_2m", index),
+                apparentTemperatureCelsius = hourly.finiteDoubleAt("apparent_temperature", index),
+            )
+        }
     }
 
     private fun JsonObject?.toDailyOutlook(): List<WeatherDailyOutlook> {

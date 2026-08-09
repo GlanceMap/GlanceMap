@@ -21,6 +21,7 @@ data class WeatherForecast(
     val fetchedAtEpochMillis: Long,
     val current: WeatherCurrentConditions,
     val nextHour: WeatherHourlyOutlook?,
+    val hourly: List<WeatherHourlyOutlook> = emptyList(),
     val daily: List<WeatherDailyOutlook> = emptyList(),
 ) {
     init {
@@ -44,6 +45,10 @@ data class WeatherHourlyOutlook(
     val windGustKilometersPerHour: Double?,
     val visibilityMeters: Double?,
     val freezingLevelHeightMeters: Double?,
+    /** Local ISO-8601 time returned for this location by Open-Meteo. */
+    val timeIso8601: String? = null,
+    val temperatureCelsius: Double? = null,
+    val apparentTemperatureCelsius: Double? = null,
 )
 
 data class WeatherDailyOutlook(
@@ -85,18 +90,23 @@ internal class WeatherForecastRepository(
     suspend fun forecast(
         location: WeatherForecastLocation,
         forceRefresh: Boolean,
+        requireHourlyForecast: Boolean = false,
     ): WeatherForecastLoad {
         val cacheKey = WeatherForecastCacheKey.from(location)
         val memoryCached = synchronized(cache) { cache[cacheKey] }
         val persistedCached = memoryCached ?: store?.latest(location)
-        if (!forceRefresh && persistedCached != null && persistedCached.isFresh(nowEpochMillis())) {
+        val freshCached = persistedCached?.takeIf { forecast -> forecast.isFresh(nowEpochMillis()) }
+        val cachedForecastHasRequiredCoverage =
+            freshCached?.let { forecast -> !requireHourlyForecast || forecast.hourly.isNotEmpty() } == true
+        if (!forceRefresh && cachedForecastHasRequiredCoverage) {
+            val forecast = checkNotNull(freshCached)
             val source =
                 if (memoryCached != null) {
                     WeatherForecastSource.MEMORY_CACHE
                 } else {
                     WeatherForecastSource.PERSISTED_CACHE
                 }
-            return WeatherForecastLoad(persistedCached, source)
+            return WeatherForecastLoad(forecast, source)
         } else {
             return requestForecast(location, cacheKey, persistedCached)
         }

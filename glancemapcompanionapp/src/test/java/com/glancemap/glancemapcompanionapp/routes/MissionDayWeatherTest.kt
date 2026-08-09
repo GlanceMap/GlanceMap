@@ -56,6 +56,27 @@ class MissionDayWeatherTest {
         assertTrue(targets.all { target -> target.location.longitude in 11.0..11.04 })
     }
 
+    @Test
+    fun `aligns GPX weather samples with the planned hike start time`() {
+        val day =
+            MissionPlanDay(
+                id = "day",
+                dayNumber = 1,
+                routeId = "route",
+                plannedDate = "2026-08-12",
+                plannedStartTime = "07:30",
+                startDistanceMeters = 0.0,
+                endDistanceMeters = 2_000.0,
+            )
+
+        val targets = routeDetails().missionDayWeatherTargets(day)
+        val plannedTimes = targets.mapNotNull { target -> target.plannedDateTime(day) }
+
+        assertEquals("2026-08-12T07:30", plannedTimes.first().toString())
+        assertTrue(plannedTimes.zipWithNext().all { (first, second) -> second.isAfter(first) })
+        assertEquals(0L, targets.first().plannedOffsetSeconds)
+    }
+
     private fun routeDetails(): RouteLibraryRouteDetails {
         val profile =
             buildTrailRouteProfile(
