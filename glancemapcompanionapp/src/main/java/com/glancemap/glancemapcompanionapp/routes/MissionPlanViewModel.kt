@@ -4,6 +4,10 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
+import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
+import com.glancemap.glancemapcompanionapp.weather.WeatherForecastRepository
+import com.glancemap.glancemapcompanionapp.weather.WeatherForecastSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +22,11 @@ class MissionPlanViewModel(
 ) : AndroidViewModel(application) {
     private val missionPlanRepository = MissionPlanRepository(application)
     private val routeLibraryRepository = RouteLibraryRepository(application)
+    private val weatherForecastRepository =
+        WeatherForecastRepository(
+            provider = OpenMeteoWeatherForecastProvider(),
+            store = FileWeatherForecastStore(application),
+        )
     private val _uiState = MutableStateFlow(MissionPlanUiState())
     val uiState: StateFlow<MissionPlanUiState> = _uiState.asStateFlow()
 
@@ -75,6 +84,69 @@ class MissionPlanViewModel(
     fun removeDay(dayId: String) {
         viewModelScope.launch {
             mutate { missionPlanRepository.removeDay(dayId) }
+        }
+    }
+
+    fun loadDayWeather(
+        dayId: String,
+        forceRefresh: Boolean,
+    ) {
+        val dayUi = _uiState.value.days.firstOrNull { day -> day.day.id == dayId } ?: return
+        val plannedDate = dayUi.day.plannedDate
+        if (plannedDate == null) {
+            updateDayWeather(
+                dayId = dayId,
+                weather =
+                    MissionDayWeatherUiState(
+                        message = "Add a date to this day before loading its planned forecast.",
+                    ),
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            updateDayWeather(
+                dayId = dayId,
+                weather = MissionDayWeatherUiState(plannedDate = plannedDate, isLoading = true),
+            )
+            val samples =
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        val details =
+                            routeLibraryRepository.routeDetails(dayUi.route.id)
+                                ?: error("This day's GPX is no longer available.")
+                        val targets = details.missionDayWeatherTargets(dayUi.day)
+                        if (targets.isEmpty()) error("This GPX day has no route distance to sample.")
+                        targets.map { target -> loadDayWeatherSample(target, plannedDate, forceRefresh) }
+                    }
+                }.getOrElse { error ->
+                    if (error is CancellationException) throw error
+                    updateDayWeather(
+                        dayId = dayId,
+                        weather =
+                            MissionDayWeatherUiState(
+                                plannedDate = plannedDate,
+                                message = "Day weather is unavailable. Check your connection and try again.",
+                            ),
+                    )
+                    return@launch
+                }
+            val unavailableCount = samples.count { sample -> sample.forecast == null }
+            updateDayWeather(
+                dayId = dayId,
+                weather =
+                    MissionDayWeatherUiState(
+                        plannedDate = plannedDate,
+                        samples = samples,
+                        message =
+                            when {
+                                unavailableCount == 0 -> null
+                                unavailableCount == samples.size ->
+                                    "Day weather is unavailable. Check your connection and try again."
+                                else -> "$unavailableCount of ${samples.size} weather samples could not be loaded."
+                            },
+                    ),
+            )
         }
     }
 
@@ -173,8 +245,51 @@ class MissionPlanViewModel(
                 selectedDayId =
                     index.selectedDayId?.takeIf { selected -> dayUi.any { it.day.id == selected } }
                         ?: dayUi.firstOrNull()?.day?.id,
+                weatherByDayId =
+                    _uiState.value.weatherByDayId.filter { (dayId, weather) ->
+                        dayUi
+                            .firstOrNull { day -> day.day.id == dayId }
+                            ?.day
+                            ?.plannedDate == weather.plannedDate
+                    },
                 unavailableDayCount = index.days.size - dayUi.size,
                 isLoading = false,
+            )
+    }
+
+    private suspend fun loadDayWeatherSample(
+        target: MissionDayWeatherSampleTarget,
+        plannedDate: String,
+        forceRefresh: Boolean,
+    ): MissionDayWeatherSampleUi =
+        try {
+            val result = weatherForecastRepository.forecast(target.location, forceRefresh)
+            MissionDayWeatherSampleUi(
+                target = target,
+                forecast = result.forecast,
+                dailyOutlook = result.forecast.daily.firstOrNull { outlook -> outlook.date == plannedDate },
+                isCached = result.source != WeatherForecastSource.NETWORK,
+                isStale = result.source == WeatherForecastSource.STALE_CACHE,
+                savedSnapshotCount = weatherForecastRepository.history(target.location).size,
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            MissionDayWeatherSampleUi(
+                target = target,
+                message = "Unavailable",
+            )
+        }
+
+    private fun updateDayWeather(
+        dayId: String,
+        weather: MissionDayWeatherUiState,
+    ) {
+        val day = _uiState.value.days.firstOrNull { dayUi -> dayUi.day.id == dayId } ?: return
+        if (day.day.plannedDate != weather.plannedDate) return
+        _uiState.value =
+            _uiState.value.copy(
+                weatherByDayId = _uiState.value.weatherByDayId + (dayId to weather),
             )
     }
 }

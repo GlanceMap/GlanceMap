@@ -16,17 +16,26 @@ fun RouteLibraryRouteDetails.weatherLocationFor(
 ): WeatherForecastLocation? {
     val activeDistance = activeHikeSnapshot?.matchedActiveDistanceFor(this)
     val targetDistanceMeters = activeDistance ?: plannedStartDistanceMeters
-    val point = profile.pointNearestToDistance(targetDistanceMeters) ?: return null
+    val label =
+        when {
+            activeDistance != null -> "Current route position"
+            plannedStartDistanceMeters > 0.0 -> "Planned day start"
+            else -> "Route start"
+        }
+    return weatherLocationAt(targetDistanceMeters, label)
+}
+
+/** Resolves an explicit GPX distance to a weather location; no phone location is involved. */
+fun RouteLibraryRouteDetails.weatherLocationAt(
+    distanceFromStartMeters: Double,
+    label: String,
+): WeatherForecastLocation? {
+    val point = profile.pointNearestToDistance(distanceFromStartMeters) ?: return null
     return WeatherForecastLocation(
         latitude = point.location.latitude,
         longitude = point.location.longitude,
         elevationMeters = point.elevationMeters,
-        label =
-            when {
-                activeDistance != null -> "Current route position"
-                plannedStartDistanceMeters > 0.0 -> "Planned day start"
-                else -> "Route start"
-            },
+        label = label,
     )
 }
 

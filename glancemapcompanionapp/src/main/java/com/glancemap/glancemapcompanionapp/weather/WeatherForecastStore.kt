@@ -20,20 +20,19 @@ internal class FileWeatherForecastStore(
 ) : WeatherForecastStore {
     private val appContext = context.applicationContext
     private val gson = Gson()
-    private val mutex = Mutex()
     private val directory = File(appContext.filesDir, DIRECTORY_NAME)
     private val storeFile = File(directory, STORE_FILE_NAME)
 
     override suspend fun latest(location: WeatherForecastLocation): WeatherForecast? = history(location).firstOrNull()
 
     override suspend fun history(location: WeatherForecastLocation): List<WeatherForecast> =
-        mutex.withLock {
+        sharedMutex.withLock {
             val key = WeatherForecastStoreKey.from(location)
             readSnapshots().filter { snapshot -> WeatherForecastStoreKey.from(snapshot.location) == key }
         }
 
     override suspend fun record(forecast: WeatherForecast) {
-        mutex.withLock {
+        sharedMutex.withLock {
             val key = WeatherForecastStoreKey.from(forecast.location)
             val remaining =
                 readSnapshots()
@@ -90,6 +89,7 @@ internal class FileWeatherForecastStore(
     }
 
     private companion object {
+        val sharedMutex = Mutex()
         const val DIRECTORY_NAME = "weather-forecasts"
         const val STORE_FILE_NAME = "snapshots.json"
         const val CACHE_COORDINATE_SCALE = 1_000.0

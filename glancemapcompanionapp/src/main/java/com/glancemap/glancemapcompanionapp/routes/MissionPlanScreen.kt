@@ -41,8 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
+import java.text.DateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -56,11 +59,13 @@ fun MissionPlanScreen(
     onUpdateDay: (dayId: String, update: MissionPlanDayUpdate) -> Unit,
     onMoveDay: (dayId: String, targetIndex: Int) -> Unit,
     onRemoveDay: (String) -> Unit,
+    onLoadDayWeather: (dayId: String, forceRefresh: Boolean) -> Unit,
     onOpenRoutes: () -> Unit,
     onRetry: () -> Unit,
 ) {
     var editedDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
     var timelineDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
+    var weatherDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -142,8 +147,12 @@ fun MissionPlanScreen(
                         MissionPlanDayCard(
                             dayUi = dayUi,
                             selected = dayUi.day.id == uiState.selectedDayId,
+                            weather =
+                                uiState.weatherByDayId[dayUi.day.id]
+                                    ?.takeIf { weather -> weather.plannedDate == dayUi.day.plannedDate },
                             onSetToday = { onSetToday(dayUi) },
                             onOpenTimeline = { timelineDay = dayUi },
+                            onOpenWeather = { weatherDay = dayUi },
                             onEditDay = { editedDay = dayUi },
                             onMoveUp = { onMoveDay(dayUi.day.id, index - 1) },
                             onMoveDown = { onMoveDay(dayUi.day.id, index + 1) },
@@ -217,14 +226,29 @@ fun MissionPlanScreen(
             onDismiss = { timelineDay = null },
         )
     }
+
+    weatherDay
+        ?.let { requestedDay -> uiState.days.firstOrNull { dayUi -> dayUi.day.id == requestedDay.day.id } }
+        ?.let { dayUi ->
+            MissionDayWeatherDialog(
+                dayUi = dayUi,
+                weather =
+                    uiState.weatherByDayId[dayUi.day.id]
+                        ?.takeIf { state -> state.plannedDate == dayUi.day.plannedDate },
+                onLoad = { forceRefresh -> onLoadDayWeather(dayUi.day.id, forceRefresh) },
+                onDismiss = { weatherDay = null },
+            )
+        }
 }
 
 @Composable
 private fun MissionPlanDayCard(
     dayUi: MissionPlanDayUi,
     selected: Boolean,
+    weather: MissionDayWeatherUiState?,
     onSetToday: () -> Unit,
     onOpenTimeline: () -> Unit,
+    onOpenWeather: () -> Unit,
     onEditDay: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
@@ -299,6 +323,9 @@ private fun MissionPlanDayCard(
             OutlinedButton(onClick = onOpenTimeline, modifier = Modifier.fillMaxWidth()) {
                 Text("View journey")
             }
+            OutlinedButton(onClick = onOpenWeather, modifier = Modifier.fillMaxWidth()) {
+                Text(weather.missionDayWeatherActionLabel())
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onEditDay, modifier = Modifier.weight(1f)) {
                     Text("Edit day")
@@ -323,6 +350,162 @@ private fun MissionPlanDayCard(
                 TextButton(onClick = onRemove) {
                     Text("Remove")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissionDayWeatherDialog(
+    dayUi: MissionPlanDayUi,
+    weather: MissionDayWeatherUiState?,
+    onLoad: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val plannedDate = dayUi.day.plannedDate
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Day ${dayUi.day.dayNumber} weather") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = dayUi.day.name ?: dayUi.route.title,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (plannedDate == null) {
+                    Text(
+                        text = "Add a date in Edit day to load a forecast for this planned hike.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(
+                        text = "${plannedDate.missionPlanDateLabel() ?: plannedDate} • GPX start, midpoint, and finish",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    when {
+                        weather?.isLoading == true -> {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.height(18.dp).width(18.dp), strokeWidth = 2.dp)
+                                Text(
+                                    text = "Loading three route forecasts…",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+
+                        weather?.samples?.isNotEmpty() == true -> {
+                            weather.samples.forEach { sample ->
+                                MissionDayWeatherSampleRow(sample, plannedDate)
+                            }
+                        }
+
+                        else -> {
+                            Text(
+                                text = "Load forecasts when you are ready. They remain available from the local cache when offline.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    weather?.message?.let { message ->
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Text(
+                        text = "Weather is planning context, not a safety decision. Data by Open-Meteo.com.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (plannedDate != null && weather?.isLoading != true) {
+                TextButton(onClick = { onLoad(weather?.samples?.isNotEmpty() == true) }) {
+                    Text(if (weather?.samples?.isNotEmpty() == true) "Update" else "Load forecasts")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        },
+    )
+}
+
+@Composable
+private fun MissionDayWeatherSampleRow(
+    sample: MissionDayWeatherSampleUi,
+    plannedDate: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = "${sample.target.position.label.uppercase()} • ${sample.target.distanceFromDayStartMeters.toMissionPlanDistance()}",
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        when {
+            sample.forecast == null -> {
+                Text(
+                    text = sample.message ?: "Forecast unavailable",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            sample.dailyOutlook == null -> {
+                Text(
+                    text = "No forecast is available for $plannedDate at this location.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            else -> {
+                val outlook = checkNotNull(sample.dailyOutlook)
+                Text(
+                    text = weatherConditionText(outlook.weatherCode),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                val metrics =
+                    listOfNotNull(
+                        outlook.minimumTemperatureCelsius?.let { value -> "low ${value.toMissionWeatherTemperature()}" },
+                        outlook.maximumTemperatureCelsius?.let { value -> "high ${value.toMissionWeatherTemperature()}" },
+                        outlook.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
+                        outlook.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                    )
+                if (metrics.isNotEmpty()) {
+                    Text(
+                        text = metrics.joinToString("  •  "),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text(
+                    text =
+                        "Updated ${sample.forecast.fetchedAtEpochMillis.toMissionWeatherUpdatedText()}" +
+                            " • ${sample.savedSnapshotCount} saved snapshot${if (sample.savedSnapshotCount == 1) "" else "s"}" +
+                            when {
+                                sample.isStale -> " • cached, unable to update"
+                                sample.isCached -> " • cached"
+                                else -> ""
+                            },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -607,3 +790,14 @@ private fun MissionDayTimelineEventType.timelineLabel(): String =
         MissionDayTimelineEventType.WAYPOINT -> "GPX WAYPOINT"
         MissionDayTimelineEventType.FINISH -> "FINISH"
     }
+
+private fun MissionDayWeatherUiState?.missionDayWeatherActionLabel(): String =
+    when {
+        this?.isLoading == true -> "Loading day weather…"
+        this?.samples?.isNotEmpty() == true -> "View day weather"
+        else -> "Day weather"
+    }
+
+private fun Double.toMissionWeatherTemperature(): String = "${roundToInt()}°C"
+
+private fun Long.toMissionWeatherUpdatedText(): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(this))

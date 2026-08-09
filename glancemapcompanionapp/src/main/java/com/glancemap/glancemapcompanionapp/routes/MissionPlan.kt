@@ -51,6 +51,7 @@ data class MissionPlanDayUi(
 data class MissionPlanUiState(
     val days: List<MissionPlanDayUi> = emptyList(),
     val selectedDayId: String? = null,
+    val weatherByDayId: Map<String, MissionDayWeatherUiState> = emptyMap(),
     val unavailableDayCount: Int = 0,
     val isLoading: Boolean = true,
     val isPreparingTransfer: Boolean = false,

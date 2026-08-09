@@ -749,6 +749,7 @@ fun FilePickerScreen(
                         onUpdateDay = missionPlanViewModel::updateDay,
                         onMoveDay = missionPlanViewModel::moveDay,
                         onRemoveDay = missionPlanViewModel::removeDay,
+                        onLoadDayWeather = missionPlanViewModel::loadDayWeather,
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
                         onRetry = missionPlanViewModel::refresh,
                     )
