@@ -77,6 +77,27 @@ class MissionDayWeatherTest {
         assertEquals(0L, targets.first().plannedOffsetSeconds)
     }
 
+    @Test
+    fun `builds a bounded elevation and time profile for one mission day`() {
+        val details = routeDetails()
+        val day =
+            MissionPlanDay(
+                id = "day",
+                dayNumber = 1,
+                routeId = details.route.id,
+                startDistanceMeters = 1_000.0,
+                endDistanceMeters = 3_000.0,
+            )
+
+        val profile = details.missionDayPlanProfile(day)
+
+        assertEquals(0.0, profile.points.first().distanceFromDayStartMeters, 0.1)
+        assertEquals(profile.totalDistanceMeters, profile.points.last().distanceFromDayStartMeters, 0.1)
+        assertEquals(0.0, profile.points.first().estimatedOffsetSeconds, 0.1)
+        assertEquals(profile.estimatedDurationSeconds, profile.points.last().estimatedOffsetSeconds, 0.1)
+        assertTrue(profile.points.all { point -> point.elevationMeters != null })
+    }
+
     private fun routeDetails(): RouteLibraryRouteDetails {
         val profile =
             buildTrailRouteProfile(

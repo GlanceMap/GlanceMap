@@ -67,6 +67,7 @@ fun MissionPlanScreen(
     var editedDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
     var timelineDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
     var weatherDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
+    var profileDay by remember { mutableStateOf<MissionPlanDayUi?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -156,6 +157,7 @@ fun MissionPlanScreen(
                                     },
                             onSetToday = { onSetToday(dayUi) },
                             onOpenTimeline = { timelineDay = dayUi },
+                            onOpenProfile = { profileDay = dayUi },
                             onOpenWeather = { weatherDay = dayUi },
                             onEditDay = { editedDay = dayUi },
                             onMoveUp = { onMoveDay(dayUi.day.id, index - 1) },
@@ -231,6 +233,21 @@ fun MissionPlanScreen(
         )
     }
 
+    profileDay
+        ?.let { requestedDay -> uiState.days.firstOrNull { dayUi -> dayUi.day.id == requestedDay.day.id } }
+        ?.let { dayUi ->
+            MissionDayPlanProfileDialog(
+                dayUi = dayUi,
+                weather =
+                    uiState.weatherByDayId[dayUi.day.id]
+                        ?.takeIf { state ->
+                            state.plannedDate == dayUi.day.plannedDate &&
+                                state.plannedStartTime == dayUi.day.plannedStartTime
+                        },
+                onDismiss = { profileDay = null },
+            )
+        }
+
     weatherDay
         ?.let { requestedDay -> uiState.days.firstOrNull { dayUi -> dayUi.day.id == requestedDay.day.id } }
         ?.let { dayUi ->
@@ -255,6 +272,7 @@ private fun MissionPlanDayCard(
     weather: MissionDayWeatherUiState?,
     onSetToday: () -> Unit,
     onOpenTimeline: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenWeather: () -> Unit,
     onEditDay: () -> Unit,
     onMoveUp: () -> Unit,
@@ -332,6 +350,9 @@ private fun MissionPlanDayCard(
             }
             OutlinedButton(onClick = onOpenTimeline, modifier = Modifier.fillMaxWidth()) {
                 Text("View journey")
+            }
+            OutlinedButton(onClick = onOpenProfile, modifier = Modifier.fillMaxWidth()) {
+                Text("Elevation & weather profile")
             }
             OutlinedButton(onClick = onOpenWeather, modifier = Modifier.fillMaxWidth()) {
                 Text(weather.missionDayWeatherActionLabel())

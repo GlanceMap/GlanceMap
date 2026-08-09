@@ -244,6 +244,7 @@ class MissionPlanViewModel(
                     route = route,
                     briefing = details.missionPlanBriefing(day),
                     timeline = details.missionDayTimeline(day),
+                    profile = details.missionDayPlanProfile(day),
                 )
             }
         _uiState.value =
