@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.SpatialTracking
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -90,6 +91,7 @@ private enum class CompanionHomeArea {
     MAP_LEGEND,
     MISSION_PLAN,
     ROUTES,
+    ROUTE_WEATHER,
 }
 
 @Composable
@@ -152,6 +154,7 @@ fun FilePickerScreen(
             },
         )
     }
+    var weatherRouteId by rememberSaveable { mutableStateOf<String?>(null) }
     var showRefugesDialog by remember { mutableStateOf(false) }
     var showRoutingMenu by remember { mutableStateOf(false) }
     var showThemeLegendMenu by remember { mutableStateOf(false) }
@@ -476,6 +479,7 @@ fun FilePickerScreen(
             CompanionHomeArea.MAP_LEGEND,
             CompanionHomeArea.MISSION_PLAN,
             CompanionHomeArea.ROUTES,
+            CompanionHomeArea.ROUTE_WEATHER,
             -> Unit
         }
     }
@@ -618,6 +622,15 @@ fun FilePickerScreen(
                         debugCaptureActive = debugCaptureState.active,
                         onOpenDebugCapture = { showDebugDialog = true },
                         onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                        onOpenRouteWeather = {
+                            weatherRouteId = routeLibraryUiState.selectedRoute?.id
+                            activeHomeArea =
+                                if (weatherRouteId == null) {
+                                    CompanionHomeArea.ROUTES
+                                } else {
+                                    CompanionHomeArea.ROUTE_WEATHER
+                                }
+                        },
                         onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
                             routeLibraryViewModel.loadRouteWeather(
                                 activeHikeSnapshot = snapshot,
@@ -677,6 +690,11 @@ fun FilePickerScreen(
                         onBack = { activeHomeArea = CompanionHomeArea.HOME },
                         onImportRoute = routeLibraryViewModel::importRoute,
                         onSelectRoute = routeLibraryViewModel::selectRoute,
+                        onOpenWeather = { route ->
+                            weatherRouteId = route.id
+                            routeLibraryViewModel.selectRoute(route.id)
+                            activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
+                        },
                         onSendToWatch = { route ->
                             routeLibraryViewModel.selectRoute(route.id)
                             val routeUri = routeLibraryViewModel.contentUriFor(route.id)
@@ -691,6 +709,28 @@ fun FilePickerScreen(
                                 viewModel.loadFilesFromUris(context, listOf(routeUri))
                                 activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                             }
+                        },
+                    )
+                }
+
+                CompanionHomeArea.ROUTE_WEATHER -> {
+                    val weatherRoute =
+                        routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
+                    val isPreparingWeatherRoute =
+                        weatherRoute != null && selectedRouteDetails?.route?.id != weatherRoute.id
+                    RouteWeatherScreen(
+                        route = weatherRoute,
+                        isPreparingRoute = isPreparingWeatherRoute,
+                        uiState =
+                            routeWeatherUiState.takeIf { weatherRoute?.id == routeLibraryUiState.selectedRoute?.id }
+                                ?: RouteWeatherUiState(),
+                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                        onChooseRoute = { activeHomeArea = CompanionHomeArea.ROUTES },
+                        onLoadWeather = { forceRefresh ->
+                            routeLibraryViewModel.loadRouteWeather(
+                                activeHikeSnapshot = null,
+                                forceRefresh = forceRefresh,
+                            )
                         },
                     )
                 }
@@ -1188,6 +1228,7 @@ private fun CompanionHomeScreen(
     debugCaptureActive: Boolean,
     onOpenDebugCapture: () -> Unit,
     onOpenRoutes: () -> Unit,
+    onOpenRouteWeather: () -> Unit,
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
     onOpenMissionPlan: () -> Unit,
@@ -1346,6 +1387,12 @@ private fun CompanionHomeScreen(
                     onClick = onOpenMissionPlan,
                 )
                 HomeActionButton(
+                    icon = Icons.Filled.Map,
+                    title = "Route Weather",
+                    description = "Check a forecast for any imported GPX",
+                    onClick = onOpenRouteWeather,
+                )
+                HomeActionButton(
                     icon = Icons.Filled.SpatialTracking,
                     title = "Live Tracking",
                     description = "Share your GPS location",
@@ -1490,6 +1537,91 @@ private fun TodayHikeCard(
             ) {
                 Text("Change route")
             }
+        }
+    }
+}
+
+@Composable
+private fun RouteWeatherScreen(
+    route: RouteLibraryRoute?,
+    isPreparingRoute: Boolean,
+    uiState: RouteWeatherUiState,
+    onBack: () -> Unit,
+    onChooseRoute: () -> Unit,
+    onLoadWeather: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledTonalIconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to home",
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Route Weather",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = "Forecasts are available without a mission plan.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
+        if (route == null) {
+            Text(
+                text = "Choose an imported GPX route to load its forecast.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else {
+            Text(
+                text = route.title,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = todayRouteSummary(route),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (isPreparingRoute) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        text = "Preparing GPX forecast location…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } else {
+                RouteWeatherBriefing(
+                    uiState = uiState,
+                    onLoad = onLoadWeather,
+                )
+            }
+        }
+
+        OutlinedButton(
+            onClick = onChooseRoute,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (route == null) "Choose a route" else "Choose another route")
         }
     }
 }

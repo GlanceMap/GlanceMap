@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod")
+@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 
 package com.glancemap.glancemapcompanionapp.routes
 
@@ -44,6 +44,7 @@ fun RouteLibraryScreen(
     onBack: () -> Unit,
     onImportRoute: (Uri) -> Unit,
     onSelectRoute: (String) -> Unit,
+    onOpenWeather: (RouteLibraryRoute) -> Unit,
     onSendToWatch: (RouteLibraryRoute) -> Unit,
 ) {
     val importRouteLauncher =
@@ -157,6 +158,7 @@ fun RouteLibraryScreen(
                             route = route,
                             selected = route.id == uiState.selectedRouteId,
                             onSelect = { onSelectRoute(route.id) },
+                            onOpenWeather = { onOpenWeather(route) },
                             onSendToWatch = { onSendToWatch(route) },
                         )
                     }
@@ -171,6 +173,7 @@ private fun RouteLibraryRouteCard(
     route: RouteLibraryRoute,
     selected: Boolean,
     onSelect: () -> Unit,
+    onOpenWeather: () -> Unit,
     onSendToWatch: () -> Unit,
 ) {
     Card(
@@ -243,6 +246,12 @@ private fun RouteLibraryRouteCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Send")
                 }
+            }
+            OutlinedButton(
+                onClick = onOpenWeather,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Weather")
             }
         }
     }
