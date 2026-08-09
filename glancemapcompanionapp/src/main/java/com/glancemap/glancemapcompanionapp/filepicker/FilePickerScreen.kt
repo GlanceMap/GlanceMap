@@ -653,7 +653,7 @@ fun FilePickerScreen(
                                                 Toast.LENGTH_SHORT,
                                             ).show()
                                     } else {
-                                        viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                        viewModel.selectFilesForTransfer(context, listOf(routeUri))
                                         activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                                     }
                                 }
@@ -667,7 +667,7 @@ fun FilePickerScreen(
                                             Toast.LENGTH_SHORT,
                                         ).show()
                                 } else {
-                                    viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                    viewModel.selectFilesForTransfer(context, listOf(routeUri))
                                     activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                                 }
                             }
@@ -712,7 +712,7 @@ fun FilePickerScreen(
                                         Toast.LENGTH_SHORT,
                                     ).show()
                             } else {
-                                viewModel.loadFilesFromUris(context, listOf(routeUri))
+                                viewModel.selectFilesForTransfer(context, listOf(routeUri))
                                 activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                             }
                         },

@@ -379,6 +379,27 @@ class FileTransferViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Opens the transfer screen with existing files selected, without importing or transforming them.
+     *
+     * Route Library owns already-imported GPX files, so passing one through the general picker pipeline
+     * would needlessly parse it again and may create an extra POI file.  The explicit route hand-off is
+     * deliberately selection-only; an actual transfer still requires the user to press Send in the
+     * transfer screen.
+     */
+    fun selectFilesForTransfer(
+        context: Context,
+        uris: List<Uri>,
+    ) {
+        if (_uiState.value.isTransferring) {
+            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (uris.isEmpty()) return
+
+        deliverSelectedUris(context.applicationContext, uris)
+    }
+
     private fun deliverSelectedUris(
         context: Context,
         uris: List<Uri>,

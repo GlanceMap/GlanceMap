@@ -1,5 +1,5 @@
-# ✅ Better crash reports
--keepattributes SourceFile,LineNumberTable
+# ✅ Better crash reports and generic type information used by Gson persistence.
+-keepattributes SourceFile,LineNumberTable,Signature
 -renamesourcefileattribute SourceFile
 
 # ✅ Keep your Service entry points

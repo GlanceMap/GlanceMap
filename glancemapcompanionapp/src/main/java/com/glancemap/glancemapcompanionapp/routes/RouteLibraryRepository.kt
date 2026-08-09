@@ -14,6 +14,24 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
 
+/** Locus can use the bounding-box coordinates as GPX metadata instead of a useful route name. */
+internal fun importedRouteTitle(
+    parsedTitle: String?,
+    fallbackTitle: String,
+): String =
+    parsedTitle
+        ?.trim()
+        ?.takeUnless(::isCoordinateBoundsTitle)
+        ?.takeIf(String::isNotBlank)
+        ?: fallbackTitle
+
+private fun isCoordinateBoundsTitle(title: String): Boolean = COORDINATE_BOUNDS_TITLE.matches(title)
+
+private val COORDINATE_BOUNDS_TITLE =
+    Regex(
+        """^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*-\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$""",
+    )
+
 data class RouteLibraryRoute(
     val id: String,
     val title: String,
@@ -103,7 +121,7 @@ class RouteLibraryRepository(
             val route =
                 RouteLibraryRoute(
                     id = id,
-                    title = parsed.title ?: displayNameFor(uri),
+                    title = importedRouteTitle(parsed.title, displayNameFor(uri)),
                     storedFileName = storedFileName,
                     importedAtMillis = System.currentTimeMillis(),
                     summary =
