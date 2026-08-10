@@ -149,7 +149,7 @@ class RouteLibraryViewModel(
                     )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                CompanionJourneyDiagnostics.routeWeatherFailed()
+                CompanionJourneyDiagnostics.routeWeatherFailed(error)
                 _routeWeatherUiState.value =
                     _routeWeatherUiState.value.copy(
                         isLoading = false,

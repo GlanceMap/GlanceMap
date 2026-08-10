@@ -94,7 +94,7 @@ internal class WeatherForecastRepository(
     ): WeatherForecastLoad {
         val cacheKey = WeatherForecastCacheKey.from(location)
         val memoryCached = synchronized(cache) { cache[cacheKey] }
-        val persistedCached = memoryCached ?: store?.latest(location)
+        val persistedCached = memoryCached ?: persistedLatest(location)
         val freshCached = persistedCached?.takeIf { forecast -> forecast.isFresh(nowEpochMillis()) }
         val cachedForecastHasRequiredCoverage =
             freshCached?.let { forecast -> !requireHourlyForecast || forecast.hourly.isNotEmpty() } == true
@@ -112,7 +112,9 @@ internal class WeatherForecastRepository(
         }
     }
 
-    suspend fun history(location: WeatherForecastLocation): List<WeatherForecast> = store?.history(location).orEmpty()
+    /** Cache history is supplementary; a broken local cache must never hide live weather. */
+    @Suppress("MaxLineLength")
+    suspend fun history(location: WeatherForecastLocation): List<WeatherForecast> = runStoreOperation { history(location) }.orEmpty()
 
     private suspend fun requestForecast(
         location: WeatherForecastLocation,
@@ -123,7 +125,7 @@ internal class WeatherForecastRepository(
             .fold(
                 onSuccess = { forecast ->
                     synchronized(cache) { cache[cacheKey] = forecast }
-                    store?.record(forecast)
+                    runStoreOperation { record(forecast) }
                     WeatherForecastLoad(forecast, WeatherForecastSource.NETWORK)
                 },
                 onFailure = { error ->
@@ -133,6 +135,18 @@ internal class WeatherForecastRepository(
                     } ?: throw error
                 },
             )
+
+    @Suppress("MaxLineLength")
+    private suspend fun persistedLatest(location: WeatherForecastLocation): WeatherForecast? = runStoreOperation { latest(location) }
+
+    private suspend fun <T> runStoreOperation(operation: suspend WeatherForecastStore.() -> T): T? =
+        try {
+            store?.operation()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
 
     private fun WeatherForecast.isFresh(now: Long): Boolean = now - fetchedAtEpochMillis in 0L..FRESH_CACHE_MILLIS
 

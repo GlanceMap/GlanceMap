@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.diagnostics
 
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastSource
+import com.glancemap.glancemapcompanionapp.weather.weatherDiagnosticReason
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
 
@@ -74,8 +75,8 @@ internal object CompanionJourneyDiagnostics {
         log("event=route_weather outcome=success source=${source.diagnosticLabel}")
     }
 
-    fun routeWeatherFailed() {
-        log("event=route_weather outcome=failed")
+    fun routeWeatherFailed(error: Throwable) {
+        log("event=route_weather outcome=failed reason=${error.weatherDiagnosticReason()}")
     }
 
     fun missionPlanMutationStarted(operation: MissionPlanMutationOperation) {

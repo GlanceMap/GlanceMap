@@ -91,7 +91,10 @@ internal class FileWeatherForecastStore(
     private companion object {
         val sharedMutex = Mutex()
         const val DIRECTORY_NAME = "weather-forecasts"
-        const val STORE_FILE_NAME = "snapshots.json"
+
+        // v1 was written by a release that did not preserve Gson's generic type metadata.
+        // Starting a new local cache avoids repeatedly reading an incompatible historical snapshot.
+        const val STORE_FILE_NAME = "snapshots-v2.json"
         const val CACHE_COORDINATE_SCALE = 1_000.0
         const val MAX_SNAPSHOTS_PER_LOCATION = 12
         const val MAX_TOTAL_SNAPSHOTS = 96

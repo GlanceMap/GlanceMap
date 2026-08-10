@@ -173,6 +173,38 @@ class OpenMeteoWeatherForecastProviderTest {
             assertSame(hourlySnapshot, result.forecast)
         }
 
+    @Test
+    fun `repository still returns live weather when local cache cannot be read or written`() =
+        runBlocking {
+            val liveForecast = forecast(fetchedAtEpochMillis = 1_000L)
+            val repository =
+                WeatherForecastRepository(
+                    provider =
+                        object : WeatherForecastProvider {
+                            override suspend fun forecast(location: WeatherForecastLocation) = liveForecast
+                        },
+                    store =
+                        object : WeatherForecastStore {
+                            @Suppress("MaxLineLength")
+                            override suspend fun latest(location: WeatherForecastLocation): WeatherForecast? = error("Unreadable cache")
+
+                            @Suppress("MaxLineLength")
+                            override suspend fun history(location: WeatherForecastLocation): List<WeatherForecast> = error("Unreadable cache")
+
+                            override suspend fun record(forecast: WeatherForecast) {
+                                error("Unwritable cache")
+                            }
+                        },
+                    nowEpochMillis = { 2_000L },
+                )
+
+            val result = repository.forecast(testLocation(), forceRefresh = false)
+
+            assertSame(liveForecast, result.forecast)
+            assertEquals(WeatherForecastSource.NETWORK, result.source)
+            assertEquals(emptyList<WeatherForecast>(), repository.history(testLocation()))
+        }
+
     private fun testLocation(): WeatherForecastLocation =
         WeatherForecastLocation(
             latitude = 46.5,
