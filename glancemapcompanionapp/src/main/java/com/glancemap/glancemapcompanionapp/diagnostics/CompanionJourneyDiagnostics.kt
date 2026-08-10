@@ -156,6 +156,10 @@ internal object CompanionJourneyDiagnostics {
         log("event=live_hike_dashboard outcome=opened state=$state")
     }
 
+    fun liveHikeSyncSettingChanged(enabled: Boolean) {
+        log("event=live_hike_sync outcome=changed enabled=$enabled")
+    }
+
     fun activeHikeSnapshotRejected() {
         log("event=active_hike_snapshot outcome=rejected")
     }

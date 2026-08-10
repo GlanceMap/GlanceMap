@@ -24,6 +24,8 @@ internal class WatchActiveHikePublisher(
     private var lastSentStateKey: String? = null
 
     fun publish(snapshot: ActiveHikeSnapshot) {
+        if (!WatchLiveHikeSyncPreferences.isEnabled(appContext)) return
+
         val stateKey = snapshot.stateKey()
         val stateChanged = stateKey != lastSentStateKey
         val elapsedMillis = SystemClock.elapsedRealtime()

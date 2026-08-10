@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
@@ -295,7 +296,11 @@ private fun nearestWeatherSample(
 }
 
 @Composable
-fun LiveHikeDashboardWaitingScreen(onBack: () -> Unit) {
+fun LiveHikeDashboardWaitingScreen(
+    syncEnabled: Boolean,
+    onEnableSync: () -> Unit,
+    onBack: () -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -326,22 +331,34 @@ fun LiveHikeDashboardWaitingScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "Waiting for a watch update",
+                    text = if (syncEnabled) "Waiting for a watch update" else "Live Hike sync is off",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Progress will appear here as soon as the watch sends an active hike snapshot.",
+                    text =
+                        if (syncEnabled) {
+                            "Progress will appear here as soon as the watch sends an active hike snapshot."
+                        } else {
+                            "Turn it on to receive watch progress during navigation or recording."
+                        },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                if (!syncEnabled) {
+                    Button(onClick = onEnableSync) {
+                        Text("Turn on Live Hike sync")
+                    }
+                }
             }
         }
 
-        Text(
-            text = "Start turn-by-turn navigation or recording on the watch, then keep the companion open while it connects.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        if (syncEnabled) {
+            Text(
+                text = "Start turn-by-turn navigation or recording on the watch, then keep the companion open while it connects.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         Text(
             text = "If this stays empty, install a watch build that supports Live Hike sync. The companion never starts or estimates a watch hike on its own.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

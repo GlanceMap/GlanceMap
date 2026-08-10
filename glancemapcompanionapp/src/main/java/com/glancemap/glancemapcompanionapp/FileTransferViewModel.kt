@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.activehike.CompanionLiveHikeSyncPreferences
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
@@ -30,6 +31,7 @@ import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloader
 import com.glancemap.glancemapcompanionapp.routing.RoutingDownloadRequest
 import com.glancemap.glancemapcompanionapp.transfer.WatchInstalledMapsRequester
 import com.glancemap.glancemapcompanionapp.transfer.service.FileTransferService
+import com.glancemap.shared.transfer.LiveHikeSyncSettingsCodec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -100,6 +102,9 @@ class FileTransferViewModel : ViewModel() {
     private val _activeHikeSnapshot = MutableStateFlow<PhoneActiveHikeSnapshot?>(null)
     val activeHikeSnapshot: StateFlow<PhoneActiveHikeSnapshot?> = _activeHikeSnapshot.asStateFlow()
 
+    private val _liveHikeSyncEnabled = MutableStateFlow(LiveHikeSyncSettingsCodec.DEFAULT_ENABLED)
+    val liveHikeSyncEnabled: StateFlow<Boolean> = _liveHikeSyncEnabled.asStateFlow()
+
     private val _isImportingRefuges = MutableStateFlow(false)
     val isImportingRefuges: StateFlow<Boolean> = _isImportingRefuges.asStateFlow()
 
@@ -158,6 +163,7 @@ class FileTransferViewModel : ViewModel() {
     private var hasLoadedRefugesPresets = false
     private var loadedRefugesRegionPresetMode: RefugesRegionPresetMode? = null
     private var pendingWatchMapsRefresh = false
+    private var hasLoadedLiveHikeSyncSetting = false
 
     private var stateCollectJob: Job? = null
     private var activeHikeSnapshotCollectJob: Job? = null
@@ -185,6 +191,7 @@ class FileTransferViewModel : ViewModel() {
                 val boundService = localBinder.getService()
                 serviceRef = WeakReference(boundService)
                 isBound = true
+                boundService.updateLiveHikeSync(_liveHikeSyncEnabled.value)
 
                 // ✅ Prevent multiple collectors
                 stateCollectJob?.cancel()
@@ -251,6 +258,7 @@ class FileTransferViewModel : ViewModel() {
 
     fun bindService(context: Context) {
         val appContext = context.applicationContext
+        loadLiveHikeSyncSetting(appContext)
         loadLastRequests(appContext)
         if (isBound || isBinding) return
 
@@ -303,6 +311,25 @@ class FileTransferViewModel : ViewModel() {
         stateCollectJob = null
         activeHikeSnapshotCollectJob?.cancel()
         activeHikeSnapshotCollectJob = null
+    }
+
+    fun setLiveHikeSyncEnabled(
+        context: Context,
+        enabled: Boolean,
+    ) {
+        val appContext = context.applicationContext
+        loadLiveHikeSyncSetting(appContext)
+        if (_liveHikeSyncEnabled.value == enabled) return
+
+        _liveHikeSyncEnabled.value = enabled
+        CompanionLiveHikeSyncPreferences.setEnabled(appContext, enabled)
+        serviceRef?.get()?.updateLiveHikeSync(enabled)
+    }
+
+    private fun loadLiveHikeSyncSetting(context: Context) {
+        if (hasLoadedLiveHikeSyncSetting) return
+        _liveHikeSyncEnabled.value = CompanionLiveHikeSyncPreferences.isEnabled(context)
+        hasLoadedLiveHikeSyncSetting = true
     }
 
     fun findWatchNodes() {

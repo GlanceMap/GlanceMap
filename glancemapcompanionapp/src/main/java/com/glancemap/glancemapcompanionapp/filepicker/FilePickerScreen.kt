@@ -112,6 +112,7 @@ fun FilePickerScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val activeHikeSnapshot by viewModel.activeHikeSnapshot.collectAsState()
+    val liveHikeSyncEnabled by viewModel.liveHikeSyncEnabled.collectAsState()
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
     val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
@@ -620,6 +621,7 @@ fun FilePickerScreen(
                         selectedRoute = routeLibraryUiState.selectedRoute,
                         selectedRouteDetails = selectedRouteDetails,
                         activeHikeSnapshot = activeHikeSnapshot,
+                        liveHikeSyncEnabled = liveHikeSyncEnabled,
                         routeWeatherUiState = routeWeatherUiState,
                         missionPlanUiState = missionPlanUiState,
                         debugCaptureActive = debugCaptureState.active,
@@ -676,6 +678,9 @@ fun FilePickerScreen(
                         onOpenLiveHike = {
                             CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
                             activeHomeArea = CompanionHomeArea.LIVE_HIKE
+                        },
+                        onLiveHikeSyncEnabledChange = { enabled ->
+                            viewModel.setLiveHikeSyncEnabled(context, enabled)
                         },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
@@ -787,6 +792,8 @@ fun FilePickerScreen(
                             onBack = { activeHomeArea = CompanionHomeArea.HOME },
                         )
                     } ?: LiveHikeDashboardWaitingScreen(
+                        syncEnabled = liveHikeSyncEnabled,
+                        onEnableSync = { viewModel.setLiveHikeSyncEnabled(context, true) },
                         onBack = { activeHomeArea = CompanionHomeArea.HOME },
                     )
                 }
@@ -1251,6 +1258,7 @@ private fun CompanionHomeScreen(
     selectedRoute: RouteLibraryRoute?,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
+    liveHikeSyncEnabled: Boolean,
     routeWeatherUiState: RouteWeatherUiState,
     missionPlanUiState: MissionPlanUiState,
     debugCaptureActive: Boolean,
@@ -1261,6 +1269,7 @@ private fun CompanionHomeScreen(
     onSendSelectedRouteToWatch: () -> Unit,
     onOpenMissionPlan: () -> Unit,
     onOpenLiveHike: () -> Unit,
+    onLiveHikeSyncEnabledChange: (Boolean) -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
     onOpenMapLegend: () -> Unit,
@@ -1411,6 +1420,10 @@ private fun CompanionHomeScreen(
                         },
                     onClick = onOpenLiveHike,
                 )
+                LiveHikeSyncSetting(
+                    enabled = liveHikeSyncEnabled,
+                    onEnabledChange = onLiveHikeSyncEnabledChange,
+                )
                 HomeActionButton(
                     icon = Icons.Filled.CalendarMonth,
                     title = "Mission Plan",
@@ -1445,6 +1458,63 @@ private fun CompanionHomeScreen(
                     onClick = onOpenCreditsLegal,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LiveHikeSyncSetting(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    if (enabled) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+            ),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SpatialTracking,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Live Hike sync",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text =
+                        if (enabled) {
+                            "Watch progress is shared during navigation and recording"
+                        } else {
+                            "Off — the watch will not send Live Hike updates"
+                        },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange,
+            )
         }
     }
 }

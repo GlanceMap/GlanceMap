@@ -13,6 +13,9 @@ import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockM
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepository
 import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepositoryImpl
+import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.WatchLiveHikeSyncPreferences
+import com.glancemap.shared.transfer.LiveHikeSyncSettingsCodec
+import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
@@ -62,6 +65,15 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
+        if (messageEvent.path == TransferDataLayerContract.PATH_LIVE_HIKE_SYNC_SETTINGS) {
+            val enabled = LiveHikeSyncSettingsCodec.decode(messageEvent.data) ?: run {
+                Log.w(TAG, "Ignoring malformed Live Hike sync setting")
+                return
+            }
+            WatchLiveHikeSyncPreferences.setEnabled(applicationContext, enabled)
+            Log.d(TAG, "Live Hike sync ${if (enabled) "enabled" else "disabled"} by companion")
+            return
+        }
         handlers.handleMessage(messageEvent)
     }
 

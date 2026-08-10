@@ -72,6 +72,7 @@ class FileTransferService : LifecycleService() {
     private var historyLoadJob: Job? = null
     private var reconnectPauseTimeoutJob: Job? = null
     private var reconnectPauseTransferId: String? = null
+    private lateinit var liveHikeSyncController: LiveHikeSyncController
 
     // ✅ track current transfer for cancel propagation
     @Volatile private var activeTransferId: String? = null
@@ -82,12 +83,18 @@ class FileTransferService : LifecycleService() {
         fun getService(): FileTransferService = this@FileTransferService
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("LongMethod", "TooGenericExceptionCaught")
     override fun onCreate() {
         super.onCreate()
 
         notificationHelper = NotificationHelper(this).apply { createNotificationChannel() }
         dataLayerRepository = PhoneDataLayerRepository(this)
+        liveHikeSyncController =
+            LiveHikeSyncController(
+                context = applicationContext,
+                dataLayerRepository = dataLayerRepository,
+                scope = lifecycleScope,
+            )
         configureTransferRequesters()
 
         ackRegistry = AckRegistry()
@@ -167,6 +174,7 @@ class FileTransferService : LifecycleService() {
         dataLayerObserverJob?.cancel()
         dataLayerSearchJob?.cancel()
         historyLoadJob?.cancel()
+        liveHikeSyncController.cancel()
         dataLayerRepository.stop()
         super.onDestroy()
     }
@@ -377,6 +385,21 @@ class FileTransferService : LifecycleService() {
         _uiState.update { it.copy(selectedWatch = watch) }
     }
 
+    /**
+     * The companion owns this preference. The watch receives a persistent copy so it can avoid
+     * connecting to the phone solely to publish Live Hike dashboard updates.
+     */
+    fun updateLiveHikeSync(enabled: Boolean) {
+        val changed = liveHikeSyncController.enabled != enabled
+        liveHikeSyncController.update(enabled)
+        if (changed) {
+            CompanionJourneyDiagnostics.liveHikeSyncSettingChanged(enabled)
+        }
+        if (!enabled) {
+            _activeHikeSnapshot.value = null
+        }
+    }
+
     suspend fun requestInstalledMaps(nodeId: String): WatchInstalledMapsRequester.Result = installedMapsRequester.list(nodeId)
 
     private fun handleStatusUpdate(data: ByteArray) {
@@ -553,6 +576,7 @@ class FileTransferService : LifecycleService() {
                                         ?: if (watches.isNotEmpty()) "Select a watch" else "No watches found.",
                             )
                         }
+                        liveHikeSyncController.sync(watches)
                     }
                 }
 
@@ -613,6 +637,8 @@ class FileTransferService : LifecycleService() {
         sourceNodeId: String,
         payload: ByteArray,
     ) {
+        if (!liveHikeSyncController.enabled) return
+
         val incoming = decodePhoneActiveHikeSnapshot(sourceNodeId, payload)
         if (incoming == null) {
             CompanionJourneyDiagnostics.activeHikeSnapshotRejected()
@@ -620,14 +646,14 @@ class FileTransferService : LifecycleService() {
                 "ActiveHike",
                 "Ignored invalid active-hike snapshot from node=$sourceNodeId",
             )
-            return
+        } else {
+            val current = _activeHikeSnapshot.value
+            val currentRecordedAtEpochMillis = current?.snapshot?.recordedAtEpochMillis ?: Long.MIN_VALUE
+            if (currentRecordedAtEpochMillis <= incoming.snapshot.recordedAtEpochMillis) {
+                _activeHikeSnapshot.value = incoming
+                CompanionJourneyDiagnostics.activeHikeSnapshotAccepted(incoming.snapshot)
+            }
         }
-        val current = _activeHikeSnapshot.value
-        val currentRecordedAtEpochMillis = current?.snapshot?.recordedAtEpochMillis ?: Long.MIN_VALUE
-        if (currentRecordedAtEpochMillis > incoming.snapshot.recordedAtEpochMillis) return
-
-        _activeHikeSnapshot.value = incoming
-        CompanionJourneyDiagnostics.activeHikeSnapshotAccepted(incoming.snapshot)
     }
 
     private fun scheduleReconnectPauseEscalation(

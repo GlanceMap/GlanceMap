@@ -30,6 +30,7 @@ object TransferDataLayerContract {
     const val PATH_TRANSFER_ACK = "/glancemap/transfer_ack"
     const val PATH_CANCEL_TRANSFER = "/glancemap/cancel_transfer"
     const val PATH_ACTIVE_HIKE_SNAPSHOT = "/glancemap/active_hike_snapshot"
+    const val PATH_LIVE_HIKE_SYNC_SETTINGS = "/glancemap/live_hike_sync_settings"
 
     // HTTP transfer hardening
     const val HTTP_AUTH_HEADER = "X-GlanceMap-Transfer-Token"
