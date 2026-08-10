@@ -98,6 +98,9 @@ internal data class FusedHeadingIntegrityConfig(
     val witnessSuppressionMinimumDurationMs: Long = 200L,
     val verifiedFusedCorrectionRateDegPerSec: Float = 720f,
     val unverifiedFusedCorrectionRateDegPerSec: Float = 180f,
+    val unverifiedFusedFastTurnCorrectionRateDegPerSec: Float = 360f,
+    val unverifiedFusedFastTurnEnterRateDegPerSec: Float = 120f,
+    val unverifiedFusedFastTurnMinimumSamples: Int = 2,
 )
 
 private data class AbsoluteMovementEvidence(
@@ -112,6 +115,7 @@ private data class AbsoluteMovementEvidence(
 private data class AbsoluteHeadingEvidence(
     val absoluteHeadingDeg: Float,
     val relativeStepDeg: Float?,
+    val absoluteStepDeg: Float?,
     val stepDisagreementDeg: Float?,
     val elapsedSinceAbsoluteMs: Long,
     val fieldAcceptable: Boolean,
@@ -166,6 +170,8 @@ internal class FusedHeadingIntegrityEngine(
     private var lastResidualSpreadDeg: Float? = null
     private var lastRecoveryCorrectionDeg = 0f
     private var quarantinedAbsoluteHeadingDeg: Float? = null
+    private var unverifiedFastTurnDirection = 0
+    private var unverifiedFastTurnSampleCount = 0
     private val relativeHistory = ArrayDeque<TimedCircularValue>()
     private val residualWindow = ArrayDeque<TimedCircularValue>()
     private val absoluteWindow = ArrayDeque<TimedCircularValue>()
@@ -192,6 +198,7 @@ internal class FusedHeadingIntegrityEngine(
         lastResidualSpreadDeg = null
         lastRecoveryCorrectionDeg = 0f
         quarantinedAbsoluteHeadingDeg = null
+        resetUnverifiedFastTurnEvidence()
         residualWindow.clear()
         absoluteWindow.clear()
         if (clearSensorEvidence) {
@@ -363,6 +370,7 @@ internal class FusedHeadingIntegrityEngine(
         return AbsoluteHeadingEvidence(
             absoluteHeadingDeg = absoluteHeadingDeg,
             relativeStepDeg = movement.relativeStepDeg,
+            absoluteStepDeg = movement.absoluteStepDeg,
             stepDisagreementDeg = movement.stepDisagreementDeg,
             elapsedSinceAbsoluteMs = movement.elapsedSinceAbsoluteMs,
             fieldAcceptable = fieldAcceptable,
@@ -571,17 +579,56 @@ internal class FusedHeadingIntegrityEngine(
                 evidence.relativeStepDeg != null &&
                 evidence.stepDisagreementDeg != null &&
                 !evidence.hardDisagreement
-        val correctionRateDegPerSec =
+        val coherentUnverifiedFastTurn =
             if (verifiedTurn) {
-                config.verifiedFusedCorrectionRateDegPerSec
+                resetUnverifiedFastTurnEvidence()
+                false
             } else {
-                config.unverifiedFusedCorrectionRateDegPerSec
+                observeUnverifiedFastTurn(evidence)
+            }
+        val correctionRateDegPerSec =
+            when {
+                verifiedTurn -> config.verifiedFusedCorrectionRateDegPerSec
+                coherentUnverifiedFastTurn ->
+                    config.unverifiedFusedFastTurnCorrectionRateDegPerSec
+                else -> config.unverifiedFusedCorrectionRateDegPerSec
             }
         val maximumStepDeg = correctionRateDegPerSec * evidence.elapsedSinceAbsoluteMs / 1_000f
         val step =
             shortestAngleDiffDeg(evidence.absoluteHeadingDeg, current)
                 .coerceIn(-maximumStepDeg, maximumStepDeg)
         return normalize360Deg(current + step)
+    }
+
+    private fun observeUnverifiedFastTurn(evidence: AbsoluteHeadingEvidence): Boolean {
+        val absoluteStepDeg = evidence.absoluteStepDeg
+        val absoluteRateDegPerSec =
+            absoluteStepDeg?.let { stepDeg ->
+                abs(stepDeg) * 1_000f / evidence.elapsedSinceAbsoluteMs.coerceAtLeast(1L)
+            }
+        val eligible =
+            !evidence.hardDisagreement &&
+                absoluteStepDeg != null &&
+                absoluteRateDegPerSec != null &&
+                absoluteRateDegPerSec >= config.unverifiedFusedFastTurnEnterRateDegPerSec
+        if (!eligible) {
+            resetUnverifiedFastTurnEvidence()
+        } else {
+            val direction = if (requireNotNull(absoluteStepDeg) > 0f) 1 else -1
+            if (direction == unverifiedFastTurnDirection) {
+                unverifiedFastTurnSampleCount += 1
+            } else {
+                unverifiedFastTurnDirection = direction
+                unverifiedFastTurnSampleCount = 1
+            }
+        }
+        return eligible &&
+            unverifiedFastTurnSampleCount >= config.unverifiedFusedFastTurnMinimumSamples
+    }
+
+    private fun resetUnverifiedFastTurnEvidence() {
+        unverifiedFastTurnDirection = 0
+        unverifiedFastTurnSampleCount = 0
     }
 
     private fun disagreementEnterThresholdDeg(strongAbsoluteConfidence: Boolean): Float =

@@ -24,6 +24,7 @@ internal data class LocationUpdateEvent(
     val lastCandidate: Location? = null,
     val rawCandidateCount: Int = candidates.size,
     val duplicateCandidatesDropped: Int = 0,
+    val maxUpdateDelayMs: Long = 0L,
 )
 
 internal interface LocationUpdateSink {

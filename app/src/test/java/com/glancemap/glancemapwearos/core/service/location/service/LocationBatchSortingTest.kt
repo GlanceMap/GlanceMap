@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.location.service
 
+import com.glancemap.glancemapwearos.core.service.location.policy.FixAcceptancePolicy
+import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -49,6 +51,53 @@ class LocationBatchSortingTest {
             )
 
         assertEquals(listOf(elapsed, wallClock), sorted)
+    }
+
+    @Test
+    fun fusedMultiFixBatchIncludesDeliveryDelayInFreshnessWindow() {
+        val strictMaxAgeMs =
+            resolveCallbackStrictFreshMaxAgeMs(
+                callbackOrigin = LocationSourceMode.AUTO_FUSED,
+                sourceMaxAgeMs = 6_000L,
+                candidateCount = 7,
+                maxUpdateDelayMs = 15_000L,
+            )
+
+        assertEquals(21_000L, strictMaxAgeMs)
+        assertEquals(
+            21_000L,
+            adaptAcceptanceForCallbackBatch(
+                policy = FixAcceptancePolicy(maxAgeMs = 6_000L, maxAccuracyM = 50f),
+                callbackOrigin = LocationSourceMode.AUTO_FUSED,
+                strictMaxAgeMs = strictMaxAgeMs,
+            ).maxAgeMs,
+        )
+    }
+
+    @Test
+    fun fusedSingletonKeepsStrictLiveFreshnessWindow() {
+        assertEquals(
+            6_000L,
+            resolveCallbackStrictFreshMaxAgeMs(
+                callbackOrigin = LocationSourceMode.AUTO_FUSED,
+                sourceMaxAgeMs = 6_000L,
+                candidateCount = 1,
+                maxUpdateDelayMs = 15_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun nonFusedBatchKeepsSourceFreshnessWindow() {
+        assertEquals(
+            6_000L,
+            resolveCallbackStrictFreshMaxAgeMs(
+                callbackOrigin = LocationSourceMode.WATCH_GPS,
+                sourceMaxAgeMs = 6_000L,
+                candidateCount = 7,
+                maxUpdateDelayMs = 15_000L,
+            ),
+        )
     }
 }
 

@@ -139,4 +139,42 @@ class GpsSignalTrackerTest {
 
         assertFalse(tracker.snapshot.requiresFreshLiveFixAfterSourceChange)
     }
+
+    @Test
+    fun restartingSameSourceDoesNotCreateLiveSourceHandoff() {
+        val tracker = GpsSignalTracker()
+        tracker.onSourceModeChanged(
+            sourceMode = LocationSourceMode.AUTO_FUSED,
+            nowElapsedMs = 1_000L,
+        )
+
+        val initialEpoch = tracker.snapshot.sourceEpoch
+        tracker.onSourceModeChanged(sourceMode = null)
+        tracker.onSourceModeChanged(
+            sourceMode = LocationSourceMode.AUTO_FUSED,
+            nowElapsedMs = 2_000L,
+        )
+
+        assertEquals(initialEpoch, tracker.snapshot.sourceEpoch)
+        assertFalse(tracker.snapshot.requiresFreshLiveFixAfterSourceChange)
+        assertEquals(LocationSourceMode.AUTO_FUSED.telemetryValue, tracker.snapshot.activeSourceModeValue)
+    }
+
+    @Test
+    fun changingLiveSourceAcrossTrackingStopStillRequiresFreshFix() {
+        val tracker = GpsSignalTracker()
+        tracker.onSourceModeChanged(
+            sourceMode = LocationSourceMode.AUTO_FUSED,
+            nowElapsedMs = 1_000L,
+        )
+        tracker.onSourceModeChanged(sourceMode = null)
+        tracker.onSourceModeChanged(
+            sourceMode = LocationSourceMode.WATCH_GPS,
+            nowElapsedMs = 2_000L,
+        )
+
+        assertEquals(2L, tracker.snapshot.sourceEpoch)
+        assertTrue(tracker.snapshot.requiresFreshLiveFixAfterSourceChange)
+        assertEquals(LocationSourceMode.WATCH_GPS.telemetryValue, tracker.snapshot.activeSourceModeValue)
+    }
 }

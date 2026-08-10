@@ -18,6 +18,7 @@ internal class GpsSignalTracker {
     private var environmentWarningSinceMs: Long = 0L
     private var sourceEpoch: Long = 0L
     private var activeSourceMode: LocationSourceMode? = null
+    private var lastLiveSourceMode: LocationSourceMode? = null
 
     fun onSourceModeChanged(
         sourceMode: LocationSourceMode?,
@@ -25,17 +26,17 @@ internal class GpsSignalTracker {
     ) {
         val previousSourceMode = activeSourceMode
         val sourceChanged = previousSourceMode != sourceMode
+        val liveSourceTransition = updateLiveSourceMode(sourceMode)
         val watchGpsOnlyActive = sourceMode == LocationSourceMode.WATCH_GPS
         if (!watchGpsOnlyActive) {
             watchGpsDegradedFixStreak = 0
             watchGpsDegradedSinceMs = 0L
         }
-        if (sourceChanged) {
+        if (liveSourceTransition.startsNewEpoch) {
             sourceEpoch += 1L
         }
         activeSourceMode = sourceMode
-        val needsFreshLiveFix =
-            sourceChanged && previousSourceMode != null && sourceMode != null
+        val needsFreshLiveFix = liveSourceTransition == LiveSourceTransition.HANDOFF
         snapshot =
             snapshot.copy(
                 watchGpsOnlyActive = watchGpsOnlyActive,
@@ -191,6 +192,7 @@ internal class GpsSignalTracker {
         environmentWarningSinceMs = 0L
         sourceEpoch = 0L
         activeSourceMode = null
+        lastLiveSourceMode = null
         snapshot =
             GpsSignalSnapshot(
                 isLocationAvailable = false,
@@ -206,6 +208,7 @@ internal class GpsSignalTracker {
         environmentWarningSinceMs = 0L
         sourceEpoch = 0L
         activeSourceMode = null
+        lastLiveSourceMode = null
         snapshot = GpsSignalSnapshot()
     }
 
@@ -213,6 +216,26 @@ internal class GpsSignalTracker {
         if (!accuracyM.isFinite()) return false
         return abs(accuracyM - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
     }
+
+    private fun updateLiveSourceMode(sourceMode: LocationSourceMode?): LiveSourceTransition {
+        sourceMode ?: return LiveSourceTransition.NONE
+        val previousLiveSourceMode = lastLiveSourceMode
+        lastLiveSourceMode = sourceMode
+        return when {
+            previousLiveSourceMode == null -> LiveSourceTransition.INITIAL
+            previousLiveSourceMode != sourceMode -> LiveSourceTransition.HANDOFF
+            else -> LiveSourceTransition.SAME
+        }
+    }
+}
+
+private enum class LiveSourceTransition(
+    val startsNewEpoch: Boolean,
+) {
+    NONE(startsNewEpoch = false),
+    INITIAL(startsNewEpoch = true),
+    SAME(startsNewEpoch = false),
+    HANDOFF(startsNewEpoch = true),
 }
 
 internal data class GpsSignalSample(

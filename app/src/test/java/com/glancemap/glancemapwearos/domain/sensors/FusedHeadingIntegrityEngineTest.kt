@@ -122,6 +122,30 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
+    fun coherentFastTurnWithoutWitnessUsesResponsiveBoundedCorrection() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.witnessUnavailable(horizontalProjection = 0.1f)
+        val first = replay.absolute(headingDeg = 8f)
+        replay.advance(20L)
+        replay.witnessUnavailable(horizontalProjection = 0.1f)
+        val second = replay.absolute(headingDeg = 16f)
+
+        assertEquals(
+            MAX_UNVERIFIED_20_MS_CORRECTION_DEG,
+            requireNotNull(first.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
+        assertEquals(
+            MAX_UNVERIFIED_20_MS_CORRECTION_DEG + MAX_UNVERIFIED_FAST_TURN_20_MS_CORRECTION_DEG,
+            requireNotNull(second.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
+    }
+
+    @Test
     fun magneticInterferenceStillDegradesButNeverUsesTheRelativeHeadingAsMapHeading() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 40f)
@@ -235,5 +259,6 @@ class FusedHeadingIntegrityEngineTest {
         const val ANGLE_TOLERANCE_DEG = 0.01f
         const val MAX_VERIFIED_20_MS_CORRECTION_DEG = 14.4f
         const val MAX_UNVERIFIED_20_MS_CORRECTION_DEG = 3.6f
+        const val MAX_UNVERIFIED_FAST_TURN_20_MS_CORRECTION_DEG = 7.2f
     }
 }

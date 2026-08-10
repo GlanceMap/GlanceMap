@@ -462,19 +462,24 @@ internal fun rememberNavigateLocationUiState(
             watchGpsDegradedWarning = watchGpsDegradedWarning,
         )
 
-    LaunchedEffect(indicatorSourceEpoch) {
-        // The first source application has no old marker to invalidate. Every later source epoch
-        // replaces Phone/Watch data, so a retained marker would otherwise look live but be wrong.
-        if (indicatorSourceEpoch <= 1L) return@LaunchedEffect
-        locationMarker?.let { marker ->
-            mapView.mutateLayers { layers -> layers.remove(marker) }
+    LaunchedEffect(
+        indicatorSourceEpoch,
+        indicatorRequiresFreshLiveFixAfterSourceChange,
+    ) {
+        if (
+            !shouldHoldMarkerForLiveSourceHandoff(
+                sourceEpoch = indicatorSourceEpoch,
+                requiresFreshLiveFix = indicatorRequiresFreshLiveFixAfterSourceChange,
+            )
+        ) {
+            return@LaunchedEffect
         }
-        locationMarker = null
-        lastRenderedMarkerLatLong = null
+        // Keep the last rendered marker visible during a real Phone/Watch handoff. Motion is
+        // cleared so the old source cannot drive prediction; the first accepted fix from the new
+        // source resumes updates on the existing marker without a visible gap.
         lastAcceptedLocationFixElapsedMs = 0L
         latestAcceptedFixSpeedMps = 0f
         latestAcceptedFixBearingDeg = null
-        lastMarkerVisualUpdateAtElapsedMs = 0L
         lastMarkerMotionAdvanceAtElapsedMs = 0L
         markerMotionController.reset(
             reason = "location_source_changed",
@@ -1543,6 +1548,11 @@ private fun isKnownWatchGpsAccuracyFloor(
 internal fun resolveGpsIndicatorDisplayState(
     rawState: GpsFixIndicatorState,
 ): GpsFixIndicatorState = rawState
+
+internal fun shouldHoldMarkerForLiveSourceHandoff(
+    sourceEpoch: Long,
+    requiresFreshLiveFix: Boolean,
+): Boolean = sourceEpoch > 1L && requiresFreshLiveFix
 
 internal fun resolveGpsIndicatorEscalationState(
     rawState: GpsFixIndicatorState,

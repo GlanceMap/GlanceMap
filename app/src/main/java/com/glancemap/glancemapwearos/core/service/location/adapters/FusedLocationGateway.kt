@@ -86,6 +86,7 @@ internal class FusedLocationGateway(
                                 candidates = result.locations,
                                 lastCandidate = result.lastLocation,
                                 rawCandidateCount = result.locations.size,
+                                maxUpdateDelayMs = request.maxUpdateDelayMs,
                             ),
                         )
                     }

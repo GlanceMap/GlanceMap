@@ -61,6 +61,7 @@ internal class LocationCallbackProcessor(
                 processLocationBatch(
                     candidates = locations,
                     callbackOrigin = event.origin,
+                    maxUpdateDelayMs = event.maxUpdateDelayMs,
                     nowElapsedMsProvider = nowElapsedMsProvider,
                 )
             }
@@ -91,11 +92,25 @@ internal class LocationCallbackProcessor(
     private fun processLocationBatch(
         candidates: List<Location>,
         callbackOrigin: LocationSourceMode,
+        maxUpdateDelayMs: Long,
         nowElapsedMsProvider: () -> Long,
     ): LocationBatchSummary {
         var accepted = 0
+        val strictMaxAgeMs =
+            strictFreshMaxAgeMsFor(
+                callbackOrigin = callbackOrigin,
+                candidateCount = candidates.size,
+                maxUpdateDelayMs = maxUpdateDelayMs,
+            )
         candidates.forEach { candidate ->
-            if (processLocationCandidate(candidate, nowElapsedMsProvider(), callbackOrigin)) {
+            if (
+                processLocationCandidate(
+                    location = candidate,
+                    nowElapsedMs = nowElapsedMsProvider(),
+                    callbackOrigin = callbackOrigin,
+                    strictMaxAgeMs = strictMaxAgeMs,
+                )
+            ) {
                 accepted += 1
             }
         }
@@ -109,6 +124,7 @@ internal class LocationCallbackProcessor(
         location: Location,
         nowElapsedMs: Long,
         callbackOrigin: LocationSourceMode,
+        strictMaxAgeMs: Long,
     ): Boolean {
         val permissions = currentPermissions()
         if (!permissions.hasAnyPermission) return false
@@ -160,13 +176,18 @@ internal class LocationCallbackProcessor(
         // Evaluate failover using validated source samples, including samples that may be filtered.
         maybeTriggerAutoFusedFailover(location, callbackOrigin, nowElapsedMs)
 
-        val acceptance = resolveFixAcceptancePolicy(permissions, callbackOrigin)
+        val acceptance =
+            adaptAcceptanceForCallbackBatch(
+                policy = resolveFixAcceptancePolicy(permissions, callbackOrigin),
+                callbackOrigin = callbackOrigin,
+                strictMaxAgeMs = strictMaxAgeMs,
+            )
         val outcome =
             engine.processCallbackCandidate(
                 location = location,
                 nowElapsedMs = nowElapsedMs,
                 acceptance = acceptance,
-                strictMaxAgeMs = strictFreshMaxAgeMsFor(callbackOrigin),
+                strictMaxAgeMs = strictMaxAgeMs,
                 hardMaxAgeMs = hardMaxAcceptedFixAgeMs(),
                 callbackOrigin = callbackOrigin,
             )
@@ -187,16 +208,71 @@ internal class LocationCallbackProcessor(
         return true
     }
 
-    private fun strictFreshMaxAgeMsFor(callbackOrigin: LocationSourceMode): Long {
+    private fun strictFreshMaxAgeMsFor(
+        callbackOrigin: LocationSourceMode,
+        candidateCount: Int,
+        maxUpdateDelayMs: Long,
+    ): Long {
         val defaultMaxAgeMs = strictFreshMaxAgeMs()
-        if (callbackOrigin != LocationSourceMode.PASSIVE_EXTERNAL) return defaultMaxAgeMs
-        return maxOf(defaultMaxAgeMs, PASSIVE_EXTERNAL_STRICT_FRESH_MAX_AGE_MS)
+        val sourceMaxAgeMs =
+            if (callbackOrigin == LocationSourceMode.PASSIVE_EXTERNAL) {
+                maxOf(defaultMaxAgeMs, PASSIVE_EXTERNAL_STRICT_FRESH_MAX_AGE_MS)
+            } else {
+                defaultMaxAgeMs
+            }
+        return resolveCallbackStrictFreshMaxAgeMs(
+            callbackOrigin = callbackOrigin,
+            sourceMaxAgeMs = sourceMaxAgeMs,
+            candidateCount = candidateCount,
+            maxUpdateDelayMs = maxUpdateDelayMs,
+        )
     }
 
     private companion object {
         const val PASSIVE_EXTERNAL_STRICT_FRESH_MAX_AGE_MS = 20_000L
     }
 }
+
+/**
+ * Fused batching delays delivery without changing each fix's original timestamp. A genuine
+ * multi-fix batch therefore gets the requested delivery delay in addition to the ordinary
+ * freshness allowance. Singleton and non-Fused callbacks remain subject to the live limit.
+ */
+internal fun resolveCallbackStrictFreshMaxAgeMs(
+    callbackOrigin: LocationSourceMode,
+    sourceMaxAgeMs: Long,
+    candidateCount: Int,
+    maxUpdateDelayMs: Long,
+): Long {
+    if (
+        callbackOrigin != LocationSourceMode.AUTO_FUSED ||
+        candidateCount < 2 ||
+        maxUpdateDelayMs <= 0L
+    ) {
+        return sourceMaxAgeMs
+    }
+    val batchMaxAgeMs =
+        if (Long.MAX_VALUE - maxUpdateDelayMs < sourceMaxAgeMs) {
+            Long.MAX_VALUE
+        } else {
+            maxUpdateDelayMs + sourceMaxAgeMs
+        }
+    return maxOf(sourceMaxAgeMs, batchMaxAgeMs)
+}
+
+internal fun adaptAcceptanceForCallbackBatch(
+    policy: FixAcceptancePolicy,
+    callbackOrigin: LocationSourceMode,
+    strictMaxAgeMs: Long,
+): FixAcceptancePolicy =
+    if (
+        callbackOrigin == LocationSourceMode.AUTO_FUSED &&
+        strictMaxAgeMs > policy.maxAgeMs
+    ) {
+        policy.copy(maxAgeMs = strictMaxAgeMs)
+    } else {
+        policy
+    }
 
 internal fun sortLocationsForBatchProcessing(locations: List<Location>): List<Location> =
     sortBatchByTimestamp(

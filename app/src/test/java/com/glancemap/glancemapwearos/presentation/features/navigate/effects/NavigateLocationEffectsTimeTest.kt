@@ -202,6 +202,28 @@ class NavigateLocationEffectsTimeTest {
     }
 
     @Test
+    fun markerIsHeldOnlyDuringUnresolvedLiveSourceHandoff() {
+        assertTrue(
+            shouldHoldMarkerForLiveSourceHandoff(
+                sourceEpoch = 2L,
+                requiresFreshLiveFix = true,
+            ),
+        )
+        assertFalse(
+            shouldHoldMarkerForLiveSourceHandoff(
+                sourceEpoch = 2L,
+                requiresFreshLiveFix = false,
+            ),
+        )
+        assertFalse(
+            shouldHoldMarkerForLiveSourceHandoff(
+                sourceEpoch = 1L,
+                requiresFreshLiveFix = true,
+            ),
+        )
+    }
+
+    @Test
     fun indicatorEscalatesFromBlueToYellowToRedWhenFixStaysMissing() {
         assertEquals(
             GpsFixIndicatorState.SEARCHING,
