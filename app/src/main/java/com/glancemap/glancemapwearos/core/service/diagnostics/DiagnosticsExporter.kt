@@ -121,6 +121,38 @@ object DiagnosticsExporter {
         val smoothedPointCount: Int? = null,
         val smoothedAdjustmentMeters: String? = null,
         val maxSmoothedAdjustmentMeters: String? = null,
+        val smartTrack: RecordingSmartTrackInsights = RecordingSmartTrackInsights(),
+    )
+
+    internal data class RecordingSmartTrackInsights(
+        val motionEvaluatedFixCount: Int? = null,
+        val acceptedReportedSpeedCount: Int? = null,
+        val acceptedSensorCount: Int? = null,
+        val acceptedConfirmedSlowCount: Int? = null,
+        val suppressedStationaryCount: Int? = null,
+        val heldSlowCount: Int? = null,
+        val segmentStartBypassCount: Int? = null,
+        val stepMotionEvidenceCount: Int? = null,
+        val cadenceMotionEvidenceCount: Int? = null,
+        val speedAboveThresholdCount: Int? = null,
+        val credibleSpeedCount: Int? = null,
+        val noMotionSensorDataCount: Int? = null,
+        val stationaryRadiusSampleCount: Int? = null,
+        val stationaryRadiusAvgMeters: String? = null,
+        val stationaryRadiusMaxMeters: String? = null,
+        val nonAcceptedDisplacementSampleCount: Int? = null,
+        val nonAcceptedDisplacementAvgMeters: String? = null,
+        val nonAcceptedDisplacementMaxMeters: String? = null,
+        val poorAccuracyRejectedCount: Int? = null,
+        val nonMonotonicRejectedCount: Int? = null,
+        val implausibleJumpHeldCount: Int? = null,
+        val confirmedSustainedMovementCount: Int? = null,
+        val adaptiveAccuracyFixCount: Int? = null,
+        val accuracyBaselineSampleCount: Int? = null,
+        val accuracyBaselineMedianMeters: String? = null,
+        val accuracyProfileLimitMeters: String? = null,
+        val accuracyResolvedLimitMeters: String? = null,
+        val adaptiveAccuracyLimitActive: Boolean? = null,
     )
 
     internal data class TelemetryInsights(
@@ -1603,6 +1635,10 @@ object DiagnosticsExporter {
                 "recordingMaxSmoothedAdjustmentMeters=${
                     telemetryInsights.recordingTrackFilter.maxSmoothedAdjustmentMeters ?: "na"
                 }",
+            )
+            writeRecordingSmartTrackSection(
+                writer = writer,
+                insights = telemetryInsights.recordingTrackFilter.smartTrack,
             )
             writer.appendLine(
                 "recordingLastSkippedIntervalElapsedMs=${

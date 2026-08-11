@@ -118,6 +118,7 @@ class TraceRecordingViewModel(
     private var autoResumeTriggerCount = 0
     private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
+    private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
     private var qualityRelocationCount = 0
@@ -498,6 +499,12 @@ class TraceRecordingViewModel(
                     ),
                 activityProfile = state.activityProfile,
             )
+        if (DebugTelemetry.isEnabled()) {
+            smartTrackTelemetry.observeMotion(
+                result = motionResult,
+                bypassedForSegmentStart = !motionResult.accepted && pendingSegmentStartReason != null,
+            )
+        }
         if (!motionResult.accepted && pendingSegmentStartReason == null) {
             suppressedJitterPointCount += 1
             suppressedJitterDistanceMeters += motionResult.displacementMeters
@@ -511,8 +518,15 @@ class TraceRecordingViewModel(
                         "count=$suppressedJitterPointCount " +
                         "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
                         "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
+                        "stationaryRadiusMeters=${
+                            motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
+                        } " +
                         "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
                         "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
+                        "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
+                        "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
+                        "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
                         "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
                         "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
                 )
@@ -541,6 +555,12 @@ class TraceRecordingViewModel(
                     ),
                 activityProfile = state.activityProfile,
             )
+        if (DebugTelemetry.isEnabled()) {
+            smartTrackTelemetry.observeQuality(
+                result = fixQualityResult,
+                policy = recordingFixQualityGate.latestAccuracyPolicySnapshot,
+            )
+        }
         if (!fixQualityResult.accepted) {
             when (fixQualityResult.status) {
                 RecordingFixQualityStatus.HELD -> qualityHeldFixCount += 1
@@ -549,12 +569,19 @@ class TraceRecordingViewModel(
             }
             val eventCount = qualityHeldFixCount + qualityRejectedFixCount
             if (eventCount == 1 || eventCount % RECORDING_QUALITY_TELEMETRY_INTERVAL == 0) {
+                val accuracyPolicy = recordingFixQualityGate.latestAccuracyPolicySnapshot
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
                         "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
                         "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
                         "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
+                        "accuracyBaselineMedianMeters=${
+                            accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+                        } " +
+                        "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+                        "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
                         "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
                         "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
                 )
@@ -754,6 +781,7 @@ class TraceRecordingViewModel(
                             "skippedUnusable=$skippedUnusableLocationCount " +
                             "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
                             "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
+                            smartTrackTelemetryTokens() + " " +
                             "confirmedReversals=$confirmedReversalCorrectionCount " +
                             "segmentReason=${segmentStartReason ?: "na"} " +
                             "hybridElevationPoints=$hybridElevationPointCount",
@@ -1351,6 +1379,7 @@ class TraceRecordingViewModel(
         autoResumeTriggerCount = 0
         recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
+        smartTrackTelemetry.reset()
         qualityHeldFixCount = 0
         qualityRejectedFixCount = 0
         qualityRelocationCount = 0
@@ -1774,6 +1803,7 @@ class TraceRecordingViewModel(
             )
         val calories = displaySnapshot.calorieEstimate
         val sensorTokens = sensorTelemetryTokens(nowMillis)
+        val smartTrackTokens = smartTrackTelemetryTokens()
         val expectedPointCount = expectedPointCountForElapsed(durationMillis)
         val averagePointIntervalMillis =
             if (state.points.size > 1) {
@@ -1827,6 +1857,7 @@ class TraceRecordingViewModel(
             "activityProfile=${state.activityProfile} " +
             "trackSmoothingMode=${state.trackSmoothingMode} " +
             "trackFilterVersion=$RECORDING_TRACK_FILTER_VERSION " +
+            "$smartTrackTokens " +
             "qualityHeldFixCount=$qualityHeldFixCount " +
             "qualityRejectedFixCount=$qualityRejectedFixCount " +
             "qualityRelocationCount=$qualityRelocationCount " +
@@ -1858,6 +1889,49 @@ class TraceRecordingViewModel(
             "accuracyMaxMeters=${acceptedAccuracyMaxMeters?.toInt() ?: -1} " +
             "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
             "skippedUnusable=$skippedUnusableLocationCount"
+    }
+
+    private fun smartTrackTelemetryTokens(): String {
+        val snapshot = smartTrackTelemetry.snapshot()
+        val policy = snapshot.accuracyPolicy
+        return "smartTrackMotionEvaluatedFixCount=${snapshot.motionEvaluatedFixCount} " +
+            "smartTrackAcceptedReportedSpeedCount=${snapshot.acceptedReportedSpeedCount} " +
+            "smartTrackAcceptedSensorCount=${snapshot.acceptedSensorCount} " +
+            "smartTrackAcceptedConfirmedSlowCount=${snapshot.acceptedConfirmedSlowCount} " +
+            "smartTrackSuppressedStationaryCount=${snapshot.suppressedStationaryCount} " +
+            "smartTrackHeldSlowCount=${snapshot.heldSlowCount} " +
+            "smartTrackSegmentStartBypassCount=${snapshot.segmentStartBypassCount} " +
+            "smartTrackStepMotionEvidenceCount=${snapshot.stepMotionEvidenceCount} " +
+            "smartTrackCadenceMotionEvidenceCount=${snapshot.cadenceMotionEvidenceCount} " +
+            "smartTrackSpeedAboveThresholdCount=${snapshot.speedAboveThresholdCount} " +
+            "smartTrackCredibleSpeedCount=${snapshot.credibleSpeedCount} " +
+            "smartTrackNoMotionSensorDataCount=${snapshot.noMotionSensorDataCount} " +
+            "smartTrackStationaryRadiusSampleCount=${snapshot.stationaryRadiusSampleCount} " +
+            "smartTrackStationaryRadiusAvgMeters=${
+                snapshot.stationaryRadiusAverageMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackStationaryRadiusMaxMeters=${
+                snapshot.stationaryRadiusMaxMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackNonAcceptedDisplacementSampleCount=${snapshot.nonAcceptedDisplacementSampleCount} " +
+            "smartTrackNonAcceptedDisplacementAvgMeters=${
+                snapshot.nonAcceptedDisplacementAverageMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackNonAcceptedDisplacementMaxMeters=${
+                snapshot.nonAcceptedDisplacementMaxMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackPoorAccuracyRejectedCount=${snapshot.poorAccuracyRejectedCount} " +
+            "smartTrackNonMonotonicRejectedCount=${snapshot.nonMonotonicRejectedCount} " +
+            "smartTrackImplausibleJumpHeldCount=${snapshot.implausibleJumpHeldCount} " +
+            "smartTrackConfirmedSustainedMovementCount=${snapshot.confirmedSustainedMovementCount} " +
+            "smartTrackAdaptiveAccuracyFixCount=${snapshot.adaptiveAccuracyFixCount} " +
+            "smartTrackAccuracyBaselineSampleCount=${policy?.sampleCount ?: -1} " +
+            "smartTrackAccuracyBaselineMedianMeters=${
+                policy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+            } " +
+            "smartTrackAccuracyProfileLimitMeters=${policy?.profileLimitMeters?.formatTelemetry(1) ?: "na"} " +
+            "smartTrackAccuracyResolvedLimitMeters=${policy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+            "smartTrackAdaptiveAccuracyLimitActive=${policy?.adaptiveLimitActive ?: "na"}"
     }
 
     private fun sensorTelemetryTokens(nowMillis: Long): String =

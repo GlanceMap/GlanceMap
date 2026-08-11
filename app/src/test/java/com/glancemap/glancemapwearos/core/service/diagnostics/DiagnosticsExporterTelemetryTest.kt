@@ -2,6 +2,8 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.BufferedWriter
+import java.io.StringWriter
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -238,7 +240,26 @@ class DiagnosticsExporterTelemetryTest {
                 "2026-04-20 20:07:20.000 [TraceRecording] event=pause points=6 " +
                     "trackSmoothingMode=ADAPTIVE trackFilterVersion=1 " +
                     "qualityHeldFixCount=1 qualityRejectedFixCount=0 qualityRelocationCount=0 " +
-                    "smoothedPointCount=3 smoothedAdjustmentMeters=2.4 maxSmoothedAdjustmentMeters=1.1",
+                    "smoothedPointCount=3 smoothedAdjustmentMeters=2.4 maxSmoothedAdjustmentMeters=1.1 " +
+                    "smartTrackMotionEvaluatedFixCount=12 smartTrackAcceptedReportedSpeedCount=7 " +
+                    "smartTrackAcceptedSensorCount=2 smartTrackAcceptedConfirmedSlowCount=1 " +
+                    "smartTrackSuppressedStationaryCount=1 smartTrackHeldSlowCount=1 " +
+                    "smartTrackSegmentStartBypassCount=0 smartTrackStepMotionEvidenceCount=2 " +
+                    "smartTrackCadenceMotionEvidenceCount=0 smartTrackSpeedAboveThresholdCount=8 " +
+                    "smartTrackCredibleSpeedCount=7 smartTrackNoMotionSensorDataCount=10 " +
+                    "smartTrackStationaryRadiusSampleCount=3 smartTrackStationaryRadiusAvgMeters=4.20 " +
+                    "smartTrackStationaryRadiusMaxMeters=5.10 " +
+                    "smartTrackNonAcceptedDisplacementSampleCount=2 " +
+                    "smartTrackNonAcceptedDisplacementAvgMeters=4.70 " +
+                    "smartTrackNonAcceptedDisplacementMaxMeters=5.30 " +
+                    "smartTrackPoorAccuracyRejectedCount=2 smartTrackNonMonotonicRejectedCount=0 " +
+                    "smartTrackImplausibleJumpHeldCount=1 " +
+                    "smartTrackConfirmedSustainedMovementCount=1 " +
+                    "smartTrackAdaptiveAccuracyFixCount=6 smartTrackAccuracyBaselineSampleCount=9 " +
+                    "smartTrackAccuracyBaselineMedianMeters=24.0 " +
+                    "smartTrackAccuracyProfileLimitMeters=35.0 " +
+                    "smartTrackAccuracyResolvedLimitMeters=45.0 " +
+                    "smartTrackAdaptiveAccuracyLimitActive=true",
             )
 
         val insights =
@@ -255,6 +276,39 @@ class DiagnosticsExporterTelemetryTest {
         assertEquals(3, insights.recordingTrackFilter.smoothedPointCount)
         assertEquals("2.4", insights.recordingTrackFilter.smoothedAdjustmentMeters)
         assertEquals("1.1", insights.recordingTrackFilter.maxSmoothedAdjustmentMeters)
+        val smartTrack = insights.recordingTrackFilter.smartTrack
+        assertEquals(12, smartTrack.motionEvaluatedFixCount)
+        assertEquals(7, smartTrack.acceptedReportedSpeedCount)
+        assertEquals(1, smartTrack.suppressedStationaryCount)
+        assertEquals(1, smartTrack.heldSlowCount)
+        assertEquals("4.20", smartTrack.stationaryRadiusAvgMeters)
+        assertEquals("5.30", smartTrack.nonAcceptedDisplacementMaxMeters)
+        assertEquals(2, smartTrack.poorAccuracyRejectedCount)
+        assertEquals(9, smartTrack.accuracyBaselineSampleCount)
+        assertEquals("45.0", smartTrack.accuracyResolvedLimitMeters)
+        assertEquals(true, smartTrack.adaptiveAccuracyLimitActive)
+    }
+
+    @Test
+    fun recordingSmartTrackTelemetryIsWrittenToDiagnosticReport() {
+        val output = StringWriter()
+        BufferedWriter(output).use { writer ->
+            writeRecordingSmartTrackSection(
+                writer = writer,
+                insights =
+                    DiagnosticsExporter.RecordingSmartTrackInsights(
+                        motionEvaluatedFixCount = 12,
+                        suppressedStationaryCount = 3,
+                        accuracyResolvedLimitMeters = "45.0",
+                        adaptiveAccuracyLimitActive = true,
+                    ),
+            )
+        }
+
+        assertEquals(true, "recordingSmartTrackMotionEvaluatedFixCount=12" in output.toString())
+        assertEquals(true, "recordingSmartTrackSuppressedStationaryCount=3" in output.toString())
+        assertEquals(true, "recordingSmartTrackAccuracyResolvedLimitMeters=45.0" in output.toString())
+        assertEquals(true, "recordingSmartTrackAdaptiveAccuracyLimitActive=true" in output.toString())
     }
 
     @Test

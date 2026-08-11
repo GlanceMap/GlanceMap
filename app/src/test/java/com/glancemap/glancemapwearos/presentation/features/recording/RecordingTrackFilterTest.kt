@@ -80,6 +80,13 @@ class RecordingTrackFilterTest {
 
         assertTrue(learned.accepted)
         assertEquals(RecordingFixQualityReason.FIRST_FIX, learned.reason)
+        val policy = gate.latestAccuracyPolicySnapshot
+        assertNotNull(policy)
+        assertEquals(5, policy!!.sampleCount)
+        assertEquals(45f, policy.baselineMedianMeters ?: 0f, 0.01f)
+        assertEquals(35f, policy.profileLimitMeters, 0.01f)
+        assertEquals(81.75f, policy.resolvedLimitMeters, 0.01f)
+        assertTrue(policy.adaptiveLimitActive)
     }
 
     @Test

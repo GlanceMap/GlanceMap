@@ -6,6 +6,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporte
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.FixGapBuckets
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.GnssInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.ObservedFixQualitySummary
+import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingSmartTrackInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingTrackFilterInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.TelemetryInsights
 import java.io.BufferedWriter
@@ -62,6 +63,101 @@ private data class BackendDurations(
     val coverageMs: Long,
     val switchCount: Int,
 )
+
+private class RecordingSmartTrackInsightsAccumulator {
+    private val counts = mutableMapOf<String, Int>()
+    private val values = mutableMapOf<String, String>()
+    private var adaptiveAccuracyLimitActive: Boolean? = null
+
+    fun observe(line: String) {
+        if ("smartTrack" !in line) return
+        SMART_TRACK_COUNT_TOKENS.forEach { token ->
+            parseIntToken(line, "$token=")
+                ?.takeIf { it >= 0 }
+                ?.let { value -> counts[token] = maxOf(counts[token] ?: value, value) }
+        }
+        SMART_TRACK_VALUE_TOKENS.forEach { token ->
+            extractTokenValue(line, "$token=")
+                ?.takeUnless { it.isBlank() || it == "na" }
+                ?.let { values[token] = it }
+        }
+        parseBooleanToken(line, "smartTrackAdaptiveAccuracyLimitActive=")?.let {
+            adaptiveAccuracyLimitActive = it
+        }
+    }
+
+    fun snapshot(): RecordingSmartTrackInsights =
+        RecordingSmartTrackInsights(
+            motionEvaluatedFixCount = count("smartTrackMotionEvaluatedFixCount"),
+            acceptedReportedSpeedCount = count("smartTrackAcceptedReportedSpeedCount"),
+            acceptedSensorCount = count("smartTrackAcceptedSensorCount"),
+            acceptedConfirmedSlowCount = count("smartTrackAcceptedConfirmedSlowCount"),
+            suppressedStationaryCount = count("smartTrackSuppressedStationaryCount"),
+            heldSlowCount = count("smartTrackHeldSlowCount"),
+            segmentStartBypassCount = count("smartTrackSegmentStartBypassCount"),
+            stepMotionEvidenceCount = count("smartTrackStepMotionEvidenceCount"),
+            cadenceMotionEvidenceCount = count("smartTrackCadenceMotionEvidenceCount"),
+            speedAboveThresholdCount = count("smartTrackSpeedAboveThresholdCount"),
+            credibleSpeedCount = count("smartTrackCredibleSpeedCount"),
+            noMotionSensorDataCount = count("smartTrackNoMotionSensorDataCount"),
+            stationaryRadiusSampleCount = count("smartTrackStationaryRadiusSampleCount"),
+            stationaryRadiusAvgMeters = value("smartTrackStationaryRadiusAvgMeters"),
+            stationaryRadiusMaxMeters = value("smartTrackStationaryRadiusMaxMeters"),
+            nonAcceptedDisplacementSampleCount = count("smartTrackNonAcceptedDisplacementSampleCount"),
+            nonAcceptedDisplacementAvgMeters = value("smartTrackNonAcceptedDisplacementAvgMeters"),
+            nonAcceptedDisplacementMaxMeters = value("smartTrackNonAcceptedDisplacementMaxMeters"),
+            poorAccuracyRejectedCount = count("smartTrackPoorAccuracyRejectedCount"),
+            nonMonotonicRejectedCount = count("smartTrackNonMonotonicRejectedCount"),
+            implausibleJumpHeldCount = count("smartTrackImplausibleJumpHeldCount"),
+            confirmedSustainedMovementCount = count("smartTrackConfirmedSustainedMovementCount"),
+            adaptiveAccuracyFixCount = count("smartTrackAdaptiveAccuracyFixCount"),
+            accuracyBaselineSampleCount = count("smartTrackAccuracyBaselineSampleCount"),
+            accuracyBaselineMedianMeters = value("smartTrackAccuracyBaselineMedianMeters"),
+            accuracyProfileLimitMeters = value("smartTrackAccuracyProfileLimitMeters"),
+            accuracyResolvedLimitMeters = value("smartTrackAccuracyResolvedLimitMeters"),
+            adaptiveAccuracyLimitActive = adaptiveAccuracyLimitActive,
+        )
+
+    private fun count(token: String): Int? = counts[token]
+
+    private fun value(token: String): String? = values[token]
+
+    private companion object {
+        val SMART_TRACK_COUNT_TOKENS =
+            listOf(
+                "smartTrackMotionEvaluatedFixCount",
+                "smartTrackAcceptedReportedSpeedCount",
+                "smartTrackAcceptedSensorCount",
+                "smartTrackAcceptedConfirmedSlowCount",
+                "smartTrackSuppressedStationaryCount",
+                "smartTrackHeldSlowCount",
+                "smartTrackSegmentStartBypassCount",
+                "smartTrackStepMotionEvidenceCount",
+                "smartTrackCadenceMotionEvidenceCount",
+                "smartTrackSpeedAboveThresholdCount",
+                "smartTrackCredibleSpeedCount",
+                "smartTrackNoMotionSensorDataCount",
+                "smartTrackStationaryRadiusSampleCount",
+                "smartTrackNonAcceptedDisplacementSampleCount",
+                "smartTrackPoorAccuracyRejectedCount",
+                "smartTrackNonMonotonicRejectedCount",
+                "smartTrackImplausibleJumpHeldCount",
+                "smartTrackConfirmedSustainedMovementCount",
+                "smartTrackAdaptiveAccuracyFixCount",
+                "smartTrackAccuracyBaselineSampleCount",
+            )
+        val SMART_TRACK_VALUE_TOKENS =
+            listOf(
+                "smartTrackStationaryRadiusAvgMeters",
+                "smartTrackStationaryRadiusMaxMeters",
+                "smartTrackNonAcceptedDisplacementAvgMeters",
+                "smartTrackNonAcceptedDisplacementMaxMeters",
+                "smartTrackAccuracyBaselineMedianMeters",
+                "smartTrackAccuracyProfileLimitMeters",
+                "smartTrackAccuracyResolvedLimitMeters",
+            )
+    }
+}
 
 internal fun deriveTelemetryInsights(
     lines: List<String>,
@@ -220,6 +316,7 @@ internal fun deriveTelemetryInsights(
     var recordingSmoothedPointCount: Int? = null
     var recordingSmoothedAdjustmentMeters: String? = null
     var recordingMaxSmoothedAdjustmentMeters: String? = null
+    val recordingSmartTrack = RecordingSmartTrackInsightsAccumulator()
     var recordingLastSkippedIntervalElapsedMs: Long? = null
     var recordingMaxSkippedIntervalElapsedMs: Long? = null
     var recordingLastLiveProvider: String? = null
@@ -332,6 +429,7 @@ internal fun deriveTelemetryInsights(
     val requestStopSamples = mutableListOf<Long>()
 
     lines.forEach { line ->
+        recordingSmartTrack.observe(line)
         val lineEpochMs = parseTelemetryLineEpochMs(line)
         val requestMode = parseRequestMode(line)
         if (requestMode != null) {
@@ -1359,8 +1457,58 @@ internal fun deriveTelemetryInsights(
                 smoothedPointCount = recordingSmoothedPointCount,
                 smoothedAdjustmentMeters = recordingSmoothedAdjustmentMeters,
                 maxSmoothedAdjustmentMeters = recordingMaxSmoothedAdjustmentMeters,
+                smartTrack = recordingSmartTrack.snapshot(),
             )
     }
+}
+
+internal fun writeRecordingSmartTrackSection(
+    writer: BufferedWriter,
+    insights: RecordingSmartTrackInsights,
+) {
+    writer.writeSmartTrackMotionMetrics(insights)
+    writer.writeSmartTrackAccuracyMetrics(insights)
+}
+
+private fun BufferedWriter.writeSmartTrackMotionMetrics(insights: RecordingSmartTrackInsights) {
+    appendSmartTrackMetric("MotionEvaluatedFixCount", insights.motionEvaluatedFixCount)
+    appendSmartTrackMetric("AcceptedReportedSpeedCount", insights.acceptedReportedSpeedCount)
+    appendSmartTrackMetric("AcceptedSensorCount", insights.acceptedSensorCount)
+    appendSmartTrackMetric("AcceptedConfirmedSlowCount", insights.acceptedConfirmedSlowCount)
+    appendSmartTrackMetric("SuppressedStationaryCount", insights.suppressedStationaryCount)
+    appendSmartTrackMetric("HeldSlowCount", insights.heldSlowCount)
+    appendSmartTrackMetric("SegmentStartBypassCount", insights.segmentStartBypassCount)
+    appendSmartTrackMetric("StepMotionEvidenceCount", insights.stepMotionEvidenceCount)
+    appendSmartTrackMetric("CadenceMotionEvidenceCount", insights.cadenceMotionEvidenceCount)
+    appendSmartTrackMetric("SpeedAboveThresholdCount", insights.speedAboveThresholdCount)
+    appendSmartTrackMetric("CredibleSpeedCount", insights.credibleSpeedCount)
+    appendSmartTrackMetric("NoMotionSensorDataCount", insights.noMotionSensorDataCount)
+    appendSmartTrackMetric("StationaryRadiusSampleCount", insights.stationaryRadiusSampleCount)
+    appendSmartTrackMetric("StationaryRadiusAvgMeters", insights.stationaryRadiusAvgMeters)
+    appendSmartTrackMetric("StationaryRadiusMaxMeters", insights.stationaryRadiusMaxMeters)
+    appendSmartTrackMetric("NonAcceptedDisplacementSampleCount", insights.nonAcceptedDisplacementSampleCount)
+    appendSmartTrackMetric("NonAcceptedDisplacementAvgMeters", insights.nonAcceptedDisplacementAvgMeters)
+    appendSmartTrackMetric("NonAcceptedDisplacementMaxMeters", insights.nonAcceptedDisplacementMaxMeters)
+}
+
+private fun BufferedWriter.writeSmartTrackAccuracyMetrics(insights: RecordingSmartTrackInsights) {
+    appendSmartTrackMetric("PoorAccuracyRejectedCount", insights.poorAccuracyRejectedCount)
+    appendSmartTrackMetric("NonMonotonicRejectedCount", insights.nonMonotonicRejectedCount)
+    appendSmartTrackMetric("ImplausibleJumpHeldCount", insights.implausibleJumpHeldCount)
+    appendSmartTrackMetric("ConfirmedSustainedMovementCount", insights.confirmedSustainedMovementCount)
+    appendSmartTrackMetric("AdaptiveAccuracyFixCount", insights.adaptiveAccuracyFixCount)
+    appendSmartTrackMetric("AccuracyBaselineSampleCount", insights.accuracyBaselineSampleCount)
+    appendSmartTrackMetric("AccuracyBaselineMedianMeters", insights.accuracyBaselineMedianMeters)
+    appendSmartTrackMetric("AccuracyProfileLimitMeters", insights.accuracyProfileLimitMeters)
+    appendSmartTrackMetric("AccuracyResolvedLimitMeters", insights.accuracyResolvedLimitMeters)
+    appendSmartTrackMetric("AdaptiveAccuracyLimitActive", insights.adaptiveAccuracyLimitActive)
+}
+
+private fun BufferedWriter.appendSmartTrackMetric(
+    name: String,
+    value: Any?,
+) {
+    appendLine("recordingSmartTrack$name=${value ?: "na"}")
 }
 
 internal fun resolveCaptureWindowEndEpochMs(

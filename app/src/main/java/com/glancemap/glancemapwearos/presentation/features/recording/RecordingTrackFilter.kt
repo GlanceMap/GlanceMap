@@ -44,6 +44,16 @@ internal data class RecordingFixQualityResult(
     val accepted: Boolean get() = status == RecordingFixQualityStatus.ACCEPTED
 }
 
+internal data class RecordingAccuracyPolicySnapshot(
+    val sampleCount: Int,
+    val baselineMedianMeters: Float?,
+    val profileLimitMeters: Float,
+    val resolvedLimitMeters: Float,
+) {
+    val adaptiveLimitActive: Boolean
+        get() = resolvedLimitMeters > profileLimitMeters
+}
+
 /**
  * Rejects fixes that cannot safely become part of the canonical recording. A single
  * implausible jump is held until the next sampled fix either disproves it or confirms that
@@ -55,6 +65,8 @@ internal class RecordingFixQualityGate {
     private var pendingImplausible: RecordingFixSample? = null
     private var sustainedMovementValidUntilElapsedRealtimeMillis = Long.MIN_VALUE
     private val recentAccuracyMeters = mutableListOf<Float>()
+    var latestAccuracyPolicySnapshot: RecordingAccuracyPolicySnapshot? = null
+        private set
 
     fun reset() {
         lastSeenElapsedRealtimeMillis = Long.MIN_VALUE
@@ -62,6 +74,7 @@ internal class RecordingFixQualityGate {
         pendingImplausible = null
         sustainedMovementValidUntilElapsedRealtimeMillis = Long.MIN_VALUE
         recentAccuracyMeters.clear()
+        latestAccuracyPolicySnapshot = null
     }
 
     @Suppress("ReturnCount")
@@ -80,8 +93,9 @@ internal class RecordingFixQualityGate {
         }
         lastSeenElapsedRealtimeMillis = candidate.elapsedRealtimeMillis
 
-        val maximumAcceptedAccuracyMeters = observeAndResolveMaximumAccuracy(candidate, activityProfile)
-        if (candidate.accuracyMeters.isUnacceptablyPoor(maximumAcceptedAccuracyMeters)) {
+        val accuracyPolicy = observeAndResolveAccuracyPolicy(candidate, activityProfile)
+        latestAccuracyPolicySnapshot = accuracyPolicy
+        if (candidate.accuracyMeters.isUnacceptablyPoor(accuracyPolicy.resolvedLimitMeters)) {
             return RecordingFixQualityResult(
                 status = RecordingFixQualityStatus.REJECTED,
                 reason = RecordingFixQualityReason.POOR_ACCURACY,
@@ -145,10 +159,10 @@ internal class RecordingFixQualityGate {
      * several consecutive fixes show that the device consistently reports a wider radius.
      * A hard ceiling still prevents a no-fix/coarse location from entering the recording.
      */
-    private fun observeAndResolveMaximumAccuracy(
+    private fun observeAndResolveAccuracyPolicy(
         candidate: RecordingFixSample,
         activityProfile: String,
-    ): Float {
+    ): RecordingAccuracyPolicySnapshot {
         val profileLimit = recordingFixProfileAccuracyLimitMeters(activityProfile)
         val hardLimit = recordingFixHardAccuracyLimitMeters(activityProfile)
         candidate.accuracyMeters
@@ -159,13 +173,26 @@ internal class RecordingFixQualityGate {
                     recentAccuracyMeters.removeAt(0)
                 }
             }
-        if (recentAccuracyMeters.size < RECORDING_FIX_ACCURACY_BASELINE_MIN_SAMPLES) return profileLimit
-        val sorted = recentAccuracyMeters.sorted()
-        val median = sorted[sorted.size / 2]
-        return maxOf(
-            profileLimit,
-            median * RECORDING_FIX_ACCURACY_BASELINE_FACTOR + RECORDING_FIX_ACCURACY_BASELINE_MARGIN_M,
-        ).coerceAtMost(hardLimit)
+        val median =
+            recentAccuracyMeters
+                .takeIf { it.size >= RECORDING_FIX_ACCURACY_BASELINE_MIN_SAMPLES }
+                ?.sorted()
+                ?.let { it[it.size / 2] }
+        val resolvedLimit =
+            if (recentAccuracyMeters.size < RECORDING_FIX_ACCURACY_BASELINE_MIN_SAMPLES || median == null) {
+                profileLimit
+            } else {
+                maxOf(
+                    profileLimit,
+                    median * RECORDING_FIX_ACCURACY_BASELINE_FACTOR + RECORDING_FIX_ACCURACY_BASELINE_MARGIN_M,
+                ).coerceAtMost(hardLimit)
+            }
+        return RecordingAccuracyPolicySnapshot(
+            sampleCount = recentAccuracyMeters.size,
+            baselineMedianMeters = median,
+            profileLimitMeters = profileLimit,
+            resolvedLimitMeters = resolvedLimit,
+        )
     }
 
     @Suppress("ReturnCount")
@@ -227,9 +254,26 @@ internal data class RecordingMotionResult(
     val status: RecordingMotionStatus,
     val reason: RecordingMotionReason,
     val displacementMeters: Double,
+    val evidence: RecordingMotionEvidence,
 ) {
     val accepted: Boolean get() = status == RecordingMotionStatus.ACCEPTED
 }
+
+internal data class RecordingMotionEvidence(
+    val stepDataAvailable: Boolean,
+    val stepsAdvanced: Boolean,
+    val cadenceDataAvailable: Boolean,
+    val cadenceShowsMotion: Boolean,
+    val speedAboveThreshold: Boolean,
+    val speedAccuracyAvailable: Boolean,
+    val reportedSpeedCredible: Boolean,
+    val stationaryRadiusMeters: Double? = null,
+)
+
+private data class RecordingReportedMotionAssessment(
+    val aboveThreshold: Boolean,
+    val credible: Boolean,
+)
 
 /**
  * Decides whether a plausible GPS fix represents real movement. The live map marker remains
@@ -256,40 +300,57 @@ internal class RecordingMovementConfidenceGate {
         activityProfile: String,
     ): RecordingMotionResult {
         val stepsAdvanced = observeStepProgress(previous, candidate)
+        val cadenceShowsMotion = candidate.cadenceShowsMotion(activityProfile)
+        val reportedMotion = candidate.reportedMotionAssessment(activityProfile)
+        val evidence =
+            RecordingMotionEvidence(
+                stepDataAvailable = candidate.stepCount != null,
+                stepsAdvanced = stepsAdvanced,
+                cadenceDataAvailable = candidate.cadenceSpm != null,
+                cadenceShowsMotion = cadenceShowsMotion,
+                speedAboveThreshold = reportedMotion.aboveThreshold,
+                speedAccuracyAvailable = candidate.speedAccuracyMps != null,
+                reportedSpeedCredible = reportedMotion.credible,
+            )
         if (previous == null) {
             pendingSlowProgress = null
             return candidate.result(
                 status = RecordingMotionStatus.ACCEPTED,
                 reason = RecordingMotionReason.FIRST_POINT,
                 displacementMeters = 0.0,
+                evidence = evidence,
             )
         }
 
         val displacementMeters = haversineMeters(previous.latLong, candidate.latLong)
-        if (candidate.hasSensorMotion(stepsAdvanced, activityProfile)) {
+        if (stepsAdvanced || cadenceShowsMotion) {
             pendingSlowProgress = null
             return candidate.result(
                 status = RecordingMotionStatus.ACCEPTED,
                 reason = RecordingMotionReason.SENSOR_MOTION,
                 displacementMeters = displacementMeters,
+                evidence = evidence,
             )
         }
-        if (candidate.hasCredibleReportedMotion(activityProfile)) {
+        if (reportedMotion.credible) {
             pendingSlowProgress = null
             return candidate.result(
                 status = RecordingMotionStatus.ACCEPTED,
                 reason = RecordingMotionReason.REPORTED_MOTION,
                 displacementMeters = displacementMeters,
+                evidence = evidence,
             )
         }
 
         val stationaryRadiusMeters = recordingStationaryRadiusMeters(previous, candidate, activityProfile)
+        val radiusEvidence = evidence.copy(stationaryRadiusMeters = stationaryRadiusMeters)
         if (displacementMeters <= stationaryRadiusMeters) {
             pendingSlowProgress = null
             return candidate.result(
                 status = RecordingMotionStatus.SUPPRESSED,
                 reason = RecordingMotionReason.STATIONARY_JITTER,
                 displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
             )
         }
 
@@ -308,6 +369,7 @@ internal class RecordingMovementConfidenceGate {
                 status = RecordingMotionStatus.ACCEPTED,
                 reason = RecordingMotionReason.CONFIRMED_SLOW_PROGRESS,
                 displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
             )
         }
 
@@ -316,6 +378,7 @@ internal class RecordingMovementConfidenceGate {
             status = RecordingMotionStatus.HELD,
             reason = RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS,
             displacementMeters = displacementMeters,
+            evidence = radiusEvidence,
         )
     }
 
@@ -334,28 +397,28 @@ private fun RecordingMotionSample.result(
     status: RecordingMotionStatus,
     reason: RecordingMotionReason,
     displacementMeters: Double,
+    evidence: RecordingMotionEvidence,
 ): RecordingMotionResult =
     RecordingMotionResult(
         status = status,
         reason = reason,
         displacementMeters = displacementMeters,
+        evidence = evidence,
     )
 
-private fun RecordingMotionSample.hasSensorMotion(
-    stepsAdvanced: Boolean,
-    activityProfile: String,
-): Boolean {
+private fun RecordingMotionSample.cadenceShowsMotion(activityProfile: String): Boolean {
     val minimumCadence =
         if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
             RECORDING_MOTION_BIKE_MIN_CADENCE
         } else {
             RECORDING_MOTION_HIKE_MIN_CADENCE
         }
-    val cadenceShowsMotion = cadenceSpm?.let { it >= minimumCadence } == true
-    return stepsAdvanced || cadenceShowsMotion
+    return cadenceSpm?.let { it >= minimumCadence } == true
 }
 
-private fun RecordingMotionSample.hasCredibleReportedMotion(activityProfile: String): Boolean {
+private fun RecordingMotionSample.reportedMotionAssessment(
+    activityProfile: String,
+): RecordingReportedMotionAssessment {
     val speed = speedMps?.takeIf { it.isFinite() && it >= 0f }
     val speedAccuracy = speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f }
     val threshold =
@@ -364,13 +427,19 @@ private fun RecordingMotionSample.hasCredibleReportedMotion(activityProfile: Str
         } else {
             RECORDING_MOTION_HIKE_SPEED_THRESHOLD_MPS
         }
-    return speed?.let { value ->
-        value > threshold &&
-            (
-                speedAccuracy == null ||
-                    speedAccuracy <= maxOf(RECORDING_MOTION_MAX_SPEED_ACCURACY_MPS, value * 0.75f)
-            )
-    } == true
+    val aboveThreshold = speed?.let { it > threshold } == true
+    val credible =
+        speed?.let { value ->
+            aboveThreshold &&
+                (
+                    speedAccuracy == null ||
+                        speedAccuracy <= maxOf(RECORDING_MOTION_MAX_SPEED_ACCURACY_MPS, value * 0.75f)
+                )
+        } == true
+    return RecordingReportedMotionAssessment(
+        aboveThreshold = aboveThreshold,
+        credible = credible,
+    )
 }
 
 private fun recordingStationaryRadiusMeters(
