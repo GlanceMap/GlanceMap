@@ -817,7 +817,7 @@ class TraceRecordingViewModel(
 
     private fun waitForFreshLocationBeforeStartingRecording(source: String) {
         pendingRecordingStartSource = source
-        _uiState.value = _uiState.value.copy(message = "Starting REC…")
+        _uiState.value = _uiState.value.copy(message = RECORDING_START_PENDING_MESSAGE)
         DebugTelemetry.log(
             "TraceRecording",
             "event=start_waiting_for_fresh_location source=$source " +
