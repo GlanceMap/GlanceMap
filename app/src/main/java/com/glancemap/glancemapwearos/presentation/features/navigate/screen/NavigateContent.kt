@@ -290,6 +290,7 @@ internal fun NavigateContent(
     var poiTapPopupScrollInProgress by remember { mutableStateOf(false) }
     var routeToolOverlayRevision by remember { mutableIntStateOf(0) }
     var pendingDoubleTapPanningCheck by remember { mutableStateOf(false) }
+    val panTelemetry = remember(mapView) { NavigatePanTelemetry() }
     val latestPoiTapPopupScrollInProgress = rememberUpdatedState(poiTapPopupScrollInProgress)
 
     LaunchedEffect(poiFocusTarget) {
@@ -660,13 +661,14 @@ internal fun NavigateContent(
                         }
                         if (centerChanged || zoomChanged) {
                             lastCenter = newCenter
-                            if (
+                            val routeToolOverlayRefreshed =
                                 shouldRefreshRouteToolOverlayForViewport(
                                     routeToolSessionActive = latestRouteToolSession.value != null,
                                 )
-                            ) {
+                            if (routeToolOverlayRefreshed) {
                                 routeToolOverlayRevision++
                             }
+                            panTelemetry.onViewportChanged(routeToolOverlayRefreshed)
                             latestOnViewportChanged.value(newCenter, newZoom)
                             if (pendingDoubleTapPanningCheck) {
                                 scheduleDoubleTapPanningCheck()
@@ -713,6 +715,13 @@ internal fun NavigateContent(
                                             event.actionMasked == MotionEvent.ACTION_POINTER_UP
                                         ) {
                                             if (!isMultiTouchGestureSuppressed) {
+                                                panTelemetry.onPanFinished(
+                                                    navMode = latestNavMode.value,
+                                                    reason = "multi_touch",
+                                                    zoomLevel =
+                                                        mapView.model.mapViewPosition.zoomLevel
+                                                            .toInt(),
+                                                )
                                                 isMultiTouchGestureSuppressed = true
                                                 MotionEvent.obtain(event).run {
                                                     action = MotionEvent.ACTION_CANCEL
@@ -744,7 +753,18 @@ internal fun NavigateContent(
                                         // Reliable panning detection (MapView gets these events).
                                         when (event.actionMasked) {
                                             MotionEvent.ACTION_MOVE -> {
-                                                if (!isDragging) isDragging = true
+                                                if (!isDragging) {
+                                                    isDragging = true
+                                                    panTelemetry.onPanStarted(
+                                                        navMode = latestNavMode.value,
+                                                        routeToolSessionActive =
+                                                            latestRouteToolSession.value != null,
+                                                        zoomLevel =
+                                                            mapView.model.mapViewPosition.zoomLevel
+                                                                .toInt(),
+                                                    )
+                                                }
+                                                panTelemetry.onInputMove()
                                                 if (latestNavMode.value != NavMode.PANNING) {
                                                     latestOnUserPanStarted.value.invoke()
                                                 }
@@ -754,6 +774,18 @@ internal fun NavigateContent(
                                             MotionEvent.ACTION_CANCEL,
                                             -> {
                                                 isDragging = false
+                                                panTelemetry.onPanFinished(
+                                                    navMode = latestNavMode.value,
+                                                    reason =
+                                                        if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                                            "touch_up"
+                                                        } else {
+                                                            "cancel"
+                                                        },
+                                                    zoomLevel =
+                                                        mapView.model.mapViewPosition.zoomLevel
+                                                            .toInt(),
+                                                )
                                                 MapLayerMutationCoordinator.setGestureActive(mapView, false)
                                                 v.parent?.requestDisallowInterceptTouchEvent(false)
                                             }
