@@ -660,7 +660,13 @@ internal fun NavigateContent(
                         }
                         if (centerChanged || zoomChanged) {
                             lastCenter = newCenter
-                            routeToolOverlayRevision++
+                            if (
+                                shouldRefreshRouteToolOverlayForViewport(
+                                    routeToolSessionActive = latestRouteToolSession.value != null,
+                                )
+                            ) {
+                                routeToolOverlayRevision++
+                            }
                             latestOnViewportChanged.value(newCenter, newZoom)
                             if (pendingDoubleTapPanningCheck) {
                                 scheduleDoubleTapPanningCheck()
@@ -1160,6 +1166,10 @@ internal fun shouldEnterPanningAfterDoubleTap(
     if (center == null || marker == null) return false
     return navigateHaversineMeters(center, marker) > thresholdMeters
 }
+
+internal fun shouldRefreshRouteToolOverlayForViewport(
+    routeToolSessionActive: Boolean,
+): Boolean = routeToolSessionActive
 
 private const val LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS = 3.0
 private const val DOUBLE_TAP_PANNING_DISTANCE_THRESHOLD_METERS = 4.0
