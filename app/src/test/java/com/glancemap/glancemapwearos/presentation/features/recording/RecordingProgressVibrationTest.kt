@@ -1,42 +1,45 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
-import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordingProgressVibrationTest {
     @Test
     fun distanceReminderFiresOncePerCompletedDistanceInterval() {
+        val settings = RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 1_000)
         val tracker = RecordingProgressVibrationTracker()
-        tracker.start(SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER)
+        tracker.start(settings)
 
-        assertNull(
-            tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
-                distanceMeters = 999.0,
-                activeDurationMillis = 0L,
-            ),
+        assertTrue(
+            tracker
+                .next(
+                    settings = settings,
+                    distanceMeters = 999.0,
+                    activeDurationMillis = 0L,
+                ).isEmpty(),
         )
         assertEquals(
-            RecordingProgressVibrationTrigger.Distance(1L),
+            listOf(RecordingProgressVibrationTrigger.Distance(1L)),
             tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+                settings = settings,
                 distanceMeters = 1_005.0,
                 activeDurationMillis = 0L,
             ),
         )
-        assertNull(
-            tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
-                distanceMeters = 1_100.0,
-                activeDurationMillis = 0L,
-            ),
+        assertTrue(
+            tracker
+                .next(
+                    settings = settings,
+                    distanceMeters = 1_100.0,
+                    activeDurationMillis = 0L,
+                ).isEmpty(),
         )
         assertEquals(
-            RecordingProgressVibrationTrigger.Distance(2L),
+            listOf(RecordingProgressVibrationTrigger.Distance(2L)),
             tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+                settings = settings,
                 distanceMeters = 2_000.0,
                 activeDurationMillis = 0L,
             ),
@@ -45,25 +48,27 @@ class RecordingProgressVibrationTest {
 
     @Test
     fun changingReminderWhileRecordingWaitsForTheNextMilestone() {
+        val settings = RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 1_000)
         val tracker = RecordingProgressVibrationTracker()
 
         tracker.rebase(
-            mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+            settings = settings,
             distanceMeters = 1_600.0,
             activeDurationMillis = 0L,
         )
 
-        assertNull(
-            tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
-                distanceMeters = 1_900.0,
-                activeDurationMillis = 0L,
-            ),
+        assertTrue(
+            tracker
+                .next(
+                    settings = settings,
+                    distanceMeters = 1_900.0,
+                    activeDurationMillis = 0L,
+                ).isEmpty(),
         )
         assertEquals(
-            RecordingProgressVibrationTrigger.Distance(2L),
+            listOf(RecordingProgressVibrationTrigger.Distance(2L)),
             tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+                settings = settings,
                 distanceMeters = 2_000.0,
                 activeDurationMillis = 0L,
             ),
@@ -72,25 +77,52 @@ class RecordingProgressVibrationTest {
 
     @Test
     fun timeReminderUsesActiveRecordingTime() {
+        val settings = RecordingProgressVibrationSettings(timeEnabled = true, timeMinutes = 30)
         val tracker = RecordingProgressVibrationTracker()
-        tracker.start(SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES)
+        tracker.start(settings)
 
-        assertNull(
-            tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
-                distanceMeters = 0.0,
-                activeDurationMillis = 29 * 60_000L,
-            ),
+        assertTrue(
+            tracker
+                .next(
+                    settings = settings,
+                    distanceMeters = 0.0,
+                    activeDurationMillis = 29 * 60_000L,
+                ).isEmpty(),
         )
         assertEquals(
-            RecordingProgressVibrationTrigger.Time(1L),
+            listOf(RecordingProgressVibrationTrigger.Time(1L)),
             tracker.next(
-                mode = SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
+                settings = settings,
                 distanceMeters = 0.0,
                 activeDurationMillis = 30 * 60_000L,
             ),
         )
         assertEquals(30 * 60_000L, tracker.millisecondsUntilNextTimeMilestone(30 * 60_000L))
+    }
+
+    @Test
+    fun distanceAndTimeRemindersCanFireTogether() {
+        val settings =
+            RecordingProgressVibrationSettings(
+                distanceEnabled = true,
+                distanceMeters = 1_000,
+                timeEnabled = true,
+                timeMinutes = 30,
+            )
+        val tracker = RecordingProgressVibrationTracker()
+        tracker.start(settings)
+
+        assertEquals(
+            listOf(
+                RecordingProgressVibrationTrigger.Distance(1L),
+                RecordingProgressVibrationTrigger.Time(1L),
+            ),
+            tracker.next(
+                settings = settings,
+                distanceMeters = 1_000.0,
+                activeDurationMillis = 30 * 60_000L,
+            ),
+        )
     }
 
     @Test

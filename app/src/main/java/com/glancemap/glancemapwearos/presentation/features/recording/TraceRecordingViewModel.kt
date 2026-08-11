@@ -9,6 +9,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.data.repository.GpxRepository
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.parseGpxData
@@ -65,7 +66,7 @@ class TraceRecordingViewModel(
     private var recordingStepsSource = SettingsRepository.DEFAULT_RECORDING_STEPS_SOURCE
     private var recordingAutoPauseMode = SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE
     private var recordingTrackSmoothingMode = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
-    private var recordingProgressVibrationMode = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
+    private var recordingProgressVibrationSettings = RecordingProgressVibrationSettings()
     private var recordingExternalHeartRateAddress: String? = null
     private var recordingExternalRunPodAddress: String? = null
     private var userWeightKg = SettingsRepository.DEFAULT_USER_WEIGHT_KG
@@ -160,10 +161,10 @@ class TraceRecordingViewModel(
                     )
                 }
             }.launchIn(viewModelScope)
-        settingsRepository.recordingProgressVibrationMode
-            .onEach { nextMode ->
-                if (recordingProgressVibrationMode == nextMode) return@onEach
-                recordingProgressVibrationMode = nextMode
+        settingsRepository.recordingProgressVibrationSettings
+            .onEach { nextSettings ->
+                if (recordingProgressVibrationSettings == nextSettings) return@onEach
+                recordingProgressVibrationSettings = nextSettings
                 rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
                 syncRecordingProgressVibrationTimer()
             }.launchIn(viewModelScope)
@@ -390,7 +391,7 @@ class TraceRecordingViewModel(
                 stepsSource = recordingStepsSource,
                 message = "REC on · ${recordingProfileLabel(activityProfile)}",
             )
-        recordingProgressVibrationTracker.start(recordingProgressVibrationMode)
+        recordingProgressVibrationTracker.start(recordingProgressVibrationSettings)
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
@@ -912,7 +913,7 @@ class TraceRecordingViewModel(
         if (
             nextState.active &&
             nextState.distanceSource != currentState.distanceSource &&
-            recordingProgressVibrationInterval(recordingProgressVibrationMode) is RecordingProgressVibrationInterval.Distance
+            recordingProgressVibrationSettings.distanceEnabled
         ) {
             rebaseRecordingProgressVibration(nextState, System.currentTimeMillis())
         }
@@ -923,7 +924,7 @@ class TraceRecordingViewModel(
         nowMillis: Long,
     ) {
         recordingProgressVibrationTracker.rebase(
-            mode = recordingProgressVibrationMode,
+            settings = recordingProgressVibrationSettings,
             distanceMeters = recordingDisplayDistanceMeters(state),
             activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
         )
@@ -934,17 +935,22 @@ class TraceRecordingViewModel(
         nowMillis: Long,
     ) {
         if (!state.active || state.paused || state.saving) return
-        val trigger =
+        val triggers =
             recordingProgressVibrationTracker.next(
-                mode = recordingProgressVibrationMode,
+                settings = recordingProgressVibrationSettings,
                 distanceMeters = recordingDisplayDistanceMeters(state),
                 activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
-            ) ?: return
+            )
+        if (triggers.isEmpty()) return
         val vibrated = vibrateRecordingProgress(applicationContext)
         DebugTelemetry.log(
             "TraceRecording",
-            "event=progress_vibration type=${trigger.javaClass.simpleName.lowercase()} " +
-                "milestone=${trigger.milestone} mode=$recordingProgressVibrationMode " +
+            "event=progress_vibration type=${triggers.joinToString("+") { it.javaClass.simpleName.lowercase() }} " +
+                "milestone=${triggers.joinToString("+") { it.milestone.toString() }} " +
+                "distanceEnabled=${recordingProgressVibrationSettings.distanceEnabled} " +
+                "distanceIntervalMeters=${recordingProgressVibrationSettings.distanceMeters} " +
+                "timeEnabled=${recordingProgressVibrationSettings.timeEnabled} " +
+                "timeIntervalMinutes=${recordingProgressVibrationSettings.timeMinutes} " +
                 "distanceMeters=${recordingDisplayDistanceMeters(state).toInt()} " +
                 "activeDurationMs=${recordingActiveDurationMillis(state, nowMillis)} " +
                 "vibratorAvailable=$vibrated",
@@ -954,7 +960,7 @@ class TraceRecordingViewModel(
     private fun syncRecordingProgressVibrationTimer() {
         recordingProgressVibrationTimeJob?.cancel()
         recordingProgressVibrationTimeJob = null
-        if (recordingProgressVibrationInterval(recordingProgressVibrationMode) !is RecordingProgressVibrationInterval.Time) {
+        if (!recordingProgressVibrationSettings.timeEnabled) {
             return
         }
         val initialState = _uiState.value

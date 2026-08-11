@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -160,17 +161,32 @@ class SettingsViewModel(
             settingsRepository.setRecordingTrackSmoothingMode(mode)
         }
 
-    val recordingProgressVibrationMode: StateFlow<String> =
-        settingsRepository.recordingProgressVibrationMode
+    val recordingProgressVibrationSettings: StateFlow<RecordingProgressVibrationSettings> =
+        settingsRepository.recordingProgressVibrationSettings
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5000),
-                SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE,
+                RecordingProgressVibrationSettings(),
             )
 
-    fun setRecordingProgressVibrationMode(mode: String) =
+    fun setRecordingProgressVibrationDistanceEnabled(enabled: Boolean) =
         viewModelScope.launch {
-            settingsRepository.setRecordingProgressVibrationMode(mode)
+            settingsRepository.setRecordingProgressVibrationDistanceEnabled(enabled)
+        }
+
+    fun setRecordingProgressVibrationDistanceMeters(distanceMeters: Int) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationDistanceMeters(distanceMeters)
+        }
+
+    fun setRecordingProgressVibrationTimeEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationTimeEnabled(enabled)
+        }
+
+    fun setRecordingProgressVibrationTimeMinutes(timeMinutes: Int) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationTimeMinutes(timeMinutes)
         }
 
     val recordingElevationSource: StateFlow<String> =

@@ -5,20 +5,9 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlin.math.floor
-
-internal sealed interface RecordingProgressVibrationInterval {
-    data object Off : RecordingProgressVibrationInterval
-
-    data class Distance(
-        val meters: Double,
-    ) : RecordingProgressVibrationInterval
-
-    data class Time(
-        val milliseconds: Long,
-    ) : RecordingProgressVibrationInterval
-}
 
 internal sealed interface RecordingProgressVibrationTrigger {
     val milestone: Long
@@ -32,96 +21,77 @@ internal sealed interface RecordingProgressVibrationTrigger {
     ) : RecordingProgressVibrationTrigger
 }
 
-internal fun recordingProgressVibrationInterval(mode: String): RecordingProgressVibrationInterval =
-    when (mode) {
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS ->
-            RecordingProgressVibrationInterval.Distance(500.0)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER ->
-            RecordingProgressVibrationInterval.Distance(1_000.0)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS ->
-            RecordingProgressVibrationInterval.Distance(2_000.0)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS ->
-            RecordingProgressVibrationInterval.Distance(5_000.0)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES ->
-            RecordingProgressVibrationInterval.Time(15 * 60_000L)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES ->
-            RecordingProgressVibrationInterval.Time(30 * 60_000L)
-        SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES ->
-            RecordingProgressVibrationInterval.Time(60 * 60_000L)
-        else -> RecordingProgressVibrationInterval.Off
-    }
-
 internal class RecordingProgressVibrationTracker {
-    private var mode = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
+    private var settings = RecordingProgressVibrationSettings()
     private var distanceMilestone = 0L
     private var timeMilestone = 0L
 
-    fun start(mode: String) {
-        this.mode = mode
+    fun start(settings: RecordingProgressVibrationSettings) {
+        this.settings = settings
         distanceMilestone = 0L
         timeMilestone = 0L
     }
 
     fun rebase(
-        mode: String,
+        settings: RecordingProgressVibrationSettings,
         distanceMeters: Double,
         activeDurationMillis: Long,
     ) {
-        this.mode = mode
-        when (val interval = recordingProgressVibrationInterval(mode)) {
-            is RecordingProgressVibrationInterval.Distance -> {
-                distanceMilestone = completedMilestones(distanceMeters, interval.meters)
-                timeMilestone = 0L
+        this.settings = settings
+        distanceMilestone =
+            if (settings.distanceEnabled) {
+                completedMilestones(distanceMeters, settings.distanceMeters.toDouble())
+            } else {
+                0L
             }
-            is RecordingProgressVibrationInterval.Time -> {
-                distanceMilestone = 0L
-                timeMilestone = completedMilestones(activeDurationMillis.toDouble(), interval.milliseconds.toDouble())
+        timeMilestone =
+            if (settings.timeEnabled) {
+                completedMilestones(activeDurationMillis.toDouble(), settings.timeIntervalMillis().toDouble())
+            } else {
+                0L
             }
-            RecordingProgressVibrationInterval.Off -> {
-                distanceMilestone = 0L
-                timeMilestone = 0L
-            }
-        }
     }
 
     fun next(
-        mode: String,
+        settings: RecordingProgressVibrationSettings,
         distanceMeters: Double,
         activeDurationMillis: Long,
-    ): RecordingProgressVibrationTrigger? {
-        if (mode != this.mode) {
-            rebase(mode, distanceMeters, activeDurationMillis)
-            return null
+    ): List<RecordingProgressVibrationTrigger> {
+        if (settings != this.settings) {
+            rebase(settings, distanceMeters, activeDurationMillis)
+            return emptyList()
         }
-        return when (val interval = recordingProgressVibrationInterval(mode)) {
-            is RecordingProgressVibrationInterval.Distance -> {
-                val milestone = completedMilestones(distanceMeters, interval.meters)
-                if (milestone > distanceMilestone) {
-                    distanceMilestone = milestone
-                    RecordingProgressVibrationTrigger.Distance(milestone)
-                } else {
-                    null
-                }
+        val triggers = mutableListOf<RecordingProgressVibrationTrigger>()
+        if (settings.distanceEnabled) {
+            val milestone = completedMilestones(distanceMeters, settings.distanceMeters.toDouble())
+            if (milestone > distanceMilestone) {
+                distanceMilestone = milestone
+                triggers += RecordingProgressVibrationTrigger.Distance(milestone)
             }
-            is RecordingProgressVibrationInterval.Time -> {
-                val milestone = completedMilestones(activeDurationMillis.toDouble(), interval.milliseconds.toDouble())
-                if (milestone > timeMilestone) {
-                    timeMilestone = milestone
-                    RecordingProgressVibrationTrigger.Time(milestone)
-                } else {
-                    null
-                }
-            }
-            RecordingProgressVibrationInterval.Off -> null
         }
+        if (settings.timeEnabled) {
+            val milestone =
+                completedMilestones(
+                    activeDurationMillis.toDouble(),
+                    settings.timeIntervalMillis().toDouble(),
+                )
+            if (milestone > timeMilestone) {
+                timeMilestone = milestone
+                triggers += RecordingProgressVibrationTrigger.Time(milestone)
+            }
+        }
+        return triggers
     }
 
     fun millisecondsUntilNextTimeMilestone(activeDurationMillis: Long): Long? {
-        val interval = recordingProgressVibrationInterval(mode) as? RecordingProgressVibrationInterval.Time ?: return null
-        val nextMilestone = completedMilestones(activeDurationMillis.toDouble(), interval.milliseconds.toDouble()) + 1L
-        return (nextMilestone * interval.milliseconds - activeDurationMillis).coerceAtLeast(1L)
+        if (!settings.timeEnabled) return null
+        val intervalMillis = settings.timeIntervalMillis()
+        val nextMilestone = completedMilestones(activeDurationMillis.toDouble(), intervalMillis.toDouble()) + 1L
+        return (nextMilestone * intervalMillis - activeDurationMillis).coerceAtLeast(1L)
     }
 }
+
+private fun RecordingProgressVibrationSettings.timeIntervalMillis(): Long = timeMinutes * 60_000L
 
 internal fun recordingDisplayDistanceMeters(state: TraceRecordingUiState): Double =
     when (state.distanceSource) {

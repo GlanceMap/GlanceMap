@@ -4,6 +4,13 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import kotlinx.coroutines.flow.Flow
 
+data class RecordingProgressVibrationSettings(
+    val distanceEnabled: Boolean = false,
+    val distanceMeters: Int = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+    val timeEnabled: Boolean = false,
+    val timeMinutes: Int = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+)
+
 interface SettingsRepository {
     companion object {
         const val TIME_FORMAT_24_HOUR = "24_HOUR"
@@ -45,6 +52,14 @@ interface SettingsRepository {
         const val RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES = "TIME_30_MINUTES"
         const val RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES = "TIME_60_MINUTES"
         const val DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE = RECORDING_PROGRESS_VIBRATION_OFF
+        const val DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 1_000
+        const val MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 500
+        const val MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 10_000
+        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_STEP_METERS = 500
+        const val DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 30
+        const val MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 5
+        const val MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 120
+        const val RECORDING_PROGRESS_VIBRATION_TIME_STEP_MINUTES = 5
         const val RECORDING_METRIC_DISTANCE = "distance"
         const val RECORDING_METRIC_TOTAL_TIME = "total_time"
         const val RECORDING_METRIC_DURATION = "duration"
@@ -334,9 +349,15 @@ interface SettingsRepository {
 
     suspend fun setRecordingTrackSmoothingMode(mode: String)
 
-    val recordingProgressVibrationMode: Flow<String>
+    val recordingProgressVibrationSettings: Flow<RecordingProgressVibrationSettings>
 
-    suspend fun setRecordingProgressVibrationMode(mode: String)
+    suspend fun setRecordingProgressVibrationDistanceEnabled(enabled: Boolean)
+
+    suspend fun setRecordingProgressVibrationDistanceMeters(distanceMeters: Int)
+
+    suspend fun setRecordingProgressVibrationTimeEnabled(enabled: Boolean)
+
+    suspend fun setRecordingProgressVibrationTimeMinutes(timeMinutes: Int)
 
     val recordingElevationSource: Flow<String>
 

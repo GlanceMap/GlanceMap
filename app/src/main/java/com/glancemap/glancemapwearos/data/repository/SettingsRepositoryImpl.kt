@@ -69,6 +69,22 @@ class SettingsRepositoryImpl private constructor(
         val RECORDING_TRACK_SMOOTHING_MODE_BIKE = stringPreferencesKey("recording_track_smoothing_mode_bike")
         val RECORDING_PROGRESS_VIBRATION_MODE_HIKE = stringPreferencesKey("recording_progress_vibration_mode_hike")
         val RECORDING_PROGRESS_VIBRATION_MODE_BIKE = stringPreferencesKey("recording_progress_vibration_mode_bike")
+        val RECORDING_PROGRESS_VIBRATION_DISTANCE_ENABLED_HIKE =
+            booleanPreferencesKey("recording_progress_vibration_distance_enabled_hike")
+        val RECORDING_PROGRESS_VIBRATION_DISTANCE_ENABLED_BIKE =
+            booleanPreferencesKey("recording_progress_vibration_distance_enabled_bike")
+        val RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS_HIKE =
+            intPreferencesKey("recording_progress_vibration_distance_meters_hike")
+        val RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS_BIKE =
+            intPreferencesKey("recording_progress_vibration_distance_meters_bike")
+        val RECORDING_PROGRESS_VIBRATION_TIME_ENABLED_HIKE =
+            booleanPreferencesKey("recording_progress_vibration_time_enabled_hike")
+        val RECORDING_PROGRESS_VIBRATION_TIME_ENABLED_BIKE =
+            booleanPreferencesKey("recording_progress_vibration_time_enabled_bike")
+        val RECORDING_PROGRESS_VIBRATION_TIME_MINUTES_HIKE =
+            intPreferencesKey("recording_progress_vibration_time_minutes_hike")
+        val RECORDING_PROGRESS_VIBRATION_TIME_MINUTES_BIKE =
+            intPreferencesKey("recording_progress_vibration_time_minutes_bike")
         val RECORDING_ELEVATION_SOURCE = stringPreferencesKey("recording_elevation_source")
         val RECORDING_HEART_RATE_SOURCE = stringPreferencesKey("recording_heart_rate_source")
         val RECORDING_CADENCE_SOURCE = stringPreferencesKey("recording_cadence_source")
@@ -351,16 +367,43 @@ class SettingsRepositoryImpl private constructor(
         }
     }
 
-    override val recordingProgressVibrationMode: Flow<String> =
+    override val recordingProgressVibrationSettings: Flow<RecordingProgressVibrationSettings> =
         context.dataStore.data.map {
             val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
-            sanitizeRecordingProgressVibrationMode(it[recordingProgressVibrationModeKeyFor(profile)])
+            recordingProgressVibrationSettingsFor(it, profile)
         }
 
-    override suspend fun setRecordingProgressVibrationMode(mode: String) {
+    override suspend fun setRecordingProgressVibrationDistanceEnabled(enabled: Boolean) {
         context.dataStore.edit {
             val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
-            it[recordingProgressVibrationModeKeyFor(profile)] = sanitizeRecordingProgressVibrationMode(mode)
+            it.materializeRecordingProgressVibrationSettings(profile)
+            it[recordingProgressVibrationDistanceEnabledKeyFor(profile)] = enabled
+        }
+    }
+
+    override suspend fun setRecordingProgressVibrationDistanceMeters(distanceMeters: Int) {
+        context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
+            it.materializeRecordingProgressVibrationSettings(profile)
+            it[recordingProgressVibrationDistanceMetersKeyFor(profile)] =
+                sanitizeRecordingProgressVibrationDistanceMeters(distanceMeters)
+        }
+    }
+
+    override suspend fun setRecordingProgressVibrationTimeEnabled(enabled: Boolean) {
+        context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
+            it.materializeRecordingProgressVibrationSettings(profile)
+            it[recordingProgressVibrationTimeEnabledKeyFor(profile)] = enabled
+        }
+    }
+
+    override suspend fun setRecordingProgressVibrationTimeMinutes(timeMinutes: Int) {
+        context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
+            it.materializeRecordingProgressVibrationSettings(profile)
+            it[recordingProgressVibrationTimeMinutesKeyFor(profile)] =
+                sanitizeRecordingProgressVibrationTimeMinutes(timeMinutes)
         }
     }
 
@@ -2269,11 +2312,117 @@ class SettingsRepositoryImpl private constructor(
                 ?.takeIf { it in allowedRecordingProgressVibrationModes }
                 ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
 
+        private fun recordingProgressVibrationSettingsFor(
+            preferences: Preferences,
+            profile: String,
+        ): RecordingProgressVibrationSettings {
+            val legacySettings =
+                legacyRecordingProgressVibrationSettings(
+                    preferences[recordingProgressVibrationModeKeyFor(profile)],
+                )
+            return RecordingProgressVibrationSettings(
+                distanceEnabled =
+                    preferences[recordingProgressVibrationDistanceEnabledKeyFor(profile)]
+                        ?: legacySettings.distanceEnabled,
+                distanceMeters =
+                    sanitizeRecordingProgressVibrationDistanceMeters(
+                        preferences[recordingProgressVibrationDistanceMetersKeyFor(profile)]
+                            ?: legacySettings.distanceMeters,
+                    ),
+                timeEnabled =
+                    preferences[recordingProgressVibrationTimeEnabledKeyFor(profile)]
+                        ?: legacySettings.timeEnabled,
+                timeMinutes =
+                    sanitizeRecordingProgressVibrationTimeMinutes(
+                        preferences[recordingProgressVibrationTimeMinutesKeyFor(profile)]
+                            ?: legacySettings.timeMinutes,
+                    ),
+            )
+        }
+
+        private fun MutablePreferences.materializeRecordingProgressVibrationSettings(profile: String) {
+            val settings = recordingProgressVibrationSettingsFor(this, profile)
+            this[recordingProgressVibrationDistanceEnabledKeyFor(profile)] = settings.distanceEnabled
+            this[recordingProgressVibrationDistanceMetersKeyFor(profile)] = settings.distanceMeters
+            this[recordingProgressVibrationTimeEnabledKeyFor(profile)] = settings.timeEnabled
+            this[recordingProgressVibrationTimeMinutesKeyFor(profile)] = settings.timeMinutes
+        }
+
+        private fun legacyRecordingProgressVibrationSettings(mode: String?): RecordingProgressVibrationSettings =
+            when (sanitizeRecordingProgressVibrationMode(mode)) {
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS ->
+                    RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 500)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER ->
+                    RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 1_000)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS ->
+                    RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 2_000)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS ->
+                    RecordingProgressVibrationSettings(distanceEnabled = true, distanceMeters = 5_000)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES ->
+                    RecordingProgressVibrationSettings(timeEnabled = true, timeMinutes = 15)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES ->
+                    RecordingProgressVibrationSettings(timeEnabled = true, timeMinutes = 30)
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES ->
+                    RecordingProgressVibrationSettings(timeEnabled = true, timeMinutes = 60)
+                else -> RecordingProgressVibrationSettings()
+            }
+
+        private fun sanitizeRecordingProgressVibrationDistanceMeters(distanceMeters: Int?): Int =
+            sanitizeRecordingProgressVibrationInterval(
+                value = distanceMeters ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+                min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+                max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+                step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_STEP_METERS,
+            )
+
+        private fun sanitizeRecordingProgressVibrationTimeMinutes(timeMinutes: Int?): Int =
+            sanitizeRecordingProgressVibrationInterval(
+                value = timeMinutes ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+                min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+                max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+                step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_STEP_MINUTES,
+            )
+
+        private fun sanitizeRecordingProgressVibrationInterval(
+            value: Int,
+            min: Int,
+            max: Int,
+            step: Int,
+        ): Int = (((value.coerceIn(min, max) - min).toFloat() / step).roundToInt() * step) + min
+
         private fun recordingProgressVibrationModeKeyFor(profile: String): Preferences.Key<String> =
             if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
                 PrefKeys.RECORDING_PROGRESS_VIBRATION_MODE_BIKE
             } else {
                 PrefKeys.RECORDING_PROGRESS_VIBRATION_MODE_HIKE
+            }
+
+        private fun recordingProgressVibrationDistanceEnabledKeyFor(profile: String): Preferences.Key<Boolean> =
+            if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_DISTANCE_ENABLED_BIKE
+            } else {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_DISTANCE_ENABLED_HIKE
+            }
+
+        private fun recordingProgressVibrationDistanceMetersKeyFor(profile: String): Preferences.Key<Int> =
+            if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS_BIKE
+            } else {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS_HIKE
+            }
+
+        private fun recordingProgressVibrationTimeEnabledKeyFor(profile: String): Preferences.Key<Boolean> =
+            if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_TIME_ENABLED_BIKE
+            } else {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_TIME_ENABLED_HIKE
+            }
+
+        private fun recordingProgressVibrationTimeMinutesKeyFor(profile: String): Preferences.Key<Int> =
+            if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_TIME_MINUTES_BIKE
+            } else {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_TIME_MINUTES_HIKE
             }
 
         private fun sanitizeTurnByTurnScreenOffGpsIntervalSeconds(preferences: Preferences): Int {
