@@ -546,6 +546,18 @@ internal class LocationServiceTelemetry(
         )
     }
 
+    fun logAutoFusedRecoveryProbeFailed(
+        reason: String,
+        fallbackDurationMs: Long,
+        accuracyM: Float?,
+    ) {
+        log(
+            "sourceFailover: auto_fused->watch_gps reason=recovery_probe_$reason " +
+                "fallbackDurationMs=$fallbackDurationMs " +
+                "accuracyM=${accuracyM?.takeIf { it.isFinite() }?.format(1) ?: "na"}",
+        )
+    }
+
     fun logLocationEnvironmentPreflight(
         sourceMode: String,
         watchGpsReason: String,

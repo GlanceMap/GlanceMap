@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodSensorBridge
@@ -566,6 +567,7 @@ fun RecordingSensorBridge(
                 context = context,
                 handler = sensorHandler,
             )
+        EnergyDiagnostics.recordRecordingSensorsRegistered(registered)
         logRecordingSensorStatus(
             context = context,
             sensorManager = sensorManager,
@@ -593,6 +595,7 @@ fun RecordingSensorBridge(
         onDispose {
             disposed.set(true)
             sensorManager.unregisterListener(listener)
+            EnergyDiagnostics.recordRecordingSensorsUnregistered(registered)
             sensorThread.quitSafely()
             DebugTelemetry.log("TraceRecordingSensors", "event=unregister")
         }

@@ -6,6 +6,8 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
+import android.os.SystemClock
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
@@ -36,6 +38,28 @@ internal object EnergyDiagnostics {
         val batteryUse: BatteryUseStats?,
         val screenStateEnergy: ScreenStateEnergy?,
         val gpsRuntime: GpsRuntimeSummary,
+        val processCpu: ProcessCpuStats?,
+        val runtimeAttribution: RuntimeAttributionSummary,
+    )
+
+    /** Process CPU time sampled alongside the existing battery samples. */
+    data class ProcessCpuStats(
+        val sampleCount: Int,
+        val wallDurationMs: Long,
+        val processCpuDurationMs: Long,
+        val averageCoreUtilizationPct: Double?,
+    )
+
+    /** Durations from app-managed resources; this is not a platform-wide wakelock report. */
+    data class RuntimeAttributionSummary(
+        val partialWakeLocks: Map<String, DurationStats>,
+        val recordingSensors: Map<String, DurationStats>,
+    )
+
+    data class DurationStats(
+        val activationCount: Int,
+        val observedDurationMs: Long,
+        val activeCount: Int,
     )
 
     /**
@@ -104,6 +128,11 @@ internal object EnergyDiagnostics {
     private val captureMode = AtomicReference(CaptureMode.OFF)
     private val lines = ArrayDeque<String>()
     private val batteryBenchmarkInvalidReasons = linkedSetOf<String>()
+    private val runtimeAttributionLock = Any()
+    private val partialWakeLockDurations = linkedMapOf<String, MutableDurationStats>()
+    private val recordingSensorDurations = linkedMapOf<String, MutableDurationStats>()
+    private val activePartialWakeLocks = mutableMapOf<Int, ActivePartialWakeLock>()
+    private val activeRecordingSensors = mutableMapOf<String, Long>()
     private var droppedLines: Int = 0
 
     fun clear() {
@@ -112,17 +141,23 @@ internal object EnergyDiagnostics {
             batteryBenchmarkInvalidReasons.clear()
             droppedLines = 0
         }
+        synchronized(runtimeAttributionLock) {
+            partialWakeLockDurations.clear()
+            recordingSensorDurations.clear()
+            activePartialWakeLocks.clear()
+            activeRecordingSensors.clear()
+        }
     }
 
     fun setEnabled(value: Boolean) {
-        captureMode.set(if (value) CaptureMode.FULL else CaptureMode.OFF)
+        updateCaptureMode(if (value) CaptureMode.FULL else CaptureMode.OFF)
     }
 
     fun configure(
         captureActive: Boolean,
         fullDiagnostics: Boolean,
     ) {
-        captureMode.set(
+        updateCaptureMode(
             when {
                 !captureActive -> CaptureMode.OFF
                 fullDiagnostics -> CaptureMode.FULL
@@ -134,6 +169,67 @@ internal object EnergyDiagnostics {
     fun isEnabled(): Boolean = captureMode.get() != CaptureMode.OFF
 
     fun isBatteryBenchmarkActive(): Boolean = captureMode.get() == CaptureMode.BATTERY_BENCHMARK
+
+    /** Records an app-owned partial wakelock without querying or polling the operating system. */
+    fun recordPartialWakeLockAcquired(
+        lockId: Int,
+        tag: String,
+        timeoutMs: Long,
+    ) {
+        if (!isEnabled()) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        synchronized(runtimeAttributionLock) {
+            activePartialWakeLocks.remove(lockId)?.let { active ->
+                closePartialWakeLock(active, nowElapsedMs)
+            }
+            partialWakeLockDurations.getOrPut(tag) { MutableDurationStats() }.activationCount += 1
+            activePartialWakeLocks[lockId] =
+                ActivePartialWakeLock(
+                    tag = tag,
+                    startedAtElapsedMs = nowElapsedMs,
+                    expiresAtElapsedMs = saturatingAdd(nowElapsedMs, timeoutMs),
+                )
+        }
+    }
+
+    fun recordPartialWakeLockReleased(lockId: Int) {
+        if (!isEnabled()) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        synchronized(runtimeAttributionLock) {
+            activePartialWakeLocks.remove(lockId)?.let { active ->
+                closePartialWakeLock(active, nowElapsedMs)
+            }
+        }
+    }
+
+    /** Records recording-sensor lifetimes from the existing register/unregister calls. */
+    fun recordRecordingSensorsRegistered(sensorTokens: Collection<String>) {
+        if (!isEnabled()) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        synchronized(runtimeAttributionLock) {
+            sensorTokens.distinct().forEach { sensorToken ->
+                if (activeRecordingSensors.putIfAbsent(sensorToken, nowElapsedMs) == null) {
+                    recordingSensorDurations.getOrPut(sensorToken) { MutableDurationStats() }.activationCount += 1
+                }
+            }
+        }
+    }
+
+    fun recordRecordingSensorsUnregistered(sensorTokens: Collection<String>) {
+        if (!isEnabled()) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        synchronized(runtimeAttributionLock) {
+            sensorTokens.distinct().forEach { sensorToken ->
+                activeRecordingSensors.remove(sensorToken)?.let { startedAtElapsedMs ->
+                    closeRecordingSensor(
+                        sensorToken = sensorToken,
+                        startedAtElapsedMs = startedAtElapsedMs,
+                        nowElapsedMs = nowElapsedMs,
+                    )
+                }
+            }
+        }
+    }
 
     fun markBatteryBenchmarkInvalid(reason: String) {
         if (reason.isBlank()) return
@@ -164,7 +260,7 @@ internal object EnergyDiagnostics {
 
     fun maxBufferedLines(): Int = MAX_LINES
 
-    fun summary(): Summary = summarizeLines(snapshotLines())
+    fun summary(): Summary = summarizeLines(snapshotLines()).copy(runtimeAttribution = runtimeAttributionSummary())
 
     internal fun summarizeLines(snapshot: List<String>): Summary {
         if (snapshot.isEmpty()) {
@@ -173,6 +269,8 @@ internal object EnergyDiagnostics {
                 batteryUse = null,
                 screenStateEnergy = null,
                 gpsRuntime = GpsRuntimeSummary(emptyGpsRuntimeStats(), emptyGpsRuntimeStats()),
+                processCpu = null,
+                runtimeAttribution = emptyRuntimeAttributionSummary(),
             )
         }
         val accumulators = linkedMapOf<String, ModeAccumulator>()
@@ -192,6 +290,8 @@ internal object EnergyDiagnostics {
             batteryUse = batteryUse,
             screenStateEnergy = summarizeScreenStateEnergy(observations, batteryUse),
             gpsRuntime = summarizeGpsRuntime(snapshot),
+            processCpu = summarizeProcessCpu(snapshot),
+            runtimeAttribution = emptyRuntimeAttributionSummary(),
         )
     }
 
@@ -219,6 +319,7 @@ internal object EnergyDiagnostics {
         val currentAvgUa = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
         val capacityPct = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val chargeCounterUah = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+        val processCpuMs = Process.getElapsedCpuTime()
 
         val powerSave = powerManager?.isPowerSaveMode ?: false
         val interactive = powerManager?.isInteractive ?: false
@@ -245,6 +346,7 @@ internal object EnergyDiagnostics {
                 append(" curAvgUa=").append(propertyOrNa(currentAvgUa))
                 append(" capPropPct=").append(propertyOrNa(capacityPct))
                 append(" chargeCounterUah=").append(propertyOrNa(chargeCounterUah))
+                append(" procCpuMs=").append(processCpuMs)
                 append(" saver=").append(powerSave)
                 append(" interactive=").append(interactive)
                 append(" thermal=").append(thermal)
@@ -280,6 +382,100 @@ internal object EnergyDiagnostics {
             }
         }
     }
+
+    private fun updateCaptureMode(nextMode: CaptureMode) {
+        val previousMode = captureMode.getAndSet(nextMode)
+        if (
+            previousMode != CaptureMode.OFF &&
+            nextMode == CaptureMode.OFF &&
+            hasActiveRuntimeAttribution()
+        ) {
+            finalizeRuntimeAttribution(SystemClock.elapsedRealtime())
+        }
+    }
+
+    private fun hasActiveRuntimeAttribution(): Boolean =
+        synchronized(runtimeAttributionLock) {
+            activePartialWakeLocks.isNotEmpty() || activeRecordingSensors.isNotEmpty()
+        }
+
+    private fun runtimeAttributionSummary(): RuntimeAttributionSummary {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        synchronized(runtimeAttributionLock) {
+            return RuntimeAttributionSummary(
+                partialWakeLocks =
+                    durationStatsSnapshot(
+                        completed = partialWakeLockDurations,
+                        activeCounts = activePartialWakeLocks.values.groupingBy { it.tag }.eachCount(),
+                        activeDurations =
+                            activePartialWakeLocks.values.groupBy { it.tag }.mapValues { (_, activeLocks) ->
+                                activeLocks.sumOf { active -> active.durationAt(nowElapsedMs) }
+                            },
+                    ),
+                recordingSensors =
+                    durationStatsSnapshot(
+                        completed = recordingSensorDurations,
+                        activeCounts = activeRecordingSensors.keys.groupingBy { it }.eachCount(),
+                        activeDurations =
+                            activeRecordingSensors.mapValues { (_, startedAtElapsedMs) ->
+                                (nowElapsedMs - startedAtElapsedMs).coerceAtLeast(0L)
+                            },
+                    ),
+            )
+        }
+    }
+
+    private fun finalizeRuntimeAttribution(nowElapsedMs: Long) {
+        synchronized(runtimeAttributionLock) {
+            activePartialWakeLocks.values.forEach { active -> closePartialWakeLock(active, nowElapsedMs) }
+            activePartialWakeLocks.clear()
+            activeRecordingSensors.forEach { (sensorToken, startedAtElapsedMs) ->
+                closeRecordingSensor(sensorToken, startedAtElapsedMs, nowElapsedMs)
+            }
+            activeRecordingSensors.clear()
+        }
+    }
+
+    private fun closePartialWakeLock(
+        active: ActivePartialWakeLock,
+        nowElapsedMs: Long,
+    ) {
+        partialWakeLockDurations.getOrPut(active.tag) { MutableDurationStats() }.observedDurationMs +=
+            active.durationAt(nowElapsedMs)
+    }
+
+    private fun closeRecordingSensor(
+        sensorToken: String,
+        startedAtElapsedMs: Long,
+        nowElapsedMs: Long,
+    ) {
+        recordingSensorDurations.getOrPut(sensorToken) { MutableDurationStats() }.observedDurationMs +=
+            (nowElapsedMs - startedAtElapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun durationStatsSnapshot(
+        completed: Map<String, MutableDurationStats>,
+        activeCounts: Map<String, Int>,
+        activeDurations: Map<String, Long>,
+    ): Map<String, DurationStats> =
+        (completed.keys + activeCounts.keys)
+            .distinct()
+            .sorted()
+            .associateWith { token ->
+                val completedStats = completed[token]
+                DurationStats(
+                    activationCount = completedStats?.activationCount ?: 0,
+                    observedDurationMs =
+                        (completedStats?.observedDurationMs ?: 0L) + (activeDurations[token] ?: 0L),
+                    activeCount = activeCounts[token] ?: 0,
+                )
+            }
+
+    private fun emptyRuntimeAttributionSummary(): RuntimeAttributionSummary =
+        RuntimeAttributionSummary(
+            partialWakeLocks = emptyMap(),
+            recordingSensors = emptyMap(),
+        )
 
     private fun propertyOrNa(value: Int?): String {
         if (value == null || value == Int.MIN_VALUE) return "na"
@@ -342,6 +538,24 @@ internal object EnergyDiagnostics {
         val dischargeCurrentUa: Long?,
         val chargeCounterUah: Int?,
         val screenState: ScreenState,
+    )
+
+    private data class ProcessCpuObservation(
+        val atMs: Long,
+        val processCpuMs: Long,
+    )
+
+    private data class ActivePartialWakeLock(
+        val tag: String,
+        val startedAtElapsedMs: Long,
+        val expiresAtElapsedMs: Long,
+    ) {
+        fun durationAt(nowElapsedMs: Long): Long = (minOf(nowElapsedMs, expiresAtElapsedMs) - startedAtElapsedMs).coerceAtLeast(0L)
+    }
+
+    private class MutableDurationStats(
+        var activationCount: Int = 0,
+        var observedDurationMs: Long = 0L,
     )
 
     private enum class ScreenState {
@@ -473,6 +687,36 @@ internal object EnergyDiagnostics {
         )
     }
 
+    private fun summarizeProcessCpu(lines: List<String>): ProcessCpuStats? {
+        val observations =
+            lines
+                .mapNotNull { line ->
+                    val atMs = tokenValue(line, "atMs=")?.toLongOrNull() ?: return@mapNotNull null
+                    val processCpuMs = tokenValue(line, "procCpuMs=")?.toLongOrNull() ?: return@mapNotNull null
+                    ProcessCpuObservation(atMs = atMs, processCpuMs = processCpuMs)
+                }.sortedBy { it.atMs }
+        if (observations.size < 2) return null
+
+        var wallDurationMs = 0L
+        var processCpuDurationMs = 0L
+        observations.zipWithNext().forEach { (previous, current) ->
+            val wallDeltaMs = current.atMs - previous.atMs
+            val cpuDeltaMs = current.processCpuMs - previous.processCpuMs
+            if (wallDeltaMs <= 0L || wallDeltaMs > MAX_CURRENT_INTEGRATION_GAP_MS || cpuDeltaMs < 0L) {
+                return@forEach
+            }
+            wallDurationMs += wallDeltaMs
+            processCpuDurationMs += cpuDeltaMs
+        }
+        if (wallDurationMs <= 0L) return null
+        return ProcessCpuStats(
+            sampleCount = observations.size,
+            wallDurationMs = wallDurationMs,
+            processCpuDurationMs = processCpuDurationMs,
+            averageCoreUtilizationPct = processCpuDurationMs * 100.0 / wallDurationMs,
+        )
+    }
+
     private fun resolveChargeCounterUse(
         start: BatteryObservation?,
         end: BatteryObservation?,
@@ -518,6 +762,16 @@ internal object EnergyDiagnostics {
         val index = ((sortedValues.lastIndex) * quantile).toInt().coerceIn(sortedValues.indices)
         return sortedValues[index]
     }
+
+    private fun saturatingAdd(
+        value: Long,
+        increment: Long,
+    ): Long =
+        if (increment <= 0L || value > Long.MAX_VALUE - increment) {
+            Long.MAX_VALUE
+        } else {
+            value + increment
+        }
 
     @Suppress("ReturnCount")
     private fun tokenValue(

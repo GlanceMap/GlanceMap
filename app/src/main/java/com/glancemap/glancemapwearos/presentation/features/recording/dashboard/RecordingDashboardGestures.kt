@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,6 +63,7 @@ internal fun RecordingFullscreenPageShell(
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
     onShowActions: () -> Unit,
+    onDismiss: () -> Unit,
     telemetryTag: String = "TraceRecording",
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -82,6 +84,7 @@ internal fun RecordingFullscreenPageShell(
                 "page=${pageIndex + 1} pageCount=$pageCount",
         )
     }
+    BackHandler(onBack = onDismiss)
 
     Box(
         modifier =

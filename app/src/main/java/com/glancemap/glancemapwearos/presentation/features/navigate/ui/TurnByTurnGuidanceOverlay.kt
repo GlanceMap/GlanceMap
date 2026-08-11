@@ -209,6 +209,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                     onPreviousPage = { expandedPageIndex = (expandedPageIndex - 1).coerceAtLeast(0) },
                     onNextPage = { expandedPageIndex = (expandedPageIndex + 1).coerceAtMost(expandedPageCount - 1) },
                     onShowActions = { showActionPrompt = true },
+                    onDismiss = { expanded = false },
                     telemetryTag = "TurnByTurn",
                 ) {
                     if (expandedPageIndex == 0) {
@@ -534,6 +535,20 @@ private fun ExpandedGuidanceOverlay(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (showRouteProgressDetails) {
+                    guidanceNextSegmentTerrainText(state, isMetric)?.let { terrainText ->
+                        Spacer(modifier = Modifier.size(2.dp))
+                        Text(
+                            text = terrainText,
+                            color = Color.White.copy(alpha = 0.72f),
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (showRouteProgressDetails) {
                     guidanceFollowingText(state, isMetric)?.let { followingText ->
                         Spacer(modifier = Modifier.size(2.dp))

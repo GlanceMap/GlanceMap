@@ -158,13 +158,15 @@ class LocationService : Service() {
         SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L
 
     @Volatile private var latestRecordingScreenOffIntervalMs: Long =
-        SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L
+        SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS * 1_000L
 
     @Volatile private var latestTurnByTurnIntervalMs: Long =
         SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
 
     @Volatile private var latestTurnByTurnScreenOffIntervalMs: Long =
         SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
+
+    @Volatile private var latestTurnByTurnScreenOffIntervalOverrideMs: Long? = null
 
     @Volatile private var latestTurnByTurnScreenOffBatchingEnabled: Boolean = false
 
@@ -280,6 +282,13 @@ class LocationService : Service() {
                 },
                 maybeTriggerAutoFusedFailover = { acceptedLocation, callbackOrigin, nowElapsedMs ->
                     selfHealFailoverCoordinator.maybeTriggerAutoFusedFailover(
+                        acceptedLocation = acceptedLocation,
+                        callbackOrigin = callbackOrigin,
+                        nowElapsedMs = nowElapsedMs,
+                    )
+                },
+                onLocationAccepted = { acceptedLocation, callbackOrigin, nowElapsedMs ->
+                    selfHealFailoverCoordinator.onLocationAccepted(
                         acceptedLocation = acceptedLocation,
                         callbackOrigin = callbackOrigin,
                         nowElapsedMs = nowElapsedMs,
@@ -475,6 +484,8 @@ class LocationService : Service() {
         screenOffSeconds: Int,
     ): Long =
         when (screenOffSeconds) {
+            SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
             SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> screenOnIntervalMs
             else -> gpsIntervalMillis(screenOffSeconds)
         }
@@ -754,7 +765,7 @@ class LocationService : Service() {
 
     private fun guidanceIntervalForScreen(): Long =
         if (latestScreenState.isNonInteractive) {
-            latestTurnByTurnScreenOffIntervalMs
+            latestTurnByTurnScreenOffIntervalOverrideMs ?: latestTurnByTurnScreenOffIntervalMs
         } else {
             latestTurnByTurnIntervalMs
         }
@@ -775,6 +786,19 @@ class LocationService : Service() {
             screenState = screenState,
             trackingEnabled = latestTrackingEnabled,
         )
+    }
+
+    fun setTurnByTurnScreenOffIntervalOverride(intervalMs: Long?) {
+        val sanitizedIntervalMs =
+            intervalMs?.coerceIn(
+                MIN_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS,
+                MAX_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS,
+            )
+        if (latestTurnByTurnScreenOffIntervalOverrideMs == sanitizedIntervalMs) return
+        latestTurnByTurnScreenOffIntervalOverrideMs = sanitizedIntervalMs
+        if (latestScreenState.isNonInteractive && latestRuntimeReason.isGuidanceRuntimeReason()) {
+            requestLocationUpdateIfNeeded()
+        }
     }
 
     fun setTrackingEnabled(enabled: Boolean) {
@@ -948,9 +972,11 @@ class LocationService : Service() {
                     intervalMs = interval,
                     ambientIntervalMs = ambientInterval,
                     recordingIntervalMs = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L,
-                    recordingScreenOffIntervalMs = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L,
+                    recordingScreenOffIntervalMs =
+                        SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS * 1_000L,
                     turnByTurnIntervalMs = SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
                     turnByTurnScreenOffIntervalMs = SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
+                    turnByTurnScreenOffIntervalAdaptive = false,
                     turnByTurnScreenOffBatchingEnabled =
                         SettingsRepository.DEFAULT_TURN_BY_TURN_SCREEN_OFF_BATCHING_ENABLED,
                     ambientGps = ambientGps,
@@ -979,6 +1005,9 @@ class LocationService : Service() {
                             screenOnIntervalMs = state.turnByTurnIntervalMs,
                             screenOffSeconds = turnByTurnScreenOffSeconds,
                         ),
+                    turnByTurnScreenOffIntervalAdaptive =
+                        turnByTurnScreenOffSeconds ==
+                            SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS,
                 )
             }.combine(settingsRepository.turnByTurnScreenOffBatchingEnabled) { state, enabled ->
                 state.copy(turnByTurnScreenOffBatchingEnabled = enabled)
@@ -1006,6 +1035,9 @@ class LocationService : Service() {
         latestRecordingScreenOffIntervalMs = state.recordingScreenOffIntervalMs
         latestTurnByTurnIntervalMs = state.turnByTurnIntervalMs
         latestTurnByTurnScreenOffIntervalMs = state.turnByTurnScreenOffIntervalMs
+        if (!state.turnByTurnScreenOffIntervalAdaptive) {
+            latestTurnByTurnScreenOffIntervalOverrideMs = null
+        }
         latestTurnByTurnScreenOffBatchingEnabled = state.turnByTurnScreenOffBatchingEnabled
         latestAmbientIntervalMs = state.ambientIntervalMs
         latestAmbientGps = state.ambientGps
@@ -1508,6 +1540,8 @@ class LocationService : Service() {
         private const val HARD_STALE_FIX_MAX_AGE_INTERACTIVE_MS = 20_000L
         private const val HARD_STALE_FIX_MAX_AGE_PASSIVE_MS = 60_000L
         private const val SOURCE_MODE_WARMUP_MS = 1_500L
+        private const val MIN_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 1_000L
+        private const val MAX_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 10_000L
     }
 }
 

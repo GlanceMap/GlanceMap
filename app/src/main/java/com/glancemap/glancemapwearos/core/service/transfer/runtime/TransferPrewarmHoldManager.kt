@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.core.service.transfer.runtime
 
 import android.content.Context
 import android.os.PowerManager
+import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 
 internal class TransferPrewarmHoldManager(
@@ -26,6 +27,12 @@ internal class TransferPrewarmHoldManager(
                     ).apply {
                         setReferenceCounted(false)
                         acquire(timeoutMs)
+                    }.also { acquiredWakeLock ->
+                        EnergyDiagnostics.recordPartialWakeLockAcquired(
+                            lockId = System.identityHashCode(acquiredWakeLock),
+                            tag = PREWARM_WAKE_LOCK_TAG,
+                            timeoutMs = timeoutMs,
+                        )
                     }
         }
         TransferDiagnostics.log(
@@ -46,6 +53,11 @@ internal class TransferPrewarmHoldManager(
             existing.release()
             TransferDiagnostics.log("Prewarm", "Release wake lock reason=$reason")
         }
+        EnergyDiagnostics.recordPartialWakeLockReleased(System.identityHashCode(existing))
         wakeLock = null
+    }
+
+    private companion object {
+        const val PREWARM_WAKE_LOCK_TAG = "GlanceMap::TransferPrewarm"
     }
 }

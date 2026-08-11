@@ -58,6 +58,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.MapDisplaySe
 import com.glancemap.glancemapwearos.presentation.features.settings.MapSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapZoomSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.PoiSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.RecordingAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingBikeSensorSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingDashboardSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingExternalSensorsScreen
@@ -631,6 +632,27 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onOpenDashboardSettings = {
                                         navController.navigate(WatchRoutes.RECORDING_DASHBOARD_SETTINGS)
+                                    },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.RECORDING_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                RecordingAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenRecordingSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_SETTINGS) {
+                                            popUpTo(WatchRoutes.RECORDING_SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     },
                                 )
                             }

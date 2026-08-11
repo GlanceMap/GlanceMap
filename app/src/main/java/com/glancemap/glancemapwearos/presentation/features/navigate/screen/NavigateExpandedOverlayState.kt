@@ -17,11 +17,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 internal data class NavigateExpandedOverlayState(
     val turnByTurnFullScreenExpanded: Boolean,
     val recordingDashboardFullScreenExpanded: Boolean,
+    val combinedGuidanceRecordingFullScreenExpanded: Boolean,
     val suppressMapRenderingForGuidance: Boolean,
     val effectiveRecordingActionPromptRequestToken: Long,
     val overlayOwnsRotary: Boolean,
     val onTurnByTurnExpandedChange: (Boolean) -> Unit,
     val onRecordingExpandedChange: (Boolean) -> Unit,
+    val onCombinedGuidanceRecordingExpandedChange: (Boolean) -> Unit,
     val requestRecordingActionPrompt: () -> Unit,
 )
 
@@ -36,32 +38,51 @@ internal fun rememberNavigateExpandedOverlayState(
     val lifecycleOwner = LocalLifecycleOwner.current
     var turnByTurnFullScreenExpanded by remember { mutableStateOf(false) }
     var recordingDashboardFullScreenExpanded by remember { mutableStateOf(false) }
+    var combinedGuidanceRecordingFullScreenExpanded by remember { mutableStateOf(false) }
     var localRecordingActionPromptRequestToken by remember { mutableLongStateOf(0L) }
     val effectiveRecordingActionPromptRequestToken =
         maxOf(recordingActionPromptRequestToken, localRecordingActionPromptRequestToken)
     val suppressMapRenderingForGuidance =
         (turnByTurnGuidanceActive && turnByTurnFullScreenExpanded) ||
-            (traceRecordingActive && recordingDashboardFullScreenExpanded)
+            (traceRecordingActive && recordingDashboardFullScreenExpanded) ||
+            combinedGuidanceRecordingFullScreenExpanded
 
     LaunchedEffect(turnByTurnGuidanceActive) {
         if (!turnByTurnGuidanceActive) {
             turnByTurnFullScreenExpanded = false
+            combinedGuidanceRecordingFullScreenExpanded = false
         }
     }
     LaunchedEffect(traceRecordingActive) {
         if (!traceRecordingActive) {
             recordingDashboardFullScreenExpanded = false
+            combinedGuidanceRecordingFullScreenExpanded = false
             localRecordingActionPromptRequestToken = 0L
         }
     }
     BackHandler(
-        enabled = backButtonExitsNavigation && (turnByTurnFullScreenExpanded || recordingDashboardFullScreenExpanded),
+        enabled =
+            backButtonExitsNavigation &&
+                (
+                    turnByTurnFullScreenExpanded ||
+                        recordingDashboardFullScreenExpanded ||
+                        combinedGuidanceRecordingFullScreenExpanded
+                ),
     ) {
         turnByTurnFullScreenExpanded = false
         recordingDashboardFullScreenExpanded = false
+        combinedGuidanceRecordingFullScreenExpanded = false
     }
-    LaunchedEffect(turnByTurnFullScreenExpanded, recordingDashboardFullScreenExpanded) {
-        if (!turnByTurnFullScreenExpanded && !recordingDashboardFullScreenExpanded) {
+    LaunchedEffect(
+        turnByTurnFullScreenExpanded,
+        recordingDashboardFullScreenExpanded,
+        combinedGuidanceRecordingFullScreenExpanded,
+    ) {
+        if (
+            !turnByTurnFullScreenExpanded &&
+            !recordingDashboardFullScreenExpanded &&
+            !combinedGuidanceRecordingFullScreenExpanded
+        ) {
             focusRequester.requestFocus()
         }
     }
@@ -71,6 +92,7 @@ internal fun rememberNavigateExpandedOverlayState(
                 if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                     turnByTurnFullScreenExpanded = false
                     recordingDashboardFullScreenExpanded = false
+                    combinedGuidanceRecordingFullScreenExpanded = false
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -82,11 +104,18 @@ internal fun rememberNavigateExpandedOverlayState(
     return NavigateExpandedOverlayState(
         turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
         recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
+        combinedGuidanceRecordingFullScreenExpanded = combinedGuidanceRecordingFullScreenExpanded,
         suppressMapRenderingForGuidance = suppressMapRenderingForGuidance,
         effectiveRecordingActionPromptRequestToken = effectiveRecordingActionPromptRequestToken,
-        overlayOwnsRotary = turnByTurnFullScreenExpanded || recordingDashboardFullScreenExpanded,
+        overlayOwnsRotary =
+            turnByTurnFullScreenExpanded ||
+                recordingDashboardFullScreenExpanded ||
+                combinedGuidanceRecordingFullScreenExpanded,
         onTurnByTurnExpandedChange = { expanded -> turnByTurnFullScreenExpanded = expanded },
         onRecordingExpandedChange = { expanded -> recordingDashboardFullScreenExpanded = expanded },
+        onCombinedGuidanceRecordingExpandedChange = { expanded ->
+            combinedGuidanceRecordingFullScreenExpanded = expanded
+        },
         requestRecordingActionPrompt = { localRecordingActionPromptRequestToken = System.currentTimeMillis() },
     )
 }

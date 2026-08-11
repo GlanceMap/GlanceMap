@@ -17,12 +17,12 @@ fun RecordingSettingsScreen(
     onOpenSourceSettings: () -> Unit,
     onOpenExternalSensors: () -> Unit,
     onOpenDashboardSettings: () -> Unit,
+    onOpenAdvancedSettings: () -> Unit,
 ) {
     val listTokens = rememberSettingsListTokens()
     val showSavedGpxOnMap by viewModel.recordingShowSavedGpxOnMap.collectAsState()
     val startWithTurnByTurn by viewModel.recordingStartWithTurnByTurn.collectAsState()
     val autoPauseMode by viewModel.recordingAutoPauseMode.collectAsState()
-    val trackSmoothingMode by viewModel.recordingTrackSmoothingMode.collectAsState()
     val autoPauseEnabled = autoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
     var showInfoDialog by remember { mutableStateOf(false) }
 
@@ -72,15 +72,6 @@ fun RecordingSettingsScreen(
             )
         }
         item {
-            SettingsOptionPickerRow(
-                label = "Track smoothing",
-                selectedValue = trackSmoothingMode,
-                options = RECORDING_TRACK_SMOOTHING_OPTIONS.map { it to recordingTrackSmoothingLabel(it) },
-                secondaryLabel = recordingTrackSmoothingLabel(trackSmoothingMode),
-                onSelect = viewModel::setRecordingTrackSmoothingMode,
-            )
-        }
-        item {
             RecordingDashboardSettingsFolder(onClick = onOpenDashboardSettings)
         }
         item {
@@ -88,6 +79,9 @@ fun RecordingSettingsScreen(
         }
         item {
             RecordingExternalSensorsSetting(onClick = onOpenExternalSensors)
+        }
+        item {
+            RecordingAdvancedSettingsFolder(onClick = onOpenAdvancedSettings)
         }
     }
 
@@ -104,25 +98,12 @@ fun RecordingSettingsScreen(
                 "Set REC GPS timing in GPS settings. Shorter timing gives a more detailed track but uses more battery.",
                 "Adaptive track smoothing reduces GPS noise while preserving confirmed turns. " +
                     "Strong creates a cleaner track but may shorten tight corners or switchbacks.",
+                "Progress vibration is off by default. Set it in Advanced to buzz at a distance or active-time interval.",
                 "Pausing creates a break in the saved track, so stopped time is not joined by a straight line.",
             ),
         onDismiss = { showInfoDialog = false },
     )
 }
-
-private val RECORDING_TRACK_SMOOTHING_OPTIONS =
-    listOf(
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF,
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG,
-    )
-
-private fun recordingTrackSmoothingLabel(mode: String): String =
-    when (mode) {
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF -> "Off · quality checks only"
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG -> "Strong · cleaner track"
-        else -> "Adaptive · recommended"
-    }
 
 @Composable
 private fun RecordingSourceSettingsFolder(
@@ -151,6 +132,15 @@ private fun RecordingDashboardSettingsFolder(
     SettingsSectionChip(
         label = "Dashboard",
         secondaryLabel = "Pages and metrics",
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun RecordingAdvancedSettingsFolder(onClick: () -> Unit) {
+    SettingsSectionChip(
+        label = "Advanced",
+        secondaryLabel = "Smoothing, progress vibration",
         onClick = onClick,
     )
 }

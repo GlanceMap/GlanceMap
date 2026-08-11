@@ -66,6 +66,8 @@ class SettingsRepositoryImpl private constructor(
         val RECORDING_AUTO_PAUSE_MODE_BIKE = stringPreferencesKey("recording_auto_pause_mode_bike")
         val RECORDING_TRACK_SMOOTHING_MODE_HIKE = stringPreferencesKey("recording_track_smoothing_mode_hike")
         val RECORDING_TRACK_SMOOTHING_MODE_BIKE = stringPreferencesKey("recording_track_smoothing_mode_bike")
+        val RECORDING_PROGRESS_VIBRATION_MODE_HIKE = stringPreferencesKey("recording_progress_vibration_mode_hike")
+        val RECORDING_PROGRESS_VIBRATION_MODE_BIKE = stringPreferencesKey("recording_progress_vibration_mode_bike")
         val RECORDING_ELEVATION_SOURCE = stringPreferencesKey("recording_elevation_source")
         val RECORDING_HEART_RATE_SOURCE = stringPreferencesKey("recording_heart_rate_source")
         val RECORDING_CADENCE_SOURCE = stringPreferencesKey("recording_cadence_source")
@@ -275,18 +277,20 @@ class SettingsRepositoryImpl private constructor(
 
     override val recordingScreenOffSampleIntervalSeconds: Flow<Int> =
         context.dataStore.data.map {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             sanitizeScreenOffGpsIntervalSeconds(
                 it[PrefKeys.RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS],
-                SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS,
+                defaultRecordingScreenOffSampleIntervalSecondsForProfile(profile),
             )
         }
 
     override suspend fun setRecordingScreenOffSampleIntervalSeconds(seconds: Int) {
         context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             it[PrefKeys.RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS] =
                 sanitizeScreenOffGpsIntervalSeconds(
                     seconds,
-                    SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS,
+                    defaultRecordingScreenOffSampleIntervalSecondsForProfile(profile),
                 )
         }
     }
@@ -318,6 +322,19 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit {
             val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             it[recordingTrackSmoothingModeKeyFor(profile)] = sanitizeRecordingTrackSmoothingMode(mode)
+        }
+    }
+
+    override val recordingProgressVibrationMode: Flow<String> =
+        context.dataStore.data.map {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
+            sanitizeRecordingProgressVibrationMode(it[recordingProgressVibrationModeKeyFor(profile)])
+        }
+
+    override suspend fun setRecordingProgressVibrationMode(mode: String) {
+        context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
+            it[recordingProgressVibrationModeKeyFor(profile)] = sanitizeRecordingProgressVibrationMode(mode)
         }
     }
 
@@ -728,10 +745,11 @@ class SettingsRepositoryImpl private constructor(
 
     override val turnByTurnGpsInAmbientMode: Flow<Boolean> =
         context.dataStore.data.map {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             val screenOnSeconds =
                 sanitizeScreenOnGpsIntervalSeconds(
                     it[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS],
-                    SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+                    defaultTurnByTurnGpsIntervalSecondsForProfile(profile),
                 )
             when (sanitizeTurnByTurnScreenOffGpsIntervalSeconds(it)) {
                 SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS ->
@@ -744,15 +762,16 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setTurnByTurnGpsInAmbientMode(enabled: Boolean) {
         context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             val screenOnSeconds =
                 sanitizeScreenOnGpsIntervalSeconds(
                     it[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS],
-                    SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+                    defaultTurnByTurnGpsIntervalSecondsForProfile(profile),
                 )
             it[PrefKeys.TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS] =
                 if (enabled) {
                     if (screenOnSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) {
-                        SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS
+                        defaultTurnByTurnGpsIntervalSecondsForProfile(profile)
                     } else {
                         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
                     }
@@ -775,18 +794,20 @@ class SettingsRepositoryImpl private constructor(
 
     override val turnByTurnGpsIntervalSeconds: Flow<Int> =
         context.dataStore.data.map {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             sanitizeScreenOnGpsIntervalSeconds(
                 it[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS],
-                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+                defaultTurnByTurnGpsIntervalSecondsForProfile(profile),
             )
         }
 
     override suspend fun setTurnByTurnGpsIntervalSeconds(seconds: Int) {
         context.dataStore.edit {
+            val profile = sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE])
             it[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS] =
                 sanitizeScreenOnGpsIntervalSeconds(
                     seconds,
-                    SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+                    defaultTurnByTurnGpsIntervalSecondsForProfile(profile),
                 )
         }
     }
@@ -797,7 +818,7 @@ class SettingsRepositoryImpl private constructor(
     override suspend fun setTurnByTurnScreenOffGpsIntervalSeconds(seconds: Int) {
         context.dataStore.edit {
             val sanitized =
-                sanitizeScreenOffGpsIntervalSeconds(
+                sanitizeTurnByTurnScreenOffGpsIntervalSeconds(
                     seconds,
                     SettingsRepository.DEFAULT_TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS,
                 )
@@ -1872,6 +1893,17 @@ class SettingsRepositoryImpl private constructor(
                 SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
                 SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG,
             )
+        private val allowedRecordingProgressVibrationModes =
+            setOf(
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_OFF,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
+                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES,
+            )
         private val allowedPoiIconSizesPx =
             setOf(
                 SettingsRepository.POI_ICON_SIZE_SMALL_PX,
@@ -1929,6 +1961,8 @@ class SettingsRepositoryImpl private constructor(
             setOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + (1..60) + setOf(90, 120)
         private val allowedScreenOffGpsIntervalsSeconds =
             allowedScreenOnGpsIntervalsSeconds + SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
+        private val allowedTurnByTurnScreenOffGpsIntervalsSeconds =
+            allowedScreenOffGpsIntervalsSeconds + SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
         private const val LEGACY_ZOOM_BUTTONS_HIDE_MINUS = "HIDE_MINUS"
         private const val CACHE_PREFS_NAME = "settings_runtime_cache"
         private const val CACHE_KEY_NAVIGATION_MARKER_STYLE = "navigation_marker_style"
@@ -2065,6 +2099,20 @@ class SettingsRepositoryImpl private constructor(
                 else -> SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
             }
 
+        private fun defaultRecordingScreenOffSampleIntervalSecondsForProfile(profile: String): Int =
+            when (profile) {
+                SettingsRepository.ACTIVITY_PROFILE_BIKE ->
+                    SettingsRepository.DEFAULT_BIKE_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS
+                else -> SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS
+            }
+
+        private fun defaultTurnByTurnGpsIntervalSecondsForProfile(profile: String): Int =
+            when (profile) {
+                SettingsRepository.ACTIVITY_PROFILE_BIKE ->
+                    SettingsRepository.DEFAULT_BIKE_TURN_BY_TURN_GPS_INTERVAL_SECONDS
+                else -> SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS
+            }
+
         private fun sanitizeScreenOnGpsIntervalSeconds(
             seconds: Int?,
             defaultSeconds: Int,
@@ -2079,6 +2127,14 @@ class SettingsRepositoryImpl private constructor(
         ): Int =
             seconds
                 ?.takeIf { it in allowedScreenOffGpsIntervalsSeconds }
+                ?: defaultSeconds
+
+        private fun sanitizeTurnByTurnScreenOffGpsIntervalSeconds(
+            seconds: Int?,
+            defaultSeconds: Int,
+        ): Int =
+            seconds
+                ?.takeIf { it in allowedTurnByTurnScreenOffGpsIntervalsSeconds }
                 ?: defaultSeconds
 
         private fun sanitizeRecordingAutoPauseMode(mode: String?): String =
@@ -2132,13 +2188,28 @@ class SettingsRepositoryImpl private constructor(
                 PrefKeys.RECORDING_TRACK_SMOOTHING_MODE_HIKE
             }
 
+        private fun sanitizeRecordingProgressVibrationMode(mode: String?): String =
+            mode
+                ?.takeIf { it in allowedRecordingProgressVibrationModes }
+                ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
+
+        private fun recordingProgressVibrationModeKeyFor(profile: String): Preferences.Key<String> =
+            if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_MODE_BIKE
+            } else {
+                PrefKeys.RECORDING_PROGRESS_VIBRATION_MODE_HIKE
+            }
+
         private fun sanitizeTurnByTurnScreenOffGpsIntervalSeconds(preferences: Preferences): Int {
             preferences[PrefKeys.TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS]
-                ?.takeIf { it in allowedScreenOffGpsIntervalsSeconds }
+                ?.takeIf { it in allowedTurnByTurnScreenOffGpsIntervalsSeconds }
                 ?.let { return it }
             preferences[PrefKeys.TURN_BY_TURN_GPS_IN_AMBIENT_MODE]?.let { legacyEnabled ->
+                // The legacy boolean captured only whether GPS continued while the screen was
+                // off, not the cadence. Preserve an explicit modern cadence above, but migrate
+                // the old enabled default to the new adaptive policy.
                 return if (legacyEnabled) {
-                    SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
+                    SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
                 } else {
                     SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
                 }
@@ -2253,6 +2324,9 @@ class SettingsRepositoryImpl private constructor(
         val previousFlatSpeed = defaultGpxFlatSpeedMpsForProfile(previousProfile)
         val nextFlatSpeed = defaultGpxFlatSpeedMpsForProfile(nextProfile)
         val nextRecordingSampleInterval = defaultRecordingSampleIntervalSecondsForProfile(nextProfile)
+        val nextRecordingScreenOffInterval =
+            defaultRecordingScreenOffSampleIntervalSecondsForProfile(nextProfile)
+        val nextTurnByTurnGpsInterval = defaultTurnByTurnGpsIntervalSecondsForProfile(nextProfile)
 
         val currentTurnByTurnDashboard =
             sanitizeTurnByTurnDashboardMetricSlots(preferences[PrefKeys.TURN_BY_TURN_DASHBOARD_METRIC_SLOTS])
@@ -2274,6 +2348,20 @@ class SettingsRepositoryImpl private constructor(
             currentRecordingSampleInterval == SettingsRepository.DEFAULT_BIKE_RECORDING_SAMPLE_INTERVAL_SECONDS
         ) {
             preferences[PrefKeys.RECORDING_SAMPLE_INTERVAL_SECONDS] = nextRecordingSampleInterval
+        }
+        val currentRecordingScreenOffInterval = preferences[PrefKeys.RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS]
+        if (currentRecordingScreenOffInterval == null ||
+            currentRecordingScreenOffInterval == SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS ||
+            currentRecordingScreenOffInterval == SettingsRepository.DEFAULT_BIKE_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS
+        ) {
+            preferences[PrefKeys.RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS] = nextRecordingScreenOffInterval
+        }
+        val currentTurnByTurnGpsInterval = preferences[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS]
+        if (currentTurnByTurnGpsInterval == null ||
+            currentTurnByTurnGpsInterval == SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS ||
+            currentTurnByTurnGpsInterval == SettingsRepository.DEFAULT_BIKE_TURN_BY_TURN_GPS_INTERVAL_SECONDS
+        ) {
+            preferences[PrefKeys.TURN_BY_TURN_GPS_INTERVAL_SECONDS] = nextTurnByTurnGpsInterval
         }
     }
 

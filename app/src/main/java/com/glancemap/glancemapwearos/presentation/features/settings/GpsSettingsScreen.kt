@@ -172,7 +172,7 @@ fun GpsSettingsScreen(
             GpsTimingPickerRow(
                 label = stringResource(R.string.screen_off),
                 selectedValue = turnByTurnScreenOffGpsIntervalSeconds,
-                options = SCREEN_OFF_OPTIONS_SECONDS,
+                options = TBT_SCREEN_OFF_OPTIONS_SECONDS,
                 secondaryLabel =
                     gpsScreenOffIntervalLabel(
                         seconds = turnByTurnScreenOffGpsIntervalSeconds,
@@ -648,6 +648,9 @@ private val SCREEN_OFF_OPTIONS_SECONDS =
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
     ) + GPS_TIMING_SECONDS_OPTIONS
 
+private val TBT_SCREEN_OFF_OPTIONS_SECONDS =
+    listOf(SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) + SCREEN_OFF_OPTIONS_SECONDS
+
 private val AUTO_PAUSE_OPTIONS =
     listOf(
         SettingsRepository.RECORDING_AUTO_PAUSE_OFF,
@@ -667,6 +670,9 @@ private fun gpsScreenOffIntervalLabel(
     screenOnSeconds: Int? = null,
 ): String =
     when (seconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            stringResource(R.string.gps_adaptive)
+
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS ->
             screenOnSeconds?.let {
                 stringResource(R.string.gps_same_with_value, gpsIntervalLabel(it))
@@ -694,6 +700,12 @@ private fun gpsTimingOption(
     screenOnSeconds: Int?,
 ): GpsTimingOption =
     when (seconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            GpsTimingOption(
+                label = stringResource(R.string.gps_adaptive),
+                detail = stringResource(R.string.gps_adaptive_tbt_detail),
+            )
+
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS ->
             GpsTimingOption(
                 label = stringResource(R.string.gps_same),

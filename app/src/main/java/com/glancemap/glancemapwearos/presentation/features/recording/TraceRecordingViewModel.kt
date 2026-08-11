@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import android.content.Context
 import android.location.Location
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,6 +46,7 @@ class TraceRecordingViewModel(
     private val syncManager: SyncManager,
     private val elevationProvider: RecordingElevationProvider,
     private val draftStore: TraceRecordingDraftStore,
+    private val applicationContext: Context? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TraceRecordingUiState())
     val uiState: StateFlow<TraceRecordingUiState> = _uiState.asStateFlow()
@@ -62,6 +65,7 @@ class TraceRecordingViewModel(
     private var recordingStepsSource = SettingsRepository.DEFAULT_RECORDING_STEPS_SOURCE
     private var recordingAutoPauseMode = SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE
     private var recordingTrackSmoothingMode = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
+    private var recordingProgressVibrationMode = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
     private var recordingExternalHeartRateAddress: String? = null
     private var recordingExternalRunPodAddress: String? = null
     private var userWeightKg = SettingsRepository.DEFAULT_USER_WEIGHT_KG
@@ -89,8 +93,6 @@ class TraceRecordingViewModel(
     private var recordingGapCount: Int = 0
     private var recordingMaxGapMillis: Long = 0L
     private var lastUiAction: String? = null
-    private var forceAcceptNextGoodFixReason: String? = null
-    private var forcedAcceptCount = 0
     private var gapRecoveryAcceptCount = 0
     private var maxSkippedIntervalElapsedMs = 0L
     private var lastSkippedIntervalElapsedMs = 0L
@@ -125,6 +127,8 @@ class TraceRecordingViewModel(
     private var latestGpsSignalSnapshot = GpsSignalSnapshot()
     private var pendingRecordingStartSource: String? = null
     private var pendingRecordingStartTimeout: Job? = null
+    private val recordingProgressVibrationTracker = RecordingProgressVibrationTracker()
+    private var recordingProgressVibrationTimeJob: Job? = null
 
     init {
         settingsRepository.recordingSampleIntervalSeconds
@@ -145,6 +149,13 @@ class TraceRecordingViewModel(
                             "reason=session_mode_frozen",
                     )
                 }
+            }.launchIn(viewModelScope)
+        settingsRepository.recordingProgressVibrationMode
+            .onEach { nextMode ->
+                if (recordingProgressVibrationMode == nextMode) return@onEach
+                recordingProgressVibrationMode = nextMode
+                rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
+                syncRecordingProgressVibrationTimer()
             }.launchIn(viewModelScope)
         settingsRepository.recordingElevationSource
             .onEach { recordingElevationSource = it }
@@ -369,6 +380,8 @@ class TraceRecordingViewModel(
                 stepsSource = recordingStepsSource,
                 message = "REC on · ${recordingProfileLabel(activityProfile)}",
             )
+        recordingProgressVibrationTracker.start(recordingProgressVibrationMode)
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=start sampleIntervalSeconds=$sampleIntervalSeconds elevationSource=$recordingElevationSource " +
@@ -417,9 +430,6 @@ class TraceRecordingViewModel(
             skippedPausedCount += 1
             return
         }
-        val forceAcceptReason =
-            forceAcceptNextGoodFixReason
-                ?.takeIf { shouldForceAcceptNextFix(nowElapsedMs) }
         val elapsedSinceAcceptedMs =
             if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
                 nowElapsedMs - lastAcceptedElapsedMs
@@ -429,7 +439,7 @@ class TraceRecordingViewModel(
         val sampleAcceptThresholdMillis = recordingSampleAcceptThresholdMillis()
         if (elapsedSinceAcceptedMs >= 0L) {
             val elapsedMs = elapsedSinceAcceptedMs
-            if (elapsedMs < sampleAcceptThresholdMillis && forceAcceptReason == null) {
+            if (elapsedMs < sampleAcceptThresholdMillis) {
                 skippedIntervalCount += 1
                 lastSkippedIntervalElapsedMs = elapsedMs
                 maxSkippedIntervalElapsedMs = maxOf(maxSkippedIntervalElapsedMs, elapsedMs)
@@ -459,7 +469,7 @@ class TraceRecordingViewModel(
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
         val suppressedJitterDistance =
             previousRecordedPoint
-                ?.takeIf { forceAcceptReason == null && !startNewSegmentOnNextPoint }
+                ?.takeIf { !startNewSegmentOnNextPoint }
                 ?.let { previous ->
                     recordingJitterDistanceToSuppress(
                         previous = previous,
@@ -542,7 +552,7 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
             )
         }
-        if (forceAcceptReason == null && elapsedSinceAcceptedMs >= recordingGapTelemetryThresholdMillis()) {
+        if (elapsedSinceAcceptedMs >= recordingGapTelemetryThresholdMillis()) {
             gapRecoveryAcceptCount += 1
             DebugTelemetry.log(
                 "TraceRecording",
@@ -554,25 +564,6 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
             )
         }
-        if (forceAcceptReason != null) {
-            forceAcceptNextGoodFixReason = null
-            forcedAcceptCount += 1
-            DebugTelemetry.log(
-                "TraceRecording",
-                "event=force_accept_next_fix reason=${sanitizeTelemetryValue(forceAcceptReason)} " +
-                    "forcedAcceptCount=$forcedAcceptCount " +
-                    "elapsedSinceAcceptedMs=${
-                        if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
-                            nowElapsedMs - lastAcceptedElapsedMs
-                        } else {
-                            -1L
-                        }
-                    } " +
-                    "provider=${sanitizeTelemetryValue(location.provider ?: "na")} " +
-                    "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
-            )
-        }
-
         lastAcceptedElapsedMs = nowElapsedMs
         val latitude = location.latitude
         val longitude = location.longitude
@@ -701,6 +692,10 @@ class TraceRecordingViewModel(
                     )
                 _uiState.value =
                     updatedState
+                maybeTriggerRecordingProgressVibration(
+                    state = updatedState,
+                    nowMillis = System.currentTimeMillis(),
+                )
                 if (pointCount == 1 || pointCount % RECORDING_TELEMETRY_POINT_INTERVAL == 0) {
                     DebugTelemetry.log(
                         "TraceRecording",
@@ -831,36 +826,87 @@ class TraceRecordingViewModel(
             )
         if (nextState != state) {
             _uiState.value = nextState
+            maybeTriggerRecordingProgressVibration(
+                state = nextState,
+                nowMillis = System.currentTimeMillis(),
+            )
         }
     }
 
     private fun updateRecordingSourceState() {
-        _uiState.value =
-            _uiState.value.copy(
+        val currentState = _uiState.value
+        val nextState =
+            currentState.copy(
                 cadenceSource = recordingCadenceSource,
                 speedSource = recordingSpeedSource,
                 distanceSource = recordingDistanceSource,
                 stepsSource = recordingStepsSource,
             )
+        _uiState.value = nextState
+        if (
+            nextState.active &&
+            nextState.distanceSource != currentState.distanceSource &&
+            recordingProgressVibrationInterval(recordingProgressVibrationMode) is RecordingProgressVibrationInterval.Distance
+        ) {
+            rebaseRecordingProgressVibration(nextState, System.currentTimeMillis())
+        }
     }
 
-    fun onWakeRefreshRequested(source: String) {
-        val state = _uiState.value
+    private fun rebaseRecordingProgressVibration(
+        state: TraceRecordingUiState,
+        nowMillis: Long,
+    ) {
+        recordingProgressVibrationTracker.rebase(
+            mode = recordingProgressVibrationMode,
+            distanceMeters = recordingDisplayDistanceMeters(state),
+            activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
+        )
+    }
+
+    private fun maybeTriggerRecordingProgressVibration(
+        state: TraceRecordingUiState,
+        nowMillis: Long,
+    ) {
         if (!state.active || state.paused || state.saving) return
-        if (!isGpsSamplingEnabled()) return
-        forceAcceptNextGoodFixReason = source
-        val nowMillis = System.currentTimeMillis()
+        val trigger =
+            recordingProgressVibrationTracker.next(
+                mode = recordingProgressVibrationMode,
+                distanceMeters = recordingDisplayDistanceMeters(state),
+                activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
+            ) ?: return
+        val vibrated = vibrateRecordingProgress(applicationContext)
         DebugTelemetry.log(
             "TraceRecording",
-            "event=wake_refresh_requested source=${sanitizeTelemetryValue(source)} " +
-                "lastLivePointAgeMs=${state.latestLivePoint?.timeMillis?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1} " +
-                "lastAcceptedPointAgeMs=${state.points
-                    .lastOrNull()
-                    ?.timeMillis
-                    ?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1} " +
-                "points=${state.points.size} distanceMeters=${state.distanceMeters.toInt()} " +
-                "sampleIntervalSeconds=$sampleIntervalSeconds",
+            "event=progress_vibration type=${trigger.javaClass.simpleName.lowercase()} " +
+                "milestone=${trigger.milestone} mode=$recordingProgressVibrationMode " +
+                "distanceMeters=${recordingDisplayDistanceMeters(state).toInt()} " +
+                "activeDurationMs=${recordingActiveDurationMillis(state, nowMillis)} " +
+                "vibratorAvailable=$vibrated",
         )
+    }
+
+    private fun syncRecordingProgressVibrationTimer() {
+        recordingProgressVibrationTimeJob?.cancel()
+        recordingProgressVibrationTimeJob = null
+        if (recordingProgressVibrationInterval(recordingProgressVibrationMode) !is RecordingProgressVibrationInterval.Time) {
+            return
+        }
+        val initialState = _uiState.value
+        if (!initialState.active || initialState.paused || initialState.saving) return
+        recordingProgressVibrationTimeJob =
+            viewModelScope.launch {
+                while (isActive) {
+                    val state = _uiState.value
+                    if (!state.active || state.paused || state.saving) return@launch
+                    val nowMillis = System.currentTimeMillis()
+                    maybeTriggerRecordingProgressVibration(state, nowMillis)
+                    val delayMillis =
+                        recordingProgressVibrationTracker.millisecondsUntilNextTimeMilestone(
+                            recordingActiveDurationMillis(_uiState.value, System.currentTimeMillis()),
+                        ) ?: return@launch
+                    delay(delayMillis)
+                }
+            }
     }
 
     fun pauseRecording() {
@@ -875,6 +921,7 @@ class TraceRecordingViewModel(
                 pausedAtMillis = System.currentTimeMillis(),
                 message = "REC paused",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=pause ${recordingSummaryTokens(state, System.currentTimeMillis())}",
@@ -901,6 +948,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
                 message = "REC on",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=resume ${recordingSummaryTokens(_uiState.value, now)}",
@@ -914,6 +962,7 @@ class TraceRecordingViewModel(
         lastUiAction = "save"
         if (state.points.size < 2) {
             _uiState.value = TraceRecordingUiState(message = "Too few points")
+            syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=discard reason=not_enough_points ${recordingSummaryTokens(state, System.currentTimeMillis())}",
@@ -938,6 +987,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + finalPausedMillis,
                 message = "Saving REC",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=save_start ${recordingSummaryTokens(state, now, finalPausedMillis)}",
@@ -1019,6 +1069,7 @@ class TraceRecordingViewModel(
                 val saveInfo = saveResult.getOrNull()
                 syncManager.requestGpxSync()
                 _uiState.value = TraceRecordingUiState(message = "REC saved")
+                syncRecordingProgressVibrationTimer()
                 draftStore.clear()
                 DebugTelemetry.log(
                     "TraceRecording",
@@ -1039,6 +1090,7 @@ class TraceRecordingViewModel(
                         saving = false,
                         message = errorMessage,
                     )
+                syncRecordingProgressVibrationTimer()
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=save_failure ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
@@ -1053,6 +1105,7 @@ class TraceRecordingViewModel(
         if (!state.active && !state.saving) return
         lastUiAction = "discard"
         _uiState.value = TraceRecordingUiState(message = "Discarded")
+        syncRecordingProgressVibrationTimer()
         clearDraftAsync(reason = "user_discard")
         DebugTelemetry.log(
             "TraceRecording",
@@ -1108,6 +1161,8 @@ class TraceRecordingViewModel(
                     stepCount = recoveredStepCount,
                     message = "REC recovered",
                 )
+            rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
+            syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=recovered ${recordingSummaryTokens(_uiState.value, System.currentTimeMillis())} " +
@@ -1194,8 +1249,6 @@ class TraceRecordingViewModel(
         gpsActiveDurationMillis = 0L
         recordingGapCount = 0
         recordingMaxGapMillis = 0L
-        forceAcceptNextGoodFixReason = null
-        forcedAcceptCount = 0
         gapRecoveryAcceptCount = 0
         maxSkippedIntervalElapsedMs = 0L
         lastSkippedIntervalElapsedMs = 0L
@@ -1267,6 +1320,7 @@ class TraceRecordingViewModel(
                 latestLivePoint = livePoint,
                 message = "REC auto-paused",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=auto_pause count=$autoPauseTriggerCount " +
@@ -1344,6 +1398,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
                 message = "REC on",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=auto_resume count=$autoResumeTriggerCount reason=$reason " +
@@ -1530,7 +1585,6 @@ class TraceRecordingViewModel(
                         "skippedInterval=$skippedIntervalCount " +
                         "lastSkippedIntervalElapsedMs=$lastSkippedIntervalElapsedMs " +
                         "maxSkippedIntervalElapsedMs=$maxSkippedIntervalElapsedMs " +
-                        "forcedAcceptCount=$forcedAcceptCount " +
                         "gapCount=$recordingGapCount maxGapMs=$recordingMaxGapMillis",
                 )
             }
@@ -1659,7 +1713,6 @@ class TraceRecordingViewModel(
             "expectedPointCount=$expectedPointCount averagePointIntervalMs=$averagePointIntervalMillis " +
             "pointCaptureRatePercent=$pointCaptureRatePercent " +
             "recordingGapCount=${state.recordingGapCount} recordingMaxGapMs=${state.recordingMaxGapMillis} " +
-            "forcedAcceptCount=$forcedAcceptCount " +
             "gapRecoveryAcceptCount=$gapRecoveryAcceptCount " +
             "suppressedJitterPointCount=$suppressedJitterPointCount " +
             "suppressedJitterDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
@@ -1757,10 +1810,6 @@ class TraceRecordingViewModel(
         return externalIntegratedDistanceMeters
     }
 
-    private fun shouldForceAcceptNextFix(nowElapsedMs: Long): Boolean =
-        lastAcceptedElapsedMs == Long.MIN_VALUE ||
-            nowElapsedMs - lastAcceptedElapsedMs >= RECORDING_FORCE_ACCEPT_MIN_AGE_MS
-
     private fun recordingSampleAcceptThresholdMillis(): Long =
         (effectiveSampleIntervalSeconds() * 1_000L - RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS)
             .coerceAtLeast(RECORDING_MIN_SAMPLE_ACCEPT_THRESHOLD_MS)
@@ -1824,7 +1873,6 @@ private fun sensorAgeMillis(
 private const val RECORDING_GAP_TELEMETRY_MIN_THRESHOLD_MS = 15_000L
 private const val RECORDING_GPS_ACTIVE_GAP_FLOOR_MS = 1_000L
 private const val RECORDING_GPS_ACTIVE_GAP_CAP_MS = 15_000L
-private const val RECORDING_FORCE_ACCEPT_MIN_AGE_MS = 2_000L
 private const val RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS = 500L
 private const val RECORDING_MIN_SAMPLE_ACCEPT_THRESHOLD_MS = 850L
 private const val RECORDING_QUALITY_TELEMETRY_INTERVAL = 5

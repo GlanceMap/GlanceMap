@@ -147,6 +147,19 @@ class SettingsViewModel(
             settingsRepository.setRecordingTrackSmoothingMode(mode)
         }
 
+    val recordingProgressVibrationMode: StateFlow<String> =
+        settingsRepository.recordingProgressVibrationMode
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE,
+            )
+
+    fun setRecordingProgressVibrationMode(mode: String) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationMode(mode)
+        }
+
     val recordingElevationSource: StateFlow<String> =
         settingsRepository.recordingElevationSource
             .stateIn(

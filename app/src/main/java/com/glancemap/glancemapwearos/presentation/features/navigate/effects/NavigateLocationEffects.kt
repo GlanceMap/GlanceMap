@@ -1061,7 +1061,7 @@ internal fun rememberNavigateLocationUiState(
 }
 
 private const val WAKE_REACQUIRE_TIMEOUT_MS = 6_000L
-private const val WAKE_REACQUIRE_COOLDOWN_MS = 60_000L
+private const val WAKE_REACQUIRE_COOLDOWN_MS = 6_000L
 private const val POST_WAKE_PREDICTION_GRACE_MS = 700L
 private const val INTERACTIVE_STALE_REFRESH_CHECK_MS = 1_000L
 private const val INTERACTIVE_STALE_REFRESH_MIN_FIX_AGE_MS = 2_500L

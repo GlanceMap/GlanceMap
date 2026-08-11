@@ -763,6 +763,12 @@ object DiagnosticsExporter {
             writer.appendLine(
                 "turnByTurnScreenOffGpsIntervalSeconds=${settings.turnByTurnScreenOffGpsIntervalSeconds}",
             )
+            writer.appendLine(
+                "turnByTurnScreenOffGpsAdaptive=${
+                    settings.turnByTurnScreenOffGpsIntervalSeconds ==
+                        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
+                }",
+            )
             writer.appendLine("turnByTurnHapticsEnabled=${settings.turnByTurnHapticsEnabled}")
             writer.appendLine("turnByTurnVoiceGuidanceEnabled=${settings.turnByTurnVoiceGuidanceEnabled}")
             writer.appendLine("turnByTurnTurnAlertsMode=${settings.turnByTurnTurnAlertsMode}")

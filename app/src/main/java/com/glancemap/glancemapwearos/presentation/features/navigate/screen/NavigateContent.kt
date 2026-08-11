@@ -226,6 +226,8 @@ internal fun NavigateContent(
         )
     val turnByTurnFullScreenExpanded = expandedOverlayState.turnByTurnFullScreenExpanded
     val recordingDashboardFullScreenExpanded = expandedOverlayState.recordingDashboardFullScreenExpanded
+    val combinedGuidanceRecordingFullScreenExpanded =
+        expandedOverlayState.combinedGuidanceRecordingFullScreenExpanded
     val effectiveRecordingActionPromptRequestToken =
         expandedOverlayState.effectiveRecordingActionPromptRequestToken
     val suppressMapRenderingForGuidance = expandedOverlayState.suppressMapRenderingForGuidance
@@ -493,7 +495,8 @@ internal fun NavigateContent(
     val liveDistanceLabel = liveHudState.liveDistanceLabel
     val fullScreenPopupExpanded =
         turnByTurnFullScreenExpanded ||
-            recordingDashboardFullScreenExpanded
+            recordingDashboardFullScreenExpanded ||
+            combinedGuidanceRecordingFullScreenExpanded
     val shouldSuppressNavigateTime =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -938,6 +941,8 @@ internal fun NavigateContent(
                     onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
                     turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
                     recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
+                    combinedGuidanceRecordingFullScreenExpanded =
+                    combinedGuidanceRecordingFullScreenExpanded,
                     guideBackToRouteActive = guideBackToRouteActive,
                     showGuideBackPrompt = showGuideBackPrompt,
                     startDecisionPrompt = startDecisionPrompt,
@@ -946,6 +951,8 @@ internal fun NavigateContent(
                     onStopTurnByTurnGuidance = onStopTurnByTurnGuidance,
                     onTurnByTurnExpandedChange = expandedOverlayState.onTurnByTurnExpandedChange,
                     onRecordingExpandedChange = expandedOverlayState.onRecordingExpandedChange,
+                    onCombinedGuidanceRecordingExpandedChange =
+                        expandedOverlayState.onCombinedGuidanceRecordingExpandedChange,
                     onGuideBackToRoute = onGuideBackToRoute,
                     onDismissGuideBackPrompt = onDismissGuideBackPrompt,
                     onAcceptStartDecisionPrompt = onAcceptStartDecisionPrompt,
