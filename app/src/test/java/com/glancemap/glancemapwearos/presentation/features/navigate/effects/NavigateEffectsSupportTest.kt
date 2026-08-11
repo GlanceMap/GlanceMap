@@ -1,11 +1,14 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.hardware.SensorManager
+import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -365,10 +368,10 @@ class NavigateEffectsSupportTest {
                 targetAngleDeg = 90f,
             )
 
-        assertEquals(12f, firstAppliedAngle, 0f)
-        assertEquals(24f, secondAppliedAngle, 0f)
+        assertEquals(10f, firstAppliedAngle, 0f)
+        assertEquals(20f, secondAppliedAngle, 0f)
         assertEquals(
-            362f,
+            360f,
             resolveCompassVisualTargetAngle(
                 currentAngleDeg = 350f,
                 targetAngleDeg = 10f,
@@ -376,7 +379,7 @@ class NavigateEffectsSupportTest {
             0f,
         )
         assertEquals(
-            8f,
+            10f,
             resolveCompassVisualTargetAngle(
                 currentAngleDeg = 20f,
                 targetAngleDeg = 350f,
@@ -388,7 +391,7 @@ class NavigateEffectsSupportTest {
     @Test
     fun normalHeadingAnimationRejectsSingleFrameThirtyDegreeSweep() {
         assertEquals(
-            12f,
+            10f,
             resolveHeadingAnimationDelta(
                 diffDeg = 40f,
                 activeTurn = true,
@@ -397,4 +400,75 @@ class NavigateEffectsSupportTest {
             0.01f,
         )
     }
+
+    @Test
+    fun rotationSettleGateHoldsWhileCompassIsDegraded() {
+        val gate = NavigateRotationSettleGate()
+        val degradedState =
+            stableCompassRenderState()
+                .copy(
+                    trackingState = CompassTrackingState.DEGRADED,
+                    magneticInterference = true,
+                    magneticQuality = CompassMagneticQuality.INTERFERENCE,
+                )
+
+        assertNull(
+            gate.resolve(
+                nowElapsedMs = 1_000L,
+                renderState = degradedState,
+                compassHeadingDeg = 120f,
+                gpsFixFresh = false,
+                gpsFixSpeedMps = 0f,
+                gpsFixBearingDeg = null,
+            ),
+        )
+    }
+
+    @Test
+    fun rotationSettleGateWaitsForStableCompassWindowBeforeBlending() {
+        val gate = NavigateRotationSettleGate()
+        val stableState = stableCompassRenderState()
+
+        assertNull(gate.resolve(1_000L, stableState, 120f, false, 0f, null))
+        assertNull(gate.resolve(1_599L, stableState, 120f, false, 0f, null))
+
+        val target = gate.resolve(1_600L, stableState, 120f, false, 0f, null)
+        assertEquals(120f, target?.headingDeg ?: Float.NaN, 0f)
+        assertEquals(NavigationRotationTargetSource.COMPASS, target?.source)
+    }
+
+    @Test
+    fun rotationSettleGateUsesFreshMovingGpsBearingBeforeCompassStabilizes() {
+        val gate = NavigateRotationSettleGate()
+        val degradedState =
+            stableCompassRenderState()
+                .copy(
+                    trackingState = CompassTrackingState.DEGRADED,
+                )
+
+        val target =
+            gate.resolve(
+                nowElapsedMs = 1_000L,
+                renderState = degradedState,
+                compassHeadingDeg = 10f,
+                gpsFixFresh = true,
+                gpsFixSpeedMps = 1.3f,
+                gpsFixBearingDeg = 275f,
+            )
+
+        assertEquals(275f, target?.headingDeg ?: Float.NaN, 0f)
+        assertEquals(NavigationRotationTargetSource.GPS_BEARING, target?.source)
+
+        val retainedTarget = gate.resolve(1_001L, degradedState, 10f, false, 0f, null)
+        assertEquals(275f, retainedTarget?.headingDeg ?: Float.NaN, 0f)
+        assertEquals(NavigationRotationTargetSource.GPS_BEARING, retainedTarget?.source)
+    }
+
+    private fun stableCompassRenderState() =
+        initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
+            headingSource = HeadingSource.ROTATION_VECTOR,
+            accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+            trackingState = CompassTrackingState.TRACKING,
+            magneticQuality = CompassMagneticQuality.GOOD,
+        )
 }
