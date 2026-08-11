@@ -529,18 +529,18 @@ internal fun recordingTransitionMaximumSpeedMps(
         } else {
             RECORDING_FIX_FALLBACK_HIKE_SPEED_MPS
         }
-    val reportedSpeed = candidate.speedMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val reportedSpeed =
+        candidate.speedMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble() ?: return fallbackSpeed
     val speedAccuracy =
         candidate.speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
     val speedAccuracyIsReliable =
         speedAccuracy == null ||
             speedAccuracy <=
-                maxOf(
-                    RECORDING_FIX_MAX_TRUSTED_SPEED_ACCURACY_MPS,
-                    (reportedSpeed ?: 0.0) * RECORDING_FIX_MAX_RELATIVE_SPEED_ACCURACY,
-                )
-    val speedIsReliable = reportedSpeed != null && speedAccuracyIsReliable
-    if (!speedIsReliable || reportedSpeed == null) return fallbackSpeed
+            maxOf(
+                RECORDING_FIX_MAX_TRUSTED_SPEED_ACCURACY_MPS,
+                reportedSpeed * RECORDING_FIX_MAX_RELATIVE_SPEED_ACCURACY,
+            )
+    if (!speedAccuracyIsReliable) return fallbackSpeed
     val speedUncertainty =
         (speedAccuracy ?: 0.0).coerceAtMost(RECORDING_FIX_MAX_SPEED_UNCERTAINTY_ALLOWANCE_MPS)
     return (reportedSpeed + speedUncertainty)
@@ -602,16 +602,16 @@ private data class RecordingSmoothingConfig(
         val bike = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE
         val strong = mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG
         return RecordingAdjustmentProfile(
-            strength = if (strong) 0.82 else 0.68,
-            accuracyAdjustmentFactor = if (strong) 0.72 else 0.55,
+            strength = if (strong) 0.96 else 0.82,
+            accuracyAdjustmentFactor = if (strong) 0.90 else 0.80,
             maximumCapMeters =
                 when {
-                    bike && strong -> 16.0
-                    bike -> 10.0
-                    strong -> 10.0
-                    else -> 6.0
+                    bike && strong -> 20.0
+                    bike -> 14.0
+                    strong -> 12.0
+                    else -> 9.0
                 },
-            maximumLegFraction = if (strong) 0.78 else 0.68,
+            maximumLegFraction = if (strong) 0.95 else 0.85,
         )
     }
 }
@@ -646,24 +646,24 @@ private fun smoothingConfig(
     return if (mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
         RecordingSmoothingConfig(
             maximumTurnDegrees = if (bike) 75.0 else 65.0,
-            strength = 0.70,
-            accuracyAdjustmentFactor = if (bike) 0.42 else 0.34,
-            minimumCapMeters = if (bike) 1.25 else 0.75,
-            maximumCapMeters = if (bike) 6.0 else 3.5,
+            strength = 0.82,
+            accuracyAdjustmentFactor = if (bike) 0.62 else 0.60,
+            minimumCapMeters = if (bike) 1.5 else 0.9,
+            maximumCapMeters = if (bike) 10.0 else 8.0,
             minimumAdjustmentMeters = 0.25,
             fallbackAccuracyMeters = 8.0,
-            maximumLegFraction = 0.45,
+            maximumLegFraction = 0.85,
         )
     } else {
         RecordingSmoothingConfig(
-            maximumTurnDegrees = if (bike) 55.0 else 50.0,
-            strength = if (bike) 0.48 else 0.52,
-            accuracyAdjustmentFactor = if (bike) 0.30 else 0.28,
-            minimumCapMeters = if (bike) 0.75 else 0.4,
-            maximumCapMeters = if (bike) 5.5 else 3.25,
+            maximumTurnDegrees = 60.0,
+            strength = if (bike) 0.60 else 0.65,
+            accuracyAdjustmentFactor = if (bike) 0.48 else 0.45,
+            minimumCapMeters = if (bike) 1.0 else 0.6,
+            maximumCapMeters = if (bike) 8.0 else 7.0,
             minimumAdjustmentMeters = 0.35,
             fallbackAccuracyMeters = 7.0,
-            maximumLegFraction = if (bike) 0.42 else 0.40,
+            maximumLegFraction = if (bike) 0.65 else 0.70,
         )
     }
 }

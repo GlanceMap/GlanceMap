@@ -247,6 +247,26 @@ class RecordingTrackFilterTest {
     }
 
     @Test
+    fun adaptiveSmoothingNearlyStraightensNoisyStraightTravel() {
+        val before = point(x = 0.0, y = 0.0, timeMillis = 1_000L, accuracyMeters = 6f)
+        val middle = point(x = 10.0, y = 5.0, timeMillis = 4_000L, accuracyMeters = 12f)
+        val after = point(x = 20.0, y = 0.0, timeMillis = 7_000L, accuracyMeters = 6f)
+
+        val result =
+            smoothRecordingMiddlePoint(
+                before = before,
+                middle = middle,
+                after = after,
+                mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+                activityProfile = HIKE,
+            )
+
+        assertNotNull(result)
+        val straightLineMidpoint = latLongFromMeters(x = 10.0, y = 0.0)
+        assertTrue(haversineMeters(result!!.point.latLong, straightLineMidpoint) < 1.5)
+    }
+
+    @Test
     fun strongSmoothingAdjustsMoreThanAdaptive() {
         val before = point(x = 0.0, y = 0.0, timeMillis = 1_000L, accuracyMeters = 5f)
         val middle = point(x = 10.0, y = 2.0, timeMillis = 4_000L, accuracyMeters = 12f)
