@@ -508,34 +508,62 @@ private fun isPlausibleTransition(
     val elapsedSeconds =
         (candidate.elapsedRealtimeMillis - previous.elapsedRealtimeMillis) / 1_000.0
     if (!elapsedSeconds.isFinite() || elapsedSeconds <= 0.0) return false
-    val baseMaximumSpeed = recordingFixProfileSpeedLimit(activityProfile)
-    val minimumModeledSpeed =
-        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-            RECORDING_FIX_MIN_MODELED_BIKE_SPEED_MPS
-        } else {
-            RECORDING_FIX_MIN_MODELED_HIKE_SPEED_MPS
-        }
-    val reportedSpeedAllowance =
-        candidate.speedMps
-            ?.takeIf { it.isFinite() && it >= 0f }
-            ?.toDouble()
-            ?.plus(
-                RECORDING_FIX_SPEED_ACCURACY_MULTIPLIER *
-                    (candidate.speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble() ?: 0.0),
-            )
-    val maximumSpeed =
-        reportedSpeedAllowance
-            ?.coerceAtLeast(minimumModeledSpeed)
-            ?.coerceAtMost(baseMaximumSpeed * RECORDING_FIX_MAX_REPORTED_SPEED_FACTOR)
-            ?: baseMaximumSpeed
-    val previousAccuracy = previous.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M)
-    val candidateAccuracy = candidate.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M)
-    val uncertaintyAllowance =
-        (previousAccuracy + candidateAccuracy) * RECORDING_FIX_ACCURACY_ALLOWANCE_FACTOR +
-            RECORDING_FIX_BASE_ALLOWANCE_M
+    val maximumSpeed = recordingTransitionMaximumSpeedMps(candidate, activityProfile)
+    val uncertaintyAllowance = recordingTransitionUncertaintyAllowance(previous, candidate)
     val maximumDistance = maximumSpeed * elapsedSeconds + uncertaintyAllowance
     return haversineMeters(previous.latLong, candidate.latLong) <= maximumDistance
 }
+
+/**
+ * Keep a modest activity-safe motion floor for sparse GPS delivery, but never turn the speed
+ * limit into the profile maximum. Combined with the bounded accuracy allowance below, this
+ * rejects short poor-accuracy jumps without splitting normal 8–10 second hiking fixes.
+ */
+internal fun recordingTransitionMaximumSpeedMps(
+    candidate: RecordingFixSample,
+    activityProfile: String,
+): Double {
+    val fallbackSpeed =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            RECORDING_FIX_FALLBACK_BIKE_SPEED_MPS
+        } else {
+            RECORDING_FIX_FALLBACK_HIKE_SPEED_MPS
+        }
+    val reportedSpeed = candidate.speedMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val speedAccuracy =
+        candidate.speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val speedAccuracyIsReliable =
+        speedAccuracy == null ||
+            speedAccuracy <=
+                maxOf(
+                    RECORDING_FIX_MAX_TRUSTED_SPEED_ACCURACY_MPS,
+                    (reportedSpeed ?: 0.0) * RECORDING_FIX_MAX_RELATIVE_SPEED_ACCURACY,
+                )
+    val speedIsReliable = reportedSpeed != null && speedAccuracyIsReliable
+    if (!speedIsReliable || reportedSpeed == null) return fallbackSpeed
+    val speedUncertainty =
+        (speedAccuracy ?: 0.0).coerceAtMost(RECORDING_FIX_MAX_SPEED_UNCERTAINTY_ALLOWANCE_MPS)
+    return (reportedSpeed + speedUncertainty)
+        .coerceAtLeast(fallbackSpeed)
+        .coerceAtMost(recordingFixProfileSpeedLimit(activityProfile) * RECORDING_FIX_MAX_REPORTED_SPEED_FACTOR)
+}
+
+/**
+ * Two independent GPS accuracy circles must not be added in full. That makes a 20–30 m fix
+ * able to create a 25 m detour even when the watch reports normal walking speed. A bounded
+ * fraction leaves room for normal GPS noise while requiring unusually large moves to be
+ * confirmed by a following fix.
+ */
+internal fun recordingTransitionUncertaintyAllowance(
+    previous: RecordingFixSample,
+    candidate: RecordingFixSample,
+): Double =
+    (
+        maxOf(
+            previous.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M),
+            candidate.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M),
+        ) * RECORDING_FIX_ACCURACY_ALLOWANCE_FACTOR
+    ) + RECORDING_FIX_BASE_ALLOWANCE_M
 
 private fun Float?.isUnacceptablyPoor(activityProfile: String): Boolean {
     val accuracy = this?.takeIf { it.isFinite() && it >= 0f } ?: return false
@@ -682,15 +710,17 @@ private fun recordingSmoothingMaximumIntervalMillis(sampleIntervalSeconds: Int):
     (sampleIntervalSeconds.coerceAtLeast(1) * 1_000L * RECORDING_SMOOTHING_INTERVAL_MULTIPLIER)
         .coerceIn(RECORDING_SMOOTHING_MIN_MAX_INTERVAL_MS, RECORDING_SMOOTHING_ABSOLUTE_MAX_INTERVAL_MS)
 
-private const val RECORDING_FIX_MIN_MODELED_HIKE_SPEED_MPS = 3.5
-private const val RECORDING_FIX_MIN_MODELED_BIKE_SPEED_MPS = 12.0
+private const val RECORDING_FIX_FALLBACK_HIKE_SPEED_MPS = 3.0
+private const val RECORDING_FIX_FALLBACK_BIKE_SPEED_MPS = 10.0
 internal const val RECORDING_FIX_MAX_REPORTED_SPEED_FACTOR = 1.25
 private const val RECORDING_FIX_MAX_HIKE_ACCURACY_M = 35f
 private const val RECORDING_FIX_MAX_BIKE_ACCURACY_M = 50f
 internal const val RECORDING_FIX_FALLBACK_ACCURACY_M = 12.0
-internal const val RECORDING_FIX_ACCURACY_ALLOWANCE_FACTOR = 0.75
-internal const val RECORDING_FIX_BASE_ALLOWANCE_M = 5.0
-internal const val RECORDING_FIX_SPEED_ACCURACY_MULTIPLIER = 3.0
+internal const val RECORDING_FIX_ACCURACY_ALLOWANCE_FACTOR = 0.35
+internal const val RECORDING_FIX_BASE_ALLOWANCE_M = 2.5
+internal const val RECORDING_FIX_MAX_TRUSTED_SPEED_ACCURACY_MPS = 2.5
+internal const val RECORDING_FIX_MAX_RELATIVE_SPEED_ACCURACY = 0.5
+internal const val RECORDING_FIX_MAX_SPEED_UNCERTAINTY_ALLOWANCE_MPS = 2.5
 private const val RECORDING_SMOOTHING_INTERVAL_MULTIPLIER = 3L
 private const val RECORDING_SMOOTHING_MIN_MAX_INTERVAL_MS = 5_000L
 private const val RECORDING_SMOOTHING_ABSOLUTE_MAX_INTERVAL_MS = 30_000L

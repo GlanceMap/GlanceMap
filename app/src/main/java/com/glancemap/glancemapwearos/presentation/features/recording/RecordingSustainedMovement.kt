@@ -100,22 +100,18 @@ private fun isPlausibleAtReportedSpeed(
     reportedSpeedMps: Double,
     elapsedSeconds: Double,
 ): Boolean {
-    val speedAccuracy = candidate.speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f }?.toDouble() ?: 0.0
+    val speedAccuracy =
+        candidate.speedAccuracyMps
+            ?.takeIf { it.isFinite() && it >= 0f }
+            ?.toDouble()
+            ?.coerceAtMost(RECORDING_FIX_MAX_SPEED_UNCERTAINTY_ALLOWANCE_MPS)
+            ?: 0.0
     val modeledSpeed =
-        (reportedSpeedMps + RECORDING_FIX_SPEED_ACCURACY_MULTIPLIER * speedAccuracy)
+        (reportedSpeedMps + speedAccuracy)
             .coerceAtMost(RECORDING_FIX_MAX_CONFIRMED_SPEED_MPS)
-    val uncertaintyAllowance =
-        (previous.accuracyOrFallback() + candidate.accuracyOrFallback()) *
-            RECORDING_FIX_ACCURACY_ALLOWANCE_FACTOR + RECORDING_FIX_BASE_ALLOWANCE_M
     return haversineMeters(previous.latLong, candidate.latLong) <=
-        modeledSpeed * elapsedSeconds + uncertaintyAllowance
+        modeledSpeed * elapsedSeconds + recordingTransitionUncertaintyAllowance(previous, candidate)
 }
-
-private fun RecordingFixSample.accuracyOrFallback(): Double =
-    accuracyMeters
-        ?.takeIf { it.isFinite() && it >= 0f }
-        ?.toDouble()
-        ?: RECORDING_FIX_FALLBACK_ACCURACY_M
 
 private fun movementDirectionChangeDegrees(
     start: LatLong,
@@ -141,4 +137,3 @@ private const val RECORDING_FIX_SUSTAINED_MAX_DIRECTION_CHANGE_DEGREES = 100.0
 private const val RECORDING_FIX_SUSTAINED_SPEED_DIFFERENCE_FLOOR_MPS = 5.0
 private const val RECORDING_FIX_SUSTAINED_SPEED_DIFFERENCE_FACTOR = 0.5
 private const val RECORDING_FIX_MAX_SPEED_ACCURACY_MPS = 5.0
-private const val RECORDING_FIX_MAX_RELATIVE_SPEED_ACCURACY = 0.5

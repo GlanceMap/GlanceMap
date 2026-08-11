@@ -79,6 +79,71 @@ class RecordingTrackFilterTest {
     }
 
     @Test
+    fun slowHighUncertaintyJumpIsHeldInsteadOfAddingDistance() {
+        val gate = RecordingFixQualityGate()
+        assertTrue(
+            gate
+                .evaluate(
+                    sample(
+                        x = 0.0,
+                        elapsedMillis = 1_000L,
+                        accuracyMeters = 24f,
+                        speedMps = 1.44f,
+                        speedAccuracyMps = 0.29f,
+                    ),
+                    HIKE,
+                ).accepted,
+        )
+
+        val result =
+            gate.evaluate(
+                sample(
+                    x = 26.0,
+                    elapsedMillis = 5_030L,
+                    accuracyMeters = 28f,
+                    speedMps = 1.44f,
+                    speedAccuracyMps = 0.29f,
+                ),
+                HIKE,
+            )
+
+        assertEquals(RecordingFixQualityStatus.HELD, result.status)
+        assertEquals(RecordingFixQualityReason.IMPLAUSIBLE_JUMP, result.reason)
+    }
+
+    @Test
+    fun sparseHikingFixRemainsAcceptedWithinMotionFloor() {
+        val gate = RecordingFixQualityGate()
+        assertTrue(
+            gate
+                .evaluate(
+                    sample(
+                        x = 0.0,
+                        elapsedMillis = 1_000L,
+                        accuracyMeters = 19f,
+                        speedMps = 1.4f,
+                        speedAccuracyMps = 0.3f,
+                    ),
+                    HIKE,
+                ).accepted,
+        )
+
+        val result =
+            gate.evaluate(
+                sample(
+                    x = 34.0,
+                    elapsedMillis = 8_800L,
+                    accuracyMeters = 31f,
+                    speedMps = 1.5f,
+                    speedAccuracyMps = 0.3f,
+                ),
+                HIKE,
+            )
+
+        assertTrue(result.accepted)
+    }
+
+    @Test
     fun twoConsistentFixesAfterJumpConfirmRelocation() {
         val gate = RecordingFixQualityGate()
         assertTrue(gate.evaluate(sample(x = 0.0, elapsedMillis = 1_000L), HIKE).accepted)
