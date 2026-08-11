@@ -265,7 +265,10 @@ class SettingsRepositoryImpl private constructor(
             val fullDiagnostics =
                 sanitizeDiagnosticsCaptureMode(it[PrefKeys.DIAGNOSTICS_CAPTURE_MODE]) ==
                     SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
-            fullDiagnostics && (it[PrefKeys.GPS_DEBUG_TELEMETRY_POPUP_ENABLED] ?: true)
+            val popupEnabled =
+                it[PrefKeys.GPS_DEBUG_TELEMETRY_POPUP_ENABLED]
+                    ?: SettingsRepository.DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED
+            fullDiagnostics && popupEnabled
         }
 
     override suspend fun setGpsDebugTelemetryPopupEnabled(enabled: Boolean) {
