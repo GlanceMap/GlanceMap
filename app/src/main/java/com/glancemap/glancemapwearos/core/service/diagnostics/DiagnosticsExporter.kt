@@ -500,6 +500,8 @@ object DiagnosticsExporter {
         val collectorUnregisteredCount: Int = 0,
         val collectorInactiveCount: Int = 0,
         val collectorPolicyDisabledCount: Int = 0,
+        val usedZeroWithFreshLocationCount: Int = 0,
+        val signalsWithoutFreshLocationCount: Int = 0,
     )
 
     internal data class AcceptedFixSummary(

@@ -6,11 +6,13 @@ import android.location.LocationManager
 import android.os.Handler
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.service.diagnostics.GnssDiagnostics
+import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@Suppress("LongParameterList", "TooManyFunctions")
 internal class GnssDiagnosticsCoordinator(
     private val serviceScope: CoroutineScope,
     private val mainHandler: Handler,
@@ -25,6 +27,7 @@ internal class GnssDiagnosticsCoordinator(
     private val watchGpsReason: () -> String,
     private val ambientModeActive: () -> Boolean,
     private val debugTelemetryEnabled: () -> Boolean,
+    private val gpsSignalSnapshot: () -> GpsSignalSnapshot,
 ) {
     @Volatile
     private var collectorRegisteredAtElapsedMs: Long = 0L
@@ -53,6 +56,8 @@ internal class GnssDiagnosticsCoordinator(
     private var statusWatchdogJob: Job? = null
     private var statusCallback: GnssStatus.Callback? = null
     private var lastPolicyDisabledSignature: String? = null
+    private var lastUsedZeroWithFreshLocationAtElapsedMs: Long = 0L
+    private var lastSignalsWithoutFreshLocationAtElapsedMs: Long = 0L
 
     @SuppressLint("MissingPermission")
     @Suppress("LongMethod", "ReturnCount")
@@ -214,6 +219,13 @@ internal class GnssDiagnosticsCoordinator(
                         ephemerisSatelliteCount = ephemerisSatelliteCount,
                         usedInFixCount = usedInFix,
                     )
+                    recordLocationConsistency(
+                        nowElapsedMs = nowElapsedMs,
+                        sourceMode = sourceMode(),
+                        usedInFixCount = usedInFix,
+                        signalSatelliteCount = signalSatelliteCount,
+                        signalSnapshot = gpsSignalSnapshot(),
+                    )
 
                     val avgCn0 = if (cn0Count > 0) cn0Sum / cn0Count else null
                     val maxCn0 = if (cn0Count > 0 && cn0Max.isFinite()) cn0Max else null
@@ -339,6 +351,58 @@ internal class GnssDiagnosticsCoordinator(
         firstUsedInFixAtElapsedMs = 0L
         firstFixTtffMs = null
         latestAcquisitionState = GnssAcquisitionState.NO_RADIO_SIGNAL
+        lastUsedZeroWithFreshLocationAtElapsedMs = 0L
+        lastSignalsWithoutFreshLocationAtElapsedMs = 0L
+    }
+
+    private fun recordLocationConsistency(
+        nowElapsedMs: Long,
+        sourceMode: String,
+        usedInFixCount: Int,
+        signalSatelliteCount: Int,
+        signalSnapshot: GpsSignalSnapshot,
+    ) {
+        val consistency =
+            resolveGnssLocationConsistency(
+                sourceMode = sourceMode,
+                usedInFixCount = usedInFixCount,
+                signalSatelliteCount = signalSatelliteCount,
+                signalSnapshot = signalSnapshot,
+            )
+        if (consistency == GnssLocationConsistency.CONSISTENT) return
+
+        val lastLoggedAt =
+            when (consistency) {
+                GnssLocationConsistency.USED_ZERO_WITH_FRESH_LOCATION ->
+                    lastUsedZeroWithFreshLocationAtElapsedMs
+                GnssLocationConsistency.SIGNALS_WITHOUT_FRESH_LOCATION ->
+                    lastSignalsWithoutFreshLocationAtElapsedMs
+                GnssLocationConsistency.CONSISTENT -> 0L
+            }
+        if (lastLoggedAt > 0L && nowElapsedMs - lastLoggedAt < GNSS_LOCATION_DISAGREEMENT_LOG_COOLDOWN_MS) {
+            return
+        }
+        when (consistency) {
+            GnssLocationConsistency.USED_ZERO_WITH_FRESH_LOCATION ->
+                lastUsedZeroWithFreshLocationAtElapsedMs = nowElapsedMs
+            GnssLocationConsistency.SIGNALS_WITHOUT_FRESH_LOCATION ->
+                lastSignalsWithoutFreshLocationAtElapsedMs = nowElapsedMs
+            GnssLocationConsistency.CONSISTENT -> Unit
+        }
+
+        val fixAgeMs =
+            if (signalSnapshot.lastFixElapsedRealtimeMs > 0L) {
+                (nowElapsedMs - signalSnapshot.lastFixElapsedRealtimeMs).coerceAtLeast(0L)
+            } else {
+                Long.MAX_VALUE
+            }
+        GnssDiagnostics.recordEvent(
+            "status_location_disagreement",
+            "kind=${consistency.telemetryValue} sourceMode=$sourceMode used=$usedInFixCount " +
+                "signal=$signalSatelliteCount fixFresh=${signalSnapshot.lastFixFresh} " +
+                "fixAgeMs=${formatAgeMsForTelemetry(fixAgeMs)} " +
+                "fixAccuracyM=${signalSnapshot.lastFixAccuracyM.takeIf { it.isFinite() } ?: "na"}",
+        )
     }
 
     private fun recordFirstAcquisitionMilestones(
@@ -377,7 +441,7 @@ internal class GnssDiagnosticsCoordinator(
     }
 
     private fun formatAgeMsForTelemetry(valueMs: Long): String {
-        if (valueMs < 0L) return "na"
+        if (valueMs < 0L || valueMs == Long.MAX_VALUE) return "na"
         return valueMs.toString()
     }
 
@@ -412,6 +476,7 @@ internal fun resolveGnssAcquisitionState(
     }
 
 private const val GNSS_STATUS_WATCHDOG_DELAY_MS = 12_000L
+private const val GNSS_LOCATION_DISAGREEMENT_LOG_COOLDOWN_MS = 30_000L
 private const val GNSS_L1_MIN_HZ = 1_559_000_000.0
 private const val GNSS_L1_MAX_HZ = 1_610_000_000.0
 private const val GNSS_L5_MIN_HZ = 1_160_000_000.0

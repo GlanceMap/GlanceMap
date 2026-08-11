@@ -464,8 +464,14 @@ class DiagnosticsExporterTelemetryTest {
                     "2026-08-02 16:00:02.000 status sats=12 used=0 signal=3 almanac=3 ephemeris=0 acquisition=signals_no_ephemeris cn0Avg=18.0 cn0Max=21.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
                     "2026-08-02 16:00:03.000 event=acquisition_ephemeris_available afterRegisterMs=3200 ephemerisSats=2",
                     "2026-08-02 16:00:03.000 status sats=12 used=0 signal=4 almanac=4 ephemeris=2 acquisition=ephemeris_no_fix cn0Avg=20.0 cn0Max=23.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
+                    "2026-08-02 16:00:03.100 event=status_location_disagreement " +
+                        "kind=signals_without_fresh_location sourceMode=watch_gps used=0 " +
+                        "signal=4 fixFresh=false fixAgeMs=na fixAccuracyM=na",
                     "2026-08-02 16:00:04.000 event=acquisition_satellites_used afterRegisterMs=4200 used=4",
                     "2026-08-02 16:00:04.000 status sats=12 used=4 signal=5 almanac=5 ephemeris=4 acquisition=satellites_used cn0Avg=21.0 cn0Max=25.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
+                    "2026-08-02 16:00:04.100 event=status_location_disagreement " +
+                        "kind=used_zero_with_fresh_location sourceMode=watch_gps used=0 " +
+                        "signal=5 fixFresh=true fixAgeMs=1000 fixAccuracyM=8.0",
                 ),
             )
 
@@ -481,6 +487,8 @@ class DiagnosticsExporterTelemetryTest {
         assertEquals(1, insights.acquisitionSignalDetectedCount)
         assertEquals(1, insights.acquisitionEphemerisAvailableCount)
         assertEquals(1, insights.acquisitionSatellitesUsedCount)
+        assertEquals(1, insights.usedZeroWithFreshLocationCount)
+        assertEquals(1, insights.signalsWithoutFreshLocationCount)
     }
 
     private fun epochMs(localDateTime: String): Long =

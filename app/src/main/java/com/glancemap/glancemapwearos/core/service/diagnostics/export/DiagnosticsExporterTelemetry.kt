@@ -2126,6 +2126,8 @@ internal fun deriveGnssInsights(lines: List<String>): GnssInsights {
     var collectorUnregisteredCount = 0
     var collectorInactiveCount = 0
     var collectorPolicyDisabledCount = 0
+    var usedZeroWithFreshLocationCount = 0
+    var signalsWithoutFreshLocationCount = 0
 
     var firstFixTtffTotalMs = 0L
     var firstFixTtffMinMs = Int.MAX_VALUE
@@ -2167,6 +2169,10 @@ internal fun deriveGnssInsights(lines: List<String>): GnssInsights {
             " event=collector_unregistered" in line -> collectorUnregisteredCount += 1
             " event=collector_inactive" in line -> collectorInactiveCount += 1
             " event=collector_policy_disabled" in line -> collectorPolicyDisabledCount += 1
+            " event=status_location_disagreement kind=used_zero_with_fresh_location" in line ->
+                usedZeroWithFreshLocationCount += 1
+            " event=status_location_disagreement kind=signals_without_fresh_location" in line ->
+                signalsWithoutFreshLocationCount += 1
             " event=acquisition_signal_detected" in line -> acquisitionSignalDetectedCount += 1
             " event=acquisition_ephemeris_available" in line -> acquisitionEphemerisAvailableCount += 1
             " event=acquisition_satellites_used" in line -> acquisitionSatellitesUsedCount += 1
@@ -2322,6 +2328,8 @@ internal fun deriveGnssInsights(lines: List<String>): GnssInsights {
         collectorUnregisteredCount = collectorUnregisteredCount,
         collectorInactiveCount = collectorInactiveCount,
         collectorPolicyDisabledCount = collectorPolicyDisabledCount,
+        usedZeroWithFreshLocationCount = usedZeroWithFreshLocationCount,
+        signalsWithoutFreshLocationCount = signalsWithoutFreshLocationCount,
     )
 }
 

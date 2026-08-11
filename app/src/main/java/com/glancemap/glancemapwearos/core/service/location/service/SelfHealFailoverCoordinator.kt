@@ -33,6 +33,7 @@ internal class SelfHealFailoverCoordinator(
     private val lastRequestAppliedAtElapsedMs: () -> Long,
     private val expectedIntervalMs: () -> Long,
     private val strictFreshMaxAgeMs: () -> Long,
+    private val requestWatchGpsRecovery: (Long, Long, Long) -> Boolean = { _, _, _ -> false },
 ) {
     private var autoFusedPoorAccuracyStreak: Int = 0
     private var autoFusedFallbackToWatchGps: Boolean = false
@@ -385,6 +386,17 @@ internal class SelfHealFailoverCoordinator(
             return
         }
 
+        val currentSourceMode = engine.currentSourceModeOrNull()
+        if (currentSourceMode == LocationSourceMode.WATCH_GPS && hasFinePermission()) {
+            val recoveryThresholdMs = resolveWatchGpsRecoveryStaleThresholdMs(expectedIntervalMs)
+            if (
+                fixGapMs >= recoveryThresholdMs &&
+                requestWatchGpsRecovery(fixGapMs, recoveryThresholdMs, expectedIntervalMs)
+            ) {
+                return
+            }
+        }
+
         val staleThresholdMs = timingProfile.selfHealFixGapMs
         if (fixGapMs < staleThresholdMs) return
 
@@ -404,7 +416,6 @@ internal class SelfHealFailoverCoordinator(
             }
         if (sinceLastHealMs < SELF_HEAL_COOLDOWN_MS) return
 
-        val currentSourceMode = engine.currentSourceModeOrNull()
         if (
             maybeSkipWatchGpsFirstCallbackSelfHeal(
                 sourceMode = currentSourceMode,

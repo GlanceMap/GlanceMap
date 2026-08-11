@@ -90,6 +90,7 @@ class LocationService : Service() {
     private lateinit var locationUpdateSink: LocationUpdateSink
     private lateinit var callbackProcessor: LocationCallbackProcessor
     private lateinit var immediateLocationCoordinator: ImmediateLocationCoordinator
+    private lateinit var watchGpsRecoveryCoordinator: WatchGpsRecoveryCoordinator
     private lateinit var requestCoordinator: LocationRequestCoordinator
     private lateinit var settingsRepository: SettingsRepository
 
@@ -220,6 +221,14 @@ class LocationService : Service() {
             lastRequestAppliedAtElapsedMs = { lastRequestAppliedAtElapsedMs },
             expectedIntervalMs = { _effectiveUpdateIntervalMs.value },
             strictFreshMaxAgeMs = { strictFreshMaxAgeMs() },
+            requestWatchGpsRecovery = { fixGapMs, staleThresholdMs, expectedIntervalMs ->
+                watchGpsRecoveryCoordinator.maybeRequest(
+                    nowElapsedMs = SystemClock.elapsedRealtime(),
+                    fixGapMs = fixGapMs,
+                    staleThresholdMs = staleThresholdMs,
+                    expectedIntervalMs = expectedIntervalMs,
+                )
+            },
         )
     }
     private val gnssDiagnosticsCoordinator by lazy {
@@ -237,6 +246,7 @@ class LocationService : Service() {
             watchGpsReason = { currentWatchGpsReason() },
             ambientModeActive = { isNonInteractiveScreenState() },
             debugTelemetryEnabled = { latestGpsDebugTelemetry },
+            gpsSignalSnapshot = { engine.gpsSignalSnapshot },
         )
     }
 
@@ -300,6 +310,24 @@ class LocationService : Service() {
                     immediateLocationCoordinator.endHighAccuracyBurst(reason = "early_fix")
                 },
             )
+        watchGpsRecoveryCoordinator =
+            WatchGpsRecoveryCoordinator(
+                serviceScope = serviceScope,
+                telemetry = telemetry,
+                locationGateway = watchGpsLocationGateway,
+                strictFreshMaxAgeMs = { strictFreshMaxAgeMs() },
+                processRecoveredLocation = { location ->
+                    callbackProcessor
+                        .processLocationEvent(
+                            event =
+                                LocationUpdateEvent(
+                                    origin = LocationSourceMode.WATCH_GPS,
+                                    candidates = listOf(location),
+                                ),
+                            nowElapsedMsProvider = { SystemClock.elapsedRealtime() },
+                        ).acceptedCandidates > 0
+                },
+            )
         immediateLocationCoordinator =
             ImmediateLocationCoordinator(
                 context = this,
@@ -357,6 +385,7 @@ class LocationService : Service() {
                 },
                 cancelImmediateLocationWork = { reason ->
                     immediateLocationCoordinator.cancelImmediateLocationWork(reason = reason)
+                    watchGpsRecoveryCoordinator.cancel(reason = reason)
                 },
                 currentState = ::currentRequestUpdateState,
                 effectiveUpdateIntervalMs = { _effectiveUpdateIntervalMs.value },
@@ -1165,6 +1194,7 @@ class LocationService : Service() {
         energySampleJob?.cancel()
         energySampleJob = null
         selfHealFailoverCoordinator.stop()
+        watchGpsRecoveryCoordinator.cancel(reason = "service_destroy")
         unregisterGnssDiagnostics(reason = "service_destroy")
         stopAllAndSelf(
             stopSelf = false,
@@ -1187,6 +1217,7 @@ class LocationService : Service() {
         pendingDebouncedImmediateLocationJob = null
         requestCoordinator.cancel()
         immediateLocationCoordinator.shutdown(reason = "service_stop")
+        watchGpsRecoveryCoordinator.cancel(reason = "service_stop")
         energySampleJob?.cancel()
         energySampleJob = null
         selfHealFailoverCoordinator.stop()

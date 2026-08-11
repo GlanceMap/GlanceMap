@@ -258,6 +258,8 @@ internal fun Appendable.writeGnssSections(
     appendLine("collectorUnregisteredCount=${gnssInsights.collectorUnregisteredCount}")
     appendLine("collectorInactiveCount=${gnssInsights.collectorInactiveCount}")
     appendLine("collectorPolicyDisabledCount=${gnssInsights.collectorPolicyDisabledCount}")
+    appendLine("usedZeroWithFreshLocationCount=${gnssInsights.usedZeroWithFreshLocationCount}")
+    appendLine("signalsWithoutFreshLocationCount=${gnssInsights.signalsWithoutFreshLocationCount}")
     appendLine("l1SatelliteMax=${if (gnssInsights.statusSampleCount > 0) gnssInsights.l1SatelliteMax else "na"}")
     appendLine("l5SatelliteMax=${if (gnssInsights.statusSampleCount > 0) gnssInsights.l5SatelliteMax else "na"}")
     writeLineDumpSection(

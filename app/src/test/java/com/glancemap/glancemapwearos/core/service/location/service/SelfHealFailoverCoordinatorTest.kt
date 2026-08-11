@@ -743,6 +743,58 @@ class SelfHealFailoverCoordinatorTest {
         assertTrue(isWatchGpsGoodEnoughForAutoFusedRecovery(35f))
     }
 
+    @Test
+    fun watchGpsNoFixRequestsBoundedDirectRecoveryBeforeRestartingTheStream() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        telemetry.setDebugEnabled(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(interactiveWatchGpsRequestSpec())
+        var immediateRequests = 0
+        var recoveryRequests = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(SupervisorJob()),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = {},
+                requestImmediateLocation = { immediateRequests += 1 },
+                trackingEnabled = { true },
+                ambientModeActive = { false },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { true },
+                passiveLocationExperiment = { false },
+                phoneConnected = { false },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 3_000L },
+                strictFreshMaxAgeMs = { 6_000L },
+                requestWatchGpsRecovery = { _, _, _ ->
+                    recoveryRequests += 1
+                    true
+                },
+            )
+
+        coordinator.maybeTriggerInteractiveSelfHealNow(
+            nowElapsedMs = 16_000L,
+            interactiveTracking = true,
+            expectedIntervalMs = 3_000L,
+        )
+
+        assertEquals(1, recoveryRequests)
+        assertEquals(0, immediateRequests)
+    }
+
+    @Test
+    fun watchGpsRecoveryUsesThreeIntervalsWithAFifteenSecondFloor() {
+        assertEquals(15_000L, resolveWatchGpsRecoveryStaleThresholdMs(3_000L))
+        assertEquals(30_000L, resolveWatchGpsRecoveryStaleThresholdMs(10_000L))
+        assertTrue(isWatchGpsRecoveryCooldownActive(60_000L, 1_000L))
+        assertFalse(isWatchGpsRecoveryCooldownActive(61_000L, 1_000L))
+    }
+
     private fun interactiveWatchGpsRequestSpec(): RequestSpec =
         RequestSpec(
             priority = Priority.PRIORITY_HIGH_ACCURACY,
