@@ -298,6 +298,71 @@ class RecordingTrackFilterTest {
         )
     }
 
+    @Test
+    fun fourthPointConfirmsAndCorrectsShortGpsReversal() {
+        val options =
+            RecordingPointSmoothingOptions(
+                mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+                activityProfile = HIKE,
+                sampleIntervalSeconds = 10,
+            )
+        var points =
+            listOf(
+                point(x = 0.0, y = 0.0, timeMillis = 0L, accuracyMeters = 5f),
+                point(x = 10.0, y = 18.0, timeMillis = 10_000L, accuracyMeters = 7f),
+                point(x = 20.0, y = 0.0, timeMillis = 20_000L, accuracyMeters = 5f),
+            )
+
+        val result =
+            appendCanonicalRecordingPoint(
+                existingPoints = points,
+                point = point(x = 30.0, y = 0.0, timeMillis = 30_000L, accuracyMeters = 5f),
+                options = options,
+            )
+        points = result.points
+
+        assertTrue(result.confirmedReversalCorrected)
+        assertTrue(result.adjustedPointCount >= 1)
+        assertTrue(haversineMeters(points[1].latLong, latLongFromMeters(10.0, 0.0)) < 6.0)
+        assertEquals(recordingCanonicalPathDistance(points), 30.0, 1.0)
+    }
+
+    @Test
+    fun canonicalDistanceNeverConnectsAcrossNamedSegmentBoundary() {
+        val points =
+            listOf(
+                point(x = 0.0, y = 0.0, timeMillis = 0L),
+                point(x = 10.0, y = 0.0, timeMillis = 10_000L),
+                point(x = 1_000.0, y = 0.0, timeMillis = 60_000L).copy(
+                    startsNewSegment = true,
+                    segmentStartReason = RecordingSegmentStartReason.GPS_GAP,
+                ),
+                point(x = 1_010.0, y = 0.0, timeMillis = 70_000L),
+            )
+
+        assertEquals(20.0, recordingCanonicalPathDistance(points), 0.2)
+    }
+
+    @Test
+    fun straightRouteDistanceIsStableAcrossPointDensities() {
+        val oneSecondPoints =
+            (0..600).map { second ->
+                point(
+                    x = second * 1.5,
+                    y = 0.0,
+                    timeMillis = second * 1_000L,
+                    accuracyMeters = 6f,
+                )
+            }
+        val tenSecondPoints = oneSecondPoints.filterIndexed { index, _ -> index % 10 == 0 }
+
+        assertEquals(
+            recordingCanonicalPathDistance(oneSecondPoints),
+            recordingCanonicalPathDistance(tenSecondPoints),
+            0.5,
+        )
+    }
+
     private fun sample(
         x: Double,
         elapsedMillis: Long,

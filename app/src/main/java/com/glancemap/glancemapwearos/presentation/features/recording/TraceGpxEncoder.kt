@@ -202,16 +202,22 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val cadenceSpm = point.cadenceSpm?.takeIf { it > 0 }
     val powerWatts = point.powerWatts?.takeIf { it >= 0 }
     val pressureHpa = point.barometricPressureHpa?.takeIf { it.isFinite() && it > 0.0 }
-    if (
-        accuracyMeters == null &&
-        speedMps == null &&
-        elevationSource == null &&
-        heartRateBpm == null &&
-        stepCount == null &&
-        cadenceSpm == null &&
-        powerWatts == null &&
-        pressureHpa == null
-    ) {
+    val segmentStartReason =
+        point.segmentStartReason
+            ?.takeIf { point.startsNewSegment && it.isNotBlank() }
+    val extensionValues =
+        listOf(
+            accuracyMeters,
+            speedMps,
+            elevationSource,
+            heartRateBpm,
+            stepCount,
+            cadenceSpm,
+            powerWatts,
+            pressureHpa,
+            segmentStartReason,
+        )
+    if (extensionValues.all { it == null }) {
         return
     }
 
@@ -239,6 +245,9 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
         }
         pressureHpa?.let {
             textTag("gmap:pressureHpa", formatDouble(it))
+        }
+        segmentStartReason?.let {
+            textTag("gmap:segmentStartReason", it)
         }
     }
 }

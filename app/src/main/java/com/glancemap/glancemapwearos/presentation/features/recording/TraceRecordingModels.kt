@@ -16,7 +16,16 @@ data class RecordedTracePoint(
     val powerWatts: Int? = null,
     val barometricPressureHpa: Double? = null,
     val startsNewSegment: Boolean = false,
+    val segmentStartReason: String? = null,
 )
+
+internal object RecordingSegmentStartReason {
+    const val MANUAL_PAUSE = "MANUAL_PAUSE"
+    const val AUTO_PAUSE = "AUTO_PAUSE"
+    const val GPS_GAP = "GPS_GAP"
+    const val SOURCE_RELOCATION = "SOURCE_RELOCATION"
+    const val SESSION_RECOVERY = "SESSION_RECOVERY"
+}
 
 data class TraceRecordingUiState(
     val active: Boolean = false,

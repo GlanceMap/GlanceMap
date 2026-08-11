@@ -956,6 +956,7 @@ private fun buildRecordingCanonicalProfile(points: List<RecordedTracePoint>) =
             TrackPoint(
                 latLong = it.latLong,
                 elevation = it.elevationMeters,
+                startsNewSegment = it.startsNewSegment,
                 hasTimestamp = true,
                 timeMillis = it.timeMillis,
                 accuracyMeters = it.accuracyMeters,

@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -7,7 +9,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 
-internal const val RECORDING_TRACK_FILTER_VERSION = 3
+internal const val RECORDING_TRACK_FILTER_VERSION = 4
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
 
 internal data class RecordingFixSample(
@@ -174,6 +176,206 @@ internal data class RecordingPointSmoothingOptions(
     val activityProfile: String,
     val sampleIntervalSeconds: Int = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
 )
+
+internal data class RecordingCanonicalAppendResult(
+    val points: List<RecordedTracePoint>,
+    val distanceDeltaMeters: Double,
+    val adjustedPointCount: Int,
+    val adjustmentMeters: Double,
+    val maximumAdjustmentMeters: Double,
+    val confirmedReversalCorrected: Boolean,
+)
+
+/**
+ * Appends one real accepted fix to the canonical track. Only the small tail that can still
+ * be changed by delayed confirmation is revisited, so distance, map geometry and GPX always
+ * use the same coordinates without making the work grow with the recording length.
+ */
+internal fun appendCanonicalRecordingPoint(
+    existingPoints: List<RecordedTracePoint>,
+    point: RecordedTracePoint,
+    options: RecordingPointSmoothingOptions,
+): RecordingCanonicalAppendResult {
+    val tailStartIndex = (existingPoints.size - RECORDING_CANONICAL_MUTABLE_TAIL_POINTS).coerceAtLeast(0)
+    val originalTail = existingPoints.subList(tailStartIndex, existingPoints.size)
+    val revisedTail = originalTail.toMutableList()
+    var adjustedPointCount = 0
+    var totalAdjustmentMeters = 0.0
+    var maximumAdjustmentMeters = 0.0
+    var confirmedReversalCorrected = false
+
+    if (revisedTail.size >= 3) {
+        val reversalResult =
+            smoothConfirmedRecordingReversal(
+                before = revisedTail[revisedTail.lastIndex - 2],
+                candidate = revisedTail[revisedTail.lastIndex - 1],
+                recovered = revisedTail.last(),
+                following = point,
+                options = options,
+            )
+        if (reversalResult != null) {
+            revisedTail[revisedTail.lastIndex - 1] = reversalResult.point
+            adjustedPointCount += 1
+            totalAdjustmentMeters += reversalResult.adjustmentMeters
+            maximumAdjustmentMeters = maxOf(maximumAdjustmentMeters, reversalResult.adjustmentMeters)
+            confirmedReversalCorrected = true
+        }
+    }
+
+    if (revisedTail.size >= 2) {
+        val middleIndex = revisedTail.lastIndex
+        val smoothingResult =
+            smoothRecordingMiddlePoint(
+                before = revisedTail[middleIndex - 1],
+                middle = revisedTail[middleIndex],
+                after = point,
+                options = options,
+            )
+        if (smoothingResult != null) {
+            revisedTail[middleIndex] = smoothingResult.point
+            adjustedPointCount += 1
+            totalAdjustmentMeters += smoothingResult.adjustmentMeters
+            maximumAdjustmentMeters = maxOf(maximumAdjustmentMeters, smoothingResult.adjustmentMeters)
+        }
+    }
+
+    val oldTailDistance = recordingCanonicalPathDistance(originalTail)
+    val revisedTailWithPoint = revisedTail + point
+    val newTailDistance = recordingCanonicalPathDistance(revisedTailWithPoint)
+    return RecordingCanonicalAppendResult(
+        points = existingPoints.take(tailStartIndex) + revisedTailWithPoint,
+        distanceDeltaMeters = newTailDistance - oldTailDistance,
+        adjustedPointCount = adjustedPointCount,
+        adjustmentMeters = totalAdjustmentMeters,
+        maximumAdjustmentMeters = maximumAdjustmentMeters,
+        confirmedReversalCorrected = confirmedReversalCorrected,
+    )
+}
+
+internal fun recordingCanonicalPathDistance(points: List<RecordedTracePoint>): Double =
+    points.zipWithNext().sumOf { (before, after) ->
+        if (after.startsNewSegment) {
+            0.0
+        } else {
+            haversineMeters(before.latLong, after.latLong)
+        }
+    }
+
+/**
+ * Corrects a short out-and-back GPS excursion only after a fourth point confirms that travel
+ * continued along the recovered line. This extra confirmation avoids flattening real corners
+ * and switchbacks while allowing optimistic watch accuracy values to be handled safely.
+ */
+@Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod", "ComplexCondition")
+private fun smoothConfirmedRecordingReversal(
+    before: RecordedTracePoint,
+    candidate: RecordedTracePoint,
+    recovered: RecordedTracePoint,
+    following: RecordedTracePoint,
+    options: RecordingPointSmoothingOptions,
+): RecordingPointSmoothingResult? {
+    if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF) return null
+    if (candidate.startsNewSegment || recovered.startsNewSegment || following.startsNewSegment) return null
+    val maximumIntervalMillis = recordingSmoothingMaximumIntervalMillis(options.sampleIntervalSeconds)
+    val intervals =
+        listOf(
+            candidate.timeMillis - before.timeMillis,
+            recovered.timeMillis - candidate.timeMillis,
+            following.timeMillis - recovered.timeMillis,
+        )
+    if (intervals.any { it !in 1..maximumIntervalMillis }) return null
+
+    val candidateLocal = candidate.latLong.toLocalMeters(before.latLong)
+    val recoveredLocal = recovered.latLong.toLocalMeters(before.latLong)
+    val followingLocal = following.latLong.toLocalMeters(before.latLong)
+    val firstVector = candidateLocal
+    val returnVector =
+        LocalMeters(
+            x = recoveredLocal.x - candidateLocal.x,
+            y = recoveredLocal.y - candidateLocal.y,
+        )
+    val recoveredDirection = recoveredLocal
+    val followingDirection =
+        LocalMeters(
+            x = followingLocal.x - recoveredLocal.x,
+            y = followingLocal.y - recoveredLocal.y,
+        )
+    val minimumLegMeters =
+        if (options.activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            RECORDING_SMOOTHING_MIN_BIKE_LEG_M
+        } else {
+            RECORDING_SMOOTHING_MIN_HIKE_LEG_M
+        }
+    val firstLength = firstVector.length()
+    val returnLength = returnVector.length()
+    val baselineLength = recoveredDirection.length()
+    if (
+        firstLength < minimumLegMeters ||
+        returnLength < minimumLegMeters ||
+        baselineLength < minimumLegMeters ||
+        followingDirection.length() < minimumLegMeters
+    ) {
+        return null
+    }
+    if (angleDegrees(recoveredDirection, followingDirection) > RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES) {
+        return null
+    }
+    val baselineSquared =
+        recoveredDirection.x * recoveredDirection.x + recoveredDirection.y * recoveredDirection.y
+    val projectionFraction =
+        (candidateLocal.x * recoveredDirection.x + candidateLocal.y * recoveredDirection.y) / baselineSquared
+    if (projectionFraction !in RECORDING_REVERSAL_MIN_PROJECTION..RECORDING_REVERSAL_MAX_PROJECTION) return null
+    val projected =
+        LocalMeters(
+            x = recoveredDirection.x * projectionFraction,
+            y = recoveredDirection.y * projectionFraction,
+        )
+    val correction =
+        LocalMeters(
+            x = projected.x - candidateLocal.x,
+            y = projected.y - candidateLocal.y,
+        )
+    val lateralErrorMeters = correction.length()
+    val minimumLateralError =
+        if (options.activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            RECORDING_REVERSAL_MIN_BIKE_LATERAL_ERROR_M
+        } else {
+            RECORDING_REVERSAL_MIN_HIKE_LATERAL_ERROR_M
+        }
+    if (lateralErrorMeters < minimumLateralError) return null
+    val turnDegrees = angleDegrees(firstVector, returnVector)
+    val detourRatio = (firstLength + returnLength) / baselineLength
+    if (
+        turnDegrees < RECORDING_REVERSAL_MIN_TURN_DEGREES ||
+        detourRatio < RECORDING_REVERSAL_MIN_DETOUR_RATIO
+    ) {
+        return null
+    }
+
+    val strong = options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG
+    val bike = options.activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE
+    val requestedAdjustment = lateralErrorMeters * if (strong) 0.94 else 0.84
+    val maximumAdjustment =
+        when {
+            bike && strong -> 24.0
+            bike -> 18.0
+            strong -> 18.0
+            else -> 16.0
+        }
+    val geometryCap = min(firstLength, returnLength) * if (strong) 0.95 else 0.90
+    val adjustmentMeters = min(requestedAdjustment, min(maximumAdjustment, geometryCap))
+    if (adjustmentMeters < minimumLateralError) return null
+    val fraction = (adjustmentMeters / lateralErrorMeters).coerceIn(0.0, 1.0)
+    val smoothedLocal =
+        LocalMeters(
+            x = candidateLocal.x + correction.x * fraction,
+            y = candidateLocal.y + correction.y * fraction,
+        )
+    return RecordingPointSmoothingResult(
+        point = candidate.copy(latLong = smoothedLocal.toLatLong(before.latLong)),
+        adjustmentMeters = adjustmentMeters,
+    )
+}
 
 /**
  * Smooths only the middle point of a three-point sequence. The latest endpoint is never
@@ -426,14 +628,14 @@ private fun smoothingConfig(
         )
     } else {
         RecordingSmoothingConfig(
-            maximumTurnDegrees = if (bike) 45.0 else 38.0,
-            strength = 0.42,
-            accuracyAdjustmentFactor = if (bike) 0.22 else 0.17,
+            maximumTurnDegrees = if (bike) 55.0 else 50.0,
+            strength = if (bike) 0.48 else 0.52,
+            accuracyAdjustmentFactor = if (bike) 0.30 else 0.28,
             minimumCapMeters = if (bike) 0.75 else 0.4,
-            maximumCapMeters = if (bike) 3.0 else 1.75,
+            maximumCapMeters = if (bike) 5.5 else 3.25,
             minimumAdjustmentMeters = 0.35,
             fallbackAccuracyMeters = 7.0,
-            maximumLegFraction = 0.30,
+            maximumLegFraction = if (bike) 0.42 else 0.40,
         )
     }
 }
@@ -497,8 +699,16 @@ private const val RECORDING_SMOOTHING_MIN_BIKE_LEG_M = 3.0
 private const val RECORDING_SMOOTHING_MIN_PROJECTION = 0.12
 private const val RECORDING_SMOOTHING_MAX_PROJECTION = 0.88
 private const val RECORDING_SMOOTHING_ACCURACY_PIVOT_M = 4.0
-private const val RECORDING_SPIKE_MIN_TURN_DEGREES = 105.0
-private const val RECORDING_SPIKE_MIN_LATERAL_ERROR_M = 4.0
-private const val RECORDING_SPIKE_MIN_ACCURACY_M = 8.0
+private const val RECORDING_SPIKE_MIN_TURN_DEGREES = 100.0
+private const val RECORDING_SPIKE_MIN_LATERAL_ERROR_M = 3.5
+private const val RECORDING_SPIKE_MIN_ACCURACY_M = 6.0
 private const val RECORDING_SPIKE_MIN_RELATIVE_ACCURACY = 0.85
-private const val RECORDING_SPIKE_MIN_DETOUR_RATIO = 1.65
+private const val RECORDING_SPIKE_MIN_DETOUR_RATIO = 1.50
+private const val RECORDING_CANONICAL_MUTABLE_TAIL_POINTS = 3
+private const val RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES = 55.0
+private const val RECORDING_REVERSAL_MIN_PROJECTION = 0.08
+private const val RECORDING_REVERSAL_MAX_PROJECTION = 0.92
+private const val RECORDING_REVERSAL_MIN_HIKE_LATERAL_ERROR_M = 2.5
+private const val RECORDING_REVERSAL_MIN_BIKE_LATERAL_ERROR_M = 4.0
+private const val RECORDING_REVERSAL_MIN_TURN_DEGREES = 100.0
+private const val RECORDING_REVERSAL_MIN_DETOUR_RATIO = 1.35
