@@ -12,6 +12,7 @@ object WatchRoutes {
     const val USER_PROFILE_SETTINGS = "user_profile_settings_screen"
     const val COMPASS_SETTINGS = "compass_settings_screen"
     const val GPS_SETTINGS = "gps_settings_screen"
+    const val GPS_ADVANCED_SETTINGS = "gps_advanced_settings_screen"
     const val RECORDING_SETTINGS = "recording_settings_screen"
     const val RECORDING_ADVANCED_SETTINGS = "recording_advanced_settings_screen"
     const val RECORDING_SOURCE_SETTINGS = "recording_source_settings_screen"

@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName", "FunctionNaming", "LongMethod")
+
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.compose.foundation.background
@@ -48,34 +50,19 @@ import kotlin.math.abs
 fun GpsSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenGeneralSettings: () -> Unit,
+    onOpenAdvancedSettings: () -> Unit,
 ) {
     val listTokens = rememberSettingsListTokens()
 
     val isWatchGpsOnly by viewModel.watchGpsOnly.collectAsState()
+    val gpsUsageProfile by viewModel.gpsUsageProfile.collectAsState()
     val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
     val recordingScreenOffSampleIntervalSeconds by viewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
-    val recordingAutoPauseMode by viewModel.recordingAutoPauseMode.collectAsState()
     val turnByTurnGpsIntervalSeconds by viewModel.turnByTurnGpsIntervalSeconds.collectAsState()
     val turnByTurnScreenOffGpsIntervalSeconds by viewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
     val gpsDebugTelemetry by viewModel.gpsDebugTelemetry.collectAsState()
     val diagnosticsCaptureMode by viewModel.diagnosticsCaptureMode.collectAsState()
     val gpsPassiveLocationExperiment by viewModel.gpsPassiveLocationExperiment.collectAsState()
-    val recordingScreenOnDisabled =
-        recordingSampleIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
-    val recordingScreenOffDisabled =
-        when (recordingScreenOffSampleIntervalSeconds) {
-            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> recordingScreenOnDisabled
-            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
-            else -> false
-        }
-    val turnByTurnScreenOnDisabled =
-        turnByTurnGpsIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
-    val turnByTurnScreenOffDisabled =
-        when (turnByTurnScreenOffGpsIntervalSeconds) {
-            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> turnByTurnScreenOnDisabled
-            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
-            else -> false
-        }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -97,20 +84,98 @@ fun GpsSettingsScreen(
         }
 
         item {
+            SettingsOptionPickerRow(
+                label = stringResource(R.string.gps_profile),
+                selectedValue = gpsUsageProfile,
+                options = GPS_USAGE_PROFILE_OPTIONS.map { it to gpsUsageProfileLabel(it) },
+                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile),
+                onSelect = viewModel::setGpsUsageProfile,
+            )
+        }
+        item {
             GpsIntervalSummary(
-                primaryText = stringResource(R.string.gps_basic_interval_summary),
-                secondaryText = stringResource(R.string.gps_recording_guidance_interval_summary),
+                primaryText =
+                    stringResource(
+                        R.string.gps_profile_rec_summary,
+                        gpsIntervalLabel(recordingSampleIntervalSeconds),
+                        gpsScreenOffIntervalLabel(
+                            seconds = recordingScreenOffSampleIntervalSeconds,
+                            screenOnSeconds = recordingSampleIntervalSeconds,
+                        ),
+                    ),
+                secondaryText =
+                    stringResource(
+                        R.string.gps_profile_tbt_summary,
+                        gpsIntervalLabel(turnByTurnGpsIntervalSeconds),
+                        gpsScreenOffIntervalLabel(
+                            seconds = turnByTurnScreenOffGpsIntervalSeconds,
+                            screenOnSeconds = turnByTurnGpsIntervalSeconds,
+                        ),
+                    ),
+            )
+        }
+        item {
+            SettingsSectionChip(
+                label = stringResource(R.string.gps_advanced),
+                secondaryLabel = stringResource(R.string.gps_advanced_summary),
+                onClick = onOpenAdvancedSettings,
             )
         }
 
-        item {
-            GpsSectionTitle(text = "REC")
+        if (isFullDiagnosticsCapture(gpsDebugTelemetry, diagnosticsCaptureMode)) {
+            item {
+                ToggleChip(
+                    checked = gpsPassiveLocationExperiment,
+                    onCheckedChanged = { viewModel.setGpsPassiveLocationExperiment(it) },
+                    label = stringResource(R.string.gps_use_other_apps),
+                    secondaryLabel =
+                        if (gpsPassiveLocationExperiment) {
+                            stringResource(R.string.gps_other_apps_on_during_capture)
+                        } else {
+                            stringResource(R.string.gps_other_apps_off_during_capture)
+                        },
+                    toggleControl = ToggleChipToggleControl.Switch,
+                )
+            }
         }
+    }
+}
+
+@Composable
+fun GpsAdvancedSettingsScreen(
+    viewModel: SettingsViewModel,
+    onOpenGpsSettings: () -> Unit,
+) {
+    val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
+    val recordingScreenOffSampleIntervalSeconds by viewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
+    val turnByTurnGpsIntervalSeconds by viewModel.turnByTurnGpsIntervalSeconds.collectAsState()
+    val turnByTurnScreenOffGpsIntervalSeconds by viewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+    val recordingScreenOnDisabled =
+        recordingSampleIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+    val recordingScreenOffDisabled =
+        when (recordingScreenOffSampleIntervalSeconds) {
+            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> recordingScreenOnDisabled
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
+            else -> false
+        }
+    val turnByTurnScreenOnDisabled =
+        turnByTurnGpsIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+    val turnByTurnScreenOffDisabled =
+        when (turnByTurnScreenOffGpsIntervalSeconds) {
+            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> turnByTurnScreenOnDisabled
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
+            else -> false
+        }
+
+    WearSettingsListScreen(horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            GpsIntervalSummary(
-                primaryText = stringResource(R.string.gps_recording_activity_summary),
+            SettingsSectionChip(
+                label = stringResource(R.string.gps_settings),
+                secondaryLabel = stringResource(R.string.gps_profiles_and_source),
+                onClick = onOpenGpsSettings,
             )
         }
+        item { GpsSectionTitle(text = "REC") }
         item {
             GpsTimingPickerRow(
                 label = stringResource(R.string.screen_on),
@@ -138,25 +203,10 @@ fun GpsSettingsScreen(
             )
         }
         if (recordingScreenOffDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_recording_screen_off_disabled_warning),
-                )
-            }
-        }
-        item {
-            SettingsOptionPickerRow(
-                label = stringResource(R.string.gps_auto_pause),
-                selectedValue = recordingAutoPauseMode,
-                options = AUTO_PAUSE_OPTIONS.map { it to autoPauseModeLabel(it) },
-                secondaryLabel = autoPauseModeLabel(recordingAutoPauseMode),
-                onSelect = viewModel::setRecordingAutoPauseMode,
-            )
+            item { GpsWarningText(text = stringResource(R.string.gps_recording_screen_off_disabled_warning)) }
         }
 
-        item {
-            GpsSectionTitle(text = "TBT")
-        }
+        item { GpsSectionTitle(text = "TBT") }
         item {
             GpsTimingPickerRow(
                 label = stringResource(R.string.screen_on),
@@ -185,35 +235,10 @@ fun GpsSettingsScreen(
             )
         }
         if (turnByTurnScreenOffDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_guidance_screen_off_disabled_warning),
-                )
-            }
+            item { GpsWarningText(text = stringResource(R.string.gps_guidance_screen_off_disabled_warning)) }
         }
         if (turnByTurnScreenOnDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_guidance_screen_on_disabled_warning),
-                )
-            }
-        }
-
-        if (isFullDiagnosticsCapture(gpsDebugTelemetry, diagnosticsCaptureMode)) {
-            item {
-                ToggleChip(
-                    checked = gpsPassiveLocationExperiment,
-                    onCheckedChanged = { viewModel.setGpsPassiveLocationExperiment(it) },
-                    label = stringResource(R.string.gps_use_other_apps),
-                    secondaryLabel =
-                        if (gpsPassiveLocationExperiment) {
-                            stringResource(R.string.gps_other_apps_on_during_capture)
-                        } else {
-                            stringResource(R.string.gps_other_apps_off_during_capture)
-                        },
-                    toggleControl = ToggleChipToggleControl.Switch,
-                )
-            }
+            item { GpsWarningText(text = stringResource(R.string.gps_guidance_screen_on_disabled_warning)) }
         }
     }
 }
@@ -651,17 +676,19 @@ private val SCREEN_OFF_OPTIONS_SECONDS =
 private val TBT_SCREEN_OFF_OPTIONS_SECONDS =
     listOf(SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) + SCREEN_OFF_OPTIONS_SECONDS
 
-private val AUTO_PAUSE_OPTIONS =
+private val GPS_USAGE_PROFILE_OPTIONS =
     listOf(
-        SettingsRepository.RECORDING_AUTO_PAUSE_OFF,
-        SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE,
+        SettingsRepository.GPS_USAGE_PROFILE_BALANCED,
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY,
     )
 
-@Composable
-private fun autoPauseModeLabel(mode: String): String =
-    when (mode) {
-        SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS -> stringResource(R.string.state_on)
-        else -> stringResource(R.string.state_off)
+private fun gpsUsageProfileLabel(profile: String): String =
+    when (profile) {
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace · more battery"
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery · less detail"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom · advanced"
+        else -> "Balanced · recommended"
     }
 
 @Composable

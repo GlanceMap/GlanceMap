@@ -23,6 +23,11 @@ interface SettingsRepository {
         const val DEFAULT_BIKE_RECORDING_SAMPLE_INTERVAL_SECONDS = 1
         const val DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS = 10
         const val DEFAULT_BIKE_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS = 5
+        const val GPS_USAGE_PROFILE_BEST_TRACE = "BEST_TRACE"
+        const val GPS_USAGE_PROFILE_BALANCED = "BALANCED"
+        const val GPS_USAGE_PROFILE_LONG_BATTERY = "LONG_BATTERY"
+        const val GPS_USAGE_PROFILE_CUSTOM = "CUSTOM"
+        const val DEFAULT_GPS_USAGE_PROFILE = GPS_USAGE_PROFILE_BALANCED
         const val RECORDING_AUTO_PAUSE_OFF = "OFF"
         const val RECORDING_AUTO_PAUSE_BIKE_ONLY = "BIKE_ONLY"
         const val RECORDING_AUTO_PAUSE_ALWAYS = "ALWAYS"
@@ -308,6 +313,10 @@ interface SettingsRepository {
     val gpsDebugTelemetryPopupEnabled: Flow<Boolean>
 
     suspend fun setGpsDebugTelemetryPopupEnabled(enabled: Boolean)
+
+    val gpsUsageProfile: Flow<String>
+
+    suspend fun setGpsUsageProfile(profile: String)
 
     val recordingSampleIntervalSeconds: Flow<Int>
 

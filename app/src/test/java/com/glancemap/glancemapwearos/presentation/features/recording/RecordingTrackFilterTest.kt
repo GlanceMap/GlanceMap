@@ -56,6 +56,33 @@ class RecordingTrackFilterTest {
     }
 
     @Test
+    fun qualityGateLearnsConsistentlyConservativeWatchAccuracy() {
+        val gate = RecordingFixQualityGate()
+
+        repeat(4) { index ->
+            val result =
+                gate.evaluate(
+                    sample(
+                        x = index.toDouble(),
+                        elapsedMillis = (index + 1) * 3_000L,
+                        accuracyMeters = 45f,
+                    ),
+                    HIKE,
+                )
+            assertEquals(RecordingFixQualityReason.POOR_ACCURACY, result.reason)
+        }
+
+        val learned =
+            gate.evaluate(
+                sample(x = 4.0, elapsedMillis = 15_000L, accuracyMeters = 45f),
+                HIKE,
+            )
+
+        assertTrue(learned.accepted)
+        assertEquals(RecordingFixQualityReason.FIRST_FIX, learned.reason)
+    }
+
+    @Test
     fun isolatedJumpIsHeldAndFollowingGoodFixIsAccepted() {
         val gate = RecordingFixQualityGate()
         assertTrue(gate.evaluate(sample(x = 0.0, elapsedMillis = 1_000L), HIKE).accepted)

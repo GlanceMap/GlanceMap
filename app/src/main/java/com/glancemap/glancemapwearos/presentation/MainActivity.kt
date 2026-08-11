@@ -49,6 +49,7 @@ import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.GpsAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpsSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxAppearanceSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxSettingsScreen
@@ -583,6 +584,27 @@ class MainActivity : ComponentActivity() {
                                     onOpenGeneralSettings = {
                                         navController.navigate(WatchRoutes.SETTINGS) {
                                             popUpTo(WatchRoutes.SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.GPS_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.GPS_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                GpsAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenGpsSettings = {
+                                        navController.navigate(WatchRoutes.GPS_SETTINGS) {
+                                            popUpTo(WatchRoutes.GPS_SETTINGS) { inclusive = false }
                                             launchSingleTop = true
                                             restoreState = true
                                         }

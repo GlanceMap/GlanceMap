@@ -116,6 +116,7 @@ class TraceRecordingViewModel(
     private var autoPauseMovingSinceElapsedMs: Long? = null
     private var autoPauseTriggerCount = 0
     private var autoResumeTriggerCount = 0
+    private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
@@ -475,33 +476,51 @@ class TraceRecordingViewModel(
             }
         }
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
-        val suppressedJitterDistance =
-            previousRecordedPoint
-                ?.takeIf {
-                    pendingSegmentStartReason == null &&
-                        elapsedSinceAcceptedMs < recordingGapTelemetryThresholdMillis()
-                }?.let { previous ->
-                    recordingJitterDistanceToSuppress(
-                        previous = previous,
-                        candidate = livePoint,
-                    )
-                }
-        if (suppressedJitterDistance != null) {
+        val sensorMetricsAtFix = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+        val motionResult =
+            recordingMovementConfidenceGate.evaluate(
+                previous = previousRecordedPoint,
+                candidate =
+                    RecordingMotionSample(
+                        latLong = livePoint.latLong,
+                        elapsedRealtimeMillis = location.elapsedRealtimeNanos / 1_000_000L,
+                        accuracyMeters = livePoint.accuracyMeters,
+                        speedMps = livePoint.speedMps,
+                        speedAccuracyMps =
+                            if (location.hasSpeedAccuracy()) {
+                                location.speedAccuracyMetersPerSecond
+                                    .takeIf { it.isFinite() && it >= 0f }
+                            } else {
+                                null
+                            },
+                        stepCount = sensorMetricsAtFix?.stepCount,
+                        cadenceSpm = sensorMetricsAtFix?.cadenceSpm,
+                    ),
+                activityProfile = state.activityProfile,
+            )
+        if (!motionResult.accepted && pendingSegmentStartReason == null) {
             suppressedJitterPointCount += 1
-            suppressedJitterDistanceMeters += suppressedJitterDistance
+            suppressedJitterDistanceMeters += motionResult.displacementMeters
             if (suppressedJitterPointCount == 1 ||
                 suppressedJitterPointCount % RECORDING_JITTER_TELEMETRY_INTERVAL == 0
             ) {
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=jitter_suppressed count=$suppressedJitterPointCount " +
-                        "distanceMeters=${suppressedJitterDistance.formatTelemetry(1)} " +
+                    "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
+                        "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
+                        "count=$suppressedJitterPointCount " +
+                        "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
                         "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
                         "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
+                        "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
                 )
             }
             return
+        }
+        if (!motionResult.accepted) {
+            recordingMovementConfidenceGate.reset()
         }
         val fixQualityResult =
             recordingFixQualityGate.evaluate(
@@ -615,7 +634,7 @@ class TraceRecordingViewModel(
                 if (elevation.gpsUsed) {
                     gpsElevationUsedCount += 1
                 }
-                val sensorMetrics = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+                val sensorMetrics = sensorMetricsAtFix
                 val startsNewSegment = startsNewSegmentForPoint
                 val fusedElevation =
                     hybridElevationFilter.update(
@@ -957,6 +976,7 @@ class TraceRecordingViewModel(
         lastAcceptedPointTimeMillis = null
         pendingSegmentStartReason =
             RecordingSegmentStartReason.MANUAL_PAUSE.takeIf { state.points.isNotEmpty() }
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
         resetAutoPauseMotionState()
         lastUiAction = "resume"
@@ -1329,6 +1349,7 @@ class TraceRecordingViewModel(
         resetAutoPauseMotionState()
         autoPauseTriggerCount = 0
         autoResumeTriggerCount = 0
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
         qualityHeldFixCount = 0
         qualityRejectedFixCount = 0
@@ -1449,6 +1470,7 @@ class TraceRecordingViewModel(
         lastAcceptedPointTimeMillis = null
         pendingSegmentStartReason =
             RecordingSegmentStartReason.AUTO_PAUSE.takeIf { state.points.isNotEmpty() }
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
         resetAutoPauseMotionState()
         autoResumeTriggerCount += 1
@@ -2008,27 +2030,6 @@ internal fun haversineMeters(
     return 2.0 * EARTH_RADIUS_METERS * atan2(sqrt(h), sqrt(1.0 - h))
 }
 
-internal fun recordingJitterDistanceToSuppress(
-    previous: RecordedTracePoint,
-    candidate: RecordedTracePoint,
-): Double? {
-    val elapsedMs = candidate.timeMillis - previous.timeMillis
-    if (elapsedMs <= 0L || elapsedMs >= RECORDING_JITTER_KEEPALIVE_MS) return null
-    val speedMps = candidate.speedMps?.takeIf { it.isFinite() && it >= 0f } ?: return null
-    if (speedMps > RECORDING_JITTER_MAX_SPEED_MPS) return null
-    val accuracyMeters =
-        listOfNotNull(previous.accuracyMeters, candidate.accuracyMeters)
-            .filter { it.isFinite() && it >= 0f }
-            .maxOrNull()
-            ?: return null
-    val deadbandMeters =
-        (accuracyMeters * RECORDING_JITTER_ACCURACY_FACTOR)
-            .coerceIn(RECORDING_JITTER_MIN_DEADBAND_M, RECORDING_JITTER_MAX_DEADBAND_M)
-            .toDouble()
-    val distanceMeters = haversineMeters(previous.latLong, candidate.latLong)
-    return distanceMeters.takeIf { it <= deadbandMeters }
-}
-
 private fun elevationGainLossMeters(points: List<RecordedTracePoint>): Pair<Double, Double> {
     var gain = 0.0
     var loss = 0.0
@@ -2083,8 +2084,3 @@ private const val RECORDING_TELEMETRY_POINT_INTERVAL = 10
 private const val RECORDING_LIVE_TELEMETRY_SKIP_INTERVAL = 20
 private const val RECORDING_START_FRESH_FIX_TIMEOUT_MS = 6_000L
 private const val RECORDING_JITTER_TELEMETRY_INTERVAL = 10
-private const val RECORDING_JITTER_KEEPALIVE_MS = 30_000L
-private const val RECORDING_JITTER_MAX_SPEED_MPS = 0.5f
-private const val RECORDING_JITTER_ACCURACY_FACTOR = 0.2f
-private const val RECORDING_JITTER_MIN_DEADBAND_M = 2f
-private const val RECORDING_JITTER_MAX_DEADBAND_M = 4f

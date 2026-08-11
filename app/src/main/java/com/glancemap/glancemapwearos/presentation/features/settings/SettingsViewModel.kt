@@ -95,6 +95,19 @@ class SettingsViewModel(
             settingsRepository.setGpsDebugTelemetryPopupEnabled(enabled)
         }
 
+    val gpsUsageProfile: StateFlow<String> =
+        settingsRepository.gpsUsageProfile
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_GPS_USAGE_PROFILE,
+            )
+
+    fun setGpsUsageProfile(profile: String) =
+        viewModelScope.launch {
+            settingsRepository.setGpsUsageProfile(profile)
+        }
+
     val recordingSampleIntervalSeconds: StateFlow<Int> =
         settingsRepository.recordingSampleIntervalSeconds
             .stateIn(
