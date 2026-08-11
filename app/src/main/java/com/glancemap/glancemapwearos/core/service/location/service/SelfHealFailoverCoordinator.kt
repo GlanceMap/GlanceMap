@@ -22,6 +22,7 @@ internal class SelfHealFailoverCoordinator(
     private val requestImmediateLocation: (String) -> Unit,
     private val trackingEnabled: () -> Boolean,
     private val ambientModeActive: () -> Boolean,
+    private val backgroundGpsEnabled: () -> Boolean = { false },
     private val hasFinePermission: () -> Boolean,
     private val hasCoarsePermission: () -> Boolean,
     private val watchGpsOnly: () -> Boolean,
@@ -224,12 +225,23 @@ internal class SelfHealFailoverCoordinator(
         selfHealJob =
             serviceScope.launch {
                 while (isServiceActive() && shouldRunSelfHealMonitor()) {
-                    delay(SELF_HEAL_CHECK_INTERVAL_MS)
-                    maybeTriggerInteractiveSelfHeal(
-                        nowElapsedMs = SystemClock.elapsedRealtime(),
-                        interactiveTracking = trackingEnabled() && !ambientModeActive(),
-                        expectedIntervalMs = expectedIntervalMs(),
-                    )
+                    delay(resolveSelfHealMonitorIntervalMs())
+                    val nowElapsedMs = SystemClock.elapsedRealtime()
+                    val interactiveTracking = trackingEnabled() && !ambientModeActive()
+                    if (interactiveTracking) {
+                        maybeTriggerInteractiveSelfHeal(
+                            nowElapsedMs = nowElapsedMs,
+                            interactiveTracking = true,
+                            expectedIntervalMs = expectedIntervalMs(),
+                        )
+                    } else {
+                        maybeTriggerBackgroundAutoFusedFailover(
+                            nowElapsedMs = nowElapsedMs,
+                            backgroundTracking =
+                                trackingEnabled() && ambientModeActive() && backgroundGpsEnabled(),
+                            expectedIntervalMs = expectedIntervalMs(),
+                        )
+                    }
                 }
                 selfHealJob = null
             }
@@ -243,6 +255,18 @@ internal class SelfHealFailoverCoordinator(
         maybeTriggerInteractiveSelfHeal(
             nowElapsedMs = nowElapsedMs,
             interactiveTracking = interactiveTracking,
+            expectedIntervalMs = expectedIntervalMs,
+        )
+    }
+
+    internal fun maybeTriggerBackgroundAutoFusedFailoverNow(
+        nowElapsedMs: Long,
+        backgroundTracking: Boolean,
+        expectedIntervalMs: Long,
+    ) {
+        maybeTriggerBackgroundAutoFusedFailover(
+            nowElapsedMs = nowElapsedMs,
+            backgroundTracking = backgroundTracking,
             expectedIntervalMs = expectedIntervalMs,
         )
     }
@@ -263,8 +287,44 @@ internal class SelfHealFailoverCoordinator(
     private fun shouldRunSelfHealMonitor(): Boolean {
         val hasAnyPermission = hasFinePermission() || hasCoarsePermission()
         return trackingEnabled() &&
-            !ambientModeActive() &&
+            (!ambientModeActive() || backgroundGpsEnabled()) &&
             hasAnyPermission
+    }
+
+    private fun resolveSelfHealMonitorIntervalMs(): Long =
+        if (ambientModeActive()) {
+            BACKGROUND_SELF_HEAL_CHECK_INTERVAL_MS
+        } else {
+            SELF_HEAL_CHECK_INTERVAL_MS
+        }
+
+    private fun maybeTriggerBackgroundAutoFusedFailover(
+        nowElapsedMs: Long,
+        backgroundTracking: Boolean,
+        expectedIntervalMs: Long,
+    ) {
+        if (!backgroundTracking || expectedIntervalMs <= 0L) return
+        if (watchGpsOnly() || passiveLocationExperiment() || autoFusedFallbackToWatchGps) return
+        if (engine.currentSourceModeOrNull() != LocationSourceMode.AUTO_FUSED) return
+
+        val lastFixAt =
+            resolveLatestAcceptedFixAtElapsedMs(
+                lastAnyAcceptedFixAtElapsedMs = lastAnyAcceptedFixAtElapsedMs(),
+                lastCallbackAcceptedFixAtElapsedMs = lastCallbackAcceptedFixAtElapsedMs(),
+            ).takeIf { it > 0L } ?: lastRequestAppliedAtElapsedMs()
+        if (lastFixAt <= 0L) return
+
+        val fixGapMs = (nowElapsedMs - lastFixAt).coerceAtLeast(0L)
+        if (fixGapMs < resolveBackgroundAutoFusedFailoverThresholdMs(expectedIntervalMs)) return
+
+        if (
+            forceAutoFusedFallbackToWatchGps(
+                reason = "background_no_fix",
+                nowElapsedMs = nowElapsedMs,
+            )
+        ) {
+            requestLocationUpdateIfNeeded()
+        }
     }
 
     private fun maybeTriggerInteractiveSelfHeal(
@@ -738,7 +798,14 @@ internal fun isWatchGpsGoodEnoughForAutoFusedRecovery(
     accuracyM: Float,
 ): Boolean = accuracyM.isFinite() && accuracyM <= AUTO_FUSED_RECOVERY_ACCURACY_M
 
+internal fun resolveBackgroundAutoFusedFailoverThresholdMs(expectedIntervalMs: Long): Long =
+    maxOf(
+        BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_MIN_GAP_MS,
+        expectedIntervalMs * BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_INTERVAL_MULTIPLIER,
+    )
+
 private const val SELF_HEAL_CHECK_INTERVAL_MS = 5_000L // was 2 s; cooldown is 15 s so 5 s is sufficient
+private const val BACKGROUND_SELF_HEAL_CHECK_INTERVAL_MS = 15_000L
 private const val SELF_HEAL_COOLDOWN_MS = 15_000L
 private const val AUTO_FUSED_FAILOVER_ACCURACY_M = 120f
 private const val AUTO_FUSED_FAILOVER_STREAK = 4
@@ -757,3 +824,5 @@ private const val WATCH_GPS_FIRST_CALLBACK_SELF_HEAL_GRACE_MS = 120_000L
 private const val AUTO_FUSED_NO_FIX_RECOVERY_PROBE_GRACE_MS = 4_000L
 private const val AUTO_FUSED_NO_FIX_RECOVERY_CLEAR_ACCURACY_M = 65f
 private const val AUTO_FUSED_NO_FIX_RECOVERY_SOURCE = "auto_fused_no_fix_recovery"
+private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_MIN_GAP_MS = 20_000L
+private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_INTERVAL_MULTIPLIER = 3L

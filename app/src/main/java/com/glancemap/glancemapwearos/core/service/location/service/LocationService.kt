@@ -209,6 +209,7 @@ class LocationService : Service() {
             requestImmediateLocation = { source -> requestImmediateLocation(source) },
             trackingEnabled = { latestTrackingEnabled },
             ambientModeActive = { isNonInteractiveScreenState() },
+            backgroundGpsEnabled = { effectiveBackgroundGpsEnabled() },
             hasFinePermission = { latestHasFinePermission },
             hasCoarsePermission = { latestHasCoarsePermission },
             watchGpsOnly = { latestWatchGpsOnly },
