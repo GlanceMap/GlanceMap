@@ -185,6 +185,45 @@ class MarkerMotionControllerTest {
     }
 
     @Test
+    fun acceptedFixExposesResolvedDerivedCourseForNavigationRotation() {
+        val controller = MarkerMotionController(predictionFreshnessMaxAgeMs = 4_500L, maxAcceptedFixAgeMs = 6_000L)
+        val base = LatLong(48.8566, 2.3522)
+        val east = moveLatLong(base, bearing = 90f, distanceMeters = 12f)
+
+        controller.onGpsFix(
+            MarkerMotionGpsFix(
+                latLong = base,
+                nowElapsedMs = 10_000L,
+                reading =
+                    MarkerMotionReading(
+                        fixElapsedMs = 10_000L,
+                        accuracyM = 6f,
+                        speedMps = null,
+                        bearingDeg = null,
+                    ),
+            ),
+        )
+        val update =
+            controller.onGpsFix(
+                MarkerMotionGpsFix(
+                    latLong = east,
+                    nowElapsedMs = 20_000L,
+                    reading =
+                        MarkerMotionReading(
+                            fixElapsedMs = 20_000L,
+                            accuracyM = 6f,
+                            speedMps = null,
+                            bearingDeg = null,
+                        ),
+                ),
+            )
+
+        assertTrue(update.fixAccepted)
+        assertTrue(update.resolvedSpeedMps > 1f)
+        assertEquals(90f, update.resolvedBearingDeg ?: Float.NaN, 5f)
+    }
+
+    @Test
     fun reliableZeroSpeedStopsBikePredictionImmediately() {
         val controller =
             MarkerMotionController(

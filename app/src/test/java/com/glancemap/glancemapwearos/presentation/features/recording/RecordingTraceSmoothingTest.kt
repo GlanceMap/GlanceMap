@@ -33,12 +33,112 @@ class RecordingTraceSmoothingTest {
         val result =
             gate.evaluate(
                 previous = previous,
-                candidate = sample(latitude = 45.00001, elapsedMillis = 8_000L, speedMps = 1.2f),
+                candidate = sample(latitude = 45.00012, elapsedMillis = 8_000L, speedMps = 1.2f),
                 activityProfile = HIKE,
             )
 
         assertTrue(result.accepted)
         assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+    }
+
+    @Test
+    fun normalWatchSpeedUncertaintyPreservesWalkingMovementOutsideDeadband() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous = point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 1.1f)
+
+        val result =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.00012, elapsedMillis = 11_000L, speedMps = 1.24f)
+                        .copy(speedAccuracyMps = 1.5f),
+                activityProfile = HIKE,
+            )
+
+        assertTrue(result.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+        assertEquals(true, result.evidence.reportedSpeedCredible)
+    }
+
+    @Test
+    fun credibleSpeedCannotReleaseStationaryJitterInsideDeadband() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous = point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 0.1f)
+
+        val result =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.00001, elapsedMillis = 8_000L, speedMps = 1.2f)
+                        .copy(speedAccuracyMps = 1.5f),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionStatus.SUPPRESSED, result.status)
+        assertEquals(RecordingMotionReason.STATIONARY_JITTER, result.reason)
+        assertEquals(true, result.evidence.reportedSpeedCredible)
+    }
+
+    @Test
+    fun continuityRecoveryCapsDistanceWithoutBreakingVisibleGeometry() {
+        val previous = point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 1.2f)
+        val current =
+            point(latitude = 45.0018, longitude = 6.0, timeMillis = 21_000L, speedMps = 1.2f)
+        val geometryMeters = haversineMeters(previous.latLong, current.latLong)
+
+        val estimate =
+            estimateRecordingDistanceDelta(
+                geometricDeltaMeters = geometryMeters,
+                previous = previous,
+                current = current,
+                elapsedSincePreviousMs = 20_000L,
+                activityProfile = HIKE,
+                isContinuityRecovery = true,
+            )
+
+        assertTrue(estimate.capped)
+        assertTrue(estimate.distanceMeters < geometryMeters)
+        assertTrue((estimate.maximumTrustedMeters ?: 0.0) >= estimate.distanceMeters)
+    }
+
+    @Test
+    fun lowConfidenceSideArcIsPulledTowardConfirmedStraightChord() {
+        val before = point(latitude = 45.0, longitude = 6.0, timeMillis = 0L, speedMps = 1.2f)
+        val first = point(latitude = 45.00009, longitude = 6.00006, timeMillis = 10_000L, speedMps = 1.2f)
+        val second = point(latitude = 45.00018, longitude = 6.00006, timeMillis = 20_000L, speedMps = 1.2f)
+        val after = point(latitude = 45.00027, longitude = 6.0, timeMillis = 30_000L, speedMps = 1.2f)
+
+        val result =
+            smoothRecordingStraightDrift(
+                before = before,
+                firstInterior = first.copy(accuracyMeters = 16f),
+                secondInterior = second.copy(accuracyMeters = 16f),
+                after = after,
+                options = RecordingPointSmoothingOptions(mode = ADAPTIVE, activityProfile = HIKE),
+            )
+
+        assertTrue(result != null)
+        assertTrue(result!!.adjustmentMeters in 1.0..8.0)
+        assertTrue(result.point.latLong.longitude < first.latLong.longitude)
+    }
+
+    @Test
+    fun straightDriftSmoothingDoesNotFlattenCornerAcrossChordSides() {
+        val before = point(latitude = 45.0, longitude = 6.0, timeMillis = 0L, speedMps = 1.2f)
+        val first = point(latitude = 45.0, longitude = 6.00018, timeMillis = 10_000L, speedMps = 1.2f)
+        val second = point(latitude = 45.00012, longitude = 6.00018, timeMillis = 20_000L, speedMps = 1.2f)
+        val after = point(latitude = 45.00024, longitude = 6.00018, timeMillis = 30_000L, speedMps = 1.2f)
+
+        val result =
+            smoothRecordingStraightDrift(
+                before = before,
+                firstInterior = first.copy(accuracyMeters = 18f),
+                secondInterior = second.copy(accuracyMeters = 18f),
+                after = after,
+                options = RecordingPointSmoothingOptions(mode = ADAPTIVE, activityProfile = HIKE),
+            )
+
+        assertEquals(null, result)
     }
 
     @Test
@@ -176,5 +276,6 @@ class RecordingTraceSmoothingTest {
 
     private companion object {
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
+        const val ADAPTIVE = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE
     }
 }

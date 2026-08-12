@@ -100,6 +100,9 @@ class TraceRecordingViewModel(
     private var lastLiveFixProvider: String? = null
     private var lastLiveFixAccuracyMeters: Float? = null
     private var lastLiveFixTimeMillis: Long? = null
+    private var lastLiveCallbackElapsedMs: Long = Long.MIN_VALUE
+    private val recentLiveCallbackIntervalsMs = mutableListOf<Long>()
+    private var pendingGpsDeliveryGapMillis: Long = 0L
     private var pendingSegmentStartReason: String? = null
     private var suppressedJitterPointCount = 0
     private var suppressedJitterDistanceMeters = 0.0
@@ -127,6 +130,9 @@ class TraceRecordingViewModel(
     private var smoothedAdjustmentMeters = 0.0
     private var maxSmoothedAdjustmentMeters = 0.0
     private var confirmedReversalCorrectionCount = 0
+    private var straightDriftCorrectedPointCount = 0
+    private var continuityDistanceCapCount = 0
+    private var continuityDistanceSuppressedMeters = 0.0
     private val hybridElevationFilter = RecordingHybridElevationFilter()
     private var hybridElevationPointCount = 0
     private var hybridPressureDeltaMeters = 0.0
@@ -425,6 +431,14 @@ class TraceRecordingViewModel(
             return
         }
 
+        val callbackElapsedMs =
+            (location.elapsedRealtimeNanos / 1_000_000L)
+                .takeIf { it > 0L }
+                ?: SystemClock.elapsedRealtime()
+        val liveCallbackGapMillis = observeLiveCallback(callbackElapsedMs)
+        if (liveCallbackGapMillis >= recordingGapTelemetryThresholdMillis()) {
+            pendingGpsDeliveryGapMillis = maxOf(pendingGpsDeliveryGapMillis, liveCallbackGapMillis)
+        }
         val livePoint = livePointFromLocation(location)
         lastLiveFixProvider = location.provider
         lastLiveFixAccuracyMeters = livePoint.accuracyMeters
@@ -589,17 +603,26 @@ class TraceRecordingViewModel(
             }
             return
         }
-        val automaticSegmentStartReason =
+        // A filtered point or a source relocation must not split the visual GPX trace. A REC
+        // session only starts a new segment for an explicit pause/resume boundary. Keep the
+        // recovery reason for diagnostics and let the canonical trace join the two accepted
+        // fixes, which also gives the user a continuous line after a real short GPS loss.
+        val deliveryGapForAcceptedPoint =
+            pendingGpsDeliveryGapMillis.takeIf { it > 0L } ?: liveCallbackGapMillis
+        val continuityRecoveryReason =
             when {
                 fixQualityResult.reason == RecordingFixQualityReason.CONFIRMED_RELOCATION ->
                     RecordingSegmentStartReason.SOURCE_RELOCATION
-                elapsedSinceAcceptedMs >= recordingGapTelemetryThresholdMillis() ->
+                deliveryGapForAcceptedPoint >= recordingGapTelemetryThresholdMillis() ->
                     RecordingSegmentStartReason.GPS_GAP
                 else -> null
             }
+        if (continuityRecoveryReason != null) {
+            pendingGpsDeliveryGapMillis = 0L
+        }
         val pendingSegmentStartReasonForPoint = pendingSegmentStartReason
         val segmentStartReason =
-            (automaticSegmentStartReason ?: pendingSegmentStartReasonForPoint)
+            pendingSegmentStartReasonForPoint
                 ?.takeIf { previousRecordedPoint != null }
         val startsNewSegmentForPoint = segmentStartReason != null
         if (fixQualityResult.reason == RecordingFixQualityReason.CONFIRMED_RELOCATION) {
@@ -607,7 +630,7 @@ class TraceRecordingViewModel(
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=fix_quality_confirmed_relocation count=$qualityRelocationCount " +
-                    "action=start_new_segment segmentReason=${segmentStartReason ?: "na"} " +
+                    "action=continue_track continuityReason=${continuityRecoveryReason ?: "na"} " +
                     "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
             )
         }
@@ -619,12 +642,13 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
             )
         }
-        if (elapsedSinceAcceptedMs >= recordingGapTelemetryThresholdMillis()) {
+        if (continuityRecoveryReason == RecordingSegmentStartReason.GPS_GAP) {
             gapRecoveryAcceptCount += 1
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=gap_recovery_accept gapRecoveryAcceptCount=$gapRecoveryAcceptCount " +
-                    "elapsedSinceAcceptedMs=$elapsedSinceAcceptedMs " +
+                    "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
+                    "liveCallbackGapMs=$deliveryGapForAcceptedPoint " +
                     "thresholdMs=${recordingGapTelemetryThresholdMillis()} " +
                     "sampleIntervalSeconds=$sampleIntervalSeconds " +
                     "provider=${sanitizeTelemetryValue(location.provider ?: "na")} " +
@@ -715,6 +739,7 @@ class TraceRecordingViewModel(
                     smoothedAdjustmentMeters += canonicalAppend.adjustmentMeters
                     maxSmoothedAdjustmentMeters =
                         maxOf(maxSmoothedAdjustmentMeters, canonicalAppend.maximumAdjustmentMeters)
+                    straightDriftCorrectedPointCount += canonicalAppend.straightDriftCorrectedPointCount
                     if (canonicalAppend.confirmedReversalCorrected) {
                         confirmedReversalCorrectionCount += 1
                     }
@@ -729,11 +754,36 @@ class TraceRecordingViewModel(
                                 "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
                                 "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
                                 "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
+                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
                                 "confirmedReversals=$confirmedReversalCorrectionCount",
                         )
                     }
                 }
-                val addedDistance = canonicalAppend.distanceDeltaMeters
+                val distanceEstimate =
+                    estimateRecordingDistanceDelta(
+                        geometricDeltaMeters = canonicalAppend.distanceDeltaMeters,
+                        previous = currentState.points.lastOrNull(),
+                        current = canonicalAppend.points.last(),
+                        elapsedSincePreviousMs = elapsedSinceAcceptedMs,
+                        activityProfile = currentState.activityProfile,
+                        isContinuityRecovery = continuityRecoveryReason != null,
+                    )
+                val addedDistance = distanceEstimate.distanceMeters
+                if (distanceEstimate.capped) {
+                    continuityDistanceCapCount += 1
+                    val suppressedMeters = canonicalAppend.distanceDeltaMeters - addedDistance
+                    continuityDistanceSuppressedMeters += suppressedMeters
+                    DebugTelemetry.log(
+                        "TraceRecording",
+                        "event=continuity_distance_capped count=$continuityDistanceCapCount " +
+                            "reason=${continuityRecoveryReason ?: "na"} " +
+                            "geometricMeters=${canonicalAppend.distanceDeltaMeters.formatTelemetry(1)} " +
+                            "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
+                            "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
+                            "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
+                            "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}",
+                    )
+                }
                 val pointCount = currentState.points.size + 1
                 updateGapTelemetry(
                     previousPoint = currentState.points.lastOrNull(),
@@ -741,6 +791,8 @@ class TraceRecordingViewModel(
                     provider = location.provider,
                     nextPointCount = pointCount,
                     segmentStartReason = segmentStartReason,
+                    continuityRecoveryReason = continuityRecoveryReason,
+                    liveCallbackGapMillis = deliveryGapForAcceptedPoint,
                 )
                 updateAccuracyTelemetry(point.accuracyMeters)
                 val updatedState =
@@ -782,6 +834,9 @@ class TraceRecordingViewModel(
                             "skippedUnusable=$skippedUnusableLocationCount " +
                             "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
                             "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
+                            "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                            "continuityDistanceCaps=$continuityDistanceCapCount " +
+                            "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
                             smartTrackTelemetryTokens() + " " +
                             "confirmedReversals=$confirmedReversalCorrectionCount " +
                             "segmentReason=${segmentStartReason ?: "na"} " +
@@ -1008,6 +1063,9 @@ class TraceRecordingViewModel(
         val addedPausedMillis = state.pausedAtMillis?.let { now - it }?.coerceAtLeast(0L) ?: 0L
         lastAcceptedElapsedMs = Long.MIN_VALUE
         lastAcceptedPointTimeMillis = null
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason =
             RecordingSegmentStartReason.MANUAL_PAUSE.takeIf { state.points.isNotEmpty() }
         recordingMovementConfidenceGate.reset()
@@ -1367,6 +1425,9 @@ class TraceRecordingViewModel(
         lastLiveFixProvider = null
         lastLiveFixAccuracyMeters = null
         lastLiveFixTimeMillis = null
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason = null
         suppressedJitterPointCount = 0
         suppressedJitterDistanceMeters = 0.0
@@ -1393,6 +1454,9 @@ class TraceRecordingViewModel(
         smoothedAdjustmentMeters = 0.0
         maxSmoothedAdjustmentMeters = 0.0
         confirmedReversalCorrectionCount = 0
+        straightDriftCorrectedPointCount = 0
+        continuityDistanceCapCount = 0
+        continuityDistanceSuppressedMeters = 0.0
         hybridElevationFilter.reset()
         hybridElevationPointCount = 0
         hybridPressureDeltaMeters = 0.0
@@ -1503,6 +1567,9 @@ class TraceRecordingViewModel(
         val addedPausedMillis = state.pausedAtMillis?.let { nowMillis - it }?.coerceAtLeast(0L) ?: 0L
         lastAcceptedElapsedMs = Long.MIN_VALUE
         lastAcceptedPointTimeMillis = null
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason =
             RecordingSegmentStartReason.AUTO_PAUSE.takeIf { state.points.isNotEmpty() }
         recordingMovementConfidenceGate.reset()
@@ -1672,6 +1739,8 @@ class TraceRecordingViewModel(
         provider: String?,
         nextPointCount: Int,
         segmentStartReason: String?,
+        continuityRecoveryReason: String?,
+        liveCallbackGapMillis: Long,
     ) {
         val previousPointTimeMillis = lastAcceptedPointTimeMillis
         if (previousPointTimeMillis != null) {
@@ -1679,9 +1748,9 @@ class TraceRecordingViewModel(
             val expectedActiveGapMillis = expectedActivePointGapMillis()
             gpsActiveDurationMillis += minOf(gapMillis, expectedActiveGapMillis)
             val thresholdMillis = recordingGapTelemetryThresholdMillis()
-            if (gapMillis >= thresholdMillis) {
+            if (liveCallbackGapMillis >= thresholdMillis) {
                 recordingGapCount += 1
-                recordingMaxGapMillis = maxOf(recordingMaxGapMillis, gapMillis)
+                recordingMaxGapMillis = maxOf(recordingMaxGapMillis, liveCallbackGapMillis)
                 val expectedPointCount = expectedPointCountForElapsed(elapsedSinceFirstPointMillis(point.timeMillis))
                 val endpointDistanceMeters =
                     previousPoint?.let { previous ->
@@ -1689,8 +1758,10 @@ class TraceRecordingViewModel(
                     }
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=gap gapMs=$gapMillis thresholdMs=$thresholdMillis " +
+                    "event=gap gapMs=$liveCallbackGapMillis liveCallbackGapMs=$liveCallbackGapMillis " +
+                        "acceptedPointGapMs=$gapMillis thresholdMs=$thresholdMillis " +
                         "segmentReason=${segmentStartReason ?: "na"} " +
+                        "continuityRecoveryReason=${continuityRecoveryReason ?: "na"} " +
                         "sampleIntervalSeconds=$sampleIntervalSeconds " +
                         "acceptThresholdMs=${recordingSampleAcceptThresholdMillis()} " +
                         "expectedPointCount=$expectedPointCount " +
@@ -1739,7 +1810,7 @@ class TraceRecordingViewModel(
     }
 
     private fun expectedActivePointGapMillis(): Long =
-        (effectiveSampleIntervalSeconds() * 1_000L)
+        effectiveLiveCallbackCadenceMillis()
             .coerceAtLeast(RECORDING_GPS_ACTIVE_GAP_FLOOR_MS)
             .coerceAtMost(RECORDING_GPS_ACTIVE_GAP_CAP_MS)
 
@@ -1752,7 +1823,7 @@ class TraceRecordingViewModel(
     }
 
     private fun expectedPointCountForElapsed(durationMillis: Long): Int {
-        val intervalMillis = (effectiveSampleIntervalSeconds() * 1_000L).coerceAtLeast(1_000L)
+        val intervalMillis = effectiveLiveCallbackCadenceMillis().coerceAtLeast(1_000L)
         return (durationMillis / intervalMillis + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 
@@ -1760,7 +1831,29 @@ class TraceRecordingViewModel(
         maxOf(
             effectiveSampleIntervalSeconds() * 2_000L,
             RECORDING_GAP_TELEMETRY_MIN_THRESHOLD_MS,
+            effectiveLiveCallbackCadenceMillis() * RECORDING_GAP_LIVE_CALLBACK_MULTIPLIER,
         )
+
+    private fun observeLiveCallback(callbackElapsedMs: Long): Long {
+        val previous = lastLiveCallbackElapsedMs
+        lastLiveCallbackElapsedMs = callbackElapsedMs
+        if (previous == Long.MIN_VALUE || callbackElapsedMs <= previous) return 0L
+        val intervalMillis = callbackElapsedMs - previous
+        if (intervalMillis in RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS..RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS) {
+            recentLiveCallbackIntervalsMs += intervalMillis
+            while (recentLiveCallbackIntervalsMs.size > RECORDING_LIVE_CALLBACK_CADENCE_WINDOW) {
+                recentLiveCallbackIntervalsMs.removeAt(0)
+            }
+        }
+        return intervalMillis
+    }
+
+    private fun effectiveLiveCallbackCadenceMillis(): Long =
+        recentLiveCallbackIntervalsMs
+            .takeIf { it.isNotEmpty() }
+            ?.sorted()
+            ?.let { samples -> samples[samples.size / 2] }
+            ?: (effectiveSampleIntervalSeconds() * 1_000L)
 
     private fun updateAccuracyTelemetry(accuracyMeters: Float?) {
         val accuracy = accuracyMeters ?: return
@@ -2044,6 +2137,10 @@ private fun sensorAgeMillis(
 ): Long = updatedAtMillis.takeIf { it > 0L }?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1L
 
 private const val RECORDING_GAP_TELEMETRY_MIN_THRESHOLD_MS = 15_000L
+private const val RECORDING_GAP_LIVE_CALLBACK_MULTIPLIER = 5L / 2L
+private const val RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS = 500L
+private const val RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS = 60_000L
+private const val RECORDING_LIVE_CALLBACK_CADENCE_WINDOW = 5
 private const val RECORDING_GPS_ACTIVE_GAP_FLOOR_MS = 1_000L
 private const val RECORDING_GPS_ACTIVE_GAP_CAP_MS = 15_000L
 private const val RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS = 500L

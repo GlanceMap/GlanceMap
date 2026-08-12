@@ -740,8 +740,11 @@ internal fun rememberNavigateLocationUiState(
                 val displayLatLong = motionUpdate.displayedLatLong
                 markerMotionSignal.trySend(Unit)
                 if (motionUpdate.fixAccepted) {
-                    latestAcceptedFixSpeedMps = motionSpeedMps ?: 0f
-                    latestAcceptedFixBearingDeg = motionBearingDeg
+                    // The map rotation fallback must follow the same validated movement that
+                    // drives the marker. Raw Android bearing can be stale or noisy exactly
+                    // when the compass is unavailable.
+                    latestAcceptedFixSpeedMps = motionUpdate.resolvedSpeedMps
+                    latestAcceptedFixBearingDeg = motionUpdate.resolvedBearingDeg
                     lastAcceptedLocationFixElapsedMs =
                         fixElapsedMs.takeIf { it > 0L } ?: receivedAtElapsedMs
                 }

@@ -44,6 +44,8 @@ internal data class MarkerMotionGpsFix(
 internal data class MarkerMotionUpdate(
     val displayedLatLong: LatLong,
     val fixAccepted: Boolean,
+    val resolvedSpeedMps: Float = 0f,
+    val resolvedBearingDeg: Float? = null,
 )
 
 internal data class MarkerVisualMotionStatus(
@@ -226,6 +228,8 @@ internal class MarkerMotionController(
         return MarkerMotionUpdate(
             displayedLatLong = displayedLatLong,
             fixAccepted = acceptedFix !== previousAcceptedFix,
+            resolvedSpeedMps = acceptedFix?.speedMps ?: 0f,
+            resolvedBearingDeg = acceptedFix?.bearingDeg,
         )
     }
 
