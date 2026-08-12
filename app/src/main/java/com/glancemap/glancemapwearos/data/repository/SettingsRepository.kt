@@ -337,9 +337,15 @@ interface SettingsRepository {
 
     suspend fun setRecordingSampleIntervalSeconds(seconds: Int)
 
+    /** The last fixed REC screen-on cadence, retained while GPS is off. */
+    val recordingScreenOnFixedGpsIntervalSeconds: Flow<Int>
+
     val recordingScreenOffSampleIntervalSeconds: Flow<Int>
 
     suspend fun setRecordingScreenOffSampleIntervalSeconds(seconds: Int)
+
+    /** The last fixed REC screen-off cadence, retained while using off or same-as-screen-on. */
+    val recordingScreenOffFixedGpsIntervalSeconds: Flow<Int>
 
     val recordingAutoPauseMode: Flow<String>
 
@@ -483,6 +489,9 @@ interface SettingsRepository {
     val turnByTurnGpsIntervalSeconds: Flow<Int>
 
     suspend fun setTurnByTurnGpsIntervalSeconds(seconds: Int)
+
+    /** The last fixed TBT screen-on cadence, retained while GPS is off. */
+    val turnByTurnScreenOnFixedGpsIntervalSeconds: Flow<Int>
 
     val turnByTurnScreenOffGpsIntervalSeconds: Flow<Int>
 

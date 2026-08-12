@@ -73,4 +73,60 @@ class TurnByTurnScreenOffGpsSettingsTest {
             ),
         )
     }
+
+    @Test
+    fun screenOnModesToggleBetweenOffAndTheRememberedSeconds() {
+        val modes = listOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS)
+
+        assertEquals(
+            15,
+            nextGpsTimingMode(
+                selectedSeconds = SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+                fixedSeconds = 15,
+                modes = modes,
+            ),
+        )
+        assertEquals(
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+            nextGpsTimingMode(
+                selectedSeconds = 15,
+                fixedSeconds = 15,
+                modes = modes,
+            ),
+        )
+    }
+
+    @Test
+    fun recordingScreenOffModesCycleOffSameAndRememberedSeconds() {
+        val modes =
+            listOf(
+                SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+                SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
+            )
+
+        assertEquals(
+            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
+            nextGpsTimingMode(
+                selectedSeconds = SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+                fixedSeconds = 15,
+                modes = modes,
+            ),
+        )
+        assertEquals(
+            15,
+            nextGpsTimingMode(
+                selectedSeconds = SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
+                fixedSeconds = 15,
+                modes = modes,
+            ),
+        )
+        assertEquals(
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+            nextGpsTimingMode(
+                selectedSeconds = 15,
+                fixedSeconds = 15,
+                modes = modes,
+            ),
+        )
+    }
 }

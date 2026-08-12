@@ -126,6 +126,14 @@ class SettingsViewModel(
             settingsRepository.setRecordingSampleIntervalSeconds(seconds)
         }
 
+    val recordingScreenOnFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.recordingScreenOnFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+            )
+
     val recordingScreenOffSampleIntervalSeconds: StateFlow<Int> =
         settingsRepository.recordingScreenOffSampleIntervalSeconds
             .stateIn(
@@ -138,6 +146,14 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setRecordingScreenOffSampleIntervalSeconds(seconds)
         }
+
+    val recordingScreenOffFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.recordingScreenOffFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS,
+            )
 
     val recordingAutoPauseMode: StateFlow<String> =
         settingsRepository.recordingAutoPauseMode
@@ -511,6 +527,14 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setTurnByTurnGpsIntervalSeconds(seconds)
         }
+
+    val turnByTurnScreenOnFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.turnByTurnScreenOnFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+            )
 
     val turnByTurnScreenOffGpsIntervalSeconds: StateFlow<Int> =
         settingsRepository.turnByTurnScreenOffGpsIntervalSeconds

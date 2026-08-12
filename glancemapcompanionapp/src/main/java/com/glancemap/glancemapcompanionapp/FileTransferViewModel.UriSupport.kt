@@ -282,17 +282,18 @@ internal fun chooseGpxTransferFileName(
     preferFallbackName: Boolean,
 ): String {
     val displayFileName = displayName.toSafeFileName()
-    val candidateName = uriCandidates.firstNotNullOfOrNull { it.extractGpxFileName() }
+    // The document id often preserves the original file name even when a sharing provider
+    // supplies a route/waypoint label as DISPLAY_NAME. It may not include the .gpx extension.
+    val candidateName = uriCandidates.firstNotNullOfOrNull { it.extractGpxSourceFileName() }
     val metadataName = gpxText?.extractGpxDisplayName()?.toGpxFileName()
 
     val chosen =
         when {
+            candidateName != null -> candidateName
             displayFileName.isNotBlank() && !displayFileName.isGenericSharedGpxName() ->
                 displayFileName.ensureGpxExtension()
 
-            preferFallbackName && candidateName != null -> candidateName
             preferFallbackName && metadataName != null -> metadataName
-            candidateName != null -> candidateName
             metadataName != null -> metadataName
             displayFileName.isNotBlank() -> displayFileName.ensureGpxExtension()
             else -> "shared-route.gpx"
@@ -354,14 +355,26 @@ private fun uriNameCandidates(uri: Uri): List<String> {
     return candidates
 }
 
-private fun String.extractGpxFileName(): String? {
+private fun String.extractGpxSourceFileName(): String? {
     val decoded = decodeUriNameCandidate(this).replace('\\', '/')
     val match =
         Regex("""([^/?:#]+\.gpx)(?:$|[?#])""", RegexOption.IGNORE_CASE)
             .findAll(decoded)
             .lastOrNull()
-            ?: return null
-    return match.groupValues[1].toSafeFileName()
+    if (match != null) return match.groupValues[1].toSafeFileName()
+
+    // Document ids commonly look like "primary:Download/Route name". Preserve the last
+    // component only for a path-like id. A bare provider id must not become the visible title.
+    if ('/' !in decoded) return null
+    val lastComponent =
+        decoded
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('/')
+            .substringAfterLast(':')
+            .toSafeFileName()
+    return lastComponent
+        .takeIf { it.isNotBlank() && !it.isGenericSharedGpxName() && !it.isOpaqueDocumentId() }
 }
 
 private fun decodeUriNameCandidate(value: String): String =
@@ -387,18 +400,21 @@ private fun String.extractGpxDisplayName(): String? {
 
     // A GPX metadata block can be present without a name. Do not let a loose search escape that
     // block and promote the first waypoint name (for example, "Guidepost") to the route title.
-    val titleByContainer = containerRegex.findAll(this).mapNotNull { container ->
-        val kind = container.groupValues[1].lowercase(Locale.ROOT)
-        val body = container.groupValues[2]
-        val directContent =
-            body.substring(
-                0,
-                nestedPointOrSegmentRegex.find(body)?.range?.first ?: body.length,
-            )
-        nameRegex.find(directContent)?.groupValues?.getOrNull(1)?.let { title ->
-            kind to title.replace(Regex("<[^>]+>"), "").trim().takeIf { it.isNotBlank() }
-        }
-    }.toList()
+    val titleByContainer =
+        containerRegex
+            .findAll(this)
+            .mapNotNull { container ->
+                val kind = container.groupValues[1].lowercase(Locale.ROOT)
+                val body = container.groupValues[2]
+                val directContent =
+                    body.substring(
+                        0,
+                        nestedPointOrSegmentRegex.find(body)?.range?.first ?: body.length,
+                    )
+                nameRegex.find(directContent)?.groupValues?.getOrNull(1)?.let { title ->
+                    kind to title.replace(Regex("<[^>]+>"), "").trim().takeIf { it.isNotBlank() }
+                }
+            }.toList()
 
     return listOf("metadata", "trk", "rte")
         .firstNotNullOfOrNull { kind -> titleByContainer.firstOrNull { it.first == kind }?.second }
@@ -427,6 +443,16 @@ private fun String.isGenericSharedGpxName(): Boolean {
     val base = substringBeforeLast('.').lowercase(Locale.ROOT).replace('_', '-').trim()
     return base in GENERIC_SHARED_GPX_BASENAMES || base.startsWith("document-")
 }
+
+private fun String.isOpaqueDocumentId(): Boolean =
+    matches(Regex("""\d+""")) ||
+        matches(Regex("""[0-9a-f]{16,}""", RegexOption.IGNORE_CASE)) ||
+        matches(
+            Regex(
+                """[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}""",
+                RegexOption.IGNORE_CASE,
+            ),
+        )
 
 private val GENERIC_SHARED_GPX_BASENAMES =
     setOf(

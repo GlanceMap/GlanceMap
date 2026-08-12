@@ -55,6 +55,32 @@ class FileTransferViewModelUriSupportTest {
     }
 
     @Test
+    fun `prefers extensionless document filename over provider waypoint label`() {
+        assertEquals(
+            "Rando RotWand all.gpx",
+            chooseGpxTransferFileName(
+                displayName = "Guidepost",
+                uriCandidates = listOf("primary:Download/Rando RotWand all"),
+                gpxText = "<gpx><wpt><name>Guidepost</name></wpt></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `does not replace display name with opaque provider id`() {
+        assertEquals(
+            "Rando RotWand all.gpx",
+            chooseGpxTransferFileName(
+                displayName = "Rando RotWand all",
+                uriCandidates = listOf("c477ae71-30af-4dd6-b9b0-4657d728598a"),
+                gpxText = "<gpx><wpt><name>Guidepost</name></wpt></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
     fun `copies a source without an extension so the chosen gpx name reaches the watch`() {
         assertTrue(
             shouldCopyGpxToPreserveTransferName(
