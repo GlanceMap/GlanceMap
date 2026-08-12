@@ -1554,6 +1554,12 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
     var managerStartCount = 0
     var managerStopScheduledCount = 0
     var managerStopRequestedCount = 0
+    var rotationSettleSessionStartCount = 0
+    var rotationSettleHoldCount = 0
+    var rotationSettleUnlockCount = 0
+    val rotationSettleHoldReasons = linkedMapOf<String, Int>()
+    val rotationSettleUnlockReasons = linkedMapOf<String, Int>()
+    var rotationSettleHoldMaxHeadingDeltaDeg: Float? = null
     var headingSampleCount = 0
     var largeJumpPendingCount = 0
     var largeJumpAcceptedCount = 0
@@ -1631,6 +1637,24 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
         if (managerStopRequested) {
             managerStopRequestedCount += 1
             lastStopRequestedAtMs = lineEpochMs
+        }
+        if ("rotation_settle stage=start" in line) {
+            rotationSettleSessionStartCount += 1
+        }
+        if ("rotation_settle stage=hold" in line) {
+            rotationSettleHoldCount += 1
+            val reason = extractTokenValue(line, "reason=") ?: "unknown"
+            rotationSettleHoldReasons[reason] = (rotationSettleHoldReasons[reason] ?: 0) + 1
+            parseFloatToken(line, "headingDeltaDeg=")?.let { value ->
+                val magnitude = abs(value)
+                rotationSettleHoldMaxHeadingDeltaDeg =
+                    maxOf(rotationSettleHoldMaxHeadingDeltaDeg ?: magnitude, magnitude)
+            }
+        }
+        if ("rotation_settle stage=unlock" in line) {
+            rotationSettleUnlockCount += 1
+            val reason = extractTokenValue(line, "reason=") ?: "unknown"
+            rotationSettleUnlockReasons[reason] = (rotationSettleUnlockReasons[reason] ?: 0) + 1
         }
         if (headingSample) {
             headingSampleCount += 1
@@ -1764,6 +1788,16 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
         managerStartCount = managerStartCount,
         managerStopScheduledCount = managerStopScheduledCount,
         managerStopRequestedCount = managerStopRequestedCount,
+        rotationSettleSessionStartCount = rotationSettleSessionStartCount,
+        rotationSettleHoldCount = rotationSettleHoldCount,
+        rotationSettleUnlockCount = rotationSettleUnlockCount,
+        rotationSettleHoldReasons = rotationSettleHoldReasons.entries.joinToString(",") {
+            "${it.key}:${it.value}"
+        }.ifBlank { "none" },
+        rotationSettleUnlockReasons = rotationSettleUnlockReasons.entries.joinToString(",") {
+            "${it.key}:${it.value}"
+        }.ifBlank { "none" },
+        rotationSettleHoldMaxHeadingDeltaDeg = rotationSettleHoldMaxHeadingDeltaDeg,
         headingSampleCount = headingSampleCount,
         headingDiagnosticSampleCount = headingSampleCount,
         largeJumpPendingCount = largeJumpPendingCount,

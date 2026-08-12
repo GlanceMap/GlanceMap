@@ -412,6 +412,12 @@ object DiagnosticsExporter {
         val managerStartCount: Int = 0,
         val managerStopScheduledCount: Int = 0,
         val managerStopRequestedCount: Int = 0,
+        val rotationSettleSessionStartCount: Int = 0,
+        val rotationSettleHoldCount: Int = 0,
+        val rotationSettleUnlockCount: Int = 0,
+        val rotationSettleHoldReasons: String = "none",
+        val rotationSettleUnlockReasons: String = "none",
+        val rotationSettleHoldMaxHeadingDeltaDeg: Float? = null,
         val headingSampleCount: Int = 0,
         val headingDiagnosticSampleCount: Int = 0,
         val largeJumpPendingCount: Int = 0,
@@ -1144,6 +1150,24 @@ object DiagnosticsExporter {
             writer.appendLine("managerStartCount=${compassTelemetryInsights.managerStartCount}")
             writer.appendLine("managerStopScheduledCount=${compassTelemetryInsights.managerStopScheduledCount}")
             writer.appendLine("managerStopRequestedCount=${compassTelemetryInsights.managerStopRequestedCount}")
+            writer.appendLine(
+                "rotationSettleSessionStartCount=${compassTelemetryInsights.rotationSettleSessionStartCount}",
+            )
+            writer.appendLine("rotationSettleHoldCount=${compassTelemetryInsights.rotationSettleHoldCount}")
+            writer.appendLine("rotationSettleUnlockCount=${compassTelemetryInsights.rotationSettleUnlockCount}")
+            writer.appendLine(
+                "rotationSettleHoldReasons=${compassTelemetryInsights.rotationSettleHoldReasons}",
+            )
+            writer.appendLine(
+                "rotationSettleUnlockReasons=${compassTelemetryInsights.rotationSettleUnlockReasons}",
+            )
+            writer.appendLine(
+                "rotationSettleHoldMaxHeadingDeltaDeg=${
+                    compassTelemetryInsights.rotationSettleHoldMaxHeadingDeltaDeg?.let {
+                        TelemetryFormatters.decimal(it, 1)
+                    } ?: "na"
+                }",
+            )
             writer.appendLine("headingSampleCount=${compassTelemetryInsights.headingSampleCount}")
             writer.appendLine(
                 "headingDiagnosticSampleCount=${compassTelemetryInsights.headingDiagnosticSampleCount}",

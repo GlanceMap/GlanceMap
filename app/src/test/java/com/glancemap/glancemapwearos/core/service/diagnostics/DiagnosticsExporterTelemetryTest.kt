@@ -433,6 +433,33 @@ class DiagnosticsExporterTelemetryTest {
     }
 
     @Test
+    fun compassRotationSettleTelemetrySummarizesWakeHoldsAndUnlocks() {
+        val insights =
+            deriveCompassTelemetryInsights(
+                listOf(
+                    "2026-08-12 17:54:27.000 [CompassTelemetry] rotation_settle stage=start " +
+                        "id=1 heldHeading=120.0",
+                    "2026-08-12 17:54:27.010 [CompassTelemetry] rotation_settle stage=hold " +
+                        "id=1 reason=await_heading_consensus headingDeltaDeg=na",
+                    "2026-08-12 17:54:27.650 [CompassTelemetry] rotation_settle stage=hold " +
+                        "id=1 reason=large_unverified_stationary_change headingDeltaDeg=81.5",
+                    "2026-08-12 17:54:27.720 [CompassTelemetry] rotation_settle stage=unlock " +
+                        "id=1 reason=relative_turn_confirmed heading=201.5",
+                ),
+            )
+
+        assertEquals(1, insights.rotationSettleSessionStartCount)
+        assertEquals(2, insights.rotationSettleHoldCount)
+        assertEquals(1, insights.rotationSettleUnlockCount)
+        assertEquals(
+            "await_heading_consensus:1,large_unverified_stationary_change:1",
+            insights.rotationSettleHoldReasons,
+        )
+        assertEquals("relative_turn_confirmed:1", insights.rotationSettleUnlockReasons)
+        assertEquals(81.5f, insights.rotationSettleHoldMaxHeadingDeltaDeg)
+    }
+
+    @Test
     fun compassHeadingSampleCountIsExplicitlyDiagnosticOnly() {
         val insights =
             deriveCompassTelemetryInsights(
