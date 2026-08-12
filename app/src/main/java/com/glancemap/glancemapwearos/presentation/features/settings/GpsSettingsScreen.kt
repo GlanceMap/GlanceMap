@@ -57,6 +57,7 @@ fun GpsSettingsScreen(
 ) {
     val listTokens = rememberSettingsListTokens()
 
+    val activityProfile by viewModel.activityProfile.collectAsState()
     val isWatchGpsOnly by viewModel.watchGpsOnly.collectAsState()
     val gpsUsageProfile by viewModel.gpsUsageProfile.collectAsState()
     val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
@@ -139,16 +140,49 @@ fun GpsSettingsScreen(
         }
     }
 
-    WearHelpDialog(
+    GpsSettingsInfoDialog(
         visible = showInfoDialog,
+        activityProfile = activityProfile,
+        gpsUsageProfile = gpsUsageProfile,
+        turnByTurnScreenOffGpsIntervalSeconds = turnByTurnScreenOffGpsIntervalSeconds,
+        onDismiss = { showInfoDialog = false },
+    )
+}
+
+@Composable
+private fun GpsSettingsInfoDialog(
+    visible: Boolean,
+    activityProfile: String,
+    gpsUsageProfile: String,
+    turnByTurnScreenOffGpsIntervalSeconds: Int,
+    onDismiss: () -> Unit,
+) {
+    val activityLabel =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) "Bike" else "Hike"
+    val adaptiveCadence =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            "5 → 3 → 1 s"
+        } else {
+            "10 → 5 → 3 s"
+        }
+    val turnByTurnLine =
+        if (turnByTurnScreenOffGpsIntervalSeconds == SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) {
+            "Adaptive TBT: $adaptiveCadence near turns."
+        } else {
+            "TBT off: ${gpsCompactScreenOffIntervalLabel(turnByTurnScreenOffGpsIntervalSeconds)}."
+        }
+
+    WearHelpDialog(
+        visible = visible,
         title = "GPS",
         lines =
             listOf(
-                "Profiles set REC and TBT timing.",
-                "Shorter timing means faster updates and more battery use.",
+                "$activityLabel · ${gpsUsageProfileName(gpsUsageProfile)}",
+                turnByTurnLine,
+                "Shorter timing means more battery use.",
                 "REC + TBT use the shorter timing.",
             ),
-        onDismiss = { showInfoDialog = false },
+        onDismiss = onDismiss,
     )
 }
 
@@ -943,6 +977,14 @@ private fun gpsUsageProfileLabel(profile: String): String =
         SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery · less detail"
         SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom · keep timings"
         else -> "Balanced · recommended"
+    }
+
+private fun gpsUsageProfileName(profile: String): String =
+    when (profile) {
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace"
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom"
+        else -> "Balanced"
     }
 
 @Composable
