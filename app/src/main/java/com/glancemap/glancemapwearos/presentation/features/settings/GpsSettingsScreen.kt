@@ -41,6 +41,7 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.nextTurnByTurnScreenOffGpsMode
+import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import com.google.android.horologist.compose.material.ToggleChip
@@ -65,10 +66,20 @@ fun GpsSettingsScreen(
     val gpsDebugTelemetry by viewModel.gpsDebugTelemetry.collectAsState()
     val diagnosticsCaptureMode by viewModel.diagnosticsCaptureMode.collectAsState()
     val gpsPassiveLocationExperiment by viewModel.gpsPassiveLocationExperiment.collectAsState()
+    var showInfoDialog by remember { mutableStateOf(false) }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            GeneralSettingsShortcutChip(onClick = onOpenGeneralSettings)
+            SettingsInfoButton(
+                contentDescription = "GPS settings info",
+                onClick = { showInfoDialog = true },
+            )
+        }
+        item {
+            GeneralSettingsShortcutChip(
+                onClick = onOpenGeneralSettings,
+                applyTopPadding = false,
+            )
         }
 
         item {
@@ -127,6 +138,18 @@ fun GpsSettingsScreen(
             }
         }
     }
+
+    WearHelpDialog(
+        visible = showInfoDialog,
+        title = "GPS",
+        lines =
+            listOf(
+                "Profiles set REC and TBT timing.",
+                "Shorter timing means faster updates and more battery use.",
+                "REC + TBT use the shorter timing.",
+            ),
+        onDismiss = { showInfoDialog = false },
+    )
 }
 
 @Composable
@@ -822,12 +845,12 @@ private fun GpsIntervalSummary(
             header = true,
         )
         GpsIntervalSummaryRow(
-            screenLabel = stringResource(R.string.screen_on),
+            screenLabel = "On",
             recordingLabel = recordingScreenOn,
             turnByTurnLabel = turnByTurnScreenOn,
         )
         GpsIntervalSummaryRow(
-            screenLabel = stringResource(R.string.screen_off),
+            screenLabel = "Off",
             recordingLabel = recordingScreenOff,
             turnByTurnLabel = turnByTurnScreenOff,
         )
