@@ -40,6 +40,37 @@ class FileTransferViewModelUriSupportTest {
     }
 
     @Test
+    fun `keeps a meaningful source name without a gpx extension ahead of waypoint metadata`() {
+        assertEquals(
+            "Rando RotWand all.gpx",
+            chooseGpxTransferFileName(
+                displayName = "Rando RotWand all",
+                uriCandidates = emptyList(),
+                gpxText =
+                    "<gpx><metadata><desc>Imported</desc></metadata>" +
+                        "<wpt><name>Guidepost</name></wpt><trk><name>Coordinates</name></trk></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `copies a source without an extension so the chosen gpx name reaches the watch`() {
+        assertTrue(
+            shouldCopyGpxToPreserveTransferName(
+                sourceDisplayName = "Rando RotWand all",
+                preferredName = "Rando RotWand all.gpx",
+            ),
+        )
+        assertFalse(
+            shouldCopyGpxToPreserveTransferName(
+                sourceDisplayName = "Rando RotWand all.gpx",
+                preferredName = "Rando RotWand all.gpx",
+            ),
+        )
+    }
+
+    @Test
     fun `recovers gpx file name from uri candidates`() {
         assertEquals(
             "Tour du lac.gpx",
@@ -61,6 +92,22 @@ class FileTransferViewModelUriSupportTest {
                 uriCandidates = emptyList(),
                 gpxText = "<gpx><trk><name>Tour du lac</name><trkseg /></trk></gpx>",
                 preferFallbackName = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `does not use a waypoint name when metadata has no title`() {
+        assertEquals(
+            "Rotwand route.gpx",
+            chooseGpxTransferFileName(
+                displayName = "document",
+                uriCandidates = emptyList(),
+                gpxText =
+                    "<gpx><metadata><desc>Imported</desc></metadata>" +
+                        "<wpt><name>Guidepost</name></wpt>" +
+                        "<trk><name>Rotwand route</name><trkseg /></trk></gpx>",
+                preferFallbackName = false,
             ),
         )
     }
