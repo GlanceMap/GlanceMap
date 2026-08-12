@@ -101,8 +101,8 @@ fun GpsSettingsScreen(
             SettingsOptionPickerRow(
                 label = stringResource(R.string.gps_profile),
                 selectedValue = gpsUsageProfile,
-                options = GPS_USAGE_PROFILE_OPTIONS.map { it to gpsUsageProfileLabel(it) },
-                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile),
+                options = GPS_USAGE_PROFILE_OPTIONS.map { it to gpsUsageProfileLabel(it, activityProfile) },
+                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile, activityProfile),
                 onSelect = viewModel::setGpsUsageProfile,
             )
         }
@@ -157,8 +157,6 @@ private fun GpsSettingsInfoDialog(
     turnByTurnScreenOffGpsIntervalSeconds: Int,
     onDismiss: () -> Unit,
 ) {
-    val activityLabel =
-        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) "Bike" else "Hike"
     val adaptiveCadence =
         if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
             "5 → 3 → 1 s"
@@ -177,7 +175,7 @@ private fun GpsSettingsInfoDialog(
         title = "GPS",
         lines =
             listOf(
-                "$activityLabel · ${gpsUsageProfileName(gpsUsageProfile)}",
+                gpsUsageProfileName(gpsUsageProfile, activityProfile),
                 turnByTurnLine,
                 "Shorter timing means more battery use.",
                 "REC + TBT use the shorter timing.",
@@ -971,21 +969,30 @@ private val GPS_USAGE_PROFILE_OPTIONS =
         SettingsRepository.GPS_USAGE_PROFILE_CUSTOM,
     )
 
-private fun gpsUsageProfileLabel(profile: String): String =
+private fun gpsUsageProfileLabel(
+    profile: String,
+    activityProfile: String,
+): String =
     when (profile) {
         SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace · more battery"
         SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery · less detail"
-        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom · keep timings"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)} · keep timings"
         else -> "Balanced · recommended"
     }
 
-private fun gpsUsageProfileName(profile: String): String =
+private fun gpsUsageProfileName(
+    profile: String,
+    activityProfile: String,
+): String =
     when (profile) {
         SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace"
         SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery"
-        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)}"
         else -> "Balanced"
     }
+
+private fun gpsActivityLabel(activityProfile: String): String =
+    if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) "Bike" else "Hike"
 
 @Composable
 private fun gpsScreenOffIntervalLabel(
