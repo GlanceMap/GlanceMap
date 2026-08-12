@@ -862,14 +862,32 @@ private fun smoothConfirmedRecordingReversal(
     ) {
         return null
     }
-    if (angleDegrees(recoveredDirection, followingDirection) > RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES) {
-        return null
-    }
     val baselineSquared =
         recoveredDirection.x * recoveredDirection.x + recoveredDirection.y * recoveredDirection.y
     val projectionFraction =
         (candidateLocal.x * recoveredDirection.x + candidateLocal.y * recoveredDirection.y) / baselineSquared
-    if (projectionFraction !in RECORDING_REVERSAL_MIN_PROJECTION..RECORDING_REVERSAL_MAX_PROJECTION) return null
+    val candidateAccuracy = candidate.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M)
+    val beforeAccuracy = before.accuracyMeters.validAccuracyOr(RECORDING_FIX_FALLBACK_ACCURACY_M)
+    val sensorBackedNearOriginExcursion =
+        projectionFraction in
+            RECORDING_REVERSAL_SENSOR_BACKED_MIN_PROJECTION..<RECORDING_REVERSAL_MIN_PROJECTION &&
+            before.stepCount != null &&
+            candidate.stepCount != null &&
+            candidate.stepCount <= before.stepCount &&
+            candidateAccuracy - beforeAccuracy >= RECORDING_REVERSAL_MIN_ACCURACY_DEGRADATION_M
+    if (
+        projectionFraction !in RECORDING_REVERSAL_MIN_PROJECTION..RECORDING_REVERSAL_MAX_PROJECTION &&
+        !sensorBackedNearOriginExcursion
+    ) {
+        return null
+    }
+    val maximumRecoveryHeadingDegrees =
+        if (sensorBackedNearOriginExcursion) {
+            RECORDING_REVERSAL_SENSOR_BACKED_MAX_RECOVERY_HEADING_DEGREES
+        } else {
+            RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES
+        }
+    if (angleDegrees(recoveredDirection, followingDirection) > maximumRecoveryHeadingDegrees) return null
     val projected =
         LocalMeters(
             x = recoveredDirection.x * projectionFraction,
@@ -1302,8 +1320,11 @@ private const val RECORDING_SPIKE_MIN_RELATIVE_ACCURACY = 0.85
 private const val RECORDING_SPIKE_MIN_DETOUR_RATIO = 1.50
 private const val RECORDING_CANONICAL_MUTABLE_TAIL_POINTS = 3
 private const val RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES = 55.0
+private const val RECORDING_REVERSAL_SENSOR_BACKED_MAX_RECOVERY_HEADING_DEGREES = 65.0
+private const val RECORDING_REVERSAL_SENSOR_BACKED_MIN_PROJECTION = 0.0
 private const val RECORDING_REVERSAL_MIN_PROJECTION = 0.08
 private const val RECORDING_REVERSAL_MAX_PROJECTION = 0.92
+private const val RECORDING_REVERSAL_MIN_ACCURACY_DEGRADATION_M = 3.0
 private const val RECORDING_REVERSAL_MIN_HIKE_LATERAL_ERROR_M = 2.5
 private const val RECORDING_REVERSAL_MIN_BIKE_LATERAL_ERROR_M = 4.0
 private const val RECORDING_REVERSAL_MIN_TURN_DEGREES = 100.0

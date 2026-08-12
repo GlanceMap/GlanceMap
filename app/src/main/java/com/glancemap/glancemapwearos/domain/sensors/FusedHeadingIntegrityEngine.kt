@@ -101,6 +101,7 @@ internal data class FusedHeadingIntegrityConfig(
     val unverifiedFusedFastTurnCorrectionRateDegPerSec: Float = 360f,
     val unverifiedFusedFastTurnEnterRateDegPerSec: Float = 120f,
     val unverifiedFusedFastTurnMinimumSamples: Int = 2,
+    val unverifiedHeadingJumpHoldDeg: Float = 60f,
 )
 
 private data class AbsoluteMovementEvidence(
@@ -437,6 +438,13 @@ internal class FusedHeadingIntegrityEngine(
                 reason = unavailableMagneticReason()
                 0f
             }
+            renderHeadingDeg == null -> {
+                // With no recent angle to preserve, make the first usable provider sample
+                // renderable immediately. Integrity validation continues before TRACKING.
+                renderHeadingDeg = evidence.absoluteHeadingDeg
+                reason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE
+                0f
+            }
             else -> {
                 val useRelativeEvidence = hasRelativeEvidence(evidence.atElapsedMs)
                 val evidenceWindow =
@@ -479,15 +487,20 @@ internal class FusedHeadingIntegrityEngine(
     private fun updateWhileTracking(evidence: AbsoluteHeadingEvidence): Float =
         if (!evidence.fieldAcceptable) {
             enterDegraded(
-                degradationReason =
-                    if (!evidence.fieldAcceptable) {
-                        unavailableMagneticReason()
-                    } else {
-                        CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT
-                    },
+                degradationReason = unavailableMagneticReason(),
                 quarantinedHeadingDeg = evidence.absoluteHeadingDeg,
             )
             renderHeadingDeg = moveTowardFusedHeading(evidence)
+            0f
+        } else if (shouldHoldUnverifiedHeadingJump(evidence)) {
+            // A weak Google estimate must not turn one unconfirmed provider jump into a visible
+            // map spin. Hold only the suspect samples; the next coherent sample resumes normally.
+            reason = CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT
+            trusted = false
+            recoveryActive = false
+            quarantineActive = true
+            quarantinedAbsoluteHeadingDeg = evidence.absoluteHeadingDeg
+            resetUnverifiedFastTurnEvidence()
             0f
         } else {
             updateTrackingAnchor(evidence)
@@ -498,6 +511,18 @@ internal class FusedHeadingIntegrityEngine(
             quarantinedAbsoluteHeadingDeg = null
             0f
         }
+
+    private fun shouldHoldUnverifiedHeadingJump(evidence: AbsoluteHeadingEvidence): Boolean {
+        val renderedHeading = renderHeadingDeg
+        val disagreement = evidence.disagreementDeg
+        return renderedHeading != null &&
+            disagreement != null &&
+            !evidence.strongAbsoluteConfidence &&
+            evidence.relativeStepDeg != null &&
+            disagreement >= config.weakConfidenceDisagreementEnterDeg &&
+            abs(shortestAngleDiffDeg(evidence.absoluteHeadingDeg, renderedHeading)) >=
+            config.unverifiedHeadingJumpHoldDeg
+    }
 
     private fun updateTrackingAnchor(evidence: AbsoluteHeadingEvidence) {
         val residualDeg = evidence.residualDeg

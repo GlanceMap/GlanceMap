@@ -575,8 +575,6 @@ fun NavigateScreen(
             gpxTrackOpacityPercent = gpxTrackOpacityPercent,
             gpxTrackDirectionArrowsEnabled = gpxTrackDirectionArrowsEnabled,
             compassRenderStateFlow = compassViewModel.renderState,
-            compassInteractive =
-                isScreenResumed && screenState == LocationScreenState.INTERACTIVE && !offlineMode,
             navMode = effectiveNavMode,
             forceNorthUpInPanning = offlineMode,
             showRealMarkerInCompassMode = true,

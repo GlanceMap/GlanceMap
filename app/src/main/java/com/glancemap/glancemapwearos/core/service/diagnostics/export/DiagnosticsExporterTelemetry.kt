@@ -1791,12 +1791,14 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
         rotationSettleSessionStartCount = rotationSettleSessionStartCount,
         rotationSettleHoldCount = rotationSettleHoldCount,
         rotationSettleUnlockCount = rotationSettleUnlockCount,
-        rotationSettleHoldReasons = rotationSettleHoldReasons.entries.joinToString(",") {
-            "${it.key}:${it.value}"
-        }.ifBlank { "none" },
-        rotationSettleUnlockReasons = rotationSettleUnlockReasons.entries.joinToString(",") {
-            "${it.key}:${it.value}"
-        }.ifBlank { "none" },
+        rotationSettleHoldReasons =
+            rotationSettleHoldReasons.entries
+                .joinToString(",") { "${it.key}:${it.value}" }
+                .ifBlank { "none" },
+        rotationSettleUnlockReasons =
+            rotationSettleUnlockReasons.entries
+                .joinToString(",") { "${it.key}:${it.value}" }
+                .ifBlank { "none" },
         rotationSettleHoldMaxHeadingDeltaDeg = rotationSettleHoldMaxHeadingDeltaDeg,
         headingSampleCount = headingSampleCount,
         headingDiagnosticSampleCount = headingSampleCount,

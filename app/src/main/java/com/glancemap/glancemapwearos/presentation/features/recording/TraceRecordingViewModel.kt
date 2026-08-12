@@ -1790,7 +1790,16 @@ class TraceRecordingViewModel(
         previous: RecordingSensorMetrics,
         next: RecordingSensorMetrics,
     ) {
-        if (next.heartRateUpdatedAtMillis > previous.heartRateUpdatedAtMillis) {
+        if (next.heartRateSensorEventCount > previous.heartRateSensorEventCount) {
+            val newEvents = next.heartRateSensorEventCount - previous.heartRateSensorEventCount
+            heartRateSensorEventCount =
+                (heartRateSensorEventCount.toLong() + newEvents)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+        } else if (
+            next.heartRateFromBluetooth &&
+            next.heartRateUpdatedAtMillis > previous.heartRateUpdatedAtMillis
+        ) {
             heartRateSensorEventCount += 1
         }
         if (next.stepCountUpdatedAtMillis > previous.stepCountUpdatedAtMillis) {

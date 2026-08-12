@@ -74,4 +74,12 @@ class RecordingSensorMetricsTest {
 
         assertEquals(103, next.steps)
     }
+
+    @Test
+    fun watchHeartRatePublishesAtOneHertzOrPromptlyForMeaningfulChange() {
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_000L, 0L, 80, null))
+        assertEquals(false, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_200L, 1_000L, 82, 80))
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_250L, 1_000L, 86, 80))
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(2_000L, 1_000L, 82, 80))
+    }
 }

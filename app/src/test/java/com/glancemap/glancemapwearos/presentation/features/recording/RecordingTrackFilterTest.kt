@@ -447,6 +447,38 @@ class RecordingTrackFilterTest {
     }
 
     @Test
+    fun fourthPointCorrectsBackwardGpsZWithoutStepProgress() {
+        val points =
+            listOf(
+                point(x = 0.0, y = 0.0, timeMillis = 0L, accuracyMeters = 6f, stepCount = 100),
+                point(x = -6.2, y = -4.5, timeMillis = 12_000L, accuracyMeters = 13f, stepCount = 100),
+                point(x = 4.2, y = -6.1, timeMillis = 23_000L, accuracyMeters = 31f, stepCount = 100),
+            )
+
+        val result =
+            appendCanonicalRecordingPoint(
+                existingPoints = points,
+                point = point(x = 33.1, y = -4.2, timeMillis = 33_000L, accuracyMeters = 15f, stepCount = 110),
+                options =
+                    RecordingPointSmoothingOptions(
+                        mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+                        activityProfile = HIKE,
+                        sampleIntervalSeconds = 10,
+                    ),
+            )
+
+        assertTrue(result.confirmedReversalCorrected)
+        assertTrue(
+            haversineMeters(result.points[1].latLong, result.points[0].latLong) <
+                haversineMeters(points[1].latLong, points[0].latLong),
+        )
+        assertTrue(
+            recordingCanonicalPathDistance(result.points) <
+                recordingCanonicalPathDistance(points + result.points.last()),
+        )
+    }
+
+    @Test
     fun canonicalDistanceNeverConnectsAcrossNamedSegmentBoundary() {
         val points =
             listOf(
@@ -503,6 +535,7 @@ class RecordingTrackFilterTest {
         y: Double,
         timeMillis: Long,
         accuracyMeters: Float = 8f,
+        stepCount: Int? = null,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = latLongFromMeters(x, y),
@@ -510,6 +543,7 @@ class RecordingTrackFilterTest {
             timeMillis = timeMillis,
             accuracyMeters = accuracyMeters,
             speedMps = 1.2f,
+            stepCount = stepCount,
         )
 
     private fun latLongFromMeters(

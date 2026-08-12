@@ -39,6 +39,7 @@ import kotlin.math.roundToInt
 data class RecordingSensorMetrics(
     val heartRateBpm: Int? = null,
     val heartRateUpdatedAtMillis: Long = 0L,
+    val heartRateSensorEventCount: Long = 0L,
     val stepCount: Int? = null,
     val stepCountUpdatedAtMillis: Long = 0L,
     val stepCountFromBluetooth: Boolean = false,
@@ -236,6 +237,7 @@ fun RecordingSensorBridge(
         }
     var metrics by remember { mutableStateOf(RecordingSensorMetrics()) }
     val sensorRuntimeState = remember { RecordingSensorRuntimeState() }
+    val heartRateSensorEventCount = remember { AtomicLong(0L) }
     val pressureSensorEventCount = remember { AtomicLong(0L) }
     if (active && sensorRuntimeState.prepareRecoveredStepCount(initialStepCount)) {
         DebugTelemetry.log(
@@ -347,6 +349,7 @@ fun RecordingSensorBridge(
         if (!active) {
             metrics = RecordingSensorMetrics()
             sensorRuntimeState.reset()
+            heartRateSensorEventCount.set(0L)
             pressureSensorEventCount.set(0L)
             onMetrics(metrics)
         }
@@ -429,6 +432,8 @@ fun RecordingSensorBridge(
         val sensorThread = HandlerThread(RECORDING_SENSOR_THREAD_NAME).apply { start() }
         val sensorHandler = Handler(sensorThread.looper)
         val disposed = AtomicBoolean(false)
+        var lastHeartRatePublishedAtElapsedMs = 0L
+        var lastHeartRatePublishedBpm: Int? = null
         var lastPressurePublishedAtElapsedMs = 0L
         var lastPressurePublishedHpa: Double? = null
 
@@ -451,12 +456,27 @@ fun RecordingSensorBridge(
                                     .firstOrNull()
                                     ?.roundToInt()
                                     ?.takeIf { it > 0 }
+                            val rawEventCount = heartRateSensorEventCount.incrementAndGet()
                             val now = System.currentTimeMillis()
+                            val nowElapsed = SystemClock.elapsedRealtime()
+                            if (
+                                !RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(
+                                    nowElapsedMs = nowElapsed,
+                                    lastPublishedAtElapsedMs = lastHeartRatePublishedAtElapsedMs,
+                                    bpm = bpm,
+                                    lastPublishedBpm = lastHeartRatePublishedBpm,
+                                )
+                            ) {
+                                return
+                            }
+                            lastHeartRatePublishedAtElapsedMs = nowElapsed
+                            lastHeartRatePublishedBpm = bpm
                             publishSensorUpdate { current ->
                                 current.copy(
                                     heartRateBpm = bpm,
                                     heartRateUpdatedAtMillis =
                                         if (bpm != null) now else current.heartRateUpdatedAtMillis,
+                                    heartRateSensorEventCount = rawEventCount,
                                     heartRateFromBluetooth = false,
                                 )
                             }
@@ -693,11 +713,17 @@ private fun registerRecordingSensors(
         token: String,
     ) {
         val sensor = sensorManager.getDefaultSensor(type) ?: return
+        val samplingPeriodUs =
+            if (type == Sensor.TYPE_HEART_RATE || type == Sensor.TYPE_PRESSURE) {
+                RECORDING_CONTINUOUS_SENSOR_PERIOD_US
+            } else {
+                SensorManager.SENSOR_DELAY_NORMAL
+            }
         if (
             sensorManager.registerListener(
                 listener,
                 sensor,
-                SensorManager.SENSOR_DELAY_NORMAL,
+                samplingPeriodUs,
                 handler,
             )
         ) {
@@ -794,6 +820,33 @@ private val cadenceSensorMetricIds =
 private const val CADENCE_WINDOW_MS = 30_000L
 private const val RECORDING_SENSOR_STATUS_INTERVAL_MS = 60_000L
 private const val RECORDING_SENSOR_THREAD_NAME = "RecordingSensorThread"
+private const val RECORDING_CONTINUOUS_SENSOR_PERIOD_US = 1_000_000
+private const val HEART_RATE_UI_PUBLISH_INTERVAL_MS = 1_000L
+private const val HEART_RATE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS = 250L
+private const val HEART_RATE_MEANINGFUL_CHANGE_BPM = 5
 private const val PRESSURE_UI_PUBLISH_INTERVAL_MS = 1_000L
 private const val PRESSURE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS = 250L
 private const val PRESSURE_MEANINGFUL_CHANGE_HPA = 0.5
+
+internal object RecordingSensorPublishPolicy {
+    fun shouldPublishWatchHeartRate(
+        nowElapsedMs: Long,
+        lastPublishedAtElapsedMs: Long,
+        bpm: Int?,
+        lastPublishedBpm: Int?,
+    ): Boolean {
+        if (lastPublishedAtElapsedMs == 0L) return true
+        val elapsedSincePublish = nowElapsedMs - lastPublishedAtElapsedMs
+        val meaningfullyChanged =
+            bpm != null &&
+                lastPublishedBpm != null &&
+                abs(bpm - lastPublishedBpm) >= HEART_RATE_MEANINGFUL_CHANGE_BPM
+        val minimumPublishIntervalMs =
+            if (meaningfullyChanged) {
+                HEART_RATE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS
+            } else {
+                HEART_RATE_UI_PUBLISH_INTERVAL_MS
+            }
+        return elapsedSincePublish >= minimumPublishIntervalMs
+    }
+}

@@ -1,14 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.hardware.SensorManager
-import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
-import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -409,141 +406,4 @@ class NavigateEffectsSupportTest {
             0.01f,
         )
     }
-
-    @Test
-    fun rotationSettleGateHoldsWhileCompassIsDegraded() {
-        val gate = NavigateRotationSettleGate()
-        gate.beginWakeSession(nowElapsedMs = 900L, heldHeadingDeg = 120f)
-        val degradedState =
-            stableCompassRenderState()
-                .copy(
-                    trackingState = CompassTrackingState.DEGRADED,
-                    magneticInterference = true,
-                    magneticQuality = CompassMagneticQuality.INTERFERENCE,
-                )
-
-        assertNull(
-            gate.resolve(
-                nowElapsedMs = 1_000L,
-                renderState = degradedState,
-                compassHeadingDeg = 120f,
-                headingSampleElapsedRealtimeMs = 1_000L,
-                relativeHeadingDeg = null,
-                gpsFixFresh = false,
-                gpsFixSpeedMps = 0f,
-                gpsFixBearingDeg = null,
-            ),
-        )
-    }
-
-    @Test
-    fun rotationSettleGateWaitsForStableCompassWindowBeforeBlending() {
-        val gate = NavigateRotationSettleGate()
-        val stableState = stableCompassRenderState()
-        gate.beginWakeSession(nowElapsedMs = 900L, heldHeadingDeg = 120f)
-
-        assertNull(gate.resolve(1_000L, stableState, 120f, 1_000L, null, false, 0f, null))
-        assertNull(gate.resolve(1_300L, stableState, 120f, 1_300L, null, false, 0f, null))
-        assertNull(gate.resolve(1_599L, stableState, 120f, 1_599L, null, false, 0f, null))
-
-        val target = gate.resolve(1_600L, stableState, 120f, 1_600L, null, false, 0f, null)
-        assertEquals(120f, target?.headingDeg ?: Float.NaN, 0f)
-        assertEquals(NavigationRotationTargetSource.COMPASS, target?.source)
-    }
-
-    @Test
-    fun rotationSettleGateUsesFreshMovingGpsBearingBeforeCompassStabilizes() {
-        val gate = NavigateRotationSettleGate()
-        gate.beginWakeSession(nowElapsedMs = 900L, heldHeadingDeg = 10f)
-        val degradedState =
-            stableCompassRenderState()
-                .copy(
-                    trackingState = CompassTrackingState.DEGRADED,
-                )
-
-        val target =
-            gate.resolve(
-                nowElapsedMs = 1_000L,
-                renderState = degradedState,
-                compassHeadingDeg = 10f,
-                headingSampleElapsedRealtimeMs = 1_000L,
-                relativeHeadingDeg = null,
-                gpsFixFresh = true,
-                gpsFixSpeedMps = 1.3f,
-                gpsFixBearingDeg = 275f,
-            )
-
-        assertEquals(275f, target?.headingDeg ?: Float.NaN, 0f)
-        assertEquals(NavigationRotationTargetSource.GPS_BEARING, target?.source)
-
-        val retainedTarget =
-            gate.resolve(1_001L, degradedState, 10f, 1_001L, null, false, 0f, null)
-        assertEquals(275f, retainedTarget?.headingDeg ?: Float.NaN, 0f)
-        assertEquals(NavigationRotationTargetSource.GPS_BEARING, retainedTarget?.source)
-    }
-
-    @Test
-    fun rotationSettleGateRejectsCachedPreWakeSample() {
-        val gate = NavigateRotationSettleGate()
-        val stableState = stableCompassRenderState()
-        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 120f)
-
-        assertNull(
-            gate.resolve(
-                1_001L,
-                stableState,
-                120f,
-                1_000L,
-                null,
-                false,
-                0f,
-                null,
-            ),
-        )
-    }
-
-    @Test
-    fun rotationSettleGateRejectsLargeStationaryCompassChangeWithoutRelativeTurn() {
-        val gate = NavigateRotationSettleGate()
-        val stableState = stableGoogleFusedCompassRenderState()
-        gate.beginWakeSession(nowElapsedMs = 900L, heldHeadingDeg = 120f)
-
-        gate.resolve(1_000L, stableState, 120f, 1_000L, 0f, false, 0f, null)
-        gate.resolve(1_300L, stableState, 120f, 1_300L, 0f, false, 0f, null)
-        assertEquals(
-            120f,
-            gate.resolve(1_600L, stableState, 120f, 1_600L, 0f, false, 0f, null)?.headingDeg
-                ?: Float.NaN,
-            0f,
-        )
-
-        assertNull(
-            gate.resolve(1_601L, stableState, 210f, 1_601L, 0f, false, 0f, null),
-        )
-        assertEquals(
-            210f,
-            gate.resolve(1_602L, stableState, 210f, 1_602L, 90f, false, 0f, null)?.headingDeg
-                ?: Float.NaN,
-            0f,
-        )
-    }
-
-    private fun stableCompassRenderState() =
-        initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
-            headingSource = HeadingSource.ROTATION_VECTOR,
-            accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
-            trackingState = CompassTrackingState.TRACKING,
-            magneticQuality = CompassMagneticQuality.GOOD,
-        )
-
-    private fun stableGoogleFusedCompassRenderState() =
-        initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
-            headingSource = HeadingSource.FUSED_ORIENTATION,
-            accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
-            headingSampleElapsedRealtimeMs = 1_000L,
-            headingSampleStale = false,
-            headingRenderable = true,
-            trackingState = CompassTrackingState.TRACKING,
-            magneticQuality = CompassMagneticQuality.GOOD,
-        )
 }
