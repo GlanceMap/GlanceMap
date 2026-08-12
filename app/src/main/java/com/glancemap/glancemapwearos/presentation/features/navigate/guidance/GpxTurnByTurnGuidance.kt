@@ -69,6 +69,12 @@ data class GuidanceTerrainPreview(
     val distanceMeters: Double,
 )
 
+/** Terrain retained briefly after a maneuver, so the rider can confirm the chosen branch. */
+data class GuidanceTerrainConfirmation(
+    val maneuver: RouteInstructionCommand,
+    val terrain: GuidanceTerrainPreview,
+)
+
 data class TurnByTurnGuidanceState(
     val active: Boolean,
     val mode: GuidanceMode,
@@ -90,6 +96,7 @@ data class TurnByTurnGuidanceState(
     val remainingDescentMeters: Double? = null,
     val currentAltitudeMeters: Double? = null,
     val nextSegmentTerrain: GuidanceTerrainPreview? = null,
+    val recentManeuverTerrain: GuidanceTerrainConfirmation? = null,
     val alertSessionKey: String? = null,
     val alertGpsDeliveryIntervalMs: Long? = null,
 )
@@ -296,6 +303,12 @@ fun computeTurnByTurnGuidanceState(
                 followingInstruction = followingInstruction,
             )
         }
+    val recentManeuverTerrain =
+        recentManeuverTerrain(
+            session = session,
+            distanceFromStartMeters = distanceFromStart,
+            nextInstructionIndex = resolvedInstructionIndex,
+        )
 
     return TurnByTurnGuidanceState(
         active = true,
@@ -316,7 +329,25 @@ fun computeTurnByTurnGuidanceState(
         remainingAscentMeters = remainingElevation.first,
         remainingDescentMeters = remainingElevation.second,
         nextSegmentTerrain = nextSegmentTerrain,
+        recentManeuverTerrain = recentManeuverTerrain,
     )
+}
+
+private fun recentManeuverTerrain(
+    session: GpxGuidanceSession,
+    distanceFromStartMeters: Double,
+    nextInstructionIndex: Int,
+): GuidanceTerrainConfirmation? {
+    val completedInstruction = session.instructions.getOrNull(nextInstructionIndex - 1) ?: return null
+    val distanceSinceManeuver = distanceFromStartMeters - completedInstruction.distanceFromStartMeters
+    if (distanceSinceManeuver !in 0.0..TERRAIN_CONFIRMATION_DISTANCE_METERS) return null
+    val terrain =
+        nextSegmentTerrain(
+            session = session,
+            nextInstruction = completedInstruction,
+            followingInstruction = session.instructions.getOrNull(nextInstructionIndex),
+        ) ?: return null
+    return GuidanceTerrainConfirmation(maneuver = completedInstruction.command, terrain = terrain)
 }
 
 private fun nextSegmentTerrain(
@@ -412,6 +443,7 @@ private const val NEXT_SEGMENT_TERRAIN_LOOK_AHEAD_METERS = 300.0
 private const val NEXT_SEGMENT_TERRAIN_MIN_DISTANCE_METERS = 25.0
 private const val NEXT_SEGMENT_TERRAIN_MIN_VERTICAL_CHANGE_METERS = 5.0
 private const val NEXT_SEGMENT_TERRAIN_MIN_GRADE = 0.03
+private const val TERRAIN_CONFIRMATION_DISTANCE_METERS = 75.0
 private const val ELEVATION_DISTANCE_MATCH_TOLERANCE_METERS = 0.5
 
 private fun projectedRoutePoint(

@@ -525,6 +525,14 @@ class SettingsViewModel(
             settingsRepository.setTurnByTurnScreenOffGpsIntervalSeconds(seconds)
         }
 
+    val turnByTurnScreenOffFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.turnByTurnScreenOffFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_SCREEN_OFF_FIXED_GPS_INTERVAL_SECONDS,
+            )
+
     val turnByTurnBrouterGuideBackEnabled: StateFlow<Boolean> =
         settingsRepository.turnByTurnBrouterGuideBackEnabled
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

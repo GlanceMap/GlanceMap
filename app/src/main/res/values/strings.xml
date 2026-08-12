@@ -63,6 +63,9 @@
     <string name="gps_same">Same</string>
     <string name="gps_adaptive">Adaptive</string>
     <string name="gps_adaptive_tbt_detail">10–3s near turns</string>
+    <string name="gps_tbt_adaptive_tap_hint">Tap to choose fixed seconds</string>
+    <string name="gps_tbt_fixed_tap_hint">Tap to restore adaptive timing</string>
+    <string name="gps_tbt_screen_off_mode_tap_hint">Tap to change mode</string>
     <string name="gps_same_with_value">Same (%1$s)</string>
     <string name="gps_same_as_screen_on">Same as screen on</string>
     <string name="gps_screen_on_with_value">Screen on · %1$s</string>

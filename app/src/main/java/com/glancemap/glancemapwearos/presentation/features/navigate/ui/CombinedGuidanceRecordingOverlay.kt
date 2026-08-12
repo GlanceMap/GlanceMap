@@ -722,10 +722,20 @@ private fun CombinedGuidancePage(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (showRouteProgressDetails) {
-                    guidanceNextSegmentTerrainText(state, isMetric)?.let { terrainText ->
+                    guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
-                            text = terrainText,
+                            text = terrain.label,
+                            color = Color.White.copy(alpha = 0.82f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = terrain.detail,
                             color = Color.White.copy(alpha = 0.72f),
                             fontSize = 11.sp,
                             lineHeight = 12.sp,

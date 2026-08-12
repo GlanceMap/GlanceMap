@@ -54,13 +54,11 @@ interface SettingsRepository {
         const val RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES = "TIME_60_MINUTES"
         const val DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE = RECORDING_PROGRESS_VIBRATION_OFF
         const val DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 1_000
-        const val MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 500
+        const val MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 50
         const val MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 10_000
-        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_STEP_METERS = 500
         const val DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 30
-        const val MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 5
+        const val MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 1
         const val MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 120
-        const val RECORDING_PROGRESS_VIBRATION_TIME_STEP_MINUTES = 5
         const val RECORDING_METRIC_DISTANCE = "distance"
         const val RECORDING_METRIC_TOTAL_TIME = "total_time"
         const val RECORDING_METRIC_DURATION = "duration"
@@ -193,6 +191,7 @@ interface SettingsRepository {
         const val DEFAULT_BIKE_TURN_BY_TURN_GPS_INTERVAL_SECONDS = 1
         const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS =
             GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
+        const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_FIXED_GPS_INTERVAL_SECONDS = 10
         const val DEFAULT_TURN_BY_TURN_GPS_IN_AMBIENT_MODE = true
         const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_BATCHING_ENABLED = false
         const val TURN_BY_TURN_METRIC_REMAINING_DISTANCE = "remaining_distance"
@@ -488,6 +487,9 @@ interface SettingsRepository {
     val turnByTurnScreenOffGpsIntervalSeconds: Flow<Int>
 
     suspend fun setTurnByTurnScreenOffGpsIntervalSeconds(seconds: Int)
+
+    /** The last fixed TBT screen-off cadence, retained while adaptive mode is active. */
+    val turnByTurnScreenOffFixedGpsIntervalSeconds: Flow<Int>
 
     val turnByTurnBrouterGuideBackEnabled: Flow<Boolean>
 

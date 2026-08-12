@@ -20,6 +20,8 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.data.repository.recordingProgressVibrationDistanceMetersOptions
+import com.glancemap.glancemapwearos.data.repository.recordingProgressVibrationTimeMinutesOptions
 import kotlin.math.roundToInt
 
 @Composable
@@ -93,34 +95,25 @@ private fun ProgressVibrationDistanceSlider(
     distanceMeters: Int,
     onDistanceMetersChanged: (Int) -> Unit,
 ) {
-    var internalValue by remember(distanceMeters) { mutableStateOf(distanceMeters.toFloat()) }
-    val distanceValueRange =
-        progressVibrationValueRange(
-            min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-            max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+    var selectedIndex by remember(distanceMeters) {
+        mutableStateOf(
+            recordingProgressVibrationDistanceMetersOptions.indexOf(distanceMeters).coerceAtLeast(0),
         )
+    }
 
     ProgressVibrationSlider(
         label = "Distance",
-        valueLabel = distanceVibrationIntervalLabel(internalValue.roundToInt()),
-        value = internalValue,
-        valueRange = distanceValueRange,
-        steps =
-            progressVibrationSliderSteps(
-                min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-                max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-                step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_STEP_METERS,
-            ),
+        valueLabel = distanceVibrationIntervalLabel(recordingProgressVibrationDistanceMetersOptions[selectedIndex]),
+        value = selectedIndex.toFloat(),
+        valueRange = 0f..recordingProgressVibrationDistanceMetersOptions.lastIndex.toFloat(),
+        steps = (recordingProgressVibrationDistanceMetersOptions.size - 2).coerceAtLeast(0),
         onValueChange = { rawValue ->
-            val snapped =
-                snapProgressVibrationValue(
-                    value = rawValue,
-                    min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-                    max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-                    step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_STEP_METERS,
-                )
-            internalValue = snapped.toFloat()
-            onDistanceMetersChanged(snapped)
+            val nextIndex =
+                rawValue
+                    .roundToInt()
+                    .coerceIn(recordingProgressVibrationDistanceMetersOptions.indices)
+            selectedIndex = nextIndex
+            onDistanceMetersChanged(recordingProgressVibrationDistanceMetersOptions[nextIndex])
         },
     )
 }
@@ -130,34 +123,25 @@ private fun ProgressVibrationTimeSlider(
     timeMinutes: Int,
     onTimeMinutesChanged: (Int) -> Unit,
 ) {
-    var internalValue by remember(timeMinutes) { mutableStateOf(timeMinutes.toFloat()) }
-    val timeValueRange =
-        progressVibrationValueRange(
-            min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-            max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+    var selectedIndex by remember(timeMinutes) {
+        mutableStateOf(
+            recordingProgressVibrationTimeMinutesOptions.indexOf(timeMinutes).coerceAtLeast(0),
         )
+    }
 
     ProgressVibrationSlider(
         label = "Time",
-        valueLabel = timeVibrationIntervalLabel(internalValue.roundToInt()),
-        value = internalValue,
-        valueRange = timeValueRange,
-        steps =
-            progressVibrationSliderSteps(
-                min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-                max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-                step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_STEP_MINUTES,
-            ),
+        valueLabel = timeVibrationIntervalLabel(recordingProgressVibrationTimeMinutesOptions[selectedIndex]),
+        value = selectedIndex.toFloat(),
+        valueRange = 0f..recordingProgressVibrationTimeMinutesOptions.lastIndex.toFloat(),
+        steps = (recordingProgressVibrationTimeMinutesOptions.size - 2).coerceAtLeast(0),
         onValueChange = { rawValue ->
-            val snapped =
-                snapProgressVibrationValue(
-                    value = rawValue,
-                    min = SettingsRepository.MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-                    max = SettingsRepository.MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-                    step = SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_STEP_MINUTES,
-                )
-            internalValue = snapped.toFloat()
-            onTimeMinutesChanged(snapped)
+            val nextIndex =
+                rawValue
+                    .roundToInt()
+                    .coerceIn(recordingProgressVibrationTimeMinutesOptions.indices)
+            selectedIndex = nextIndex
+            onTimeMinutesChanged(recordingProgressVibrationTimeMinutesOptions[nextIndex])
         },
     )
 }
@@ -207,30 +191,14 @@ private fun recordingTrackSmoothingLabel(mode: String): String =
     }
 
 private fun distanceVibrationIntervalLabel(distanceMeters: Int): String =
-    if (distanceMeters % 1_000 == 0) {
+    if (distanceMeters < 1_000) {
+        "Every $distanceMeters m"
+    } else if (distanceMeters % 1_000 == 0) {
         "Every ${distanceMeters / 1_000} km"
     } else {
         "Every ${distanceMeters / 1_000}.${(distanceMeters % 1_000) / 100} km"
     }
 
 private fun timeVibrationIntervalLabel(timeMinutes: Int): String = "Every $timeMinutes min"
-
-private fun progressVibrationSliderSteps(
-    min: Int,
-    max: Int,
-    step: Int,
-): Int = ((max - min) / step - 1).coerceAtLeast(0)
-
-private fun progressVibrationValueRange(
-    min: Int,
-    max: Int,
-): ClosedFloatingPointRange<Float> = min.toFloat()..max.toFloat()
-
-private fun snapProgressVibrationValue(
-    value: Float,
-    min: Int,
-    max: Int,
-    step: Int,
-): Int = (((value.coerceIn(min.toFloat(), max.toFloat()) - min) / step).roundToInt() * step) + min
 
 private val PROGRESS_VIBRATION_SLIDER_SPACING = 4.dp

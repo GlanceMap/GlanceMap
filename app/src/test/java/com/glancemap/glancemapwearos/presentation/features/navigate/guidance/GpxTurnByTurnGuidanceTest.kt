@@ -295,6 +295,15 @@ class GpxTurnByTurnGuidanceTest {
         assertEquals(RouteInstructionCommand.LEFT, state.nextInstruction?.command)
         assertEquals(GuidanceTerrainDirection.UPHILL, state.nextSegmentTerrain?.direction)
         assertTrue((state.nextSegmentTerrain?.elevationChangeMeters ?: 0.0) > 25.0)
+
+        val confirmedState =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.00025, 6.001),
+            )
+
+        assertEquals(RouteInstructionCommand.LEFT, confirmedState.recentManeuverTerrain?.maneuver)
+        assertEquals(GuidanceTerrainDirection.UPHILL, confirmedState.recentManeuverTerrain?.terrain?.direction)
     }
 
     @Test
