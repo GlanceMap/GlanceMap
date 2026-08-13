@@ -361,20 +361,16 @@ private fun String.extractGpxSourceFileName(): String? {
         Regex("""([^/?:#]+\.gpx)(?:$|[?#])""", RegexOption.IGNORE_CASE)
             .findAll(decoded)
             .lastOrNull()
-    if (match != null) return match.groupValues[1].toSafeFileName()
-
-    // Document ids commonly look like "primary:Download/Route name". Preserve the last
-    // component only for a path-like id. A bare provider id must not become the visible title.
-    if ('/' !in decoded) return null
-    val lastComponent =
+    val pathComponent =
         decoded
-            .substringBefore('?')
-            .substringBefore('#')
-            .substringAfterLast('/')
-            .substringAfterLast(':')
-            .toSafeFileName()
-    return lastComponent
-        .takeIf { it.isNotBlank() && !it.isGenericSharedGpxName() && !it.isOpaqueDocumentId() }
+            .takeIf { '/' in it }
+            ?.substringBefore('?')
+            ?.substringBefore('#')
+            ?.substringAfterLast('/')
+            ?.substringAfterLast(':')
+            ?.toSafeFileName()
+            ?.takeIf { it.isNotBlank() && !it.isGenericSharedGpxName() && !it.isOpaqueDocumentId() }
+    return match?.groupValues?.get(1)?.toSafeFileName() ?: pathComponent
 }
 
 private fun decodeUriNameCandidate(value: String): String =
