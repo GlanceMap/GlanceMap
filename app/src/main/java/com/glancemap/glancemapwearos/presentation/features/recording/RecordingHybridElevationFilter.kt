@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlin.math.pow
 
 internal const val RECORDING_ELEVATION_SOURCE_HYBRID = "HYBRID_DEM_BAROMETER"
@@ -129,3 +130,5 @@ private const val ABSOLUTE_ANCHOR_TIME_CONSTANT_SECONDS = 300.0
 private const val MIN_ABSOLUTE_ANCHOR_WEIGHT = 0.01
 private const val MAX_ABSOLUTE_ANCHOR_WEIGHT = 0.08
 private const val MAX_ANCHOR_CORRECTION_PER_FIX_METERS = 1.0
+
+internal fun String.usesHybridRecordingElevation(): Boolean = this == SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO

@@ -1,11 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordingHybridElevationFilterTest {
+    @Test
+    fun onlySmartModeUsesTheHybridElevationFilter() {
+        assertTrue(SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO.usesHybridRecordingElevation())
+        assertFalse(SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM.usesHybridRecordingElevation())
+        assertFalse(SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS.usesHybridRecordingElevation())
+    }
+
     @Test
     fun pressureChangeAddsResponsiveClimbWhileDemAnchorsAbsoluteAltitude() {
         val filter = RecordingHybridElevationFilter()

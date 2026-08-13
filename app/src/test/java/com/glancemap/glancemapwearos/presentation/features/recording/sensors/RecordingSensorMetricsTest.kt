@@ -1,10 +1,39 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.sensors
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RecordingSensorMetricsTest {
+    @Test
+    fun barometerRunsOnlyForSmartElevationOrDisplayedPressure() {
+        assertEquals(
+            true,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO,
+                selectedMetricIds = emptyList(),
+            ),
+        )
+        assertEquals(
+            false,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
+                selectedMetricIds = emptyList(),
+            ),
+        )
+        assertEquals(
+            true,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
+                selectedMetricIds = listOf(SettingsRepository.RECORDING_METRIC_BAROMETRIC_PRESSURE),
+            ),
+        )
+    }
+
     @Test
     fun unavailableRunPodClearsOnlyMetricsOwnedByExternalSensor() {
         val metrics =

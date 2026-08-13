@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
             val recordingScreenOffSampleIntervalSeconds by appContainer.settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
             val turnByTurnGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
             val turnByTurnScreenOffGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+            val recordingElevationSource by appContainer.settingsViewModel.recordingElevationSource.collectAsState()
             val recordingHeartRateSource by appContainer.settingsViewModel.recordingHeartRateSource.collectAsState()
             val recordingCadenceSource by appContainer.settingsViewModel.recordingCadenceSource.collectAsState()
             val recordingSpeedSource by appContainer.settingsViewModel.recordingSpeedSource.collectAsState()
@@ -189,6 +190,7 @@ class MainActivity : ComponentActivity() {
                     active = traceRecordingState.active,
                     paused = traceRecordingState.paused,
                     selectedMetricIds = recordingDashboardMetricSlots,
+                    elevationSource = recordingElevationSource,
                     heartRateSource = recordingHeartRateSource,
                     cadenceSource = recordingCadenceSource,
                     speedSource = recordingSpeedSource,

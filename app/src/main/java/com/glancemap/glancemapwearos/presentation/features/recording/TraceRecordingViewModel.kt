@@ -694,7 +694,7 @@ class TraceRecordingViewModel(
                         absoluteElevationSource = elevation.resolvedSource,
                         pressureHpa = sensorMetrics?.barometricPressureHpa,
                         timeMillis = timeMillis,
-                        enabled = selectedElevationSource.isHybridElevationEnabled(),
+                        enabled = selectedElevationSource.usesHybridRecordingElevation(),
                         startsNewSegment = startsNewSegment,
                     )
                 if (fusedElevation.pressureUsed) {
@@ -2156,7 +2156,7 @@ private const val RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS = 500L
 private const val RECORDING_MIN_SAMPLE_ACCEPT_THRESHOLD_MS = 850L
 private const val RECORDING_QUALITY_TELEMETRY_INTERVAL = 5
 private const val RECORDING_SMOOTHING_TELEMETRY_INTERVAL = 25
-private const val RECORDING_DRAFT_PERSIST_INTERVAL_MS = 15_000L
+private const val RECORDING_DRAFT_PERSIST_INTERVAL_MS = 60_000L
 private const val EXTERNAL_SPEED_INTEGRATION_MAX_GAP_MS = 5_000L
 private const val SENSOR_SNAPSHOT_MAX_AGE_MS = 15_000L
 private const val MAX_RECORDING_TITLE_LENGTH = 64
@@ -2257,10 +2257,6 @@ private fun String?.toRecordingActivityProfile(fallback: String): String =
         -> SettingsRepository.ACTIVITY_PROFILE_HIKE
         else -> fallback
     }
-
-private fun String.isHybridElevationEnabled(): Boolean =
-    this == SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO ||
-        this == SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM
 
 private fun Double.formatTelemetry(decimalPlaces: Int): String = String.format(Locale.US, "%.${decimalPlaces}f", this)
 

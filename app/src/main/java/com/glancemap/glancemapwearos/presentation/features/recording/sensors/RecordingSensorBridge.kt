@@ -29,6 +29,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodSensorBridge
+import com.glancemap.glancemapwearos.presentation.features.recording.usesHybridRecordingElevation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.concurrent.atomic.AtomicBoolean
@@ -153,6 +154,7 @@ fun RecordingSensorBridge(
     active: Boolean,
     paused: Boolean,
     selectedMetricIds: List<String>,
+    elevationSource: String,
     heartRateSource: String,
     cadenceSource: String,
     speedSource: String,
@@ -198,7 +200,12 @@ fun RecordingSensorBridge(
             externalRunPodSelected
     val useExternalRunPod =
         useExternalCadence || useExternalSpeed || useExternalDistance || useExternalPower
-    val collectBarometricPressure = active
+    val collectBarometricPressure =
+        shouldCollectRecordingBarometricPressure(
+            active = active,
+            elevationSource = elevationSource,
+            selectedMetricIds = selectedMetricIds,
+        )
     val collectInternalSteps = active && useInternalSteps
     val sensorMetricIds =
         remember(selectedMetricIds, useWatchHeartRate, useInternalCadence, useInternalSteps, collectInternalSteps, collectBarometricPressure) {
@@ -719,11 +726,18 @@ private fun registerRecordingSensors(
             } else {
                 SensorManager.SENSOR_DELAY_NORMAL
             }
+        val maxReportLatencyUs =
+            if (type == Sensor.TYPE_HEART_RATE || type == Sensor.TYPE_PRESSURE) {
+                RECORDING_CONTINUOUS_SENSOR_MAX_REPORT_LATENCY_US
+            } else {
+                0
+            }
         if (
             sensorManager.registerListener(
                 listener,
                 sensor,
                 samplingPeriodUs,
+                maxReportLatencyUs,
                 handler,
             )
         ) {
@@ -793,6 +807,17 @@ private fun hasPermission(
     permission.isBlank() ||
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+internal fun shouldCollectRecordingBarometricPressure(
+    active: Boolean,
+    elevationSource: String,
+    selectedMetricIds: List<String>,
+): Boolean =
+    active &&
+        (
+            elevationSource.usesHybridRecordingElevation() ||
+                SettingsRepository.RECORDING_METRIC_BAROMETRIC_PRESSURE in selectedMetricIds
+        )
+
 private val recordingSensorMetricIds =
     setOf(
         SettingsRepository.RECORDING_METRIC_HEART_RATE,
@@ -821,6 +846,7 @@ private const val CADENCE_WINDOW_MS = 30_000L
 private const val RECORDING_SENSOR_STATUS_INTERVAL_MS = 60_000L
 private const val RECORDING_SENSOR_THREAD_NAME = "RecordingSensorThread"
 private const val RECORDING_CONTINUOUS_SENSOR_PERIOD_US = 1_000_000
+private const val RECORDING_CONTINUOUS_SENSOR_MAX_REPORT_LATENCY_US = 1_000_000
 private const val HEART_RATE_UI_PUBLISH_INTERVAL_MS = 1_000L
 private const val HEART_RATE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS = 250L
 private const val HEART_RATE_MEANINGFUL_CHANGE_BPM = 5
