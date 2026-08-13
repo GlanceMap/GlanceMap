@@ -375,11 +375,10 @@ class LocationService : Service() {
                 updateSelfHealMonitor = { selfHealFailoverCoordinator.updateSelfHealMonitor() },
                 updateGnssDiagnostics = { updateGnssDiagnostics(enabled = latestGpsDebugTelemetry) },
                 foregroundRefresh = { refreshKeepAliveNotificationState() },
-                inspectLocationEnvironment = { requestSpec, state, permissions, nowElapsedMs ->
+                inspectLocationEnvironment = { requestSpec, state, nowElapsedMs ->
                     inspectLocationEnvironment(
                         requestSpec = requestSpec,
                         state = state,
-                        permissions = permissions,
                         nowElapsedMs = nowElapsedMs,
                     )
                 },
@@ -861,7 +860,6 @@ class LocationService : Service() {
     private suspend fun inspectLocationEnvironment(
         requestSpec: RequestSpec,
         state: RequestUpdateState,
-        permissions: LocationPermissionSnapshot,
         nowElapsedMs: Long,
     ): LocationEnvironmentAction {
         val locationSettings =
@@ -891,7 +889,6 @@ class LocationService : Service() {
             }
         updateLatestPhoneConnection(
             phoneConnected = phoneConnected,
-            nowElapsedMs = nowElapsedMs,
         )
         val shouldCheckWatchGps =
             requestSpec.sourceMode == LocationSourceMode.WATCH_GPS ||
@@ -952,15 +949,11 @@ class LocationService : Service() {
         }
     }
 
-    private fun updateLatestPhoneConnection(
-        phoneConnected: Boolean?,
-        nowElapsedMs: Long,
-    ) {
+    private fun updateLatestPhoneConnection(phoneConnected: Boolean?) {
         if (phoneConnected != null) {
             latestPhoneConnected = phoneConnected
             selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
                 phoneConnected = phoneConnected,
-                nowElapsedMs = nowElapsedMs,
             )
         }
     }

@@ -13,7 +13,7 @@ import java.io.InputStream
 
 class GpxRepositoryImpl(
     private val context: Context,
-) : GpxRepository {
+) {
     private val gpxDir by lazy { context.getDir("gpx", Context.MODE_PRIVATE) }
 
     private val prefs: SharedPreferences by lazy {
@@ -24,7 +24,7 @@ class GpxRepositoryImpl(
         const val KEY_ACTIVE_GPX_FILES = "active_gpx_files"
     }
 
-    override suspend fun listGpxFiles(): List<File> =
+    suspend fun listGpxFiles(): List<File> =
         withContext(Dispatchers.IO) {
             if (!gpxDir.exists()) return@withContext emptyList()
 
@@ -34,12 +34,12 @@ class GpxRepositoryImpl(
                 ?: emptyList()
         }
 
-    override suspend fun saveGpxFileAtomic(
+    suspend fun saveGpxFileAtomic(
         fileName: String,
         inputStream: InputStream,
         onProgress: (bytesCopied: Long) -> Unit,
-        expectedSize: Long?,
-        resumeOffset: Long,
+        expectedSize: Long? = null,
+        resumeOffset: Long = 0L,
     ): String? =
         withContext(Dispatchers.IO) {
             val exp = expectedSize?.takeIf { it > 0L }
@@ -70,13 +70,13 @@ class GpxRepositoryImpl(
             result.sha256
         }
 
-    override suspend fun fileExists(fileName: String): Boolean =
+    suspend fun fileExists(fileName: String): Boolean =
         withContext(Dispatchers.IO) {
             val safeName = File(fileName).name
             File(gpxDir, safeName).exists()
         }
 
-    override suspend fun deleteGpxFile(path: String) =
+    suspend fun deleteGpxFile(path: String) =
         withContext(Dispatchers.IO) {
             val file = File(path)
             if (!file.exists()) return@withContext
@@ -95,12 +95,12 @@ class GpxRepositoryImpl(
             File(gpxDir, ".${file.name}.part").delete()
         }
 
-    override suspend fun absolutePathForFileName(fileName: String): String =
+    suspend fun absolutePathForFileName(fileName: String): String =
         withContext(Dispatchers.IO) {
             File(gpxDir, File(fileName).name).absolutePath
         }
 
-    override fun getActiveGpxFiles(): Flow<Set<String>> =
+    fun getActiveGpxFiles(): Flow<Set<String>> =
         callbackFlow {
             val listener =
                 SharedPreferences.OnSharedPreferenceChangeListener { sp, key ->
@@ -115,7 +115,7 @@ class GpxRepositoryImpl(
             awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
         }
 
-    override suspend fun setActiveGpxFiles(paths: Set<String>) =
+    suspend fun setActiveGpxFiles(paths: Set<String>) =
         withContext(Dispatchers.IO) {
             prefs.edit().putStringSet(KEY_ACTIVE_GPX_FILES, paths.toSet()).apply()
         }

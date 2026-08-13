@@ -83,7 +83,6 @@ internal fun NavigateContent(
     hasLocationPermission: Boolean,
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
-    onMapHolderChange: (MapHolder?) -> Unit,
     onMapViewReadyForRendering: () -> Unit,
     onNavigateTimeSuppressedChange: (Boolean) -> Unit,
     showNavigateTime: Boolean,
@@ -93,7 +92,6 @@ internal fun NavigateContent(
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
     slopeOverlayProgressPercent: Int?,
-    zoomDefault: Int,
     zoomMin: Int,
     zoomMax: Int,
     zoomMinScaleMeters: Int,
@@ -156,7 +154,6 @@ internal fun NavigateContent(
     onCancelSelectingGpxPointB: () -> Unit,
     turnByTurnGuidanceState: TurnByTurnGuidanceState,
     turnByTurnGuidancePaused: Boolean,
-    turnByTurnPausedTrackTitle: String?,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
@@ -271,10 +268,6 @@ internal fun NavigateContent(
     val latestRouteToolSession = rememberUpdatedState(routeToolSession)
     val latestCrosshairSelectionActive = rememberUpdatedState(crosshairSelectionActive)
     val latestReshapePreviewInspectMode = rememberUpdatedState(reshapePreviewInspectMode)
-    val latestRouteToolModeActive =
-        rememberUpdatedState(
-            routeToolSession != null || crosshairSelectionActive || reshapePreviewInspectMode,
-        )
     val latestMapView = rememberUpdatedState(mapView)
     val latestOnZoomLevelChange = rememberUpdatedState(onZoomLevelChange)
     val latestOnViewportChanged = rememberUpdatedState(onViewportChanged)
@@ -891,7 +884,6 @@ internal fun NavigateContent(
                     northIndicatorIconSize = northIndicatorIconSize,
                     showZoomPlusButton = showZoomPlusButton,
                     showZoomMinusButton = showZoomMinusButton,
-                    currentZoomLevel = currentZoomLevel,
                     triggerHaptic = triggerHaptic,
                     onZoomStep = ::applyMapZoomStep,
                     zoomButtonSize = zoomButtonSize,
@@ -973,7 +965,6 @@ internal fun NavigateContent(
                     onCancelSelectingGpxPointB = onCancelSelectingGpxPointB,
                     turnByTurnGuidanceState = turnByTurnGuidanceState,
                     turnByTurnGuidancePaused = turnByTurnGuidancePaused,
-                    turnByTurnPausedTrackTitle = turnByTurnPausedTrackTitle,
                     turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
                     turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
                     onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
@@ -1100,7 +1091,7 @@ private fun CenteredNavigateTimeChip(
     }
     val label =
         when {
-            showTime -> formatNavigateClockTime(context, nowMillis, timeFormat)
+            showTime -> formatNavigateClockTime(nowMillis, timeFormat)
             recordingSaving -> "SAVE"
             recordingPaused -> "PAUSE"
             recordingActive -> "REC"
@@ -1203,6 +1194,5 @@ internal fun shouldRefreshRouteToolOverlayForViewport(
     routeToolSessionActive: Boolean,
 ): Boolean = routeToolSessionActive
 
-private const val LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS = 3.0
 private const val DOUBLE_TAP_PANNING_DISTANCE_THRESHOLD_METERS = 4.0
 private const val DOUBLE_TAP_PANNING_CHECK_DELAY_MS = 120L

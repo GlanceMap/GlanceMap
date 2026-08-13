@@ -447,7 +447,6 @@ class MainActivity : ComponentActivity() {
                                 PoiScreen(
                                     navController = navController,
                                     poiViewModel = appContainer.poiViewModel,
-                                    mapViewModel = appContainer.mapViewModel,
                                 )
                             }
                         }
@@ -849,7 +848,6 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 DebuggingSettingsScreen(
                                     viewModel = appContainer.settingsViewModel,
-                                    compassViewModel = appContainer.compassViewModel,
                                     onOpenGeneralSettings = {
                                         navController.navigate(WatchRoutes.SETTINGS) {
                                             popUpTo(WatchRoutes.SETTINGS) { inclusive = false }

@@ -455,7 +455,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 80.0,
-                locationAccuracyMeters = 10f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -465,7 +464,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 80.0,
-                locationAccuracyMeters = 10f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -473,14 +471,13 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
-    fun offRouteIgnoresReportedAccuracyAndClearsOnStrongRecovery() {
+    fun offRouteClearsOnStrongRecovery() {
         var state = GuidanceOffRouteConfirmationState()
         repeat(2) {
             state =
                 updateGuidanceOffRouteConfirmation(
                     previous = state,
                     distanceToRouteMeters = 150.0,
-                    locationAccuracyMeters = 90f,
                     thresholdMeters = 60.0,
                     allowOffRouteEntry = true,
                 )
@@ -492,7 +489,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 25.0,
-                locationAccuracyMeters = 125f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -500,14 +496,13 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
-    fun offRouteUsesSelectedThresholdWithoutAccuracyAllowance() {
+    fun offRouteUsesSelectedThreshold() {
         var state = GuidanceOffRouteConfirmationState()
 
         state =
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 32.0,
-                locationAccuracyMeters = 18f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -517,7 +512,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 32.0,
-                locationAccuracyMeters = 18f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -532,7 +526,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 18.0,
-                locationAccuracyMeters = 12f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -541,7 +534,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 18.0,
-                locationAccuracyMeters = 12f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )

@@ -37,7 +37,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.MaterialTheme
@@ -154,7 +153,6 @@ private fun FullscreenPopupTimeChip(
     recordingSaving: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -197,7 +195,7 @@ private fun FullscreenPopupTimeChip(
                         )
                     }
                     Text(
-                        text = formatNavigateClockTime(context, nowMillis, LocalFullscreenPopupTimeFormat.current),
+                        text = formatNavigateClockTime(nowMillis, LocalFullscreenPopupTimeFormat.current),
                         modifier = Modifier.padding(start = if (recordingVisible) 5.dp else 0.dp),
                         style =
                             MaterialTheme.typography.titleMedium.copy(

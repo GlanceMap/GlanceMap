@@ -700,7 +700,6 @@ fun projectLocationToRoute(
 fun updateGuidanceOffRouteConfirmation(
     previous: GuidanceOffRouteConfirmationState,
     distanceToRouteMeters: Double?,
-    locationAccuracyMeters: Float?,
     thresholdMeters: Double,
     allowOffRouteEntry: Boolean,
 ): GuidanceOffRouteConfirmationState {

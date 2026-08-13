@@ -114,7 +114,6 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     processing: Boolean,
     progressPercent: Int?,
     enabled: Boolean,
-    currentZoomLevel: Int,
     screenSize: WearScreenSize,
     sideButtonEdgePadding: Dp,
     sideButtonSize: Dp,

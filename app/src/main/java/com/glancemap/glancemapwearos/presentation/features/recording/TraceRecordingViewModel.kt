@@ -9,7 +9,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
-import com.glancemap.glancemapwearos.data.repository.GpxRepository
+import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
@@ -49,7 +49,7 @@ private data class RecordingGapTelemetryContext(
 )
 
 class TraceRecordingViewModel(
-    private val gpxRepository: GpxRepository,
+    private val gpxRepository: GpxRepositoryImpl,
     private val settingsRepository: SettingsRepository,
     private val syncManager: SyncManager,
     private val elevationProvider: RecordingElevationProvider,

@@ -20,7 +20,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentTargetFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
-import com.glancemap.glancemapwearos.data.repository.MapRepository
+import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.createMissingDemMarker
@@ -117,7 +117,7 @@ internal fun buildRemoteFileRequestsForBundle(
 
 class OamBundleDownloader(
     private val context: Context,
-    private val mapRepository: MapRepository,
+    private val mapRepository: MapRepositoryImpl,
     private val poiRepository: PoiRepository,
     private val bundleStore: OamBundleStore = OamBundleStore(context),
 ) {

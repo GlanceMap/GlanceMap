@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
@@ -34,14 +33,13 @@ fun AmbientScreen(
     burnInProtectionRequired: Boolean = true,
     deviceHasLowBitAmbient: Boolean = false,
 ) {
-    val context = LocalContext.current
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
     val timeFontSize = ambientTimeFontSize(isRound = adaptive.isRound, screenSize = screenSize)
     val burnInShiftRange = ambientBurnInShiftRange(isRound = adaptive.isRound, screenSize = screenSize)
     val time =
         remember(ambientTick, timeFormat) {
-            formatNavigateClockTime(context, ambientTick, timeFormat)
+            formatNavigateClockTime(ambientTick, timeFormat)
         }
     val offset =
         remember(ambientTick, burnInProtectionRequired, burnInShiftRange) {

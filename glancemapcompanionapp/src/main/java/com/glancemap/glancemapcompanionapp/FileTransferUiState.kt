@@ -20,10 +20,6 @@ data class FileTransferUiState(
     // ✅ Multi-file selection
     val selectedFileUris: List<Uri> = emptyList(),
     val selectedFileDisplayNames: List<String> = emptyList(),
-    // Legacy fields
-    val selectedFileUri: Uri? = null,
-    val selectedFileName: String? = null,
-    val selectedFileSizeMb: Int = 0,
     val statusMessage: String = "",
     val isTransferring: Boolean = false,
     // ✅ Pause/Resume UI state

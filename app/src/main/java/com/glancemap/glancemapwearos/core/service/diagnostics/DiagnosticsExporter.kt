@@ -17,7 +17,6 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergy
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeLineDumpSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeScreenStateSummarySection
-import com.glancemap.glancemapwearos.core.service.location.config.ENABLE_STRICT_FIX_FILTERING
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionMetricSummary
@@ -41,10 +40,6 @@ private val threadtimeTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 private val normalizedLogcatTimestampFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-private val skippedFramesRegex = Regex("""Skipped (\d+) frames!""")
-private val daveyDurationRegex = Regex("""Davey!\s+duration=(\d+)ms""")
-private val gcDurationRegex = Regex("""total ([0-9]+(?:\.[0-9]+)?)(ms|s)""")
-private val gcFreedRegex = Regex("""freed ([0-9]+)(KB|MB|GB)""")
 
 data class DiagnosticsSettingsSnapshot(
     val gpsIntervalMs: Long,
@@ -544,8 +539,6 @@ object DiagnosticsExporter {
         DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(ZoneId.systemDefault())
     private val timestampFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
-    private val telemetryLineTimestampFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
     fun export(
         context: Context,
@@ -830,7 +823,7 @@ object DiagnosticsExporter {
             writer.appendLine("locationFinePermissionGranted=${locationPermission.hasFinePermission}")
             writer.appendLine("locationCoarsePermissionGranted=${locationPermission.hasCoarsePermission}")
             writer.appendLine("locationPermissionMode=${locationPermission.mode}")
-            writer.appendLine("gpsPositionFilterEnabled=$ENABLE_STRICT_FIX_FILTERING")
+            writer.appendLine("gpsPositionFilterEnabled=true")
             writer.appendLine()
             writer.appendLine("Battery Benchmark Context")
             val batteryBenchmarkMode =

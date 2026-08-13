@@ -78,7 +78,6 @@ import kotlin.math.roundToInt
 internal fun BoxScope.TurnByTurnGuidanceOverlay(
     state: TurnByTurnGuidanceState,
     paused: Boolean,
-    pausedTrackTitle: String?,
     dashboardMetricSlots: List<String>,
     voiceGuidanceEnabled: Boolean,
     screenSize: WearScreenSize,

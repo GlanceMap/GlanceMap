@@ -155,34 +155,6 @@ android {
         }
     }
 
-    sourceSets {
-        getByName("main") {
-            assets {
-                directories.add(
-                    layout.buildDirectory
-                        .dir("generated/theme-assets")
-                        .get()
-                        .asFile
-                        .absolutePath,
-                )
-                directories.add(
-                    layout.buildDirectory
-                        .dir("generated/osm-poi-icons")
-                        .get()
-                        .asFile
-                        .absolutePath,
-                )
-                directories.add(
-                    layout.buildDirectory
-                        .dir("generated/license-assets")
-                        .get()
-                        .asFile
-                        .absolutePath,
-                )
-            }
-        }
-    }
-
     lint {
         // Work around a lint internal crash in ActivityIconColorDetector on this project.
         disable += "ActivityIconColor"
@@ -195,12 +167,6 @@ android {
 
 kotlin {
     jvmToolchain(17)
-}
-
-tasks.named("preBuild").configure {
-    dependsOn("prepareBundledThemeAssets")
-    dependsOn("prepareOsmPoiIcons")
-    dependsOn("prepareLicenseDocsAssets")
 }
 
 dependencies {
@@ -246,8 +212,7 @@ dependencies {
     implementation(libs.androidsvg)
     implementation(project(":brouter-core"))
 
-    // Permissions + previews
-    implementation(libs.accompanist.permissions)
+    // Previews
     implementation(libs.androidx.wear.tooling.preview)
 
     // OkHttp (for HTTP transfers)

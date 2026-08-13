@@ -86,15 +86,7 @@ fun NavigateScreen(
     onMenuClick: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
     compassViewModel: CompassViewModel = viewModel(),
-    navigateViewModel: NavigateViewModel =
-        viewModel(
-            factory =
-                NavigateViewModelFactory(
-                    application = LocalContext.current.applicationContext as android.app.Application,
-                    locationViewModel = locationViewModel,
-                    compassViewModel = compassViewModel,
-                ),
-        ),
+    navigateViewModel: NavigateViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -795,7 +787,6 @@ fun NavigateScreen(
                 setRouteToolOptions = { routeToolOptions = it },
                 routeToolSession = routeToolSession,
                 setRouteToolSession = { routeToolSession = it },
-                completedRouteToolDraft = completedRouteToolDraft,
                 setCompletedRouteToolDraft = { completedRouteToolDraft = it },
                 routeToolExecutionInProgress = routeToolExecutionInProgress,
                 setRouteToolExecutionInProgress = { routeToolExecutionInProgress = it },
@@ -805,7 +796,6 @@ fun NavigateScreen(
                 setRouteToolResult = { routeToolResult = it },
                 setRouteToolRenameInProgress = { routeToolRenameInProgress = it },
                 setRouteToolRenameError = { routeToolRenameError = it },
-                routeToolPreview = routeToolPreview,
                 setRouteToolPreview = { routeToolPreview = it },
                 routeToolCreatePreview = routeToolCreatePreview,
                 setRouteToolCreatePreview = { routeToolCreatePreview = it },
@@ -959,7 +949,6 @@ fun NavigateScreen(
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
-            onMapHolderChange = { /* no-op */ },
             onMapViewReadyForRendering = { mapViewModel.onMapViewReadyForRendering() },
             onNavigateTimeSuppressedChange = onNavigateTimeSuppressedChange,
             showNavigateTime = showNavigateTime,
@@ -969,7 +958,6 @@ fun NavigateScreen(
             slopeOverlayEnabled = slopeOverlayState.enabled,
             slopeOverlayProcessing = slopeOverlayState.processing,
             slopeOverlayProgressPercent = slopeOverlayState.progressPercent,
-            zoomDefault = zoomDefault,
             zoomMin = zoomMin,
             zoomMax = zoomMax,
             zoomMinScaleMeters = zoomMinScaleMeters,
@@ -1065,7 +1053,6 @@ fun NavigateScreen(
             onCancelSelectingGpxPointB = { gpxViewModel.cancelSelectingB() },
             turnByTurnGuidanceState = guidanceRuntime.state,
             turnByTurnGuidancePaused = turnByTurnGuidancePaused,
-            turnByTurnPausedTrackTitle = turnByTurnGuidanceSession?.trackTitle,
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
             turnByTurnCompactPopupEnabled =
                 turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
@@ -1233,5 +1220,3 @@ private fun gpsIntervalMsOrDefault(seconds: Int): Long =
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> SettingsRepository.DEFAULT_GPS_INTERVAL_MS
         else -> seconds.coerceAtLeast(1) * 1_000L
     }
-
-private const val RECORDING_STATUS_MESSAGE_DURATION_MS = 1_200L

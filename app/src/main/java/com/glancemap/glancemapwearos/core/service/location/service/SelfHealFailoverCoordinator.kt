@@ -47,10 +47,7 @@ internal class SelfHealFailoverCoordinator(
 
     fun isAutoFusedFallbackToWatchGps(): Boolean = autoFusedFallbackToWatchGps
 
-    fun onPhoneConnectionStateChecked(
-        phoneConnected: Boolean,
-        nowElapsedMs: Long = 0L,
-    ) {
+    fun onPhoneConnectionStateChecked(phoneConnected: Boolean) {
         if (phoneConnected && autoFusedFallbackToWatchGps) {
             // A Bluetooth connection says nothing about the quality of the phone's GPS fix.
             // Keep the working watch-GPS fallback until a recovery probe receives a fresh,

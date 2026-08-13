@@ -57,7 +57,6 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.USER_POI_CATEGORY_ID
 import com.glancemap.glancemapwearos.data.repository.USER_POI_SOURCE_PATH
-import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
@@ -180,7 +179,6 @@ private const val POI_LOADING_DRAG_DISMISS_PX = 34f
 fun PoiScreen(
     navController: NavHostController,
     poiViewModel: PoiViewModel,
-    mapViewModel: MapViewModel,
 ) {
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
