@@ -55,6 +55,19 @@ class FileTransferViewModelUriSupportTest {
     }
 
     @Test
+    fun `keeps actual filename ahead of provider waypoint uri label`() {
+        assertEquals(
+            "Rando RotWand all.gpx",
+            chooseGpxTransferFileName(
+                displayName = "Rando RotWand all.gpx",
+                uriCandidates = listOf("Guidepost.gpx"),
+                gpxText = "<gpx><wpt><name>Guidepost</name></wpt></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
     fun `prefers extensionless document filename over provider waypoint label`() {
         assertEquals(
             "Rando RotWand all.gpx",

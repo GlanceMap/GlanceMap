@@ -289,10 +289,10 @@ internal fun chooseGpxTransferFileName(
 
     val chosen =
         when {
-            candidateName != null -> candidateName
             displayFileName.isNotBlank() && !displayFileName.isGenericSharedGpxName() ->
                 displayFileName.ensureGpxExtension()
 
+            candidateName != null -> candidateName
             preferFallbackName && metadataName != null -> metadataName
             metadataName != null -> metadataName
             displayFileName.isNotBlank() -> displayFileName.ensureGpxExtension()
@@ -460,6 +460,7 @@ private val GENERIC_SHARED_GPX_BASENAMES =
         "document",
         "file",
         "gpx",
+        "guidepost",
         "route",
         "shared-route",
         "track",
