@@ -20,6 +20,11 @@ data class CompassRenderState(
     val headingTrusted: Boolean = false,
     val northBasis: CompassNorthBasis = CompassNorthBasis.UNKNOWN,
     val magneticQuality: CompassMagneticQuality = CompassMagneticQuality.UNKNOWN,
+    /**
+     * Relative game-rotation heading used only to validate a compass turn. It has no north
+     * reference and must never be rendered as the map heading.
+     */
+    val relativeHeadingDeg: Float? = null,
 )
 
 internal fun initialCompassRenderState(

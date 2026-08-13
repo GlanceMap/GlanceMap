@@ -582,6 +582,28 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotDoesNotCountElevationJumpAcrossGpsGap() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points =
+                            listOf(
+                                recordingPoint(0.0, 100.0, 0L),
+                                recordingPoint(0.001, 110.0, 10_000L),
+                                recordingPoint(0.100, 1_000.0, 60_000L, startsNewSegment = true),
+                                recordingPoint(0.101, 1_010.0, 70_000L),
+                            ),
+                    ),
+                nowMillis = 70_000L,
+            )
+
+        assertTrue(snapshot.elevationGainMeters < 100.0)
+    }
+
+    @Test
     fun formattedRecordingMetricEstimatesCaloriesFromWeightDistanceAndDuration() {
         val estimate =
             estimateRecordingCalories(
@@ -824,6 +846,7 @@ class RecordingDashboardModelsTest {
         timeMillis: Long,
         speedMps: Float? = null,
         powerWatts: Int? = null,
+        startsNewSegment: Boolean = false,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(0.0, longitude),
@@ -832,6 +855,7 @@ class RecordingDashboardModelsTest {
             accuracyMeters = null,
             speedMps = speedMps,
             powerWatts = powerWatts,
+            startsNewSegment = startsNewSegment,
         )
 
     private companion object {

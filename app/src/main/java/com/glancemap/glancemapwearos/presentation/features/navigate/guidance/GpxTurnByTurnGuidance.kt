@@ -56,6 +56,25 @@ enum class GuidanceMode {
     FINISHED,
 }
 
+enum class GuidanceTerrainDirection {
+    UPHILL,
+    DOWNHILL,
+    FLAT,
+}
+
+/** Terrain of the route immediately after the next maneuver. */
+data class GuidanceTerrainPreview(
+    val direction: GuidanceTerrainDirection,
+    val elevationChangeMeters: Double,
+    val distanceMeters: Double,
+)
+
+/** Terrain retained briefly after a maneuver, so the rider can confirm the chosen branch. */
+data class GuidanceTerrainConfirmation(
+    val maneuver: RouteInstructionCommand,
+    val terrain: GuidanceTerrainPreview,
+)
+
 data class TurnByTurnGuidanceState(
     val active: Boolean,
     val mode: GuidanceMode,
@@ -76,6 +95,8 @@ data class TurnByTurnGuidanceState(
     val remainingAscentMeters: Double? = null,
     val remainingDescentMeters: Double? = null,
     val currentAltitudeMeters: Double? = null,
+    val nextSegmentTerrain: GuidanceTerrainPreview? = null,
+    val recentManeuverTerrain: GuidanceTerrainConfirmation? = null,
     val alertSessionKey: String? = null,
     val alertGpsDeliveryIntervalMs: Long? = null,
 )
@@ -164,11 +185,12 @@ fun computeTurnByTurnGuidanceState(
     val fullRouteElevation = remainingElevationMeters(session, 0.0)
 
     if (currentLocation == null) {
+        val nextInstruction = session.instructions.firstOrNull()
         return TurnByTurnGuidanceState(
             active = true,
             mode = GuidanceMode.WAITING_FOR_LOCATION,
             trackTitle = session.trackTitle,
-            nextInstruction = session.instructions.firstOrNull(),
+            nextInstruction = nextInstruction,
             distanceToInstructionMeters = null,
             distanceToStartMeters = null,
             bearingToStartDegrees = null,
@@ -179,6 +201,14 @@ fun computeTurnByTurnGuidanceState(
             offRoute = false,
             remainingAscentMeters = fullRouteElevation.first,
             remainingDescentMeters = fullRouteElevation.second,
+            nextSegmentTerrain =
+                nextInstruction?.let { instruction ->
+                    nextSegmentTerrain(
+                        session = session,
+                        nextInstruction = instruction,
+                        followingInstruction = session.instructions.getOrNull(1),
+                    )
+                },
         )
     }
 
@@ -265,6 +295,20 @@ fun computeTurnByTurnGuidanceState(
     val distanceToFollowingInstruction =
         followingInstruction
             ?.let { (it.distanceFromStartMeters - distanceFromStart).coerceAtLeast(0.0) }
+    val nextSegmentTerrain =
+        nextInstruction?.let { instruction ->
+            nextSegmentTerrain(
+                session = session,
+                nextInstruction = instruction,
+                followingInstruction = followingInstruction,
+            )
+        }
+    val recentManeuverTerrain =
+        recentManeuverTerrain(
+            session = session,
+            distanceFromStartMeters = distanceFromStart,
+            nextInstructionIndex = resolvedInstructionIndex,
+        )
 
     return TurnByTurnGuidanceState(
         active = true,
@@ -284,7 +328,89 @@ fun computeTurnByTurnGuidanceState(
         distanceToFollowingInstructionMeters = distanceToFollowingInstruction,
         remainingAscentMeters = remainingElevation.first,
         remainingDescentMeters = remainingElevation.second,
+        nextSegmentTerrain = nextSegmentTerrain,
+        recentManeuverTerrain = recentManeuverTerrain,
     )
+}
+
+private fun recentManeuverTerrain(
+    session: GpxGuidanceSession,
+    distanceFromStartMeters: Double,
+    nextInstructionIndex: Int,
+): GuidanceTerrainConfirmation? {
+    val completedInstruction = session.instructions.getOrNull(nextInstructionIndex - 1) ?: return null
+    val distanceSinceManeuver = distanceFromStartMeters - completedInstruction.distanceFromStartMeters
+    if (distanceSinceManeuver !in 0.0..TERRAIN_CONFIRMATION_DISTANCE_METERS) return null
+    val terrain =
+        nextSegmentTerrain(
+            session = session,
+            nextInstruction = completedInstruction,
+            followingInstruction = session.instructions.getOrNull(nextInstructionIndex),
+        ) ?: return null
+    return GuidanceTerrainConfirmation(maneuver = completedInstruction.command, terrain = terrain)
+}
+
+private fun nextSegmentTerrain(
+    session: GpxGuidanceSession,
+    nextInstruction: RouteInstruction,
+    followingInstruction: RouteInstruction?,
+): GuidanceTerrainPreview? {
+    if (nextInstruction.command == RouteInstructionCommand.FINISH) return null
+    val startDistance = nextInstruction.distanceFromStartMeters.coerceIn(0.0, session.totalDistanceMeters)
+    val endDistance =
+        min(
+            startDistance + NEXT_SEGMENT_TERRAIN_LOOK_AHEAD_METERS,
+            followingInstruction
+                ?.distanceFromStartMeters
+                ?.coerceIn(startDistance, session.totalDistanceMeters)
+                ?: session.totalDistanceMeters,
+        )
+    val segmentDistance = endDistance - startDistance
+    if (segmentDistance < NEXT_SEGMENT_TERRAIN_MIN_DISTANCE_METERS) return null
+    val startElevation = routeElevationAtDistance(session, startDistance) ?: return null
+    val endElevation = routeElevationAtDistance(session, endDistance) ?: return null
+    val elevationChange = endElevation - startElevation
+    val meaningfulChangeThreshold =
+        max(
+            NEXT_SEGMENT_TERRAIN_MIN_VERTICAL_CHANGE_METERS,
+            segmentDistance * NEXT_SEGMENT_TERRAIN_MIN_GRADE,
+        )
+    val direction =
+        when {
+            elevationChange >= meaningfulChangeThreshold -> GuidanceTerrainDirection.UPHILL
+            elevationChange <= -meaningfulChangeThreshold -> GuidanceTerrainDirection.DOWNHILL
+            else -> GuidanceTerrainDirection.FLAT
+        }
+    return GuidanceTerrainPreview(
+        direction = direction,
+        elevationChangeMeters = elevationChange,
+        distanceMeters = segmentDistance,
+    )
+}
+
+private fun routeElevationAtDistance(
+    session: GpxGuidanceSession,
+    distanceMeters: Double,
+): Double? {
+    val cumulative = session.cumulativeDistancesMeters
+    val points = session.trackPoints
+    val target = distanceMeters.coerceIn(0.0, session.totalDistanceMeters)
+    cumulative
+        .indexOfFirst { abs(it - target) <= ELEVATION_DISTANCE_MATCH_TOLERANCE_METERS }
+        .takeIf { it >= 0 }
+        ?.let { index ->
+            return points.getOrNull(index)?.elevation?.takeIf(Double::isFinite)
+        }
+    for (index in 0 until points.lastIndex) {
+        val segmentStart = cumulative.getOrNull(index) ?: continue
+        val segmentEnd = cumulative.getOrNull(index + 1) ?: continue
+        if (target !in segmentStart..segmentEnd || segmentEnd <= segmentStart) continue
+        val from = points[index].elevation?.takeIf(Double::isFinite) ?: return null
+        val to = points[index + 1].elevation?.takeIf(Double::isFinite) ?: return null
+        val fraction = ((target - segmentStart) / (segmentEnd - segmentStart)).coerceIn(0.0, 1.0)
+        return from + (to - from) * fraction
+    }
+    return null
 }
 
 private fun remainingElevationMeters(
@@ -312,6 +438,13 @@ private fun remainingElevationMeters(
     }
     return ascent to descent
 }
+
+private const val NEXT_SEGMENT_TERRAIN_LOOK_AHEAD_METERS = 300.0
+private const val NEXT_SEGMENT_TERRAIN_MIN_DISTANCE_METERS = 25.0
+private const val NEXT_SEGMENT_TERRAIN_MIN_VERTICAL_CHANGE_METERS = 5.0
+private const val NEXT_SEGMENT_TERRAIN_MIN_GRADE = 0.03
+private const val TERRAIN_CONFIRMATION_DISTANCE_METERS = 75.0
+private const val ELEVATION_DISTANCE_MATCH_TOLERANCE_METERS = 0.5
 
 private fun projectedRoutePoint(
     points: List<LatLong>,

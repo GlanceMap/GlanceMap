@@ -247,6 +247,33 @@ class EnergyDiagnosticsTest {
         )
     }
 
+    @Test
+    fun processCpuIsDerivedFromExistingBatterySamples() {
+        val summary =
+            EnergyDiagnostics.summarizeLines(
+                listOf(
+                    batteryLine(
+                        atMs = 1_000L,
+                        currentUa = -10_000,
+                        chargeCounterUah = 100_000,
+                        detail = "procCpuMs=120",
+                    ),
+                    batteryLine(
+                        atMs = 61_000L,
+                        currentUa = -10_000,
+                        chargeCounterUah = 99_000,
+                        detail = "procCpuMs=420",
+                    ),
+                ),
+            )
+
+        val cpu = checkNotNull(summary.processCpu)
+        assertEquals(2, cpu.sampleCount)
+        assertEquals(60_000L, cpu.wallDurationMs)
+        assertEquals(300L, cpu.processCpuDurationMs)
+        assertEquals(0.5, checkNotNull(cpu.averageCoreUtilizationPct), 0.001)
+    }
+
     @Suppress("LongParameterList")
     private fun batteryLine(
         atMs: Long,

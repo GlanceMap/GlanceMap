@@ -629,15 +629,8 @@ internal fun resolveHeadingAnimationDelta(
                 activeTurn = activeTurn,
                 frameDeltaMs = frameDeltaMs,
             )
-    val maximumStepDeg =
-        (
-            HEADING_ANIMATION_MAX_STEP_DEG *
-                frameDeltaMs.coerceIn(
-                    minimumValue = HEADING_ANIMATION_MIN_FRAME_DELTA_MS,
-                    maximumValue = HEADING_ANIMATION_MAX_FRAME_DELTA_MS,
-                ) /
-                HEADING_ANIMATION_NOMINAL_FRAME_DELTA_MS
-        )
+    // A delayed frame must not turn a transient provider jump into a visible snap.
+    val maximumStepDeg = HEADING_ANIMATION_MAX_STEP_DEG
     return animatedDelta.coerceIn(
         minimumValue = -maximumStepDeg,
         maximumValue = maximumStepDeg,
@@ -699,7 +692,7 @@ private const val ACTIVE_TURN_LARGE_ERROR_DEG = 25f
 private const val HEADING_ANIMATION_NOMINAL_FRAME_DELTA_MS = 16.666_667f
 private const val HEADING_ANIMATION_MIN_FRAME_DELTA_MS = 4f
 private const val HEADING_ANIMATION_MAX_FRAME_DELTA_MS = 50f
-private const val HEADING_ANIMATION_MAX_STEP_DEG = 12f
+private const val HEADING_ANIMATION_MAX_STEP_DEG = 10f
 private const val NANOS_PER_MILLISECOND = 1_000_000.0
 
 // Enter turning mode promptly, then leave only after angular movement stays low. This prevents a

@@ -209,6 +209,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                     onPreviousPage = { expandedPageIndex = (expandedPageIndex - 1).coerceAtLeast(0) },
                     onNextPage = { expandedPageIndex = (expandedPageIndex + 1).coerceAtMost(expandedPageCount - 1) },
                     onShowActions = { showActionPrompt = true },
+                    onDismiss = { expanded = false },
                     telemetryTag = "TurnByTurn",
                 ) {
                     if (expandedPageIndex == 0) {
@@ -534,6 +535,30 @@ private fun ExpandedGuidanceOverlay(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (showRouteProgressDetails) {
+                    guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
+                        Spacer(modifier = Modifier.size(2.dp))
+                        Text(
+                            text = terrain.label,
+                            color = Color.White.copy(alpha = 0.82f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = terrain.detail,
+                            color = Color.White.copy(alpha = 0.72f),
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (showRouteProgressDetails) {
                     guidanceFollowingText(state, isMetric)?.let { followingText ->
                         Spacer(modifier = Modifier.size(2.dp))

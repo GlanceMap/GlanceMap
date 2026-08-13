@@ -423,6 +423,31 @@ internal class LocationServiceTelemetry(
         )
     }
 
+    fun logWatchGpsRecoveryRequested(
+        fixGapMs: Long,
+        staleThresholdMs: Long,
+        expectedIntervalMs: Long,
+        timeoutMs: Long,
+    ) {
+        log(
+            "watchGpsRecovery: requested fixGapMs=$fixGapMs staleThresholdMs=$staleThresholdMs " +
+                "expectedIntervalMs=$expectedIntervalMs timeoutMs=$timeoutMs",
+        )
+    }
+
+    fun logWatchGpsRecoveryOutcome(
+        outcome: String,
+        reason: String,
+        durationMs: Long,
+        fixAgeMs: Long?,
+        accuracyM: Float?,
+    ) {
+        log(
+            "watchGpsRecovery: outcome=$outcome reason=$reason durationMs=$durationMs " +
+                "fixAgeMs=${fixAgeMs ?: "na"} accuracyM=${accuracyM?.format(1) ?: "na"}",
+        )
+    }
+
     fun logAvailabilityRecoveryTriggered(
         unavailableForMs: Long,
         staleThresholdMs: Long,
@@ -543,6 +568,18 @@ internal class LocationServiceTelemetry(
             "sourceFailover: watch_gps->auto_fused reason=$reason " +
                 "fallbackDurationMs=$fallbackDurationMs fixGapMs=$fixGapMs " +
                 "expectedIntervalMs=$expectedIntervalMs",
+        )
+    }
+
+    fun logAutoFusedRecoveryProbeFailed(
+        reason: String,
+        fallbackDurationMs: Long,
+        accuracyM: Float?,
+    ) {
+        log(
+            "sourceFailover: auto_fused->watch_gps reason=recovery_probe_$reason " +
+                "fallbackDurationMs=$fallbackDurationMs " +
+                "accuracyM=${accuracyM?.takeIf { it.isFinite() }?.format(1) ?: "na"}",
         )
     }
 

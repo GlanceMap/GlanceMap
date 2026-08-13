@@ -5,6 +5,8 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 
 data object RecordingLocationStartWarning
 
+internal const val RECORDING_START_PENDING_MESSAGE = "Starting REC…"
+
 internal fun isRecordingStartLocationReady(
     hasUsableLocation: Boolean,
     gpsSignalSnapshot: GpsSignalSnapshot,

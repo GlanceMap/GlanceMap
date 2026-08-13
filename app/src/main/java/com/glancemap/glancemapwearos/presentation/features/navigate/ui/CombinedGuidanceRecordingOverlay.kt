@@ -282,6 +282,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
                         }
                     },
                     onShowActions = { showActions = true },
+                    onDismiss = { expanded = false },
                     onVoiceGuidanceChange = onVoiceGuidanceChange,
                     onGuideBackToRoute = onGuideBackToRoute,
                     onDismissGuideBackPrompt = onDismissGuideBackPrompt,
@@ -536,6 +537,7 @@ private fun CombinedFullscreenDashboard(
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
     onShowActions: () -> Unit,
+    onDismiss: () -> Unit,
     onVoiceGuidanceChange: (Boolean) -> Unit,
     onGuideBackToRoute: () -> Unit,
     onDismissGuideBackPrompt: () -> Unit,
@@ -550,6 +552,7 @@ private fun CombinedFullscreenDashboard(
         onPreviousPage = onPreviousPage,
         onNextPage = onNextPage,
         onShowActions = onShowActions,
+        onDismiss = onDismiss,
         telemetryTag = "TurnByTurn",
     ) {
         if (pageIndex == 0) {
@@ -718,6 +721,30 @@ private fun CombinedGuidancePage(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (showRouteProgressDetails) {
+                    guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
+                        Spacer(modifier = Modifier.size(2.dp))
+                        Text(
+                            text = terrain.label,
+                            color = Color.White.copy(alpha = 0.82f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = terrain.detail,
+                            color = Color.White.copy(alpha = 0.72f),
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (showRouteProgressDetails) {
                     guidanceFollowingText(state, isMetric)?.let { followingText ->
                         Spacer(modifier = Modifier.size(2.dp))

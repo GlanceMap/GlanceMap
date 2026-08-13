@@ -113,7 +113,10 @@ fun DebuggingSettingsScreen(
     val diagnosticsCaptureMode by viewModel.diagnosticsCaptureMode.collectAsState()
     val gpsPassiveLocationExperiment by viewModel.gpsPassiveLocationExperiment.collectAsState()
     val backButtonExitsNavigation by viewModel.backButtonExitsNavigation.collectAsState()
-    val gpsDebugTelemetryPopupEnabled by viewModel.gpsDebugTelemetryPopupEnabled.collectAsState(initial = true)
+    val gpsDebugTelemetryPopupEnabled by
+        viewModel.gpsDebugTelemetryPopupEnabled.collectAsState(
+            initial = SettingsRepository.DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED,
+        )
     val turnByTurnGuidanceSource by viewModel.turnByTurnGuidanceSource.collectAsState()
     val turnByTurnHapticsEnabled by viewModel.turnByTurnHapticsEnabled.collectAsState()
     val turnByTurnVoiceGuidanceEnabled by viewModel.turnByTurnVoiceGuidanceEnabled.collectAsState()

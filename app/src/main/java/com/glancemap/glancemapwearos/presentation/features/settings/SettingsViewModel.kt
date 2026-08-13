@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -88,11 +89,28 @@ class SettingsViewModel(
 
     val gpsDebugTelemetryPopupEnabled: StateFlow<Boolean> =
         settingsRepository.gpsDebugTelemetryPopupEnabled
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED,
+            )
 
     fun setGpsDebugTelemetryPopupEnabled(enabled: Boolean) =
         viewModelScope.launch {
             settingsRepository.setGpsDebugTelemetryPopupEnabled(enabled)
+        }
+
+    val gpsUsageProfile: StateFlow<String> =
+        settingsRepository.gpsUsageProfile
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_GPS_USAGE_PROFILE,
+            )
+
+    fun setGpsUsageProfile(profile: String) =
+        viewModelScope.launch {
+            settingsRepository.setGpsUsageProfile(profile)
         }
 
     val recordingSampleIntervalSeconds: StateFlow<Int> =
@@ -108,6 +126,14 @@ class SettingsViewModel(
             settingsRepository.setRecordingSampleIntervalSeconds(seconds)
         }
 
+    val recordingScreenOnFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.recordingScreenOnFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+            )
+
     val recordingScreenOffSampleIntervalSeconds: StateFlow<Int> =
         settingsRepository.recordingScreenOffSampleIntervalSeconds
             .stateIn(
@@ -120,6 +146,14 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setRecordingScreenOffSampleIntervalSeconds(seconds)
         }
+
+    val recordingScreenOffFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.recordingScreenOffFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS,
+            )
 
     val recordingAutoPauseMode: StateFlow<String> =
         settingsRepository.recordingAutoPauseMode
@@ -145,6 +179,34 @@ class SettingsViewModel(
     fun setRecordingTrackSmoothingMode(mode: String) =
         viewModelScope.launch {
             settingsRepository.setRecordingTrackSmoothingMode(mode)
+        }
+
+    val recordingProgressVibrationSettings: StateFlow<RecordingProgressVibrationSettings> =
+        settingsRepository.recordingProgressVibrationSettings
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                RecordingProgressVibrationSettings(),
+            )
+
+    fun setRecordingProgressVibrationDistanceEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationDistanceEnabled(enabled)
+        }
+
+    fun setRecordingProgressVibrationDistanceMeters(distanceMeters: Int) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationDistanceMeters(distanceMeters)
+        }
+
+    fun setRecordingProgressVibrationTimeEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationTimeEnabled(enabled)
+        }
+
+    fun setRecordingProgressVibrationTimeMinutes(timeMinutes: Int) =
+        viewModelScope.launch {
+            settingsRepository.setRecordingProgressVibrationTimeMinutes(timeMinutes)
         }
 
     val recordingElevationSource: StateFlow<String> =
@@ -466,6 +528,14 @@ class SettingsViewModel(
             settingsRepository.setTurnByTurnGpsIntervalSeconds(seconds)
         }
 
+    val turnByTurnScreenOnFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.turnByTurnScreenOnFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS,
+            )
+
     val turnByTurnScreenOffGpsIntervalSeconds: StateFlow<Int> =
         settingsRepository.turnByTurnScreenOffGpsIntervalSeconds
             .stateIn(
@@ -478,6 +548,14 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setTurnByTurnScreenOffGpsIntervalSeconds(seconds)
         }
+
+    val turnByTurnScreenOffFixedGpsIntervalSeconds: StateFlow<Int> =
+        settingsRepository.turnByTurnScreenOffFixedGpsIntervalSeconds
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_SCREEN_OFF_FIXED_GPS_INTERVAL_SECONDS,
+            )
 
     val turnByTurnBrouterGuideBackEnabled: StateFlow<Boolean> =
         settingsRepository.turnByTurnBrouterGuideBackEnabled

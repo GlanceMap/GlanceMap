@@ -34,7 +34,6 @@ import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupReason
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
-import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_WAKE_REFRESH_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCalibrationEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassWakeTelemetry
@@ -289,7 +288,6 @@ fun NavigateScreen(
                 turnByTurnPaused = turnByTurnGuidancePaused,
                 turnByTurnGpsInAmbient = turnByTurnScreenOffGpsEnabled,
                 locationViewModel = locationViewModel,
-                traceRecordingViewModel = traceRecordingViewModel,
             )
         val screenState = runtimeState.screenState
         val shouldTrackLocation = runtimeState.shouldTrackLocation
@@ -726,6 +724,31 @@ fun NavigateScreen(
                 gpxUphillVerticalMetersPerHour = gpxUphillVerticalMetersPerHour,
                 gpxDownhillVerticalMetersPerHour = gpxDownhillVerticalMetersPerHour,
             )
+        val adaptiveTurnByTurnScreenOffIntervalMs =
+            if (
+                turnByTurnScreenOffGpsIntervalSeconds ==
+                SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS &&
+                screenState.isNonInteractive &&
+                activeTurnByTurnGuidanceSession != null
+            ) {
+                resolveAdaptiveTurnByTurnScreenOffIntervalMs(
+                    state = guidanceRuntime.state,
+                    currentSpeedMps = rawCurrentLocation?.speed,
+                    activityProfile = activityProfile,
+                )
+            } else {
+                null
+            }
+        LaunchedEffect(adaptiveTurnByTurnScreenOffIntervalMs) {
+            locationViewModel.setTurnByTurnScreenOffIntervalOverride(
+                intervalMs = adaptiveTurnByTurnScreenOffIntervalMs,
+            )
+        }
+        DisposableEffect(locationViewModel) {
+            onDispose {
+                locationViewModel.setTurnByTurnScreenOffIntervalOverride(intervalMs = null)
+            }
+        }
 
         LaunchedEffect(
             effectiveNavigationMarkerAnchorMode,
@@ -1044,7 +1067,8 @@ fun NavigateScreen(
             turnByTurnGuidancePaused = turnByTurnGuidancePaused,
             turnByTurnPausedTrackTitle = turnByTurnGuidanceSession?.trackTitle,
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
-            turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+            turnByTurnCompactPopupEnabled =
+                turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
             onTurnByTurnVoiceGuidanceChange = settingsViewModel::setTurnByTurnVoiceGuidanceEnabled,
             guideBackToRouteActive = guidanceRuntime.guideBackToRouteActive,
             showGuideBackPrompt = guidanceRuntime.showGuideBackPrompt,
@@ -1197,6 +1221,8 @@ private fun screenOffGpsIntervalMs(
     screenOffSeconds: Int,
 ): Long =
     when (screenOffSeconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> screenOnIntervalMs
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> SettingsRepository.DEFAULT_GPS_INTERVAL_MS
         else -> gpsIntervalMsOrDefault(screenOffSeconds)

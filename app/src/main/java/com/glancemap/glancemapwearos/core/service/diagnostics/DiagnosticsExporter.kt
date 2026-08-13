@@ -121,6 +121,38 @@ object DiagnosticsExporter {
         val smoothedPointCount: Int? = null,
         val smoothedAdjustmentMeters: String? = null,
         val maxSmoothedAdjustmentMeters: String? = null,
+        val smartTrack: RecordingSmartTrackInsights = RecordingSmartTrackInsights(),
+    )
+
+    internal data class RecordingSmartTrackInsights(
+        val motionEvaluatedFixCount: Int? = null,
+        val acceptedReportedSpeedCount: Int? = null,
+        val acceptedSensorCount: Int? = null,
+        val acceptedConfirmedSlowCount: Int? = null,
+        val suppressedStationaryCount: Int? = null,
+        val heldSlowCount: Int? = null,
+        val segmentStartBypassCount: Int? = null,
+        val stepMotionEvidenceCount: Int? = null,
+        val cadenceMotionEvidenceCount: Int? = null,
+        val speedAboveThresholdCount: Int? = null,
+        val credibleSpeedCount: Int? = null,
+        val noMotionSensorDataCount: Int? = null,
+        val stationaryRadiusSampleCount: Int? = null,
+        val stationaryRadiusAvgMeters: String? = null,
+        val stationaryRadiusMaxMeters: String? = null,
+        val nonAcceptedDisplacementSampleCount: Int? = null,
+        val nonAcceptedDisplacementAvgMeters: String? = null,
+        val nonAcceptedDisplacementMaxMeters: String? = null,
+        val poorAccuracyRejectedCount: Int? = null,
+        val nonMonotonicRejectedCount: Int? = null,
+        val implausibleJumpHeldCount: Int? = null,
+        val confirmedSustainedMovementCount: Int? = null,
+        val adaptiveAccuracyFixCount: Int? = null,
+        val accuracyBaselineSampleCount: Int? = null,
+        val accuracyBaselineMedianMeters: String? = null,
+        val accuracyProfileLimitMeters: String? = null,
+        val accuracyResolvedLimitMeters: String? = null,
+        val adaptiveAccuracyLimitActive: Boolean? = null,
     )
 
     internal data class TelemetryInsights(
@@ -380,6 +412,12 @@ object DiagnosticsExporter {
         val managerStartCount: Int = 0,
         val managerStopScheduledCount: Int = 0,
         val managerStopRequestedCount: Int = 0,
+        val rotationSettleSessionStartCount: Int = 0,
+        val rotationSettleHoldCount: Int = 0,
+        val rotationSettleUnlockCount: Int = 0,
+        val rotationSettleHoldReasons: String = "none",
+        val rotationSettleUnlockReasons: String = "none",
+        val rotationSettleHoldMaxHeadingDeltaDeg: Float? = null,
         val headingSampleCount: Int = 0,
         val headingDiagnosticSampleCount: Int = 0,
         val largeJumpPendingCount: Int = 0,
@@ -468,6 +506,8 @@ object DiagnosticsExporter {
         val collectorUnregisteredCount: Int = 0,
         val collectorInactiveCount: Int = 0,
         val collectorPolicyDisabledCount: Int = 0,
+        val usedZeroWithFreshLocationCount: Int = 0,
+        val signalsWithoutFreshLocationCount: Int = 0,
     )
 
     internal data class AcceptedFixSummary(
@@ -762,6 +802,12 @@ object DiagnosticsExporter {
             writer.appendLine("turnByTurnGpsIntervalSeconds=${settings.turnByTurnGpsIntervalSeconds}")
             writer.appendLine(
                 "turnByTurnScreenOffGpsIntervalSeconds=${settings.turnByTurnScreenOffGpsIntervalSeconds}",
+            )
+            writer.appendLine(
+                "turnByTurnScreenOffGpsAdaptive=${
+                    settings.turnByTurnScreenOffGpsIntervalSeconds ==
+                        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
+                }",
             )
             writer.appendLine("turnByTurnHapticsEnabled=${settings.turnByTurnHapticsEnabled}")
             writer.appendLine("turnByTurnVoiceGuidanceEnabled=${settings.turnByTurnVoiceGuidanceEnabled}")
@@ -1104,6 +1150,24 @@ object DiagnosticsExporter {
             writer.appendLine("managerStartCount=${compassTelemetryInsights.managerStartCount}")
             writer.appendLine("managerStopScheduledCount=${compassTelemetryInsights.managerStopScheduledCount}")
             writer.appendLine("managerStopRequestedCount=${compassTelemetryInsights.managerStopRequestedCount}")
+            writer.appendLine(
+                "rotationSettleSessionStartCount=${compassTelemetryInsights.rotationSettleSessionStartCount}",
+            )
+            writer.appendLine("rotationSettleHoldCount=${compassTelemetryInsights.rotationSettleHoldCount}")
+            writer.appendLine("rotationSettleUnlockCount=${compassTelemetryInsights.rotationSettleUnlockCount}")
+            writer.appendLine(
+                "rotationSettleHoldReasons=${compassTelemetryInsights.rotationSettleHoldReasons}",
+            )
+            writer.appendLine(
+                "rotationSettleUnlockReasons=${compassTelemetryInsights.rotationSettleUnlockReasons}",
+            )
+            writer.appendLine(
+                "rotationSettleHoldMaxHeadingDeltaDeg=${
+                    compassTelemetryInsights.rotationSettleHoldMaxHeadingDeltaDeg?.let {
+                        TelemetryFormatters.decimal(it, 1)
+                    } ?: "na"
+                }",
+            )
             writer.appendLine("headingSampleCount=${compassTelemetryInsights.headingSampleCount}")
             writer.appendLine(
                 "headingDiagnosticSampleCount=${compassTelemetryInsights.headingDiagnosticSampleCount}",
@@ -1597,6 +1661,10 @@ object DiagnosticsExporter {
                 "recordingMaxSmoothedAdjustmentMeters=${
                     telemetryInsights.recordingTrackFilter.maxSmoothedAdjustmentMeters ?: "na"
                 }",
+            )
+            writeRecordingSmartTrackSection(
+                writer = writer,
+                insights = telemetryInsights.recordingTrackFilter.smartTrack,
             )
             writer.appendLine(
                 "recordingLastSkippedIntervalElapsedMs=${

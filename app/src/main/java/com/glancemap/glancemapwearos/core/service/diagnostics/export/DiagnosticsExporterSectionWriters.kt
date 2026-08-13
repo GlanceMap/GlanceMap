@@ -38,6 +38,10 @@ internal fun Appendable.writeEnergyByModeSummarySection(energySummary: EnergyDia
     writeScreenStateEnergyAttribution(energySummary.screenStateEnergy)
     appendLine()
     writeGpsRuntimeSummary(energySummary.gpsRuntime)
+    appendLine()
+    writeProcessCpuSummary(energySummary.processCpu)
+    appendLine()
+    writeRuntimeAttributionSummary(energySummary.runtimeAttribution)
 }
 
 internal fun Appendable.writeScreenStateSummarySection(summary: ScreenStateDiagnostics.Summary) {
@@ -145,6 +149,45 @@ private fun Appendable.writeGpsRuntimeStats(
     )
 }
 
+private fun Appendable.writeProcessCpuSummary(stats: EnergyDiagnostics.ProcessCpuStats?) {
+    appendLine("Process CPU Summary")
+    if (stats == null) {
+        appendLine("processCpuSampling=unavailable")
+        return
+    }
+    appendLine("processCpuSampleCount=${stats.sampleCount}")
+    appendLine("processCpuWallDurationMs=${stats.wallDurationMs}")
+    appendLine("processCpuDurationMs=${stats.processCpuDurationMs}")
+    appendLine(
+        "processCpuAverageCoreUtilizationPct=" +
+            TelemetryFormatters.decimalOrNa(stats.averageCoreUtilizationPct, 2),
+    )
+}
+
+private fun Appendable.writeRuntimeAttributionSummary(
+    summary: EnergyDiagnostics.RuntimeAttributionSummary,
+) {
+    appendLine("Passive Runtime Attribution")
+    writeDurationStats(prefix = "partialWakeLock", stats = summary.partialWakeLocks)
+    writeDurationStats(prefix = "recordingSensor", stats = summary.recordingSensors)
+}
+
+private fun Appendable.writeDurationStats(
+    prefix: String,
+    stats: Map<String, EnergyDiagnostics.DurationStats>,
+) {
+    if (stats.isEmpty()) {
+        appendLine("$prefix=none")
+        return
+    }
+    stats.forEach { (token, duration) ->
+        appendLine(
+            "$prefix[$token]=activations=${duration.activationCount} " +
+                "observedDurationMs=${duration.observedDurationMs} activeCount=${duration.activeCount}",
+        )
+    }
+}
+
 internal fun Appendable.writeDemDownloadSections(
     demDownloadSummary: DemDownloadSummary,
     demDownloadLines: List<String>,
@@ -215,6 +258,8 @@ internal fun Appendable.writeGnssSections(
     appendLine("collectorUnregisteredCount=${gnssInsights.collectorUnregisteredCount}")
     appendLine("collectorInactiveCount=${gnssInsights.collectorInactiveCount}")
     appendLine("collectorPolicyDisabledCount=${gnssInsights.collectorPolicyDisabledCount}")
+    appendLine("usedZeroWithFreshLocationCount=${gnssInsights.usedZeroWithFreshLocationCount}")
+    appendLine("signalsWithoutFreshLocationCount=${gnssInsights.signalsWithoutFreshLocationCount}")
     appendLine("l1SatelliteMax=${if (gnssInsights.statusSampleCount > 0) gnssInsights.l1SatelliteMax else "na"}")
     appendLine("l5SatelliteMax=${if (gnssInsights.statusSampleCount > 0) gnssInsights.l5SatelliteMax else "na"}")
     writeLineDumpSection(

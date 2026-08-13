@@ -75,9 +75,9 @@ internal data class RecordingTraceRenderState(
 )
 
 /**
- * Keeps the newest canonical recording fix out of the visual live tail. The saved GPX remains
- * untouched, while the line displayed on the map ends at the smoothly rendered marker instead
- * of appearing ahead of it.
+ * Keeps every canonical point that can still be revised out of the visual trace. The saved GPX
+ * remains untouched, while the line displayed on the map ends at the smoothly rendered marker
+ * instead of shifting sideways when the recording filter corrects its tail.
  */
 internal fun recordingTraceRenderState(
     segments: List<List<LatLong>>,
@@ -87,14 +87,16 @@ internal fun recordingTraceRenderState(
         RecordingTraceRenderState(segments = segments, liveTailStart = null)
     } else {
         val lastSegment = segments.last()
+        val stablePointCount =
+            (lastSegment.size - RECORDING_TRACE_REVISION_TAIL_POINT_COUNT).coerceAtLeast(0)
         RecordingTraceRenderState(
             segments =
                 buildList {
                     addAll(segments.dropLast(1))
-                    add(lastSegment.dropLast(1))
+                    add(lastSegment.take(stablePointCount))
                 },
             liveTailStart =
-                lastSegment.getOrNull(lastSegment.lastIndex - 1)
+                lastSegment.getOrNull(stablePointCount - 1)
                     ?: lastSegment.first(),
         )
     }
@@ -225,3 +227,4 @@ private fun sameLatLongs(
 }
 
 private const val MIN_RECORDING_TRACE_POINTS = 2
+private const val RECORDING_TRACE_REVISION_TAIL_POINT_COUNT = 2

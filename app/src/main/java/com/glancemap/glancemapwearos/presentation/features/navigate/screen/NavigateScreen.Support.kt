@@ -248,8 +248,6 @@ internal fun poiFocusZoomLevel(
 internal const val COMPASS_QUALITY_STARTUP_GRACE_MS = 2_200L
 internal const val COMPASS_POST_CALIBRATION_GREEN_HOLD_MS = 5_000L
 internal const val COMPASS_POST_CALIBRATION_UNRELIABLE_FLOOR_MS = 12_000L
-internal const val NAVIGATE_WAKE_REACQUIRE_AMBIENT_EXIT_SOURCE = "ui_startup_fresh_fix_ambient_exit"
-
 internal const val POI_FOCUS_TARGET_SCALE_METERS = 500.0
 internal const val POI_SCALE_INDICATOR_TARGET_RATIO = 0.28
 internal const val METERS_PER_PIXEL_EQUATOR_ZOOM_0 = 156543.03392804097

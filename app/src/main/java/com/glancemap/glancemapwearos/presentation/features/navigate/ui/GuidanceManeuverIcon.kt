@@ -1,16 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowLeft
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.TurnLeft
 import androidx.compose.material.icons.filled.TurnRight
-import androidx.compose.material.icons.filled.TurnSharpLeft
-import androidx.compose.material.icons.filled.TurnSharpRight
 import androidx.compose.material.icons.filled.TurnSlightLeft
 import androidx.compose.material.icons.filled.TurnSlightRight
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -71,26 +74,60 @@ private fun ManeuverArrow(
     tint: Color,
     modifier: Modifier,
 ) {
-    Icon(
-        imageVector = command.maneuverIcon(),
-        contentDescription = command.maneuverContentDescription(),
-        tint = tint,
-        modifier = modifier,
-    )
+    if (command.isSharpTurn()) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = command.maneuverIcon(),
+                contentDescription = command.maneuverContentDescription(),
+                tint = tint,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Icon(
+                imageVector = command.sharpTurnChevronIcon(),
+                contentDescription = null,
+                tint = tint,
+                modifier =
+                    Modifier
+                        .align(command.sharpTurnChevronAlignment())
+                        .fillMaxSize(SHARP_TURN_CHEVRON_SIZE_FRACTION),
+            )
+        }
+    } else {
+        Icon(
+            imageVector = command.maneuverIcon(),
+            contentDescription = command.maneuverContentDescription(),
+            tint = tint,
+            modifier = modifier,
+        )
+    }
 }
 
 private fun RouteInstructionCommand?.maneuverIcon(): ImageVector =
     when (this) {
         RouteInstructionCommand.SLIGHT_LEFT -> Icons.Default.TurnSlightLeft
         RouteInstructionCommand.LEFT -> Icons.Default.TurnLeft
-        RouteInstructionCommand.SHARP_LEFT -> Icons.Default.TurnSharpLeft
+        RouteInstructionCommand.SHARP_LEFT -> Icons.Default.TurnLeft
         RouteInstructionCommand.SLIGHT_RIGHT -> Icons.Default.TurnSlightRight
         RouteInstructionCommand.RIGHT -> Icons.Default.TurnRight
-        RouteInstructionCommand.SHARP_RIGHT -> Icons.Default.TurnSharpRight
+        RouteInstructionCommand.SHARP_RIGHT -> Icons.Default.TurnRight
         RouteInstructionCommand.CONTINUE,
         RouteInstructionCommand.FINISH,
         null,
         -> Icons.Default.Straight
+    }
+
+private fun RouteInstructionCommand?.isSharpTurn(): Boolean = this == RouteInstructionCommand.SHARP_LEFT || this == RouteInstructionCommand.SHARP_RIGHT
+
+private fun RouteInstructionCommand?.sharpTurnChevronIcon(): ImageVector =
+    when (this) {
+        RouteInstructionCommand.SHARP_LEFT -> Icons.Default.KeyboardDoubleArrowLeft
+        else -> Icons.Default.KeyboardDoubleArrowRight
+    }
+
+private fun RouteInstructionCommand?.sharpTurnChevronAlignment(): Alignment =
+    when (this) {
+        RouteInstructionCommand.SHARP_LEFT -> Alignment.TopStart
+        else -> Alignment.TopEnd
     }
 
 private fun RouteInstructionCommand?.maneuverContentDescription(): String =
@@ -106,3 +143,5 @@ private fun RouteInstructionCommand?.maneuverContentDescription(): String =
         null,
         -> "Continue straight"
     }
+
+private const val SHARP_TURN_CHEVRON_SIZE_FRACTION = 0.42f

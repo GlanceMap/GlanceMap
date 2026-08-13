@@ -48,6 +48,7 @@ class TraceRecordingDraftStore(
                                     powerWatts = pointJson.optionalInt("powerWatts"),
                                     barometricPressureHpa = pointJson.optionalDouble("barometricPressureHpa"),
                                     startsNewSegment = pointJson.optBoolean("startsNewSegment", false),
+                                    segmentStartReason = pointJson.optionalString("segmentStartReason"),
                                 ),
                             )
                         }
@@ -172,6 +173,7 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("powerWatts", powerWatts ?: JSONObject.NULL)
         .put("barometricPressureHpa", barometricPressureHpa ?: JSONObject.NULL)
         .put("startsNewSegment", startsNewSegment)
+        .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
 
 private fun JSONObject.optionalDouble(key: String): Double? =
     if (isNull(key)) {

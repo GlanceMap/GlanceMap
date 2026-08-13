@@ -8,6 +8,7 @@ internal data class GpsSettingsState(
     val recordingScreenOffIntervalMs: Long,
     val turnByTurnIntervalMs: Long,
     val turnByTurnScreenOffIntervalMs: Long,
+    val turnByTurnScreenOffIntervalAdaptive: Boolean,
     val turnByTurnScreenOffBatchingEnabled: Boolean,
     val ambientGps: Boolean,
     val debugTelemetry: Boolean,

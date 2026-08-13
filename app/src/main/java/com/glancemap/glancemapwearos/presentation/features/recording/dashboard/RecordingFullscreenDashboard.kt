@@ -30,6 +30,7 @@ internal fun ExpandedRecordingDashboard(
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
     onShowActions: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val contentWidthFraction =
         when (screenSize) {
@@ -55,6 +56,7 @@ internal fun ExpandedRecordingDashboard(
         onPreviousPage = onPreviousPage,
         onNextPage = onNextPage,
         onShowActions = onShowActions,
+        onDismiss = onDismiss,
     ) {
         cappedFontScale(maxFontScale = 1f) {
             Column(

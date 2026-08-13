@@ -365,10 +365,10 @@ class NavigateEffectsSupportTest {
                 targetAngleDeg = 90f,
             )
 
-        assertEquals(12f, firstAppliedAngle, 0f)
-        assertEquals(24f, secondAppliedAngle, 0f)
+        assertEquals(10f, firstAppliedAngle, 0f)
+        assertEquals(20f, secondAppliedAngle, 0f)
         assertEquals(
-            362f,
+            360f,
             resolveCompassVisualTargetAngle(
                 currentAngleDeg = 350f,
                 targetAngleDeg = 10f,
@@ -376,7 +376,7 @@ class NavigateEffectsSupportTest {
             0f,
         )
         assertEquals(
-            8f,
+            10f,
             resolveCompassVisualTargetAngle(
                 currentAngleDeg = 20f,
                 targetAngleDeg = 350f,
@@ -388,11 +388,20 @@ class NavigateEffectsSupportTest {
     @Test
     fun normalHeadingAnimationRejectsSingleFrameThirtyDegreeSweep() {
         assertEquals(
-            12f,
+            10f,
             resolveHeadingAnimationDelta(
                 diffDeg = 40f,
                 activeTurn = true,
                 frameDeltaMs = 16.667f,
+            ),
+            0.01f,
+        )
+        assertEquals(
+            10f,
+            resolveHeadingAnimationDelta(
+                diffDeg = 40f,
+                activeTurn = true,
+                frameDeltaMs = 50f,
             ),
             0.01f,
         )

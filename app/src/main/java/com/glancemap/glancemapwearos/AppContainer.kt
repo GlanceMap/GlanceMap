@@ -170,6 +170,7 @@ class DefaultAppContainer(
                 syncManager = syncManager,
                 elevationProvider = RecordingElevationProvider(applicationContext),
                 draftStore = TraceRecordingDraftStore(applicationContext),
+                applicationContext = applicationContext,
             )
         startRecordingLocationBridge(viewModel)
         viewModel

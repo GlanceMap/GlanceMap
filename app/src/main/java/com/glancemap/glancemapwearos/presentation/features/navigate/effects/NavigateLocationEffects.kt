@@ -740,8 +740,11 @@ internal fun rememberNavigateLocationUiState(
                 val displayLatLong = motionUpdate.displayedLatLong
                 markerMotionSignal.trySend(Unit)
                 if (motionUpdate.fixAccepted) {
-                    latestAcceptedFixSpeedMps = motionSpeedMps ?: 0f
-                    latestAcceptedFixBearingDeg = motionBearingDeg
+                    // The map rotation fallback must follow the same validated movement that
+                    // drives the marker. Raw Android bearing can be stale or noisy exactly
+                    // when the compass is unavailable.
+                    latestAcceptedFixSpeedMps = motionUpdate.resolvedSpeedMps
+                    latestAcceptedFixBearingDeg = motionUpdate.resolvedBearingDeg
                     lastAcceptedLocationFixElapsedMs =
                         fixElapsedMs.takeIf { it > 0L } ?: receivedAtElapsedMs
                 }
@@ -1061,7 +1064,7 @@ internal fun rememberNavigateLocationUiState(
 }
 
 private const val WAKE_REACQUIRE_TIMEOUT_MS = 6_000L
-private const val WAKE_REACQUIRE_COOLDOWN_MS = 60_000L
+private const val WAKE_REACQUIRE_COOLDOWN_MS = 6_000L
 private const val POST_WAKE_PREDICTION_GRACE_MS = 700L
 private const val INTERACTIVE_STALE_REFRESH_CHECK_MS = 1_000L
 private const val INTERACTIVE_STALE_REFRESH_MIN_FIX_AGE_MS = 2_500L

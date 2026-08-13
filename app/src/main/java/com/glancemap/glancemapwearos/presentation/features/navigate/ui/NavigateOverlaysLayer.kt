@@ -152,6 +152,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
     turnByTurnFullScreenExpanded: Boolean,
     recordingDashboardFullScreenExpanded: Boolean,
+    combinedGuidanceRecordingFullScreenExpanded: Boolean,
     guideBackToRouteActive: Boolean,
     showGuideBackPrompt: Boolean,
     startDecisionPrompt: GuidanceDecisionPrompt?,
@@ -160,6 +161,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onStopTurnByTurnGuidance: () -> Unit,
     onTurnByTurnExpandedChange: (Boolean) -> Unit,
     onRecordingExpandedChange: (Boolean) -> Unit,
+    onCombinedGuidanceRecordingExpandedChange: (Boolean) -> Unit,
     onGuideBackToRoute: () -> Unit,
     onDismissGuideBackPrompt: () -> Unit,
     onAcceptStartDecisionPrompt: () -> Unit,
@@ -169,7 +171,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
         remember(mapView, locationMarker, lastKnownLocation) {
             mutableStateOf<Offset?>(null)
         }
-    var combinedGuidanceRecordingFullScreenExpanded by remember { mutableStateOf(false) }
     var showRouteCompleteRecordingPrompt by remember(traceRecordingState.startedAtMillis) {
         mutableStateOf(false)
     }
@@ -585,9 +586,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         onMetricSelected = onRecordingMetricSelected,
         onGuidanceMetricSelected = onTurnByTurnMetricSelected,
         onExpandedChange = { expanded ->
-            combinedGuidanceRecordingFullScreenExpanded = expanded
-            onTurnByTurnExpandedChange(expanded)
-            onRecordingExpandedChange(expanded)
+            onCombinedGuidanceRecordingExpandedChange(expanded)
         },
     )
 }

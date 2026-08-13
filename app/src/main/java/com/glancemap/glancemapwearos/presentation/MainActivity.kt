@@ -49,6 +49,7 @@ import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.GpsAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpsSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxAppearanceSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxSettingsScreen
@@ -58,6 +59,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.MapDisplaySe
 import com.glancemap.glancemapwearos.presentation.features.settings.MapSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapZoomSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.PoiSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.RecordingAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingBikeSensorSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingDashboardSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingExternalSensorsScreen
@@ -145,6 +147,7 @@ class MainActivity : ComponentActivity() {
             val recordingScreenOffSampleIntervalSeconds by appContainer.settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
             val turnByTurnGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
             val turnByTurnScreenOffGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+            val recordingElevationSource by appContainer.settingsViewModel.recordingElevationSource.collectAsState()
             val recordingHeartRateSource by appContainer.settingsViewModel.recordingHeartRateSource.collectAsState()
             val recordingCadenceSource by appContainer.settingsViewModel.recordingCadenceSource.collectAsState()
             val recordingSpeedSource by appContainer.settingsViewModel.recordingSpeedSource.collectAsState()
@@ -187,6 +190,7 @@ class MainActivity : ComponentActivity() {
                     active = traceRecordingState.active,
                     paused = traceRecordingState.paused,
                     selectedMetricIds = recordingDashboardMetricSlots,
+                    elevationSource = recordingElevationSource,
                     heartRateSource = recordingHeartRateSource,
                     cadenceSource = recordingCadenceSource,
                     speedSource = recordingSpeedSource,
@@ -586,6 +590,27 @@ class MainActivity : ComponentActivity() {
                                             restoreState = true
                                         }
                                     },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.GPS_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.GPS_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                GpsAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenGpsSettings = {
+                                        navController.navigate(WatchRoutes.GPS_SETTINGS) {
+                                            popUpTo(WatchRoutes.GPS_SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -631,6 +656,27 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onOpenDashboardSettings = {
                                         navController.navigate(WatchRoutes.RECORDING_DASHBOARD_SETTINGS)
+                                    },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.RECORDING_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                RecordingAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenRecordingSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_SETTINGS) {
+                                            popUpTo(WatchRoutes.RECORDING_SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     },
                                 )
                             }

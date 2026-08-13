@@ -167,9 +167,9 @@ fun RecordingSourceSettingsScreen(
 
 private val RECORDING_ELEVATION_SOURCE_OPTIONS =
     listOf(
-        SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
-        SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
         SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO,
+        SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
+        SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
     )
 private val RECORDING_HEART_RATE_SOURCE_OPTIONS =
     listOf(
@@ -268,8 +268,8 @@ private fun recordingElevationSourceLabel(source: String): String =
     when (source) {
         SettingsRepository.RECORDING_SOURCE_DISABLED -> "Off"
         SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM -> "DEM"
-        SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO -> "Auto"
-        else -> "GPS altitude"
+        SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO -> "Smart"
+        else -> "GPS"
     }
 
 private fun recordingHeartRateSourceLabel(source: String): String =

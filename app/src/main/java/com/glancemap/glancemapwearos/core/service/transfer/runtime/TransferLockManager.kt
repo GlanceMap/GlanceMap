@@ -3,6 +3,8 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
+import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import java.util.IdentityHashMap
 
 internal class TransferLockManager(
     context: Context,
@@ -10,18 +12,38 @@ internal class TransferLockManager(
     private val appContext = context.applicationContext
     private val powerManager by lazy { appContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
     private val wifiManager by lazy { appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager }
+    private val wakeLockIds = IdentityHashMap<PowerManager.WakeLock, Int>()
 
     fun acquireWakeLock(
         tag: String,
         timeoutMs: Long,
-    ): PowerManager.WakeLock =
-        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag).apply {
-            setReferenceCounted(false)
-            acquire(timeoutMs)
+    ): PowerManager.WakeLock {
+        val wakeLock =
+            powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag).apply {
+                setReferenceCounted(false)
+                acquire(timeoutMs)
+            }
+        val lockId = System.identityHashCode(wakeLock)
+        if (EnergyDiagnostics.isEnabled()) {
+            synchronized(wakeLockIds) {
+                wakeLockIds[wakeLock] = lockId
+            }
+            EnergyDiagnostics.recordPartialWakeLockAcquired(
+                lockId = lockId,
+                tag = tag,
+                timeoutMs = timeoutMs,
+            )
         }
+        return wakeLock
+    }
 
     fun releaseWakeLock(wakeLock: PowerManager.WakeLock) {
         if (wakeLock.isHeld) wakeLock.release()
+        val lockId =
+            synchronized(wakeLockIds) {
+                wakeLockIds.remove(wakeLock)
+            }
+        lockId?.let(EnergyDiagnostics::recordPartialWakeLockReleased)
     }
 
     fun acquireWifiLock(tag: String): WifiManager.WifiLock =

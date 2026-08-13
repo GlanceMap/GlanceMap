@@ -1,6 +1,9 @@
+@file:Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
+
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -28,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -37,6 +41,8 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.data.repository.nextGpsTimingMode
+import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import com.google.android.horologist.compose.material.ToggleChip
@@ -48,38 +54,34 @@ import kotlin.math.abs
 fun GpsSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenGeneralSettings: () -> Unit,
+    onOpenAdvancedSettings: () -> Unit,
 ) {
     val listTokens = rememberSettingsListTokens()
 
+    val activityProfile by viewModel.activityProfile.collectAsState()
     val isWatchGpsOnly by viewModel.watchGpsOnly.collectAsState()
+    val gpsUsageProfile by viewModel.gpsUsageProfile.collectAsState()
     val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
     val recordingScreenOffSampleIntervalSeconds by viewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
-    val recordingAutoPauseMode by viewModel.recordingAutoPauseMode.collectAsState()
     val turnByTurnGpsIntervalSeconds by viewModel.turnByTurnGpsIntervalSeconds.collectAsState()
     val turnByTurnScreenOffGpsIntervalSeconds by viewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
     val gpsDebugTelemetry by viewModel.gpsDebugTelemetry.collectAsState()
     val diagnosticsCaptureMode by viewModel.diagnosticsCaptureMode.collectAsState()
     val gpsPassiveLocationExperiment by viewModel.gpsPassiveLocationExperiment.collectAsState()
-    val recordingScreenOnDisabled =
-        recordingSampleIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
-    val recordingScreenOffDisabled =
-        when (recordingScreenOffSampleIntervalSeconds) {
-            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> recordingScreenOnDisabled
-            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
-            else -> false
-        }
-    val turnByTurnScreenOnDisabled =
-        turnByTurnGpsIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
-    val turnByTurnScreenOffDisabled =
-        when (turnByTurnScreenOffGpsIntervalSeconds) {
-            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> turnByTurnScreenOnDisabled
-            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
-            else -> false
-        }
+    var showInfoDialog by remember { mutableStateOf(false) }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            GeneralSettingsShortcutChip(onClick = onOpenGeneralSettings)
+            SettingsInfoButton(
+                contentDescription = "GPS settings info",
+                onClick = { showInfoDialog = true },
+            )
+        }
+        item {
+            GeneralSettingsShortcutChip(
+                onClick = onOpenGeneralSettings,
+                applyTopPadding = false,
+            )
         }
 
         item {
@@ -97,106 +99,28 @@ fun GpsSettingsScreen(
         }
 
         item {
-            GpsIntervalSummary(
-                primaryText = stringResource(R.string.gps_basic_interval_summary),
-                secondaryText = stringResource(R.string.gps_recording_guidance_interval_summary),
-            )
-        }
-
-        item {
-            GpsSectionTitle(text = "REC")
-        }
-        item {
-            GpsIntervalSummary(
-                primaryText = stringResource(R.string.gps_recording_activity_summary),
-            )
-        }
-        item {
-            GpsTimingPickerRow(
-                label = stringResource(R.string.screen_on),
-                selectedValue = recordingSampleIntervalSeconds,
-                options = REC_SCREEN_ON_OPTIONS_SECONDS,
-                secondaryLabel = gpsIntervalLabel(recordingSampleIntervalSeconds),
-                dialogTitle = stringResource(R.string.gps_recording_screen_on),
-                onSelect = viewModel::setRecordingSampleIntervalSeconds,
-            )
-        }
-        item {
-            GpsTimingPickerRow(
-                label = stringResource(R.string.screen_off),
-                selectedValue = recordingScreenOffSampleIntervalSeconds,
-                options = SCREEN_OFF_OPTIONS_SECONDS,
-                secondaryLabel =
-                    gpsScreenOffIntervalLabel(
-                        seconds = recordingScreenOffSampleIntervalSeconds,
-                        screenOnSeconds = recordingSampleIntervalSeconds,
-                    ),
-                dialogTitle = stringResource(R.string.gps_recording_screen_off),
-                screenOnSeconds = recordingSampleIntervalSeconds,
-                offWarningText = stringResource(R.string.gps_recording_off_warning),
-                onSelect = viewModel::setRecordingScreenOffSampleIntervalSeconds,
-            )
-        }
-        if (recordingScreenOffDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_recording_screen_off_disabled_warning),
-                )
-            }
-        }
-        item {
             SettingsOptionPickerRow(
-                label = stringResource(R.string.gps_auto_pause),
-                selectedValue = recordingAutoPauseMode,
-                options = AUTO_PAUSE_OPTIONS.map { it to autoPauseModeLabel(it) },
-                secondaryLabel = autoPauseModeLabel(recordingAutoPauseMode),
-                onSelect = viewModel::setRecordingAutoPauseMode,
-            )
-        }
-
-        item {
-            GpsSectionTitle(text = "TBT")
-        }
-        item {
-            GpsTimingPickerRow(
-                label = stringResource(R.string.screen_on),
-                selectedValue = turnByTurnGpsIntervalSeconds,
-                options = TBT_SCREEN_ON_OPTIONS_SECONDS,
-                secondaryLabel = gpsIntervalLabel(turnByTurnGpsIntervalSeconds),
-                dialogTitle = stringResource(R.string.gps_guidance_screen_on),
-                offWarningText = stringResource(R.string.gps_guidance_screen_on_off_warning),
-                onSelect = viewModel::setTurnByTurnGpsIntervalSeconds,
+                label = stringResource(R.string.gps_profile),
+                selectedValue = gpsUsageProfile,
+                options = GPS_USAGE_PROFILE_OPTIONS.map { it to gpsUsageProfileLabel(it, activityProfile) },
+                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile, activityProfile),
+                onSelect = viewModel::setGpsUsageProfile,
             )
         }
         item {
-            GpsTimingPickerRow(
-                label = stringResource(R.string.screen_off),
-                selectedValue = turnByTurnScreenOffGpsIntervalSeconds,
-                options = SCREEN_OFF_OPTIONS_SECONDS,
-                secondaryLabel =
-                    gpsScreenOffIntervalLabel(
-                        seconds = turnByTurnScreenOffGpsIntervalSeconds,
-                        screenOnSeconds = turnByTurnGpsIntervalSeconds,
-                    ),
-                dialogTitle = stringResource(R.string.gps_guidance_screen_off),
-                screenOnSeconds = turnByTurnGpsIntervalSeconds,
-                offWarningText = stringResource(R.string.gps_guidance_screen_off_warning),
-                onSelect = viewModel::setTurnByTurnScreenOffGpsIntervalSeconds,
+            GpsIntervalSummary(
+                recordingScreenOn = gpsShortLabel(recordingSampleIntervalSeconds),
+                recordingScreenOff = gpsCompactScreenOffIntervalLabel(recordingScreenOffSampleIntervalSeconds),
+                turnByTurnScreenOn = gpsShortLabel(turnByTurnGpsIntervalSeconds),
+                turnByTurnScreenOff = gpsCompactScreenOffIntervalLabel(turnByTurnScreenOffGpsIntervalSeconds),
             )
         }
-        if (turnByTurnScreenOffDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_guidance_screen_off_disabled_warning),
-                )
-            }
-        }
-        if (turnByTurnScreenOnDisabled) {
-            item {
-                GpsWarningText(
-                    text = stringResource(R.string.gps_guidance_screen_on_disabled_warning),
-                )
-            }
+        item {
+            SettingsSectionChip(
+                label = stringResource(R.string.gps_advanced),
+                secondaryLabel = stringResource(R.string.gps_advanced_summary),
+                onClick = onOpenAdvancedSettings,
+            )
         }
 
         if (isFullDiagnosticsCapture(gpsDebugTelemetry, diagnosticsCaptureMode)) {
@@ -216,6 +140,158 @@ fun GpsSettingsScreen(
             }
         }
     }
+
+    GpsSettingsInfoDialog(
+        visible = showInfoDialog,
+        activityProfile = activityProfile,
+        gpsUsageProfile = gpsUsageProfile,
+        turnByTurnScreenOffGpsIntervalSeconds = turnByTurnScreenOffGpsIntervalSeconds,
+        onDismiss = { showInfoDialog = false },
+    )
+}
+
+@Composable
+private fun GpsSettingsInfoDialog(
+    visible: Boolean,
+    activityProfile: String,
+    gpsUsageProfile: String,
+    turnByTurnScreenOffGpsIntervalSeconds: Int,
+    onDismiss: () -> Unit,
+) {
+    val adaptiveCadence =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            "5 → 3 → 1 s"
+        } else {
+            "10 → 5 → 3 s"
+        }
+    val turnByTurnLine =
+        if (turnByTurnScreenOffGpsIntervalSeconds == SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) {
+            "Adaptive TBT: $adaptiveCadence near turns."
+        } else {
+            "TBT off: ${gpsCompactScreenOffIntervalLabel(turnByTurnScreenOffGpsIntervalSeconds)}."
+        }
+
+    WearHelpDialog(
+        visible = visible,
+        title = "GPS",
+        lines =
+            listOf(
+                gpsUsageProfileName(gpsUsageProfile, activityProfile),
+                turnByTurnLine,
+                "Shorter timing means more battery use.",
+                "REC + TBT use the shorter timing.",
+            ),
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
+fun GpsAdvancedSettingsScreen(
+    viewModel: SettingsViewModel,
+    onOpenGpsSettings: () -> Unit,
+) {
+    val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
+    val recordingScreenOnFixedGpsIntervalSeconds by
+        viewModel.recordingScreenOnFixedGpsIntervalSeconds.collectAsState()
+    val recordingScreenOffSampleIntervalSeconds by viewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
+    val recordingScreenOffFixedGpsIntervalSeconds by
+        viewModel.recordingScreenOffFixedGpsIntervalSeconds.collectAsState()
+    val turnByTurnGpsIntervalSeconds by viewModel.turnByTurnGpsIntervalSeconds.collectAsState()
+    val turnByTurnScreenOnFixedGpsIntervalSeconds by
+        viewModel.turnByTurnScreenOnFixedGpsIntervalSeconds.collectAsState()
+    val turnByTurnScreenOffGpsIntervalSeconds by viewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+    val turnByTurnScreenOffFixedGpsIntervalSeconds by
+        viewModel.turnByTurnScreenOffFixedGpsIntervalSeconds.collectAsState()
+    val recordingScreenOnDisabled =
+        recordingSampleIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+    val recordingScreenOffDisabled =
+        when (recordingScreenOffSampleIntervalSeconds) {
+            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> recordingScreenOnDisabled
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
+            else -> false
+        }
+    val turnByTurnScreenOnDisabled =
+        turnByTurnGpsIntervalSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+    val turnByTurnScreenOffDisabled =
+        when (turnByTurnScreenOffGpsIntervalSeconds) {
+            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> turnByTurnScreenOnDisabled
+            SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> true
+            else -> false
+        }
+
+    WearSettingsListScreen(horizontalAlignment = Alignment.CenterHorizontally) {
+        item {
+            GpsSettingsShortcutChip(onClick = onOpenGpsSettings)
+        }
+        item { GpsSectionTitle(text = "REC") }
+        item {
+            GpsTimingModePickerRow(
+                label = stringResource(R.string.screen_on),
+                selectedValue = recordingSampleIntervalSeconds,
+                fixedSeconds = recordingScreenOnFixedGpsIntervalSeconds,
+                modes = SCREEN_ON_GPS_TIMING_MODES,
+                secondaryLabel = gpsIntervalLabel(recordingSampleIntervalSeconds),
+                dialogTitle = stringResource(R.string.gps_recording_screen_on),
+                onSelect = viewModel::setRecordingSampleIntervalSeconds,
+            )
+        }
+        item {
+            GpsTimingModePickerRow(
+                label = stringResource(R.string.screen_off),
+                selectedValue = recordingScreenOffSampleIntervalSeconds,
+                fixedSeconds = recordingScreenOffFixedGpsIntervalSeconds,
+                modes = REC_SCREEN_OFF_GPS_TIMING_MODES,
+                secondaryLabel =
+                    gpsScreenOffIntervalLabel(
+                        seconds = recordingScreenOffSampleIntervalSeconds,
+                        screenOnSeconds = recordingSampleIntervalSeconds,
+                    ),
+                dialogTitle = stringResource(R.string.gps_recording_screen_off),
+                screenOnSeconds = recordingSampleIntervalSeconds,
+                offWarningText = stringResource(R.string.gps_recording_off_warning),
+                onSelect = viewModel::setRecordingScreenOffSampleIntervalSeconds,
+            )
+        }
+        if (recordingScreenOffDisabled) {
+            item { GpsWarningText(text = stringResource(R.string.gps_recording_screen_off_disabled_warning)) }
+        }
+
+        item { GpsSectionTitle(text = "TBT") }
+        item {
+            GpsTimingModePickerRow(
+                label = stringResource(R.string.screen_on),
+                selectedValue = turnByTurnGpsIntervalSeconds,
+                fixedSeconds = turnByTurnScreenOnFixedGpsIntervalSeconds,
+                modes = SCREEN_ON_GPS_TIMING_MODES,
+                secondaryLabel = gpsIntervalLabel(turnByTurnGpsIntervalSeconds),
+                dialogTitle = stringResource(R.string.gps_guidance_screen_on),
+                offWarningText = stringResource(R.string.gps_guidance_screen_on_off_warning),
+                onSelect = viewModel::setTurnByTurnGpsIntervalSeconds,
+            )
+        }
+        item {
+            GpsTimingModePickerRow(
+                label = stringResource(R.string.screen_off),
+                selectedValue = turnByTurnScreenOffGpsIntervalSeconds,
+                fixedSeconds = turnByTurnScreenOffFixedGpsIntervalSeconds,
+                modes = TBT_SCREEN_OFF_GPS_TIMING_MODES,
+                secondaryLabel =
+                    gpsScreenOffIntervalLabel(
+                        seconds = turnByTurnScreenOffGpsIntervalSeconds,
+                        screenOnSeconds = turnByTurnGpsIntervalSeconds,
+                    ),
+                dialogTitle = stringResource(R.string.gps_guidance_screen_off),
+                screenOnSeconds = turnByTurnGpsIntervalSeconds,
+                onSelect = viewModel::setTurnByTurnScreenOffGpsIntervalSeconds,
+            )
+        }
+        if (turnByTurnScreenOffDisabled) {
+            item { GpsWarningText(text = stringResource(R.string.gps_guidance_screen_off_disabled_warning)) }
+        }
+        if (turnByTurnScreenOnDisabled) {
+            item { GpsWarningText(text = stringResource(R.string.gps_guidance_screen_on_disabled_warning)) }
+        }
+    }
 }
 
 private fun isFullDiagnosticsCapture(
@@ -224,10 +300,11 @@ private fun isFullDiagnosticsCapture(
 ): Boolean = captureActive && captureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
 
 @Composable
-private fun GpsTimingPickerRow(
+private fun GpsTimingModePickerRow(
     label: String,
     selectedValue: Int,
-    options: List<Int>,
+    fixedSeconds: Int,
+    modes: List<Int>,
     secondaryLabel: String,
     dialogTitle: String,
     onSelect: (Int) -> Unit,
@@ -235,30 +312,44 @@ private fun GpsTimingPickerRow(
     offWarningText: String? = null,
 ) {
     var pickerVisible by remember { mutableStateOf(false) }
+    var pendingSelectedValue by remember { mutableStateOf<Int?>(null) }
+    val displayedSelectedValue = pendingSelectedValue ?: selectedValue
+
+    LaunchedEffect(pickerVisible) {
+        if (pickerVisible) pendingSelectedValue = null
+    }
+    LaunchedEffect(selectedValue) {
+        if (pendingSelectedValue == selectedValue) pendingSelectedValue = null
+    }
 
     SettingsPickerChip(
         label = label,
         secondaryLabel = secondaryLabel,
         onClick = { pickerVisible = true },
     )
-    GpsTimingStepperDialog(
+    GpsTimingModeDialog(
         visible = pickerVisible,
         title = dialogTitle,
-        selectedValue = selectedValue,
-        options = options,
+        selectedValue = displayedSelectedValue,
+        fixedSeconds = fixedSeconds,
+        modes = modes,
         screenOnSeconds = screenOnSeconds,
         offWarningText = offWarningText,
         onDismiss = { pickerVisible = false },
-        onSelect = onSelect,
+        onSelect = { seconds ->
+            pendingSelectedValue = seconds
+            onSelect(seconds)
+        },
     )
 }
 
 @Composable
-private fun GpsTimingStepperDialog(
+private fun GpsTimingModeDialog(
     visible: Boolean,
     title: String,
     selectedValue: Int,
-    options: List<Int>,
+    fixedSeconds: Int,
+    modes: List<Int>,
     screenOnSeconds: Int?,
     offWarningText: String?,
     onDismiss: () -> Unit,
@@ -268,49 +359,39 @@ private fun GpsTimingStepperDialog(
 
     val adaptive = rememberWearAdaptiveSpec()
     val focusRequester = remember { FocusRequester() }
-    var selectedIndex by remember(options, selectedValue) {
-        mutableIntStateOf(options.indexOf(selectedValue).coerceAtLeast(0))
-    }
     var rotaryAccumulator by remember { mutableFloatStateOf(0f) }
-    val selectedSeconds = options.getOrElse(selectedIndex) { selectedValue }
-    val selectedOption = gpsTimingOption(seconds = selectedSeconds, screenOnSeconds = screenOnSeconds)
-    val canDecrease = selectedIndex > 0
-    val canIncrease = selectedIndex < options.lastIndex
     val compactHighFontLayout = adaptive.fontScale > 1.05f
+    val fixedSecondsIndex = GPS_TIMING_SECONDS_OPTIONS.indexOf(fixedSeconds).coerceAtLeast(0)
+    val fixedSecondsSelected = selectedValue > 0
+    val canDecrease = fixedSecondsIndex > 0
+    val canIncrease = fixedSecondsIndex < GPS_TIMING_SECONDS_OPTIONS.lastIndex
 
-    fun selectIndex(index: Int) {
-        val safeIndex = index.coerceIn(0, options.lastIndex)
-        if (safeIndex == selectedIndex) return
-        selectedIndex = safeIndex
-        onSelect(options[safeIndex])
+    fun selectFixedSeconds(index: Int) {
+        val safeIndex = index.coerceIn(0, GPS_TIMING_SECONDS_OPTIONS.lastIndex)
+        onSelect(GPS_TIMING_SECONDS_OPTIONS[safeIndex])
     }
 
     fun selectBySecondsDelta(deltaSeconds: Int) {
-        val currentSeconds = options.getOrElse(selectedIndex) { selectedValue }
-        val positiveOptions = options.filter { it > 0 }
-        if (positiveOptions.isEmpty()) return
-        if (currentSeconds <= 0) {
-            if (deltaSeconds > 0) {
-                selectIndex(options.indexOf(positiveOptions.first()))
-            } else {
-                selectIndex(selectedIndex - 1)
-            }
-            return
-        }
-
-        val firstPositiveIndex = options.indexOf(positiveOptions.first())
-        val targetSeconds = currentSeconds + deltaSeconds
+        val targetSeconds = fixedSeconds + deltaSeconds
         val targetOption =
             if (deltaSeconds > 0) {
-                positiveOptions.firstOrNull { it >= targetSeconds } ?: positiveOptions.last()
+                GPS_TIMING_SECONDS_OPTIONS.firstOrNull { it >= targetSeconds }
+                    ?: GPS_TIMING_SECONDS_OPTIONS.last()
             } else {
-                if (targetSeconds < positiveOptions.first()) {
-                    selectIndex(firstPositiveIndex - 1)
-                    return
-                }
-                positiveOptions.lastOrNull { it <= targetSeconds } ?: positiveOptions.first()
+                GPS_TIMING_SECONDS_OPTIONS.lastOrNull { it <= targetSeconds }
+                    ?: GPS_TIMING_SECONDS_OPTIONS.first()
             }
-        selectIndex(options.indexOf(targetOption))
+        onSelect(targetOption)
+    }
+
+    fun selectNextMode() {
+        onSelect(
+            nextGpsTimingMode(
+                selectedSeconds = selectedValue,
+                fixedSeconds = fixedSeconds,
+                modes = modes,
+            ),
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -337,14 +418,19 @@ private fun GpsTimingStepperDialog(
                             end = adaptive.dialogHorizontalPadding,
                             bottom = adaptive.dialogVerticalPadding + 22.dp,
                         ).onPreRotaryScrollEvent { event ->
-                            rotaryAccumulator += event.verticalScrollPixels
-                            if (abs(rotaryAccumulator) >= GPS_STEPPER_ROTARY_STEP_PX) {
-                                if (rotaryAccumulator > 0f) {
-                                    selectIndex(selectedIndex + 1)
-                                } else {
-                                    selectIndex(selectedIndex - 1)
+                            if (fixedSecondsSelected) {
+                                rotaryAccumulator += event.verticalScrollPixels
+                                if (abs(rotaryAccumulator) >= GPS_STEPPER_ROTARY_STEP_PX) {
+                                    selectFixedSeconds(
+                                        fixedSecondsIndex +
+                                            if (rotaryAccumulator > 0f) {
+                                                1
+                                            } else {
+                                                -1
+                                            },
+                                    )
+                                    rotaryAccumulator = 0f
                                 }
-                                rotaryAccumulator = 0f
                             }
                             true
                         }.focusRequester(focusRequester)
@@ -362,20 +448,36 @@ private fun GpsTimingStepperDialog(
                             .fillMaxWidth()
                             .padding(horizontal = 6.dp),
                 )
+                val selectedOption =
+                    gpsTimingOption(
+                        seconds = selectedValue,
+                        screenOnSeconds = screenOnSeconds,
+                    )
                 GpsTimingStepperValue(
-                    label = selectedOption.label,
-                    detail = selectedOption.detail,
+                    label = if (fixedSecondsSelected) gpsShortLabel(fixedSeconds) else selectedOption.label,
+                    detail = if (fixedSecondsSelected) null else selectedOption.detail,
                     compactHighFontLayout = compactHighFontLayout,
                     canDecrease = canDecrease,
                     canIncrease = canIncrease,
-                    onDecrease = { selectIndex(selectedIndex - 1) },
-                    onIncrease = { selectIndex(selectedIndex + 1) },
+                    showStepperControls = fixedSecondsSelected,
+                    onDecrease = { selectFixedSeconds(fixedSecondsIndex - 1) },
+                    onIncrease = { selectFixedSeconds(fixedSecondsIndex + 1) },
                     onLongDecrease = { selectBySecondsDelta(-GPS_STEPPER_LONG_PRESS_SECONDS) },
                     onLongIncrease = { selectBySecondsDelta(GPS_STEPPER_LONG_PRESS_SECONDS) },
+                    onValueClick = ::selectNextMode,
                 )
+                if (fixedSecondsSelected) {
+                    Text(
+                        text = stringResource(R.string.gps_timing_fixed_mode_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (
                     offWarningText != null &&
-                    selectedSeconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+                    selectedValue == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
                 ) {
                     Text(
                         text = offWarningText,
@@ -432,10 +534,12 @@ private fun GpsTimingStepperValue(
     compactHighFontLayout: Boolean,
     canDecrease: Boolean,
     canIncrease: Boolean,
+    showStepperControls: Boolean = true,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
     onLongDecrease: () -> Unit,
     onLongIncrease: () -> Unit,
+    onValueClick: (() -> Unit)? = null,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -453,18 +557,19 @@ private fun GpsTimingStepperValue(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            GpsStepperButton(
-                enabled = canDecrease,
-                size = stepperButtonSize,
-                onClick = onDecrease,
-                onLongClick = onLongDecrease,
-                icon = Icons.Filled.Remove,
-                contentDescription = stringResource(R.string.gps_decrease_timing),
-            )
+            if (showStepperControls) {
+                GpsStepperButton(
+                    enabled = canDecrease,
+                    size = stepperButtonSize,
+                    onClick = onDecrease,
+                    onLongClick = onLongDecrease,
+                    icon = Icons.Filled.Remove,
+                    contentDescription = stringResource(R.string.gps_decrease_timing),
+                )
+            }
             Box(
                 modifier =
-                    Modifier
-                        .weight(1f)
+                    (if (showStepperControls) Modifier.weight(1f) else Modifier.fillMaxWidth())
                         .background(
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
                             shape = RoundedCornerShape(28.dp),
@@ -476,6 +581,12 @@ private fun GpsTimingStepperValue(
                                     detail == null -> 14.dp
                                     else -> 10.dp
                                 },
+                        ).then(
+                            if (onValueClick == null) {
+                                Modifier
+                            } else {
+                                Modifier.clickable(onClick = onValueClick)
+                            },
                         ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -505,33 +616,37 @@ private fun GpsTimingStepperValue(
                     }
                 }
             }
-            GpsStepperButton(
-                enabled = canIncrease,
-                size = stepperButtonSize,
-                onClick = onIncrease,
-                onLongClick = onLongIncrease,
-                icon = Icons.Filled.Add,
-                contentDescription = stringResource(R.string.gps_increase_timing),
+            if (showStepperControls) {
+                GpsStepperButton(
+                    enabled = canIncrease,
+                    size = stepperButtonSize,
+                    onClick = onIncrease,
+                    onLongClick = onLongIncrease,
+                    icon = Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.gps_increase_timing),
+                )
+            }
+        }
+        if (showStepperControls) {
+            Text(
+                text =
+                    stringResource(
+                        if (compactHighFontLayout) {
+                            R.string.gps_stepper_hint_compact
+                        } else {
+                            R.string.gps_stepper_hint
+                        },
+                    ),
+                style =
+                    if (compactHighFontLayout) {
+                        MaterialTheme.typography.labelSmall
+                    } else {
+                        MaterialTheme.typography.bodySmall
+                    },
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                textAlign = TextAlign.Center,
             )
         }
-        Text(
-            text =
-                stringResource(
-                    if (compactHighFontLayout) {
-                        R.string.gps_stepper_hint_compact
-                    } else {
-                        R.string.gps_stepper_hint
-                    },
-                ),
-            style =
-                if (compactHighFontLayout) {
-                    MaterialTheme.typography.labelSmall
-                } else {
-                    MaterialTheme.typography.bodySmall
-                },
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-            textAlign = TextAlign.Center,
-        )
     }
 }
 
@@ -605,29 +720,93 @@ private fun GpsWarningText(text: String) {
 @Suppress("FunctionName")
 @Composable
 private fun GpsIntervalSummary(
-    primaryText: String,
-    secondaryText: String = "",
+    recordingScreenOn: String,
+    recordingScreenOff: String,
+    turnByTurnScreenOn: String,
+    turnByTurnScreenOff: String,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(16.dp),
+                ).padding(horizontal = 8.dp, vertical = 7.dp),
     ) {
-        Text(
-            text = primaryText,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = 2,
-            textAlign = TextAlign.Center,
+        GpsIntervalSummaryRow(
+            screenLabel = "Screen",
+            recordingLabel = "REC",
+            turnByTurnLabel = "TBT",
+            header = true,
         )
-        if (secondaryText.isNotBlank()) {
-            Text(
-                text = secondaryText,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-        }
+        GpsIntervalSummaryRow(
+            screenLabel = "On",
+            recordingLabel = recordingScreenOn,
+            turnByTurnLabel = turnByTurnScreenOn,
+        )
+        GpsIntervalSummaryRow(
+            screenLabel = "Off",
+            recordingLabel = recordingScreenOff,
+            turnByTurnLabel = turnByTurnScreenOff,
+        )
     }
+}
+
+@Composable
+private fun GpsIntervalSummaryRow(
+    screenLabel: String,
+    recordingLabel: String,
+    turnByTurnLabel: String,
+    header: Boolean = false,
+) {
+    val textStyle =
+        if (header) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall
+    val textColor =
+        if (header) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    Row(modifier = Modifier.fillMaxWidth()) {
+        GpsIntervalSummaryCell(
+            text = screenLabel,
+            style = textStyle,
+            color = textColor,
+            modifier = Modifier.weight(1.15f),
+        )
+        GpsIntervalSummaryCell(
+            text = recordingLabel,
+            style = textStyle,
+            color = textColor,
+            modifier = Modifier.weight(1f),
+        )
+        GpsIntervalSummaryCell(
+            text = turnByTurnLabel,
+            style = textStyle,
+            color = textColor,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun GpsIntervalSummaryCell(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier,
+) {
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        modifier = modifier,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+    )
 }
 
 private const val GPS_PICKER_DRAG_DISMISS_PX = 55f
@@ -636,29 +815,56 @@ private const val GPS_STEPPER_LONG_PRESS_SECONDS = 5
 
 private val GPS_TIMING_SECONDS_OPTIONS = (1..60).toList() + listOf(90, 120)
 
-private val REC_SCREEN_ON_OPTIONS_SECONDS =
-    listOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + GPS_TIMING_SECONDS_OPTIONS
+private val SCREEN_ON_GPS_TIMING_MODES =
+    listOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS)
 
-private val TBT_SCREEN_ON_OPTIONS_SECONDS =
-    listOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + GPS_TIMING_SECONDS_OPTIONS
-
-private val SCREEN_OFF_OPTIONS_SECONDS =
+private val REC_SCREEN_OFF_GPS_TIMING_MODES =
     listOf(
-        SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
-    ) + GPS_TIMING_SECONDS_OPTIONS
-
-private val AUTO_PAUSE_OPTIONS =
-    listOf(
-        SettingsRepository.RECORDING_AUTO_PAUSE_OFF,
-        SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
+        SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
     )
 
-@Composable
-private fun autoPauseModeLabel(mode: String): String =
-    when (mode) {
-        SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS -> stringResource(R.string.state_on)
-        else -> stringResource(R.string.state_off)
+private val TBT_SCREEN_OFF_GPS_TIMING_MODES =
+    listOf(
+        SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+        SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS,
+    )
+
+private val GPS_USAGE_PROFILE_OPTIONS =
+    listOf(
+        SettingsRepository.GPS_USAGE_PROFILE_BALANCED,
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE,
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY,
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM,
+    )
+
+private fun gpsUsageProfileLabel(
+    profile: String,
+    activityProfile: String,
+): String =
+    when (profile) {
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace · more battery"
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery · less detail"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)} · keep timings"
+        else -> "Balanced · recommended"
+    }
+
+private fun gpsUsageProfileName(
+    profile: String,
+    activityProfile: String,
+): String =
+    when (profile) {
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace"
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery"
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)}"
+        else -> "Balanced"
+    }
+
+private fun gpsActivityLabel(activityProfile: String) =
+    when (activityProfile) {
+        SettingsRepository.ACTIVITY_PROFILE_BIKE -> "Bike"
+        else -> "Hike"
     }
 
 @Composable
@@ -667,12 +873,26 @@ private fun gpsScreenOffIntervalLabel(
     screenOnSeconds: Int? = null,
 ): String =
     when (seconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            stringResource(R.string.gps_adaptive)
+
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS ->
             screenOnSeconds?.let {
                 stringResource(R.string.gps_same_with_value, gpsIntervalLabel(it))
             } ?: stringResource(R.string.gps_same_as_screen_on)
 
         else -> gpsIntervalLabel(seconds)
+    }
+
+@Composable
+private fun gpsCompactScreenOffIntervalLabel(seconds: Int): String =
+    when (seconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            stringResource(R.string.gps_adaptive)
+
+        SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> stringResource(R.string.gps_same)
+        SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> stringResource(R.string.state_off)
+        else -> gpsShortLabel(seconds)
     }
 
 @Composable
@@ -694,6 +914,12 @@ private fun gpsTimingOption(
     screenOnSeconds: Int?,
 ): GpsTimingOption =
     when (seconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            GpsTimingOption(
+                label = stringResource(R.string.gps_adaptive),
+                detail = stringResource(R.string.gps_adaptive_tbt_detail),
+            )
+
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS ->
             GpsTimingOption(
                 label = stringResource(R.string.gps_same),
