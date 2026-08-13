@@ -455,12 +455,7 @@ private fun GpsTimingModeDialog(
                     )
                 GpsTimingStepperValue(
                     label = if (fixedSecondsSelected) gpsShortLabel(fixedSeconds) else selectedOption.label,
-                    detail =
-                        if (selectedValue == SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS) {
-                            selectedOption.detail
-                        } else {
-                            stringResource(R.string.gps_tbt_screen_off_mode_tap_hint)
-                        },
+                    detail = if (fixedSecondsSelected) null else selectedOption.detail,
                     compactHighFontLayout = compactHighFontLayout,
                     canDecrease = canDecrease,
                     canIncrease = canIncrease,
@@ -471,6 +466,15 @@ private fun GpsTimingModeDialog(
                     onLongIncrease = { selectBySecondsDelta(GPS_STEPPER_LONG_PRESS_SECONDS) },
                     onValueClick = ::selectNextMode,
                 )
+                if (fixedSecondsSelected) {
+                    Text(
+                        text = stringResource(R.string.gps_timing_fixed_mode_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (
                     offWarningText != null &&
                     selectedValue == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
@@ -829,8 +833,8 @@ private val TBT_SCREEN_OFF_GPS_TIMING_MODES =
 
 private val GPS_USAGE_PROFILE_OPTIONS =
     listOf(
-        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE,
         SettingsRepository.GPS_USAGE_PROFILE_BALANCED,
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE,
         SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY,
         SettingsRepository.GPS_USAGE_PROFILE_CUSTOM,
     )
