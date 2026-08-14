@@ -1655,7 +1655,12 @@ class TraceRecordingViewModel(
     private fun isAutoPauseEnabledForCurrentProfile(): Boolean = recordingAutoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
 
     private fun hasReliableAutoPauseFix(livePoint: RecordedTracePoint): Boolean {
-        val accuracy = livePoint.accuracyMeters ?: return false
+        val accuracy =
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = livePoint.accuracyMeters,
+                knownWatchGpsAccuracyFloorActive =
+                    isKnownWatchGpsAccuracyFloorActive(livePoint.accuracyMeters),
+            ) ?: return false
         if (!accuracy.isFinite() || accuracy < 0f) return false
         return accuracy <= autoPauseMaxAccuracyMeters()
     }

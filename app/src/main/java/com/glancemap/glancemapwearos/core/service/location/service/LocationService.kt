@@ -216,6 +216,9 @@ class LocationService : Service() {
             watchGpsOnly = { latestWatchGpsOnly },
             passiveLocationExperiment = { latestGpsDebugTelemetry && latestPassiveLocationExperiment },
             phoneConnected = { latestPhoneConnected },
+            checkPhoneConnection = {
+                phoneConnectionProbe.isPhoneConnected()?.also { latestPhoneConnected = it }
+            },
             lastAnyAcceptedFixAtElapsedMs = { lastAnyAcceptedFixAtElapsedMs },
             lastCallbackAcceptedFixAtElapsedMs = { lastCallbackAcceptedFixAtElapsedMs },
             lastRequestAppliedAtElapsedMs = { lastRequestAppliedAtElapsedMs },
@@ -293,13 +296,6 @@ class LocationService : Service() {
                 },
                 maybeTriggerAutoFusedFailover = { acceptedLocation, callbackOrigin, nowElapsedMs ->
                     selfHealFailoverCoordinator.maybeTriggerAutoFusedFailover(
-                        acceptedLocation = acceptedLocation,
-                        callbackOrigin = callbackOrigin,
-                        nowElapsedMs = nowElapsedMs,
-                    )
-                },
-                onLocationAccepted = { acceptedLocation, callbackOrigin, nowElapsedMs ->
-                    selfHealFailoverCoordinator.onLocationAccepted(
                         acceptedLocation = acceptedLocation,
                         callbackOrigin = callbackOrigin,
                         nowElapsedMs = nowElapsedMs,

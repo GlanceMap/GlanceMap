@@ -15,6 +15,7 @@ internal data class LocationBatchSummary(
     val acceptedCandidates: Int,
 )
 
+@Suppress("LongParameterList")
 internal class LocationCallbackProcessor(
     private val engine: LocationEngine,
     private val telemetry: LocationServiceTelemetry,
@@ -27,7 +28,6 @@ internal class LocationCallbackProcessor(
     private val emitGpsSignalSnapshot: () -> Unit,
     private val emitAcceptedLocation: (Location, Long) -> Unit,
     private val maybeTriggerAutoFusedFailover: (Location, LocationSourceMode, Long) -> Unit,
-    private val onLocationAccepted: (Location, LocationSourceMode, Long) -> Unit,
     private val endHighAccuracyBurstEarly: () -> Unit,
 ) {
     fun onLocationAvailability(
@@ -195,7 +195,6 @@ internal class LocationCallbackProcessor(
         emitGpsSignalSnapshot()
 
         val acceptedLocation = outcome.acceptedLocation ?: return false
-        onLocationAccepted(acceptedLocation, callbackOrigin, nowElapsedMs)
         emitAcceptedLocation(
             engine.filterLocationForOutput(
                 location = acceptedLocation,
