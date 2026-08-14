@@ -40,7 +40,6 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import kotlin.math.roundToInt
 
 private const val KMPH_TO_MPS = 1f / 3.6f
@@ -52,7 +51,6 @@ private const val FOOT_TO_METER = 1f / METER_TO_FOOT
 private const val VERTICAL_RATE_STEP_METERS_PER_HOUR = 50f
 private const val VERTICAL_RATE_STEP_FEET_PER_HOUR = 100f
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun GpxSettingsScreen(
     viewModel: SettingsViewModel,
@@ -370,7 +368,6 @@ fun GpxSettingsScreen(
     }
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun GpxAppearanceSettingsScreen(
     viewModel: SettingsViewModel,

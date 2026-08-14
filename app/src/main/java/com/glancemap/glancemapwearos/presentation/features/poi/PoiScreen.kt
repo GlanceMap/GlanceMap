@@ -1,7 +1,4 @@
-@file:OptIn(
-    com.google.android.horologist.annotations.ExperimentalHorologistApi::class,
-    androidx.compose.foundation.ExperimentalFoundationApi::class,
-)
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.glancemap.glancemapwearos.presentation.features.poi
 
@@ -51,9 +48,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.USER_POI_CATEGORY_ID
 import com.glancemap.glancemapwearos.data.repository.USER_POI_SOURCE_PATH
@@ -67,10 +68,6 @@ import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.layout.ScalingLazyColumn
-import com.google.android.horologist.compose.layout.ScreenScaffold
-import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import kotlinx.coroutines.launch
 
 private sealed interface PoiListRow {
@@ -426,20 +423,10 @@ fun PoiScreen(
         }
     val hasDownloadedPoiFiles = remember(poiFiles) { poiFiles.any { it.path != USER_POI_SOURCE_PATH } }
 
-    val columnState =
-        rememberResponsiveColumnState(
-            contentPadding = {
-                PaddingValues(
-                    top = listTopPadding,
-                    start = listHorizontalPadding,
-                    end = listHorizontalPadding,
-                    bottom = listBottomPadding,
-                )
-            },
-        )
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
     LaunchedEffect(Unit) {
-        columnState.state.scrollToItem(0)
+        listState.scrollToItem(0)
     }
 
     fun dismissHelpDialog() {
@@ -507,7 +494,7 @@ fun PoiScreen(
         }
     }
 
-    ScreenScaffold(scrollState = columnState) {
+    ScreenScaffold(scrollState = listState) {
         DeleteConfirmationDialog(
             visible = showDeleteDialog,
             title =
@@ -702,7 +689,16 @@ fun PoiScreen(
             ) {
                 ScalingLazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    columnState = columnState,
+                    state = listState,
+                    contentPadding =
+                        PaddingValues(
+                            top = listTopPadding,
+                            start = listHorizontalPadding,
+                            end = listHorizontalPadding,
+                            bottom = listBottomPadding,
+                        ),
+                    anchorType = ScalingLazyListAnchorType.ItemStart,
+                    autoCentering = null,
                 ) {
                     if (rows.isEmpty()) {
                         item {

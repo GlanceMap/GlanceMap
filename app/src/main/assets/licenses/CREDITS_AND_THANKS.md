@@ -73,7 +73,7 @@ This page is the user-friendly credit summary for the main projects and communit
 
 - Adrien, for product direction, testing, and field feedback.
 
-- AndroidX, Jetpack Compose, Wear Compose, Kotlin, Ktor, OkHttp, Horologist and other open-source libraries listed in `THIRD_PARTY_NOTICES.md`.
+- AndroidX, Jetpack Compose, Wear Compose, Kotlin, Ktor, OkHttp and other open-source libraries listed in `THIRD_PARTY_NOTICES.md`.
 
 ## AI-assisted development acknowledgment
 

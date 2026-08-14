@@ -16,7 +16,6 @@ This document covers open-source software and assets used by the watch app (`app
 | Okio | `com.squareup.okio:okio*` | Apache License 2.0 | https://github.com/square/okio |
 | Gson | `com.google.code.gson:gson` | Apache License 2.0 | https://github.com/google/gson |
 | Accompanist | `com.google.accompanist:*` | Apache License 2.0 | https://github.com/google/accompanist |
-| Horologist | `com.google.android.horologist:*` | Apache License 2.0 | https://github.com/google/horologist |
 | AndroidSVG | `com.caverock:androidsvg` | Apache License 2.0 | https://github.com/BigBadaboom/androidsvg |
 | Mapsforge | `com.github.mapsforge.mapsforge:*` (`mapsforge-map`, `mapsforge-map-android`, `mapsforge-themes`, etc.) | LGPL-3.0-or-later (with Mapsforge stated static-linking/derivative waiver in project README) | https://github.com/mapsforge/mapsforge |
 | MapLibre Native Android | `org.maplibre.gl:*` (`android-sdk`, `android-sdk-geojson`, `android-sdk-turf`, `maplibre-android-gestures`) | BSD 2-Clause License | https://github.com/maplibre/maplibre-native |

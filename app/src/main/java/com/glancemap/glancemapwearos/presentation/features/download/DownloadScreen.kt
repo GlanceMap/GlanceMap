@@ -59,6 +59,7 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAnchorType
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAutoCentering
@@ -70,12 +71,9 @@ import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.layout.ScreenScaffold
 import kotlinx.coroutines.launch
 import androidx.wear.compose.material3.Icon as Material3Icon
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun DownloadScreen(
     viewModel: DownloadViewModel,
@@ -1054,7 +1052,6 @@ private fun StatusText(
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun DownloadChip(
     label: String,

@@ -16,17 +16,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.ToggleChipDefaults
 import com.glancemap.glancemapwearos.presentation.ui.WearWindowClass
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.Chip
-import com.google.android.horologist.compose.material.ToggleChip
-import com.google.android.horologist.compose.material.ToggleChipToggleControl
 
 private val PickerChipBackground = Color(0xFF2B2F36)
 private val PickerChipContent = Color(0xFFF1F5FB)
@@ -42,7 +43,6 @@ internal val SectionChipContent = Color(0xFFF4F7FB)
 internal val SectionChipSecondary = Color(0xFFC9D7EA)
 internal val SectionChipIcon = Color(0xFFF6C453)
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun SettingsToggleChip(
     checked: Boolean,
@@ -62,14 +62,34 @@ internal fun SettingsToggleChip(
                 .then(modifier),
         enabled = enabled,
         checked = checked,
-        onCheckedChanged = onCheckedChanged,
-        label = label,
-        secondaryLabel = secondaryLabel,
-        toggleControl = ToggleChipToggleControl.Switch,
+        onCheckedChange = onCheckedChanged,
+        label = {
+            Text(
+                text = label,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = if (secondaryLabel != null) 1 else 2,
+            )
+        },
+        secondaryLabel = secondaryLabel?.let { text ->
+            {
+                Text(
+                    text = text,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                )
+            }
+        },
+        toggleControl = {
+            Icon(
+                imageVector = ToggleChipDefaults.switchIcon(checked),
+                contentDescription = null,
+            )
+        },
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun SettingsPickerChip(
     label: String,
@@ -92,8 +112,24 @@ internal fun SettingsPickerChip(
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .then(modifier),
-            label = label,
-            secondaryLabel = secondaryLabel,
+            label = {
+                Text(
+                    text = label,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Start,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = if (secondaryLabel != null) 1 else 2,
+                )
+            },
+            secondaryLabel = secondaryLabel?.let { text ->
+                {
+                    Text(
+                        text = text,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                }
+            },
             icon = {
                 Icon(
                     imageVector = iconImageVector,
@@ -117,8 +153,24 @@ internal fun SettingsPickerChip(
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .then(modifier),
-            label = label,
-            secondaryLabel = secondaryLabel,
+            label = {
+                Text(
+                    text = label,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = if (secondaryLabel != null) 1 else 2,
+                )
+            },
+            secondaryLabel = secondaryLabel?.let { text ->
+                {
+                    Text(
+                        text = text,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                }
+            },
             colors =
                 ChipDefaults.secondaryChipColors(
                     backgroundColor = backgroundColor,
@@ -130,7 +182,6 @@ internal fun SettingsPickerChip(
     }
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun SettingsSectionChip(
     label: String,
@@ -154,8 +205,24 @@ internal fun SettingsSectionChip(
                 .fillMaxWidth(widthFraction)
                 .heightIn(min = minHeight)
                 .then(modifier),
-        label = label,
-        secondaryLabel = secondaryLabel,
+        label = {
+            Text(
+                text = label,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = if (secondaryLabel != null) 1 else 2,
+            )
+        },
+        secondaryLabel = secondaryLabel?.let { text ->
+            {
+                Text(
+                    text = text,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                )
+            }
+        },
         icon = {
             if (iconContent != null) {
                 iconContent()
@@ -178,7 +245,6 @@ internal fun SettingsSectionChip(
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun DownloadSettingsSectionChip(
     onClick: () -> Unit,

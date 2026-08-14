@@ -25,10 +25,8 @@ import com.glancemap.glancemapwearos.presentation.features.maps.theme.DemMapRead
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.ThemeViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun MapSettingsScreen(
     navController: NavHostController,

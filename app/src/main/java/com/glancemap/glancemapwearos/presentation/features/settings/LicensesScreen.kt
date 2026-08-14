@@ -13,16 +13,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.Text as WearText
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.Chip
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
     val appVersionLabel = rememberAppVersionLabel()
@@ -65,8 +65,22 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
         items(LICENSE_DOCUMENTS) { document ->
             Chip(
                 modifier = Modifier.fillMaxWidth(),
-                label = document.label,
-                secondaryLabel = document.secondaryLabel,
+                label = {
+                    WearText(
+                        text = document.label,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
+                secondaryLabel = {
+                    WearText(
+                        text = document.secondaryLabel,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
                 onClick = { selectedDocument = document },
             )
         }
@@ -178,7 +192,6 @@ private val LICENSE_DOCUMENTS =
         ),
     )
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 private fun LicenseDocumentDialog(
     document: LicenseDocument,

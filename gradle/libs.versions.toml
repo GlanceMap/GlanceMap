@@ -18,7 +18,6 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 kotlinx-coroutines = "1.11.0"
 wearToolingPreview = "1.0.0"
-horologist = "0.7.15"
 wearCore = "1.4.0"
 wearAmbient = "1.4.0"
 androidsvg = "1.4"
@@ -87,12 +86,6 @@ ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmarkMacro" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiAutomator" }
-
-# Horologist
-horologist-datalayer = { group = "com.google.android.horologist", name = "horologist-datalayer", version.ref = "horologist" }
-horologist-compose-layout = { group = "com.google.android.horologist", name = "horologist-compose-layout", version.ref = "horologist" }
-horologist-compose-material = { group = "com.google.android.horologist", name = "horologist-compose-material", version.ref = "horologist" }
-horologist-datalayer-phone = { group = "com.google.android.horologist", name = "horologist-datalayer-phone", version.ref = "horologist" }
 
 # Ambient mode
 androidx-wear-core = { group = "androidx.wear", name = "wear", version.ref = "wearCore" }

@@ -218,9 +218,5 @@ dependencies {
     // OkHttp (for HTTP transfers)
     implementation(libs.okhttp)
 
-    // Horologist
-    implementation(libs.horologist.compose.material)
-    implementation(libs.horologist.compose.layout)
-
     implementation(project(":transfercontract"))
 }

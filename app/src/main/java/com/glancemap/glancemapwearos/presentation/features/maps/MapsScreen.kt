@@ -6,10 +6,7 @@
     "ReturnCount",
     "TooManyFunctions",
 )
-@file:OptIn(
-    com.google.android.horologist.annotations.ExperimentalHorologistApi::class,
-    androidx.compose.foundation.ExperimentalFoundationApi::class,
-)
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.glancemap.glancemapwearos.presentation.features.maps
 
@@ -56,11 +53,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
@@ -80,10 +81,6 @@ import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.layout.ScalingLazyColumn
-import com.google.android.horologist.compose.layout.ScreenScaffold
-import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import kotlinx.coroutines.delay
 import java.util.Locale
 import androidx.compose.foundation.lazy.items as foundationItems
@@ -218,20 +215,10 @@ fun MapsScreen(
         }
     val headerTopSafePadding = headerTopPadding + adaptive.headerTopSafeInset
 
-    val columnState =
-        rememberResponsiveColumnState(
-            contentPadding = {
-                PaddingValues(
-                    top = listTopPadding,
-                    start = listHorizontalPadding,
-                    end = listHorizontalPadding,
-                    bottom = listBottomPadding,
-                )
-            },
-        )
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
     LaunchedEffect(Unit) {
-        columnState.state.scrollToItem(0)
+        listState.scrollToItem(0)
     }
 
     LaunchedEffect(helpPrefs) {
@@ -305,7 +292,7 @@ fun MapsScreen(
         helpPrefs.edit().putBoolean(MAPS_HELP_SHOWN_KEY, true).apply()
     }
 
-    ScreenScaffold(scrollState = columnState) {
+    ScreenScaffold(scrollState = listState) {
         val showDeleteDialog = showDeleteDialogState.value
         val mapToDelete = mapToDeleteState.value
 
@@ -758,7 +745,16 @@ fun MapsScreen(
             ) {
                 ScalingLazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    columnState = columnState,
+                    state = listState,
+                    contentPadding =
+                        PaddingValues(
+                            top = listTopPadding,
+                            start = listHorizontalPadding,
+                            end = listHorizontalPadding,
+                            bottom = listBottomPadding,
+                        ),
+                    anchorType = ScalingLazyListAnchorType.ItemStart,
+                    autoCentering = null,
                 ) {
                     if (mapFiles.isEmpty()) {
                         item {

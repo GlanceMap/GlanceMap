@@ -16,9 +16,7 @@ import com.glancemap.glancemapwearos.core.routing.HikeRouteProfileParams
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.routetools.routeStyleSettingsOptionsForActivityProfile
 import com.glancemap.glancemapwearos.presentation.features.routetools.routeStyleTitleForSettingsValue
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun GpxToolsSettingsScreen(
     viewModel: SettingsViewModel,

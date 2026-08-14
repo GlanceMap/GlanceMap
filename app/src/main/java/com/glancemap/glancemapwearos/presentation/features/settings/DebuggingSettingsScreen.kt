@@ -24,8 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.Text as WearText
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.IconButton
@@ -56,10 +59,6 @@ import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
 import com.glancemap.shared.transfer.TransferDataLayerContract
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.Chip
-import com.google.android.horologist.compose.material.ToggleChip
-import com.google.android.horologist.compose.material.ToggleChipToggleControl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -91,7 +90,6 @@ private fun DiagnosticsSettingsSectionTitle() {
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun DebuggingSettingsScreen(
     viewModel: SettingsViewModel,
@@ -304,12 +302,28 @@ fun DebuggingSettingsScreen(
 
         item {
             Chip(
-                label = "1. Clean Previous Logs",
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    WearText(
+                        text = "1. Clean Previous Logs",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
                 secondaryLabel =
-                    if (exportInProgress) {
-                        "Export in progress..."
-                    } else {
-                        cleanCaptureStatus
+                    {
+                        WearText(
+                            text =
+                                if (exportInProgress) {
+                                    "Export in progress..."
+                                } else {
+                                    cleanCaptureStatus
+                                },
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
                     },
                 onClick = {
                     if (exportInProgress) return@Chip
@@ -335,10 +349,10 @@ fun DebuggingSettingsScreen(
         }
 
         item {
-            ToggleChip(
+            SettingsToggleChip(
                 checked = gpsDebugTelemetry,
                 onCheckedChanged = {
-                    if (exportInProgress) return@ToggleChip
+                    if (exportInProgress) return@SettingsToggleChip
                     if (!it) {
                         CompassDeepTraceDiagnostics.stop(reason = "capture_toggle_off")
                         EnergyDiagnostics.recordSample(
@@ -391,13 +405,12 @@ fun DebuggingSettingsScreen(
                     } else {
                         "Off - tap to start"
                     },
-                toggleControl = ToggleChipToggleControl.Switch,
             )
         }
 
         if (BuildConfig.DEBUG) {
             item {
-                ToggleChip(
+                SettingsToggleChip(
                     checked = externalSensorSimulationEnabled,
                     onCheckedChanged = { enabled ->
                         ExternalSensorSimulation.setEnabled(enabled)
@@ -421,26 +434,42 @@ fun DebuggingSettingsScreen(
                         } else {
                             "Debug testing only"
                         },
-                    toggleControl = ToggleChipToggleControl.Switch,
                 )
             }
         }
 
         item {
             Chip(
+                modifier = Modifier.fillMaxWidth(),
                 label =
-                    if (hasExportedDiagnostics && !gpsDebugTelemetry) {
-                        "3. Resend Diagnostic"
-                    } else {
-                        "3. Export Diagnostic"
+                    {
+                        WearText(
+                            text =
+                                if (hasExportedDiagnostics && !gpsDebugTelemetry) {
+                                    "3. Resend Diagnostic"
+                                } else {
+                                    "3. Export Diagnostic"
+                                },
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Start,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
                     },
                 secondaryLabel =
-                    if (exportInProgress) {
-                        "Exporting..."
-                    } else if (gpsDebugTelemetry) {
-                        "Stop & export"
-                    } else {
-                        diagnosticsExportStatus
+                    {
+                        WearText(
+                            text =
+                                if (exportInProgress) {
+                                    "Exporting..."
+                                } else if (gpsDebugTelemetry) {
+                                    "Stop & export"
+                                } else {
+                                    diagnosticsExportStatus
+                                },
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
                     },
                 onClick = {
                     if (exportInProgress) return@Chip
@@ -689,11 +718,11 @@ fun DebuggingSettingsScreen(
         item {
             val fullDiagnostics =
                 diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
-            ToggleChip(
+            SettingsToggleChip(
                 checked = fullDiagnostics && gpsDebugTelemetryPopupEnabled,
                 enabled = fullDiagnostics,
                 onCheckedChanged = {
-                    if (exportInProgress || !fullDiagnostics) return@ToggleChip
+                    if (exportInProgress || !fullDiagnostics) return@SettingsToggleChip
                     viewModel.setGpsDebugTelemetryPopupEnabled(it)
                 },
                 label = "Debug popup",
@@ -703,13 +732,12 @@ fun DebuggingSettingsScreen(
                         gpsDebugTelemetryPopupEnabled -> "On during full diagnostics"
                         else -> "Off during full diagnostics"
                     },
-                toggleControl = ToggleChipToggleControl.Switch,
             )
         }
         item {
             val batteryBenchmark =
                 diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY
-            ToggleChip(
+            SettingsToggleChip(
                 checked = compassDeepTraceState.active,
                 enabled = gpsDebugTelemetry && !exportInProgress,
                 onCheckedChanged = { enabled ->
@@ -736,15 +764,29 @@ fun DebuggingSettingsScreen(
                             "Manual stop · invalidates benchmark"
                         else -> "Manual stop · higher battery use"
                     },
-                toggleControl = ToggleChipToggleControl.Switch,
             )
         }
 
         if (BuildConfig.DEBUG) {
             item {
                 Chip(
-                    label = "Force close app",
-                    secondaryLabel = "Debug crash test",
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        WearText(
+                            text = "Force close app",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Start,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
+                    secondaryLabel = {
+                        WearText(
+                            text = "Debug crash test",
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
                     onClick = {
                         DebugTelemetry.log("DiagnosticsFlow", "manual_force_close_requested")
                         error("Manual force close from debugging settings")

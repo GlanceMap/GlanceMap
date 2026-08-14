@@ -1,7 +1,4 @@
-@file:OptIn(
-    com.google.android.horologist.annotations.ExperimentalHorologistApi::class,
-    androidx.compose.foundation.ExperimentalFoundationApi::class,
-)
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
@@ -57,9 +54,13 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
@@ -81,9 +82,6 @@ import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import com.google.android.horologist.compose.layout.ScalingLazyColumn
-import com.google.android.horologist.compose.layout.ScreenScaffold
-import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -418,27 +416,17 @@ fun GpxScreen(
         }
     }
 
-    val columnState =
-        rememberResponsiveColumnState(
-            contentPadding = {
-                PaddingValues(
-                    start = listHorizontalPadding,
-                    end = listHorizontalPadding,
-                    top = listTopPadding,
-                    bottom = listBottomPadding,
-                )
-            },
-        )
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
     LaunchedEffect(listMode) {
-        columnState.state.scrollToItem(0)
+        listState.scrollToItem(0)
         DebugTelemetry.log(
             "GpxScreen",
             "event=scroll_top mode=${listMode.name}",
         )
     }
 
-    ScreenScaffold(scrollState = columnState) {
+    ScreenScaffold(scrollState = listState) {
         DeleteConfirmationDialog(
             visible = showDeleteDialog,
             title = "Delete Track?",
@@ -661,7 +649,16 @@ fun GpxScreen(
             ) {
                 ScalingLazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    columnState = columnState,
+                    state = listState,
+                    contentPadding =
+                        PaddingValues(
+                            start = listHorizontalPadding,
+                            end = listHorizontalPadding,
+                            top = listTopPadding,
+                            bottom = listBottomPadding,
+                        ),
+                    anchorType = ScalingLazyListAnchorType.ItemStart,
+                    autoCentering = null,
                 ) {
                     if (visibleGpxFiles.isEmpty()) {
                         item {

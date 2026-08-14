@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
@@ -12,11 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.Icon
+import androidx.wear.compose.material.Text as WearText
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -28,12 +33,9 @@ import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
 import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.Chip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun CompassSettingsScreen(
     viewModel: SettingsViewModel,
@@ -327,8 +329,23 @@ fun CompassSettingsScreen(
         item {
             if (usesAutomaticGoogleNorthReference(effectiveProviderType)) {
                 Chip(
-                    label = "North reference",
-                    secondaryLabel = automaticNorthReferenceStatusLabel(activeProviderType),
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        WearText(
+                            text = "North reference",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Start,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
+                    secondaryLabel = {
+                        WearText(
+                            text = automaticNorthReferenceStatusLabel(activeProviderType),
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
                     icon = {
                         Icon(
                             imageVector = Icons.Filled.Info,
@@ -387,7 +404,16 @@ fun CompassSettingsScreen(
             }
             item {
                 Chip(
-                    label = "Recalibrate Compass",
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        WearText(
+                            text = "Recalibrate Compass",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 2,
+                        )
+                    },
                     onClick = { showCalibrationDialog = true },
                 )
             }
@@ -401,8 +427,23 @@ fun CompassSettingsScreen(
             }
             item {
                 Chip(
-                    label = "Run source test",
-                    secondaryLabel = "Checks still + turn response",
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        WearText(
+                            text = "Run source test",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Start,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
+                    secondaryLabel = {
+                        WearText(
+                            text = "Checks still + turn response",
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    },
                     onClick = {
                         compatibilityState = CompatibilityTestUiState()
                         compatibilityRunToken += 1
@@ -445,8 +486,23 @@ fun CompassSettingsScreen(
         }
         item {
             Chip(
-                label = "Compass help",
-                secondaryLabel = "How to test compass",
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    WearText(
+                        text = "Compass help",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
+                secondaryLabel = {
+                    WearText(
+                        text = "How to test compass",
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
                 icon = { Icon(imageVector = Icons.Filled.Info, contentDescription = null) },
                 onClick = { showInfoDialog = true },
             )
