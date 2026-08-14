@@ -2,15 +2,53 @@
 
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.mapsforge.core.model.LatLong
+import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 
-internal const val RECORDING_TRACK_FILTER_VERSION = 7
+internal const val RECORDING_TRACK_FILTER_VERSION = 8
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
+internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = 18f
+
+/**
+ * Some watches expose a fixed 125 m accuracy value for otherwise usable direct-GNSS fixes.
+ * Keep that raw value in GPX, but do not let it make the live recording filter reject every
+ * direct watch-GPS point.
+ */
+internal fun resolveRecordingFilterAccuracyMeters(
+    rawAccuracyMeters: Float?,
+    knownWatchGpsAccuracyFloorActive: Boolean,
+): Float? {
+    val rawAccuracy = rawAccuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return rawAccuracyMeters
+    return if (
+        knownWatchGpsAccuracyFloorActive &&
+        isKnownWatchGpsAccuracyFloor(rawAccuracy)
+    ) {
+        RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M
+    } else {
+        rawAccuracy
+    }
+}
+
+internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
+    accuracyMeters?.let { accuracy ->
+        accuracy.isFinite() &&
+            abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+    } == true
+
+internal fun resolveRecordingContinuityRecoveryGapMillis(
+    deliveryGapMillis: Long,
+    committedPointGapMillis: Long,
+    thresholdMillis: Long,
+): Long? =
+    maxOf(deliveryGapMillis, committedPointGapMillis)
+        .takeIf { it >= thresholdMillis }
 
 internal data class RecordingFixSample(
     val latLong: LatLong,
@@ -233,6 +271,7 @@ internal data class RecordingMotionSample(
     val speedAccuracyMps: Float?,
     val stepCount: Int?,
     val cadenceSpm: Int?,
+    val trustReportedSpeedWithoutAccuracy: Boolean = false,
 )
 
 internal enum class RecordingMotionStatus {
@@ -298,6 +337,7 @@ internal class RecordingMovementConfidenceGate {
         previous: RecordedTracePoint?,
         candidate: RecordingMotionSample,
         activityProfile: String,
+        previousFilterAccuracyMeters: Float? = previous?.accuracyMeters,
     ): RecordingMotionResult {
         val stepsAdvanced = observeStepProgress(previous, candidate)
         val cadenceShowsMotion = candidate.cadenceShowsMotion(activityProfile)
@@ -332,7 +372,12 @@ internal class RecordingMovementConfidenceGate {
                 evidence = evidence,
             )
         }
-        val stationaryRadiusMeters = recordingStationaryRadiusMeters(previous, candidate, activityProfile)
+        val stationaryRadiusMeters =
+            recordingStationaryRadiusMeters(
+                candidate = candidate,
+                activityProfile = activityProfile,
+                previousFilterAccuracyMeters = previousFilterAccuracyMeters,
+            )
         val radiusEvidence = evidence.copy(stationaryRadiusMeters = stationaryRadiusMeters)
         if (displacementMeters <= stationaryRadiusMeters) {
             pendingSlowProgress = null
@@ -434,7 +479,8 @@ private fun RecordingMotionSample.reportedMotionAssessment(
         speed?.let { value ->
             aboveThreshold &&
                 (
-                    speedAccuracy == null ||
+                    trustReportedSpeedWithoutAccuracy ||
+                        speedAccuracy == null ||
                         speedAccuracy <= maxOf(RECORDING_MOTION_MAX_SPEED_ACCURACY_MPS, value * 1.25f)
                 )
         } == true
@@ -445,12 +491,12 @@ private fun RecordingMotionSample.reportedMotionAssessment(
 }
 
 private fun recordingStationaryRadiusMeters(
-    previous: RecordedTracePoint,
     candidate: RecordingMotionSample,
     activityProfile: String,
+    previousFilterAccuracyMeters: Float?,
 ): Double {
     val accuracyMeters =
-        listOfNotNull(previous.accuracyMeters, candidate.accuracyMeters)
+        listOfNotNull(previousFilterAccuracyMeters, candidate.accuracyMeters)
             .filter { it.isFinite() && it >= 0f }
             .maxOrNull()
             ?: RECORDING_FIX_FALLBACK_ACCURACY_M.toFloat()

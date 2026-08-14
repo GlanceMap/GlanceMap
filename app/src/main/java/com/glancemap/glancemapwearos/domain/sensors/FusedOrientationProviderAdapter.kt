@@ -96,6 +96,11 @@ internal class FusedOrientationProviderAdapter(
 
     @Volatile private var fusedWarmupActive = false
 
+    // Once the game-rotation witness proves unreliable, retain its verdict for this provider
+    // session. Re-registering it on every Fused request restart would spend sensor power without
+    // contributing to the rendered heading.
+    @Volatile private var relativeWitnessListenerSuppressedForSession = false
+
     @Volatile private var latestIntegritySnapshot = headingIntegrityEngine.snapshot()
 
     @Volatile private var northReferenceMode = NorthReferenceMode.TRUE
@@ -262,6 +267,7 @@ internal class FusedOrientationProviderAdapter(
 
         lowPowerMode = lowPower
         started = true
+        relativeWitnessListenerSuppressedForSession = false
         val startElapsedMs = SystemClock.elapsedRealtime()
         fusedStaleRecoveryAttempted = false
         fusedStaleRecoveryStartedAtElapsedMs = 0L
@@ -290,6 +296,7 @@ internal class FusedOrientationProviderAdapter(
             recentUsableFusedHeadingAgeMs(SystemClock.elapsedRealtime()) != null
         started = false
         stopOrientationUpdates()
+        relativeWitnessListenerSuppressedForSession = false
         callbackThread?.quitSafely()
         callbackThread = null
         callbackHandler = null
@@ -580,10 +587,7 @@ internal class FusedOrientationProviderAdapter(
         integritySensorMonitor.start(
             handler = handler,
             lowPower = lowPowerMode && !isRecalibrationBoostActive(),
-            // Keep the relative game-rotation vector alive for the whole interactive compass
-            // session. It never supplies north, but it lets Navigate reject a large unverified
-            // Google Fused turn after the display wakes.
-            enableRelativeWitness = true,
+            enableRelativeWitness = !relativeWitnessListenerSuppressedForSession,
             onRelativeHeading = { witness, atElapsedMs ->
                 val headingDeg = witness.headingDeg
                 if (headingDeg == null) {
@@ -790,6 +794,12 @@ internal class FusedOrientationProviderAdapter(
             )
         }
         val interference = next.magneticQuality == CompassMagneticQuality.INTERFERENCE
+        if (next.relativeWitnessSuppressed && !relativeWitnessListenerSuppressedForSession) {
+            relativeWitnessListenerSuppressedForSession = true
+            if (integritySensorMonitor.disableRelativeHeading()) {
+                logDiagnostics("google_fused integrity relative_witness listener=stopped reason=suppressed")
+            }
+        }
         val interferenceChanged = _magneticInterference.value != interference
         _magneticInterference.value = interference
         val transition =

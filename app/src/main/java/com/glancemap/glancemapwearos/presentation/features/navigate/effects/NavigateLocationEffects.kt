@@ -1600,8 +1600,6 @@ internal fun shouldShowGpsIndicatorUnpinned(
 private const val GPS_INDICATOR_CAUTION_AFTER_MS = 12_000L
 private const val GPS_INDICATOR_LOST_AFTER_MS = 30_000L
 
-private fun computeGpsFixStaleThresholdMs(expectedGpsIntervalMs: Long): Long = resolveLocationTimingProfile(expectedGpsIntervalMs).indicatorStaleThresholdMs
-
 private fun computeUnavailableConfirmWindowMs(staleThresholdMs: Long): Long {
     val safeStaleThresholdMs = staleThresholdMs.coerceAtLeast(1_000L)
     return (safeStaleThresholdMs * 2L).coerceIn(20_000L, 60_000L)

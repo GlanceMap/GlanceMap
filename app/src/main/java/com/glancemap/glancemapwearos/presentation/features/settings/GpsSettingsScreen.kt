@@ -44,12 +44,8 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.nextGpsTimingMode
 import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.ToggleChip
-import com.google.android.horologist.compose.material.ToggleChipToggleControl
 import kotlin.math.abs
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun GpsSettingsScreen(
     viewModel: SettingsViewModel,
@@ -85,7 +81,7 @@ fun GpsSettingsScreen(
         }
 
         item {
-            ToggleChip(
+            SettingsToggleChip(
                 checked = isWatchGpsOnly,
                 onCheckedChanged = { viewModel.setWatchGpsOnly(it) },
                 label = stringResource(R.string.gps_source),
@@ -94,7 +90,6 @@ fun GpsSettingsScreen(
                         isWatchGpsOnly -> stringResource(R.string.gps_source_watch_only)
                         else -> stringResource(R.string.gps_source_auto)
                     },
-                toggleControl = ToggleChipToggleControl.Switch,
             )
         }
 
@@ -125,7 +120,7 @@ fun GpsSettingsScreen(
 
         if (isFullDiagnosticsCapture(gpsDebugTelemetry, diagnosticsCaptureMode)) {
             item {
-                ToggleChip(
+                SettingsToggleChip(
                     checked = gpsPassiveLocationExperiment,
                     onCheckedChanged = { viewModel.setGpsPassiveLocationExperiment(it) },
                     label = stringResource(R.string.gps_use_other_apps),
@@ -135,7 +130,6 @@ fun GpsSettingsScreen(
                         } else {
                             stringResource(R.string.gps_other_apps_off_during_capture)
                         },
-                    toggleControl = ToggleChipToggleControl.Switch,
                 )
             }
         }

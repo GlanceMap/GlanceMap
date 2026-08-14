@@ -6,10 +6,53 @@ import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigateEffectsSupportTest {
+    @Test
+    fun googleFusedWakeHeadingWaitsForANewSessionSample() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+        )
+        val state = readyGoogleFusedState()
+
+        assertNull(
+            gate.resolve(
+                renderState = state,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_000L,
+            ),
+        )
+        val target =
+            gate.resolve(
+                renderState = state,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+            )
+
+        assertEquals(180f, target?.headingDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun googleFusedWakeHeadingRemainsTheVisualAuthorityAfterARealTurn() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+        )
+
+        val target =
+            gate.resolve(
+                renderState = readyGoogleFusedState(),
+                compassHeadingDeg = 90f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+            )
+
+        assertEquals(90f, target?.headingDeg ?: -1f, 0f)
+    }
+
     @Test
     fun compassFollowMapStaysFrozenWithoutActiveHeadingSource() {
         assertFalse(
@@ -18,6 +61,15 @@ class NavigateEffectsSupportTest {
             ),
         )
     }
+
+    private fun readyGoogleFusedState() =
+        initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
+            headingSource = HeadingSource.FUSED_ORIENTATION,
+            accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+            headingSampleElapsedRealtimeMs = 1_050L,
+            headingSampleStale = false,
+            headingRenderable = true,
+        )
 
     @Test
     fun compassFollowMapStaysFrozenWhenAccuracyIsUnreliable() {

@@ -49,7 +49,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -127,7 +127,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -200,7 +200,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -275,7 +275,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -349,7 +349,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -419,7 +419,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -492,7 +492,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(
@@ -567,7 +567,7 @@ class LocationRequestCoordinatorTest {
                     updateSelfHealMonitor = {},
                     updateGnssDiagnostics = {},
                     foregroundRefresh = {},
-                    inspectLocationEnvironment = { _, _, _, _ -> LocationEnvironmentAction.CONTINUE },
+                    inspectLocationEnvironment = { _, _, _ -> LocationEnvironmentAction.CONTINUE },
                     cancelImmediateLocationWork = {},
                     currentState = {
                         RequestUpdateState(

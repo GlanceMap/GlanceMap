@@ -21,9 +21,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun PoiSettingsScreen(
     viewModel: SettingsViewModel,
@@ -138,7 +136,6 @@ private fun poiMarkerStyleLabel(style: String): String =
     }
 
 @Composable
-@OptIn(ExperimentalHorologistApi::class)
 private fun PoiPopupTimeoutSettings(
     autoTimeoutEnabled: Boolean,
     poiPopupTimeoutSeconds: Int,

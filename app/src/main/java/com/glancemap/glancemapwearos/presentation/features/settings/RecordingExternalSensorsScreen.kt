@@ -56,7 +56,6 @@ import com.glancemap.glancemapwearos.presentation.features.recording.external.Ex
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 
 @Composable
 fun RecordingExternalSensorsScreen(
@@ -432,7 +431,6 @@ private fun LinkedExternalSensorChip(
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 private fun LinkedExternalSensorChipContent(
     name: String,

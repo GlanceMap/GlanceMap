@@ -4,7 +4,6 @@ import android.location.Location
 import com.glancemap.glancemapwearos.core.service.location.activity.LocationActivityState
 import com.glancemap.glancemapwearos.core.service.location.activity.LocationActivityTracker
 import com.glancemap.glancemapwearos.core.service.location.activity.LocationActivityTransition
-import com.glancemap.glancemapwearos.core.service.location.config.ENABLE_STRICT_FIX_FILTERING
 import com.glancemap.glancemapwearos.core.service.location.policy.FixAcceptancePolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
@@ -84,45 +83,42 @@ internal class LocationCandidateProcessor(
             )
         }
         val effectiveMaxAgeMs = minOf(acceptance.maxAgeMs, strictMaxAgeMs)
-        if (ENABLE_STRICT_FIX_FILTERING) {
-            if (ageMs > effectiveMaxAgeMs) {
-                telemetry.logStaleFixDropped(
-                    nowElapsedMs = nowElapsedMs,
-                    activityState = activityTracker.state,
-                    burst = isInHighAccuracyBurst,
-                    source = source,
-                    ageMs = ageMs,
-                    maxAgeMs = effectiveMaxAgeMs,
-                )
-                return ProcessedLocationCandidate(
-                    acceptedLocation = null,
-                    shouldEndBurstEarly = false,
-                    activityStateChanged = false,
-                )
-            }
-            if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
-                telemetry.logAccuracyFixDropped(
-                    nowElapsedMs = nowElapsedMs,
-                    activityState = activityTracker.state,
-                    burst = isInHighAccuracyBurst,
-                    source = source,
-                    accuracyM = location.accuracy,
-                    maxAccuracyM = acceptance.maxAccuracyM,
-                    ageMs = ageMs,
-                    maxAgeMs = effectiveMaxAgeMs,
-                )
-                return ProcessedLocationCandidate(
-                    acceptedLocation = null,
-                    shouldEndBurstEarly = false,
-                    activityStateChanged = false,
-                )
-            }
+        if (ageMs > effectiveMaxAgeMs) {
+            telemetry.logStaleFixDropped(
+                nowElapsedMs = nowElapsedMs,
+                activityState = activityTracker.state,
+                burst = isInHighAccuracyBurst,
+                source = source,
+                ageMs = ageMs,
+                maxAgeMs = effectiveMaxAgeMs,
+            )
+            return ProcessedLocationCandidate(
+                acceptedLocation = null,
+                shouldEndBurstEarly = false,
+                activityStateChanged = false,
+            )
+        }
+        if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
+            telemetry.logAccuracyFixDropped(
+                nowElapsedMs = nowElapsedMs,
+                activityState = activityTracker.state,
+                burst = isInHighAccuracyBurst,
+                source = source,
+                accuracyM = location.accuracy,
+                maxAccuracyM = acceptance.maxAccuracyM,
+                ageMs = ageMs,
+                maxAgeMs = effectiveMaxAgeMs,
+            )
+            return ProcessedLocationCandidate(
+                acceptedLocation = null,
+                shouldEndBurstEarly = false,
+                activityStateChanged = false,
+            )
         }
 
         val freshFixAtMs = (nowElapsedMs - ageMs).coerceAtLeast(0L)
-        val acceptedFixAtMs = if (ENABLE_STRICT_FIX_FILTERING) freshFixAtMs else nowElapsedMs
         lastLocation = location
-        lastAcceptedFixAtMs = acceptedFixAtMs
+        lastAcceptedFixAtMs = freshFixAtMs
         return ProcessedLocationCandidate(
             acceptedLocation = location,
             shouldEndBurstEarly =
@@ -164,48 +160,45 @@ internal class LocationCandidateProcessor(
             )
         }
         val effectiveMaxAgeMs = minOf(acceptance.maxAgeMs, strictMaxAgeMs)
-        if (ENABLE_STRICT_FIX_FILTERING) {
-            if (ageMs > effectiveMaxAgeMs) {
-                telemetry.logStaleFixDropped(
-                    nowElapsedMs = nowElapsedMs,
-                    activityState = activityTracker.state,
-                    burst = isInHighAccuracyBurst,
-                    source = "callback_candidate",
-                    ageMs = ageMs,
-                    maxAgeMs = effectiveMaxAgeMs,
-                )
-                return ProcessedLocationCandidate(
-                    acceptedLocation = null,
-                    shouldEndBurstEarly = false,
-                    activityStateChanged = false,
-                )
-            }
-            if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
-                telemetry.logAccuracyFixDropped(
-                    nowElapsedMs = nowElapsedMs,
-                    activityState = activityTracker.state,
-                    burst = isInHighAccuracyBurst,
-                    source = "callback_candidate",
-                    accuracyM = location.accuracy,
-                    maxAccuracyM = acceptance.maxAccuracyM,
-                    ageMs = ageMs,
-                    maxAgeMs = effectiveMaxAgeMs,
-                )
-                return ProcessedLocationCandidate(
-                    acceptedLocation = null,
-                    shouldEndBurstEarly = false,
-                    activityStateChanged = false,
-                )
-            }
+        if (ageMs > effectiveMaxAgeMs) {
+            telemetry.logStaleFixDropped(
+                nowElapsedMs = nowElapsedMs,
+                activityState = activityTracker.state,
+                burst = isInHighAccuracyBurst,
+                source = "callback_candidate",
+                ageMs = ageMs,
+                maxAgeMs = effectiveMaxAgeMs,
+            )
+            return ProcessedLocationCandidate(
+                acceptedLocation = null,
+                shouldEndBurstEarly = false,
+                activityStateChanged = false,
+            )
+        }
+        if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
+            telemetry.logAccuracyFixDropped(
+                nowElapsedMs = nowElapsedMs,
+                activityState = activityTracker.state,
+                burst = isInHighAccuracyBurst,
+                source = "callback_candidate",
+                accuracyM = location.accuracy,
+                maxAccuracyM = acceptance.maxAccuracyM,
+                ageMs = ageMs,
+                maxAgeMs = effectiveMaxAgeMs,
+            )
+            return ProcessedLocationCandidate(
+                acceptedLocation = null,
+                shouldEndBurstEarly = false,
+                activityStateChanged = false,
+            )
         }
 
         val freshFixAtMs = (nowElapsedMs - ageMs).coerceAtLeast(0L)
-        val acceptedFixAtMs = if (ENABLE_STRICT_FIX_FILTERING) freshFixAtMs else nowElapsedMs
+        val acceptedFixAtMs = freshFixAtMs
         val previousLocation = lastLocation
         val previousFixAtMs = lastAcceptedFixAtMs
         val jumpDiagnostics =
             if (
-                ENABLE_STRICT_FIX_FILTERING &&
                 previousLocation != null &&
                 previousFixAtMs > 0L
             ) {
@@ -219,7 +212,7 @@ internal class LocationCandidateProcessor(
                 null
             }
 
-        if (ENABLE_STRICT_FIX_FILTERING && jumpDiagnostics != null && jumpDiagnostics.suspicious) {
+        if (jumpDiagnostics != null && jumpDiagnostics.suspicious) {
             val confirmation =
                 confirmPendingJump(
                     candidate = location,
@@ -256,7 +249,7 @@ internal class LocationCandidateProcessor(
             pendingJumpSeenAtMs = 0L
         }
 
-        // Strict mode keeps fix timestamp ordering; permissive mode uses receipt time to avoid stale timestamp artifacts.
+        // Keep fix timestamp ordering so delayed callbacks do not look newer than they are.
         val transition = activityTracker.onAcceptedLocation(location, acceptedFixAtMs)
         transition?.let { telemetry.logActivityTransition(it.from, it.to) }
         telemetry.onCallbackFixAccepted(

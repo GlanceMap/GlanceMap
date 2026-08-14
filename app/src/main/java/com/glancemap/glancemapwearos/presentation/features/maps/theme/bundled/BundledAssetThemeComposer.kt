@@ -672,51 +672,6 @@ class BundledAssetThemeComposer(
             )
         }
 
-    private fun collectToggleableOverlayLayerIds(originalXml: String): Set<String> {
-        val parser =
-            XmlPullParserFactory.newInstance().newPullParser().apply {
-                setInput(StringReader(originalXml))
-            }
-
-        val toggleable = HashSet<String>(256)
-
-        var insideStyleMenu = false
-        var styleMenuDepth = -1
-
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            when (parser.eventType) {
-                XmlPullParser.START_TAG -> {
-                    val tag = parser.name
-                    if (tag == "stylemenu") {
-                        insideStyleMenu = true
-                        styleMenuDepth = parser.depth
-                    } else if (insideStyleMenu && tag == "layer") {
-                        val id =
-                            parser.getAttributeValue(null, "id") ?: run {
-                                // no id -> ignore this layer
-                                parser.next()
-                                continue
-                            }
-                        val isStyle = parser.getAttributeValue(null, "visible") == "true"
-                        if (!isStyle) toggleable.add(id)
-                    }
-                }
-
-                XmlPullParser.END_TAG -> {
-                    val tag = parser.name
-                    if (insideStyleMenu && tag == "stylemenu" && parser.depth == styleMenuDepth) {
-                        insideStyleMenu = false
-                        styleMenuDepth = -1
-                        break
-                    }
-                }
-            }
-            parser.next()
-        }
-
-        return toggleable
-    }
-
     private fun copyStartTagWithAttributes(
         parser: XmlPullParser,
         serializer: XmlSerializer,

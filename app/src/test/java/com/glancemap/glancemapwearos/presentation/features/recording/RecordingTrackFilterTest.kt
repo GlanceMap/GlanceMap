@@ -90,6 +90,27 @@ class RecordingTrackFilterTest {
     }
 
     @Test
+    fun knownWatchGpsAccuracyFloorUsesFilterAccuracyWithoutChangingRawAccuracy() {
+        assertEquals(
+            125f,
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = 125f,
+                knownWatchGpsAccuracyFloorActive = false,
+            ) ?: 0f,
+            0f,
+        )
+        assertEquals(
+            RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M,
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = 125f,
+                knownWatchGpsAccuracyFloorActive = true,
+            ) ?: 0f,
+            0f,
+        )
+        assertTrue(isKnownWatchGpsAccuracyFloor(125f))
+    }
+
+    @Test
     fun isolatedJumpIsHeldAndFollowingGoodFixIsAccepted() {
         val gate = RecordingFixQualityGate()
         assertTrue(gate.evaluate(sample(x = 0.0, elapsedMillis = 1_000L), HIKE).accepted)

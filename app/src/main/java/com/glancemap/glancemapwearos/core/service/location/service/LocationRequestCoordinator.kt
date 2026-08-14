@@ -58,7 +58,6 @@ internal class LocationRequestCoordinator(
     private val inspectLocationEnvironment: suspend (
         requestSpec: RequestSpec,
         state: RequestUpdateState,
-        permissions: LocationPermissionSnapshot,
         nowElapsedMs: Long,
     ) -> LocationEnvironmentAction,
     private val cancelImmediateLocationWork: (String) -> Unit,
@@ -145,7 +144,6 @@ internal class LocationRequestCoordinator(
                     inspectLocationEnvironment(
                         requestSpec,
                         state,
-                        permissions,
                         nowElapsedMs,
                     )
                 if (isSuperseded(generation)) return@launch

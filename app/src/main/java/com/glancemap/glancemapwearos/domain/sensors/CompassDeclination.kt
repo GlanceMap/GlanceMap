@@ -113,10 +113,6 @@ internal class CompassDeclinationController(
     }
 
     fun maybeInitializeFromLastKnownLocation() {
-        if (!ENABLE_DECLINATION_SEED_FROM_LAST_KNOWN) {
-            logDiagnostics("declination seed disabled")
-            return
-        }
         if (!hasAnyLocationPermission()) {
             logDiagnostics("declination seed skipped: location permission missing")
             return
@@ -171,7 +167,6 @@ internal class CompassDeclinationController(
     }
 
     fun maybeInitializeFromCache() {
-        if (!ENABLE_DECLINATION_CACHE) return
         if (lastDeclinationAtElapsedMs != 0L) return
         val cachedDeclination =
             declinationCachePrefs.getFloat(
@@ -278,7 +273,6 @@ internal class CompassDeclinationController(
         longitude: Double,
         sourceTimestampMs: Long,
     ) {
-        if (!ENABLE_DECLINATION_CACHE) return
         declinationCachePrefs
             .edit()
             .putFloat(PREF_KEY_DECLINATION_DEG, declinationDeg)

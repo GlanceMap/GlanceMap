@@ -87,14 +87,12 @@ internal class BatchTransferRunner(
             }
 
         val skippedCount = (uris.size - supportedItems.size).coerceAtLeast(0)
-        val first = supportedItems.firstOrNull()
 
-        if (first == null) {
+        if (supportedItems.isEmpty()) {
             clearSelectedFiles(statusMessage = "No compatible files selected (.gpx, .map, .poi, .rd5, .hgt, .hgt.gz).")
             return
         }
 
-        val sizeMB = (first.size / 1_048_576L).toInt()
         val status =
             if (skippedCount > 0) {
                 "Selected ${supportedItems.size} file(s); skipped $skippedCount unsupported."
@@ -106,9 +104,6 @@ internal class BatchTransferRunner(
             it.copy(
                 selectedFileUris = supportedItems.map { item -> item.uri },
                 selectedFileDisplayNames = supportedItems.map { item -> item.displayName },
-                selectedFileUri = first.uri,
-                selectedFileName = first.displayName,
-                selectedFileSizeMb = sizeMB,
                 statusMessage = status,
             )
         }
@@ -122,9 +117,6 @@ internal class BatchTransferRunner(
             it.copy(
                 selectedFileUris = emptyList(),
                 selectedFileDisplayNames = emptyList(),
-                selectedFileUri = null,
-                selectedFileName = null,
-                selectedFileSizeMb = 0,
                 statusMessage =
                     when {
                         statusMessage != null -> statusMessage
@@ -663,9 +655,6 @@ internal class BatchTransferRunner(
                     progressText = "",
                     selectedFileUris = emptyList(),
                     selectedFileDisplayNames = emptyList(),
-                    selectedFileUri = null,
-                    selectedFileName = null,
-                    selectedFileSizeMb = 0,
                 )
             }
 

@@ -47,6 +47,3 @@ internal const val WATCH_GPS_ACCURACY_FLOOR_M = 125f
 internal const val WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M = 3f
 
 internal const val IMMEDIATE_COOLDOWN_MS = 2_500L
-
-// Production mode: reject stale/very inaccurate fixes in service-layer acceptance.
-internal val ENABLE_STRICT_FIX_FILTERING = true

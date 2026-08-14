@@ -216,6 +216,9 @@ class LocationService : Service() {
             watchGpsOnly = { latestWatchGpsOnly },
             passiveLocationExperiment = { latestGpsDebugTelemetry && latestPassiveLocationExperiment },
             phoneConnected = { latestPhoneConnected },
+            checkPhoneConnection = {
+                phoneConnectionProbe.isPhoneConnected()?.also { latestPhoneConnected = it }
+            },
             lastAnyAcceptedFixAtElapsedMs = { lastAnyAcceptedFixAtElapsedMs },
             lastCallbackAcceptedFixAtElapsedMs = { lastCallbackAcceptedFixAtElapsedMs },
             lastRequestAppliedAtElapsedMs = { lastRequestAppliedAtElapsedMs },
@@ -298,13 +301,6 @@ class LocationService : Service() {
                         nowElapsedMs = nowElapsedMs,
                     )
                 },
-                onLocationAccepted = { acceptedLocation, callbackOrigin, nowElapsedMs ->
-                    selfHealFailoverCoordinator.onLocationAccepted(
-                        acceptedLocation = acceptedLocation,
-                        callbackOrigin = callbackOrigin,
-                        nowElapsedMs = nowElapsedMs,
-                    )
-                },
                 endHighAccuracyBurstEarly = {
                     immediateLocationCoordinator.onGoodStreamFixAccepted()
                     immediateLocationCoordinator.endHighAccuracyBurst(reason = "early_fix")
@@ -375,11 +371,10 @@ class LocationService : Service() {
                 updateSelfHealMonitor = { selfHealFailoverCoordinator.updateSelfHealMonitor() },
                 updateGnssDiagnostics = { updateGnssDiagnostics(enabled = latestGpsDebugTelemetry) },
                 foregroundRefresh = { refreshKeepAliveNotificationState() },
-                inspectLocationEnvironment = { requestSpec, state, permissions, nowElapsedMs ->
+                inspectLocationEnvironment = { requestSpec, state, nowElapsedMs ->
                     inspectLocationEnvironment(
                         requestSpec = requestSpec,
                         state = state,
-                        permissions = permissions,
                         nowElapsedMs = nowElapsedMs,
                     )
                 },
@@ -861,7 +856,6 @@ class LocationService : Service() {
     private suspend fun inspectLocationEnvironment(
         requestSpec: RequestSpec,
         state: RequestUpdateState,
-        permissions: LocationPermissionSnapshot,
         nowElapsedMs: Long,
     ): LocationEnvironmentAction {
         val locationSettings =
@@ -891,7 +885,6 @@ class LocationService : Service() {
             }
         updateLatestPhoneConnection(
             phoneConnected = phoneConnected,
-            nowElapsedMs = nowElapsedMs,
         )
         val shouldCheckWatchGps =
             requestSpec.sourceMode == LocationSourceMode.WATCH_GPS ||
@@ -952,15 +945,11 @@ class LocationService : Service() {
         }
     }
 
-    private fun updateLatestPhoneConnection(
-        phoneConnected: Boolean?,
-        nowElapsedMs: Long,
-    ) {
+    private fun updateLatestPhoneConnection(phoneConnected: Boolean?) {
         if (phoneConnected != null) {
             latestPhoneConnected = phoneConnected
             selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
                 phoneConnected = phoneConnected,
-                nowElapsedMs = nowElapsedMs,
             )
         }
     }

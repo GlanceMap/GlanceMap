@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.test.LargeRoundWatch
@@ -27,8 +28,6 @@ import com.glancemap.glancemapwearos.test.SmallRoundWatchLargeText
 import com.glancemap.glancemapwearos.test.SmallRoundWatchMaxText
 import com.glancemap.glancemapwearos.test.WearDeviceTestConfig
 import com.glancemap.glancemapwearos.test.withWearDeviceConfig
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.layout.ScreenScaffold
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -105,7 +104,6 @@ class SettingsMenuDenseLayoutTest {
     }
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 private fun denseSettingsMenuShowcase() {
     key(denseMenuCenterItemIndex.value) {

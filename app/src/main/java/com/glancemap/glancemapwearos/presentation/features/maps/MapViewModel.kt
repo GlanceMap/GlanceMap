@@ -18,7 +18,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentBounds
 import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
-import com.glancemap.glancemapwearos.data.repository.MapRepository
+import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeSelection
@@ -130,7 +130,7 @@ internal fun shouldForceOfflineStartCenterForContext(
 class MapViewModel(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
-    private val mapRepository: MapRepository,
+    private val mapRepository: MapRepositoryImpl,
     private val syncManager: SyncManager,
     private val themeRepository: ThemeRepository,
 ) : ViewModel() {

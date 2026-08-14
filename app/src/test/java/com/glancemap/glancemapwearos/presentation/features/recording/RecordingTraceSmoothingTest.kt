@@ -61,6 +61,37 @@ class RecordingTraceSmoothingTest {
     }
 
     @Test
+    fun knownWatchGpsFloorAllowsMovingBikeFixWithVendorSpeedUncertainty() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous =
+            point(
+                latitude = 45.0,
+                longitude = 6.0,
+                timeMillis = 1_000L,
+                accuracyMeters = 125f,
+                speedMps = 4f,
+            )
+
+        val result =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.00045, elapsedMillis = 11_000L, speedMps = 4f)
+                        .copy(
+                            accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M,
+                            speedAccuracyMps = 25f,
+                            trustReportedSpeedWithoutAccuracy = true,
+                        ),
+                activityProfile = BIKE,
+                previousFilterAccuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M,
+            )
+
+        assertTrue(result.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+        assertEquals(true, result.evidence.reportedSpeedCredible)
+    }
+
+    @Test
     fun credibleSpeedCannotReleaseStationaryJitterInsideDeadband() {
         val gate = RecordingMovementConfidenceGate()
         val previous = point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 0.1f)
@@ -99,6 +130,52 @@ class RecordingTraceSmoothingTest {
         assertTrue(estimate.capped)
         assertTrue(estimate.distanceMeters < geometryMeters)
         assertTrue((estimate.maximumTrustedMeters ?: 0.0) >= estimate.distanceMeters)
+    }
+
+    @Test
+    fun committedPointGapTriggersContinuityRecoveryWhenCallbacksAreRecent() {
+        assertEquals(
+            41_000L,
+            resolveRecordingContinuityRecoveryGapMillis(
+                deliveryGapMillis = 19_000L,
+                committedPointGapMillis = 41_000L,
+                thresholdMillis = 25_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun watchGpsAccuracyFloorDoesNotInflateRecoveryDistanceAllowance() {
+        val previous =
+            point(
+                latitude = 45.0,
+                longitude = 6.0,
+                timeMillis = 1_000L,
+                accuracyMeters = 125f,
+                speedMps = 1.2f,
+            )
+        val current =
+            point(
+                latitude = 45.0018,
+                longitude = 6.0,
+                timeMillis = 21_000L,
+                accuracyMeters = 125f,
+                speedMps = 1.2f,
+            )
+        val geometryMeters = haversineMeters(previous.latLong, current.latLong)
+
+        val estimate =
+            estimateRecordingDistanceDelta(
+                geometricDeltaMeters = geometryMeters,
+                previous = previous.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
+                current = current.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
+                elapsedSincePreviousMs = 20_000L,
+                activityProfile = HIKE,
+                isContinuityRecovery = true,
+            )
+
+        assertTrue(estimate.capped)
+        assertTrue(estimate.distanceMeters < geometryMeters)
     }
 
     @Test
@@ -265,16 +342,18 @@ class RecordingTraceSmoothingTest {
         longitude: Double,
         timeMillis: Long,
         speedMps: Float,
+        accuracyMeters: Float = 12f,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(latitude, longitude),
             elevationMeters = null,
             timeMillis = timeMillis,
-            accuracyMeters = 12f,
+            accuracyMeters = accuracyMeters,
             speedMps = speedMps,
         )
 
     private companion object {
+        const val BIKE = SettingsRepository.ACTIVITY_PROFILE_BIKE
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
         const val ADAPTIVE = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE
     }

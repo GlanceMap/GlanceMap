@@ -9,16 +9,17 @@ import androidx.compose.material.icons.automirrored.filled.Shortcut
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
+import androidx.wear.compose.material.Text
 import com.glancemap.glancemapwearos.presentation.ui.WearWindowClass
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.Chip
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun GeneralSettingsShortcutChip(
     onClick: () -> Unit,
@@ -38,7 +39,6 @@ internal fun GeneralSettingsShortcutChip(
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun AdaptiveSettingsShortcutChip(
     standardLabel: String,
@@ -69,8 +69,22 @@ internal fun AdaptiveSettingsShortcutChip(
                 .padding(top = topPadding)
                 .fillMaxWidth(widthFraction)
                 .heightIn(min = if (useCompactLabels) compactMinHeight else standardMinHeight),
-        label = if (useCompactLabels) compactLabel else standardLabel,
-        secondaryLabel = if (useCompactLabels) compactSecondaryLabel else standardSecondaryLabel,
+        label = {
+            Text(
+                text = if (useCompactLabels) compactLabel else standardLabel,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+            )
+        },
+        secondaryLabel = {
+            Text(
+                text = if (useCompactLabels) compactSecondaryLabel else standardSecondaryLabel,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+            )
+        },
         icon = {
             Icon(
                 imageVector = iconImageVector,

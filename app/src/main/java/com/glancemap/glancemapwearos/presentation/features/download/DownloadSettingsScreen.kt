@@ -24,9 +24,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.SettingsOpti
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsToggleChip
 import com.glancemap.glancemapwearos.presentation.features.settings.WearSettingsListScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.rememberSettingsListTokens
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun DownloadSettingsScreen(
     viewModel: DownloadViewModel,

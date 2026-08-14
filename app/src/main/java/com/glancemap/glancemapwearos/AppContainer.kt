@@ -33,9 +33,9 @@ import kotlinx.coroutines.launch
  */
 interface AppContainer {
     val settingsRepository: SettingsRepository
-    val gpxRepository: GpxRepository
+    val gpxRepository: GpxRepositoryImpl
     val gpxExportRepository: GpxExportRepository
-    val mapRepository: MapRepository
+    val mapRepository: MapRepositoryImpl
     val poiRepository: PoiRepository
     val userPoiRepository: UserPoiRepository
     val themeRepository: ThemeRepository
@@ -61,7 +61,7 @@ class DefaultAppContainer(
         SettingsRepositoryImpl.getInstance(applicationContext)
     }
 
-    override val gpxRepository: GpxRepository by lazy {
+    override val gpxRepository: GpxRepositoryImpl by lazy {
         GpxRepositoryImpl(applicationContext)
     }
 
@@ -69,7 +69,7 @@ class DefaultAppContainer(
         GpxExportRepositoryImpl(applicationContext)
     }
 
-    override val mapRepository: MapRepository by lazy {
+    override val mapRepository: MapRepositoryImpl by lazy {
         MapRepositoryImpl(applicationContext)
     }
 

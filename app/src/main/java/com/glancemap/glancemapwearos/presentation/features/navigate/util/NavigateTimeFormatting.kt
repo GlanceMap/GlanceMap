@@ -1,16 +1,12 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
-import android.content.Context
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.text.format.DateFormat as AndroidDateFormat
 
-internal fun navigateTimePattern(
-    context: Context,
-    format: String,
-): String {
+internal fun navigateTimePattern(format: String): String {
     val locale = Locale.getDefault()
     return when (format) {
         SettingsRepository.TIME_FORMAT_24_HOUR ->
@@ -24,10 +20,9 @@ internal fun navigateTimePattern(
 }
 
 internal fun formatNavigateClockTime(
-    context: Context,
     timeMs: Long,
     format: String,
 ): String {
-    val formatter = SimpleDateFormat(navigateTimePattern(context, format), Locale.getDefault())
+    val formatter = SimpleDateFormat(navigateTimePattern(format), Locale.getDefault())
     return formatter.format(Date(timeMs))
 }

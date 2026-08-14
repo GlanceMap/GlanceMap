@@ -181,7 +181,6 @@ internal fun rememberNavigateGuidanceRuntime(
             updateGuidanceOffRouteConfirmation(
                 previous = offRouteConfirmation,
                 distanceToRouteMeters = rawState.distanceToRouteMeters,
-                locationAccuracyMeters = rawCurrentLocation.accuracy,
                 thresholdMeters = offRouteThresholdMeters.toDouble(),
                 allowOffRouteEntry =
                     SystemClock.elapsedRealtime() - lastScreenResumeElapsedMs >=
