@@ -66,10 +66,6 @@ class CompassViewModel(
         compassManager.recalibrate()
     }
 
-    fun startGoogleFusedIntegrityFallback() {
-        compassManager.startGoogleFusedIntegrityFallback()
-    }
-
     fun updateDeclinationFromLocation(location: android.location.Location) {
         compassManager.updateDeclinationFromLocation(location)
     }

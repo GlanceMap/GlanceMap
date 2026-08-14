@@ -592,7 +592,6 @@ fun NavigateScreen(
             isMetric = isMetric,
             onRenderedHeadingChanged = { renderedCompassHeadingDeg = it },
             onRenderedMapRotationChanged = { renderedMapRotationDeg = it },
-            onSuspectGoogleFusedHeading = compassViewModel::startGoogleFusedIntegrityFallback,
             onPoiMarkersSnapshotChanged = { markers -> visiblePoiMarkers = markers },
         )
         NavigateCompassWakeTelemetry(

@@ -126,12 +126,6 @@ class CompassManager private constructor(
     }
 
     @Synchronized
-    fun startGoogleFusedIntegrityFallback() {
-        if (!started || requestedProviderType != CompassProviderType.GOOGLE_FUSED) return
-        fusedOrientationProvider.startIntegrityFallback()
-    }
-
-    @Synchronized
     fun updateDeclinationFromLocation(location: Location) {
         val locationSnapshot = Location(location)
         lastDeclinationLocation = locationSnapshot
