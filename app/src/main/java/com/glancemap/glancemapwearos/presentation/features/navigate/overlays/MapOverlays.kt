@@ -69,6 +69,7 @@ internal fun MapOverlays(
     gpxTrackOpacityPercent: Int,
     gpxTrackDirectionArrowsEnabled: Boolean,
     compassRenderStateFlow: StateFlow<CompassRenderState>,
+    compassInteractive: Boolean,
     navMode: NavMode,
     forceNorthUpInPanning: Boolean,
     showRealMarkerInCompassMode: Boolean,
@@ -92,6 +93,7 @@ internal fun MapOverlays(
     isMetric: Boolean,
     onRenderedHeadingChanged: (Float) -> Unit,
     onRenderedMapRotationChanged: (Float) -> Unit,
+    onSuspectGoogleFusedHeading: () -> Unit,
     onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
 ) {
     val mapView = mapHolder.mapView
@@ -171,12 +173,17 @@ internal fun MapOverlays(
         isAutoCentering = navMode != NavMode.PANNING,
         forceNorthUpInPanning = forceNorthUpInPanning,
         renderStateFlow = compassRenderStateFlow,
+        compassInteractive = compassInteractive,
+        gpsFixFresh = gpsFixFresh,
+        gpsFixSpeedMps = gpsFixSpeedMps,
+        gpsFixBearingDeg = gpsFixBearingDeg,
         mapView = mapView,
         showRealMarkerInCompassMode = showRealMarkerInCompassMode,
         locationMarker = locationMarker,
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
         onRenderedHeadingChanged = onRenderedHeadingChanged,
         onRenderedMapRotationChanged = onRenderedMapRotationChanged,
+        onSuspectGoogleFusedHeading = onSuspectGoogleFusedHeading,
         requestMapRedraw = requestMapRedraw,
     )
 

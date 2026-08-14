@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
 import com.glancemap.glancemapwearos.data.repository.PoiType
@@ -307,7 +308,7 @@ fun NavigateScreen(
                 serviceEffectiveIntervalMs = serviceEffectiveGpsIntervalMs,
                 configuredIntervalMs = configuredMarkerGpsIntervalMs,
             )
-        val effectiveNavMode = if (offlineMode) NavMode.PANNING else navMode
+        val effectiveNavMode = if (offlineMode || navigateTarget != null) NavMode.PANNING else navMode
         // ---- Heading + Accuracy ----
         val compassUiState =
             rememberNavigateCompassUiState(
@@ -567,6 +568,7 @@ fun NavigateScreen(
             gpxTrackOpacityPercent = gpxTrackOpacityPercent,
             gpxTrackDirectionArrowsEnabled = gpxTrackDirectionArrowsEnabled,
             compassRenderStateFlow = compassViewModel.renderState,
+            compassInteractive = isScreenResumed && screenState.isInteractive && !offlineMode,
             navMode = effectiveNavMode,
             forceNorthUpInPanning = offlineMode,
             showRealMarkerInCompassMode = true,
@@ -590,6 +592,7 @@ fun NavigateScreen(
             isMetric = isMetric,
             onRenderedHeadingChanged = { renderedCompassHeadingDeg = it },
             onRenderedMapRotationChanged = { renderedMapRotationDeg = it },
+            onSuspectGoogleFusedHeading = compassViewModel::startGoogleFusedIntegrityFallback,
             onPoiMarkersSnapshotChanged = { markers -> visiblePoiMarkers = markers },
         )
         NavigateCompassWakeTelemetry(

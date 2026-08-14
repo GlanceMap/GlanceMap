@@ -2,14 +2,83 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.hardware.SensorManager
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigateEffectsSupportTest {
+    @Test
+    fun invertedGoogleFusedWakeHeadingIsHeldThenUsesSensorFallback() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = 0f,
+            previousRelativeHeadingDeg = 0f,
+        )
+        val state = readyGoogleFusedState()
+        var fallbackRequests = 0
+
+        assertNull(
+            gate.resolve(
+                nowElapsedMs = 1_100L,
+                renderState = state,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                relativeHeadingDeg = 0f,
+                gpsFixFresh = false,
+                gpsFixSpeedMps = 0f,
+                gpsFixBearingDeg = null,
+                onSuspectGoogleFusedHeading = { fallbackRequests += 1 },
+            ),
+        )
+        assertNull(
+            gate.resolve(
+                nowElapsedMs = 2_200L,
+                renderState = state,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 2_150L,
+                relativeHeadingDeg = 0f,
+                gpsFixFresh = false,
+                gpsFixSpeedMps = 0f,
+                gpsFixBearingDeg = null,
+                onSuspectGoogleFusedHeading = { fallbackRequests += 1 },
+            ),
+        )
+
+        assertEquals(1, fallbackRequests)
+    }
+
+    @Test
+    fun largeWakeHeadingChangeReleasesWhenRelativeTurnMatches() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = 0f,
+            previousRelativeHeadingDeg = 20f,
+        )
+
+        val target =
+            gate.resolve(
+                nowElapsedMs = 1_100L,
+                renderState = readyGoogleFusedState(),
+                compassHeadingDeg = 90f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                relativeHeadingDeg = 110f,
+                gpsFixFresh = false,
+                gpsFixSpeedMps = 0f,
+                gpsFixBearingDeg = null,
+                onSuspectGoogleFusedHeading = {},
+            )
+
+        assertEquals(90f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(NavigationRotationTargetSource.COMPASS, target?.source)
+    }
+
     @Test
     fun compassFollowMapStaysFrozenWithoutActiveHeadingSource() {
         assertFalse(
@@ -18,6 +87,16 @@ class NavigateEffectsSupportTest {
             ),
         )
     }
+
+    private fun readyGoogleFusedState() =
+        initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
+            headingSource = HeadingSource.FUSED_ORIENTATION,
+            accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+            headingSampleElapsedRealtimeMs = 1_050L,
+            headingSampleStale = false,
+            headingRenderable = true,
+            trackingState = CompassTrackingState.TRACKING,
+        )
 
     @Test
     fun compassFollowMapStaysFrozenWhenAccuracyIsUnreliable() {

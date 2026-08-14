@@ -347,6 +347,16 @@ internal class FusedOrientationProviderAdapter(
         logDiagnostics("recalibrate requested")
     }
 
+    /**
+     * The map rejected a large, unverified fused-heading change after a screen wake. Use the
+     * existing sensor-manager provider for the remainder of this compass session.
+     */
+    fun startIntegrityFallback() {
+        if (!started || _useFallbackProvider.value) return
+        logDiagnostics("google_fused integrity_guard fallback")
+        startFallbackProvider(reason = "integrity_guard")
+    }
+
     override fun setNorthReferenceMode(
         mode: NorthReferenceMode,
         forceRefresh: Boolean,

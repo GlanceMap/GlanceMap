@@ -66,12 +66,12 @@ class CompassViewModel(
         compassManager.recalibrate()
     }
 
-    fun updateDeclinationFromLocation(location: android.location.Location) {
-        compassManager.updateDeclinationFromLocation(location)
+    fun startGoogleFusedIntegrityFallback() {
+        compassManager.startGoogleFusedIntegrityFallback()
     }
 
-    fun setLowPowerMode(enabled: Boolean) {
-        compassManager.setLowPowerMode(enabled)
+    fun updateDeclinationFromLocation(location: android.location.Location) {
+        compassManager.updateDeclinationFromLocation(location)
     }
 
     fun primeDeclinationFromApproximateLocation(
