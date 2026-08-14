@@ -608,7 +608,7 @@ internal class NavigateRotationSettleGate {
         }
         if (
             headingSampleElapsedRealtimeMs == null ||
-                headingSampleElapsedRealtimeMs <= wakeSessionStartedAtElapsedMs
+            headingSampleElapsedRealtimeMs <= wakeSessionStartedAtElapsedMs
         ) {
             hold("await_fresh_session_sample")
             return null
@@ -831,6 +831,7 @@ private const val HEADING_ANIMATION_MIN_FRAME_DELTA_MS = 4f
 private const val HEADING_ANIMATION_MAX_FRAME_DELTA_MS = 50f
 private const val HEADING_ANIMATION_MAX_STEP_DEG = 10f
 private const val NANOS_PER_MILLISECOND = 1_000_000.0
+
 // Enter turning mode promptly, then leave only after angular movement stays low. This prevents a
 // slow 360-degree sweep from repeatedly switching between 25Hz and high-frequency rendering.
 private const val RENDER_ACTIVE_TURN_ENTER_RATE_DEG_PER_SEC = 25f

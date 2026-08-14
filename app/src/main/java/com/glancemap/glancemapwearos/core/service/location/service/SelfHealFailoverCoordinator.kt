@@ -612,8 +612,10 @@ internal fun shouldRecheckAutoFusedPhoneConnection(
 ): Boolean =
     fallbackToWatchGps &&
         !watchGpsOnly &&
-        (lastRecheckAtElapsedMs <= 0L ||
-            nowElapsedMs - lastRecheckAtElapsedMs >= AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS)
+        (
+            lastRecheckAtElapsedMs <= 0L ||
+                nowElapsedMs - lastRecheckAtElapsedMs >= AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS
+        )
 
 internal enum class AutoFusedNoFixRecoveryAction {
     NONE,

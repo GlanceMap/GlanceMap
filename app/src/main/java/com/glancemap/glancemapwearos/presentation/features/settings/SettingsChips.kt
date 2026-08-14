@@ -72,15 +72,16 @@ internal fun SettingsToggleChip(
                 maxLines = if (secondaryLabel != null) 1 else 2,
             )
         },
-        secondaryLabel = secondaryLabel?.let { text ->
-            {
-                Text(
-                    text = text,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 1,
-                )
-            }
-        },
+        secondaryLabel =
+            secondaryLabel?.let { text ->
+                {
+                    Text(
+                        text = text,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                }
+            },
         toggleControl = {
             Icon(
                 imageVector = ToggleChipDefaults.switchIcon(checked),
@@ -122,15 +123,16 @@ internal fun SettingsPickerChip(
                     maxLines = if (secondaryLabel != null) 1 else 2,
                 )
             },
-            secondaryLabel = secondaryLabel?.let { text ->
-                {
-                    Text(
-                        text = text,
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                    )
-                }
-            },
+            secondaryLabel =
+                secondaryLabel?.let { text ->
+                    {
+                        Text(
+                            text = text,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    }
+                },
             icon = {
                 Icon(
                     imageVector = iconImageVector,
@@ -163,15 +165,16 @@ internal fun SettingsPickerChip(
                     maxLines = if (secondaryLabel != null) 1 else 2,
                 )
             },
-            secondaryLabel = secondaryLabel?.let { text ->
-                {
-                    Text(
-                        text = text,
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                    )
-                }
-            },
+            secondaryLabel =
+                secondaryLabel?.let { text ->
+                    {
+                        Text(
+                            text = text,
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                        )
+                    }
+                },
             colors =
                 ChipDefaults.secondaryChipColors(
                     backgroundColor = backgroundColor,
@@ -215,15 +218,16 @@ internal fun SettingsSectionChip(
                 maxLines = if (secondaryLabel != null) 1 else 2,
             )
         },
-        secondaryLabel = secondaryLabel?.let { text ->
-            {
-                Text(
-                    text = text,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 1,
-                )
-            }
-        },
+        secondaryLabel =
+            secondaryLabel?.let { text ->
+                {
+                    Text(
+                        text = text,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                }
+            },
         icon = {
             if (iconContent != null) {
                 iconContent()

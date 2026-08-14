@@ -21,7 +21,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.Icon
-import androidx.wear.compose.material.Text as WearText
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -35,6 +34,7 @@ import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import androidx.wear.compose.material.Text as WearText
 
 @Composable
 fun CompassSettingsScreen(

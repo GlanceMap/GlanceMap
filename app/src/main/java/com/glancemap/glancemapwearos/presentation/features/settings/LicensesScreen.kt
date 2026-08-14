@@ -18,10 +18,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.Text as WearText
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
+import androidx.wear.compose.material.Text as WearText
 
 @Composable
 fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
