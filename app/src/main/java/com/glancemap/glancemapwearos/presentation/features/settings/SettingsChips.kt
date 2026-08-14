@@ -91,6 +91,7 @@ internal fun SettingsToggleChip(
 }
 
 @Composable
+@Suppress("LongMethod")
 internal fun SettingsPickerChip(
     label: String,
     onClick: () -> Unit,
