@@ -25,6 +25,7 @@ import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecord
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -155,8 +156,8 @@ class AppContainer(
 
     private fun startRecordingLocationBridge(traceRecordingViewModel: TraceRecordingViewModel) {
         coroutineScope.launch {
-            locationViewModel.currentLocation.collectLatest { location ->
-                traceRecordingViewModel.onLocation(location)
+            locationViewModel.recordingLocations.collect { location ->
+                traceRecordingViewModel.onLocation(location)?.join()
             }
         }
         coroutineScope.launch {

@@ -93,6 +93,7 @@ private class RecordingSmartTrackInsightsAccumulator {
             acceptedSensorCount = count("smartTrackAcceptedSensorCount"),
             acceptedConfirmedSlowCount = count("smartTrackAcceptedConfirmedSlowCount"),
             suppressedStationaryCount = count("smartTrackSuppressedStationaryCount"),
+            suppressedStepStillnessCount = count("smartTrackSuppressedStepStillnessCount"),
             heldSlowCount = count("smartTrackHeldSlowCount"),
             segmentStartBypassCount = count("smartTrackSegmentStartBypassCount"),
             stepMotionEvidenceCount = count("smartTrackStepMotionEvidenceCount"),
@@ -130,6 +131,7 @@ private class RecordingSmartTrackInsightsAccumulator {
                 "smartTrackAcceptedSensorCount",
                 "smartTrackAcceptedConfirmedSlowCount",
                 "smartTrackSuppressedStationaryCount",
+                "smartTrackSuppressedStepStillnessCount",
                 "smartTrackHeldSlowCount",
                 "smartTrackSegmentStartBypassCount",
                 "smartTrackStepMotionEvidenceCount",
@@ -1476,6 +1478,7 @@ private fun BufferedWriter.writeSmartTrackMotionMetrics(insights: RecordingSmart
     appendSmartTrackMetric("AcceptedSensorCount", insights.acceptedSensorCount)
     appendSmartTrackMetric("AcceptedConfirmedSlowCount", insights.acceptedConfirmedSlowCount)
     appendSmartTrackMetric("SuppressedStationaryCount", insights.suppressedStationaryCount)
+    appendSmartTrackMetric("SuppressedStepStillnessCount", insights.suppressedStepStillnessCount)
     appendSmartTrackMetric("HeldSlowCount", insights.heldSlowCount)
     appendSmartTrackMetric("SegmentStartBypassCount", insights.segmentStartBypassCount)
     appendSmartTrackMetric("StepMotionEvidenceCount", insights.stepMotionEvidenceCount)

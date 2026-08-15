@@ -6,6 +6,7 @@ internal data class RecordingSmartTrackTelemetrySnapshot(
     val acceptedSensorCount: Int,
     val acceptedConfirmedSlowCount: Int,
     val suppressedStationaryCount: Int,
+    val suppressedStepStillnessCount: Int,
     val heldSlowCount: Int,
     val segmentStartBypassCount: Int,
     val stepMotionEvidenceCount: Int,
@@ -37,6 +38,7 @@ internal class RecordingSmartTrackTelemetry {
     private var acceptedSensorCount = 0
     private var acceptedConfirmedSlowCount = 0
     private var suppressedStationaryCount = 0
+    private var suppressedStepStillnessCount = 0
     private var heldSlowCount = 0
     private var segmentStartBypassCount = 0
     private var stepMotionEvidenceCount = 0
@@ -63,6 +65,7 @@ internal class RecordingSmartTrackTelemetry {
         acceptedSensorCount = 0
         acceptedConfirmedSlowCount = 0
         suppressedStationaryCount = 0
+        suppressedStepStillnessCount = 0
         heldSlowCount = 0
         segmentStartBypassCount = 0
         stepMotionEvidenceCount = 0
@@ -120,6 +123,7 @@ internal class RecordingSmartTrackTelemetry {
             RecordingMotionReason.SENSOR_MOTION -> acceptedSensorCount += 1
             RecordingMotionReason.CONFIRMED_SLOW_PROGRESS -> acceptedConfirmedSlowCount += 1
             RecordingMotionReason.STATIONARY_JITTER -> suppressedStationaryCount += 1
+            RecordingMotionReason.STEP_STILLNESS -> suppressedStepStillnessCount += 1
             RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS -> heldSlowCount += 1
             RecordingMotionReason.FIRST_POINT -> Unit
         }
@@ -157,6 +161,7 @@ internal class RecordingSmartTrackTelemetry {
             acceptedSensorCount = acceptedSensorCount,
             acceptedConfirmedSlowCount = acceptedConfirmedSlowCount,
             suppressedStationaryCount = suppressedStationaryCount,
+            suppressedStepStillnessCount = suppressedStepStillnessCount,
             heldSlowCount = heldSlowCount,
             segmentStartBypassCount = segmentStartBypassCount,
             stepMotionEvidenceCount = stepMotionEvidenceCount,

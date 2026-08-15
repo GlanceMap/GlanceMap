@@ -12,7 +12,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 
-internal const val RECORDING_TRACK_FILTER_VERSION = 8
+internal const val RECORDING_TRACK_FILTER_VERSION = 9
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
 internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = 18f
 
@@ -286,6 +286,7 @@ internal enum class RecordingMotionReason {
     SENSOR_MOTION,
     CONFIRMED_SLOW_PROGRESS,
     STATIONARY_JITTER,
+    STEP_STILLNESS,
     UNCONFIRMED_SLOW_PROGRESS,
 }
 
@@ -301,6 +302,7 @@ internal data class RecordingMotionResult(
 internal data class RecordingMotionEvidence(
     val stepDataAvailable: Boolean,
     val stepsAdvanced: Boolean,
+    val stepsUnchanged: Boolean,
     val cadenceDataAvailable: Boolean,
     val cadenceShowsMotion: Boolean,
     val speedAboveThreshold: Boolean,
@@ -339,13 +341,21 @@ internal class RecordingMovementConfidenceGate {
         activityProfile: String,
         previousFilterAccuracyMeters: Float? = previous?.accuracyMeters,
     ): RecordingMotionResult {
+        val previousObservedStepCount = lastObservedStepCount
         val stepsAdvanced = observeStepProgress(previous, candidate)
+        val stepsUnchanged =
+            candidate.stepCount?.let { current ->
+                (previousObservedStepCount ?: previous?.stepCount)?.let { previousCount ->
+                    current <= previousCount
+                }
+            } == true
         val cadenceShowsMotion = candidate.cadenceShowsMotion(activityProfile)
         val reportedMotion = candidate.reportedMotionAssessment(activityProfile)
         val evidence =
             RecordingMotionEvidence(
                 stepDataAvailable = candidate.stepCount != null,
                 stepsAdvanced = stepsAdvanced,
+                stepsUnchanged = stepsUnchanged,
                 cadenceDataAvailable = candidate.cadenceSpm != null,
                 cadenceShowsMotion = cadenceShowsMotion,
                 speedAboveThreshold = reportedMotion.aboveThreshold,
@@ -384,6 +394,15 @@ internal class RecordingMovementConfidenceGate {
             return candidate.result(
                 status = RecordingMotionStatus.SUPPRESSED,
                 reason = RecordingMotionReason.STATIONARY_JITTER,
+                displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
+            )
+        }
+        if (candidate.isWeakHikingFixWithUnchangedSteps(activityProfile, stepsUnchanged)) {
+            pendingSlowProgress = null
+            return candidate.result(
+                status = RecordingMotionStatus.SUPPRESSED,
+                reason = RecordingMotionReason.STEP_STILLNESS,
                 displacementMeters = displacementMeters,
                 evidence = radiusEvidence,
             )
@@ -439,6 +458,15 @@ internal class RecordingMovementConfidenceGate {
         return baseline != null && current > baseline
     }
 }
+
+private fun RecordingMotionSample.isWeakHikingFixWithUnchangedSteps(
+    activityProfile: String,
+    stepsUnchanged: Boolean,
+): Boolean =
+    activityProfile == SettingsRepository.ACTIVITY_PROFILE_HIKE &&
+        stepsUnchanged &&
+        (accuracyMeters ?: 0f) >= RECORDING_MOTION_STEP_STILLNESS_MIN_ACCURACY_M &&
+        (speedMps == null || speedMps <= RECORDING_MOTION_STEP_STILLNESS_MAX_SPEED_MPS)
 
 private fun RecordingMotionSample.result(
     status: RecordingMotionStatus,
@@ -1389,6 +1417,8 @@ private const val RECORDING_MOTION_HIKE_MIN_CONFIRMED_PROGRESS_M = 1.5
 private const val RECORDING_MOTION_BIKE_MIN_CONFIRMED_PROGRESS_M = 3.0
 private const val RECORDING_MOTION_CONFIRMATION_MAX_INTERVAL_MS = 60_000L
 private const val RECORDING_MOTION_MAX_CONFIRMATION_ANGLE_DEGREES = 70.0
+private const val RECORDING_MOTION_STEP_STILLNESS_MIN_ACCURACY_M = 18f
+private const val RECORDING_MOTION_STEP_STILLNESS_MAX_SPEED_MPS = 1.5f
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_CHORD_M = 24.0
 private const val RECORDING_STRAIGHT_DRIFT_BIKE_MIN_CHORD_M = 45.0
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_LATERAL_ERROR_M = 2.5

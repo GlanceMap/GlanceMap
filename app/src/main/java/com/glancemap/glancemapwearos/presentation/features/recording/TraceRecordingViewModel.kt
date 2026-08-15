@@ -419,23 +419,24 @@ class TraceRecordingViewModel(
         persistDraftAsync(reason = "start")
     }
 
-    fun onLocation(location: Location?) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    fun onLocation(location: Location?): Job? {
         latestRecordingStartLocation = location
         startPendingRecordingWhenLocationReady()
-        if (location == null) return
+        if (location == null) return null
         val state = _uiState.value
-        if (!state.active || state.saving) return
+        if (!state.active || state.saving) return null
         if (state.paused && !state.autoPaused) {
             skippedPausedCount += 1
-            return
+            return null
         }
         if (!isGpsSamplingEnabled()) {
             skippedIntervalCount += 1
-            return
+            return null
         }
         if (!isUsableLocation(location)) {
             skippedUnusableLocationCount += 1
-            return
+            return null
         }
 
         val callbackElapsedMs =
@@ -452,19 +453,21 @@ class TraceRecordingViewModel(
         lastLiveFixTimeMillis = livePoint.timeMillis
         _uiState.value = _uiState.value.copy(latestLivePoint = livePoint)
 
-        val nowElapsedMs = SystemClock.elapsedRealtime()
+        // Batches retain each fix's monotonic timestamp. Using delivery time here would make
+        // every point in the batch look simultaneous and discard all but the first one.
+        val sampleElapsedMs = callbackElapsedMs
         if (state.paused && state.autoPaused) {
-            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
-                return
+                return null
             }
-        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
             skippedPausedCount += 1
-            return
+            return null
         }
         val elapsedSinceAcceptedMs =
             if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
-                nowElapsedMs - lastAcceptedElapsedMs
+                sampleElapsedMs - lastAcceptedElapsedMs
             } else {
                 -1L
             }
@@ -495,7 +498,7 @@ class TraceRecordingViewModel(
                             "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
                     )
                 }
-                return
+                return null
             }
         }
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
@@ -527,7 +530,9 @@ class TraceRecordingViewModel(
                             } else {
                                 null
                             },
-                        stepCount = sensorMetricsAtFix?.stepCount,
+                        // A step counter only publishes when its value changes. Keep its last
+                        // value for the movement gate so unchanged steps can reject GPS drift.
+                        stepCount = latestSensorMetrics.stepCount,
                         cadenceSpm = sensorMetricsAtFix?.cadenceSpm,
                         trustReportedSpeedWithoutAccuracy = watchGpsAccuracyFloorActive,
                     ),
@@ -568,7 +573,7 @@ class TraceRecordingViewModel(
                         "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
                 )
             }
-            return
+            return null
         }
         if (!motionResult.accepted) {
             recordingMovementConfidenceGate.reset()
@@ -625,7 +630,7 @@ class TraceRecordingViewModel(
                         "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
                 )
             }
-            return
+            return null
         }
         // A filtered point or a source relocation must not split the visual GPX trace. A REC
         // session only starts a new segment for an explicit pause/resume boundary. Keep the
@@ -692,7 +697,7 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
             )
         }
-        lastAcceptedElapsedMs = nowElapsedMs
+        lastAcceptedElapsedMs = sampleElapsedMs
         val latitude = location.latitude
         val longitude = location.longitude
         val gpsAltitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() }
@@ -700,7 +705,7 @@ class TraceRecordingViewModel(
         val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
         val speedMps = location.speed.takeIf { location.hasSpeed() }
         val selectedElevationSource = recordingElevationSource
-        viewModelScope.launch {
+        return viewModelScope.launch {
             locationPointMutex.withLock {
                 val elevation =
                     elevationProvider.resolveElevation(
@@ -2066,6 +2071,7 @@ class TraceRecordingViewModel(
             "smartTrackAcceptedSensorCount=${snapshot.acceptedSensorCount} " +
             "smartTrackAcceptedConfirmedSlowCount=${snapshot.acceptedConfirmedSlowCount} " +
             "smartTrackSuppressedStationaryCount=${snapshot.suppressedStationaryCount} " +
+            "smartTrackSuppressedStepStillnessCount=${snapshot.suppressedStepStillnessCount} " +
             "smartTrackHeldSlowCount=${snapshot.heldSlowCount} " +
             "smartTrackSegmentStartBypassCount=${snapshot.segmentStartBypassCount} " +
             "smartTrackStepMotionEvidenceCount=${snapshot.stepMotionEvidenceCount} " +
