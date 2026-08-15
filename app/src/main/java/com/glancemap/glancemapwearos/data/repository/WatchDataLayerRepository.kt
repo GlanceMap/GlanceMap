@@ -11,36 +11,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 
-interface WatchDataLayerRepository {
-    suspend fun sendStatus(
-        sourceNodeId: String,
-        transferId: String,
-        phase: String,
-        detail: String,
-    )
-
-    suspend fun sendAck(
-        sourceNodeId: String,
-        transferId: String,
-        status: String,
-        detail: String,
-    )
-
-    suspend fun sendMessage(
-        sourceNodeId: String,
-        path: String,
-        payload: ByteArray,
-    )
-}
-
-class WatchDataLayerRepositoryImpl(
+class WatchDataLayerRepository(
     context: Context,
-) : WatchDataLayerRepository {
+) {
     private val appContext = context.applicationContext
     private val messageClient by lazy { Wearable.getMessageClient(appContext) }
     private val nodeClient by lazy { Wearable.getNodeClient(appContext) }
 
-    override suspend fun sendStatus(
+    suspend fun sendStatus(
         sourceNodeId: String,
         transferId: String,
         phase: String,
@@ -71,7 +49,7 @@ class WatchDataLayerRepositoryImpl(
         }
     }
 
-    override suspend fun sendAck(
+    suspend fun sendAck(
         sourceNodeId: String,
         transferId: String,
         status: String,
@@ -103,7 +81,7 @@ class WatchDataLayerRepositoryImpl(
         }
     }
 
-    override suspend fun sendMessage(
+    suspend fun sendMessage(
         sourceNodeId: String,
         path: String,
         payload: ByteArray,
