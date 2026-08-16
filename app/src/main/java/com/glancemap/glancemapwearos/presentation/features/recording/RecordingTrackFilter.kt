@@ -10,7 +10,7 @@ import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
-import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor as isKnownPlatformWatchGpsAccuracyFloor
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor as platformWatchGpsAccuracyFloor
 
 internal const val RECORDING_TRACK_FILTER_VERSION = 9
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
@@ -32,9 +32,7 @@ internal fun resolveRecordingFilterAccuracyMeters(
     )
 }
 
-internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean {
-    return isKnownPlatformWatchGpsAccuracyFloor(accuracyMeters)
-}
+internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?) = platformWatchGpsAccuracyFloor(accuracyMeters)
 
 internal fun resolveRecordingContinuityRecoveryGapMillis(
     deliveryGapMillis: Long,
