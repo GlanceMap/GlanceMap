@@ -13,8 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.deliveredSourceModeOrNull
@@ -52,7 +51,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.android.view.MapView
-import kotlin.math.abs
 
 internal data class NavigateLocationUiState(
     val locationMarker: RotatableMarker?,
@@ -1531,22 +1529,14 @@ private fun effectiveGpsIndicatorAccuracy(
     accuracyM: Float,
     watchGpsOnlyActive: Boolean,
 ): Float =
-    if (watchGpsOnlyActive && accuracyM.isFinite() && isKnownWatchGpsAccuracyFloor(accuracyM)) {
-        WATCH_GPS_FLOOR_INDICATOR_ACCURACY_M
-    } else {
-        accuracyM
-    }
+    resolveEffectiveWatchGpsAccuracyMeters(
+        rawAccuracyMeters = accuracyM,
+        watchGpsActive = watchGpsOnlyActive,
+    ) ?: accuracyM
 
 private fun gpsIndicatorGoodAccuracyThresholdM(
     watchGpsOnlyActive: Boolean,
 ): Float = if (watchGpsOnlyActive) WATCH_GPS_GOOD_FIX_ACCURACY_THRESHOLD_M else GOOD_FIX_ACCURACY_THRESHOLD_M
-
-private fun isKnownWatchGpsAccuracyFloor(
-    accuracyM: Float,
-): Boolean {
-    if (!accuracyM.isFinite()) return false
-    return abs(accuracyM - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
-}
 
 internal fun resolveGpsIndicatorDisplayState(
     rawState: GpsFixIndicatorState,
@@ -1647,4 +1637,3 @@ private fun logInteractiveStaleRefresh(
 
 private const val GOOD_FIX_ACCURACY_THRESHOLD_M = 12f
 private const val WATCH_GPS_GOOD_FIX_ACCURACY_THRESHOLD_M = 20f
-private const val WATCH_GPS_FLOOR_INDICATOR_ACCURACY_M = 18f

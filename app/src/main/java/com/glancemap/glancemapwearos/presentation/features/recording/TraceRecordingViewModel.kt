@@ -530,9 +530,7 @@ class TraceRecordingViewModel(
                             } else {
                                 null
                             },
-                        // A step counter only publishes when its value changes. Keep its last
-                        // value for the movement gate so unchanged steps can reject GPS drift.
-                        stepCount = latestSensorMetrics.stepCount,
+                        stepCount = sensorMetricsAtFix?.stepCount,
                         cadenceSpm = sensorMetricsAtFix?.cadenceSpm,
                         trustReportedSpeedWithoutAccuracy = watchGpsAccuracyFloorActive,
                     ),
@@ -1956,7 +1954,6 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it - pausedMillis }
                 ?.coerceAtLeast(0L)
                 ?: 0L
-        val elevation = elevationGainLossMeters(state.points)
         val lastPoint = state.points.lastOrNull()
         val avgAccuracy =
             if (acceptedAccuracyCount > 0) {
@@ -2015,7 +2012,8 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it }
                 ?.coerceAtLeast(0L) ?: -1} " +
             "lastPointAgeMs=${lastPoint?.timeMillis?.let { nowMillis - it }?.coerceAtLeast(0L) ?: -1} " +
-            "elevationGainMeters=${elevation.first.toInt()} elevationLossMeters=${elevation.second.toInt()} " +
+            "elevationGainMeters=${displaySnapshot.elevationGainMeters.toInt()} " +
+            "elevationLossMeters=${displaySnapshot.elevationLossMeters.toInt()} " +
             "elevationSource=$recordingElevationSource demHits=$demElevationHitCount " +
             "demResolution=${lastDemResolutionLabel ?: "na"} " +
             "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
@@ -2285,27 +2283,6 @@ internal fun haversineMeters(
         sin(dLat / 2) * sin(dLat / 2) +
             cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
     return 2.0 * EARTH_RADIUS_METERS * atan2(sqrt(h), sqrt(1.0 - h))
-}
-
-private fun elevationGainLossMeters(points: List<RecordedTracePoint>): Pair<Double, Double> {
-    var gain = 0.0
-    var loss = 0.0
-    var previous = points.firstOrNull()?.elevationMeters ?: return 0.0 to 0.0
-    points.drop(1).forEach { point ->
-        val elevation = point.elevationMeters ?: return@forEach
-        if (point.startsNewSegment) {
-            previous = elevation
-            return@forEach
-        }
-        val delta = elevation - previous
-        if (delta > 0.0) {
-            gain += delta
-        } else {
-            loss += -delta
-        }
-        previous = elevation
-    }
-    return gain to loss
 }
 
 private fun sanitizeTelemetryValue(value: String): String =

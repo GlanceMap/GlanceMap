@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
@@ -167,6 +168,38 @@ class RecordingTraceSmoothingTest {
 
         assertTrue(result.accepted)
         assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+    }
+
+    @Test
+    fun unavailableOrStaleStepsDoNotSuppressCredibleWalkingSpeed() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous =
+            point(
+                latitude = 45.0,
+                longitude = 6.0,
+                timeMillis = 1_000L,
+                accuracyMeters = 24f,
+                speedMps = 0.1f,
+            ).copy(stepCount = 100)
+
+        val result =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(
+                        latitude = 45.0002,
+                        elapsedMillis = 11_000L,
+                        speedMps = 1.4f,
+                        stepCount = null,
+                    ).copy(accuracyMeters = 24f, cadenceSpm = null),
+                activityProfile = HIKE,
+            )
+
+        assertTrue(result.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+        assertFalse(result.evidence.stepDataAvailable)
+        assertFalse(result.evidence.stepsUnchanged)
+        assertFalse(result.evidence.cadenceDataAvailable)
     }
 
     @Test

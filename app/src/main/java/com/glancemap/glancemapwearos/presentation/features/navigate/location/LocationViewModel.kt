@@ -15,6 +15,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.FieldMarkerDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
 import com.glancemap.glancemapwearos.core.service.location.service.LocationService
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -405,7 +406,8 @@ class LocationViewModel(
     ): WakeBurstSkipCandidate {
         val snapshot = _gpsSignalSnapshot.value
         val fixAgeMs = snapshot.resolveLastFixAgeMs(nowElapsedMs = nowElapsedMs)
-        val accuracyM = snapshot.lastFixAccuracyM.takeIf { it.isFinite() }
+        val rawAccuracyM = snapshot.lastFixAccuracyM.takeIf { it.isFinite() }
+        val effectiveAccuracyM = snapshot.effectiveAccuracyMeters().takeIf { it.isFinite() }
         val effectiveIntervalMs =
             _effectiveGpsIntervalMs.value.takeIf { it > 0L }
                 ?: SettingsRepository.DEFAULT_GPS_INTERVAL_MS
@@ -422,7 +424,7 @@ class LocationViewModel(
             } else {
                 evaluateWakeBurstSkipCandidate(
                     fixAgeMs = fixAgeMs,
-                    accuracyM = accuracyM,
+                    accuracyM = effectiveAccuracyM,
                     freshnessMaxAgeMs = freshnessMaxAgeMs,
                 )
             }
@@ -430,7 +432,9 @@ class LocationViewModel(
             CONNECTION_TELEMETRY_TAG,
             "wakeBurstCandidate source=$source wouldSkip=${decision.wouldSkip} " +
                 "reason=${decision.reason} fixAgeMs=${fixAgeMs.telemetryValue()} " +
-                "accuracyM=${accuracyM.telemetryValue()} fixMaxAgeMs=$freshnessMaxAgeMs " +
+                "accuracyM=${rawAccuracyM.telemetryValue()} " +
+                "effectiveAccuracyM=${effectiveAccuracyM.telemetryValue()} " +
+                "fixMaxAgeMs=$freshnessMaxAgeMs " +
                 "effectiveIntervalMs=$effectiveIntervalMs " +
                 "accuracyMaxM=${WAKE_BURST_SKIP_MAX_ACCURACY_M.telemetryValue()}",
         )

@@ -1,7 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.motion
 
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.moveLatLong
 import org.mapsforge.core.model.LatLong
@@ -1398,20 +1397,10 @@ private fun effectiveMotionAccuracy(
     sourceMode: LocationSourceMode,
 ): Float {
     val sanitizedAccuracy = sanitizeAccuracy(accuracyM)
-    if (
-        sourceMode == LocationSourceMode.WATCH_GPS &&
-        isKnownWatchGpsAccuracyFloor(sanitizedAccuracy)
-    ) {
-        return WATCH_GPS_FLOOR_MOTION_ACCURACY_M
-    }
-    return sanitizedAccuracy
-}
-
-private fun isKnownWatchGpsAccuracyFloor(
-    accuracyM: Float,
-): Boolean {
-    if (!accuracyM.isFinite()) return false
-    return abs(accuracyM - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+    return resolveEffectiveWatchGpsAccuracyMeters(
+        rawAccuracyMeters = sanitizedAccuracy,
+        watchGpsActive = sourceMode == LocationSourceMode.WATCH_GPS,
+    ) ?: sanitizedAccuracy
 }
 
 private fun isDuplicateMotionFix(
@@ -1455,7 +1444,6 @@ private fun MarkerVisualCorrectionEnd?.recordTelemetryInterruption() {
 
 private const val DEFAULT_UNKNOWN_ACCURACY_M = 99f
 private const val DEFAULT_MAX_PREDICTION_ACCURACY_M = 35f
-private const val WATCH_GPS_FLOOR_MOTION_ACCURACY_M = 18f
 private const val DEFAULT_MIN_PREDICTION_SPEED_MPS = 0.35f
 private const val DEFAULT_CORRECTION_BLEND_DURATION_MS = 1_200L
 private const val DEFAULT_EXPECTED_GPS_INTERVAL_MS = 3_000L

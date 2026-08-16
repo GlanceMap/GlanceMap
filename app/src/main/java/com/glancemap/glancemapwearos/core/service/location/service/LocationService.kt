@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpda
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpdateRequestParams
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpdateSink
 import com.glancemap.glancemapwearos.core.service.location.adapters.PassiveExternalLocationGateway
+import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsAvailabilityReason
 import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsLocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.WearPhoneConnectionProbe
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
@@ -221,6 +222,9 @@ class LocationService : Service() {
             watchGpsOnly = { latestWatchGpsOnly },
             passiveLocationExperiment = { latestGpsDebugTelemetry && latestPassiveLocationExperiment },
             phoneConnected = { latestPhoneConnected },
+            watchGpsAvailable = {
+                watchGpsLocationGateway.availabilityReason() == WatchGpsAvailabilityReason.AVAILABLE
+            },
             checkPhoneConnection = {
                 phoneConnectionProbe.isPhoneConnected()?.also { latestPhoneConnected = it }
             },
@@ -953,9 +957,11 @@ class LocationService : Service() {
     private fun updateLatestPhoneConnection(phoneConnected: Boolean?) {
         if (phoneConnected != null) {
             latestPhoneConnected = phoneConnected
-            selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
-                phoneConnected = phoneConnected,
-            )
+            if (phoneConnected) {
+                selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
+                    phoneConnected = true,
+                )
+            }
         }
     }
 

@@ -25,8 +25,11 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
+import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.HeadingTurnRateHysteresis
 import com.glancemap.glancemapwearos.domain.sensors.hasRecentGoogleFusedCachedHeading
@@ -125,6 +128,7 @@ fun NavigationOrientationEffect(
     fun applyMapRotation(
         targetRotationDeg: Float,
         highFrequencyRotation: Boolean = false,
+        responsiveRotation: Boolean = false,
     ) {
         recenterLowerMarkerAnchor()
         val currentRotationDeg = syncDisplayedMapRotationFromMap()
@@ -133,6 +137,12 @@ fun NavigationOrientationEffect(
                 resolveCompassVisualTargetAngle(
                     currentAngleDeg = currentRotationDeg,
                     targetAngleDeg = targetRotationDeg,
+                    maxStepDeg =
+                        if (responsiveRotation) {
+                            RESPONSIVE_HEADING_ANIMATION_MAX_STEP_DEG
+                        } else {
+                            HEADING_ANIMATION_MAX_STEP_DEG
+                        },
                 )
             } else {
                 targetRotationDeg
@@ -383,6 +393,7 @@ fun NavigationOrientationEffect(
                 CompassRenderPerfTelemetry.recordFrame(navMode)
                 val current = displayedHeading.floatValue
                 val diff = angleDeltaDeg(headingTarget.headingDeg, current)
+                val responsiveRotation = shouldUseResponsiveCompassMapRotation(latestRenderState)
                 if (abs(diff) < HEADING_ANIMATION_DONE_DEG) {
                     val mapCatchupDeltaDeg =
                         if (navMode == NavMode.COMPASS_FOLLOW) {
@@ -394,6 +405,7 @@ fun NavigationOrientationEffect(
                         applyMapRotation(
                             targetRotationDeg = -current,
                             highFrequencyRotation = true,
+                            responsiveRotation = responsiveRotation,
                         )
                         if (CompassDeepTraceDiagnostics.state.value.active) {
                             CompassDeepTraceDiagnostics.recordRenderSample(
@@ -424,6 +436,7 @@ fun NavigationOrientationEffect(
                         diffDeg = diff,
                         activeTurn = activeHeadingTurn,
                         frameDeltaMs = frameDeltaMs,
+                        responsiveRotation = responsiveRotation,
                     )
                 val next = normalize360(current + animationDelta)
                 displayedHeading.floatValue = next
@@ -434,6 +447,7 @@ fun NavigationOrientationEffect(
                         applyMapRotation(
                             targetRotationDeg = -next,
                             highFrequencyRotation = activeHeadingTurn,
+                            responsiveRotation = responsiveRotation,
                         )
                     }
                     NavMode.NORTH_UP_FOLLOW -> {
@@ -555,6 +569,18 @@ internal fun shouldDriveCompassFollowMap(renderState: CompassRenderState): Boole
         renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
     }
 }
+
+internal fun shouldUseResponsiveCompassMapRotation(renderState: CompassRenderState): Boolean =
+    shouldDriveCompassFollowMap(renderState) &&
+        renderState.magneticQuality == CompassMagneticQuality.GOOD &&
+        !renderState.magneticInterference &&
+        (
+            renderState.headingTrusted ||
+                (
+                    renderState.trackingState == CompassTrackingState.TRACKING &&
+                        renderState.trackingReason == CompassTrackingReason.STABLE
+                )
+        )
 
 /**
  * Preserve the visible map angle only until Google Fused produces a sample from the new wake.
@@ -741,10 +767,12 @@ internal fun resolveHeadingAnimationAlpha(
     diffDeg: Float,
     activeTurn: Boolean,
     frameDeltaMs: Float,
+    responsiveRotation: Boolean = false,
 ): Float {
     if (!diffDeg.isFinite() || !frameDeltaMs.isFinite() || frameDeltaMs <= 0f) return 0f
     val timeConstantMs =
         when {
+            responsiveRotation -> RESPONSIVE_HEADING_ANIMATION_TIME_CONSTANT_MS
             activeTurn && abs(diffDeg) >= ACTIVE_TURN_LARGE_ERROR_DEG ->
                 ACTIVE_TURN_LARGE_ERROR_TIME_CONSTANT_MS
             activeTurn -> ACTIVE_TURN_ANIMATION_TIME_CONSTANT_MS
@@ -757,6 +785,7 @@ internal fun resolveHeadingAnimationDelta(
     diffDeg: Float,
     activeTurn: Boolean,
     frameDeltaMs: Float,
+    responsiveRotation: Boolean = false,
 ): Float {
     if (!diffDeg.isFinite()) return 0f
     val animatedDelta =
@@ -765,9 +794,15 @@ internal fun resolveHeadingAnimationDelta(
                 diffDeg = diffDeg,
                 activeTurn = activeTurn,
                 frameDeltaMs = frameDeltaMs,
+                responsiveRotation = responsiveRotation,
             )
     // A delayed frame must not turn a transient provider jump into a visible snap.
-    val maximumStepDeg = HEADING_ANIMATION_MAX_STEP_DEG
+    val maximumStepDeg =
+        if (responsiveRotation) {
+            RESPONSIVE_HEADING_ANIMATION_MAX_STEP_DEG
+        } else {
+            HEADING_ANIMATION_MAX_STEP_DEG
+        }
     return animatedDelta.coerceIn(
         minimumValue = -maximumStepDeg,
         maximumValue = maximumStepDeg,
@@ -825,11 +860,13 @@ private const val RENDERED_COMPASS_UI_PUBLISH_INTERVAL_MS = 40L
 private const val HEADING_ANIMATION_TIME_CONSTANT_MS = 80f
 private const val ACTIVE_TURN_ANIMATION_TIME_CONSTANT_MS = 42f
 private const val ACTIVE_TURN_LARGE_ERROR_TIME_CONSTANT_MS = 20f
+private const val RESPONSIVE_HEADING_ANIMATION_TIME_CONSTANT_MS = 24f
 private const val ACTIVE_TURN_LARGE_ERROR_DEG = 25f
 private const val HEADING_ANIMATION_NOMINAL_FRAME_DELTA_MS = 16.666_667f
 private const val HEADING_ANIMATION_MIN_FRAME_DELTA_MS = 4f
 private const val HEADING_ANIMATION_MAX_FRAME_DELTA_MS = 50f
 private const val HEADING_ANIMATION_MAX_STEP_DEG = 10f
+private const val RESPONSIVE_HEADING_ANIMATION_MAX_STEP_DEG = 20f
 private const val NANOS_PER_MILLISECOND = 1_000_000.0
 
 // Enter turning mode promptly, then leave only after angular movement stays low. This prevents a

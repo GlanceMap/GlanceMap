@@ -104,8 +104,11 @@ class WatchDataLayerRepository(
     ) {
         var lastError: Throwable? = null
         repeat(attempts) { attempt ->
-            try {
-                messageClient.sendMessage(nodeId, path, payload).await()
+            val result =
+                runCatching {
+                    messageClient.sendMessage(nodeId, path, payload).await()
+                }
+            if (result.isSuccess) {
                 if (attempt > 0) {
                     Log.d(TAG, "Recovered send for path=$path node=$nodeId on attempt=${attempt + 1}")
                     TransferDiagnostics.log(
@@ -114,28 +117,30 @@ class WatchDataLayerRepository(
                     )
                 }
                 return
-            } catch (t: Throwable) {
-                lastError = t
-                if (!isTargetNodeNotConnected(t) || attempt == attempts - 1) {
-                    throw t
-                }
+            }
 
-                Log.w(
-                    TAG,
-                    "Target node temporarily disconnected for path=$path node=$nodeId. " +
-                        "Waiting for reconnect before retry ${attempt + 2}/$attempts.",
-                )
-                TransferDiagnostics.warn(
-                    "Ack",
-                    "Node disconnected path=$path node=$nodeId retry=${attempt + 2}/$attempts",
-                )
-                val reconnected = awaitNodeConnection(nodeId, reconnectWindowMs)
-                if (!reconnected) {
-                    delay(RETRY_DELAY_MS)
-                }
+            val error = requireNotNull(result.exceptionOrNull())
+            lastError = error
+            if (!isTargetNodeNotConnected(error) || attempt == attempts - 1) {
+                throw error
+            }
+
+            Log.w(
+                TAG,
+                "Target node temporarily disconnected for path=$path node=$nodeId. " +
+                    "Waiting for reconnect before retry ${attempt + 2}/$attempts.",
+            )
+            TransferDiagnostics.warn(
+                "Ack",
+                "Node disconnected path=$path node=$nodeId retry=${attempt + 2}/$attempts",
+            )
+            val reconnected = awaitNodeConnection(nodeId, reconnectWindowMs)
+            if (!reconnected) {
+                delay(RETRY_DELAY_MS)
             }
         }
-        throw lastError ?: IllegalStateException("sendReliableMessage failed")
+        lastError?.let { throw it }
+        error("sendReliableMessage failed")
     }
 
     private suspend fun awaitNodeConnection(

@@ -2,19 +2,19 @@
 
 package com.glancemap.glancemapwearos.presentation.features.recording
 
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_EFFECTIVE_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.mapsforge.core.model.LatLong
-import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor as isKnownPlatformWatchGpsAccuracyFloor
 
 internal const val RECORDING_TRACK_FILTER_VERSION = 9
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
-internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = 18f
+internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = WATCH_GPS_EFFECTIVE_ACCURACY_M
 
 /**
  * Some watches expose a fixed 125 m accuracy value for otherwise usable direct-GNSS fixes.
@@ -26,21 +26,15 @@ internal fun resolveRecordingFilterAccuracyMeters(
     knownWatchGpsAccuracyFloorActive: Boolean,
 ): Float? {
     val rawAccuracy = rawAccuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return rawAccuracyMeters
-    return if (
-        knownWatchGpsAccuracyFloorActive &&
-        isKnownWatchGpsAccuracyFloor(rawAccuracy)
-    ) {
-        RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M
-    } else {
-        rawAccuracy
-    }
+    return resolveEffectiveWatchGpsAccuracyMeters(
+        rawAccuracyMeters = rawAccuracy,
+        watchGpsActive = knownWatchGpsAccuracyFloorActive,
+    )
 }
 
-internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
-    accuracyMeters?.let { accuracy ->
-        accuracy.isFinite() &&
-            abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
-    } == true
+internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean {
+    return isKnownPlatformWatchGpsAccuracyFloor(accuracyMeters)
+}
 
 internal fun resolveRecordingContinuityRecoveryGapMillis(
     deliveryGapMillis: Long,

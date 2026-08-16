@@ -105,38 +105,26 @@ class UserPoiRepository(
     }
 
     private fun readStore(): UserPoiSourceState {
-        val file = storeFile()
-        if (!file.exists()) {
-            return UserPoiSourceState(
-                fileEnabled = false,
-                categoryEnabled = false,
-                points = emptyList(),
-            )
-        }
-
         val json =
-            runCatching { JSONObject(file.readText()) }.getOrNull()
-                ?: return UserPoiSourceState(
-                    fileEnabled = false,
-                    categoryEnabled = false,
-                    points = emptyList(),
-                )
+            storeFile
+                .takeIf { it.exists() }
+                ?.let { file -> runCatching { JSONObject(file.readText()) }.getOrNull() }
 
         val points =
             json
-                .optJSONArray(KEY_POINTS)
+                ?.optJSONArray(KEY_POINTS)
                 ?.toUserPoiRecords()
                 .orEmpty()
 
         return UserPoiSourceState(
-            fileEnabled = json.optBoolean(KEY_FILE_ENABLED, points.isNotEmpty()),
-            categoryEnabled = json.optBoolean(KEY_CATEGORY_ENABLED, points.isNotEmpty()),
+            fileEnabled = json?.optBoolean(KEY_FILE_ENABLED, points.isNotEmpty()) ?: false,
+            categoryEnabled = json?.optBoolean(KEY_CATEGORY_ENABLED, points.isNotEmpty()) ?: false,
             points = points.sortedBy { it.createdAtEpochMs },
         )
     }
 
     private fun writeStore(state: UserPoiSourceState) {
-        val target = storeFile()
+        val target = storeFile
         target.parentFile?.mkdirs()
         val tmp = File(target.parentFile, "${target.name}.tmp")
         val json =
@@ -170,24 +158,27 @@ class UserPoiRepository(
     private fun JSONArray.toUserPoiRecords(): List<UserPoiRecord> =
         buildList(length()) {
             for (index in 0 until length()) {
-                val item = optJSONObject(index) ?: continue
-                val id = item.optLong(KEY_ID, 0L)
-                val name = item.optString(KEY_NAME).trim()
-                val lat = item.optDouble(KEY_LAT, Double.NaN)
-                val lon = item.optDouble(KEY_LON, Double.NaN)
-                val createdAt = item.optLong(KEY_CREATED_AT, id)
-                if (id <= 0L || name.isBlank() || !lat.isFinite() || !lon.isFinite()) continue
-                add(
-                    UserPoiRecord(
-                        id = id,
-                        name = name,
-                        lat = lat,
-                        lon = lon,
-                        createdAtEpochMs = createdAt,
-                    ),
-                )
+                optJSONObject(index)?.let { item ->
+                    val id = item.optLong(KEY_ID, 0L)
+                    val name = item.optString(KEY_NAME).trim()
+                    val lat = item.optDouble(KEY_LAT, Double.NaN)
+                    val lon = item.optDouble(KEY_LON, Double.NaN)
+                    val validCoordinates = lat.isFinite() && lon.isFinite()
+                    if (id > 0L && name.isNotBlank() && validCoordinates) {
+                        add(
+                            UserPoiRecord(
+                                id = id,
+                                name = name,
+                                lat = lat,
+                                lon = lon,
+                                createdAtEpochMs = item.optLong(KEY_CREATED_AT, id),
+                            ),
+                        )
+                    }
+                }
             }
         }
 
-    private fun storeFile(): File = File(context.getDir("user_poi", Context.MODE_PRIVATE), STORE_FILE_NAME)
+    private val storeFile: File
+        get() = File(context.getDir("user_poi", Context.MODE_PRIVATE), STORE_FILE_NAME)
 }
