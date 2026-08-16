@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.core.service.location.service
 import com.glancemap.glancemapwearos.core.service.location.config.SCREEN_OFF_RECORDING_MAX_BATCH_DELAY_MS
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
@@ -27,8 +28,8 @@ internal fun shouldSuppressImmediateBurstForFreshStream(
     val allowedAgeMs = maxOf(intervalMs * 2L, 6_000L)
     return signal.lastFixElapsedRealtimeMs > 0L &&
         fixAgeMs <= allowedAgeMs &&
-        signal.lastFixAccuracyM.isFinite() &&
-        signal.lastFixAccuracyM <= 35f
+        signal.effectiveAccuracyMeters().isFinite() &&
+        signal.effectiveAccuracyMeters() <= 35f
 }
 
 internal fun shouldRequestStaleNavigateOneShot(

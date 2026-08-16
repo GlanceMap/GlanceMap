@@ -419,23 +419,24 @@ class TraceRecordingViewModel(
         persistDraftAsync(reason = "start")
     }
 
-    fun onLocation(location: Location?) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    fun onLocation(location: Location?): Job? {
         latestRecordingStartLocation = location
         startPendingRecordingWhenLocationReady()
-        if (location == null) return
+        if (location == null) return null
         val state = _uiState.value
-        if (!state.active || state.saving) return
+        if (!state.active || state.saving) return null
         if (state.paused && !state.autoPaused) {
             skippedPausedCount += 1
-            return
+            return null
         }
         if (!isGpsSamplingEnabled()) {
             skippedIntervalCount += 1
-            return
+            return null
         }
         if (!isUsableLocation(location)) {
             skippedUnusableLocationCount += 1
-            return
+            return null
         }
 
         val callbackElapsedMs =
@@ -452,19 +453,21 @@ class TraceRecordingViewModel(
         lastLiveFixTimeMillis = livePoint.timeMillis
         _uiState.value = _uiState.value.copy(latestLivePoint = livePoint)
 
-        val nowElapsedMs = SystemClock.elapsedRealtime()
+        // Batches retain each fix's monotonic timestamp. Using delivery time here would make
+        // every point in the batch look simultaneous and discard all but the first one.
+        val sampleElapsedMs = callbackElapsedMs
         if (state.paused && state.autoPaused) {
-            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
-                return
+                return null
             }
-        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
             skippedPausedCount += 1
-            return
+            return null
         }
         val elapsedSinceAcceptedMs =
             if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
-                nowElapsedMs - lastAcceptedElapsedMs
+                sampleElapsedMs - lastAcceptedElapsedMs
             } else {
                 -1L
             }
@@ -495,7 +498,7 @@ class TraceRecordingViewModel(
                             "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
                     )
                 }
-                return
+                return null
             }
         }
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
@@ -568,7 +571,7 @@ class TraceRecordingViewModel(
                         "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
                 )
             }
-            return
+            return null
         }
         if (!motionResult.accepted) {
             recordingMovementConfidenceGate.reset()
@@ -625,7 +628,7 @@ class TraceRecordingViewModel(
                         "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
                 )
             }
-            return
+            return null
         }
         // A filtered point or a source relocation must not split the visual GPX trace. A REC
         // session only starts a new segment for an explicit pause/resume boundary. Keep the
@@ -692,7 +695,7 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
             )
         }
-        lastAcceptedElapsedMs = nowElapsedMs
+        lastAcceptedElapsedMs = sampleElapsedMs
         val latitude = location.latitude
         val longitude = location.longitude
         val gpsAltitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() }
@@ -700,7 +703,7 @@ class TraceRecordingViewModel(
         val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
         val speedMps = location.speed.takeIf { location.hasSpeed() }
         val selectedElevationSource = recordingElevationSource
-        viewModelScope.launch {
+        return viewModelScope.launch {
             locationPointMutex.withLock {
                 val elevation =
                     elevationProvider.resolveElevation(
@@ -1951,7 +1954,6 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it - pausedMillis }
                 ?.coerceAtLeast(0L)
                 ?: 0L
-        val elevation = elevationGainLossMeters(state.points)
         val lastPoint = state.points.lastOrNull()
         val avgAccuracy =
             if (acceptedAccuracyCount > 0) {
@@ -2010,7 +2012,8 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it }
                 ?.coerceAtLeast(0L) ?: -1} " +
             "lastPointAgeMs=${lastPoint?.timeMillis?.let { nowMillis - it }?.coerceAtLeast(0L) ?: -1} " +
-            "elevationGainMeters=${elevation.first.toInt()} elevationLossMeters=${elevation.second.toInt()} " +
+            "elevationGainMeters=${displaySnapshot.elevationGainMeters.toInt()} " +
+            "elevationLossMeters=${displaySnapshot.elevationLossMeters.toInt()} " +
             "elevationSource=$recordingElevationSource demHits=$demElevationHitCount " +
             "demResolution=${lastDemResolutionLabel ?: "na"} " +
             "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
@@ -2066,6 +2069,7 @@ class TraceRecordingViewModel(
             "smartTrackAcceptedSensorCount=${snapshot.acceptedSensorCount} " +
             "smartTrackAcceptedConfirmedSlowCount=${snapshot.acceptedConfirmedSlowCount} " +
             "smartTrackSuppressedStationaryCount=${snapshot.suppressedStationaryCount} " +
+            "smartTrackSuppressedStepStillnessCount=${snapshot.suppressedStepStillnessCount} " +
             "smartTrackHeldSlowCount=${snapshot.heldSlowCount} " +
             "smartTrackSegmentStartBypassCount=${snapshot.segmentStartBypassCount} " +
             "smartTrackStepMotionEvidenceCount=${snapshot.stepMotionEvidenceCount} " +
@@ -2279,27 +2283,6 @@ internal fun haversineMeters(
         sin(dLat / 2) * sin(dLat / 2) +
             cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
     return 2.0 * EARTH_RADIUS_METERS * atan2(sqrt(h), sqrt(1.0 - h))
-}
-
-private fun elevationGainLossMeters(points: List<RecordedTracePoint>): Pair<Double, Double> {
-    var gain = 0.0
-    var loss = 0.0
-    var previous = points.firstOrNull()?.elevationMeters ?: return 0.0 to 0.0
-    points.drop(1).forEach { point ->
-        val elevation = point.elevationMeters ?: return@forEach
-        if (point.startsNewSegment) {
-            previous = elevation
-            return@forEach
-        }
-        val delta = elevation - previous
-        if (delta > 0.0) {
-            gain += delta
-        } else {
-            loss += -delta
-        }
-        previous = elevation
-    }
-    return gain to loss
 }
 
 private fun sanitizeTelemetryValue(value: String): String =

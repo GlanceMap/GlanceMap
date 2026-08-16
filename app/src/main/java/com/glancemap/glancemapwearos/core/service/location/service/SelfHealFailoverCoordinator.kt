@@ -28,6 +28,7 @@ internal class SelfHealFailoverCoordinator(
     private val watchGpsOnly: () -> Boolean,
     private val passiveLocationExperiment: () -> Boolean,
     private val phoneConnected: () -> Boolean?,
+    private val watchGpsAvailable: () -> Boolean = { true },
     private val checkPhoneConnection: suspend () -> Boolean? = { null },
     private val lastAnyAcceptedFixAtElapsedMs: () -> Long,
     private val lastCallbackAcceptedFixAtElapsedMs: () -> Long,
@@ -45,11 +46,28 @@ internal class SelfHealFailoverCoordinator(
 
     fun isAutoFusedFallbackToWatchGps(): Boolean = autoFusedFallbackToWatchGps
 
-    fun onPhoneConnectionStateChecked(phoneConnected: Boolean) {
-        if (!phoneConnected || !autoFusedFallbackToWatchGps) return
+    fun onPhoneConnectionStateChecked(
+        phoneConnected: Boolean,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        if (phoneConnected) {
+            if (autoFusedFallbackToWatchGps) {
+                clearAutoFusedFailoverStateInternal(reason = "phone_reconnected")
+                requestLocationUpdateIfNeeded()
+            }
+        } else if (
+            shouldFailOverForDisconnectedPhone() &&
+            forceAutoFusedFallbackToWatchGps("phone_disconnected", nowElapsedMs)
+        ) {
+            requestLocationUpdateIfNeeded()
+        }
+    }
 
-        clearAutoFusedFailoverStateInternal(reason = "phone_reconnected")
-        requestLocationUpdateIfNeeded()
+    private fun shouldFailOverForDisconnectedPhone(): Boolean {
+        if (!trackingEnabled() || watchGpsOnly() || passiveLocationExperiment()) return false
+        return !autoFusedFallbackToWatchGps &&
+            engine.currentSourceModeOrNull() == LocationSourceMode.AUTO_FUSED &&
+            watchGpsAvailable()
     }
 
     fun currentLocationSourceMode(): LocationSourceMode =
@@ -587,6 +605,7 @@ internal class SelfHealFailoverCoordinator(
         if (
             !shouldRecheckAutoFusedPhoneConnection(
                 fallbackToWatchGps = autoFusedFallbackToWatchGps,
+                autoFusedActive = engine.currentSourceModeOrNull() == LocationSourceMode.AUTO_FUSED,
                 watchGpsOnly = watchGpsOnly(),
                 nowElapsedMs = nowElapsedMs,
                 lastRecheckAtElapsedMs = lastPhoneConnectionRecheckAtElapsedMs,
@@ -595,7 +614,9 @@ internal class SelfHealFailoverCoordinator(
             return
         }
         lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
-        checkPhoneConnection()?.let(::onPhoneConnectionStateChecked)
+        checkPhoneConnection()?.let { connected ->
+            onPhoneConnectionStateChecked(connected, nowElapsedMs)
+        }
     }
 }
 
@@ -606,11 +627,12 @@ internal fun resolveLatestAcceptedFixAtElapsedMs(
 
 internal fun shouldRecheckAutoFusedPhoneConnection(
     fallbackToWatchGps: Boolean,
+    autoFusedActive: Boolean,
     watchGpsOnly: Boolean,
     nowElapsedMs: Long,
     lastRecheckAtElapsedMs: Long,
 ): Boolean =
-    fallbackToWatchGps &&
+    (fallbackToWatchGps || autoFusedActive) &&
         !watchGpsOnly &&
         (
             lastRecheckAtElapsedMs <= 0L ||

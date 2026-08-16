@@ -125,6 +125,7 @@ object DiagnosticsExporter {
         val acceptedSensorCount: Int? = null,
         val acceptedConfirmedSlowCount: Int? = null,
         val suppressedStationaryCount: Int? = null,
+        val suppressedStepStillnessCount: Int? = null,
         val heldSlowCount: Int? = null,
         val segmentStartBypassCount: Int? = null,
         val stepMotionEvidenceCount: Int? = null,

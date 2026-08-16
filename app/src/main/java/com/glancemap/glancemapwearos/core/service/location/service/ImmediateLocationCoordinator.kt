@@ -11,6 +11,7 @@ import com.glancemap.glancemapwearos.core.service.location.engine.EndBurstResult
 import com.glancemap.glancemapwearos.core.service.location.engine.ImmediateBurstDecision
 import com.glancemap.glancemapwearos.core.service.location.engine.LocationEngine
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionSnapshot
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.policy.FixAcceptancePolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
@@ -165,7 +166,7 @@ internal class ImmediateLocationCoordinator(
                 if (
                     signal.lastFixElapsedRealtimeMs > 0L &&
                     fixAgeMs <= 6_000L &&
-                    signal.lastFixAccuracyM <= 35f
+                    signal.effectiveAccuracyMeters() <= 35f
                 ) {
                     endHighAccuracyBurst(reason = "timer_good_enough", expectedBurstId = burstId)
                 } else {

@@ -604,6 +604,26 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotDoesNotAccumulateSmallElevationCorrections() {
+        val points =
+            List(120) { index ->
+                recordingPoint(
+                    longitude = index * 0.000045,
+                    elevationMeters = 200.0 + if (index % 2 == 0) 0.12 else -0.12,
+                    timeMillis = index * 3_000L,
+                )
+            }
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state = TraceRecordingUiState(active = true, startedAtMillis = 0L, points = points),
+                nowMillis = 357_000L,
+            )
+
+        assertTrue(snapshot.elevationGainMeters < 0.5)
+        assertTrue(snapshot.elevationLossMeters < 0.5)
+    }
+
+    @Test
     fun formattedRecordingMetricEstimatesCaloriesFromWeightDistanceAndDuration() {
         val estimate =
             estimateRecordingCalories(

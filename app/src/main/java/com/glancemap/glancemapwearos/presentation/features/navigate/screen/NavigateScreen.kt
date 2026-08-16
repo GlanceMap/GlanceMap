@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
@@ -577,7 +578,7 @@ fun NavigateScreen(
             compassQuality = compassConeQuality,
             compassHeadingErrorDeg = compassConeHeadingErrorDeg,
             gpsAccuracyCircleEnabled = gpsAccuracyCircleEnabled && !offlineMode,
-            gpsFixAccuracyM = gpsSignalSnapshot.lastFixAccuracyM,
+            gpsFixAccuracyM = gpsSignalSnapshot.effectiveAccuracyMeters(),
             gpsFixFresh = gpsFixFreshForAccuracyCircle,
             gpsFixSpeedMps = locationUiState.lastFixSpeedMps,
             gpsFixBearingDeg = locationUiState.lastFixBearingDeg,

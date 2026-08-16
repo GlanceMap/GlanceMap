@@ -1,7 +1,10 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.hardware.SensorManager
+import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
@@ -59,6 +62,49 @@ class NavigateEffectsSupportTest {
             shouldDriveCompassFollowMap(
                 initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER),
             ),
+        )
+    }
+
+    @Test
+    fun stableGoodCompassUsesResponsiveMapRotation() {
+        val state =
+            readyGoogleFusedState().copy(
+                trackingState = CompassTrackingState.TRACKING,
+                trackingReason = CompassTrackingReason.STABLE,
+                magneticQuality = CompassMagneticQuality.GOOD,
+            )
+
+        assertTrue(shouldUseResponsiveCompassMapRotation(state))
+        assertEquals(
+            20f,
+            resolveHeadingAnimationDelta(
+                diffDeg = 120f,
+                activeTurn = true,
+                frameDeltaMs = 16.667f,
+                responsiveRotation = true,
+            ),
+            0.01f,
+        )
+    }
+
+    @Test
+    fun recoveringCompassKeepsConservativeRotationCap() {
+        val state =
+            readyGoogleFusedState().copy(
+                trackingState = CompassTrackingState.ACQUIRING,
+                trackingReason = CompassTrackingReason.RECOVERING,
+                magneticQuality = CompassMagneticQuality.RECOVERING,
+            )
+
+        assertFalse(shouldUseResponsiveCompassMapRotation(state))
+        assertEquals(
+            10f,
+            resolveHeadingAnimationDelta(
+                diffDeg = 120f,
+                activeTurn = true,
+                frameDeltaMs = 16.667f,
+            ),
+            0.01f,
         )
     }
 

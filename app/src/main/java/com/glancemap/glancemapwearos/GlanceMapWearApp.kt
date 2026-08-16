@@ -29,7 +29,7 @@ class GlanceMapWearApp : Application() {
         super.onCreate()
         CrashDiagnosticsStore.install(this)
         // Initialize the container when the app starts
-        container = DefaultAppContainer(this, applicationScope)
+        container = AppContainer(this, applicationScope)
         applicationScope.launch {
             StalePartialTransferCleaner.cleanStale(this@GlanceMapWearApp)
         }

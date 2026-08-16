@@ -18,7 +18,6 @@ import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferRunne
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferRuntimeHost
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepository
-import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,7 +54,7 @@ class WatchTransferForegroundService :
         super.onCreate()
         TransferDiagnostics.log("FgService", "Created instance=$serviceInstanceId")
 
-        dataLayerRepository = WatchDataLayerRepositoryImpl(this)
+        dataLayerRepository = WatchDataLayerRepository(this)
         notificationHelper = NotificationHelper(this)
         notificationHelper.createNotificationChannel()
         runner =
