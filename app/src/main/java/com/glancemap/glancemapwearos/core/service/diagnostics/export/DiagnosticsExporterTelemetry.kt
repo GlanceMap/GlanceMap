@@ -714,15 +714,17 @@ internal fun deriveTelemetryInsights(
             parseLongToken(line, "gpsActiveDurationMs=")?.let { duration ->
                 recordingGpsActiveDurationMs = maxOf(recordingGpsActiveDurationMs ?: duration, duration)
             }
-            parseIntToken(line, "expectedPointCount=")?.let { count ->
+            (parseIntToken(line, "expectedStoredSampleCount=") ?: parseIntToken(line, "expectedPointCount="))?.let { count ->
                 recordingExpectedPointCount = maxOf(recordingExpectedPointCount ?: count, count)
             }
             parseLongToken(line, "averagePointIntervalMs=")?.takeIf { it >= 0L }?.let { interval ->
                 recordingAveragePointIntervalMs = interval
             }
-            parseIntToken(line, "pointCaptureRatePercent=")?.takeIf { it >= 0 }?.let { rate ->
-                recordingPointCaptureRatePercent = rate
-            }
+            (parseIntToken(line, "storedSampleCaptureRatePercent=") ?: parseIntToken(line, "pointCaptureRatePercent="))
+                ?.takeIf { it >= 0 }
+                ?.let { rate ->
+                    recordingPointCaptureRatePercent = rate
+                }
             parseIntToken(line, "recordingGapCount=")?.let { count ->
                 recordingGapCount = maxOf(recordingGapCount ?: count, count)
             }
@@ -1560,9 +1562,14 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
     var rotationSettleSessionStartCount = 0
     var rotationSettleHoldCount = 0
     var rotationSettleUnlockCount = 0
+    var rotationSettleReleaseCount = 0
     val rotationSettleHoldReasons = linkedMapOf<String, Int>()
     val rotationSettleUnlockReasons = linkedMapOf<String, Int>()
+    val rotationSettleReleaseReasons = linkedMapOf<String, Int>()
     var rotationSettleHoldMaxHeadingDeltaDeg: Float? = null
+    var rotationSettleWakeHoldDurationMaxMs: Long? = null
+    var rotationSettleReleaseHeadingDeltaMaxDeg: Float? = null
+    var rotationSettleFirstVisibleReleaseStepMaxDeg: Float? = null
     var headingSampleCount = 0
     var largeJumpPendingCount = 0
     var largeJumpAcceptedCount = 0
@@ -1658,6 +1665,25 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
             rotationSettleUnlockCount += 1
             val reason = extractTokenValue(line, "reason=") ?: "unknown"
             rotationSettleUnlockReasons[reason] = (rotationSettleUnlockReasons[reason] ?: 0) + 1
+        }
+        if ("rotation_settle stage=release" in line) {
+            rotationSettleReleaseCount += 1
+            val reason = extractTokenValue(line, "wakeReleaseReason=") ?: "unknown"
+            rotationSettleReleaseReasons[reason] = (rotationSettleReleaseReasons[reason] ?: 0) + 1
+            parseLongToken(line, "wakeHoldDurationMs=")?.let { value ->
+                rotationSettleWakeHoldDurationMaxMs =
+                    maxOf(rotationSettleWakeHoldDurationMaxMs ?: value, value)
+            }
+            parseFloatToken(line, "wakeReleaseHeadingDeltaDeg=")?.let { value ->
+                val magnitude = abs(value)
+                rotationSettleReleaseHeadingDeltaMaxDeg =
+                    maxOf(rotationSettleReleaseHeadingDeltaMaxDeg ?: magnitude, magnitude)
+            }
+            parseFloatToken(line, "firstVisibleReleaseStepDeg=")?.let { value ->
+                val magnitude = abs(value)
+                rotationSettleFirstVisibleReleaseStepMaxDeg =
+                    maxOf(rotationSettleFirstVisibleReleaseStepMaxDeg ?: magnitude, magnitude)
+            }
         }
         if (headingSample) {
             headingSampleCount += 1
@@ -1794,6 +1820,7 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
         rotationSettleSessionStartCount = rotationSettleSessionStartCount,
         rotationSettleHoldCount = rotationSettleHoldCount,
         rotationSettleUnlockCount = rotationSettleUnlockCount,
+        rotationSettleReleaseCount = rotationSettleReleaseCount,
         rotationSettleHoldReasons =
             rotationSettleHoldReasons.entries
                 .joinToString(",") { "${it.key}:${it.value}" }
@@ -1802,7 +1829,14 @@ internal fun deriveCompassTelemetryInsights(lines: List<String>): CompassTelemet
             rotationSettleUnlockReasons.entries
                 .joinToString(",") { "${it.key}:${it.value}" }
                 .ifBlank { "none" },
+        rotationSettleReleaseReasons =
+            rotationSettleReleaseReasons.entries
+                .joinToString(",") { "${it.key}:${it.value}" }
+                .ifBlank { "none" },
         rotationSettleHoldMaxHeadingDeltaDeg = rotationSettleHoldMaxHeadingDeltaDeg,
+        rotationSettleWakeHoldDurationMaxMs = rotationSettleWakeHoldDurationMaxMs,
+        rotationSettleReleaseHeadingDeltaMaxDeg = rotationSettleReleaseHeadingDeltaMaxDeg,
+        rotationSettleFirstVisibleReleaseStepMaxDeg = rotationSettleFirstVisibleReleaseStepMaxDeg,
         headingSampleCount = headingSampleCount,
         headingDiagnosticSampleCount = headingSampleCount,
         largeJumpPendingCount = largeJumpPendingCount,

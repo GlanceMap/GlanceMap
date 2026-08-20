@@ -445,6 +445,9 @@ class DiagnosticsExporterTelemetryTest {
                         "id=1 reason=large_unverified_stationary_change headingDeltaDeg=81.5",
                     "2026-08-12 17:54:27.720 [CompassTelemetry] rotation_settle stage=unlock " +
                         "id=1 reason=relative_turn_confirmed heading=201.5",
+                    "2026-08-12 17:54:27.730 [CompassTelemetry] rotation_settle stage=release " +
+                        "id=1 wakeHoldDurationMs=710 wakeReleaseReason=settle_timeout " +
+                        "wakeReleaseHeadingDeltaDeg=81.5 firstVisibleReleaseStepDeg=10.0",
                 ),
             )
 
@@ -457,6 +460,11 @@ class DiagnosticsExporterTelemetryTest {
         )
         assertEquals("relative_turn_confirmed:1", insights.rotationSettleUnlockReasons)
         assertEquals(81.5f, insights.rotationSettleHoldMaxHeadingDeltaDeg)
+        assertEquals(1, insights.rotationSettleReleaseCount)
+        assertEquals("settle_timeout:1", insights.rotationSettleReleaseReasons)
+        assertEquals(710L, insights.rotationSettleWakeHoldDurationMaxMs)
+        assertEquals(81.5f, insights.rotationSettleReleaseHeadingDeltaMaxDeg)
+        assertEquals(10f, insights.rotationSettleFirstVisibleReleaseStepMaxDeg)
     }
 
     @Test

@@ -411,9 +411,14 @@ object DiagnosticsExporter {
         val rotationSettleSessionStartCount: Int = 0,
         val rotationSettleHoldCount: Int = 0,
         val rotationSettleUnlockCount: Int = 0,
+        val rotationSettleReleaseCount: Int = 0,
         val rotationSettleHoldReasons: String = "none",
         val rotationSettleUnlockReasons: String = "none",
+        val rotationSettleReleaseReasons: String = "none",
         val rotationSettleHoldMaxHeadingDeltaDeg: Float? = null,
+        val rotationSettleWakeHoldDurationMaxMs: Long? = null,
+        val rotationSettleReleaseHeadingDeltaMaxDeg: Float? = null,
+        val rotationSettleFirstVisibleReleaseStepMaxDeg: Float? = null,
         val headingSampleCount: Int = 0,
         val headingDiagnosticSampleCount: Int = 0,
         val largeJumpPendingCount: Int = 0,
@@ -1149,6 +1154,7 @@ object DiagnosticsExporter {
             )
             writer.appendLine("rotationSettleHoldCount=${compassTelemetryInsights.rotationSettleHoldCount}")
             writer.appendLine("rotationSettleUnlockCount=${compassTelemetryInsights.rotationSettleUnlockCount}")
+            writer.appendLine("rotationSettleReleaseCount=${compassTelemetryInsights.rotationSettleReleaseCount}")
             writer.appendLine(
                 "rotationSettleHoldReasons=${compassTelemetryInsights.rotationSettleHoldReasons}",
             )
@@ -1156,8 +1162,30 @@ object DiagnosticsExporter {
                 "rotationSettleUnlockReasons=${compassTelemetryInsights.rotationSettleUnlockReasons}",
             )
             writer.appendLine(
+                "rotationSettleReleaseReasons=${compassTelemetryInsights.rotationSettleReleaseReasons}",
+            )
+            writer.appendLine(
                 "rotationSettleHoldMaxHeadingDeltaDeg=${
                     compassTelemetryInsights.rotationSettleHoldMaxHeadingDeltaDeg?.let {
+                        TelemetryFormatters.decimal(it, 1)
+                    } ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "rotationSettleWakeHoldDurationMaxMs=${
+                    compassTelemetryInsights.rotationSettleWakeHoldDurationMaxMs?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "rotationSettleReleaseHeadingDeltaMaxDeg=${
+                    compassTelemetryInsights.rotationSettleReleaseHeadingDeltaMaxDeg?.let {
+                        TelemetryFormatters.decimal(it, 1)
+                    } ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "rotationSettleFirstVisibleReleaseStepMaxDeg=${
+                    compassTelemetryInsights.rotationSettleFirstVisibleReleaseStepMaxDeg?.let {
                         TelemetryFormatters.decimal(it, 1)
                     } ?: "na"
                 }",
@@ -1570,7 +1598,7 @@ object DiagnosticsExporter {
                 }",
             )
             writer.appendLine(
-                "recordingExpectedPointCount=${
+                "recordingExpectedStoredSampleCount=${
                     telemetryInsights.recordingExpectedPointCount?.toString() ?: "na"
                 }",
             )
@@ -1580,7 +1608,7 @@ object DiagnosticsExporter {
                 }",
             )
             writer.appendLine(
-                "recordingPointCaptureRatePercent=${
+                "recordingStoredSampleCaptureRatePercent=${
                     telemetryInsights.recordingPointCaptureRatePercent?.toString() ?: "na"
                 }",
             )

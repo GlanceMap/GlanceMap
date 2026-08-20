@@ -244,15 +244,34 @@ internal class SensorManagerOrientationProvider(
 
     @Volatile private var sensorCallbackHandler: Handler? = null
 
+    private var sensorCallbackThreadStopping = false
+
+    private var sensorThreadQuitRequested = false
+
+    private var sensorThreadGeneration = 0L
+
+    private var sensorRegistrationGeneration = 0L
+
     private fun ensureSensorCallbackHandler(): Handler {
-        sensorCallbackHandler?.takeIf { it.looper.thread.isAlive }?.let { return it }
+        sensorCallbackHandler
+            ?.takeIf {
+                shouldReuseSensorCallbackHandler(
+                    callbackThreadAlive = it.looper.thread.isAlive,
+                    callbackThreadStopping = sensorCallbackThreadStopping,
+                )
+            }?.let { return it }
         val t = HandlerThread(COMPASS_SENSOR_THREAD_NAME).apply { start() }
         sensorCallbackThread = t
         val h = Handler(t.looper)
         sensorCallbackHandler = h
+        sensorCallbackThreadStopping = false
+        sensorThreadQuitRequested = false
+        sensorThreadGeneration += 1L
+        logSensorThreadLifecycle(event = "created", thread = t)
         return h
     }
 
+    @Synchronized
     override fun start(lowPower: Boolean) {
         val requestedMode = if (lowPower) SensorRateMode.LOW else SensorRateMode.HIGH
         val nowElapsedMs = SystemClock.elapsedRealtime()
@@ -317,6 +336,7 @@ internal class SensorManagerOrientationProvider(
         startSmoothing()
     }
 
+    @Synchronized
     override fun stop() {
         if (!started) return
         started = false
@@ -326,9 +346,13 @@ internal class SensorManagerOrientationProvider(
             )
 
         sensorRegistrar.unregister(this)
-        sensorCallbackThread?.quitSafely()
-        sensorCallbackThread = null
+        val callbackThreadToStop = sensorCallbackThread
+        sensorCallbackThreadStopping = true
+        sensorThreadQuitRequested = true
         sensorCallbackHandler = null
+        sensorCallbackThread = null
+        logSensorThreadLifecycle(event = "quit_requested", thread = callbackThreadToStop)
+        callbackThreadToStop?.quitSafely()
 
         smoothingJob?.cancel()
         smoothingJob = null
@@ -718,6 +742,24 @@ internal class SensorManagerOrientationProvider(
         DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
     }
 
+    private fun logSensorThreadLifecycle(
+        event: String,
+        thread: HandlerThread?,
+    ) {
+        @Suppress("DEPRECATION")
+        val threadId = thread?.id ?: -1L
+        logDiagnostics(
+            "sensor_thread event=$event " +
+                "sensorThreadCreated=${event == "created"} " +
+                "sensorThreadId=$threadId " +
+                "sensorThreadAlive=${thread?.isAlive ?: false} " +
+                "sensorLooperQuitting=$sensorThreadQuitRequested " +
+                "sensorThreadQuitRequested=$sensorThreadQuitRequested " +
+                "sensorThreadGeneration=$sensorThreadGeneration " +
+                "sensorRegistrationGeneration=$sensorRegistrationGeneration",
+        )
+    }
+
     private fun updateMagneticInterference(values: FloatArray) {
         val update =
             computeCompassMagneticInterferenceUpdate(
@@ -744,8 +786,10 @@ internal class SensorManagerOrientationProvider(
         update.logMessage?.let(::logDiagnostics)
     }
 
+    @Synchronized
     private fun registerSensorsForCurrentMode(resetHeadingState: Boolean) {
         sensorRegistrar.unregister(this)
+        if (!started) return
         val pipeline = currentHeadingPipeline()
         if (started && resetHeadingState) {
             _publishedHeadingSample.value =
@@ -796,9 +840,12 @@ internal class SensorManagerOrientationProvider(
             startupStabilizationUntilElapsedMs = 0L
             startupHeadingPublishMaskUntilElapsedMs = 0L
         }
+        val callbackHandler = ensureSensorCallbackHandler()
+        sensorRegistrationGeneration += 1L
+        logSensorThreadLifecycle(event = "register", thread = sensorCallbackThread)
         sensorRegistrar.register(
             listener = this,
-            callbackHandler = ensureSensorCallbackHandler(),
+            callbackHandler = callbackHandler,
             pipeline = pipeline,
             rateMode = sensorRateMode,
         )

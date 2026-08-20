@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceProviderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -213,30 +215,7 @@ internal class FusedOrientationProviderAdapter(
             }
         }
 
-    private val fusedReadyTimeoutRunnable: Runnable =
-        Runnable {
-            if (!started || _useFallbackProvider.value || !awaitingFusedReady) {
-                return@Runnable
-            }
-            val requestAgeMs =
-                (SystemClock.elapsedRealtime() - lastOrientationRequestAtElapsedMs)
-                    .coerceAtLeast(0L)
-            val timeoutMs = fusedReadyTimeoutMs
-            if (requestAgeMs < timeoutMs) {
-                callbackHandler?.postDelayed(
-                    fusedReadyTimeoutRunnable,
-                    timeoutMs - requestAgeMs,
-                )
-                return@Runnable
-            }
-            logDiagnostics(
-                "google_fused ready_timeout reason=$lastOrientationRequestReason " +
-                    "ageMs=$requestAgeMs timeoutMs=$timeoutMs " +
-                    "trackingState=${latestIntegritySnapshot.state.telemetryToken} " +
-                    "trackingReason=${latestIntegritySnapshot.reason.telemetryToken}",
-            )
-            startFallbackProvider(reason = "ready_timeout")
-        }
+    @Volatile private var fusedReadyTimeoutRunnable: Runnable? = null
     private val callbackExecutor: Executor =
         Executor { runnable ->
             val h = callbackHandler
@@ -250,6 +229,7 @@ internal class FusedOrientationProviderAdapter(
         callbackHandler = Handler(t.looper)
     }
 
+    @Synchronized
     override fun start(lowPower: Boolean) {
         if (started) {
             if (lowPowerMode == lowPower) return
@@ -291,6 +271,7 @@ internal class FusedOrientationProviderAdapter(
         requestOrientationUpdates(forceRestart = true, reason = "start")
     }
 
+    @Synchronized
     override fun stop() {
         val preserveRecentFusedHeading =
             recentUsableFusedHeadingAgeMs(SystemClock.elapsedRealtime()) != null
@@ -331,6 +312,7 @@ internal class FusedOrientationProviderAdapter(
         publishNorthReferenceStatus()
     }
 
+    @Synchronized
     override fun recalibrate() {
         if (_useFallbackProvider.value) {
             if (started && googleOrientationAvailable) {
@@ -416,6 +398,7 @@ internal class FusedOrientationProviderAdapter(
         fallbackDeclinationLocation?.let(fallbackProvider::updateDeclinationFromLocation)
     }
 
+    @Synchronized
     override fun setLowPowerMode(enabled: Boolean) {
         lowPowerMode = enabled
         if (!started) return
@@ -429,6 +412,7 @@ internal class FusedOrientationProviderAdapter(
         }
     }
 
+    @Synchronized
     private fun requestOrientationUpdates(
         forceRestart: Boolean,
         reason: String,
@@ -478,6 +462,7 @@ internal class FusedOrientationProviderAdapter(
                 }
             }
         activeOrientationListener = requestListener
+        scheduleFusedReadyTimeout(requestGeneration = requestGeneration)
         fusedOrientationClient
             .requestOrientationUpdates(
                 request,
@@ -500,6 +485,7 @@ internal class FusedOrientationProviderAdapter(
             }
     }
 
+    @Synchronized
     private fun handleOrientationRequestStarted(
         requestGeneration: Long,
         requestListener: DeviceOrientationListener,
@@ -523,6 +509,7 @@ internal class FusedOrientationProviderAdapter(
         )
     }
 
+    @Synchronized
     private fun handleOrientationRequestFailed(
         requestGeneration: Long,
         requestListener: DeviceOrientationListener,
@@ -531,7 +518,7 @@ internal class FusedOrientationProviderAdapter(
         if (!isCurrentOrientationRequest(requestGeneration, requestListener)) return
         activeOrientationListener = null
         orientationUpdatesRegistered = false
-        callbackHandler?.removeCallbacks(fusedReadyTimeoutRunnable)
+        cancelFusedReadyTimeout()
         logDiagnostics(
             "google_fused start failed ${error.javaClass.simpleName}: ${error.message ?: "unknown"}",
         )
@@ -544,6 +531,67 @@ internal class FusedOrientationProviderAdapter(
     ): Boolean =
         requestGeneration == orientationRequestGeneration &&
             activeOrientationListener === requestListener
+
+    @Synchronized
+    private fun scheduleFusedReadyTimeout(requestGeneration: Long) {
+        cancelFusedReadyTimeout()
+        val handler = callbackHandler ?: return
+        lateinit var timeoutRunnable: Runnable
+        timeoutRunnable =
+            Runnable {
+                handleFusedReadyTimeout(
+                    timeoutRunnable = timeoutRunnable,
+                    requestGeneration = requestGeneration,
+                )
+            }
+        fusedReadyTimeoutRunnable = timeoutRunnable
+        if (!handler.postDelayed(timeoutRunnable, fusedReadyTimeoutMs)) {
+            fusedReadyTimeoutRunnable = null
+        }
+    }
+
+    @Synchronized
+    private fun handleFusedReadyTimeout(
+        timeoutRunnable: Runnable,
+        requestGeneration: Long,
+    ) {
+        if (
+            !isCurrentFusedReadyTimeout(
+                timeoutIsCurrent = fusedReadyTimeoutRunnable === timeoutRunnable,
+                started = started,
+                usingFallback = _useFallbackProvider.value,
+                awaitingFusedReady = awaitingFusedReady,
+                timeoutRequestGeneration = requestGeneration,
+                activeRequestGeneration = orientationRequestGeneration,
+            )
+        ) {
+            return
+        }
+        val requestAgeMs =
+            (SystemClock.elapsedRealtime() - lastOrientationRequestAtElapsedMs).coerceAtLeast(0L)
+        val timeoutMs = fusedReadyTimeoutMs
+        if (requestAgeMs < timeoutMs) {
+            callbackHandler?.postDelayed(timeoutRunnable, timeoutMs - requestAgeMs)
+            return
+        }
+        fusedReadyTimeoutRunnable = null
+        logDiagnostics(
+            "google_fused ready_timeout reason=$lastOrientationRequestReason " +
+                "ageMs=$requestAgeMs timeoutMs=$timeoutMs " +
+                "trackingState=${latestIntegritySnapshot.state.telemetryToken} " +
+                "trackingReason=${latestIntegritySnapshot.reason.telemetryToken}",
+        )
+        startFallbackProvider(
+            reason = "ready_timeout",
+            expectedRequestGeneration = requestGeneration,
+        )
+    }
+
+    @Synchronized
+    private fun cancelFusedReadyTimeout() {
+        fusedReadyTimeoutRunnable?.let { callbackHandler?.removeCallbacks(it) }
+        fusedReadyTimeoutRunnable = null
+    }
 
     private fun prepareOrientationRequestState(
         reason: String,
@@ -574,11 +622,6 @@ internal class FusedOrientationProviderAdapter(
         lastFusedSampleLogAtElapsedMs = 0L
         fusedWarmupActive = true
         resetUnusableFusedSampleState()
-        callbackHandler?.removeCallbacks(fusedReadyTimeoutRunnable)
-        callbackHandler?.postDelayed(
-            fusedReadyTimeoutRunnable,
-            fusedReadyTimeoutMs,
-        )
         publishOwnRenderState()
     }
 
@@ -684,6 +727,7 @@ internal class FusedOrientationProviderAdapter(
                 mappedAccuracy = mappedAccuracy,
                 usable = false,
                 snapshot = snapshot,
+                attitude = orientation.attitude,
                 atElapsedMs = arrivalElapsedMs,
             )
             publishUnusableFusedSampleState(
@@ -703,7 +747,7 @@ internal class FusedOrientationProviderAdapter(
         val firstUsableForRequest = awaitingFusedReady
         if (firstUsableForRequest) {
             awaitingFusedReady = false
-            callbackHandler?.removeCallbacks(fusedReadyTimeoutRunnable)
+            cancelFusedReadyTimeout()
             fusedWarmupActive = false
             logDiagnostics(
                 "google_fused state transition=active_fused from=starting_fused " +
@@ -730,6 +774,7 @@ internal class FusedOrientationProviderAdapter(
             mappedAccuracy = mappedAccuracy,
             usable = true,
             snapshot = snapshot,
+            attitude = orientation.attitude,
             atElapsedMs = arrivalElapsedMs,
         )
         val renderHeadingDeg = snapshot.renderHeadingDeg ?: return
@@ -831,6 +876,7 @@ internal class FusedOrientationProviderAdapter(
         mappedAccuracy: Int,
         usable: Boolean,
         snapshot: FusedHeadingIntegritySnapshot,
+        attitude: FloatArray,
         atElapsedMs: Long,
     ) {
         CompassHeadingDiagnostics.recordEngineSample(
@@ -846,7 +892,39 @@ internal class FusedOrientationProviderAdapter(
             northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
             atElapsedMs = atElapsedMs,
         )
+        val tilt = fusedAttitudeTiltForHeadingReferenceTest(attitude)
+        CompassHeadingReferenceDiagnostics.recordProvider(
+            sample =
+                CompassHeadingReferenceProviderSample(
+                    googleFusedHeadingDeg = absoluteHeadingDeg,
+                    targetHeadingDeg = snapshot.renderHeadingDeg,
+                    northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
+                    magneticFieldUt = snapshot.magneticFieldUt,
+                    integrityState = snapshot.state,
+                    pitchDeg = tilt?.pitchDeg,
+                    rollDeg = tilt?.rollDeg,
+                    atElapsedMs = atElapsedMs,
+                ),
+            declinationLocation = fallbackDeclinationLocation,
+        )
     }
+
+    private fun fusedAttitudeTiltForHeadingReferenceTest(attitude: FloatArray): FusedAttitudeTilt? {
+        if (!CompassHeadingReferenceDiagnostics.active.value || attitude.size < 4) return null
+        val rotationMatrix = FloatArray(9)
+        val orientationAngles = FloatArray(3)
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, attitude)
+        SensorManager.getOrientation(rotationMatrix, orientationAngles)
+        return FusedAttitudeTilt(
+            pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat(),
+            rollDeg = Math.toDegrees(orientationAngles[2].toDouble()).toFloat(),
+        )
+    }
+
+    private data class FusedAttitudeTilt(
+        val pitchDeg: Float,
+        val rollDeg: Float,
+    )
 
     private fun publishFusedHeadingIfDue(
         displayHeading: Float,
@@ -969,7 +1047,25 @@ internal class FusedOrientationProviderAdapter(
             )
     }
 
-    private fun startFallbackProvider(reason: String) {
+    @Synchronized
+    private fun startFallbackProvider(
+        reason: String,
+        expectedRequestGeneration: Long? = null,
+    ) {
+        if (
+            !started ||
+                (
+                    expectedRequestGeneration != null &&
+                        expectedRequestGeneration != orientationRequestGeneration
+                )
+        ) {
+            logDiagnostics(
+                "google_fused fallback ignored reason=$reason " +
+                    "expectedGeneration=${expectedRequestGeneration ?: "na"} " +
+                    "activeGeneration=$orientationRequestGeneration started=$started",
+            )
+            return
+        }
         val previousState =
             if (awaitingFusedReady || lastOrientationRequestAtElapsedMs <= 0L) {
                 "starting_fused"
@@ -998,12 +1094,22 @@ internal class FusedOrientationProviderAdapter(
         }
     }
 
+    @Synchronized
     private fun stopFallbackProvider() {
         if (!_useFallbackProvider.value) return
         fallbackProvider.stop()
     }
 
     private fun stopOrientationUpdates() {
+        if (orientationUpdatesRegistered && DebugTelemetry.isEnabled()) {
+            val wakeSnapshot = CompassHeadingDiagnostics.wakeHeadingSnapshot()
+            logDiagnostics(
+                "wake_anchor stage=provider_stop " +
+                    "providerHeadingAtStop=${wakeSnapshot.provider?.providerHeadingDeg.formatOrNA(1)} " +
+                    "targetHeadingAtStop=${wakeSnapshot.provider?.targetHeadingDeg.formatOrNA(1)} " +
+                    "renderedHeadingAtStop=${wakeSnapshot.rendered?.renderedHeadingDeg.formatOrNA(1)}",
+            )
+        }
         integritySensorMonitor.stop()
         orientationRequestGeneration += 1L
         dispatchedOrientationRequestGeneration = 0L
@@ -1012,7 +1118,7 @@ internal class FusedOrientationProviderAdapter(
         awaitingFusedReady = false
         callbackHandler?.removeCallbacks(fusedSampleFreshnessRunnable)
         fusedFreshnessCheckScheduled = false
-        callbackHandler?.removeCallbacks(fusedReadyTimeoutRunnable)
+        cancelFusedReadyTimeout()
         orientationUpdatesRegistered = false
         if (listenerToRemove != null) {
             fusedOrientationClient.removeOrientationUpdates(listenerToRemove)
@@ -1312,7 +1418,7 @@ private const val FUSED_ORIENTATION_SAMPLE_STALE_MS = 1_500L
 private const val FUSED_STALE_RECOVERY_HEALTHY_RESET_MS = 5_000L
 private const val FUSED_PERF_LOG_WINDOW_MS = 5_000L
 private const val FUSED_NORMAL_PUBLISH_MIN_INTERVAL_MS = 40L // 25 Hz
-private const val FUSED_ACTIVE_TURN_PUBLISH_MIN_INTERVAL_MS = 20L // 50 Hz
+private const val FUSED_ACTIVE_TURN_PUBLISH_MIN_INTERVAL_MS = 16L // preserves ~50 Hz callbacks
 private const val FUSED_LOW_POWER_PUBLISH_MIN_INTERVAL_MS = 180L
 private const val FUSED_ACTIVE_TURN_MIN_STEP_DEG = 0.4f
 private const val FUSED_ACTIVE_TURN_ENTER_RATE_DEG_PER_SEC = 30f

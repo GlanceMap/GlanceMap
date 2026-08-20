@@ -3,10 +3,12 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import android.hardware.SensorManager
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
+import com.glancemap.glancemapwearos.domain.sensors.shortestAngleDiffDeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -19,6 +21,7 @@ class NavigateEffectsSupportTest {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(
             nowElapsedMs = 1_000L,
+            heldHeadingDeg = 0f,
         )
         val state = readyGoogleFusedState()
 
@@ -27,13 +30,15 @@ class NavigateEffectsSupportTest {
                 renderState = state,
                 compassHeadingDeg = 180f,
                 headingSampleElapsedRealtimeMs = 1_000L,
+                nowElapsedMs = 1_000L,
             ),
         )
         val target =
             gate.resolve(
-                renderState = state,
+                renderState = stableTrackingState(state),
                 compassHeadingDeg = 180f,
                 headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_100L,
             )
 
         assertEquals(180f, target?.headingDeg ?: -1f, 0f)
@@ -44,16 +49,139 @@ class NavigateEffectsSupportTest {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(
             nowElapsedMs = 1_000L,
+            heldHeadingDeg = 0f,
         )
+
+        val target =
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 90f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_100L,
+            )
+
+        assertEquals(90f, target?.headingDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun compassWakeFallsBackToAReadableHeadingAfterTheBoundedSettleTimeout() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
 
         val target =
             gate.resolve(
                 renderState = readyGoogleFusedState(),
                 compassHeadingDeg = 90f,
                 headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_700L,
             )
 
         assertEquals(90f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+        assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
+    fun wakeContinuityCaptureRetainsTheLastInteractiveHeadingAcrossHiddenProviderMovement() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(
+            providerHeadingDeg = 300f,
+            targetHeadingDeg = 302f,
+            renderedHeadingDeg = 300f,
+        )
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 300f)
+        // Provider samples can move to ~220° while the wrist is lowered, but they are not
+        // interactive samples and must not replace the visible continuity reference.
+        val wake = capture.wake(fallbackHeadingDeg = 220f)
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = wake.wakeHeldHeadingDeg,
+        )
+
+        val target =
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 300f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_100L,
+            )
+
+        assertEquals(300f, screenOff.lastInteractiveProviderHeadingDeg, 0f)
+        assertEquals(302f, screenOff.lastInteractiveTargetHeadingDeg, 0f)
+        assertEquals(300f, screenOff.lastInteractiveRenderedHeadingDeg, 0f)
+        assertEquals(300f, wake.screenOffAnchorHeadingDeg, 0f)
+        assertEquals(300f, wake.wakeHeldHeadingDeg, 0f)
+        assertEquals(0f, wake.wakeHeadingDeltaDeg, 0f)
+        assertEquals(300f, target?.headingDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun wakeAnchorCrossesNorthUsingTheShortTenDegreePath() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 355f)
+
+        val target =
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 5f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_100L,
+            )
+
+        assertEquals(5f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, shortestAngleDiffDeg(target = 5f, current = 355f), 0f)
+        val firstStep =
+            resolveHeadingAnimationDelta(
+                diffDeg = shortestAngleDiffDeg(target = 5f, current = 355f),
+                activeTurn = false,
+                frameDeltaMs = 16.667f,
+                maxStepDeg = target?.maxVisualStepDeg,
+            )
+        assertTrue(
+            "Wake movement must take the short positive path and stay within the 10° cap.",
+            firstStep > 0f && firstStep <= 10f,
+        )
+    }
+
+    @Test
+    fun rapidWakeRejectsThePreviousSessionSampleAndKeepsTheFrozenAnchor() {
+        val capture = NavigateWakeContinuityCapture()
+        val gate = NavigateRotationSettleGate()
+        capture.screenOff(fallbackHeadingDeg = 300f)
+
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = capture.wake(220f).wakeHeldHeadingDeg)
+        gate.endWakeSession(nowElapsedMs = 1_010L)
+        val secondWake = capture.wake(fallbackHeadingDeg = 220f)
+        gate.beginWakeSession(nowElapsedMs = 1_020L, heldHeadingDeg = secondWake.wakeHeldHeadingDeg)
+
+        assertEquals(300f, secondWake.wakeHeldHeadingDeg, 0f)
+        assertNull(
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 220f,
+                headingSampleElapsedRealtimeMs = 1_010L,
+                nowElapsedMs = 1_021L,
+            ),
+        )
+        assertEquals(
+            300f,
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 300f,
+                headingSampleElapsedRealtimeMs = 1_021L,
+                nowElapsedMs = 1_030L,
+            )?.headingDeg ?: -1f,
+            0f,
+        )
+    }
+
+    @Test
+    fun wakeAnchorIsUsedOnlyForCompassFollowNotManualPanning() {
+        assertTrue(shouldUseWakeContinuityAnchor(NavMode.COMPASS_FOLLOW))
+        assertFalse(shouldUseWakeContinuityAnchor(NavMode.NORTH_UP_FOLLOW))
+        assertFalse(shouldUseWakeContinuityAnchor(NavMode.PANNING))
     }
 
     @Test
@@ -82,6 +210,17 @@ class NavigateEffectsSupportTest {
                 activeTurn = true,
                 frameDeltaMs = 16.667f,
                 responsiveRotation = true,
+            ),
+            0.01f,
+        )
+        assertEquals(
+            10f,
+            resolveHeadingAnimationDelta(
+                diffDeg = 120f,
+                activeTurn = true,
+                frameDeltaMs = 16.667f,
+                responsiveRotation = true,
+                maxStepDeg = 10f,
             ),
             0.01f,
         )
@@ -115,6 +254,12 @@ class NavigateEffectsSupportTest {
             headingSampleElapsedRealtimeMs = 1_050L,
             headingSampleStale = false,
             headingRenderable = true,
+        )
+
+    private fun stableTrackingState(state: CompassRenderState) =
+        state.copy(
+            trackingState = CompassTrackingState.TRACKING,
+            trackingReason = CompassTrackingReason.STABLE,
         )
 
     @Test

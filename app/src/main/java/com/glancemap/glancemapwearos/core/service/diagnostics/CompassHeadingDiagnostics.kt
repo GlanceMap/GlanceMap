@@ -26,6 +26,14 @@ internal object CompassHeadingDiagnostics {
     private val transitionTelemetry = CompassTransitionTelemetry()
 
     @Volatile private var lastRenderSampleAtElapsedMs = 0L
+    @Volatile private var latestWakeProviderSample: CompassWakeProviderSample? = null
+    @Volatile private var latestWakeRenderedSample: CompassWakeRenderedSample? = null
+
+    fun wakeHeadingSnapshot(): CompassWakeHeadingSnapshot =
+        CompassWakeHeadingSnapshot(
+            provider = latestWakeProviderSample,
+            rendered = latestWakeRenderedSample,
+        )
 
     fun reset() {
         synchronized(lock) {
@@ -51,6 +59,14 @@ internal object CompassHeadingDiagnostics {
         northBasis: CompassNorthBasis,
         atElapsedMs: Long,
     ) {
+        if (provider == HeadingSource.FUSED_ORIENTATION && DebugTelemetry.isEnabled()) {
+            latestWakeProviderSample =
+                CompassWakeProviderSample(
+                    providerHeadingDeg = providerHeadingDeg,
+                    targetHeadingDeg = snapshot.renderHeadingDeg,
+                    atElapsedMs = atElapsedMs,
+                )
+        }
         if (CompassDeepTraceDiagnostics.state.value.active) {
             CompassDeepTraceDiagnostics.recordProviderSample(
                 CompassDeepTraceProviderSample(
@@ -132,6 +148,23 @@ internal object CompassHeadingDiagnostics {
         mapRotationDeg: Float,
         atElapsedMs: Long,
     ) {
+        if (DebugTelemetry.isEnabled()) {
+            latestWakeRenderedSample =
+                CompassWakeRenderedSample(
+                    targetHeadingDeg = targetHeadingDeg,
+                    renderedHeadingDeg = renderedHeadingDeg,
+                    mapRotationDeg = mapRotationDeg,
+                    atElapsedMs = atElapsedMs,
+                )
+        }
+        CompassHeadingReferenceDiagnostics.recordRender(
+            CompassHeadingReferenceRenderSample(
+                targetHeadingDeg = targetHeadingDeg,
+                renderedHeadingDeg = renderedHeadingDeg,
+                mapsforgeMapRotationDeg = mapRotationDeg,
+                atElapsedMs = atElapsedMs,
+            ),
+        )
         if (!DebugTelemetry.isEnabled()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
         } else if (atElapsedMs - lastRenderSampleAtElapsedMs >= RENDER_SAMPLE_MIN_INTERVAL_MS) {
@@ -339,6 +372,24 @@ internal object CompassHeadingDiagnostics {
         }
     }
 }
+
+internal data class CompassWakeHeadingSnapshot(
+    val provider: CompassWakeProviderSample?,
+    val rendered: CompassWakeRenderedSample?,
+)
+
+internal data class CompassWakeProviderSample(
+    val providerHeadingDeg: Float,
+    val targetHeadingDeg: Float?,
+    val atElapsedMs: Long,
+)
+
+internal data class CompassWakeRenderedSample(
+    val targetHeadingDeg: Float,
+    val renderedHeadingDeg: Float,
+    val mapRotationDeg: Float,
+    val atElapsedMs: Long,
+)
 
 private data class TransitionSnapshot(
     val state: CompassTrackingState,
