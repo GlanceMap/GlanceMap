@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 data class DownloadUiState(
     val areas: List<OamDownloadArea> = OamDownloadCatalog.areas,
     val selectedAreaIds: Set<String> = emptySet(),
+    val suggestedAreaIds: List<String> = emptyList(),
     val selection: OamDownloadSelection = OamDownloadSelection(),
     val installedBundles: List<OamInstalledBundle> = emptyList(),
     val bundleHealthByAreaId: Map<String, OamBundleLocalHealth> = emptyMap(),
@@ -49,6 +50,9 @@ data class DownloadUiState(
 ) {
     val selectedAreas: List<OamDownloadArea>
         get() = areas.filter { it.id in selectedAreaIds }
+
+    val suggestedAreas: List<OamDownloadArea>
+        get() = suggestedAreaIds.mapNotNull { areaId -> areas.firstOrNull { it.id == areaId } }
 
     val selectedBundle: OamBundleChoice
         get() = selection.toBundleChoice()
@@ -123,6 +127,32 @@ class DownloadViewModel(
         _uiState.update {
             it.copy(
                 selectedAreaIds = emptySet(),
+                isPausedDownload = false,
+                pausedOperation = null,
+                statusMessage = null,
+                errorMessage = null,
+                networkWarningMessage = null,
+            )
+        }
+    }
+
+    fun suggestAreasForLocation(
+        latitude: Double,
+        longitude: Double,
+    ): List<OamDownloadArea> {
+        val suggestedAreas = OamDownloadCatalog.areasForLocation(latitude, longitude)
+        _uiState.update {
+            it.copy(suggestedAreaIds = suggestedAreas.map(OamDownloadArea::id))
+        }
+        return suggestedAreas
+    }
+
+    fun addSuggestedArea(areaId: String) {
+        if (_uiState.value.isDownloading) return
+        downloadServiceClient.discardPausedPlan()
+        _uiState.update { state ->
+            state.copy(
+                selectedAreaIds = state.selectedAreaIds + areaId,
                 isPausedDownload = false,
                 pausedOperation = null,
                 statusMessage = null,

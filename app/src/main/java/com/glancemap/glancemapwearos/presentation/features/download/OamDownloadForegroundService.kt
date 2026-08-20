@@ -131,7 +131,16 @@ class OamDownloadForegroundService : Service() {
             serviceClient.publish(plan.runningState(phase = "STARTING"))
             for (index in plan.nextAreaIndex until areas.size) {
                 val area = areas[index]
-                downloader.downloadBundle(area, plan.selection) { progress ->
+                downloader.downloadBundle(
+                    area = area,
+                    selection = plan.selection,
+                    extractionKeepAliveState = {
+                        OamDownloadKeepAliveState(
+                            wakeLockHeld = wakeLock?.isHeld == true,
+                            wifiLockHeld = wifiLock?.isHeld == true,
+                        )
+                    },
+                ) { progress ->
                     if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                     if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
                     val detail = "${index + 1}/${areas.size} ${area.region} - ${progress.detail}"

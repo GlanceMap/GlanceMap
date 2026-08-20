@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -30,8 +31,13 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
     areaFolders: List<Pair<String, List<OamDownloadArea>>>,
     selectedAreaFolder: String?,
     selectedAreaIds: Set<String>,
+    suggestedAreas: List<OamDownloadArea>,
     selection: OamDownloadSelection,
+    isFindingCurrentLocation: Boolean,
+    locationSuggestionMessage: String?,
     onDone: () -> Unit,
+    onUseCurrentLocation: () -> Unit,
+    onAddSuggestedArea: (String) -> Unit,
     onOpenSearch: () -> Unit,
     onClearSearch: () -> Unit,
     onClearAreaSelection: () -> Unit,
@@ -49,6 +55,40 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
                 },
             icon = Icons.Filled.Check,
             onClick = onDone,
+        )
+    }
+
+    suggestedAreas.forEachIndexed { index, area ->
+        item {
+            DownloadChip(
+                label = if (index == 0) "Suggested: ${area.region}" else area.region,
+                secondaryLabel =
+                    if (area.id in selectedAreaIds) {
+                        "Already selected"
+                    } else if (index == 0) {
+                        "Covers your location"
+                    } else {
+                        "Also covers your location"
+                    },
+                icon = Icons.Filled.MyLocation,
+                selected = area.id in selectedAreaIds,
+                onClick = { onAddSuggestedArea(area.id) },
+            )
+        }
+    }
+
+    item {
+        DownloadChip(
+            label = if (isFindingCurrentLocation) "Finding location…" else "Use current location",
+            secondaryLabel =
+                locationSuggestionMessage
+                    ?: if (suggestedAreas.isEmpty()) {
+                        "Suggest a map bundle"
+                    } else {
+                        "Refresh suggestion"
+                    },
+            icon = Icons.Filled.MyLocation,
+            onClick = onUseCurrentLocation,
         )
     }
 

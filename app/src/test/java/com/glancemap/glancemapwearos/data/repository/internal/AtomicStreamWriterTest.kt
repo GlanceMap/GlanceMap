@@ -5,8 +5,11 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.security.MessageDigest
 
@@ -120,6 +123,32 @@ class AtomicStreamWriterTest {
             assertEquals(payload.size.toLong(), result.bytesCopied)
             assertEquals(sha256(payload), result.sha256)
             assertArrayEquals(payload, File(dir, "sample.map").readBytes())
+            assertFalse(File(dir, ".sample.map.part").exists())
+        }
+
+    @Test
+    fun incompleteRequiredWriteNeverPromotesAndCleansUpPartial() =
+        runTest {
+            val dir = createTempDir()
+            val error =
+                runCatching {
+                    AtomicStreamWriter.writeAtomic(
+                        dir = dir,
+                        fileName = "sample.map",
+                        inputStream = ByteArrayInputStream("short".toByteArray()),
+                        onProgress = {},
+                        options =
+                            AtomicStreamWriter.Options(
+                                fsync = false,
+                                expectedSize = 10L,
+                                requireExactSize = true,
+                                keepPartialOnFailure = false,
+                            ),
+                    )
+                }.exceptionOrNull()
+
+            assertTrue(error is IOException)
+            assertFalse(File(dir, "sample.map").exists())
             assertFalse(File(dir, ".sample.map.part").exists())
         }
 

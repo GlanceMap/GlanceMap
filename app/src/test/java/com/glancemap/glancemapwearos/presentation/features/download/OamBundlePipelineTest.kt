@@ -176,6 +176,69 @@ class OamBundlePipelineTest {
         assertEquals(100L, progress.totalBytes)
     }
 
+    @Test
+    fun `extraction telemetry keeps reporting after the screen turns off and retains keepalive state`() {
+        var nowMs = 0L
+        var cpuMs = 10L
+        var snapshot = extractionSnapshot(interactive = true, charging = false)
+        val events = mutableListOf<String>()
+        val reporter =
+            OamExtractionTelemetryReporter(
+                label = "Map",
+                entryFileName = "Area.map",
+                totalBytes = 100L,
+                nowMs = { nowMs },
+                processCpuMs = { cpuMs },
+                runtimeSnapshot = { snapshot },
+                emit = events::add,
+                progressIntervalMs = 5_000L,
+                heartbeatIntervalMs = 30_000L,
+            )
+
+        nowMs = 5_000L
+        cpuMs = 30L
+        snapshot = extractionSnapshot(interactive = false, charging = false)
+        reporter.onBytesWritten(50L)
+
+        assertEquals(1, events.size)
+        assertTrue(events.single().contains("event=extract_progress"))
+        assertTrue(events.single().contains("screenState=OFF"))
+        assertTrue(events.single().contains("wakeLockHeld=true"))
+        assertTrue(events.single().contains("wifiLockHeld=true"))
+    }
+
+    @Test
+    fun `extraction telemetry throttles progress and emits a bounded stall heartbeat`() {
+        var nowMs = 0L
+        var cpuMs = 0L
+        val events = mutableListOf<String>()
+        val reporter =
+            OamExtractionTelemetryReporter(
+                label = "Map",
+                entryFileName = "Area.map",
+                totalBytes = 100L,
+                nowMs = { nowMs },
+                processCpuMs = { cpuMs },
+                runtimeSnapshot = { extractionSnapshot(interactive = false, charging = false) },
+                emit = events::add,
+                progressIntervalMs = 5_000L,
+                heartbeatIntervalMs = 30_000L,
+            )
+
+        nowMs = 4_999L
+        reporter.onBytesWritten(20L)
+        nowMs = 5_000L
+        reporter.onBytesWritten(30L)
+        nowMs = 35_000L
+        cpuMs = 40L
+        reporter.emitStallHeartbeatIfNeeded()
+
+        assertEquals(2, events.size)
+        assertTrue(events.first().contains("event=extract_progress"))
+        assertTrue(events.last().contains("event=extract_stall_heartbeat"))
+        assertTrue(events.last().contains("noProgressMs=30000"))
+    }
+
     private fun writeZip(
         directory: File,
         fileName: String,
@@ -197,4 +260,18 @@ class OamBundlePipelineTest {
             directory.deleteRecursively()
         }
     }
+
+    private fun extractionSnapshot(
+        interactive: Boolean,
+        charging: Boolean,
+    ) =
+        OamExtractionRuntimeSnapshot(
+            interactive = interactive,
+            charging = charging,
+            plugged = if (charging) "ac" else "battery",
+            batteryPercent = "50",
+            thermalStatus = "0",
+            wakeLockHeld = true,
+            wifiLockHeld = true,
+        )
 }

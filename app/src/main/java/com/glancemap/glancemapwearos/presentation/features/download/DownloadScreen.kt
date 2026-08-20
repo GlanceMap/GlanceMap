@@ -61,6 +61,7 @@ import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.presentation.features.navigate.rememberLocationPermissionState
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAnchorType
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAutoCentering
 import com.glancemap.glancemapwearos.presentation.features.settings.rememberSettingsScalingLazyListState
@@ -71,8 +72,8 @@ import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import kotlinx.coroutines.launch
 import androidx.wear.compose.material3.Icon as Material3Icon
+import kotlinx.coroutines.launch
 
 @Composable
 fun DownloadScreen(
@@ -105,6 +106,47 @@ fun DownloadScreen(
             context.getSharedPreferences(DOWNLOAD_INFO_PREFS, android.content.Context.MODE_PRIVATE)
         }
     val coroutineScope = rememberCoroutineScope()
+    var isFindingCurrentLocation by remember { mutableStateOf(false) }
+    var useCurrentLocationAfterPermission by remember { mutableStateOf(false) }
+    var locationSuggestionMessage by remember { mutableStateOf<String?>(null) }
+    val locationPermissionState =
+        rememberLocationPermissionState(context) { granted ->
+            if (!granted && useCurrentLocationAfterPermission) {
+                useCurrentLocationAfterPermission = false
+                locationSuggestionMessage = "Location permission is needed"
+            }
+        }
+    val findSuggestedAreasFromCurrentLocation: () -> Unit = {
+        if (!isFindingCurrentLocation) {
+            coroutineScope.launch {
+                isFindingCurrentLocation = true
+                locationSuggestionMessage = null
+                val location = runCatching { requestDownloadCurrentLocation(context) }.getOrNull()
+                isFindingCurrentLocation = false
+                if (location == null) {
+                    locationSuggestionMessage = "Current location unavailable"
+                } else {
+                    val suggestedAreas =
+                        viewModel.suggestAreasForLocation(
+                            latitude = location.latitude,
+                            longitude = location.longitude,
+                        )
+                    locationSuggestionMessage =
+                        if (suggestedAreas.isEmpty()) {
+                            "No matching map bundle"
+                        } else {
+                            null
+                        }
+                }
+            }
+        }
+    }
+    LaunchedEffect(useCurrentLocationAfterPermission, locationPermissionState.hasLocationPermission) {
+        if (useCurrentLocationAfterPermission && locationPermissionState.hasLocationPermission) {
+            useCurrentLocationAfterPermission = false
+            findSuggestedAreasFromCurrentLocation()
+        }
+    }
     var wasAreaPickerOpen by remember { mutableStateOf(showAreaPicker) }
     val selectedAreas = uiState.selectedAreas
     val estimatedSize =
@@ -396,8 +438,20 @@ fun DownloadScreen(
                         areaFolders = areaFolders,
                         selectedAreaFolder = selectedAreaFolder,
                         selectedAreaIds = uiState.selectedAreaIds,
+                        suggestedAreas = uiState.suggestedAreas,
                         selection = uiState.selection,
+                        isFindingCurrentLocation = isFindingCurrentLocation,
+                        locationSuggestionMessage = locationSuggestionMessage,
                         onDone = { onAreaPickerOpenChange(false) },
+                        onUseCurrentLocation = {
+                            if (locationPermissionState.hasLocationPermission) {
+                                findSuggestedAreasFromCurrentLocation()
+                            } else {
+                                useCurrentLocationAfterPermission = true
+                                locationPermissionState.launchPermissions()
+                            }
+                        },
+                        onAddSuggestedArea = viewModel::addSuggestedArea,
                         onOpenSearch = { showAreaSearchDialog = true },
                         onClearSearch = { onAreaSearchQueryChange("") },
                         onClearAreaSelection = viewModel::clearAreaSelection,
