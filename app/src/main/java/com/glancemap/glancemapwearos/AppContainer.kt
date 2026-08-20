@@ -165,5 +165,10 @@ class AppContainer(
                 traceRecordingViewModel.onGpsSignalSnapshot(snapshot)
             }
         }
+        coroutineScope.launch {
+            locationViewModel.effectiveGpsIntervalMs.collect { intervalMs ->
+                traceRecordingViewModel.onEffectiveRecordingSamplingIntervalChanged(intervalMs)
+            }
+        }
     }
 }

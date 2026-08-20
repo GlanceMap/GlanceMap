@@ -15,21 +15,125 @@ class RecordingStartWarningTest {
             GpsSignalSnapshot(
                 isLocationAvailable = true,
                 lastFixFresh = true,
+                lastFixAgeMs = 100L,
+                lastFixFreshMaxAgeMs = 6_000L,
+                lastFixAccuracyM = 12f,
             )
 
-        assertTrue(isRecordingStartLocationReady(hasUsableLocation = true, gpsSignalSnapshot = freshSignal))
-        assertFalse(isRecordingStartLocationReady(hasUsableLocation = false, gpsSignalSnapshot = freshSignal))
+        assertTrue(
+            isRecordingStartLocationReady(
+                hasUsableLocation = true,
+                gpsSignalSnapshot = freshSignal,
+                decisionFixAgeMs = 100L,
+            ),
+        )
+        assertFalse(
+            isRecordingStartLocationReady(
+                hasUsableLocation = false,
+                gpsSignalSnapshot = freshSignal,
+                decisionFixAgeMs = 100L,
+            ),
+        )
         assertFalse(
             isRecordingStartLocationReady(
                 hasUsableLocation = true,
-                gpsSignalSnapshot = freshSignal.copy(lastFixFresh = false),
+                gpsSignalSnapshot = freshSignal,
+                decisionFixAgeMs = 6_001L,
             ),
         )
         assertFalse(
             isRecordingStartLocationReady(
                 hasUsableLocation = true,
                 gpsSignalSnapshot = freshSignal.copy(isLocationAvailable = false),
+                decisionFixAgeMs = 100L,
             ),
+        )
+    }
+
+    @Test
+    fun `direct watch 125 accuracy uses the existing effective accuracy policy`() {
+        val directWatchSignal =
+            GpsSignalSnapshot(
+                isLocationAvailable = true,
+                lastFixFresh = true,
+                lastFixAgeMs = 100L,
+                lastFixFreshMaxAgeMs = 6_000L,
+                lastFixAccuracyM = 125f,
+                watchGpsOnlyActive = true,
+            )
+        val fusedSignal = directWatchSignal.copy(watchGpsOnlyActive = false)
+
+        assertTrue(
+            isRecordingStartLocationReady(
+                hasUsableLocation = true,
+                gpsSignalSnapshot = directWatchSignal,
+                decisionFixAgeMs = 100L,
+            ),
+        )
+        assertFalse(
+            isRecordingStartLocationReady(
+                hasUsableLocation = true,
+                gpsSignalSnapshot = fusedSignal,
+                decisionFixAgeMs = 100L,
+            ),
+        )
+    }
+
+    @Test
+    fun `cached fresh state expires at the recording start decision`() {
+        val cachedFreshSignal =
+            GpsSignalSnapshot(
+                isLocationAvailable = true,
+                lastFixFresh = true,
+                lastFixAgeMs = 5_900L,
+                lastFixFreshMaxAgeMs = 6_000L,
+                lastFixAccuracyM = 12f,
+            )
+
+        assertFalse(
+            isRecordingStartLocationReady(
+                hasUsableLocation = true,
+                gpsSignalSnapshot = cachedFreshSignal,
+                decisionFixAgeMs = 8_400L,
+            ),
+        )
+        assertTrue(
+            isRecordingStartLocationReady(
+                hasUsableLocation = true,
+                gpsSignalSnapshot = cachedFreshSignal.copy(lastFixAgeMs = 100L),
+                decisionFixAgeMs = 100L,
+            ),
+        )
+    }
+
+    @Test
+    fun `low accuracy remains distinct from GPS unavailable`() {
+        val poorSignal =
+            GpsSignalSnapshot(
+                isLocationAvailable = true,
+                lastFixFresh = true,
+                lastFixAgeMs = 100L,
+                lastFixFreshMaxAgeMs = 6_000L,
+                lastFixAccuracyM = 60f,
+            )
+
+        assertEquals(
+            RecordingLocationStartWarning.Kind.LOW_ACCURACY,
+            recordingLocationStartWarning(
+                poorSignal,
+                rawAccuracyMeters = 60f,
+                decisionFixAgeMs = 100L,
+                provider = "fused",
+            ).kind,
+        )
+        assertEquals(
+            RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE,
+            recordingLocationStartWarning(
+                poorSignal.copy(isLocationAvailable = false),
+                rawAccuracyMeters = null,
+                decisionFixAgeMs = Long.MAX_VALUE,
+                provider = null,
+            ).kind,
         )
     }
 

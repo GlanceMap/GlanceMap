@@ -60,6 +60,9 @@ internal class GpsSignalTracker {
         isAvailable: Boolean,
         nowElapsedMs: Long,
     ): Boolean {
+        if (!isAvailable && hasFreshUsableFix(nowElapsedMs)) {
+            return false
+        }
         val previous = snapshot
         val changed = previous.isLocationAvailable != isAvailable
         if (changed) {
@@ -86,6 +89,14 @@ internal class GpsSignalTracker {
             hasLoggedAvailabilityState = true
         }
         return shouldLog
+    }
+
+    private fun hasFreshUsableFix(nowElapsedMs: Long): Boolean {
+        val fixElapsedMs = snapshot.lastFixElapsedRealtimeMs
+        val freshnessMaxAgeMs = snapshot.lastFixFreshMaxAgeMs
+        return fixElapsedMs > 0L &&
+            freshnessMaxAgeMs > 0L &&
+            (nowElapsedMs - fixElapsedMs).coerceAtLeast(0L) <= freshnessMaxAgeMs
     }
 
     fun onEnvironmentWarning(

@@ -390,11 +390,42 @@ internal class RecordingMovementConfidenceGate {
                 evidence = radiusEvidence,
             )
         }
-        if (candidate.isWeakHikingFixWithUnchangedSteps(activityProfile, stepsUnchanged)) {
+        val stepStillness = candidate.isWeakHikingFixWithUnchangedSteps(activityProfile, stepsUnchanged)
+        val strongGpsMotion =
+            reportedMotion.credible &&
+                (candidate.speedMps ?: 0f) >= RECORDING_MOTION_STEP_STILLNESS_OVERRIDE_MIN_SPEED_MPS
+        if (stepStillness && !strongGpsMotion) {
             pendingSlowProgress = null
             return candidate.result(
                 status = RecordingMotionStatus.SUPPRESSED,
                 reason = RecordingMotionReason.STEP_STILLNESS,
+                displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
+            )
+        }
+        if (stepStillness) {
+            val pending = pendingSlowProgress
+            if (
+                pending != null &&
+                isConfirmedSlowProgress(
+                    anchor = previous.latLong,
+                    pending = pending,
+                    candidate = candidate,
+                    activityProfile = activityProfile,
+                )
+            ) {
+                pendingSlowProgress = null
+                return candidate.result(
+                    status = RecordingMotionStatus.ACCEPTED,
+                    reason = RecordingMotionReason.CONFIRMED_SLOW_PROGRESS,
+                    displacementMeters = displacementMeters,
+                    evidence = radiusEvidence,
+                )
+            }
+            pendingSlowProgress = candidate
+            return candidate.result(
+                status = RecordingMotionStatus.HELD,
+                reason = RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS,
                 displacementMeters = displacementMeters,
                 evidence = radiusEvidence,
             )
@@ -1199,7 +1230,7 @@ private fun Float?.isUnacceptablyPoor(maximumAccuracyMeters: Float): Boolean {
     return accuracy > maximumAccuracyMeters
 }
 
-private fun recordingFixProfileAccuracyLimitMeters(activityProfile: String): Float =
+internal fun recordingFixProfileAccuracyLimitMeters(activityProfile: String): Float =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
         RECORDING_FIX_MAX_BIKE_ACCURACY_M
     } else {
@@ -1411,6 +1442,7 @@ private const val RECORDING_MOTION_CONFIRMATION_MAX_INTERVAL_MS = 60_000L
 private const val RECORDING_MOTION_MAX_CONFIRMATION_ANGLE_DEGREES = 70.0
 private const val RECORDING_MOTION_STEP_STILLNESS_MIN_ACCURACY_M = 18f
 private const val RECORDING_MOTION_STEP_STILLNESS_MAX_SPEED_MPS = 1.5f
+private const val RECORDING_MOTION_STEP_STILLNESS_OVERRIDE_MIN_SPEED_MPS = 1.2f
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_CHORD_M = 24.0
 private const val RECORDING_STRAIGHT_DRIFT_BIKE_MIN_CHORD_M = 45.0
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_LATERAL_ERROR_M = 2.5

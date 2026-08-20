@@ -637,7 +637,8 @@ private const val UNKNOWN_EFFECTIVE_GPS_INTERVAL_MS = 0L
 
 internal fun shouldForceUiImmediateLocationRequest(source: String): Boolean =
     source.startsWith(UI_STARTUP_REQUEST_SOURCE_PREFIX) ||
-        source == UI_WAKE_REACQUIRE_TIMEOUT_SOURCE
+        source == UI_WAKE_REACQUIRE_TIMEOUT_SOURCE ||
+        source == UI_RECORDING_START_REACQUIRE_SOURCE
 
 internal fun isWakeReacquireImmediateLocationRequest(source: String): Boolean =
     source.startsWith(UI_STARTUP_REQUEST_SOURCE_PREFIX) ||
@@ -710,6 +711,7 @@ private const val UI_IMMEDIATE_REQUEST_DEBOUNCE_MS = 1_500L
 private const val WAKE_IMMEDIATE_REQUEST_COOLDOWN_MS = 6_000L
 private const val UI_STARTUP_REQUEST_SOURCE_PREFIX = "ui_startup_fresh_fix"
 internal const val UI_WAKE_REACQUIRE_TIMEOUT_SOURCE = "ui_wake_reacquire_timeout"
+internal const val UI_RECORDING_START_REACQUIRE_SOURCE = "ui_recording_start_reacquire"
 private const val WAKE_BURST_SKIP_MAX_ACCURACY_M = 35f
 private const val MIN_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 1_000L
 private const val MAX_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 10_000L
