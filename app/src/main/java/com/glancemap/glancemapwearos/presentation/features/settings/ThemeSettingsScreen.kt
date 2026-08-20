@@ -21,8 +21,8 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
-import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.ThemeViewModel
@@ -159,7 +159,7 @@ fun ThemeSettingsScreen(
     val nightModeToggle =
         themeItems
             .filterIsInstance<ThemeListItem.GlobalToggle>()
-            .firstOrNull { it.id == ThemeRepositoryImpl.GLOBAL_NIGHT_MODE_ID }
+            .firstOrNull { it.id == ThemeUiIds.NIGHT_MODE }
     val overlayGroups = remember(overlayOptions) { buildOverlayGroups(overlayOptions) }
     val themePickerOptions =
         remember(themeOptions) {
@@ -225,7 +225,7 @@ fun ThemeSettingsScreen(
             SettingsToggleChip(
                 checked = nightModeToggle?.enabled == true,
                 onCheckedChanged = { enabled ->
-                    themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_NIGHT_MODE_ID, enabled)
+                    themeViewModel.setGlobalToggle(ThemeUiIds.NIGHT_MODE, enabled)
                 },
                 label = "Night mode",
                 secondaryLabel = if (nightModeToggle?.enabled == true) "On" else "Off",
@@ -435,7 +435,7 @@ private fun buildOverlayGroups(overlays: List<ThemeListItem.Overlay>): List<Over
 private fun hasMeaningfulStyleSelection(styles: List<ThemeListItem.Style>): Boolean {
     val nonDefaultStyleCount =
         styles.count {
-            it.id != ThemeRepositoryImpl.DEFAULT_STYLE_ID
+            it.id != ThemeUiIds.DEFAULT_STYLE_ID
         }
     return nonDefaultStyleCount > 1
 }

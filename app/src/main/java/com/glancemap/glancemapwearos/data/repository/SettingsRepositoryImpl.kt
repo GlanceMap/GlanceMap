@@ -27,6 +27,29 @@ import kotlin.math.roundToInt
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 private const val RECORDING_DASHBOARD_SLOT_SEPARATOR = ","
 
+internal fun Preferences.mapZoomScaleMeters(
+    scaleKey: Preferences.Key<Int>,
+    legacyZoomKey: Preferences.Key<Int>,
+    defaultScaleMeters: Int,
+): Int {
+    val storedScaleMeters = this[scaleKey]
+    val legacyZoom = this[legacyZoomKey]
+    val scaleMeters =
+        when {
+            storedScaleMeters != null -> storedScaleMeters
+            legacyZoom != null -> legacyZoomScaleMeters(legacyZoom)
+            else -> defaultScaleMeters
+        }
+    return sanitizeMapZoomScaleMeters(scaleMeters)
+}
+
+private fun legacyZoomScaleMeters(zoom: Int): Int =
+    scaleMetersForZoomLevel(
+        zoom = zoom,
+        viewportWidthPx = MAP_ZOOM_REPRESENTATIVE_VIEWPORT_WIDTH_PX,
+        latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
+    ).roundToInt()
+
 class SettingsRepositoryImpl private constructor(
     private val context: Context,
 ) : SettingsRepository {
@@ -220,15 +243,7 @@ class SettingsRepositoryImpl private constructor(
     // Fixed product choice: keep foreground motion behavior predictable and battery bounded.
     override val gpsInterval: Flow<Long> = flowOf(SettingsRepository.DEFAULT_GPS_INTERVAL_MS)
 
-    override suspend fun setGpsInterval(interval: Long) {
-        context.dataStore.edit { it.remove(PrefKeys.GPS_INTERVAL) }
-    }
-
     override val ambientGpsInterval: Flow<Long> = flowOf(SettingsRepository.DEFAULT_AMBIENT_GPS_INTERVAL_MS)
-
-    override suspend fun setAmbientGpsInterval(interval: Long) {
-        context.dataStore.edit { it.remove(PrefKeys.AMBIENT_GPS_INTERVAL) }
-    }
 
     override val watchGpsOnly: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.WATCH_GPS_ONLY] ?: false }
 
@@ -239,10 +254,6 @@ class SettingsRepositoryImpl private constructor(
     // Fixed product choice: screen-off GPS is disabled by default and only feature-specific
     // overrides, such as active REC or TBT screen-off guidance, may keep GPS running.
     override val gpsInAmbientMode: Flow<Boolean> = flowOf(false)
-
-    override suspend fun setGpsInAmbientMode(enabled: Boolean) {
-        context.dataStore.edit { it.remove(PrefKeys.GPS_IN_AMBIENT_MODE) }
-    }
 
     override val gpsDebugTelemetry: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.GPS_DEBUG_TELEMETRY] ?: false }
 
@@ -1227,24 +1238,6 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit { it[PrefKeys.GPS_ACCURACY_CIRCLE_ENABLED] = enabled }
     }
 
-    override val mapZoomDefault: Flow<Int> = context.dataStore.data.map { it[PrefKeys.MAP_ZOOM_DEFAULT] ?: 16 }
-
-    override suspend fun setMapZoomDefault(zoom: Int) {
-        context.dataStore.edit { it[PrefKeys.MAP_ZOOM_DEFAULT] = zoom }
-    }
-
-    override val mapZoomMin: Flow<Int> = context.dataStore.data.map { it[PrefKeys.MAP_ZOOM_MIN] ?: 8 }
-
-    override suspend fun setMapZoomMin(zoom: Int) {
-        context.dataStore.edit { it[PrefKeys.MAP_ZOOM_MIN] = zoom }
-    }
-
-    override val mapZoomMax: Flow<Int> = context.dataStore.data.map { it[PrefKeys.MAP_ZOOM_MAX] ?: 20 }
-
-    override suspend fun setMapZoomMax(zoom: Int) {
-        context.dataStore.edit { it[PrefKeys.MAP_ZOOM_MAX] = zoom }
-    }
-
     override val mapZoomDefaultScaleMeters: Flow<Int> =
         context.dataStore.data.map { prefs ->
             prefs.mapZoomScaleMeters(
@@ -1948,22 +1941,6 @@ class SettingsRepositoryImpl private constructor(
         downloadInfoPrefs.edit().clear().apply()
     }
 
-    private fun Preferences.mapZoomScaleMeters(
-        scaleKey: Preferences.Key<Int>,
-        legacyZoomKey: Preferences.Key<Int>,
-        defaultScaleMeters: Int,
-    ): Int {
-        val storedScaleMeters = this[scaleKey]
-        val legacyZoom = this[legacyZoomKey]
-        val scaleMeters =
-            when {
-                storedScaleMeters != null -> storedScaleMeters
-                legacyZoom != null -> legacyZoomScaleMeters(legacyZoom)
-                else -> defaultScaleMeters
-            }
-        return sanitizeMapZoomScaleMeters(scaleMeters)
-    }
-
     companion object {
         private val allowedTimeFormats =
             setOf(
@@ -2662,12 +2639,6 @@ class SettingsRepositoryImpl private constructor(
                 )
                 ?: SettingsRepository.DEFAULT_CYCLING_WHEEL_CIRCUMFERENCE_METERS
 
-        private fun legacyZoomScaleMeters(zoom: Int): Int =
-            scaleMetersForZoomLevel(
-                zoom = zoom,
-                viewportWidthPx = MAP_ZOOM_REPRESENTATIVE_VIEWPORT_WIDTH_PX,
-                latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
-            ).roundToInt()
     }
 
     private fun applyProfileDefaultIfUncustomized(

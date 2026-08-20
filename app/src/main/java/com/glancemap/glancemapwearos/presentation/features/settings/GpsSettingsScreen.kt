@@ -171,6 +171,7 @@ private fun GpsSettingsInfoDialog(
         lines =
             listOf(
                 gpsUsageProfileName(gpsUsageProfile, activityProfile),
+                "Normal map: 3 s awake; GPS pauses in ambient/screen-off (same for hike/bike).",
                 turnByTurnLine,
                 "Shorter timing means more battery use.",
                 "REC + TBT use the shorter timing.",

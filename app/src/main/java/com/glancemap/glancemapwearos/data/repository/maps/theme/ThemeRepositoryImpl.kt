@@ -4,6 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.glancemap.glancemapwearos.core.maps.theme.BundledRenderThemeAssetLocator
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds.DEFAULT_STYLE_ID
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds.HILL_SHADING
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds.NIGHT_MODE
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds.RELIEF_OVERLAY
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -25,10 +29,6 @@ class ThemeRepositoryImpl(
         const val THEME_ID_OS_MAP = MapsforgeThemeCatalog.OS_MAP_THEME_ID
         const val THEME_ID_OS_MAP_DAY = MapsforgeThemeCatalog.OS_MAP_DAY_THEME_ID
         const val THEME_ID_OS_MAP_NIGHT = MapsforgeThemeCatalog.OS_MAP_NIGHT_THEME_ID
-        const val DEFAULT_STYLE_ID = "__DEFAULT__"
-        const val GLOBAL_HILL_SHADING_ID = "__GLOBAL_HILL_SHADING__"
-        const val GLOBAL_RELIEF_OVERLAY_ID = "__GLOBAL_RELIEF_OVERLAY__"
-        const val GLOBAL_NIGHT_MODE_ID = "__GLOBAL_NIGHT_MODE__"
         private const val WINTER_STYLE_ID = "elv-winter"
         private const val WINTER_WHITE_STYLE_ID = "__WINTER_WHITE__"
         private const val OS_MAP_DAY_STYLE_PREFIX = "__OS_MAP_DAY__:"
@@ -799,7 +799,7 @@ class ThemeRepositoryImpl(
         items += ThemeListItem.Header("Theme")
         items +=
             ThemeListItem.GlobalToggle(
-                id = GLOBAL_NIGHT_MODE_ID,
+                id = NIGHT_MODE,
                 name = "Night mode",
                 enabled = nightModeEnabled,
             )
@@ -877,14 +877,14 @@ class ThemeRepositoryImpl(
             )
         items +=
             ThemeListItem.GlobalToggle(
-                id = GLOBAL_HILL_SHADING_ID,
+                id = HILL_SHADING,
                 name = "Hill Shading",
                 enabled = hillShadingEnabled,
                 supported = hillShadingSupported,
             )
         items +=
             ThemeListItem.GlobalToggle(
-                id = GLOBAL_RELIEF_OVERLAY_ID,
+                id = RELIEF_OVERLAY,
                 name = "Slope Overlay",
                 enabled = reliefOverlayEnabled,
             )
