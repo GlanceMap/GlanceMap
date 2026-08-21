@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 
 import android.content.Context
 import android.location.Location
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -45,6 +46,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 private data class RecordingGapTelemetryContext(
+    val rawCallbackGapMillis: Long,
     val liveCallbackGapMillis: Long,
     val committedPointGapMillis: Long,
     val continuityRecoveryGapMillis: Long?,
@@ -134,6 +136,7 @@ class TraceRecordingViewModel(
     private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
     private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
+    private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
     private var qualityRelocationCount = 0
@@ -476,6 +479,14 @@ class TraceRecordingViewModel(
         if (location == null) return null
         val state = _uiState.value
         if (!state.active || state.saving) return null
+        val callbackElapsedMs =
+            (location.elapsedRealtimeNanos / 1_000_000L)
+                .takeIf { it > 0L }
+                ?: SystemClock.elapsedRealtime()
+        val rawCallbackGapMillis = recordingPointDensityTelemetry.observeCallbackReceived(
+            callbackElapsedMs = callbackElapsedMs,
+            significantGapMs = recordingGapTelemetryThresholdMillis(),
+        )
         if (state.paused && !state.autoPaused) {
             skippedPausedCount += 1
             return null
@@ -489,11 +500,8 @@ class TraceRecordingViewModel(
             return null
         }
 
-        val callbackElapsedMs =
-            (location.elapsedRealtimeNanos / 1_000_000L)
-                .takeIf { it > 0L }
-                ?: SystemClock.elapsedRealtime()
         val liveCallbackGapMillis = observeLiveCallback(callbackElapsedMs)
+        recordingPointDensityTelemetry.observeUsableCallback()
         if (liveCallbackGapMillis >= recordingGapTelemetryThresholdMillis()) {
             pendingGpsDeliveryGapMillis = maxOf(pendingGpsDeliveryGapMillis, liveCallbackGapMillis)
         }
@@ -587,6 +595,7 @@ class TraceRecordingViewModel(
                 activityProfile = state.activityProfile,
                 previousFilterAccuracyMeters = previousFilterAccuracyMeters,
             )
+        recordingPointDensityTelemetry.observeSmartTrackDecision(motionResult)
         if (DebugTelemetry.isEnabled()) {
             smartTrackTelemetry.observeMotion(
                 result = motionResult,
@@ -887,8 +896,10 @@ class TraceRecordingViewModel(
                     provider = location.provider,
                     segmentStartReason = segmentStartReason,
                     continuityRecoveryReason = continuityRecoveryReason,
+                    storedAfterMotion = motionResult.reason != RecordingMotionReason.FIRST_POINT,
                     gapContext =
                         RecordingGapTelemetryContext(
+                            rawCallbackGapMillis = rawCallbackGapMillis,
                             liveCallbackGapMillis = deliveryGapForAcceptedPoint,
                             committedPointGapMillis = committedPointGapMillis,
                             continuityRecoveryGapMillis = continuityRecoveryGapMillis,
@@ -940,6 +951,7 @@ class TraceRecordingViewModel(
                             "continuityDistanceCaps=$continuityDistanceCapCount " +
                             "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
                             smartTrackTelemetryTokens() + " " +
+                            recordingPointDensityTelemetryTokens() + " " +
                             "confirmedReversals=$confirmedReversalCorrectionCount " +
                             "segmentReason=${segmentStartReason ?: "na"} " +
                             "hybridElevationPoints=$hybridElevationPointCount",
@@ -1585,6 +1597,7 @@ class TraceRecordingViewModel(
         recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
         smartTrackTelemetry.reset()
+        recordingPointDensityTelemetry.reset()
         qualityHeldFixCount = 0
         qualityRejectedFixCount = 0
         qualityRelocationCount = 0
@@ -1887,15 +1900,51 @@ class TraceRecordingViewModel(
         provider: String?,
         segmentStartReason: String?,
         continuityRecoveryReason: String?,
+        storedAfterMotion: Boolean,
         gapContext: RecordingGapTelemetryContext,
     ) {
         val previousPoint = _uiState.value.points.lastOrNull()
         val previousPointTimeMillis = lastAcceptedPointTimeMillis
+        val gapMillis =
+            previousPointTimeMillis
+                ?.let { previousTimeMillis -> (point.timeMillis - previousTimeMillis).coerceAtLeast(0L) }
+                ?: 0L
+        val thresholdMillis = recordingGapTelemetryThresholdMillis()
+        val endpointDistanceMeters =
+            previousPoint?.let { previous ->
+                haversineMeters(previous.latLong, point.latLong)
+            }
+        val densityGap =
+            recordingPointDensityTelemetry.observeStoredPoint(
+                acceptedPointGapMs = gapMillis,
+                endpointDistanceMeters = endpointDistanceMeters,
+                significantGapMs = thresholdMillis,
+                storedAfterMotion = storedAfterMotion,
+            )
+        densityGap?.let { gap ->
+            DebugTelemetry.log(
+                "TraceRecording",
+                "event=point_density_gap classification=${gap.classification.telemetryValue} " +
+                    "acceptedPointGapMs=${gap.acceptedPointGapMs} " +
+                    "liveCallbackGapMs=${gap.maxLiveCallbackGapMs} " +
+                    "currentLiveCallbackGapMs=${gapContext.rawCallbackGapMillis} " +
+                    "usableCallbackGapMs=${gapContext.liveCallbackGapMillis} " +
+                    "screenState=${recordingScreenState()} " +
+                    "effectiveSamplingIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
+                    "provider=${sanitizeTelemetryValue(provider ?: "na")} " +
+                    "sourceMode=${sanitizeTelemetryValue(latestGpsSignalSnapshot.activeSourceModeValue ?: "na")} " +
+                    "previousSpeedMps=${previousPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "currentSpeedMps=${point.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "endpointDisplacementM=${endpointDistanceMeters?.formatTelemetry(1) ?: "na"} " +
+                    "smartTrackDecision=${gap.latestSmartTrackReason} " +
+                    "credibleMovementExisted=${gap.credibleMovementExisted} " +
+                    "callbacksAbsent=${gap.callbacksWereMissing} " +
+                    "callbacksRejectedOrNotStored=${!gap.callbacksWereMissing}",
+            )
+        }
         if (previousPointTimeMillis != null) {
-            val gapMillis = (point.timeMillis - previousPointTimeMillis).coerceAtLeast(0L)
             val expectedActiveGapMillis = expectedActivePointGapMillis()
             gpsActiveDurationMillis += minOf(gapMillis, expectedActiveGapMillis)
-            val thresholdMillis = recordingGapTelemetryThresholdMillis()
             if (
                 continuityRecoveryReason == RecordingSegmentStartReason.GPS_GAP &&
                 gapContext.continuityRecoveryGapMillis != null
@@ -1903,10 +1952,6 @@ class TraceRecordingViewModel(
                 recordingGapCount += 1
                 recordingMaxGapMillis = maxOf(recordingMaxGapMillis, gapContext.continuityRecoveryGapMillis)
                 val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
-                val endpointDistanceMeters =
-                    previousPoint?.let { previous ->
-                        haversineMeters(previous.latLong, point.latLong)
-                    }
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=gap gapMs=${gapContext.continuityRecoveryGapMillis} " +
@@ -2051,6 +2096,7 @@ class TraceRecordingViewModel(
         val calories = displaySnapshot.calorieEstimate
         val sensorTokens = sensorTelemetryTokens(nowMillis)
         val smartTrackTokens = smartTrackTelemetryTokens()
+        val pointDensityTokens = recordingPointDensityTelemetryTokens()
         val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
         val averagePointIntervalMillis =
             if (state.points.size > 1) {
@@ -2105,7 +2151,9 @@ class TraceRecordingViewModel(
             "activityProfile=${state.activityProfile} " +
             "trackSmoothingMode=${state.trackSmoothingMode} " +
             "trackFilterVersion=$RECORDING_TRACK_FILTER_VERSION " +
+            "storedSampleCaptureRateDefinition=configured_cadence_includes_stationary_suppression " +
             "$smartTrackTokens " +
+            "$pointDensityTokens " +
             "qualityHeldFixCount=$qualityHeldFixCount " +
             "qualityRejectedFixCount=$qualityRejectedFixCount " +
             "qualityRelocationCount=$qualityRelocationCount " +
@@ -2182,6 +2230,33 @@ class TraceRecordingViewModel(
             "smartTrackAccuracyResolvedLimitMeters=${policy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
             "smartTrackAdaptiveAccuracyLimitActive=${policy?.adaptiveLimitActive ?: "na"}"
     }
+
+    private fun recordingPointDensityTelemetryTokens(): String {
+        val snapshot = recordingPointDensityTelemetry.snapshot()
+        return "locationCallbackReceivedCount=${snapshot.callbackReceivedCount} " +
+            "usableLocationCallbackCount=${snapshot.usableCallbackCount} " +
+            "smartTrackDecisionCount=${snapshot.smartTrackDecisionCount} " +
+            "storedPointCount=${snapshot.storedPointCount} " +
+            "movingExpectedStoredSampleCount=${snapshot.movingExpectedStoredSampleCount} " +
+            "movingStoredSampleCount=${snapshot.movingStoredSampleCount} " +
+            "movingStoredSampleCaptureRatePercent=${snapshot.movingStoredSampleCaptureRatePercent ?: "na"} " +
+            "movingGapCount=${snapshot.movingGapCount} " +
+            "movingGapMaxMs=${snapshot.movingGapMaxMs} " +
+            "movingGapEndpointDistanceMaxM=${snapshot.movingGapEndpointDistanceMaxM?.formatTelemetry(1) ?: "na"} " +
+            "stationaryGapCount=${snapshot.stationaryGapCount} " +
+            "stationaryGapMaxMs=${snapshot.stationaryGapMaxMs} " +
+            "slowMovementGapCount=${snapshot.slowMovementGapCount} " +
+            "slowMovementGapMaxMs=${snapshot.slowMovementGapMaxMs} " +
+            "unknownCallbackGapCount=${snapshot.unknownCallbackGapCount} " +
+            "unknownCallbackGapMaxMs=${snapshot.unknownCallbackGapMaxMs}"
+    }
+
+    private fun recordingScreenState(): String =
+        when (applicationContext?.getSystemService(PowerManager::class.java)?.isInteractive) {
+            true -> "INTERACTIVE"
+            false -> "SCREEN_OFF"
+            null -> "UNKNOWN"
+        }
 
     private fun sensorTelemetryTokens(nowMillis: Long): String =
         "liveHeartRateBpm=${latestSensorMetrics.heartRateBpm ?: -1} " +

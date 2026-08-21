@@ -117,6 +117,26 @@ object DiagnosticsExporter {
         val smoothedAdjustmentMeters: String? = null,
         val maxSmoothedAdjustmentMeters: String? = null,
         val smartTrack: RecordingSmartTrackInsights = RecordingSmartTrackInsights(),
+        val pointDensity: RecordingPointDensityInsights = RecordingPointDensityInsights(),
+    )
+
+    internal data class RecordingPointDensityInsights(
+        val callbackReceivedCount: Int? = null,
+        val usableCallbackCount: Int? = null,
+        val smartTrackDecisionCount: Int? = null,
+        val storedPointCount: Int? = null,
+        val movingExpectedStoredSampleCount: Int? = null,
+        val movingStoredSampleCount: Int? = null,
+        val movingStoredSampleCaptureRatePercent: Int? = null,
+        val movingGapCount: Int? = null,
+        val movingGapMaxMs: Long? = null,
+        val movingGapEndpointDistanceMaxM: String? = null,
+        val stationaryGapCount: Int? = null,
+        val stationaryGapMaxMs: Long? = null,
+        val slowMovementGapCount: Int? = null,
+        val slowMovementGapMaxMs: Long? = null,
+        val unknownCallbackGapCount: Int? = null,
+        val unknownCallbackGapMaxMs: Long? = null,
     )
 
     internal data class RecordingSmartTrackInsights(
@@ -1687,6 +1707,10 @@ object DiagnosticsExporter {
             writeRecordingSmartTrackSection(
                 writer = writer,
                 insights = telemetryInsights.recordingTrackFilter.smartTrack,
+            )
+            writeRecordingPointDensitySection(
+                writer = writer,
+                insights = telemetryInsights.recordingTrackFilter.pointDensity,
             )
             writer.appendLine(
                 "recordingLastSkippedIntervalElapsedMs=${

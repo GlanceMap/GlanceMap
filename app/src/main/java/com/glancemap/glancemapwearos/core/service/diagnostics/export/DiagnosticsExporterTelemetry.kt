@@ -6,6 +6,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporte
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.FixGapBuckets
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.GnssInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.ObservedFixQualitySummary
+import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingPointDensityInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingSmartTrackInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingTrackFilterInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.TelemetryInsights
@@ -157,6 +158,83 @@ private class RecordingSmartTrackInsightsAccumulator {
                 "smartTrackAccuracyBaselineMedianMeters",
                 "smartTrackAccuracyProfileLimitMeters",
                 "smartTrackAccuracyResolvedLimitMeters",
+            )
+    }
+}
+
+private class RecordingPointDensityInsightsAccumulator {
+    private val counts = mutableMapOf<String, Int>()
+    private val durations = mutableMapOf<String, Long>()
+    private var movingGapEndpointDistanceMaxM: String? = null
+
+    fun observe(line: String) {
+        if (
+            "locationCallbackReceivedCount=" !in line &&
+            "movingGapCount=" !in line &&
+            "point_density_gap" !in line
+        ) {
+            return
+        }
+        COUNT_TOKENS.forEach { token ->
+            parseIntToken(line, "$token=")
+                ?.takeIf { it >= 0 }
+                ?.let { value -> counts[token] = maxOf(counts[token] ?: value, value) }
+        }
+        DURATION_TOKENS.forEach { token ->
+            parseLongToken(line, "$token=")
+                ?.takeIf { it >= 0L }
+                ?.let { value -> durations[token] = maxOf(durations[token] ?: value, value) }
+        }
+        extractTokenValue(line, "movingGapEndpointDistanceMaxM=")
+            ?.takeUnless { it.isBlank() || it == "na" }
+            ?.let { movingGapEndpointDistanceMaxM = it }
+    }
+
+    fun snapshot(): RecordingPointDensityInsights =
+        RecordingPointDensityInsights(
+            callbackReceivedCount = count("locationCallbackReceivedCount"),
+            usableCallbackCount = count("usableLocationCallbackCount"),
+            smartTrackDecisionCount = count("smartTrackDecisionCount"),
+            storedPointCount = count("storedPointCount"),
+            movingExpectedStoredSampleCount = count("movingExpectedStoredSampleCount"),
+            movingStoredSampleCount = count("movingStoredSampleCount"),
+            movingStoredSampleCaptureRatePercent = count("movingStoredSampleCaptureRatePercent"),
+            movingGapCount = count("movingGapCount"),
+            movingGapMaxMs = duration("movingGapMaxMs"),
+            movingGapEndpointDistanceMaxM = movingGapEndpointDistanceMaxM,
+            stationaryGapCount = count("stationaryGapCount"),
+            stationaryGapMaxMs = duration("stationaryGapMaxMs"),
+            slowMovementGapCount = count("slowMovementGapCount"),
+            slowMovementGapMaxMs = duration("slowMovementGapMaxMs"),
+            unknownCallbackGapCount = count("unknownCallbackGapCount"),
+            unknownCallbackGapMaxMs = duration("unknownCallbackGapMaxMs"),
+        )
+
+    private fun count(token: String): Int? = counts[token]
+
+    private fun duration(token: String): Long? = durations[token]
+
+    private companion object {
+        val COUNT_TOKENS =
+            listOf(
+                "locationCallbackReceivedCount",
+                "usableLocationCallbackCount",
+                "smartTrackDecisionCount",
+                "storedPointCount",
+                "movingExpectedStoredSampleCount",
+                "movingStoredSampleCount",
+                "movingStoredSampleCaptureRatePercent",
+                "movingGapCount",
+                "stationaryGapCount",
+                "slowMovementGapCount",
+                "unknownCallbackGapCount",
+            )
+        val DURATION_TOKENS =
+            listOf(
+                "movingGapMaxMs",
+                "stationaryGapMaxMs",
+                "slowMovementGapMaxMs",
+                "unknownCallbackGapMaxMs",
             )
     }
 }
@@ -319,6 +397,7 @@ internal fun deriveTelemetryInsights(
     var recordingSmoothedAdjustmentMeters: String? = null
     var recordingMaxSmoothedAdjustmentMeters: String? = null
     val recordingSmartTrack = RecordingSmartTrackInsightsAccumulator()
+    val recordingPointDensity = RecordingPointDensityInsightsAccumulator()
     var recordingLastSkippedIntervalElapsedMs: Long? = null
     var recordingMaxSkippedIntervalElapsedMs: Long? = null
     var recordingLastLiveProvider: String? = null
@@ -432,6 +511,7 @@ internal fun deriveTelemetryInsights(
 
     lines.forEach { line ->
         recordingSmartTrack.observe(line)
+        recordingPointDensity.observe(line)
         val lineEpochMs = parseTelemetryLineEpochMs(line)
         val requestMode = parseRequestMode(line)
         if (requestMode != null) {
@@ -1462,6 +1542,7 @@ internal fun deriveTelemetryInsights(
                 smoothedAdjustmentMeters = recordingSmoothedAdjustmentMeters,
                 maxSmoothedAdjustmentMeters = recordingMaxSmoothedAdjustmentMeters,
                 smartTrack = recordingSmartTrack.snapshot(),
+                pointDensity = recordingPointDensity.snapshot(),
             )
     }
 }
@@ -1472,6 +1553,29 @@ internal fun writeRecordingSmartTrackSection(
 ) {
     writer.writeSmartTrackMotionMetrics(insights)
     writer.writeSmartTrackAccuracyMetrics(insights)
+}
+
+internal fun writeRecordingPointDensitySection(
+    writer: BufferedWriter,
+    insights: RecordingPointDensityInsights,
+) {
+    writer.appendLine("recordingStoredSampleCaptureRateDefinition=configured_cadence_includes_stationary_suppression")
+    writer.appendPointDensityMetric("LocationCallbackReceivedCount", insights.callbackReceivedCount)
+    writer.appendPointDensityMetric("UsableLocationCallbackCount", insights.usableCallbackCount)
+    writer.appendPointDensityMetric("SmartTrackDecisionCount", insights.smartTrackDecisionCount)
+    writer.appendPointDensityMetric("StoredPointCount", insights.storedPointCount)
+    writer.appendPointDensityMetric("MovingExpectedStoredSampleCount", insights.movingExpectedStoredSampleCount)
+    writer.appendPointDensityMetric("MovingStoredSampleCount", insights.movingStoredSampleCount)
+    writer.appendPointDensityMetric("MovingStoredSampleCaptureRatePercent", insights.movingStoredSampleCaptureRatePercent)
+    writer.appendPointDensityMetric("MovingGapCount", insights.movingGapCount)
+    writer.appendPointDensityMetric("MovingGapMaxMs", insights.movingGapMaxMs)
+    writer.appendPointDensityMetric("MovingGapEndpointDistanceMaxM", insights.movingGapEndpointDistanceMaxM)
+    writer.appendPointDensityMetric("StationaryGapCount", insights.stationaryGapCount)
+    writer.appendPointDensityMetric("StationaryGapMaxMs", insights.stationaryGapMaxMs)
+    writer.appendPointDensityMetric("SlowMovementGapCount", insights.slowMovementGapCount)
+    writer.appendPointDensityMetric("SlowMovementGapMaxMs", insights.slowMovementGapMaxMs)
+    writer.appendPointDensityMetric("UnknownCallbackGapCount", insights.unknownCallbackGapCount)
+    writer.appendPointDensityMetric("UnknownCallbackGapMaxMs", insights.unknownCallbackGapMaxMs)
 }
 
 private fun BufferedWriter.writeSmartTrackMotionMetrics(insights: RecordingSmartTrackInsights) {
@@ -1514,6 +1618,13 @@ private fun BufferedWriter.appendSmartTrackMetric(
     value: Any?,
 ) {
     appendLine("recordingSmartTrack$name=${value ?: "na"}")
+}
+
+private fun BufferedWriter.appendPointDensityMetric(
+    name: String,
+    value: Any?,
+) {
+    appendLine("recordingPointDensity$name=${value ?: "na"}")
 }
 
 internal fun resolveCaptureWindowEndEpochMs(
