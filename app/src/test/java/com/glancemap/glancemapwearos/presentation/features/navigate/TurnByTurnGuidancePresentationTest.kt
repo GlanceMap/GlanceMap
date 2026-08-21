@@ -72,8 +72,7 @@ class TurnByTurnGuidancePresentationTest {
                 isMetric = true,
             )
 
-        assertEquals("AFTER RIGHT —", presentation?.label)
-        assertEquals("Flat · 100 m", presentation?.detail)
+        assertEquals("— Flat", presentation?.expandedText)
     }
 
     @Test
@@ -96,8 +95,7 @@ class TurnByTurnGuidancePresentationTest {
                 isMetric = true,
             )
 
-        assertEquals("LEFT TAKEN +▲", presentation?.label)
-        assertEquals("+20 m · 100 m", presentation?.detail)
+        assertEquals("▲ Uphill +20 m", presentation?.expandedText)
     }
 
     @Test

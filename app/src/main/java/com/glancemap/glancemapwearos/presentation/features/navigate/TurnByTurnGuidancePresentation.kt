@@ -56,8 +56,8 @@ internal fun guidanceCompactInstructionText(
 }
 
 internal data class GuidanceTerrainPopupPresentation(
-    val label: String,
-    val detail: String,
+    val direction: GuidanceTerrainDirection,
+    val expandedText: String,
 )
 
 /**
@@ -79,65 +79,30 @@ internal fun guidanceTerrainPopupPresentation(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
 ): GuidanceTerrainPopupPresentation? {
-    val confirmation = state.recentManeuverTerrain
-    val upcomingManeuver = state.nextInstruction?.command
-    val upcomingWasJustTaken =
-        state.distanceFromStartMeters != null &&
-            state.nextInstruction != null &&
-            state.distanceFromStartMeters > state.nextInstruction.distanceFromStartMeters
-    val terrain = confirmation?.terrain ?: state.nextSegmentTerrain ?: return null
-    val maneuver = confirmation?.maneuver ?: upcomingManeuver ?: return null
-    val labelPrefix =
-        if (confirmation != null || upcomingWasJustTaken) {
-            "${guidanceManeuverLabel(maneuver)} TAKEN"
-        } else {
-            "AFTER ${guidanceManeuverLabel(maneuver)}"
-        }
+    val terrain = state.recentManeuverTerrain?.terrain ?: state.nextSegmentTerrain ?: return null
     return GuidanceTerrainPopupPresentation(
-        label = "$labelPrefix ${guidanceTerrainBadge(terrain)}",
-        detail = guidanceTerrainPopupDetail(terrain, isMetric),
+        direction = terrain.direction,
+        expandedText = guidanceTerrainPopupExpandedText(terrain, isMetric),
     )
 }
 
-private fun guidanceManeuverLabel(command: RouteInstructionCommand): String =
-    when (command) {
-        RouteInstructionCommand.SLIGHT_LEFT,
-        RouteInstructionCommand.LEFT,
-        RouteInstructionCommand.SHARP_LEFT,
-        -> "LEFT"
-
-        RouteInstructionCommand.SLIGHT_RIGHT,
-        RouteInstructionCommand.RIGHT,
-        RouteInstructionCommand.SHARP_RIGHT,
-        -> "RIGHT"
-
-        RouteInstructionCommand.CONTINUE -> "STRAIGHT"
-        RouteInstructionCommand.FINISH -> "FINISH"
-    }
-
-private fun guidanceTerrainBadge(terrain: GuidanceTerrainPreview): String =
+private fun guidanceTerrainPopupExpandedText(
+    terrain: GuidanceTerrainPreview,
+    isMetric: Boolean,
+): String =
     when (terrain.direction) {
-        GuidanceTerrainDirection.UPHILL -> "+▲"
-        GuidanceTerrainDirection.DOWNHILL -> "−▼"
-        GuidanceTerrainDirection.FLAT -> "—"
+        GuidanceTerrainDirection.UPHILL -> "▲ Uphill ${guidanceTerrainElevationText(terrain, isMetric)}"
+        GuidanceTerrainDirection.DOWNHILL -> "▼ Downhill ${guidanceTerrainElevationText(terrain, isMetric)}"
+        GuidanceTerrainDirection.FLAT -> "— Flat"
     }
 
-private fun guidanceTerrainPopupDetail(
+private fun guidanceTerrainElevationText(
     terrain: GuidanceTerrainPreview,
     isMetric: Boolean,
 ): String {
-    val distance = formatLiveDistanceLabel(terrain.distanceMeters, isMetric)
-    return when (terrain.direction) {
-        GuidanceTerrainDirection.UPHILL,
-        GuidanceTerrainDirection.DOWNHILL,
-        -> {
-            val (value, unit) = UnitFormatter.formatElevation(abs(terrain.elevationChangeMeters), isMetric)
-            val sign = if (terrain.direction == GuidanceTerrainDirection.UPHILL) "+" else "−"
-            "$sign$value $unit · $distance"
-        }
-
-        GuidanceTerrainDirection.FLAT -> "Flat · $distance"
-    }
+    val (value, unit) = UnitFormatter.formatElevation(abs(terrain.elevationChangeMeters), isMetric)
+    val sign = if (terrain.direction == GuidanceTerrainDirection.UPHILL) "+" else "−"
+    return "$sign$value $unit"
 }
 
 internal const val MANEUVER_PREPARATION_DISTANCE_METERS = 60.0

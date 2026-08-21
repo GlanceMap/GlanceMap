@@ -11,7 +11,6 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,11 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -93,8 +88,6 @@ import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 @Composable
 internal fun BoxScope.CombinedGuidanceRecordingOverlay(
@@ -553,6 +546,12 @@ private fun CombinedFullscreenDashboard(
         onDismiss = onDismiss,
         telemetryTag = "TurnByTurn",
     ) {
+        GuidanceRouteProgressChrome(
+            state = guidanceState,
+            isMetric = isMetric,
+            showDetails = !guidanceState.offRoute || guideBackToRouteActive,
+            modifier = Modifier.fillMaxSize(),
+        )
         if (pageIndex == 0) {
             CombinedGuidancePage(
                 state = guidanceState,
@@ -624,6 +623,14 @@ private fun CombinedGuidancePage(
             WearScreenSize.SMALL -> 36.dp
         }
     val showRouteProgressDetails = !state.offRoute || guideBackToRouteActive
+    val combinedManeuverText =
+        if (!paused && !state.offRoute && !guideBackToRouteActive) {
+            guidanceInstructionDistanceText(state, isMetric)?.let { distance ->
+                "$distance ${guidanceInstructionPrimaryText(state)}"
+            }
+        } else {
+            null
+        }
     val showGuideBackShortcut = state.active && state.offRoute && !guideBackToRouteActive && !showGuideBackPrompt
     var showGuideBackShortcutConfirm by remember(state.trackTitle) { mutableStateOf(false) }
     LaunchedEffect(state.offRoute, guideBackToRouteActive, showGuideBackPrompt) {
@@ -633,11 +640,6 @@ private fun CombinedGuidancePage(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        CombinedRouteProgressRing(
-            progress = state.routeProgressFraction,
-            offRoute = state.offRoute,
-            modifier = Modifier.fillMaxSize(),
-        )
         CombinedVoiceToggle(
             enabled = voiceGuidanceEnabled,
             onClick = {
@@ -699,7 +701,7 @@ private fun CombinedGuidancePage(
                         if (paused) {
                             "Paused"
                         } else {
-                            combinedGuidancePrimaryText(state, guideBackToRouteActive)
+                            combinedManeuverText ?: combinedGuidancePrimaryText(state, guideBackToRouteActive)
                         },
                     color = if (state.offRoute) COMBINED_OFF_ROUTE_AMBER else Color.White,
                     fontWeight = FontWeight.Bold,
@@ -709,34 +711,27 @@ private fun CombinedGuidancePage(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = combinedGuidanceSecondaryText(state, isMetric, guideBackToRouteActive),
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    lineHeight = 15.sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (paused || combinedManeuverText == null) {
+                    Text(
+                        text = combinedGuidanceSecondaryText(state, isMetric, guideBackToRouteActive),
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        lineHeight = 15.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (showRouteProgressDetails) {
                     guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
-                            text = terrain.label,
-                            color = Color.White.copy(alpha = 0.82f),
+                            text = terrain.expandedText,
+                            color = guidanceTerrainColor(terrain.direction),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = terrain.detail,
-                            color = Color.White.copy(alpha = 0.72f),
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
+                            fontSize = 14.sp,
+                            lineHeight = 15.sp,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -754,26 +749,6 @@ private fun CombinedGuidancePage(
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    state.distanceRemainingMeters?.let { remaining ->
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Text(
-                            text = guidanceRemainingText(remaining, state.estimatedRemainingSeconds, isMetric),
-                            color = Color.White.copy(alpha = 0.64f),
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                    state.routeProgressFraction?.let { progress ->
-                        Spacer(modifier = Modifier.size(1.dp))
-                        Text(
-                            text = "${(progress * 100f).roundToInt()}%",
-                            color = Color.White.copy(alpha = 0.46f),
-                            fontSize = 9.sp,
-                            lineHeight = 10.sp,
-                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -876,48 +851,6 @@ private fun CombinedRecordingPage(
                 height = tileHeight,
                 onLongPress = { onSlotLongPress(3) },
                 modifier = Modifier.fillMaxWidth(0.86f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CombinedRouteProgressRing(
-    progress: Float?,
-    offRoute: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val clampedProgress = progress?.coerceIn(0f, 1f) ?: return
-    val progressColor = if (offRoute) COMBINED_OFF_ROUTE_AMBER else MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier) {
-        val strokeWidth = 5.dp.toPx()
-        val inset = strokeWidth / 2f + 5.dp.toPx()
-        val side = min(size.width, size.height) - inset * 2f
-        if (side <= 0f) return@Canvas
-        val topLeft =
-            Offset(
-                x = (size.width - side) / 2f,
-                y = (size.height - side) / 2f,
-            )
-        val arcSize = Size(side, side)
-        drawArc(
-            color = Color.White.copy(alpha = 0.12f),
-            startAngle = COMBINED_PROGRESS_ARC_START_DEGREES,
-            sweepAngle = COMBINED_PROGRESS_ARC_SWEEP_DEGREES,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = strokeWidth),
-        )
-        if (clampedProgress > 0f) {
-            drawArc(
-                color = progressColor,
-                startAngle = COMBINED_PROGRESS_ARC_START_DEGREES,
-                sweepAngle = COMBINED_PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
         }
     }
@@ -1192,6 +1125,4 @@ private fun combinedGuidanceCompactText(
 
 private const val NO_SELECTED_SLOT = -1
 private const val COMBINED_POPUP_DRAG_THRESHOLD_PX = 24f
-private const val COMBINED_PROGRESS_ARC_START_DEGREES = -66f
-private const val COMBINED_PROGRESS_ARC_SWEEP_DEGREES = 312f
 private val COMBINED_OFF_ROUTE_AMBER = Color(0xFFFFC107)

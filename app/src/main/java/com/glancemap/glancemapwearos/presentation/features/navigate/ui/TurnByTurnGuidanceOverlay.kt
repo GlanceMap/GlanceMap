@@ -57,6 +57,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.wear.compose.foundation.AnchorType
+import androidx.wear.compose.foundation.ArcPaddingValues
+import androidx.wear.compose.foundation.CurvedLayout
+import androidx.wear.compose.foundation.CurvedDirection
+import androidx.wear.compose.foundation.CurvedModifier
+import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.basicCurvedText
 import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
@@ -66,13 +73,13 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.TURN_BY_TURN_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboardMetricSlots
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
+import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainDirection
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingFullscreenPageShell
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 @Composable
 internal fun BoxScope.TurnByTurnGuidanceOverlay(
@@ -211,6 +218,12 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                     onDismiss = { expanded = false },
                     telemetryTag = "TurnByTurn",
                 ) {
+                    GuidanceRouteProgressChrome(
+                        state = state,
+                        isMetric = isMetric,
+                        showDetails = !state.offRoute || guideBackToRouteActive,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     if (expandedPageIndex == 0) {
                         ExpandedGuidanceOverlay(
                             state = state,
@@ -436,6 +449,14 @@ private fun ExpandedGuidanceOverlay(
             WearScreenSize.SMALL -> 36.dp
         }
     val showRouteProgressDetails = !state.offRoute || guideBackToRouteActive
+    val combinedManeuverText =
+        if (!state.offRoute && !guideBackToRouteActive) {
+            guidanceInstructionDistanceText(state, isMetric)?.let { distance ->
+                "$distance ${guidanceInstructionPrimaryText(state)}"
+            }
+        } else {
+            null
+        }
     val showGuideBackShortcut = state.active && state.offRoute && !guideBackToRouteActive && !showGuideBackPrompt
     var showGuideBackShortcutConfirm by remember(state.trackTitle) { mutableStateOf(false) }
     LaunchedEffect(state.offRoute, guideBackToRouteActive, showGuideBackPrompt) {
@@ -448,19 +469,12 @@ private fun ExpandedGuidanceOverlay(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
                 .combinedClickable(
                     onClick = {},
                     onLongClick = onLongPress,
                 ),
         contentAlignment = Alignment.Center,
     ) {
-        RouteProgressRing(
-            progress = state.routeProgressFraction,
-            offRoute = state.offRoute,
-            modifier = Modifier.fillMaxSize(),
-        )
-
         GuidanceVoiceToggle(
             enabled = voiceGuidanceEnabled,
             onClick = {
@@ -515,7 +529,7 @@ private fun ExpandedGuidanceOverlay(
                 }
                 Spacer(modifier = Modifier.size(6.dp))
                 Text(
-                    text = guidancePrimaryText(state, guideBackToRouteActive),
+                    text = combinedManeuverText ?: guidancePrimaryText(state, guideBackToRouteActive),
                     color = if (state.offRoute) OFF_ROUTE_AMBER else Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 21.sp,
@@ -524,34 +538,27 @@ private fun ExpandedGuidanceOverlay(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = guidanceSecondaryText(state, isMetric, guideBackToRouteActive),
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    lineHeight = 15.sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (combinedManeuverText == null) {
+                    Text(
+                        text = guidanceSecondaryText(state, isMetric, guideBackToRouteActive),
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        lineHeight = 15.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (showRouteProgressDetails) {
                     guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
-                            text = terrain.label,
-                            color = Color.White.copy(alpha = 0.82f),
+                            text = terrain.expandedText,
+                            color = guidanceTerrainColor(terrain.direction),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = terrain.detail,
-                            color = Color.White.copy(alpha = 0.72f),
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
+                            fontSize = 14.sp,
+                            lineHeight = 15.sp,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -569,26 +576,6 @@ private fun ExpandedGuidanceOverlay(
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    state.distanceRemainingMeters?.let { remaining ->
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Text(
-                            text = guidanceRemainingText(remaining, state.estimatedRemainingSeconds, isMetric),
-                            color = Color.White.copy(alpha = 0.64f),
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                    state.routeProgressFraction?.let { progress ->
-                        Spacer(modifier = Modifier.size(1.dp))
-                        Text(
-                            text = "${(progress * 100f).roundToInt()}%",
-                            color = Color.White.copy(alpha = 0.46f),
-                            fontSize = 9.sp,
-                            lineHeight = 10.sp,
-                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -622,6 +609,84 @@ private fun ExpandedGuidanceOverlay(
     }
 }
 
+@Composable
+internal fun GuidanceRemainingArc(
+    remainingMeters: Double?,
+    estimatedRemainingSeconds: Long?,
+    isMetric: Boolean,
+) {
+    val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
+    val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
+    cappedFontScale(maxFontScale = 1.15f) {
+        CurvedLayout(
+            modifier = Modifier.fillMaxSize(),
+            anchor = 110f,
+            anchorType = AnchorType.Center,
+            angularDirection = CurvedDirection.Angular.Reversed,
+        ) {
+            basicCurvedText(
+                text = distance,
+                style =
+                    CurvedTextStyle(
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                modifier = CurvedModifier.padding(ArcPaddingValues(inner = 18.dp)),
+            )
+        }
+        duration?.let {
+            CurvedLayout(
+                modifier = Modifier.fillMaxSize(),
+                anchor = 70f,
+                anchorType = AnchorType.Center,
+                angularDirection = CurvedDirection.Angular.Reversed,
+            ) {
+                basicCurvedText(
+                    text = it,
+                    style =
+                        CurvedTextStyle(
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    modifier = CurvedModifier.padding(ArcPaddingValues(inner = 18.dp)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun GuidanceRouteProgressChrome(
+    state: TurnByTurnGuidanceState,
+    isMetric: Boolean,
+    showDetails: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        RouteProgressRing(
+            progress = state.routeProgressFraction,
+            offRoute = state.offRoute,
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (showDetails) {
+            GuidanceRemainingArc(
+                remainingMeters = state.distanceRemainingMeters,
+                estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+                isMetric = isMetric,
+            )
+        }
+    }
+}
+
+internal fun guidanceTerrainColor(direction: GuidanceTerrainDirection): Color =
+    when (direction) {
+        GuidanceTerrainDirection.UPHILL -> Color(0xFFD9A5FF)
+        GuidanceTerrainDirection.DOWNHILL -> Color(0xFF8BC8FF)
+        GuidanceTerrainDirection.FLAT -> Color.White.copy(alpha = 0.76f)
+    }
+
 internal fun guidanceFollowingText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
@@ -634,17 +699,7 @@ internal fun guidanceFollowingText(
     val currentDistance = state.distanceToInstructionMeters ?: return null
     val gapMeters = followingDistance - currentDistance
     if (gapMeters !in 0.0..FOLLOWING_TURN_MAX_GAP_METERS) return null
-    return "Then ${following.message.lowercase()} · ${formatLiveDistanceLabel(gapMeters, isMetric)}"
-}
-
-internal fun guidanceRemainingText(
-    remainingMeters: Double,
-    estimatedRemainingSeconds: Long?,
-    isMetric: Boolean,
-): String {
-    val distance = "${formatLiveDistanceLabel(remainingMeters, isMetric)} remaining"
-    val eta = estimatedRemainingSeconds?.let(::formatGuidanceDuration) ?: return distance
-    return "$distance · $eta"
+    return "Then ${following.message.lowercase()} in ${formatLiveDistanceLabel(gapMeters, isMetric)}"
 }
 
 private fun formatGuidanceDuration(seconds: Long): String {
