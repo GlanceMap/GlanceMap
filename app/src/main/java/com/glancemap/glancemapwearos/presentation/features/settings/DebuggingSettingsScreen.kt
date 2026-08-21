@@ -102,7 +102,6 @@ fun DebuggingSettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val compassDeepTraceState by CompassDeepTraceDiagnostics.state.collectAsState()
     val compassHeadingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
-    var compassHeadingReferenceDeg by remember { mutableStateOf(0f) }
 
     val gpsIntervalMs by viewModel.gpsInterval.collectAsState()
     val isWatchGpsOnly by viewModel.watchGpsOnly.collectAsState()
@@ -795,7 +794,7 @@ fun DebuggingSettingsScreen(
                     WearText(
                         text =
                             if (compassHeadingReferenceTestActive) {
-                                "Mark N, E, S and W while stable"
+                                "Open Navigate → shortcuts to mark N, E, S and W"
                             } else {
                                 "Measures absolute heading error"
                             },
@@ -805,62 +804,6 @@ fun DebuggingSettingsScreen(
                 },
                 onClick = { CompassHeadingReferenceDiagnostics.toggle() },
             )
-        }
-        if (compassHeadingReferenceTestActive) {
-            item {
-                Chip(
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        WearText(
-                            text = "Reference: ${compassHeadingReferenceLabel(compassHeadingReferenceDeg)}",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                        )
-                    },
-                    secondaryLabel = {
-                        WearText(
-                            text = "Tap to choose N / E / S / W",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                        )
-                    },
-                    onClick = {
-                        compassHeadingReferenceDeg =
-                            when (compassHeadingReferenceDeg) {
-                                0f -> 90f
-                                90f -> 180f
-                                180f -> 270f
-                                else -> 0f
-                            }
-                    },
-                )
-            }
-            item {
-                Chip(
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        WearText(
-                            text = "Mark ${compassHeadingReferenceLabel(compassHeadingReferenceDeg)} heading",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                        )
-                    },
-                    secondaryLabel = {
-                        WearText(
-                            text = "Hold still outdoors, away from metal",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                        )
-                    },
-                    onClick = {
-                        CompassHeadingReferenceDiagnostics.recordReference(compassHeadingReferenceDeg)
-                    },
-                )
-            }
         }
 
         if (BuildConfig.DEBUG) {
@@ -892,15 +835,6 @@ fun DebuggingSettingsScreen(
         }
     }
 }
-
-private fun compassHeadingReferenceLabel(referenceHeadingDeg: Float): String =
-    when (referenceHeadingDeg) {
-        0f -> "N"
-        90f -> "E"
-        180f -> "S"
-        270f -> "W"
-        else -> referenceHeadingDeg.toInt().toString()
-    }
 
 @Composable
 private fun DiagnosticsExportStatusDialog(

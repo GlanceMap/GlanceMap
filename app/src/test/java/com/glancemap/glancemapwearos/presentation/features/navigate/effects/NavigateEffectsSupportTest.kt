@@ -88,9 +88,13 @@ class NavigateEffectsSupportTest {
             providerHeadingDeg = 300f,
             targetHeadingDeg = 302f,
             renderedHeadingDeg = 300f,
+            pitchDeg = 0f,
+            rollDeg = 0f,
+            projection = 1f,
+            atElapsedMs = 1_000L,
         )
 
-        val screenOff = capture.screenOff(fallbackHeadingDeg = 300f)
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 300f, nowElapsedMs = 1_100L)
         // Provider samples can move to ~220° while the wrist is lowered, but they are not
         // interactive samples and must not replace the visible continuity reference.
         val wake = capture.wake(fallbackHeadingDeg = 220f)
@@ -115,6 +119,83 @@ class NavigateEffectsSupportTest {
         assertEquals(300f, wake.wakeHeldHeadingDeg, 0f)
         assertEquals(0f, wake.wakeHeadingDeltaDeg, 0f)
         assertEquals(300f, target?.headingDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun stableHeadingKeepsTheCurrentScreenOffAnchor() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 100L)
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 200L)
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 342f, nowElapsedMs = 250L)
+
+        assertEquals(342f, screenOff.screenOffAnchorHeadingDeg, 0f)
+        assertFalse(screenOff.preLoweringDetected)
+        assertEquals(0L, screenOff.anchorRewindMs)
+    }
+
+    @Test
+    fun wristLoweringUsesTheLastStableVisibleHeadingAsScreenOffAnchor() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(343f, 343f, 343f, 1f, 0f, 1f, 100L)
+        capture.recordInteractive(342f, 342f, 342f, 1f, 0f, 1f, 200L)
+        capture.recordInteractive(349f, 349f, 349f, 8f, 0f, 0.98f, 300L)
+        capture.recordInteractive(358f, 358f, 358f, 18f, 0f, 0.93f, 400L)
+        capture.recordInteractive(12f, 12f, 12f, 28f, 0f, 0.86f, 500L)
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 12f, nowElapsedMs = 520L)
+
+        assertEquals(342f, screenOff.screenOffAnchorHeadingDeg, 0f)
+        assertTrue(screenOff.preLoweringDetected)
+        assertEquals("pre_lowering_stable_visible", screenOff.selectionReason)
+        assertEquals(320L, screenOff.anchorRewindMs)
+    }
+
+    @Test
+    fun intentionalTurnWithoutTiltChangeDoesNotRewindTheAnchor() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 100L)
+        capture.recordInteractive(45f, 45f, 45f, 0f, 0f, 1f, 200L)
+        capture.recordInteractive(90f, 90f, 90f, 0f, 0f, 1f, 300L)
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 90f, nowElapsedMs = 320L)
+
+        assertEquals(90f, screenOff.screenOffAnchorHeadingDeg, 0f)
+        assertFalse(screenOff.preLoweringDetected)
+    }
+
+    @Test
+    fun smallHeadingMovementAcrossNorthDoesNotCreateAFalseAnchorRewind() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(355f, 355f, 355f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(355f, 355f, 355f, 0f, 0f, 1f, 100L)
+        capture.recordInteractive(355f, 355f, 355f, 0f, 0f, 1f, 200L)
+        capture.recordInteractive(5f, 5f, 5f, 20f, 0f, 0.85f, 300L)
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 5f, nowElapsedMs = 320L)
+
+        assertEquals(5f, screenOff.screenOffAnchorHeadingDeg, 0f)
+        assertFalse(screenOff.preLoweringDetected)
+        assertEquals(10f, shortestAngleDiffDeg(target = 5f, current = 355f), 0f)
+    }
+
+    @Test
+    fun newInteractiveSessionCannotReuseThePreviousScreenOffHistory() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(300f, 300f, 300f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(300f, 300f, 300f, 0f, 0f, 1f, 100L)
+        capture.screenOff(fallbackHeadingDeg = 300f, nowElapsedMs = 120L)
+
+        capture.beginInteractiveSession()
+        capture.recordInteractive(20f, 20f, 20f, 0f, 0f, 1f, 130L)
+        capture.recordInteractive(20f, 20f, 20f, 0f, 0f, 1f, 230L)
+        val secondScreenOff = capture.screenOff(fallbackHeadingDeg = 20f, nowElapsedMs = 250L)
+
+        assertEquals(20f, secondScreenOff.screenOffAnchorHeadingDeg, 0f)
+        assertEquals(20f, capture.wake(fallbackHeadingDeg = 300f).wakeHeldHeadingDeg, 0f)
     }
 
     @Test
@@ -149,7 +230,7 @@ class NavigateEffectsSupportTest {
     fun rapidWakeRejectsThePreviousSessionSampleAndKeepsTheFrozenAnchor() {
         val capture = NavigateWakeContinuityCapture()
         val gate = NavigateRotationSettleGate()
-        capture.screenOff(fallbackHeadingDeg = 300f)
+        capture.screenOff(fallbackHeadingDeg = 300f, nowElapsedMs = 900L)
 
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = capture.wake(220f).wakeHeldHeadingDeg)
         gate.endWakeSession(nowElapsedMs = 1_010L)

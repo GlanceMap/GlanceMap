@@ -879,6 +879,7 @@ internal class FusedOrientationProviderAdapter(
         attitude: FloatArray,
         atElapsedMs: Long,
     ) {
+        val tilt = fusedAttitudeTilt(attitude)
         CompassHeadingDiagnostics.recordEngineSample(
             provider = HeadingSource.FUSED_ORIENTATION,
             providerHeadingDeg = absoluteHeadingDeg,
@@ -890,14 +891,16 @@ internal class FusedOrientationProviderAdapter(
             usable = usable,
             snapshot = snapshot,
             northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
+            pitchDeg = tilt?.pitchDeg,
+            rollDeg = tilt?.rollDeg,
             atElapsedMs = atElapsedMs,
         )
-        val tilt = fusedAttitudeTiltForHeadingReferenceTest(attitude)
         CompassHeadingReferenceDiagnostics.recordProvider(
             sample =
                 CompassHeadingReferenceProviderSample(
                     googleFusedHeadingDeg = absoluteHeadingDeg,
                     targetHeadingDeg = snapshot.renderHeadingDeg,
+                    usable = usable,
                     northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
                     magneticFieldUt = snapshot.magneticFieldUt,
                     integrityState = snapshot.state,
@@ -909,8 +912,8 @@ internal class FusedOrientationProviderAdapter(
         )
     }
 
-    private fun fusedAttitudeTiltForHeadingReferenceTest(attitude: FloatArray): FusedAttitudeTilt? {
-        if (!CompassHeadingReferenceDiagnostics.active.value || attitude.size < 4) return null
+    private fun fusedAttitudeTilt(attitude: FloatArray): FusedAttitudeTilt? {
+        if (attitude.size < 4) return null
         val rotationMatrix = FloatArray(9)
         val orientationAngles = FloatArray(3)
         SensorManager.getRotationMatrixFromVector(rotationMatrix, attitude)

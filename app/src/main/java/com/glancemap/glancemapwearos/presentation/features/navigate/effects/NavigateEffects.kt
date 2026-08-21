@@ -41,6 +41,7 @@ import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.Rotation
 import org.mapsforge.map.android.view.MapView
 import java.io.File
+import java.util.ArrayDeque
 import java.util.Collections
 import java.util.Locale
 import java.util.WeakHashMap
@@ -231,12 +232,16 @@ fun NavigationOrientationEffect(
                 )
                 publishRenderedState(force = true, nowElapsedMs = nowElapsedMs)
             }
+            wakeContinuityCapture.beginInteractiveSession()
             hasObservedInteractive.value = true
         } else {
             if (shouldUseWakeContinuityAnchor(navMode)) {
                 val screenOffAnchorHeading = normalize360(-syncDisplayedMapRotationFromMap())
                 val screenOffAnchor =
-                    wakeContinuityCapture.screenOff(fallbackHeadingDeg = screenOffAnchorHeading)
+                    wakeContinuityCapture.screenOff(
+                        fallbackHeadingDeg = screenOffAnchorHeading,
+                        nowElapsedMs = nowElapsedMs,
+                    )
                 if (DebugTelemetry.isEnabled()) {
                     screenOffAnchor.log()
                 }
@@ -361,12 +366,16 @@ fun NavigationOrientationEffect(
         launch {
             renderStateFlow.collect { state ->
                 latestRenderState = state
-                if (latestCompassInteractive.value && DebugTelemetry.isEnabled()) {
+                if (latestCompassInteractive.value && navMode == NavMode.COMPASS_FOLLOW) {
+                    val providerSample = CompassHeadingDiagnostics.wakeHeadingSnapshot().provider
                     wakeContinuityCapture.recordInteractive(
-                        providerHeadingDeg =
-                            CompassHeadingDiagnostics.wakeHeadingSnapshot().provider?.providerHeadingDeg,
+                        providerHeadingDeg = providerSample?.providerHeadingDeg,
                         targetHeadingDeg = state.headingDeg,
                         renderedHeadingDeg = displayedHeading.floatValue,
+                        pitchDeg = providerSample?.pitchDeg,
+                        rollDeg = providerSample?.rollDeg,
+                        projection = providerSample?.projection,
+                        atElapsedMs = SystemClock.elapsedRealtime(),
                     )
                 }
                 val canDriveHeading = shouldDriveHeadingForNavMode(navMode, state)
@@ -482,12 +491,16 @@ fun NavigationOrientationEffect(
                     )
                 val next = normalize360(current + animationDelta)
                 displayedHeading.floatValue = next
-                if (latestCompassInteractive.value && DebugTelemetry.isEnabled()) {
+                if (latestCompassInteractive.value && navMode == NavMode.COMPASS_FOLLOW) {
+                    val providerSample = CompassHeadingDiagnostics.wakeHeadingSnapshot().provider
                     wakeContinuityCapture.recordInteractive(
-                        providerHeadingDeg =
-                            CompassHeadingDiagnostics.wakeHeadingSnapshot().provider?.providerHeadingDeg,
+                        providerHeadingDeg = providerSample?.providerHeadingDeg,
                         targetHeadingDeg = headingTarget.headingDeg,
                         renderedHeadingDeg = next,
+                        pitchDeg = providerSample?.pitchDeg,
+                        rollDeg = providerSample?.rollDeg,
+                        projection = providerSample?.projection,
+                        atElapsedMs = nowElapsedMs,
                     )
                 }
                 CompassRenderPerfTelemetry.recordHeadingRender(navMode)
@@ -604,28 +617,62 @@ private object CompassRenderPerfTelemetry {
 
 /** Captures what was actually visible before the display became non-interactive. */
 internal class NavigateWakeContinuityCapture {
+    private val interactiveHistory = ArrayDeque<InteractiveHeadingSample>()
     private var lastInteractiveProviderHeadingDeg = Float.NaN
     private var lastInteractiveTargetHeadingDeg = Float.NaN
     private var lastInteractiveRenderedHeadingDeg = Float.NaN
     private var screenOffAnchorHeadingDeg = Float.NaN
 
+    fun beginInteractiveSession() {
+        interactiveHistory.clear()
+        lastInteractiveProviderHeadingDeg = Float.NaN
+        lastInteractiveTargetHeadingDeg = Float.NaN
+        lastInteractiveRenderedHeadingDeg = Float.NaN
+    }
+
     fun recordInteractive(
         providerHeadingDeg: Float?,
         targetHeadingDeg: Float,
         renderedHeadingDeg: Float,
+        pitchDeg: Float?,
+        rollDeg: Float?,
+        projection: Float?,
+        atElapsedMs: Long,
     ) {
         providerHeadingDeg?.takeIf(Float::isFinite)?.let { lastInteractiveProviderHeadingDeg = it }
         if (targetHeadingDeg.isFinite()) lastInteractiveTargetHeadingDeg = targetHeadingDeg
         if (renderedHeadingDeg.isFinite()) lastInteractiveRenderedHeadingDeg = renderedHeadingDeg
+        if (!renderedHeadingDeg.isFinite()) return
+        interactiveHistory.addLast(
+            InteractiveHeadingSample(
+                renderedHeadingDeg = renderedHeadingDeg,
+                pitchDeg = pitchDeg?.takeIf(Float::isFinite),
+                rollDeg = rollDeg?.takeIf(Float::isFinite),
+                projection = projection?.takeIf(Float::isFinite),
+                atElapsedMs = atElapsedMs,
+            ),
+        )
+        while (interactiveHistory.firstOrNull()?.atElapsedMs ?: Long.MAX_VALUE < atElapsedMs - WAKE_ANCHOR_HISTORY_MS) {
+            interactiveHistory.removeFirst()
+        }
     }
 
-    fun screenOff(fallbackHeadingDeg: Float): NavigateScreenOffAnchorSnapshot {
-        screenOffAnchorHeadingDeg = fallbackHeadingDeg
+    fun screenOff(
+        fallbackHeadingDeg: Float,
+        nowElapsedMs: Long,
+    ): NavigateScreenOffAnchorSnapshot {
+        val selection = selectScreenOffAnchor(fallbackHeadingDeg, nowElapsedMs)
+        screenOffAnchorHeadingDeg = selection.headingDeg
         return NavigateScreenOffAnchorSnapshot(
             lastInteractiveProviderHeadingDeg = lastInteractiveProviderHeadingDeg,
             lastInteractiveTargetHeadingDeg = lastInteractiveTargetHeadingDeg,
             lastInteractiveRenderedHeadingDeg = lastInteractiveRenderedHeadingDeg,
             screenOffAnchorHeadingDeg = this.screenOffAnchorHeadingDeg,
+            currentRenderedHeadingDeg = fallbackHeadingDeg,
+            anchorRewindMs = selection.rewindMs,
+            preLoweringDetected = selection.preLoweringDetected,
+            motionStartAgeMs = selection.motionStartAgeMs,
+            selectionReason = selection.reason,
         )
     }
 
@@ -643,13 +690,107 @@ internal class NavigateWakeContinuityCapture {
                 },
         )
     }
+
+    private fun selectScreenOffAnchor(
+        currentHeadingDeg: Float,
+        nowElapsedMs: Long,
+    ): WakeAnchorSelection {
+        val samples = interactiveHistory.filter { nowElapsedMs - it.atElapsedMs in 0L..WAKE_ANCHOR_HISTORY_MS }
+        val latestSample = samples.lastOrNull()
+            ?: return WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_history")
+        if (nowElapsedMs - latestSample.atElapsedMs > WAKE_ANCHOR_RECENT_MOTION_MS) {
+            return WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_recent_motion")
+        }
+        val stableCandidate =
+            samples
+                .asReversed()
+                .firstOrNull { candidate ->
+                    isStableBefore(candidate, samples) &&
+                        abs(angleDeltaDeg(currentHeadingDeg, candidate.renderedHeadingDeg)) >=
+                            WAKE_ANCHOR_MIN_HEADING_CHANGE_DEG &&
+                        hasLoweringTiltSignature(candidate, latestSample)
+                }
+        return if (stableCandidate == null) {
+            WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_lowering_signature")
+        } else {
+            WakeAnchorSelection(
+                headingDeg = stableCandidate.renderedHeadingDeg,
+                rewindMs = (nowElapsedMs - stableCandidate.atElapsedMs).coerceAtLeast(0L),
+                preLoweringDetected = true,
+                motionStartAgeMs = (nowElapsedMs - stableCandidate.atElapsedMs).coerceAtLeast(0L),
+                reason = "pre_lowering_stable_visible",
+            )
+        }
+    }
+
+    private fun isStableBefore(
+        candidate: InteractiveHeadingSample,
+        samples: List<InteractiveHeadingSample>,
+    ): Boolean {
+        val preceding =
+            samples.filter { sample ->
+                sample.atElapsedMs in (candidate.atElapsedMs - WAKE_ANCHOR_STABILITY_WINDOW_MS)..candidate.atElapsedMs
+            }
+        return preceding.size >= 2 &&
+            preceding.all { sample ->
+                abs(angleDeltaDeg(sample.renderedHeadingDeg, candidate.renderedHeadingDeg)) <=
+                    WAKE_ANCHOR_STABLE_HEADING_TOLERANCE_DEG
+            }
+    }
+
+    private fun hasLoweringTiltSignature(
+        stable: InteractiveHeadingSample,
+        current: InteractiveHeadingSample,
+    ): Boolean {
+        val pitchChangeDeg =
+            if (stable.pitchDeg != null && current.pitchDeg != null) {
+                abs(current.pitchDeg - stable.pitchDeg)
+            } else {
+                0f
+            }
+        val rollChangeDeg =
+            if (stable.rollDeg != null && current.rollDeg != null) {
+                abs(current.rollDeg - stable.rollDeg)
+            } else {
+                0f
+            }
+        val projectionDrop =
+            if (stable.projection != null && current.projection != null) {
+                stable.projection - current.projection
+            } else {
+                0f
+            }
+        return maxOf(pitchChangeDeg, rollChangeDeg) >= WAKE_ANCHOR_MIN_TILT_CHANGE_DEG ||
+            projectionDrop >= WAKE_ANCHOR_MIN_PROJECTION_DROP
+    }
 }
+
+private data class InteractiveHeadingSample(
+    val renderedHeadingDeg: Float,
+    val pitchDeg: Float?,
+    val rollDeg: Float?,
+    val projection: Float?,
+    val atElapsedMs: Long,
+)
+
+private data class WakeAnchorSelection(
+    val headingDeg: Float,
+    val rewindMs: Long,
+    val preLoweringDetected: Boolean,
+    val motionStartAgeMs: Long?,
+    val reason: String,
+)
 
 internal data class NavigateScreenOffAnchorSnapshot(
     val lastInteractiveProviderHeadingDeg: Float,
     val lastInteractiveTargetHeadingDeg: Float,
     val lastInteractiveRenderedHeadingDeg: Float,
     val screenOffAnchorHeadingDeg: Float,
+    val currentRenderedHeadingDeg: Float,
+    val anchorRewindMs: Long,
+    val preLoweringDetected: Boolean,
+    val motionStartAgeMs: Long?,
+    val selectionReason: String,
 )
 
 internal data class NavigateWakeAnchorSnapshot(
@@ -666,9 +807,23 @@ private fun NavigateScreenOffAnchorSnapshot.log() {
             "lastInteractiveProviderHeading=${lastInteractiveProviderHeadingDeg.formatWakeAnchor(1)} " +
             "lastInteractiveTargetHeading=${lastInteractiveTargetHeadingDeg.formatWakeAnchor(1)} " +
             "lastInteractiveRenderedHeading=${lastInteractiveRenderedHeadingDeg.formatWakeAnchor(1)} " +
-            "screenOffAnchorHeading=${screenOffAnchorHeadingDeg.formatWakeAnchor(1)}",
+            "screenOffAnchorHeading=${screenOffAnchorHeadingDeg.formatWakeAnchor(1)} " +
+            "screenOffCurrentRenderedHeading=${currentRenderedHeadingDeg.formatWakeAnchor(1)} " +
+            "screenOffSelectedAnchorHeading=${screenOffAnchorHeadingDeg.formatWakeAnchor(1)} " +
+            "screenOffAnchorRewindMs=$anchorRewindMs " +
+            "screenOffPreLoweringDetected=$preLoweringDetected " +
+            "screenOffMotionStartAgeMs=${motionStartAgeMs ?: "na"} " +
+            "screenOffAnchorSelectionReason=$selectionReason",
     )
 }
+
+private const val WAKE_ANCHOR_HISTORY_MS = 2_000L
+private const val WAKE_ANCHOR_RECENT_MOTION_MS = 350L
+private const val WAKE_ANCHOR_STABILITY_WINDOW_MS = 150L
+private const val WAKE_ANCHOR_STABLE_HEADING_TOLERANCE_DEG = 5f
+private const val WAKE_ANCHOR_MIN_HEADING_CHANGE_DEG = 20f
+private const val WAKE_ANCHOR_MIN_TILT_CHANGE_DEG = 15f
+private const val WAKE_ANCHOR_MIN_PROJECTION_DROP = 0.12f
 
 private fun NavigateWakeAnchorSnapshot.log() {
     if (!DebugTelemetry.isEnabled()) return

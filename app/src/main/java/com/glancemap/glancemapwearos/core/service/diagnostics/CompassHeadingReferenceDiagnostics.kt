@@ -11,10 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
+private const val MAX_PROVIDER_SAMPLE_AGE_MS = 2_000L
+private const val MAX_RENDER_SAMPLE_AGE_MS = 2_000L
+
 /** Debug-only captures for tester-supplied absolute-heading references. */
 internal object CompassHeadingReferenceDiagnostics {
     private const val TAG = "CompassTelemetry"
-    private const val MAX_PROVIDER_SAMPLE_AGE_MS = 2_000L
     private val lock = Any()
     private val _active = MutableStateFlow(false)
     private var accumulator: CompassHeadingReferenceAccumulator? = null
@@ -79,33 +81,53 @@ internal object CompassHeadingReferenceDiagnostics {
         }
     }
 
-    fun recordReference(referenceHeadingDeg: Float): Boolean {
-        if (!_active.value || !DebugTelemetry.isEnabled()) return false
+    fun recordReference(referenceHeadingDeg: Float): CompassHeadingReferenceMarkResult {
+        if (!_active.value || !DebugTelemetry.isEnabled()) {
+            return CompassHeadingReferenceMarkResult.TEST_INACTIVE
+        }
         val capturedAtElapsedMs = SystemClock.elapsedRealtime()
-        val marker =
+        val attempt =
             synchronized(lock) {
-                val provider = latestProvider ?: return false
-                val render = latestRender ?: return false
-                if (capturedAtElapsedMs - provider.atElapsedMs > MAX_PROVIDER_SAMPLE_AGE_MS) return false
-                CompassHeadingReferenceMarker(
-                    referenceHeadingDeg = referenceHeadingDeg,
-                    provider = provider,
-                    render = render,
-                    capturedAtElapsedMs = capturedAtElapsedMs,
-                    declination =
-                        expectedDeclination(
-                            location = latestDeclinationLocation,
-                            locationReceivedAtElapsedMs = latestDeclinationLocationReceivedAtElapsedMs,
-                            nowElapsedMs = capturedAtElapsedMs,
-                        ),
-                ).also { accumulator?.record(it) }
+                val result =
+                    validateHeadingReferenceMark(
+                        active = _active.value,
+                        provider = latestProvider,
+                        render = latestRender,
+                        capturedAtElapsedMs = capturedAtElapsedMs,
+                    )
+                val marker =
+                    if (result == CompassHeadingReferenceMarkResult.RECORDED) {
+                        CompassHeadingReferenceMarker(
+                            referenceHeadingDeg = referenceHeadingDeg,
+                            provider = requireNotNull(latestProvider),
+                            render = requireNotNull(latestRender),
+                            capturedAtElapsedMs = capturedAtElapsedMs,
+                            declination =
+                                expectedDeclination(
+                                    location = latestDeclinationLocation,
+                                    locationReceivedAtElapsedMs = latestDeclinationLocationReceivedAtElapsedMs,
+                                    nowElapsedMs = capturedAtElapsedMs,
+                                ),
+                        ).also { accumulator?.record(it) }
+                    } else {
+                        null
+                    }
+                HeadingReferenceMarkAttempt(result = result, marker = marker)
             }
+        val marker = attempt.marker
+        if (marker == null) {
+            DebugTelemetry.log(
+                TAG,
+                "heading_reference_marker rejected reason=${attempt.result.telemetryToken}",
+            )
+            return attempt.result
+        }
         FieldMarkerDiagnostics.recordMarker(
             type = "heading_reference_marker",
             note = "reference_${referenceLabel(referenceHeadingDeg)}",
         )
         DebugTelemetry.log(TAG, marker.toTelemetryLine())
-        return true
+        return CompassHeadingReferenceMarkResult.RECORDED
     }
 }
 
@@ -147,12 +169,81 @@ private fun expectedDeclination(
 internal data class CompassHeadingReferenceProviderSample(
     val googleFusedHeadingDeg: Float,
     val targetHeadingDeg: Float?,
+    val usable: Boolean,
     val northBasis: CompassNorthBasis,
     val magneticFieldUt: Float?,
     val integrityState: CompassTrackingState,
     val pitchDeg: Float?,
     val rollDeg: Float?,
     val atElapsedMs: Long,
+)
+
+internal enum class CompassHeadingReferenceMarkResult(
+    val telemetryToken: String,
+    val userMessage: String,
+) {
+    RECORDED(
+        telemetryToken = "recorded",
+        userMessage = "Heading marked",
+    ),
+    TEST_INACTIVE(
+        telemetryToken = "test_inactive",
+        userMessage = "Start heading test first",
+    ),
+    PROVIDER_UNAVAILABLE(
+        telemetryToken = "provider_unavailable",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+    PROVIDER_UNUSABLE(
+        telemetryToken = "provider_unusable",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+    PROVIDER_STALE(
+        telemetryToken = "provider_stale",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+    TARGET_UNAVAILABLE(
+        telemetryToken = "target_unavailable",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+    RENDER_UNAVAILABLE(
+        telemetryToken = "render_unavailable",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+    RENDER_STALE(
+        telemetryToken = "render_stale",
+        userMessage = "Waiting for compass — keep Navigate open",
+    ),
+}
+
+internal fun validateHeadingReferenceMark(
+    active: Boolean,
+    provider: CompassHeadingReferenceProviderSample?,
+    render: CompassHeadingReferenceRenderSample?,
+    capturedAtElapsedMs: Long,
+): CompassHeadingReferenceMarkResult =
+    when {
+        !active -> CompassHeadingReferenceMarkResult.TEST_INACTIVE
+        provider == null -> CompassHeadingReferenceMarkResult.PROVIDER_UNAVAILABLE
+        !provider.usable || !provider.googleFusedHeadingDeg.isFinite() ->
+            CompassHeadingReferenceMarkResult.PROVIDER_UNUSABLE
+        capturedAtElapsedMs - provider.atElapsedMs > MAX_PROVIDER_SAMPLE_AGE_MS ->
+            CompassHeadingReferenceMarkResult.PROVIDER_STALE
+        provider.targetHeadingDeg?.isFinite() != true ->
+            CompassHeadingReferenceMarkResult.TARGET_UNAVAILABLE
+        render == null ||
+            !render.targetHeadingDeg.isFinite() ||
+            !render.renderedHeadingDeg.isFinite() ||
+            !render.mapsforgeMapRotationDeg.isFinite() ->
+            CompassHeadingReferenceMarkResult.RENDER_UNAVAILABLE
+        capturedAtElapsedMs - render.atElapsedMs > MAX_RENDER_SAMPLE_AGE_MS ->
+            CompassHeadingReferenceMarkResult.RENDER_STALE
+        else -> CompassHeadingReferenceMarkResult.RECORDED
+    }
+
+private data class HeadingReferenceMarkAttempt(
+    val result: CompassHeadingReferenceMarkResult,
+    val marker: CompassHeadingReferenceMarker?,
 )
 
 internal data class CompassHeadingReferenceRenderSample(
