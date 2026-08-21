@@ -14,6 +14,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -46,6 +47,8 @@ class OamDownloadForegroundService : Service() {
     private var stopRequest: OwnedStopRequest? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var wakeLockAcquiredAtElapsedMs: Long? = null
+    private var wakeLockGeneration = 0
     private var terminalNotificationPosted = false
 
     override fun onCreate() {
@@ -134,12 +137,7 @@ class OamDownloadForegroundService : Service() {
                 downloader.downloadBundle(
                     area = area,
                     selection = plan.selection,
-                    extractionKeepAliveState = {
-                        OamDownloadKeepAliveState(
-                            wakeLockHeld = wakeLock?.isHeld == true,
-                            wifiLockHeld = wifiLock?.isHeld == true,
-                        )
-                    },
+                    extractionKeepAliveState = ::currentKeepAliveState,
                 ) { progress ->
                     if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                     if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
@@ -333,10 +331,12 @@ class OamDownloadForegroundService : Service() {
     }
 
     @SuppressLint("WakelockTimeout")
+    @Synchronized
     private fun acquireLocks() {
         var wakeLockAcquired = false
         var wifiLockAcquired = false
         if (wakeLock?.isHeld != true) {
+            wakeLockAcquiredAtElapsedMs = null
             val powerManager = getSystemService(PowerManager::class.java)
             wakeLock =
                 powerManager
@@ -345,6 +345,10 @@ class OamDownloadForegroundService : Service() {
                         setReferenceCounted(false)
                         acquire(WAKE_LOCK_TIMEOUT_MS)
                         wakeLockAcquired = isHeld
+                        if (wakeLockAcquired) {
+                            wakeLockAcquiredAtElapsedMs = SystemClock.elapsedRealtime()
+                            wakeLockGeneration += 1
+                        }
                     }
         }
         if (wifiLock?.isHeld != true) {
@@ -359,13 +363,18 @@ class OamDownloadForegroundService : Service() {
                     }
         }
         if (wakeLockAcquired || wifiLockAcquired) {
+            val keepAliveState = currentKeepAliveState()
             DebugTelemetry.log(
                 "OamDownload",
-                "event=foreground_keepalive_acquired wakeLock=$wakeLockAcquired wifiLock=$wifiLockAcquired",
+                "event=foreground_keepalive_acquired wakeLock=$wakeLockAcquired wifiLock=$wifiLockAcquired " +
+                    "wakeLockType=${keepAliveState.wakeLockType} " +
+                    "wakeLockGeneration=${keepAliveState.wakeLockGeneration} " +
+                    "wakeLockTimeoutMs=${keepAliveState.wakeLockTimeoutMs ?: "na"}",
             )
         }
     }
 
+    @Synchronized
     private fun releaseLocks() {
         val wakeLockWasHeld = wakeLock?.isHeld == true
         val wifiLockWasHeld = wifiLock?.isHeld == true
@@ -377,12 +386,30 @@ class OamDownloadForegroundService : Service() {
         }
         wakeLock = null
         wifiLock = null
+        wakeLockAcquiredAtElapsedMs = null
         if (wakeLockWasHeld || wifiLockWasHeld) {
             DebugTelemetry.log(
                 "OamDownload",
                 "event=foreground_keepalive_released wakeLock=$wakeLockWasHeld wifiLock=$wifiLockWasHeld",
             )
         }
+    }
+
+    @Synchronized
+    private fun currentKeepAliveState(): OamDownloadKeepAliveState {
+        val wakeLockHeld = wakeLock?.isHeld == true
+        val acquireAgeMs =
+            wakeLockAcquiredAtElapsedMs?.let {
+                (SystemClock.elapsedRealtime() - it).coerceAtLeast(0L)
+            }
+        return OamDownloadKeepAliveState(
+            wakeLockHeld = wakeLockHeld,
+            wifiLockHeld = wifiLock?.isHeld == true,
+            wakeLockType = if (wakeLock != null) "PARTIAL_WAKE_LOCK" else "none",
+            wakeLockAcquireAgeMs = acquireAgeMs,
+            wakeLockTimeoutMs = if (wakeLock != null) WAKE_LOCK_TIMEOUT_MS else null,
+            wakeLockGeneration = wakeLockGeneration,
+        )
     }
 
     private fun buildProgressNotification(

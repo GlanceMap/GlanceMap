@@ -18,6 +18,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.Process
+import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
@@ -1626,7 +1627,8 @@ class OamBundleDownloader(
                                 label = label,
                                 entryFileName = entryFileName,
                                 totalBytes = expectedSize,
-                                nowMs = { System.nanoTime() / 1_000_000L },
+                                wallNowMs = SystemClock::elapsedRealtime,
+                                uptimeNowMs = SystemClock::uptimeMillis,
                                 processCpuMs = Process::getElapsedCpuTime,
                                 runtimeSnapshot = {
                                     captureExtractionRuntimeSnapshot(extractionKeepAliveState())
@@ -1761,6 +1763,10 @@ class OamBundleDownloader(
                 },
             wakeLockHeld = keepAliveState.wakeLockHeld,
             wifiLockHeld = keepAliveState.wifiLockHeld,
+            wakeLockType = keepAliveState.wakeLockType,
+            wakeLockAcquireAgeMs = keepAliveState.wakeLockAcquireAgeMs,
+            wakeLockTimeoutMs = keepAliveState.wakeLockTimeoutMs,
+            wakeLockGeneration = keepAliveState.wakeLockGeneration,
         )
     }
 

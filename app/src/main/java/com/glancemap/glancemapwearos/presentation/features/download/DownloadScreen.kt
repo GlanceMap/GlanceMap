@@ -451,7 +451,7 @@ fun DownloadScreen(
                                 locationPermissionState.launchPermissions()
                             }
                         },
-                        onAddSuggestedArea = viewModel::addSuggestedArea,
+                        onToggleSuggestedArea = viewModel::toggleArea,
                         onOpenSearch = { showAreaSearchDialog = true },
                         onClearSearch = { onAreaSearchQueryChange("") },
                         onClearAreaSelection = viewModel::clearAreaSelection,

@@ -147,21 +147,6 @@ class DownloadViewModel(
         return suggestedAreas
     }
 
-    fun addSuggestedArea(areaId: String) {
-        if (_uiState.value.isDownloading) return
-        downloadServiceClient.discardPausedPlan()
-        _uiState.update { state ->
-            state.copy(
-                selectedAreaIds = state.selectedAreaIds + areaId,
-                isPausedDownload = false,
-                pausedOperation = null,
-                statusMessage = null,
-                errorMessage = null,
-                networkWarningMessage = null,
-            )
-        }
-    }
-
     fun setIncludeMap(includeMap: Boolean) {
         if (_uiState.value.isDownloading) return
         downloadServiceClient.discardPausedPlan()

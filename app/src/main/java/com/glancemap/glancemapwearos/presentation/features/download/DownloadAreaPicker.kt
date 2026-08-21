@@ -37,7 +37,7 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
     locationSuggestionMessage: String?,
     onDone: () -> Unit,
     onUseCurrentLocation: () -> Unit,
-    onAddSuggestedArea: (String) -> Unit,
+    onToggleSuggestedArea: (String) -> Unit,
     onOpenSearch: () -> Unit,
     onClearSearch: () -> Unit,
     onClearAreaSelection: () -> Unit,
@@ -58,38 +58,48 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
         )
     }
 
-    suggestedAreas.forEachIndexed { index, area ->
-        item {
-            DownloadChip(
-                label = if (index == 0) "Suggested: ${area.region}" else area.region,
-                secondaryLabel =
-                    if (area.id in selectedAreaIds) {
-                        "Already selected"
-                    } else if (index == 0) {
-                        "Covers your location"
-                    } else {
-                        "Also covers your location"
-                    },
-                icon = Icons.Filled.MyLocation,
-                selected = area.id in selectedAreaIds,
-                onClick = { onAddSuggestedArea(area.id) },
-            )
-        }
-    }
-
     item {
         DownloadChip(
-            label = if (isFindingCurrentLocation) "Finding location…" else "Use current location",
+            label = "Current location",
             secondaryLabel =
-                locationSuggestionMessage
-                    ?: if (suggestedAreas.isEmpty()) {
-                        "Suggest a map bundle"
-                    } else {
-                        "Refresh suggestion"
-                    },
+                when {
+                    isFindingCurrentLocation -> "Finding matching bundles…"
+                    locationSuggestionMessage != null -> locationSuggestionMessage
+                    suggestedAreas.isEmpty() -> "Find nearby bundles"
+                    else -> "Refresh nearby bundles"
+                },
             icon = Icons.Filled.MyLocation,
             onClick = onUseCurrentLocation,
         )
+    }
+
+    if (suggestedAreas.isNotEmpty()) {
+        item {
+            Text(
+                text = "Suggested bundles",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        suggestedAreas.forEachIndexed { index, area ->
+            val selected = area.id in selectedAreaIds
+            item {
+                DownloadChip(
+                    label = area.region,
+                    secondaryLabel =
+                        when {
+                            selected -> "Selected"
+                            index == 0 -> "Best match"
+                            else -> "Also covers location"
+                        },
+                    icon = if (selected) Icons.Filled.Check else Icons.Filled.MyLocation,
+                    selected = selected,
+                    onClick = { onToggleSuggestedArea(area.id) },
+                )
+            }
+        }
     }
 
     item {
