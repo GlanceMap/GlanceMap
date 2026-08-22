@@ -515,6 +515,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
+        compactPopupSuppressed = shortcutTrayExpanded,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||
@@ -576,6 +577,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
+        compactPopupSuppressed = shortcutTrayExpanded,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||

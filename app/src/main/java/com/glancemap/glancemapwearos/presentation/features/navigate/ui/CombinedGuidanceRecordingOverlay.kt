@@ -107,6 +107,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     expandRequestToken: Long,
     actionPromptRequestToken: Long,
     compactPopupEnabled: Boolean,
+    compactPopupSuppressed: Boolean,
     suppressed: Boolean,
     onPauseGuidance: () -> Unit,
     onResumeGuidance: () -> Unit,
@@ -293,7 +294,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
         }
     }
 
-    if (!expanded && compactPopupEnabled) {
+    if (!expanded && compactPopupEnabled && !compactPopupSuppressed) {
         CombinedCompactPopup(
             guidanceState = guidanceState,
             guidancePaused = guidancePaused,

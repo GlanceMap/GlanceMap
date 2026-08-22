@@ -97,6 +97,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     expandRequestToken: Long,
     actionPromptRequestToken: Long,
     compactPopupEnabled: Boolean,
+    compactPopupSuppressed: Boolean,
     suppressed: Boolean = false,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -274,7 +275,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
         }
     }
 
-    if (!expanded && compactPopupEnabled) {
+    if (!expanded && compactPopupEnabled && !compactPopupSuppressed) {
         val compactBackground = Color.Black.copy(alpha = 0.9f)
         val compactBorder = Color.Transparent
         Box(
