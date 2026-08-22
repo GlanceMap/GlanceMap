@@ -9,6 +9,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -73,7 +74,6 @@ import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboar
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
-import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardMetricTile
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingFullscreenPageShell
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingStopPromptCard
@@ -81,7 +81,6 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.b
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.formattedRecordingMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.logRecordingDashboardPageChange
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.normalizedRecordingDashboardSlots
-import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingDashboardMetricTileHeight
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingMetricPickerOptionsForProfile
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
@@ -126,6 +125,17 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     if ((!guidanceState.active && !guidancePaused) || (!recordingState.active && !recordingState.saving)) return
 
     var expanded by remember { mutableStateOf(false) }
+    val expandedVisibility = remember { MutableTransitionState(false) }
+    expandedVisibility.targetState = expanded
+    val popupOwnsTimeChip =
+        fullScreenPopupTransitionOwnsTimeChip(
+            currentlyVisible = expandedVisibility.currentState,
+            targetVisible = expandedVisibility.targetState,
+        )
+    fun expandPopup() {
+        onExpandedChange(true)
+        expanded = true
+    }
     var showActions by remember { mutableStateOf(false) }
     var showStopPrompt by remember { mutableStateOf(false) }
     var stopPromptPausedRecording by remember { mutableStateOf(false) }
@@ -157,8 +167,8 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             onExpandedChange(false)
         }
     }
-    LaunchedEffect(expanded) {
-        onExpandedChange(expanded)
+    LaunchedEffect(popupOwnsTimeChip) {
+        onExpandedChange(popupOwnsTimeChip)
     }
     LaunchedEffect(actionPromptRequestToken) {
         val shouldHandle =
@@ -184,7 +194,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             )
             showActions = false
             showStopPrompt = false
-            expanded = true
+            expandPopup()
         } else if (shouldHandle) {
             DebugTelemetry.log(
                 "TraceRecording",
@@ -224,7 +234,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
         )
 
     AnimatedVisibility(
-        visible = expanded,
+        visibleState = expandedVisibility,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier =
@@ -295,7 +305,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             onExpand = {
                 DebugTelemetry.log("TurnByTurn", "event=compact_popup_tap mode=combined")
                 showActions = false
-                expanded = true
+                expandPopup()
             },
             onShowActions = {
                 DebugTelemetry.log("TurnByTurn", "event=compact_popup_long_press mode=combined")
@@ -802,58 +812,12 @@ private fun CombinedRecordingPage(
         List(RECORDING_DASHBOARD_PAGE_SLOT_COUNT) { index ->
             slots.getOrElse(index) { SettingsRepository.RECORDING_METRIC_DISTANCE }
         }
-    val contentWidthFraction =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 0.72f
-            WearScreenSize.MEDIUM -> 0.68f
-            WearScreenSize.SMALL -> 0.64f
-        }
-    val tileHeight = recordingDashboardMetricTileHeight(screenSize)
-    val statusRowHeight =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 18.dp
-            WearScreenSize.MEDIUM -> 16.dp
-            WearScreenSize.SMALL -> 14.dp
-        }
-
-    cappedFontScale(maxFontScale = 1f) {
-        Column(
-            modifier = Modifier.fillMaxWidth(contentWidthFraction),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
-        ) {
-            Box(modifier = Modifier.height(statusRowHeight))
-            RecordingDashboardMetricTile(
-                metric = formattedRecordingMetric(tileSlots[0], snapshot, isMetric),
-                height = tileHeight,
-                onLongPress = { onSlotLongPress(0) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                RecordingDashboardMetricTile(
-                    metric = formattedRecordingMetric(tileSlots[1], snapshot, isMetric),
-                    height = tileHeight,
-                    onLongPress = { onSlotLongPress(1) },
-                    modifier = Modifier.weight(1f),
-                )
-                RecordingDashboardMetricTile(
-                    metric = formattedRecordingMetric(tileSlots[2], snapshot, isMetric),
-                    height = tileHeight,
-                    onLongPress = { onSlotLongPress(2) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            RecordingDashboardMetricTile(
-                metric = formattedRecordingMetric(tileSlots[3], snapshot, isMetric),
-                height = tileHeight,
-                onLongPress = { onSlotLongPress(3) },
-                modifier = Modifier.fillMaxWidth(0.86f),
-            )
-        }
-    }
+    TurnByTurnMetricDashboardGrid(
+        metrics = tileSlots.map { formattedRecordingMetric(it, snapshot, isMetric) },
+        header = null,
+        screenSize = screenSize,
+        onSlotLongPress = onSlotLongPress,
+    )
 }
 
 @Composable

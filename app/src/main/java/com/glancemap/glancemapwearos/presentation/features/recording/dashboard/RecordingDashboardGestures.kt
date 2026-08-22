@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -21,9 +22,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.formatNavigateClockTime
@@ -66,13 +72,49 @@ internal fun RecordingFullscreenPageShell(
     telemetryTag: String = "TraceRecording",
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
     val focusRequester = remember { FocusRequester() }
     var rotaryAccumulator by remember(pageCount) { mutableFloatStateOf(0f) }
+    var rotaryFocusGeneration by remember { mutableIntStateOf(0) }
+    var wakeResumedAtElapsedMs by remember { mutableLongStateOf(0L) }
+    var pendingWakeRotaryEventGeneration by remember { mutableIntStateOf(0) }
+    var loggedRotaryEventCount by remember(pageCount, pageIndex, rotaryFocusGeneration) {
+        mutableIntStateOf(0)
+    }
 
-    LaunchedEffect(pageCount, pageIndex) {
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (dashboardRotaryLifecycleAction(event)) {
+                    DashboardRotaryLifecycleAction.RESET -> {
+                        rotaryAccumulator = 0f
+                        DebugTelemetry.log(telemetryTag, "event=dashboard_rotary_pause accumulator_reset=true")
+                    }
+
+                    DashboardRotaryLifecycleAction.RESET_AND_REFOCUS -> {
+                        rotaryAccumulator = 0f
+                        rotaryFocusGeneration += 1
+                        wakeResumedAtElapsedMs = SystemClock.elapsedRealtime()
+                        pendingWakeRotaryEventGeneration = rotaryFocusGeneration
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_wake session=$rotaryFocusGeneration accumulator_reset=true",
+                        )
+                    }
+
+                    DashboardRotaryLifecycleAction.NONE -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(pageCount, pageIndex, rotaryFocusGeneration) {
         var focusAcquired = false
         var attempt = 0
-        while (!focusAcquired && attempt < 3) {
+        while (!focusAcquired && attempt < POPUP_ROTARY_FOCUS_MAX_ATTEMPTS) {
             withFrameNanos { }
             focusAcquired = focusRequester.requestFocus()
             attempt += 1
@@ -80,7 +122,8 @@ internal fun RecordingFullscreenPageShell(
         DebugTelemetry.log(
             telemetryTag,
             "event=dashboard_rotary_focus_requested acquired=$focusAcquired " +
-                "page=${pageIndex + 1} pageCount=$pageCount",
+                "attempts=$attempt reason=${if (rotaryFocusGeneration == 0) "popup_open" else "wake"} " +
+                "session=$rotaryFocusGeneration page=${pageIndex + 1} pageCount=$pageCount",
         )
     }
     BackHandler(onBack = onDismiss)
@@ -110,14 +153,38 @@ internal fun RecordingFullscreenPageShell(
                         totalDragY += dragAmount
                     }
                 }.onPreRotaryScrollEvent { event ->
-                    handleRecordingRotaryPageEvent(
-                        delta = event.verticalScrollPixels,
-                        pageCount = pageCount,
-                        accumulator = rotaryAccumulator,
-                        onAccumulatorChange = { rotaryAccumulator = it },
-                        onPreviousPage = onPreviousPage,
-                        onNextPage = onNextPage,
-                    )
+                    if (
+                        rotaryFocusGeneration > 0 &&
+                            pendingWakeRotaryEventGeneration == rotaryFocusGeneration
+                    ) {
+                        val latencyMs =
+                            (SystemClock.elapsedRealtime() - wakeResumedAtElapsedMs).coerceAtLeast(0L)
+                        pendingWakeRotaryEventGeneration = 0
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_first_event_after_wake session=$rotaryFocusGeneration " +
+                                "latencyMs=$latencyMs delta=${event.verticalScrollPixels}",
+                        )
+                    }
+                    val consumed =
+                        handleRecordingRotaryPageEvent(
+                            delta = event.verticalScrollPixels,
+                            pageCount = pageCount,
+                            accumulator = rotaryAccumulator,
+                            onAccumulatorChange = { rotaryAccumulator = it },
+                            onPreviousPage = onPreviousPage,
+                            onNextPage = onNextPage,
+                        )
+                    if (loggedRotaryEventCount < DASHBOARD_ROTARY_EVENT_LOG_LIMIT) {
+                        loggedRotaryEventCount += 1
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_event index=$loggedRotaryEventCount " +
+                                "delta=${event.verticalScrollPixels} consumed=$consumed " +
+                                "accumulator=$rotaryAccumulator page=${pageIndex + 1}",
+                        )
+                    }
+                    consumed
                 }.focusRequester(focusRequester)
                 .focusable(),
         contentAlignment = Alignment.Center,
@@ -351,6 +418,21 @@ private fun handleRecordingRotaryPageEvent(
 
 private const val POPUP_PAGE_DRAG_THRESHOLD_PX = 24f
 private const val POPUP_ROTARY_PAGE_THRESHOLD_PX = 56f
+private const val POPUP_ROTARY_FOCUS_MAX_ATTEMPTS = 20
+private const val DASHBOARD_ROTARY_EVENT_LOG_LIMIT = 3
+
+internal enum class DashboardRotaryLifecycleAction {
+    NONE,
+    RESET,
+    RESET_AND_REFOCUS,
+}
+
+internal fun dashboardRotaryLifecycleAction(event: Lifecycle.Event): DashboardRotaryLifecycleAction =
+    when (event) {
+        Lifecycle.Event.ON_PAUSE -> DashboardRotaryLifecycleAction.RESET
+        Lifecycle.Event.ON_RESUME -> DashboardRotaryLifecycleAction.RESET_AND_REFOCUS
+        else -> DashboardRotaryLifecycleAction.NONE
+    }
 
 internal fun Int.floorMod(modulus: Int): Int =
     if (modulus <= 0) {

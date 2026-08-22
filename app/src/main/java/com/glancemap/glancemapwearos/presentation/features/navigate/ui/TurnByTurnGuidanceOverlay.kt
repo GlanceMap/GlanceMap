@@ -3,6 +3,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -116,6 +117,17 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     if (!state.active && !paused) return
 
     var expanded by remember(state.trackTitle) { mutableStateOf(false) }
+    val expandedVisibility = remember(state.trackTitle) { MutableTransitionState(false) }
+    expandedVisibility.targetState = expanded
+    val popupOwnsTimeChip =
+        fullScreenPopupTransitionOwnsTimeChip(
+            currentlyVisible = expandedVisibility.currentState,
+            targetVisible = expandedVisibility.targetState,
+        )
+    fun expandPopup() {
+        onExpandedChange(true)
+        expanded = true
+    }
     var showActionPrompt by remember(state.trackTitle, paused) { mutableStateOf(false) }
     var arrivalPromptDismissed by remember(state.trackTitle) { mutableStateOf(false) }
     var expandedPageIndex by remember(state.trackTitle) { mutableIntStateOf(0) }
@@ -139,8 +151,8 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
             onExpandedChange(false)
         }
     }
-    LaunchedEffect(expanded) {
-        onExpandedChange(expanded)
+    LaunchedEffect(popupOwnsTimeChip) {
+        onExpandedChange(popupOwnsTimeChip)
     }
     LaunchedEffect(expandRequestToken) {
         val shouldHandle =
@@ -150,7 +162,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
         if (shouldHandle && !suppressed && (state.active || paused)) {
             DebugTelemetry.log("TurnByTurn", "event=time_chip_expand handled=true")
             showActionPrompt = false
-            expanded = true
+            expandPopup()
         }
     }
     LaunchedEffect(actionPromptRequestToken) {
@@ -201,10 +213,13 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
         }
 
     AnimatedVisibility(
-        visible = expanded,
+        visibleState = expandedVisibility,
         enter = fadeIn(),
         exit = fadeOut(),
-        modifier = Modifier.align(Alignment.Center),
+        modifier =
+            Modifier
+                .align(Alignment.Center)
+                .fillMaxSize(),
     ) {
         SwipeToDismissBox(onDismissed = { expanded = false }) { isBackground ->
             if (!isBackground) {
@@ -273,7 +288,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                         onClick = {
                             DebugTelemetry.log("TurnByTurn", "event=compact_popup_tap mode=guidance")
                             showActionPrompt = false
-                            expanded = true
+                            expandPopup()
                         },
                         onLongClick = {
                             DebugTelemetry.log("TurnByTurn", "event=compact_popup_long_press mode=guidance")
@@ -620,7 +635,7 @@ internal fun GuidanceRemainingArc(
     cappedFontScale(maxFontScale = 1.15f) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 110f,
+            anchor = 105f,
             anchorType = AnchorType.Center,
             angularDirection = CurvedDirection.Angular.Reversed,
         ) {
@@ -638,7 +653,7 @@ internal fun GuidanceRemainingArc(
         duration?.let {
             CurvedLayout(
                 modifier = Modifier.fillMaxSize(),
-                anchor = 70f,
+                anchor = 75f,
                 anchorType = AnchorType.Center,
                 angularDirection = CurvedDirection.Angular.Reversed,
             ) {
@@ -686,6 +701,11 @@ internal fun guidanceTerrainColor(direction: GuidanceTerrainDirection): Color =
         GuidanceTerrainDirection.DOWNHILL -> Color(0xFF8BC8FF)
         GuidanceTerrainDirection.FLAT -> Color.White.copy(alpha = 0.76f)
     }
+
+internal fun fullScreenPopupTransitionOwnsTimeChip(
+    currentlyVisible: Boolean,
+    targetVisible: Boolean,
+): Boolean = currentlyVisible || targetVisible
 
 internal fun guidanceFollowingText(
     state: TurnByTurnGuidanceState,
