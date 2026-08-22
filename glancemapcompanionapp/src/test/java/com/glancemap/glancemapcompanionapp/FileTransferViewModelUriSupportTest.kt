@@ -40,6 +40,61 @@ class FileTransferViewModelUriSupportTest {
     }
 
     @Test
+    fun `uses gpx metadata when provider reports VIEW`() {
+        assertEquals(
+            "Tour du lac.gpx",
+            chooseGpxTransferFileName(
+                displayName = "VIEW",
+                uriCandidates = emptyList(),
+                gpxText = "<gpx><metadata><name>Tour du lac</name></metadata></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `treats lowercase provider view as a generic name`() {
+        assertEquals(
+            "Tour du lac.gpx",
+            chooseGpxTransferFileName(
+                displayName = "view",
+                uriCandidates = emptyList(),
+                gpxText = "<gpx><trk><name>Tour du lac</name><trkseg /></trk></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `uses original uri filename when provider reports VIEW`() {
+        assertEquals(
+            "91. Le bijou oublié de la côte croate.gpx",
+            chooseGpxTransferFileName(
+                displayName = "VIEW",
+                uriCandidates =
+                    listOf(
+                        "primary:Download/91.%20Le%20bijou%20oubli%C3%A9%20de%20la%20c%C3%B4te%20croate.gpx",
+                    ),
+                gpxText = "<gpx><trk><name>Other route</name><trkseg /></trk></gpx>",
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `keeps existing generic fallback when VIEW has no better source`() {
+        assertEquals(
+            "VIEW.gpx",
+            chooseGpxTransferFileName(
+                displayName = "VIEW",
+                uriCandidates = emptyList(),
+                gpxText = null,
+                preferFallbackName = false,
+            ),
+        )
+    }
+
+    @Test
     fun `keeps a meaningful source name without a gpx extension ahead of waypoint metadata`() {
         assertEquals(
             "Rando RotWand all.gpx",
