@@ -6,11 +6,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
+import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
+import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
+import com.glancemap.glancemapwearos.domain.sensors.shortestAngleDiffDeg
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionTelemetry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -21,8 +25,12 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
     gpsDebugTelemetry: Boolean,
     gpsDebugTelemetryPopupEnabled: Boolean,
     offlineMode: Boolean,
+    renderState: CompassRenderState,
+    renderedHeadingDeg: Float,
 ): String? {
     var markerMotionDebugOverlayLabel by remember { mutableStateOf<String?>(null) }
+    val latestRenderState by rememberUpdatedState(renderState)
+    val latestRenderedHeadingDeg by rememberUpdatedState(renderedHeadingDeg)
     LaunchedEffect(gpsDebugTelemetry, gpsDebugTelemetryPopupEnabled, offlineMode) {
         if (!gpsDebugTelemetry || !gpsDebugTelemetryPopupEnabled || offlineMode) {
             markerMotionDebugOverlayLabel = null
@@ -30,11 +38,45 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
         }
 
         while (isActive) {
-            markerMotionDebugOverlayLabel = MarkerMotionTelemetry.latestSnapshot().overlayLabel()
+            markerMotionDebugOverlayLabel =
+                MarkerMotionTelemetry.latestSnapshot().overlayLabel() +
+                    "\n" +
+                    compassIntegrityDebugOverlayLabel(
+                        renderState = latestRenderState,
+                        renderedHeadingDeg = latestRenderedHeadingDeg,
+                    )
             delay(250L)
         }
     }
     return markerMotionDebugOverlayLabel
+}
+
+internal fun compassIntegrityDebugOverlayLabel(
+    renderState: CompassRenderState,
+    renderedHeadingDeg: Float,
+): String {
+    val display = compassDisplayedHeadingDebugState(renderState, renderedHeadingDeg)
+    return "I:${renderState.trackingState.name}(${renderState.trackingReason.telemetryToken})\n" +
+        "F:${renderState.magneticFieldUt.formatDebugOrNa(1)}µT M:${renderState.magneticQuality.telemetryToken} " +
+        "Q:${if (renderState.quarantineActive) "yes" else "no"}\n" +
+        "D:$display B:${renderState.northBasis.telemetryToken}"
+}
+
+internal fun compassDisplayedHeadingDebugState(
+    renderState: CompassRenderState,
+    renderedHeadingDeg: Float,
+): String {
+    val visiblyHeldAnchor =
+        renderState.trackingState == CompassTrackingState.DEGRADED &&
+            renderState.magneticQuality == CompassMagneticQuality.INTERFERENCE &&
+            kotlin.math.abs(shortestAngleDiffDeg(renderState.headingDeg, renderedHeadingDeg)) >=
+                HELD_ANCHOR_DISPLAY_DELTA_DEG
+    return when {
+        !renderState.headingRenderable || renderState.headingSampleStale || visiblyHeldAnchor ->
+            "held/frozen anchor"
+        renderState.headingTrusted -> "live trusted"
+        else -> "degraded/live"
+    }
 }
 
 internal fun reportCompassIssueNow(
@@ -68,7 +110,10 @@ internal fun reportCompassIssueNow(
             "renderable=${renderState.headingRenderable} trusted=${renderState.headingTrusted} " +
             "northBasis=${renderState.northBasis.telemetryToken} " +
             "magneticQuality=${renderState.magneticQuality.telemetryToken} " +
-            "magneticInterference=${renderState.magneticInterference}",
+            "magneticInterference=${renderState.magneticInterference} " +
+            "magneticFieldUt=${renderState.magneticFieldUt.formatDebugOrNa(1)} " +
+            "quarantine=${renderState.quarantineActive} " +
+            "display=${compassDisplayedHeadingDebugState(renderState, renderedHeadingDeg)}",
     )
 }
 
@@ -83,3 +128,5 @@ private fun compassDebugDeltaDeg(
 private fun Float.formatDebug(decimals: Int): String = "%.${decimals}f".format(Locale.US, this)
 
 private fun Float?.formatDebugOrNa(decimals: Int): String = this?.takeIf(Float::isFinite)?.formatDebug(decimals) ?: "na"
+
+private const val HELD_ANCHOR_DISPLAY_DELTA_DEG = 15f

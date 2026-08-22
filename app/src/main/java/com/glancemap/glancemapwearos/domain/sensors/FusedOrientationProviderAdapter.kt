@@ -1046,6 +1046,8 @@ internal class FusedOrientationProviderAdapter(
                 headingTrusted = latestIntegritySnapshot.trusted,
                 northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
                 magneticQuality = latestIntegritySnapshot.magneticQuality,
+                magneticFieldUt = latestIntegritySnapshot.magneticFieldUt,
+                quarantineActive = latestIntegritySnapshot.quarantineActive,
                 relativeHeadingDeg = latestIntegritySnapshot.relativeHeadingDeg,
             )
     }

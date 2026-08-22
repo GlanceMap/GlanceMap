@@ -64,6 +64,77 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun trustedPreLoweringAnchorWaitsForHeadingPublishedAfterStableTracking() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = 235.5f,
+            requirePostStableHeading = true,
+        )
+        val stableState = stableTrackingState(readyGoogleFusedState())
+
+        // The state transition can arrive with a freshly stamped but retained pre-restart
+        // heading. Do not release a trusted visible anchor toward that value.
+        assertNull(
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 194.9f,
+                headingSampleElapsedRealtimeMs = 1_500L,
+                nowElapsedMs = 1_510L,
+            ),
+        )
+        assertNull(
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 194.9f,
+                headingSampleElapsedRealtimeMs = 1_500L,
+                nowElapsedMs = 1_525L,
+            ),
+        )
+
+        val target =
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 223f,
+                headingSampleElapsedRealtimeMs = 1_530L,
+                nowElapsedMs = 1_540L,
+            )
+
+        assertEquals(223f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun trustedPreLoweringAnchorStillUsesTheBoundedSettleTimeout() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = 235.5f,
+            requirePostStableHeading = true,
+        )
+        val stableState = stableTrackingState(readyGoogleFusedState())
+
+        assertNull(
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 194.9f,
+                headingSampleElapsedRealtimeMs = 1_500L,
+                nowElapsedMs = 1_510L,
+            ),
+        )
+        val target =
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 194.9f,
+                headingSampleElapsedRealtimeMs = 1_500L,
+                nowElapsedMs = 1_700L,
+            )
+
+        assertEquals(194.9f, target?.headingDeg ?: -1f, 0.001f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+    }
+
+    @Test
     fun compassWakeFallsBackToAReadableHeadingAfterTheBoundedSettleTimeout() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
@@ -79,6 +150,153 @@ class NavigateEffectsSupportTest {
         assertEquals(90f, target?.headingDeg ?: -1f, 0f)
         assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
         assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
+    fun coldCompassFollowWithGoodMagneticStateKeepsTheExistingImmediateStart() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
+
+        val target =
+            gate.resolve(
+                renderState = stableMagneticGoogleFusedState(),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+                currentDisplayedHeadingDeg = 85f,
+            )
+
+        assertEquals(121f, target?.headingDeg ?: -1f, 0f)
+        assertFalse(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
+    fun coldInterferenceDoesNotReplaceTheExistingVisibleCompassAnchor() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
+        val interference = interferenceGoogleFusedState()
+
+        assertTrue(shouldHoldCompassFollowStartupForMagneticInterference(interference))
+        assertNull(
+            gate.resolve(
+                renderState = interference,
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+                currentDisplayedHeadingDeg = 85f,
+            ),
+        )
+        assertNull(
+            gate.resolve(
+                renderState = interference,
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_100L,
+                nowElapsedMs = 10_000L,
+                currentDisplayedHeadingDeg = 85f,
+            ),
+        )
+    }
+
+    @Test
+    fun coldInterferenceDoesNotEstablishTheFirstCompassOrientation() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f, coldStart = true)
+
+        assertNull(
+            gate.resolve(
+                renderState = interferenceGoogleFusedState(),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+                currentDisplayedHeadingDeg = 0f,
+            ),
+        )
+    }
+
+    @Test
+    fun coldInterferenceReleasesOnlyAfterAStableMagneticHeading() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
+
+        assertNull(
+            gate.resolve(
+                renderState = interferenceGoogleFusedState(),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+                currentDisplayedHeadingDeg = 85f,
+            ),
+        )
+        assertNull(
+            gate.resolve(
+                renderState = stableTrackingState(readyGoogleFusedState()),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_500L,
+                nowElapsedMs = 1_510L,
+                currentDisplayedHeadingDeg = 85f,
+            ),
+        )
+        val target =
+            gate.resolve(
+                renderState = stableMagneticGoogleFusedState(),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 2_001L,
+                nowElapsedMs = 2_010L,
+                currentDisplayedHeadingDeg = 85f,
+            )
+
+        assertEquals(121f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+    }
+
+    @Test
+    fun laterInterferenceKeepsDrivingAfterAStableCompassHeadingWasEstablished() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
+
+        assertEquals(
+            90f,
+            gate.resolve(
+                renderState = stableMagneticGoogleFusedState(),
+                compassHeadingDeg = 90f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+            )?.headingDeg ?: -1f,
+            0f,
+        )
+        assertEquals(
+            180f,
+            gate.resolve(
+                renderState = interferenceGoogleFusedState(),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_060L,
+            )?.headingDeg ?: -1f,
+            0f,
+        )
+    }
+
+    @Test
+    fun restartedInterferenceGateRejectsAStaleRecoverySample() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
+        gate.resolve(
+            renderState = interferenceGoogleFusedState(),
+            compassHeadingDeg = 121f,
+            headingSampleElapsedRealtimeMs = 1_001L,
+            nowElapsedMs = 1_010L,
+        )
+        gate.endWakeSession(nowElapsedMs = 1_020L)
+        gate.beginWakeSession(nowElapsedMs = 1_030L, heldHeadingDeg = 85f, coldStart = true)
+
+        assertNull(
+            gate.resolve(
+                renderState = stableMagneticGoogleFusedState(),
+                compassHeadingDeg = 121f,
+                headingSampleElapsedRealtimeMs = 1_020L,
+                nowElapsedMs = 1_031L,
+            ),
+        )
     }
 
     @Test
@@ -151,6 +369,7 @@ class NavigateEffectsSupportTest {
         assertTrue(screenOff.preLoweringDetected)
         assertEquals("pre_lowering_stable_visible", screenOff.selectionReason)
         assertEquals(320L, screenOff.anchorRewindMs)
+        assertTrue(capture.wake(fallbackHeadingDeg = 12f).preLoweringDetected)
     }
 
     @Test
@@ -341,6 +560,20 @@ class NavigateEffectsSupportTest {
         state.copy(
             trackingState = CompassTrackingState.TRACKING,
             trackingReason = CompassTrackingReason.STABLE,
+        )
+
+    private fun stableMagneticGoogleFusedState() =
+        stableTrackingState(readyGoogleFusedState()).copy(
+            magneticQuality = CompassMagneticQuality.GOOD,
+            magneticInterference = false,
+        )
+
+    private fun interferenceGoogleFusedState() =
+        readyGoogleFusedState().copy(
+            magneticQuality = CompassMagneticQuality.INTERFERENCE,
+            magneticInterference = true,
+            trackingState = CompassTrackingState.DEGRADED,
+            trackingReason = CompassTrackingReason.MAGNETIC_INTERFERENCE,
         )
 
     @Test

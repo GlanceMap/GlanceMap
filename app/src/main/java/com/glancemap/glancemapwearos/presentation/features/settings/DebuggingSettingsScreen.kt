@@ -37,6 +37,7 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceBasis
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.CrashDiagnosticsStore
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
@@ -102,6 +103,7 @@ fun DebuggingSettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val compassDeepTraceState by CompassDeepTraceDiagnostics.state.collectAsState()
     val compassHeadingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
+    val compassHeadingReferenceBasis by CompassHeadingReferenceDiagnostics.referenceBasis.collectAsState()
 
     val gpsIntervalMs by viewModel.gpsInterval.collectAsState()
     val isWatchGpsOnly by viewModel.watchGpsOnly.collectAsState()
@@ -770,6 +772,41 @@ fun DebuggingSettingsScreen(
                             "Manual stop · invalidates benchmark"
                         else -> "Manual stop · higher battery use"
                     },
+            )
+        }
+        item {
+            Chip(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = gpsDebugTelemetry && !exportInProgress && !compassHeadingReferenceTestActive,
+                label = {
+                    WearText(
+                        text = "Reference north: ${compassHeadingReferenceBasis.displayLabel}",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
+                secondaryLabel = {
+                    WearText(
+                        text =
+                            when (compassHeadingReferenceBasis) {
+                                CompassHeadingReferenceBasis.MAGNETIC_NORTH ->
+                                    "Use for a physical handheld compass"
+                                CompassHeadingReferenceBasis.TRUE_NORTH ->
+                                    "Use for a declination-adjusted reference"
+                                CompassHeadingReferenceBasis.UNKNOWN ->
+                                    "Tap to select before starting the test"
+                            },
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                    )
+                },
+                onClick = {
+                    CompassHeadingReferenceDiagnostics.selectReferenceBasis(
+                        compassHeadingReferenceBasis.next(),
+                    )
+                },
             )
         }
         item {

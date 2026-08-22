@@ -213,22 +213,31 @@ fun NavigationOrientationEffect(
     LaunchedEffect(compassInteractive, mv) {
         val nowElapsedMs = SystemClock.elapsedRealtime()
         if (compassInteractive) {
-            if (hasObservedInteractive.value && shouldUseWakeContinuityAnchor(navMode)) {
-                // Use the map heading frozen when the display went off. The renderer does
-                // not advance while non-interactive, so this is also still the map angle
-                // the user last saw.
+            if (shouldUseWakeContinuityAnchor(navMode)) {
+                val fallbackHeadingDeg = normalize360(-syncDisplayedMapRotationFromMap())
                 val wakeAnchor =
-                    wakeContinuityCapture.wake(
-                        fallbackHeadingDeg = normalize360(-syncDisplayedMapRotationFromMap()),
-                    )
-                val heldHeading = wakeAnchor.wakeHeldHeadingDeg
+                    if (hasObservedInteractive.value) {
+                        // Use the map heading frozen when the display went off. The renderer does
+                        // not advance while non-interactive, so this is also still the map angle
+                        // the user last saw.
+                        wakeContinuityCapture
+                            .wake(
+                                fallbackHeadingDeg = fallbackHeadingDeg,
+                            ).also { wakeAnchor ->
+                                if (DebugTelemetry.isEnabled()) wakeAnchor.log()
+                            }
+                    } else {
+                        null
+                    }
+                // A cold Navigate entry retains the map angle already visible to the user.
+                val heldHeading =
+                    wakeAnchor?.wakeHeldHeadingDeg ?: fallbackHeadingDeg
                 displayedHeading.floatValue = heldHeading
-                if (DebugTelemetry.isEnabled()) {
-                    wakeAnchor.log()
-                }
                 rotationSettleGate.beginWakeSession(
                     nowElapsedMs = nowElapsedMs,
                     heldHeadingDeg = heldHeading,
+                    coldStart = !hasObservedInteractive.value,
+                    requirePostStableHeading = wakeAnchor?.preLoweringDetected == true,
                 )
                 publishRenderedState(force = true, nowElapsedMs = nowElapsedMs)
             }
@@ -285,7 +294,8 @@ fun NavigationOrientationEffect(
             NavMode.COMPASS_FOLLOW -> {
                 if (
                     !mapOrientationWasInitialized &&
-                    (shouldDriveHeadingNow || shouldSeedCachedHeading)
+                    (shouldDriveHeadingNow || shouldSeedCachedHeading) &&
+                    !shouldHoldCompassFollowStartupForMagneticInterference(renderStateNow)
                 ) {
                     // A new MapView has no visible orientation to preserve. Seed its first
                     // bounded movement from the available heading instead of correcting from
@@ -411,6 +421,7 @@ fun NavigationOrientationEffect(
                 // that was visible when the display turned off.
                 if (!latestCompassInteractive.value) return@withFrameNanos
                 val nowElapsedMs = SystemClock.elapsedRealtime()
+                val current = displayedHeading.floatValue
                 val headingTarget =
                     when (navMode) {
                         NavMode.COMPASS_FOLLOW ->
@@ -420,6 +431,7 @@ fun NavigationOrientationEffect(
                                 headingSampleElapsedRealtimeMs =
                                     latestRenderState.headingSampleElapsedRealtimeMs,
                                 nowElapsedMs = nowElapsedMs,
+                                currentDisplayedHeadingDeg = current,
                             )
 
                         NavMode.NORTH_UP_FOLLOW ->
@@ -437,7 +449,6 @@ fun NavigationOrientationEffect(
                     return@withFrameNanos
                 }
                 CompassRenderPerfTelemetry.recordFrame(navMode)
-                val current = displayedHeading.floatValue
                 val diff = angleDeltaDeg(headingTarget.headingDeg, current)
                 val responsiveRotation = shouldUseResponsiveCompassMapRotation(latestRenderState)
                 if (abs(diff) < HEADING_ANIMATION_DONE_DEG) {
@@ -622,6 +633,7 @@ internal class NavigateWakeContinuityCapture {
     private var lastInteractiveTargetHeadingDeg = Float.NaN
     private var lastInteractiveRenderedHeadingDeg = Float.NaN
     private var screenOffAnchorHeadingDeg = Float.NaN
+    private var screenOffPreLoweringDetected = false
 
     fun beginInteractiveSession() {
         interactiveHistory.clear()
@@ -663,6 +675,7 @@ internal class NavigateWakeContinuityCapture {
     ): NavigateScreenOffAnchorSnapshot {
         val selection = selectScreenOffAnchor(fallbackHeadingDeg, nowElapsedMs)
         screenOffAnchorHeadingDeg = selection.headingDeg
+        screenOffPreLoweringDetected = selection.preLoweringDetected
         return NavigateScreenOffAnchorSnapshot(
             lastInteractiveProviderHeadingDeg = lastInteractiveProviderHeadingDeg,
             lastInteractiveTargetHeadingDeg = lastInteractiveTargetHeadingDeg,
@@ -682,6 +695,7 @@ internal class NavigateWakeContinuityCapture {
         return NavigateWakeAnchorSnapshot(
             screenOffAnchorHeadingDeg = screenOffAnchorHeadingDeg,
             wakeHeldHeadingDeg = wakeHeldHeadingDeg,
+            preLoweringDetected = screenOffPreLoweringDetected,
             wakeHeadingDeltaDeg =
                 if (screenOffAnchorHeadingDeg.isFinite() && wakeHeldHeadingDeg.isFinite()) {
                     abs(angleDeltaDeg(wakeHeldHeadingDeg, screenOffAnchorHeadingDeg))
@@ -796,6 +810,7 @@ internal data class NavigateScreenOffAnchorSnapshot(
 internal data class NavigateWakeAnchorSnapshot(
     val screenOffAnchorHeadingDeg: Float,
     val wakeHeldHeadingDeg: Float,
+    val preLoweringDetected: Boolean,
     val wakeHeadingDeltaDeg: Float,
 )
 
@@ -858,6 +873,20 @@ internal fun shouldDriveCompassFollowMap(renderState: CompassRenderState): Boole
     }
 }
 
+internal fun shouldHoldCompassFollowStartupForMagneticInterference(
+    renderState: CompassRenderState,
+): Boolean =
+    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+        (renderState.magneticInterference ||
+            renderState.magneticQuality == CompassMagneticQuality.INTERFERENCE)
+
+internal fun hasStableMagneticCompassHeading(renderState: CompassRenderState): Boolean =
+    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+        renderState.magneticQuality == CompassMagneticQuality.GOOD &&
+        !renderState.magneticInterference &&
+        renderState.trackingState == CompassTrackingState.TRACKING &&
+        renderState.trackingReason == CompassTrackingReason.STABLE
+
 internal fun shouldUseWakeContinuityAnchor(navMode: NavMode): Boolean =
     navMode == NavMode.COMPASS_FOLLOW
 
@@ -867,10 +896,7 @@ internal fun shouldUseResponsiveCompassMapRotation(renderState: CompassRenderSta
         !renderState.magneticInterference &&
         (
             renderState.headingTrusted ||
-                (
-                    renderState.trackingState == CompassTrackingState.TRACKING &&
-                        renderState.trackingReason == CompassTrackingReason.STABLE
-                )
+                hasStableMagneticCompassHeading(renderState)
         )
 
 /** Preserves the map angle briefly while the new wake session validates its heading. */
@@ -880,6 +906,10 @@ internal class NavigateRotationSettleGate {
     private var wakeSessionStartedAtElapsedMs = Long.MIN_VALUE
     private var heldHeadingDeg = Float.NaN
     private var firstFreshWakeHeadingDeg = Float.NaN
+    private var coldStart = false
+    private var requirePostStableHeading = false
+    private var stableTrackingObservedAtElapsedMs = Long.MIN_VALUE
+    private var magneticRecoveryRequired = false
     private var settled = false
     private var lastHoldReason: String? = null
     private var releaseVisualCapUntilElapsedMs = Long.MIN_VALUE
@@ -888,19 +918,26 @@ internal class NavigateRotationSettleGate {
     fun beginWakeSession(
         nowElapsedMs: Long,
         heldHeadingDeg: Float,
+        coldStart: Boolean = false,
+        requirePostStableHeading: Boolean = false,
     ) {
         wakeSessionId += 1L
         wakeSessionActive = true
         wakeSessionStartedAtElapsedMs = nowElapsedMs
         this.heldHeadingDeg = normalize360(heldHeadingDeg)
         firstFreshWakeHeadingDeg = Float.NaN
+        this.coldStart = coldStart
+        this.requirePostStableHeading = requirePostStableHeading
+        stableTrackingObservedAtElapsedMs = Long.MIN_VALUE
+        magneticRecoveryRequired = false
         settled = false
         lastHoldReason = null
         releaseVisualCapUntilElapsedMs = Long.MIN_VALUE
         pendingRelease = null
         log(
             "rotation_settle stage=start id=$wakeSessionId " +
-                "heldHeading=${this.heldHeadingDeg.formatTelemetry(1)}",
+                "heldHeading=${this.heldHeadingDeg.formatTelemetry(1)} coldStart=$coldStart " +
+                "requirePostStableHeading=$requirePostStableHeading",
         )
     }
 
@@ -918,6 +955,7 @@ internal class NavigateRotationSettleGate {
         compassHeadingDeg: Float,
         headingSampleElapsedRealtimeMs: Long?,
         nowElapsedMs: Long,
+        currentDisplayedHeadingDeg: Float? = null,
     ): NavigationRotationTarget? {
         if (!shouldDriveCompassFollowMap(renderState) || !compassHeadingDeg.isFinite()) {
             hold("await_usable_heading")
@@ -930,6 +968,14 @@ internal class NavigateRotationSettleGate {
                 maxVisualStepDeg = releaseVisualStepCap(nowElapsedMs),
                 recordsWakeReleaseStep = pendingRelease != null,
             )
+        }
+        if (shouldHoldCompassFollowStartupForMagneticInterference(renderState)) {
+            magneticRecoveryRequired = true
+            currentDisplayedHeadingDeg?.takeIf(Float::isFinite)?.let {
+                heldHeadingDeg = normalize360(it)
+            }
+            hold("await_magnetic_recovery")
+            return null
         }
         if (
             headingSampleElapsedRealtimeMs == null ||
@@ -947,17 +993,45 @@ internal class NavigateRotationSettleGate {
                     "wakeHeadingDeltaDeg=${abs(angleDeltaDeg(firstFreshWakeHeadingDeg, heldHeadingDeg)).formatTelemetry(1)}",
             )
         }
+        if (coldStart && !magneticRecoveryRequired) {
+            settled = true
+            return NavigationRotationTarget(headingDeg = heading)
+        }
+        val hasStableRecoveryHeading = hasStableMagneticCompassHeading(renderState)
+        val hasStableTracking =
+            hasStableRecoveryHeading ||
+                (!magneticRecoveryRequired &&
+                    renderState.trackingState == CompassTrackingState.TRACKING &&
+                    renderState.trackingReason == CompassTrackingReason.STABLE)
+        if (
+            requirePostStableHeading &&
+                hasStableTracking &&
+                stableTrackingObservedAtElapsedMs == Long.MIN_VALUE
+        ) {
+            stableTrackingObservedAtElapsedMs = nowElapsedMs
+        }
+        val hasPostStableHeading =
+            !requirePostStableHeading ||
+                headingSampleElapsedRealtimeMs > stableTrackingObservedAtElapsedMs
         val releaseReason =
             when {
-                renderState.trackingState == CompassTrackingState.TRACKING &&
-                    renderState.trackingReason == CompassTrackingReason.STABLE ->
+                hasStableTracking && hasPostStableHeading ->
                     "stable_tracking"
-                nowElapsedMs - wakeSessionStartedAtElapsedMs >= WAKE_SETTLE_TIMEOUT_MS -> "settle_timeout"
+                !magneticRecoveryRequired &&
+                    nowElapsedMs - wakeSessionStartedAtElapsedMs >= WAKE_SETTLE_TIMEOUT_MS ->
+                    "settle_timeout"
                 else -> null
             }
         if (releaseReason == null) {
             hold(
-                reason = "await_stable_tracking",
+                reason =
+                    if (hasStableTracking && !hasPostStableHeading) {
+                        "await_post_stable_heading"
+                    } else if (magneticRecoveryRequired) {
+                        "await_stable_magnetic_heading"
+                    } else {
+                        "await_stable_tracking"
+                    },
                 headingDeltaDeg = abs(angleDeltaDeg(heading, heldHeadingDeg)),
             )
             return null

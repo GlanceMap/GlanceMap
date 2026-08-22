@@ -522,7 +522,7 @@ internal class SensorManagerOrientationProvider(
         }
 
         if (usingHeadingSensor) {
-            if (event.sensor.type != Sensor.TYPE_HEADING) return
+            if (event.sensor.type != HEADING_SENSOR_TYPE) return
             val headingDeg = event.values.firstOrNull()
             if (headingDeg == null || !headingDeg.isFinite()) return
             if (event.values.size > 1) {
@@ -637,7 +637,7 @@ internal class SensorManagerOrientationProvider(
         if (!started) return
 
         when (sensor.type) {
-            Sensor.TYPE_HEADING -> {
+            HEADING_SENSOR_TYPE -> {
                 val previous = headingAccuracy
                 headingAccuracy = accuracy
                 publishAccuracyFromCurrentSignals()

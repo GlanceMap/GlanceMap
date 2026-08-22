@@ -439,12 +439,6 @@ fun NavigateScreen(
         }
 
         var pendingPoiFocusTarget by remember { mutableStateOf<PoiNavigateTarget?>(null) }
-        val markerMotionDebugOverlayLabel =
-            rememberMarkerMotionDebugOverlayLabel(
-                gpsDebugTelemetry = gpsDebugTelemetry,
-                gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
-                offlineMode = offlineMode,
-            )
 
         val mapView = mapHolder.mapView
 
@@ -536,6 +530,14 @@ fun NavigateScreen(
                 )
             }
         var visiblePoiMarkers by remember { mutableStateOf<List<PoiOverlayMarker>>(emptyList()) }
+        val markerMotionDebugOverlayLabel =
+            rememberMarkerMotionDebugOverlayLabel(
+                gpsDebugTelemetry = gpsDebugTelemetry,
+                gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
+                offlineMode = offlineMode,
+                renderState = compassRenderState,
+                renderedHeadingDeg = renderedCompassHeadingDeg,
+            )
         val displayedRouteToolCreatePreview =
             visibleRouteToolCreatePreview(
                 session = routeToolSession,
