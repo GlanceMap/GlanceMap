@@ -1508,8 +1508,8 @@ class OamBundleDownloader(
                     ioRetryCount += 1
                     onProgress(
                         OamDownloadProgress(
-                            phase = "PAUSED",
-                            detail = "$progressDetail interrupted",
+                            phase = "RECONNECTING",
+                            detail = "$progressDetail reconnecting",
                             bytesDone = resumeOffset,
                         ),
                     )

@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -43,8 +44,10 @@ class OamDownloadForegroundService : Service() {
         )
     }
     private val networkMonitor by lazy { OamDownloadNetworkMonitor(applicationContext) }
+    private val operationGate = OamDownloadOperationGate()
     private var operationJob: Job? = null
     private var stopRequest: OwnedStopRequest? = null
+    private var foregroundStartId: Int? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLockAcquiredAtElapsedMs: Long? = null
@@ -62,7 +65,7 @@ class OamDownloadForegroundService : Service() {
         startId: Int,
     ): Int {
         when (intent?.action) {
-            ACTION_RUN_PERSISTED -> startPersistedOperation()
+            ACTION_RUN_PERSISTED -> startPersistedOperation(startId)
             ACTION_PAUSE -> requestOwnedStop(OwnedStopRequest.PAUSE)
             ACTION_CANCEL -> requestOwnedStop(OwnedStopRequest.CANCEL)
             ACTION_PROGRESS -> {
@@ -71,11 +74,12 @@ class OamDownloadForegroundService : Service() {
                 val bytesDone = intent.getLongExtra(EXTRA_BYTES_DONE, 0L)
                 val totalBytes = intent.getLongExtra(EXTRA_TOTAL_BYTES, -1L).takeIf { it > 0L }
                 startOrUpdateForeground(title, detail, bytesDone, totalBytes)
+                foregroundStartId = startId
             }
             ACTION_STOP -> stopSelf()
             null -> {
                 if (serviceClient.loadPlan()?.status == OamPersistedDownloadStatus.RUNNING) {
-                    startPersistedOperation()
+                    startPersistedOperation(startId)
                 } else {
                     stopSelf()
                 }
@@ -100,14 +104,33 @@ class OamDownloadForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startPersistedOperation() {
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    override fun onTimeout(
+        startId: Int,
+        fgsType: Int,
+    ) {
+        super.onTimeout(startId, fgsType)
+        if (fgsType and ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC == 0) return
+        if (operationGate.matchesStartId(startId)) {
+            if (operationGate.claimTimeout(startId) != null) {
+                requestOwnedStop(OwnedStopRequest.TIMEOUT, alreadyClaimed = true)
+            }
+            clearForegroundAndStop(startId)
+        } else if (!operationGate.hasActiveSession() && foregroundStartId == startId) {
+            clearForegroundAndStop(startId)
+        }
+    }
+
+    private fun startPersistedOperation(startId: Int) {
         if (operationJob?.isActive == true) return
         val initialPlan = serviceClient.loadPlan()
         if (initialPlan == null || initialPlan.status != OamPersistedDownloadStatus.RUNNING) {
             stopSelf()
             return
         }
+        val session = operationGate.begin(startId)
         stopRequest = null
+        foregroundStartId = startId
         startOrUpdateForeground(
             title = "Downloading offline bundle",
             detail = "Preparing ${initialPlan.areaIds.size} area(s)",
@@ -116,16 +139,22 @@ class OamDownloadForegroundService : Service() {
         )
         operationJob =
             serviceScope.launch {
-                runPersistedOperation(initialPlan)
+                runPersistedOperation(initialPlan, session)
             }
     }
 
-    private suspend fun runPersistedOperation(initialPlan: OamPersistedDownloadPlan) {
+    private suspend fun runPersistedOperation(
+        initialPlan: OamPersistedDownloadPlan,
+        session: OamDownloadOperationSession,
+    ) {
         var plan = initialPlan
         val areasById = OamDownloadCatalog.areas.associateBy(OamDownloadArea::id)
         val areas = plan.areaIds.mapNotNull(areasById::get)
         if (areas.size != plan.areaIds.size) {
-            failOwnedOperation(plan, "One or more download areas are no longer available.")
+            if (operationGate.claim(session, OamDownloadOperationEnd.FAILURE) != null) {
+                failOwnedOperation(plan, "One or more download areas are no longer available.")
+            }
+            operationGate.finish(session)
             return
         }
         val networkHandle = watchForWifiRecovery(networkMonitor.currentState())
@@ -160,12 +189,20 @@ class OamDownloadForegroundService : Service() {
                 plan = plan.copy(nextAreaIndex = index + 1)
                 serviceClient.savePlan(plan)
             }
-            completeOwnedOperation(areas)
+            if (operationGate.claim(session, OamDownloadOperationEnd.COMPLETE) != null) {
+                completeOwnedOperation(areas)
+            } else {
+                handleOwnedCancellation(plan, session)
+            }
         } catch (cancelled: CancellationException) {
-            handleOwnedCancellation(plan)
+            handleOwnedCancellation(plan, session)
             throw cancelled
         } catch (error: Exception) {
-            failOwnedOperation(plan, error.message ?: "Download failed")
+            if (operationGate.claim(session, OamDownloadOperationEnd.FAILURE) != null) {
+                failOwnedOperation(plan, error.message ?: "Download failed")
+            } else {
+                handleOwnedCancellation(plan, session)
+            }
         } finally {
             DebugTelemetry.log(
                 "OamDownload",
@@ -174,7 +211,7 @@ class OamDownloadForegroundService : Service() {
                     "suppressed=${progressThrottler.suppressedCount}",
             )
             networkHandle.close()
-            operationJob = null
+            if (operationGate.finish(session)) operationJob = null
         }
     }
 
@@ -203,11 +240,24 @@ class OamDownloadForegroundService : Service() {
         )
     }
 
-    private fun requestOwnedStop(request: OwnedStopRequest) {
+    private fun requestOwnedStop(
+        request: OwnedStopRequest,
+        alreadyClaimed: Boolean = false,
+    ) {
+        val activeJob = operationJob
+        if (
+            !alreadyClaimed &&
+            activeJob?.isActive == true &&
+            operationGate.claimActive(request.toOperationEnd()) == null
+        ) {
+            return
+        }
         stopRequest = request
         val persistedPlan = serviceClient.loadPlan()
         when (request) {
-            OwnedStopRequest.PAUSE -> {
+            OwnedStopRequest.PAUSE,
+            OwnedStopRequest.TIMEOUT,
+            -> {
                 persistedPlan?.copy(status = OamPersistedDownloadStatus.PAUSED)?.let(serviceClient::savePlan)
             }
             OwnedStopRequest.CANCEL -> serviceClient.clearPlan()
@@ -215,19 +265,29 @@ class OamDownloadForegroundService : Service() {
         val current = serviceClient.state.value
         serviceClient.publish(
             current.copy(
-                phase = if (request == OwnedStopRequest.PAUSE) "PAUSING" else "CANCELING",
+                phase = if (request == OwnedStopRequest.CANCEL) "CANCELING" else "PAUSING",
                 errorMessage = null,
             ),
         )
-        val activeJob = operationJob
         activeJob?.cancel(CancellationException(request.name.lowercase()))
-        downloader.abortActiveDownloads(reason = if (request == OwnedStopRequest.PAUSE) "user_pause" else "user_cancel")
+        downloader.abortActiveDownloads(
+            reason =
+                when (request) {
+                    OwnedStopRequest.PAUSE -> "user_pause"
+                    OwnedStopRequest.TIMEOUT -> "foreground_service_timeout"
+                    OwnedStopRequest.CANCEL -> "user_cancel"
+                },
+        )
         if (activeJob == null && persistedPlan != null) {
             serviceScope.launch { handleOwnedCancellation(persistedPlan) }
         }
     }
 
-    private fun handleOwnedCancellation(plan: OamPersistedDownloadPlan) {
+    private fun handleOwnedCancellation(
+        plan: OamPersistedDownloadPlan,
+        session: OamDownloadOperationSession? = null,
+    ) {
+        if (session != null && !operationGate.owns(session)) return
         when (stopRequest) {
             OwnedStopRequest.PAUSE -> {
                 val paused = plan.copy(status = OamPersistedDownloadStatus.PAUSED)
@@ -239,6 +299,13 @@ class OamDownloadForegroundService : Service() {
                     title = "Download paused",
                     detail = "${plan.areaIds.size} area(s)",
                     category = NotificationCompat.CATEGORY_STATUS,
+                )
+            }
+            OwnedStopRequest.TIMEOUT -> {
+                val paused = plan.copy(status = OamPersistedDownloadStatus.PAUSED)
+                serviceClient.savePlan(paused)
+                serviceClient.publish(
+                    paused.runningState(phase = "PAUSED").copy(status = OamOwnedDownloadStatus.PAUSED),
                 )
             }
             OwnedStopRequest.CANCEL -> {
@@ -449,6 +516,7 @@ class OamDownloadForegroundService : Service() {
     ) {
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         releaseLocks()
+        foregroundStartId = null
         terminalNotificationPosted = true
         val builder =
             NotificationCompat
@@ -466,11 +534,12 @@ class OamDownloadForegroundService : Service() {
         stopSelf()
     }
 
-    private fun clearForegroundAndStop() {
+    private fun clearForegroundAndStop(startId: Int? = null) {
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         releaseLocks()
+        if (startId == null || foregroundStartId == startId) foregroundStartId = null
         runCatching { notificationManager.cancel(NOTIFICATION_ID) }
-        stopSelf()
+        if (startId == null) stopSelf() else stopSelf(startId)
     }
 
     private fun ensureChannel() {
@@ -558,6 +627,82 @@ class OamDownloadForegroundService : Service() {
 private enum class OwnedStopRequest {
     PAUSE,
     CANCEL,
+    TIMEOUT,
+}
+
+private fun OwnedStopRequest.toOperationEnd(): OamDownloadOperationEnd =
+    when (this) {
+        OwnedStopRequest.PAUSE -> OamDownloadOperationEnd.PAUSE
+        OwnedStopRequest.CANCEL -> OamDownloadOperationEnd.CANCEL
+        OwnedStopRequest.TIMEOUT -> OamDownloadOperationEnd.TIMEOUT
+    }
+
+internal data class OamDownloadOperationSession(
+    val startId: Int,
+    val generation: Long,
+)
+
+internal enum class OamDownloadOperationEnd {
+    PAUSE,
+    CANCEL,
+    TIMEOUT,
+    COMPLETE,
+    FAILURE,
+}
+
+/** Serializes terminal decisions from the service command and Android timeout callbacks. */
+internal class OamDownloadOperationGate {
+    private var nextGeneration = 0L
+    private var activeSession: OamDownloadOperationSession? = null
+    private var terminalEnd: OamDownloadOperationEnd? = null
+
+    @Synchronized
+    fun begin(startId: Int): OamDownloadOperationSession =
+        OamDownloadOperationSession(startId = startId, generation = ++nextGeneration).also {
+            activeSession = it
+            terminalEnd = null
+        }
+
+    @Synchronized
+    fun claimTimeout(startId: Int): OamDownloadOperationSession? {
+        val session = activeSession?.takeIf { it.startId == startId } ?: return null
+        return claim(session, OamDownloadOperationEnd.TIMEOUT)
+    }
+
+    @Synchronized
+    fun claimActive(end: OamDownloadOperationEnd): OamDownloadOperationSession? =
+        activeSession?.let { claim(it, end) }
+
+    @Synchronized
+    fun claim(
+        session: OamDownloadOperationSession,
+        end: OamDownloadOperationEnd,
+    ): OamDownloadOperationSession? {
+        if (activeSession != session || terminalEnd != null) return null
+        terminalEnd = end
+        return session
+    }
+
+    @Synchronized
+    fun owns(session: OamDownloadOperationSession): Boolean = activeSession == session
+
+    @Synchronized
+    fun matchesStartId(startId: Int): Boolean = activeSession?.startId == startId
+
+    @Synchronized
+    fun hasActiveSession(): Boolean = activeSession != null
+
+    @Synchronized
+    fun terminalEndFor(session: OamDownloadOperationSession): OamDownloadOperationEnd? =
+        if (activeSession == session) terminalEnd else null
+
+    @Synchronized
+    fun finish(session: OamDownloadOperationSession): Boolean {
+        if (activeSession != session) return false
+        activeSession = null
+        terminalEnd = null
+        return true
+    }
 }
 
 private fun OamPersistedDownloadPlan.runningState(
