@@ -80,11 +80,11 @@ fun MapSettingsScreen(
     val hillShadingSecondaryLabel =
         when {
             !hillShadingSupported -> stringResource(R.string.map_theme_not_supported)
-            hillShadingEnabled -> stringResource(R.string.state_on)
-            else -> stringResource(R.string.state_off)
+            hillShadingEnabled -> stringResource(R.string.glancemap_state_on)
+            else -> stringResource(R.string.glancemap_state_off)
         }
     val reliefOverlaySecondaryLabel =
-        stringResource(if (reliefOverlayEnabled) R.string.state_on else R.string.state_off)
+        stringResource(if (reliefOverlayEnabled) R.string.glancemap_state_on else R.string.glancemap_state_off)
 
     DemSetupBottomSheet(
         visible = showDemSetupDialog,
@@ -173,7 +173,7 @@ fun MapSettingsScreen(
                 },
                 label = stringResource(R.string.map_live_elevation),
                 secondaryLabel =
-                    stringResource(if (liveElevation) R.string.state_on else R.string.state_off),
+                    stringResource(if (liveElevation) R.string.glancemap_state_on else R.string.glancemap_state_off),
             )
         }
         item {
@@ -182,7 +182,7 @@ fun MapSettingsScreen(
                 onCheckedChanged = { viewModel.setLiveDistance(it) },
                 label = stringResource(R.string.map_live_distance),
                 secondaryLabel =
-                    stringResource(if (liveDistance) R.string.state_on else R.string.state_off),
+                    stringResource(if (liveDistance) R.string.glancemap_state_on else R.string.glancemap_state_off),
             )
         }
         item {

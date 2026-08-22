@@ -886,7 +886,7 @@ private fun gpsCompactScreenOffIntervalLabel(seconds: Int): String =
             stringResource(R.string.gps_adaptive)
 
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> stringResource(R.string.gps_same)
-        SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> stringResource(R.string.state_off)
+        SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> stringResource(R.string.glancemap_state_off)
         else -> gpsShortLabel(seconds)
     }
 
@@ -894,7 +894,7 @@ private fun gpsCompactScreenOffIntervalLabel(seconds: Int): String =
 private fun gpsIntervalLabel(seconds: Int): String =
     when {
         seconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS ->
-            stringResource(R.string.state_off)
+            stringResource(R.string.glancemap_state_off)
         else -> pluralStringResource(R.plurals.gps_interval_seconds, seconds, seconds)
     }
 
@@ -925,7 +925,7 @@ private fun gpsTimingOption(
             )
 
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS ->
-            GpsTimingOption(label = stringResource(R.string.state_off))
+            GpsTimingOption(label = stringResource(R.string.glancemap_state_off))
 
         else ->
             GpsTimingOption(
