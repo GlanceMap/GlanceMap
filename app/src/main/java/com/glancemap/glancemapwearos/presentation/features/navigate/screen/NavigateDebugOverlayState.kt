@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
@@ -85,7 +86,7 @@ internal fun reportCompassIssueNow(
     renderedMapRotationDeg: Float,
     screenState: LocationScreenState,
 ) {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     val nowElapsedMs = SystemClock.elapsedRealtime()
     val sampleAgeMs =
         renderState.headingSampleElapsedRealtimeMs

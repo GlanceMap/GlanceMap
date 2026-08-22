@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
@@ -290,7 +291,7 @@ internal fun resolveNavigateCompassImmediateStopDelayMs(
 }
 
 private fun logNavigateCompassEffect(message: String) {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
 }
 

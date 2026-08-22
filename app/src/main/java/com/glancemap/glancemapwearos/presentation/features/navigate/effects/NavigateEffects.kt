@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDi
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceRenderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
@@ -224,7 +225,7 @@ fun NavigationOrientationEffect(
                             .wake(
                                 fallbackHeadingDeg = fallbackHeadingDeg,
                             ).also { wakeAnchor ->
-                                if (DebugTelemetry.isEnabled()) wakeAnchor.log()
+                                if (isCompassTelemetryCaptureActive()) wakeAnchor.log()
                             }
                     } else {
                         null
@@ -251,7 +252,7 @@ fun NavigationOrientationEffect(
                         fallbackHeadingDeg = screenOffAnchorHeading,
                         nowElapsedMs = nowElapsedMs,
                     )
-                if (DebugTelemetry.isEnabled()) {
+                if (isCompassTelemetryCaptureActive()) {
                     screenOffAnchor.log()
                 }
             }
@@ -591,7 +592,7 @@ private object CompassRenderPerfTelemetry {
         navMode: NavMode,
         mutate: () -> Unit,
     ) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         val now = SystemClock.elapsedRealtime()
         if (windowStartElapsedMs == 0L) {
             windowStartElapsedMs = now
@@ -657,6 +658,8 @@ internal class NavigateWakeContinuityCapture {
         if (!renderedHeadingDeg.isFinite()) return
         interactiveHistory.addLast(
             InteractiveHeadingSample(
+                providerHeadingDeg = providerHeadingDeg?.takeIf(Float::isFinite),
+                targetHeadingDeg = targetHeadingDeg.takeIf(Float::isFinite),
                 renderedHeadingDeg = renderedHeadingDeg,
                 pitchDeg = pitchDeg?.takeIf(Float::isFinite),
                 rollDeg = rollDeg?.takeIf(Float::isFinite),
@@ -686,6 +689,11 @@ internal class NavigateWakeContinuityCapture {
             preLoweringDetected = selection.preLoweringDetected,
             motionStartAgeMs = selection.motionStartAgeMs,
             selectionReason = selection.reason,
+            diagnosticHistory = diagnosticHistory(
+                currentHeadingDeg = fallbackHeadingDeg,
+                nowElapsedMs = nowElapsedMs,
+                selection = selection,
+            ),
         )
     }
 
@@ -733,8 +741,67 @@ internal class NavigateWakeContinuityCapture {
                 preLoweringDetected = true,
                 motionStartAgeMs = (nowElapsedMs - stableCandidate.atElapsedMs).coerceAtLeast(0L),
                 reason = "pre_lowering_stable_visible",
+                selectedAtElapsedMs = stableCandidate.atElapsedMs,
             )
         }
+    }
+
+    private fun diagnosticHistory(
+        currentHeadingDeg: Float,
+        nowElapsedMs: Long,
+        selection: WakeAnchorSelection,
+    ): List<WakeAnchorHistoryPoint> {
+        val samples =
+            interactiveHistory.filter {
+                nowElapsedMs - it.atElapsedMs in 0L..WAKE_ANCHOR_HISTORY_MS
+            }
+        val latestSample = samples.lastOrNull() ?: return emptyList()
+        val selectedSample = samples.firstOrNull { it.atElapsedMs == selection.selectedAtElapsedMs }
+        return (
+            samples
+                .groupBy { (nowElapsedMs - it.atElapsedMs) / WAKE_ANCHOR_DIAGNOSTIC_SAMPLE_MS }
+                .values
+                .map { bucket -> bucket.last() } + selectedSample
+            )
+            .filterNotNull()
+            .distinctBy { it.atElapsedMs }
+            .sortedBy { it.atElapsedMs }
+            .map { sample ->
+                val pitchChangeDeg =
+                    if (sample.pitchDeg != null && latestSample.pitchDeg != null) {
+                        abs(latestSample.pitchDeg - sample.pitchDeg)
+                    } else {
+                        Float.NaN
+                    }
+                val rollChangeDeg =
+                    if (sample.rollDeg != null && latestSample.rollDeg != null) {
+                        abs(latestSample.rollDeg - sample.rollDeg)
+                    } else {
+                        Float.NaN
+                    }
+                val projectionDrop =
+                    if (sample.projection != null && latestSample.projection != null) {
+                        sample.projection - latestSample.projection
+                    } else {
+                        Float.NaN
+                    }
+                WakeAnchorHistoryPoint(
+                    ageMs = (nowElapsedMs - sample.atElapsedMs).coerceAtLeast(0L),
+                    providerHeadingDeg = sample.providerHeadingDeg,
+                    targetHeadingDeg = sample.targetHeadingDeg,
+                    renderedHeadingDeg = sample.renderedHeadingDeg,
+                    pitchDeg = sample.pitchDeg,
+                    rollDeg = sample.rollDeg,
+                    projection = sample.projection,
+                    headingDeltaToScreenOffDeg =
+                        abs(angleDeltaDeg(currentHeadingDeg, sample.renderedHeadingDeg)),
+                    tiltChangeToLatestDeg = maxOf(pitchChangeDeg, rollChangeDeg),
+                    projectionDropToLatest = projectionDrop,
+                    stableBefore = isStableBefore(sample, samples),
+                    loweringSignatureToLatest = hasLoweringTiltSignature(sample, latestSample),
+                    selected = sample.atElapsedMs == selection.selectedAtElapsedMs,
+                )
+            }
     }
 
     private fun isStableBefore(
@@ -780,6 +847,8 @@ internal class NavigateWakeContinuityCapture {
 }
 
 private data class InteractiveHeadingSample(
+    val providerHeadingDeg: Float?,
+    val targetHeadingDeg: Float?,
     val renderedHeadingDeg: Float,
     val pitchDeg: Float?,
     val rollDeg: Float?,
@@ -793,6 +862,23 @@ private data class WakeAnchorSelection(
     val preLoweringDetected: Boolean,
     val motionStartAgeMs: Long?,
     val reason: String,
+    val selectedAtElapsedMs: Long? = null,
+)
+
+internal data class WakeAnchorHistoryPoint(
+    val ageMs: Long,
+    val providerHeadingDeg: Float?,
+    val targetHeadingDeg: Float?,
+    val renderedHeadingDeg: Float,
+    val pitchDeg: Float?,
+    val rollDeg: Float?,
+    val projection: Float?,
+    val headingDeltaToScreenOffDeg: Float,
+    val tiltChangeToLatestDeg: Float,
+    val projectionDropToLatest: Float,
+    val stableBefore: Boolean,
+    val loweringSignatureToLatest: Boolean,
+    val selected: Boolean,
 )
 
 internal data class NavigateScreenOffAnchorSnapshot(
@@ -805,6 +891,7 @@ internal data class NavigateScreenOffAnchorSnapshot(
     val preLoweringDetected: Boolean,
     val motionStartAgeMs: Long?,
     val selectionReason: String,
+    val diagnosticHistory: List<WakeAnchorHistoryPoint>,
 )
 
 internal data class NavigateWakeAnchorSnapshot(
@@ -815,7 +902,7 @@ internal data class NavigateWakeAnchorSnapshot(
 )
 
 private fun NavigateScreenOffAnchorSnapshot.log() {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     DebugTelemetry.log(
         COMPASS_TELEMETRY_TAG,
         "wake_anchor stage=screen_off " +
@@ -830,6 +917,15 @@ private fun NavigateScreenOffAnchorSnapshot.log() {
             "screenOffMotionStartAgeMs=${motionStartAgeMs ?: "na"} " +
             "screenOffAnchorSelectionReason=$selectionReason",
     )
+    val chunks = diagnosticHistory.chunked(WAKE_ANCHOR_DIAGNOSTIC_POINTS_PER_LOG)
+    chunks.forEachIndexed { index, points ->
+        DebugTelemetry.log(
+            COMPASS_TELEMETRY_TAG,
+            "wake_anchor_history stage=screen_off chunk=${index + 1}/${chunks.size} " +
+                "sampleIntervalMs=$WAKE_ANCHOR_DIAGNOSTIC_SAMPLE_MS " +
+                "points=${points.joinToString(separator = "|") { it.formatWakeAnchorHistoryPoint() }}",
+        )
+    }
 }
 
 private const val WAKE_ANCHOR_HISTORY_MS = 2_000L
@@ -839,9 +935,11 @@ private const val WAKE_ANCHOR_STABLE_HEADING_TOLERANCE_DEG = 5f
 private const val WAKE_ANCHOR_MIN_HEADING_CHANGE_DEG = 20f
 private const val WAKE_ANCHOR_MIN_TILT_CHANGE_DEG = 15f
 private const val WAKE_ANCHOR_MIN_PROJECTION_DROP = 0.12f
+private const val WAKE_ANCHOR_DIAGNOSTIC_SAMPLE_MS = 50L
+private const val WAKE_ANCHOR_DIAGNOSTIC_POINTS_PER_LOG = 6
 
 private fun NavigateWakeAnchorSnapshot.log() {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     DebugTelemetry.log(
         COMPASS_TELEMETRY_TAG,
         "wake_anchor stage=wake " +
@@ -1093,7 +1191,7 @@ internal class NavigateRotationSettleGate {
         WAKE_RELEASE_MAX_VISIBLE_STEP_DEG.takeIf { nowElapsedMs < releaseVisualCapUntilElapsedMs }
 
     private fun log(message: String) {
-        if (DebugTelemetry.isEnabled()) DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
+        if (isCompassTelemetryCaptureActive()) DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
     }
 }
 
@@ -1337,6 +1435,21 @@ private fun Float.formatTelemetry(decimals: Int): String = "%.${decimals}f".form
 
 private fun Float.formatWakeAnchor(decimals: Int): String =
     takeIf(Float::isFinite)?.let { "%.${decimals}f".format(Locale.US, it) } ?: "na"
+
+private fun WakeAnchorHistoryPoint.formatWakeAnchorHistoryPoint(): String =
+    "age=$ageMs," +
+        "provider=${providerHeadingDeg?.formatWakeAnchor(1) ?: "na"}," +
+        "target=${targetHeadingDeg?.formatWakeAnchor(1) ?: "na"}," +
+        "rendered=${renderedHeadingDeg.formatWakeAnchor(1)}," +
+        "pitch=${pitchDeg?.formatWakeAnchor(1) ?: "na"}," +
+        "roll=${rollDeg?.formatWakeAnchor(1) ?: "na"}," +
+        "projection=${projection?.formatWakeAnchor(2) ?: "na"}," +
+        "headingDelta=${headingDeltaToScreenOffDeg.formatWakeAnchor(1)}," +
+        "tiltDelta=${tiltChangeToLatestDeg.formatWakeAnchor(1)}," +
+        "projectionDrop=${projectionDropToLatest.formatWakeAnchor(2)}," +
+        "stable=$stableBefore," +
+        "loweringSignature=$loweringSignatureToLatest," +
+        "selected=$selected"
 
 private fun shouldUpdateMapCenter(
     target: LatLong,

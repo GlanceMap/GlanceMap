@@ -119,23 +119,19 @@ internal object CompassDeepTraceDiagnostics {
         }
     }
 
-    fun onDiagnosticsCaptureState(
-        captureActive: Boolean,
-        fullDiagnostics: Boolean,
-    ) {
-        if (!captureActive) {
-            stop(reason = "capture_stopped")
-        } else if (!fullDiagnostics && _state.value.active) {
-            EnergyDiagnostics.markBatteryBenchmarkInvalid("compass_deep_trace")
-        }
-    }
-
     fun recordProviderSample(sample: CompassDeepTraceProviderSample) {
         recordAt(sample.atElapsedMs) { it.recordProvider(sample) }
     }
 
     fun recordRenderSample(sample: CompassDeepTraceRenderSample) {
         recordAt(sample.atElapsedMs) { it.recordRender(sample) }
+    }
+
+    /** Stores compass lifecycle and integrity events while the optional trace is active. */
+    fun recordTelemetryLine(line: String) {
+        synchronized(lock) {
+            if (_state.value.active) appendLineLocked(line)
+        }
     }
 
     /** Values are available only while the optional deep trace is already running. */
@@ -238,6 +234,9 @@ internal object CompassDeepTraceDiagnostics {
         }
     }
 }
+
+internal fun isCompassTelemetryCaptureActive(): Boolean =
+    DebugTelemetry.isEnabled() || CompassDeepTraceDiagnostics.state.value.active
 
 internal data class CompassDeepTraceGyroMotion(
     val integratedRotationDeg: Float? = null,

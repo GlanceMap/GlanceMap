@@ -11,7 +11,6 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveBundl
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveCompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeBundleDownloadSummarySection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
-import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeDemDownloadSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
@@ -632,6 +631,21 @@ object DiagnosticsExporter {
         val energySummary = EnergyDiagnostics.summary()
         val batteryBenchmarkValidity = EnergyDiagnostics.batteryBenchmarkValidity()
         val compassDeepTraceSnapshot = CompassDeepTraceDiagnostics.snapshot()
+        val compassDeepTraceTelemetryInsights =
+            deriveCompassTelemetryInsights(compassDeepTraceSnapshot.lines)
+        val compassDeepTraceHeadingTelemetrySummary =
+            deriveCompassHeadingTelemetrySummary(compassDeepTraceSnapshot.lines)
+        val compassHealthTelemetryInsights =
+            compassTelemetryInsights.takeIf {
+                it.staleSampleCount > 0 ||
+                    it.largeJumpPendingCount > 0 ||
+                    it.largeJumpAcceptedCount > 0 ||
+                    it.headingLooksWrongReportCount > 0
+            } ?: compassDeepTraceTelemetryInsights
+        val compassHealthHeadingTelemetrySummary =
+            compassHeadingTelemetrySummary.takeIf { it.sampleCount > 0 }
+                ?: compassDeepTraceHeadingTelemetrySummary
+        val telemetryDumpLines = telemetryLines.filterNot { "[CompassTelemetry]" in it }
         val screenStateSummary = ScreenStateDiagnostics.summary()
         val demDownloadSummary = DemDownloadDiagnostics.summary()
         val demDownloadLines = DemDownloadDiagnostics.snapshotLines()
@@ -1165,239 +1179,25 @@ object DiagnosticsExporter {
                 }",
             )
             writer.appendLine()
-            writer.appendLine("Compass Telemetry Summary")
-            writer.appendLine("managerStartCount=${compassTelemetryInsights.managerStartCount}")
-            writer.appendLine("managerStopScheduledCount=${compassTelemetryInsights.managerStopScheduledCount}")
-            writer.appendLine("managerStopRequestedCount=${compassTelemetryInsights.managerStopRequestedCount}")
+            writer.appendLine("Compass Health")
+            writer.appendLine("headingSampleCount=${compassHealthHeadingTelemetrySummary.sampleCount}")
+            writer.appendLine("headingTrackingSamples=${compassHealthHeadingTelemetrySummary.trackingSamples}")
+            writer.appendLine("headingDegradedSamples=${compassHealthHeadingTelemetrySummary.degradedSamples}")
+            writer.appendLine("magneticInterferenceSamples=${compassHealthHeadingTelemetrySummary.magneticInterferenceSamples}")
+            writer.appendLine("quarantineStartCount=${compassHealthHeadingTelemetrySummary.quarantineStartCount}")
+            writer.appendLine("recoveryStartCount=${compassHealthHeadingTelemetrySummary.recoveryStartCount}")
+            writer.appendLine("staleSampleCount=${compassHealthTelemetryInsights.staleSampleCount}")
             writer.appendLine(
-                "rotationSettleSessionStartCount=${compassTelemetryInsights.rotationSettleSessionStartCount}",
-            )
-            writer.appendLine("rotationSettleHoldCount=${compassTelemetryInsights.rotationSettleHoldCount}")
-            writer.appendLine("rotationSettleUnlockCount=${compassTelemetryInsights.rotationSettleUnlockCount}")
-            writer.appendLine("rotationSettleReleaseCount=${compassTelemetryInsights.rotationSettleReleaseCount}")
-            writer.appendLine(
-                "rotationSettleHoldReasons=${compassTelemetryInsights.rotationSettleHoldReasons}",
-            )
-            writer.appendLine(
-                "rotationSettleUnlockReasons=${compassTelemetryInsights.rotationSettleUnlockReasons}",
-            )
-            writer.appendLine(
-                "rotationSettleReleaseReasons=${compassTelemetryInsights.rotationSettleReleaseReasons}",
-            )
-            writer.appendLine(
-                "rotationSettleHoldMaxHeadingDeltaDeg=${
-                    compassTelemetryInsights.rotationSettleHoldMaxHeadingDeltaDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
+                "largeJumpCount=${
+                    compassHealthTelemetryInsights.largeJumpPendingCount +
+                        compassHealthTelemetryInsights.largeJumpAcceptedCount
                 }",
             )
-            writer.appendLine(
-                "rotationSettleWakeHoldDurationMaxMs=${
-                    compassTelemetryInsights.rotationSettleWakeHoldDurationMaxMs?.toString() ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "rotationSettleReleaseHeadingDeltaMaxDeg=${
-                    compassTelemetryInsights.rotationSettleReleaseHeadingDeltaMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "rotationSettleFirstVisibleReleaseStepMaxDeg=${
-                    compassTelemetryInsights.rotationSettleFirstVisibleReleaseStepMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine("headingSampleCount=${compassTelemetryInsights.headingSampleCount}")
-            writer.appendLine(
-                "headingDiagnosticSampleCount=${compassTelemetryInsights.headingDiagnosticSampleCount}",
-            )
-            writer.appendLine("headingSampleCountScope=throttled_debug_lines_not_sensor_callbacks")
-            writer.appendLine("largeJumpPendingCount=${compassTelemetryInsights.largeJumpPendingCount}")
-            writer.appendLine("largeJumpAcceptedCount=${compassTelemetryInsights.largeJumpAcceptedCount}")
-            writer.appendLine(
-                "largeJumpRatePercent=${
-                    TelemetryFormatters.ratePercent(
-                        compassTelemetryInsights.largeJumpPendingCount +
-                            compassTelemetryInsights.largeJumpAcceptedCount,
-                        compassTelemetryInsights.headingSampleCount,
-                    )
-                }",
-            )
-            writer.appendLine("staleSampleCount=${compassTelemetryInsights.staleSampleCount}")
-            writer.appendLine(
-                "staleSampleRatePercent=${
-                    TelemetryFormatters.ratePercent(
-                        compassTelemetryInsights.staleSampleCount,
-                        compassTelemetryInsights.headingSampleCount,
-                    )
-                }",
-            )
-            writer.appendLine(
-                "largeJumpWithinManagerStart500MsCount=${
-                    compassTelemetryInsights.largeJumpWithinManagerStart500MsCount
-                }",
-            )
-            writer.appendLine(
-                "sampleAfterStopScheduledCount=${compassTelemetryInsights.sampleAfterStopScheduledCount}",
-            )
-            writer.appendLine(
-                "sampleAfterStopRequestedCount=${compassTelemetryInsights.sampleAfterStopRequestedCount}",
-            )
-            writer.appendLine("startupSummaryCount=${compassTelemetryInsights.startupSummaryCount}")
-            writer.appendLine(
-                "startupHeadingSpanMaxDeg=${
-                    compassTelemetryInsights.startupHeadingSpanMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "startupMaxJumpMaxDeg=${
-                    compassTelemetryInsights.startupMaxJumpMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "startupVisibleHeadingJumpMaxDeg=${
-                    compassTelemetryInsights.startupVisibleHeadingJumpMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "startupVisibleMapRotationJumpMaxDeg=${
-                    compassTelemetryInsights.startupVisibleMapRotationJumpMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "startupSourceHandoffCount=${compassTelemetryInsights.startupSourceHandoffCount}",
-            )
-            writer.appendLine(
-                "startupSourceHandoffMaxJumpDeg=${
-                    compassTelemetryInsights.startupSourceHandoffMaxJumpDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine("startupStable3Count=${compassTelemetryInsights.startupStable3Count}")
-            writer.appendLine("startupStable5Count=${compassTelemetryInsights.startupStable5Count}")
-            writer.appendLine(
-                "fusedFirstUsableCount=${compassTelemetryInsights.fusedFirstUsableCount}",
-            )
-            writer.appendLine(
-                "fusedFirstUsableLatencyMaxMs=${
-                    compassTelemetryInsights.fusedFirstUsableLatencyMaxMs ?: "na"
-                }",
-            )
-            writer.appendLine("fusedReadyCount=${compassTelemetryInsights.fusedReadyCount}")
-            writer.appendLine(
-                "fusedReadyLatencyMaxMs=${
-                    compassTelemetryInsights.fusedReadyLatencyMaxMs ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "fusedWarmupRelockCount=${compassTelemetryInsights.fusedWarmupRelockCount}",
-            )
-            writer.appendLine(
-                "fusedWarmupRelockStepMaxDeg=${
-                    compassTelemetryInsights.fusedWarmupRelockStepMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "fusedReadyAfterRelockCount=${compassTelemetryInsights.fusedReadyAfterRelockCount}",
-            )
-            writer.appendLine(
-                "fusedFallbackActivationCount=${compassTelemetryInsights.fusedFallbackActivationCount}",
-            )
-            writer.appendLine("continuityStartCount=${compassTelemetryInsights.continuityStartCount}")
-            writer.appendLine(
-                "continuityCompleteCount=${compassTelemetryInsights.continuityCompleteCount}",
-            )
-            writer.appendLine(
-                "continuityCancelCount=${compassTelemetryInsights.continuityCancelCount}",
-            )
-            writer.appendLine(
-                "continuityInitialOffsetMaxDeg=${
-                    compassTelemetryInsights.continuityInitialOffsetMaxDeg?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "continuityDurationMaxMs=${
-                    compassTelemetryInsights.continuityDurationMaxMs ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "headingLooksWrongReportCount=${compassTelemetryInsights.headingLooksWrongReportCount}",
-            )
-            writer.appendLine("fusedPerfEventCount=${compassTelemetryInsights.fusedPerfEventCount}")
-            writer.appendLine("fusedPerfCallbackCount=${compassTelemetryInsights.fusedPerfCallbackCount}")
-            writer.appendLine("fusedPerfConfirmedCount=${compassTelemetryInsights.fusedPerfConfirmedCount}")
-            writer.appendLine("fusedPerfUnusableCount=${compassTelemetryInsights.fusedPerfUnusableCount}")
-            writer.appendLine(
-                "fusedPerfHeadingPublishCount=${compassTelemetryInsights.fusedPerfHeadingPublishCount}",
-            )
-            writer.appendLine(
-                "fusedPerfCallbackHzMax=${
-                    compassTelemetryInsights.fusedPerfCallbackHzMax?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "fusedPerfPublishHzMax=${
-                    compassTelemetryInsights.fusedPerfPublishHzMax?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine("renderPerfEventCount=${compassTelemetryInsights.renderPerfEventCount}")
-            writer.appendLine("renderPerfFrameCount=${compassTelemetryInsights.renderPerfFrameCount}")
-            writer.appendLine(
-                "renderPerfTargetUpdateCount=${compassTelemetryInsights.renderPerfTargetUpdateCount}",
-            )
-            writer.appendLine(
-                "renderPerfHeadingRenderCount=${compassTelemetryInsights.renderPerfHeadingRenderCount}",
-            )
-            writer.appendLine(
-                "renderPerfRotationAppliedCount=${compassTelemetryInsights.renderPerfRotationAppliedCount}",
-            )
-            writer.appendLine(
-                "renderPerfRotationSkippedCount=${compassTelemetryInsights.renderPerfRotationSkippedCount}",
-            )
-            writer.appendLine(
-                "renderPerfRotationThrottledCount=${
-                    compassTelemetryInsights.renderPerfRotationThrottledCount
-                }",
-            )
-            writer.appendLine(
-                "renderPerfMarkerUpdateCount=${compassTelemetryInsights.renderPerfMarkerUpdateCount}",
-            )
-            writer.appendLine("renderPerfRedrawCount=${compassTelemetryInsights.renderPerfRedrawCount}")
-            writer.appendLine(
-                "renderPerfFrameHzMax=${
-                    compassTelemetryInsights.renderPerfFrameHzMax?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.appendLine(
-                "renderPerfRenderHzMax=${
-                    compassTelemetryInsights.renderPerfRenderHzMax?.let {
-                        TelemetryFormatters.decimal(it, 1)
-                    } ?: "na"
-                }",
-            )
-            writer.writeCompassHeadingTelemetrySummary(compassHeadingTelemetrySummary)
+            writer.appendLine("headingLooksWrongReportCount=${compassHealthTelemetryInsights.headingLooksWrongReportCount}")
+            writer.appendLine("compassDeepTraceObserved=${compassDeepTraceSnapshot.sessionCount > 0}")
+            writer.appendLine("compassDeepTraceAggregateWindows=${compassDeepTraceSnapshot.windowCount}")
+            writer.appendLine("detailedCompassTelemetry=deep_trace_only")
+            writer.appendLine()
             writer.appendLine("batchEventCount=${telemetryInsights.batchEventCount}")
             writer.appendLine("batchOriginAutoFusedCount=${telemetryInsights.batchOriginAutoFusedCount}")
             writer.appendLine(
@@ -2066,10 +1866,14 @@ object DiagnosticsExporter {
             writer.writeLineDumpSection(
                 title = "Telemetry",
                 emptyMessage = "No telemetry captured yet. Enable diagnostics capture and reproduce.",
-                lines = telemetryLines,
+                lines = telemetryDumpLines,
             )
             writer.writeEnergyByModeSummarySection(energySummary)
-            writer.writeCompassDeepTraceSection(compassDeepTraceSnapshot)
+            writer.writeCompassDeepTraceSection(
+                snapshot = compassDeepTraceSnapshot,
+                eventSummary = compassDeepTraceTelemetryInsights,
+                headingSummary = compassDeepTraceHeadingTelemetrySummary,
+            )
             writer.writeScreenStateSummarySection(screenStateSummary)
             writer.writeLineDumpSection(
                 title = "Energy Diagnostics",

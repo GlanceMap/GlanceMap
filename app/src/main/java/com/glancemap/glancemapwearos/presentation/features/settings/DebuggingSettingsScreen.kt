@@ -198,10 +198,6 @@ fun DebuggingSettingsScreen(
                 captureActive = true,
                 fullDiagnostics = fullDiagnostics,
             )
-            CompassDeepTraceDiagnostics.onDiagnosticsCaptureState(
-                captureActive = true,
-                fullDiagnostics = fullDiagnostics,
-            )
             ScreenStateDiagnostics.configure(captureActive = true)
             CompassHeadingDiagnostics.reset()
             DebugTelemetry.log(
@@ -214,10 +210,6 @@ fun DebuggingSettingsScreen(
                 detail = "source=debug_screen captureMode=$diagnosticsCaptureMode",
             )
         } else {
-            CompassDeepTraceDiagnostics.onDiagnosticsCaptureState(
-                captureActive = false,
-                fullDiagnostics = false,
-            )
             EnergyDiagnostics.recordEvent(
                 reason = "capture_toggle_off",
                 detail = "source=debug_screen",
@@ -359,8 +351,6 @@ fun DebuggingSettingsScreen(
                 onCheckedChanged = {
                     if (exportInProgress) return@SettingsToggleChip
                     if (!it) {
-                        CompassDeepTraceDiagnostics.stop(reason = "capture_toggle_off")
-                        CompassHeadingReferenceDiagnostics.stop()
                         EnergyDiagnostics.recordSample(
                             context = context,
                             reason = "capture_toggle_off",
@@ -394,7 +384,7 @@ fun DebuggingSettingsScreen(
                                 "Battery benchmark running"
                             }
                         } else {
-                            "Full diagnostics running"
+                            "General diagnostics running"
                         }
                     } else if (exportInProgress) {
                         "Export in progress..."
@@ -486,8 +476,8 @@ fun DebuggingSettingsScreen(
                         val captureWasEnabled = gpsDebugTelemetry
                         var captureFrozenForExport = false
                         try {
-                            CompassDeepTraceDiagnostics.stop(reason = "export")
                             CompassHeadingReferenceDiagnostics.stop()
+                            CompassDeepTraceDiagnostics.stop(reason = "export")
                             val hasBufferedLogs =
                                 DebugTelemetry.size() > 0 ||
                                     EnergyDiagnostics.snapshotLines().isNotEmpty() ||
@@ -704,12 +694,12 @@ fun DebuggingSettingsScreen(
                     if (diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY) {
                         "Energy only · low overhead"
                     } else {
-                        "Complete troubleshooting logs"
+                        "System, GPS and recording logs"
                     },
                 onSelect = { mode ->
                     if (gpsDebugTelemetry) {
-                        CompassDeepTraceDiagnostics.stop(reason = "capture_mode_change")
                         CompassHeadingReferenceDiagnostics.stop()
+                        CompassDeepTraceDiagnostics.stop(reason = "capture_mode_change")
                         EnergyDiagnostics.recordSample(
                             context = context,
                             reason = "capture_toggle_off",
@@ -747,7 +737,7 @@ fun DebuggingSettingsScreen(
                 diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY
             SettingsToggleChip(
                 checked = compassDeepTraceState.active,
-                enabled = gpsDebugTelemetry && !exportInProgress,
+                enabled = !exportInProgress,
                 onCheckedChanged = { enabled ->
                     if (enabled) {
                         CompassDeepTraceDiagnostics.start(
@@ -755,6 +745,7 @@ fun DebuggingSettingsScreen(
                             batteryBenchmarkSelected = batteryBenchmark,
                         )
                     } else {
+                        CompassHeadingReferenceDiagnostics.stop()
                         CompassDeepTraceDiagnostics.stop(reason = "manual")
                     }
                 },
@@ -766,18 +757,19 @@ fun DebuggingSettingsScreen(
                         compassDeepTraceState.active ->
                             "Active · stop manually when finished"
                         batteryBenchmark && !batteryBenchmarkValidity.valid ->
-                            "Off · current benchmark remains invalid"
-                        !gpsDebugTelemetry -> "Start diagnostics capture first"
+                            "Start compass trace · invalidates benchmark"
                         batteryBenchmark ->
                             "Manual stop · invalidates benchmark"
-                        else -> "Manual stop · higher battery use"
+                        else -> "Compass-only capture · manual stop"
                     },
             )
         }
         item {
             Chip(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = gpsDebugTelemetry && !exportInProgress && !compassHeadingReferenceTestActive,
+                enabled = compassDeepTraceState.active &&
+                    !exportInProgress &&
+                    !compassHeadingReferenceTestActive,
                 label = {
                     WearText(
                         text = "Reference north: ${compassHeadingReferenceBasis.displayLabel}",
@@ -796,7 +788,7 @@ fun DebuggingSettingsScreen(
                                 CompassHeadingReferenceBasis.TRUE_NORTH ->
                                     "Use for a declination-adjusted reference"
                                 CompassHeadingReferenceBasis.UNKNOWN ->
-                                    "Tap to select before starting the test"
+                                    "Select before starting the test"
                             },
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
@@ -812,7 +804,7 @@ fun DebuggingSettingsScreen(
         item {
             Chip(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = gpsDebugTelemetry && !exportInProgress,
+                enabled = compassDeepTraceState.active && !exportInProgress,
                 label = {
                     WearText(
                         text =
@@ -833,7 +825,7 @@ fun DebuggingSettingsScreen(
                             if (compassHeadingReferenceTestActive) {
                                 "Open Navigate → shortcuts to mark N, E, S and W"
                             } else {
-                                "Measures absolute heading error"
+                                "Deep Trace active · measures absolute heading error"
                             },
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,

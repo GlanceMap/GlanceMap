@@ -43,6 +43,22 @@ class FusedOrientationProviderAdapterSupportTest {
     }
 
     @Test
+    fun freshProviderStartDoesNotRetainThePreviousSessionHeading() {
+        assertFalse(
+            shouldRetainCachedFusedHeading(
+                cachedHeadingAgeMs = 2_000L,
+                retainCachedHeading = false,
+            ),
+        )
+        assertTrue(
+            shouldRetainCachedFusedHeading(
+                cachedHeadingAgeMs = 20L,
+                retainCachedHeading = true,
+            ),
+        )
+    }
+
+    @Test
     fun activeTurnPublishesNineteenMsCallbacksWhileIdleKeepsItsNormalCadence() {
         assertFalse(
             shouldPublishFusedHeading(

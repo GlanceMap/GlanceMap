@@ -106,7 +106,7 @@ internal object CompassHeadingDiagnostics {
             )
         }
 
-        if (!DebugTelemetry.isEnabled()) {
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
             return
         }
@@ -147,7 +147,7 @@ internal object CompassHeadingDiagnostics {
         northBasis: CompassNorthBasis,
         atElapsedMs: Long,
     ) {
-        if (!DebugTelemetry.isEnabled()) {
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
             return
         }
@@ -167,7 +167,7 @@ internal object CompassHeadingDiagnostics {
         mapRotationDeg: Float,
         atElapsedMs: Long,
     ) {
-        if (DebugTelemetry.isEnabled()) {
+        if (isCompassTelemetryCaptureActive()) {
             val previousRenderedHeadingDeg = lastRenderedHeadingDeg
             lastRenderedStepDeg =
                 if (previousRenderedHeadingDeg.isFinite() && renderedHeadingDeg.isFinite()) {
@@ -193,7 +193,7 @@ internal object CompassHeadingDiagnostics {
                 atElapsedMs = atElapsedMs,
             ),
         )
-        if (!DebugTelemetry.isEnabled()) {
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
         } else if (atElapsedMs - lastRenderSampleAtElapsedMs >= RENDER_SAMPLE_MIN_INTERVAL_MS) {
             synchronized(lock) {

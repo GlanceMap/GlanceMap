@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import android.util.Log
+import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -100,9 +101,12 @@ internal object DebugTelemetry {
         tag: String,
         message: String,
     ) {
-        if (!enabled.get()) return
         val nowMs = System.currentTimeMillis()
         val line = "${tsFormatter.format(Instant.ofEpochMilli(nowMs))} [$tag] $message"
+        if (tag == COMPASS_TELEMETRY_TAG) {
+            CompassDeepTraceDiagnostics.recordTelemetryLine(line)
+        }
+        if (!enabled.get()) return
         synchronized(lock) {
             lines.addLast(line)
             lineTimesMs.addLast(nowMs)

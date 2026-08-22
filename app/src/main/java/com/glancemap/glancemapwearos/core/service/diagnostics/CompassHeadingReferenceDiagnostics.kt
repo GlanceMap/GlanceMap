@@ -52,7 +52,7 @@ internal object CompassHeadingReferenceDiagnostics {
 
     fun start(): Boolean =
         synchronized(lock) {
-            if (_active.value || !DebugTelemetry.isEnabled()) return false
+            if (_active.value || !isCompassTelemetryCaptureActive()) return false
             val selectedReferenceBasis = _referenceBasis.value
             accumulator = CompassHeadingReferenceAccumulator(referenceBasis = selectedReferenceBasis)
             latestProvider = null
@@ -99,7 +99,7 @@ internal object CompassHeadingReferenceDiagnostics {
     fun attachNavigate(context: Context): Boolean {
         val generation =
             synchronized(lock) {
-                if (!_active.value || !DebugTelemetry.isEnabled()) return false
+                if (!_active.value || !isCompassTelemetryCaptureActive()) return false
                 if (navigateSession.active) return true
                 latestRender = null
                 latestIndependent = CompassHeadingReferenceIndependentSamples()
@@ -171,7 +171,7 @@ internal object CompassHeadingReferenceDiagnostics {
     }
 
     fun recordReference(referenceHeadingDeg: Float): CompassHeadingReferenceMarkResult {
-        if (!_active.value || !DebugTelemetry.isEnabled()) {
+        if (!_active.value || !isCompassTelemetryCaptureActive()) {
             return CompassHeadingReferenceMarkResult.TEST_INACTIVE
         }
         val capturedAtElapsedMs = SystemClock.elapsedRealtime()

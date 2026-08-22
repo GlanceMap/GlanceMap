@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.CompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
@@ -76,6 +77,38 @@ class CompassDeepTraceAggregationTest {
         assertTrue(output.contains("aggregateWindowCount=2"))
         assertTrue(output.contains("lastStopReason=manual"))
         assertEquals(1, output.lines().count { it.startsWith("window index=") })
+    }
+
+    @Test
+    fun exportSectionIncludesDetailedCompassSummariesOnlyInDeepTrace() {
+        val output = StringBuilder()
+
+        output.writeCompassDeepTraceSection(
+            snapshot =
+                CompassDeepTraceSnapshot(
+                    active = false,
+                    sessionCount = 1,
+                    windowCount = 1,
+                    droppedLines = 0,
+                    lastStopReason = "manual",
+                    lines = listOf("[CompassTelemetry] heading_engine window samples=4"),
+                ),
+            eventSummary =
+                DiagnosticsExporter.CompassTelemetryInsights(
+                    headingLooksWrongReportCount = 2,
+                    rotationSettleReleaseCount = 1,
+                ),
+            headingSummary =
+                CompassHeadingTelemetrySummary(
+                    sampleCount = 4,
+                    degradedSamples = 1,
+                ),
+        )
+
+        assertTrue(output.contains("Compass Deep Trace Event Summary"))
+        assertTrue(output.contains("headingLooksWrongReportCount=2"))
+        assertTrue(output.contains("Compass Heading Engine Summary"))
+        assertTrue(output.contains("engineSampleCount=4"))
     }
 
     @Test

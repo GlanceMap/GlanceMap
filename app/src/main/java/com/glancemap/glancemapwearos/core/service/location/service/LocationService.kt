@@ -1392,10 +1392,6 @@ class LocationService : Service() {
             captureActive = captureActive,
             fullDiagnostics = fullDiagnostics,
         )
-        CompassDeepTraceDiagnostics.onDiagnosticsCaptureState(
-            captureActive = captureActive,
-            fullDiagnostics = fullDiagnostics,
-        )
         updateEnergySampling(captureActive)
         updateGnssDiagnostics(enabled = fullDiagnostics)
     }

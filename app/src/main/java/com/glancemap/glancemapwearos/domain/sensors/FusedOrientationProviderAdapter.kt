@@ -10,6 +10,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiag
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceProviderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.location.DeviceOrientation
@@ -268,7 +269,11 @@ internal class FusedOrientationProviderAdapter(
             updateHeadingSourceState(HeadingSource.NONE)
         }
         logDiagnostics("google_fused state transition=starting_fused from=idle reason=start")
-        requestOrientationUpdates(forceRestart = true, reason = "start")
+        requestOrientationUpdates(
+            forceRestart = true,
+            reason = "start",
+            retainCachedHeading = false,
+        )
     }
 
     @Synchronized
@@ -416,6 +421,7 @@ internal class FusedOrientationProviderAdapter(
     private fun requestOrientationUpdates(
         forceRestart: Boolean,
         reason: String,
+        retainCachedHeading: Boolean = true,
     ) {
         if (!started || _useFallbackProvider.value) return
         if (!forceRestart && orientationUpdatesRegistered) return
@@ -424,10 +430,15 @@ internal class FusedOrientationProviderAdapter(
         ensureCallbackHandler()
         val nowElapsedMs = SystemClock.elapsedRealtime()
         val cachedHeadingAgeMs = recentUsableFusedHeadingAgeMs(nowElapsedMs)
+        val preserveRecentFusedHeading =
+            shouldRetainCachedFusedHeading(
+                cachedHeadingAgeMs = cachedHeadingAgeMs,
+                retainCachedHeading = retainCachedHeading,
+            )
 
         prepareOrientationRequestState(
             reason = reason,
-            preserveRecentFusedHeading = cachedHeadingAgeMs != null,
+            preserveRecentFusedHeading = preserveRecentFusedHeading,
         )
         startIntegritySensorMonitor()
 
@@ -437,6 +448,7 @@ internal class FusedOrientationProviderAdapter(
             "google_fused request reason=$reason forceRestart=$forceRestart " +
                 "samplingMicros=$samplingPeriodMicros lowPower=$lowPowerMode " +
                 "boostActive=$usingBoost cachedHeadingAgeMs=${cachedHeadingAgeMs ?: "na"} " +
+                "retainedCachedHeading=$preserveRecentFusedHeading " +
                 "state=starting_fused",
         )
         registerOrientationRequest(
@@ -1106,7 +1118,7 @@ internal class FusedOrientationProviderAdapter(
     }
 
     private fun stopOrientationUpdates() {
-        if (orientationUpdatesRegistered && DebugTelemetry.isEnabled()) {
+        if (orientationUpdatesRegistered && isCompassTelemetryCaptureActive()) {
             val wakeSnapshot = CompassHeadingDiagnostics.wakeHeadingSnapshot()
             logDiagnostics(
                 "wake_anchor stage=provider_stop " +
@@ -1153,7 +1165,7 @@ internal class FusedOrientationProviderAdapter(
             .isGooglePlayServicesAvailable(appContext) == ConnectionResult.SUCCESS
 
     private fun logDiagnostics(message: String) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
     }
 
@@ -1297,21 +1309,21 @@ internal class FusedOrientationProviderAdapter(
     }
 
     private fun recordFusedPerfCallback(nowElapsedMs: Long) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         ensureFusedPerfWindow(nowElapsedMs)
         fusedPerfCallbackCount += 1
         maybeLogFusedPerf(nowElapsedMs)
     }
 
     private fun recordFusedPerfConfirmed(nowElapsedMs: Long) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         ensureFusedPerfWindow(nowElapsedMs)
         fusedPerfConfirmedCount += 1
         maybeLogFusedPerf(nowElapsedMs)
     }
 
     private fun recordFusedPerfUnusable(nowElapsedMs: Long) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         ensureFusedPerfWindow(nowElapsedMs)
         fusedPerfUnusableCount += 1
         maybeLogFusedPerf(nowElapsedMs)
@@ -1321,7 +1333,7 @@ internal class FusedOrientationProviderAdapter(
         nowElapsedMs: Long,
         activeTurn: Boolean,
     ) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         ensureFusedPerfWindow(nowElapsedMs)
         fusedPerfHeadingPublishCount += 1
         if (activeTurn) fusedPerfActiveTurnPublishCount += 1
@@ -1453,3 +1465,8 @@ internal fun shouldPublishFusedHeading(
         }
     return nowElapsedMs - lastPublishAtElapsedMs >= minimumIntervalMs
 }
+
+internal fun shouldRetainCachedFusedHeading(
+    cachedHeadingAgeMs: Long?,
+    retainCachedHeading: Boolean,
+): Boolean = retainCachedHeading && cachedHeadingAgeMs != null

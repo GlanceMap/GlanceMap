@@ -105,6 +105,50 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun trustedPreLoweringAnchorReleasesTowardTheFreshProviderHeadingNotTheOldTarget() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(
+            nowElapsedMs = 1_000L,
+            heldHeadingDeg = 100f,
+            requirePostStableHeading = true,
+        )
+        val acquiringState = readyGoogleFusedState().copy(
+            trackingState = CompassTrackingState.ACQUIRING,
+            trackingReason = CompassTrackingReason.RECOVERING,
+        )
+        val stableState = stableTrackingState(acquiringState)
+
+        // A provider restart must publish its raw 104° heading, not the prior wrist-down 42°
+        // processed target, before the wake gate observes its first fresh sample.
+        assertNull(
+            gate.resolve(
+                renderState = acquiringState,
+                compassHeadingDeg = 104f,
+                headingSampleElapsedRealtimeMs = 1_100L,
+                nowElapsedMs = 1_110L,
+            ),
+        )
+        assertNull(
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 104f,
+                headingSampleElapsedRealtimeMs = 1_100L,
+                nowElapsedMs = 1_510L,
+            ),
+        )
+        val target =
+            gate.resolve(
+                renderState = stableState,
+                compassHeadingDeg = 104f,
+                headingSampleElapsedRealtimeMs = 1_530L,
+                nowElapsedMs = 1_540L,
+            )
+
+        assertEquals(104f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+    }
+
+    @Test
     fun trustedPreLoweringAnchorStillUsesTheBoundedSettleTimeout() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(
@@ -359,6 +403,9 @@ class NavigateEffectsSupportTest {
         capture.recordInteractive(342f, 342f, 342f, 0f, 0f, 1f, 0L)
         capture.recordInteractive(343f, 343f, 343f, 1f, 0f, 1f, 100L)
         capture.recordInteractive(342f, 342f, 342f, 1f, 0f, 1f, 200L)
+        // This newer point occupies the same 50 ms diagnostic bucket as the selected 200 ms
+        // point but is not locally stable, so the history dump must retain the selection too.
+        capture.recordInteractive(349f, 349f, 349f, 8f, 0f, 0.98f, 220L)
         capture.recordInteractive(349f, 349f, 349f, 8f, 0f, 0.98f, 300L)
         capture.recordInteractive(358f, 358f, 358f, 18f, 0f, 0.93f, 400L)
         capture.recordInteractive(12f, 12f, 12f, 28f, 0f, 0.86f, 500L)
@@ -370,6 +417,33 @@ class NavigateEffectsSupportTest {
         assertEquals("pre_lowering_stable_visible", screenOff.selectionReason)
         assertEquals(320L, screenOff.anchorRewindMs)
         assertTrue(capture.wake(fallbackHeadingDeg = 12f).preLoweringDetected)
+
+        val selectedHistoryPoint = screenOff.diagnosticHistory.single { it.selected }
+        assertEquals(320L, selectedHistoryPoint.ageMs)
+        assertEquals(342f, selectedHistoryPoint.providerHeadingDeg ?: -1f, 0f)
+        assertEquals(342f, selectedHistoryPoint.targetHeadingDeg ?: -1f, 0f)
+        assertTrue(selectedHistoryPoint.stableBefore)
+        assertTrue(selectedHistoryPoint.loweringSignatureToLatest)
+    }
+
+    @Test
+    fun slowLoweringDoesNotSelectHistoryOlderThanTwoSeconds() {
+        val capture = NavigateWakeContinuityCapture()
+        capture.recordInteractive(100f, 100f, 100f, 0f, 0f, 1f, 0L)
+        capture.recordInteractive(100f, 100f, 100f, 0f, 0f, 1f, 100L)
+        capture.recordInteractive(100f, 100f, 100f, 0f, 0f, 1f, 200L)
+        capture.recordInteractive(96f, 96f, 96f, 3f, 0f, 0.99f, 600L)
+        capture.recordInteractive(90f, 90f, 90f, 6f, 0f, 0.98f, 1_000L)
+        capture.recordInteractive(82f, 82f, 82f, 12f, 0f, 0.94f, 1_500L)
+        capture.recordInteractive(72f, 72f, 72f, 18f, 0f, 0.90f, 2_100L)
+        capture.recordInteractive(60f, 60f, 60f, 26f, 0f, 0.84f, 2_500L)
+
+        val screenOff = capture.screenOff(fallbackHeadingDeg = 60f, nowElapsedMs = 2_520L)
+
+        assertEquals(60f, screenOff.screenOffAnchorHeadingDeg, 0f)
+        assertEquals(0L, screenOff.anchorRewindMs)
+        assertEquals("current_no_lowering_signature", screenOff.selectionReason)
+        assertTrue(screenOff.diagnosticHistory.all { it.ageMs <= 2_000L })
     }
 
     @Test
@@ -411,9 +485,12 @@ class NavigateEffectsSupportTest {
         capture.beginInteractiveSession()
         capture.recordInteractive(20f, 20f, 20f, 0f, 0f, 1f, 130L)
         capture.recordInteractive(20f, 20f, 20f, 0f, 0f, 1f, 230L)
-        val secondScreenOff = capture.screenOff(fallbackHeadingDeg = 20f, nowElapsedMs = 250L)
+        capture.recordInteractive(20f, 20f, 20f, 0f, 0f, 1f, 330L)
+        capture.recordInteractive(60f, 60f, 60f, 20f, 0f, 0.85f, 380L)
+        val secondScreenOff = capture.screenOff(fallbackHeadingDeg = 60f, nowElapsedMs = 400L)
 
         assertEquals(20f, secondScreenOff.screenOffAnchorHeadingDeg, 0f)
+        assertEquals("pre_lowering_stable_visible", secondScreenOff.selectionReason)
         assertEquals(20f, capture.wake(fallbackHeadingDeg = 300f).wakeHeldHeadingDeg, 0f)
     }
 
