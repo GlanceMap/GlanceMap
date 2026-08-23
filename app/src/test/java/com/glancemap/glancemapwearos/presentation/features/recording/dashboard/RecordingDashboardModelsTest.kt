@@ -93,6 +93,44 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotFallsBackToGpsAfterPodDistanceBecomesStale() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 1_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_200.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotUsesFreshPodDistance() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 15_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_000.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
     fun formattedRecordingMetricUsesClockDurationForRecordingDuration() {
         val metric =
             formattedRecordingMetric(

@@ -20,4 +20,24 @@ class RecordingDashboardRotaryLifecycleTest {
             dashboardRotaryLifecycleAction(Lifecycle.Event.ON_RESUME),
         )
     }
+
+    @Test
+    fun `rotary page transition works with a dynamic page count and clears the partial gesture`() {
+        var accumulator = 52f
+        var nextPageRequests = 0
+
+        val consumed =
+            handleRecordingRotaryPageEvent(
+                delta = 8f,
+                pageCount = 5,
+                accumulator = accumulator,
+                onAccumulatorChange = { accumulator = it },
+                onPreviousPage = {},
+                onNextPage = { nextPageRequests += 1 },
+            )
+
+        assertEquals(true, consumed)
+        assertEquals(1, nextPageRequests)
+        assertEquals(0f, accumulator)
+    }
 }

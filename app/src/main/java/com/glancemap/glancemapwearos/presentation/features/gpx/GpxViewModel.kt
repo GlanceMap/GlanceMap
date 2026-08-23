@@ -562,7 +562,8 @@ class GpxViewModel(
                             sig = sig,
                             title = cachedMeta?.title ?: parsed?.title,
                             distance =
-                                profile.totalDistance.takeIf { it > 0.0 }
+                                activitySummary?.distanceMeters?.takeIf { it > 0.0 }
+                                    ?: profile.totalDistance.takeIf { it > 0.0 }
                                     ?: parsed?.totalDistance
                                     ?: 0.0,
                             elevationGain = activityProfile.totalAscent,

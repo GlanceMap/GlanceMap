@@ -93,11 +93,28 @@ internal class RecordingProgressVibrationTracker {
 
 private fun RecordingProgressVibrationSettings.timeIntervalMillis(): Long = timeMinutes * 60_000L
 
-internal fun recordingDisplayDistanceMeters(state: TraceRecordingUiState): Double =
+internal fun recordingDisplayDistanceMeters(
+    state: TraceRecordingUiState,
+    nowMillis: Long = System.currentTimeMillis(),
+): Double =
     when (state.distanceSource) {
-        SettingsRepository.RECORDING_SENSOR_SOURCE_POD -> state.externalDistanceMeters ?: state.distanceMeters
+        SettingsRepository.RECORDING_SENSOR_SOURCE_POD ->
+            state.externalDistanceMeters
+                ?.takeIf { state.externalDistanceUpdatedAtMillis.isFreshExternalDistanceTime(nowMillis) }
+                ?: state.externalDistanceFallbackBaseMeters
+                    ?.let { baseMeters ->
+                        baseMeters +
+                            (state.distanceMeters - (state.externalDistanceFallbackGpsMeters ?: state.distanceMeters))
+                                .coerceAtLeast(0.0)
+                    }
+                ?: state.distanceMeters
         else -> state.distanceMeters
     }.takeIf { it.isFinite() }?.coerceAtLeast(0.0) ?: 0.0
+
+private fun Long.isFreshExternalDistanceTime(nowMillis: Long): Boolean =
+    this > 0L && (nowMillis - this).coerceAtLeast(0L) <= EXTERNAL_DISTANCE_FALLBACK_STALE_MS
+
+private const val EXTERNAL_DISTANCE_FALLBACK_STALE_MS = 15_000L
 
 internal fun recordingActiveDurationMillis(
     state: TraceRecordingUiState,

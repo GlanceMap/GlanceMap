@@ -1054,7 +1054,8 @@ class TraceRecordingViewModel(
     fun onSensorMetrics(metrics: RecordingSensorMetrics) {
         val state = _uiState.value
         if (!state.active || state.saving) return
-        updateSensorEventTelemetry(previous = latestSensorMetrics, next = metrics)
+        val previousMetrics = latestSensorMetrics
+        updateSensorEventTelemetry(previous = previousMetrics, next = metrics)
         latestSensorMetrics = metrics
         val integratedDistanceMeters = updateExternalSpeedIntegration(metrics)
         val externalDistanceUpdate =
@@ -1070,6 +1071,9 @@ class TraceRecordingViewModel(
             externalSessionDistanceMeters = update.sessionMeters
         }
         val externalDistanceMeters = externalDistanceUpdate?.sessionMeters
+        val hasNewExternalDistance =
+            externalDistanceMeters != null &&
+                metrics.externalDistanceUpdatedAtMillis > previousMetrics.externalDistanceUpdatedAtMillis
         val nextState =
             state.copy(
                 heartRateBpm = metrics.heartRateBpm,
@@ -1077,6 +1081,12 @@ class TraceRecordingViewModel(
                 externalSpeedMps = metrics.externalSpeedMps,
                 externalRawDistanceUnits = metrics.externalDistanceRawUnits,
                 externalDistanceMeters = externalDistanceMeters ?: state.externalDistanceMeters,
+                externalDistanceUpdatedAtMillis =
+                    maxOf(state.externalDistanceUpdatedAtMillis, metrics.externalDistanceUpdatedAtMillis),
+                externalDistanceFallbackBaseMeters =
+                    if (hasNewExternalDistance) externalDistanceMeters else state.externalDistanceFallbackBaseMeters,
+                externalDistanceFallbackGpsMeters =
+                    if (hasNewExternalDistance) state.distanceMeters else state.externalDistanceFallbackGpsMeters,
                 externalIntegratedDistanceMeters = integratedDistanceMeters ?: state.externalIntegratedDistanceMeters,
                 externalPowerWatts = metrics.externalPowerWatts,
                 externalPowerFromBluetooth = metrics.externalPowerWatts != null,

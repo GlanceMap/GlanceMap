@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.wear.compose.foundation.AnchorType
 import androidx.wear.compose.foundation.ArcPaddingValues
 import androidx.wear.compose.foundation.CurvedLayout
@@ -644,7 +645,7 @@ internal fun GuidanceRemainingArc(
                 text = distance,
                 style =
                     CurvedTextStyle(
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     ),
@@ -662,7 +663,7 @@ internal fun GuidanceRemainingArc(
                     text = it,
                     style =
                         CurvedTextStyle(
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         ),
@@ -684,14 +685,16 @@ internal fun GuidanceRouteProgressChrome(
         RouteProgressRing(
             progress = state.routeProgressFraction,
             offRoute = state.offRoute,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().zIndex(0f),
         )
         if (showDetails) {
-            GuidanceRemainingArc(
-                remainingMeters = state.distanceRemainingMeters,
-                estimatedRemainingSeconds = state.estimatedRemainingSeconds,
-                isMetric = isMetric,
-            )
+            Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+                GuidanceRemainingArc(
+                    remainingMeters = state.distanceRemainingMeters,
+                    estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+                    isMetric = isMetric,
+                )
+            }
         }
     }
 }

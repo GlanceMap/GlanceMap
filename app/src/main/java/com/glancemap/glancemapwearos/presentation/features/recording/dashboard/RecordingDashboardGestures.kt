@@ -74,8 +74,9 @@ internal fun RecordingFullscreenPageShell(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val focusRequester = remember { FocusRequester() }
-    var rotaryAccumulator by remember(pageCount) { mutableFloatStateOf(0f) }
+    var rotaryAccumulator by remember(pageCount, pageIndex) { mutableFloatStateOf(0f) }
     var rotaryFocusGeneration by remember { mutableIntStateOf(0) }
+    var focusAcquiredGeneration by remember { mutableIntStateOf(-1) }
     var wakeResumedAtElapsedMs by remember { mutableLongStateOf(0L) }
     var pendingWakeRotaryEventGeneration by remember { mutableIntStateOf(0) }
     var loggedRotaryEventCount by remember(pageCount, pageIndex, rotaryFocusGeneration) {
@@ -96,9 +97,20 @@ internal fun RecordingFullscreenPageShell(
                         rotaryFocusGeneration += 1
                         wakeResumedAtElapsedMs = SystemClock.elapsedRealtime()
                         pendingWakeRotaryEventGeneration = rotaryFocusGeneration
+                        val focusAcquired = focusRequester.requestFocus()
+                        if (focusAcquired) {
+                            focusAcquiredGeneration = rotaryFocusGeneration
+                        }
                         DebugTelemetry.log(
                             telemetryTag,
-                            "event=dashboard_rotary_wake session=$rotaryFocusGeneration accumulator_reset=true",
+                            "event=dashboard_rotary_wake session=$rotaryFocusGeneration accumulator_reset=true " +
+                                "focus_acquired=$focusAcquired",
+                        )
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_focus_requested acquired=$focusAcquired attempts=1 " +
+                                "reason=wake_immediate session=$rotaryFocusGeneration " +
+                                "page=${pageIndex + 1} pageCount=$pageCount",
                         )
                     }
 
@@ -111,18 +123,23 @@ internal fun RecordingFullscreenPageShell(
         }
     }
 
-    LaunchedEffect(pageCount, pageIndex, rotaryFocusGeneration) {
-        var focusAcquired = false
-        var attempt = 0
-        while (!focusAcquired && attempt < POPUP_ROTARY_FOCUS_MAX_ATTEMPTS) {
+    LaunchedEffect(rotaryFocusGeneration) {
+        if (focusAcquiredGeneration == rotaryFocusGeneration) return@LaunchedEffect
+
+        var focusAcquired = focusRequester.requestFocus()
+        var attempts = 1
+        if (!focusAcquired) {
             withFrameNanos { }
             focusAcquired = focusRequester.requestFocus()
-            attempt += 1
+            attempts += 1
+        }
+        if (focusAcquired) {
+            focusAcquiredGeneration = rotaryFocusGeneration
         }
         DebugTelemetry.log(
             telemetryTag,
-            "event=dashboard_rotary_focus_requested acquired=$focusAcquired " +
-                "attempts=$attempt reason=${if (rotaryFocusGeneration == 0) "popup_open" else "wake"} " +
+            "event=dashboard_rotary_focus_requested acquired=$focusAcquired attempts=$attempts " +
+                "reason=${if (rotaryFocusGeneration == 0) "popup_open" else "wake_attachment_retry"} " +
                 "session=$rotaryFocusGeneration page=${pageIndex + 1} pageCount=$pageCount",
         )
     }
@@ -384,7 +401,8 @@ private fun RecordingDashboardArcPageIndicator(
     }
 }
 
-private fun handleRecordingRotaryPageEvent(
+@Suppress("ReturnCount")
+internal fun handleRecordingRotaryPageEvent(
     delta: Float,
     pageCount: Int,
     accumulator: Float,
@@ -418,7 +436,6 @@ private fun handleRecordingRotaryPageEvent(
 
 private const val POPUP_PAGE_DRAG_THRESHOLD_PX = 24f
 private const val POPUP_ROTARY_PAGE_THRESHOLD_PX = 56f
-private const val POPUP_ROTARY_FOCUS_MAX_ATTEMPTS = 20
 private const val DASHBOARD_ROTARY_EVENT_LOG_LIMIT = 3
 
 internal enum class DashboardRotaryLifecycleAction {
