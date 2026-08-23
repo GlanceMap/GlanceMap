@@ -18,6 +18,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapcompanionapp.map.PhoneMapRendererCatalog
+import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
 import com.google.android.gms.location.LocationServices
 import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
@@ -44,35 +46,6 @@ private const val MAP_PICKER_ZOOM_STEP = 1.0
 private const val ROUTING_TILE_DEGREES = 5
 private const val ROUTING_TILE_EPSILON = 1e-9
 private val MAP_PICKER_FALLBACK_COLOR = 0xffeef1f5.toInt()
-private const val OSM_RASTER_STYLE_JSON = """
-{
-  "version": 8,
-  "sources": {
-    "osm": {
-      "type": "raster",
-      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      "tileSize": 256,
-      "minzoom": 0,
-      "maxzoom": 19,
-      "attribution": "(C) OpenStreetMap contributors"
-    }
-  },
-  "layers": [
-    {
-      "id": "fallback-background",
-      "type": "background",
-      "paint": {
-        "background-color": "#eef1f5"
-      }
-    },
-    {
-      "id": "osm",
-      "type": "raster",
-      "source": "osm"
-    }
-  ]
-}
-"""
 
 internal data class MapPickerBounds(
     val west: Double,
@@ -396,7 +369,9 @@ internal abstract class BaseMapLibrePickerView(
             if (destroyed) return@getMapAsync
             map = loadedMap
             configureMapCallbacks(loadedMap)
-            loadedMap.setStyle(Style.Builder().fromJson(OSM_RASTER_STYLE_JSON)) {
+            loadedMap.setStyle(
+                Style.Builder().fromJson(PhoneMapRendererCatalog.onlineProvider.mapLibreRasterStyleJson()),
+            ) {
                 onStyleReady(loadedMap)
                 notifyReady()
             }
