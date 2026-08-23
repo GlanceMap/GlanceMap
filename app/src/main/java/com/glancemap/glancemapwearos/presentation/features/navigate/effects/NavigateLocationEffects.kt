@@ -1552,7 +1552,11 @@ internal fun resolveGpsIndicatorEscalationState(
     abnormalSinceElapsedMs: Long,
     nowElapsedMs: Long,
 ): GpsFixIndicatorState {
-    if (rawState == GpsFixIndicatorState.GOOD || rawState == GpsFixIndicatorState.UNAVAILABLE) {
+    if (
+        rawState == GpsFixIndicatorState.GOOD ||
+        rawState == GpsFixIndicatorState.POOR ||
+        rawState == GpsFixIndicatorState.UNAVAILABLE
+    ) {
         return rawState
     }
     if (abnormalSinceElapsedMs <= 0L) return GpsFixIndicatorState.SEARCHING

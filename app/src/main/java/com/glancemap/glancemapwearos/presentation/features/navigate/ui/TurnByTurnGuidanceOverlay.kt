@@ -650,7 +650,7 @@ internal fun GuidanceRemainingArc(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     ),
-                modifier = CurvedModifier.padding(ArcPaddingValues(inner = 18.dp)),
+                modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
             )
         }
         duration?.let {
@@ -668,7 +668,7 @@ internal fun GuidanceRemainingArc(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                    modifier = CurvedModifier.padding(ArcPaddingValues(inner = 18.dp)),
+                    modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
                 )
             }
         }
@@ -993,8 +993,8 @@ private fun RouteProgressRing(
     val clampedProgress = progress?.coerceIn(0f, 1f) ?: return
     val progressColor = if (offRoute) OFF_ROUTE_AMBER else MaterialTheme.colorScheme.primary
     Canvas(modifier = modifier) {
-        val strokeWidth = 5.dp.toPx()
-        val inset = strokeWidth / 2f + 5.dp.toPx()
+        val strokeWidth = 3.dp.toPx()
+        val inset = strokeWidth / 2f + 3.dp.toPx()
         val side = min(size.width, size.height) - inset * 2f
         if (side <= 0f) return@Canvas
         val topLeft =

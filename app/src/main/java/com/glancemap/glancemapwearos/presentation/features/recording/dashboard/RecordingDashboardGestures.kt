@@ -1,6 +1,11 @@
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import android.os.PowerManager
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -28,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -36,10 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -57,6 +66,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod")
 @Composable
 internal fun RecordingFullscreenPageShell(
     pageIndex: Int,
@@ -73,23 +83,59 @@ internal fun RecordingFullscreenPageShell(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val focusManager = LocalFocusManager.current
+    val view = LocalView.current
     val focusRequester = remember { FocusRequester() }
     var rotaryAccumulator by remember(pageCount, pageIndex) { mutableFloatStateOf(0f) }
     var rotaryFocusGeneration by remember { mutableIntStateOf(0) }
     var focusAcquiredGeneration by remember { mutableIntStateOf(-1) }
     var wakeResumedAtElapsedMs by remember { mutableLongStateOf(0L) }
     var pendingWakeRotaryEventGeneration by remember { mutableIntStateOf(0) }
+    var hasRotaryComposeFocus by remember { mutableStateOf(false) }
+    var windowFocusEpoch by remember(view) {
+        mutableIntStateOf(if (view.hasWindowFocus()) 1 else 0)
+    }
+    var requiredWindowFocusEpoch by remember(view) {
+        mutableIntStateOf(if (view.hasWindowFocus()) 0 else 1)
+    }
     var loggedRotaryEventCount by remember(pageCount, pageIndex, rotaryFocusGeneration) {
         mutableIntStateOf(0)
     }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(view) {
+        val listener =
+            ViewTreeObserver.OnWindowFocusChangeListener { hasWindowFocus ->
+                if (hasWindowFocus) {
+                    windowFocusEpoch += 1
+                }
+                DebugTelemetry.log(
+                    telemetryTag,
+                    "event=dashboard_rotary_window_focus hasFocus=$hasWindowFocus " +
+                        "epoch=$windowFocusEpoch session=$rotaryFocusGeneration " +
+                        "composeFocused=$hasRotaryComposeFocus interactive=${dashboardInteractive(view)}",
+                )
+            }
+        val observer = view.viewTreeObserver
+        observer.addOnWindowFocusChangeListener(listener)
+        onDispose {
+            if (observer.isAlive) {
+                observer.removeOnWindowFocusChangeListener(listener)
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, view) {
         val observer =
             LifecycleEventObserver { _, event ->
                 when (dashboardRotaryLifecycleAction(event)) {
                     DashboardRotaryLifecycleAction.RESET -> {
                         rotaryAccumulator = 0f
-                        DebugTelemetry.log(telemetryTag, "event=dashboard_rotary_pause accumulator_reset=true")
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_pause accumulator_reset=true " +
+                                "composeFocused=$hasRotaryComposeFocus " +
+                                "windowFocused=${view.hasWindowFocus()} interactive=${dashboardInteractive(view)}",
+                        )
                     }
 
                     DashboardRotaryLifecycleAction.RESET_AND_REFOCUS -> {
@@ -97,20 +143,17 @@ internal fun RecordingFullscreenPageShell(
                         rotaryFocusGeneration += 1
                         wakeResumedAtElapsedMs = SystemClock.elapsedRealtime()
                         pendingWakeRotaryEventGeneration = rotaryFocusGeneration
-                        val focusAcquired = focusRequester.requestFocus()
-                        if (focusAcquired) {
-                            focusAcquiredGeneration = rotaryFocusGeneration
-                        }
+                        requiredWindowFocusEpoch =
+                            dashboardRotaryRequiredWindowFocusEpoch(
+                                windowHasFocus = view.hasWindowFocus(),
+                                currentWindowFocusEpoch = windowFocusEpoch,
+                            )
                         DebugTelemetry.log(
                             telemetryTag,
                             "event=dashboard_rotary_wake session=$rotaryFocusGeneration accumulator_reset=true " +
-                                "focus_acquired=$focusAcquired",
-                        )
-                        DebugTelemetry.log(
-                            telemetryTag,
-                            "event=dashboard_rotary_focus_requested acquired=$focusAcquired attempts=1 " +
-                                "reason=wake_immediate session=$rotaryFocusGeneration " +
-                                "page=${pageIndex + 1} pageCount=$pageCount",
+                                "focus_deferred=true requiredWindowFocusEpoch=$requiredWindowFocusEpoch " +
+                                "windowFocused=${view.hasWindowFocus()} composeFocused=$hasRotaryComposeFocus " +
+                                "interactive=${dashboardInteractive(view)}",
                         )
                     }
 
@@ -123,25 +166,51 @@ internal fun RecordingFullscreenPageShell(
         }
     }
 
-    LaunchedEffect(rotaryFocusGeneration) {
-        if (focusAcquiredGeneration == rotaryFocusGeneration) return@LaunchedEffect
-
-        var focusAcquired = focusRequester.requestFocus()
-        var attempts = 1
-        if (!focusAcquired) {
-            withFrameNanos { }
-            focusAcquired = focusRequester.requestFocus()
-            attempts += 1
+    LaunchedEffect(rotaryFocusGeneration, requiredWindowFocusEpoch, windowFocusEpoch) {
+        if (!dashboardRotaryFocusRequestReady(windowFocusEpoch, requiredWindowFocusEpoch)) {
+            DebugTelemetry.log(
+                telemetryTag,
+                "event=dashboard_rotary_focus_deferred reason=await_window_focus " +
+                    "session=$rotaryFocusGeneration requiredWindowFocusEpoch=$requiredWindowFocusEpoch " +
+                    "windowFocusEpoch=$windowFocusEpoch composeFocused=$hasRotaryComposeFocus " +
+                    "interactive=${dashboardInteractive(view)}",
+            )
+            return@LaunchedEffect
         }
+
+        withFrameNanos { }
+        val isWakeRequest = rotaryFocusGeneration > 0
+        if (isWakeRequest) {
+            focusManager.clearFocus(force = true)
+        }
+        val focusAcquired = focusRequester.requestFocus()
         if (focusAcquired) {
             focusAcquiredGeneration = rotaryFocusGeneration
         }
         DebugTelemetry.log(
             telemetryTag,
-            "event=dashboard_rotary_focus_requested acquired=$focusAcquired attempts=$attempts " +
-                "reason=${if (rotaryFocusGeneration == 0) "popup_open" else "wake_attachment_retry"} " +
-                "session=$rotaryFocusGeneration page=${pageIndex + 1} pageCount=$pageCount",
+            "event=dashboard_rotary_focus_requested acquired=$focusAcquired " +
+                "reason=${if (isWakeRequest) "wake_window_focus" else "popup_open"} " +
+                "session=$rotaryFocusGeneration page=${pageIndex + 1} pageCount=$pageCount " +
+                "clearedStaleFocus=$isWakeRequest composeFocusedBefore=$hasRotaryComposeFocus " +
+                "windowFocused=${view.hasWindowFocus()} interactive=${dashboardInteractive(view)}",
         )
+    }
+    LaunchedEffect(pendingWakeRotaryEventGeneration, focusAcquiredGeneration) {
+        val session = pendingWakeRotaryEventGeneration
+        if (session <= 0 || focusAcquiredGeneration != session) return@LaunchedEffect
+        delay(DASHBOARD_ROTARY_WAKE_EVENT_TIMEOUT_MS)
+        if (
+            pendingWakeRotaryEventGeneration == session &&
+            focusAcquiredGeneration == session
+        ) {
+            DebugTelemetry.log(
+                telemetryTag,
+                "event=dashboard_rotary_no_event_after_wake session=$session " +
+                    "composeFocused=$hasRotaryComposeFocus windowFocused=${view.hasWindowFocus()} " +
+                    "interactive=${dashboardInteractive(view)}",
+            )
+        }
     }
     BackHandler(onBack = onDismiss)
 
@@ -203,7 +272,17 @@ internal fun RecordingFullscreenPageShell(
                     }
                     consumed
                 }.focusRequester(focusRequester)
-                .focusable(),
+                .onFocusChanged { focusState ->
+                    if (hasRotaryComposeFocus != focusState.isFocused) {
+                        hasRotaryComposeFocus = focusState.isFocused
+                        DebugTelemetry.log(
+                            telemetryTag,
+                            "event=dashboard_rotary_focus_changed focused=${focusState.isFocused} " +
+                                "session=$rotaryFocusGeneration windowFocused=${view.hasWindowFocus()} " +
+                                "interactive=${dashboardInteractive(view)}",
+                        )
+                    }
+                }.focusable(),
         contentAlignment = Alignment.Center,
     ) {
         content()
@@ -437,6 +516,22 @@ internal fun handleRecordingRotaryPageEvent(
 private const val POPUP_PAGE_DRAG_THRESHOLD_PX = 24f
 private const val POPUP_ROTARY_PAGE_THRESHOLD_PX = 56f
 private const val DASHBOARD_ROTARY_EVENT_LOG_LIMIT = 3
+private const val DASHBOARD_ROTARY_WAKE_EVENT_TIMEOUT_MS = 1_500L
+
+private fun dashboardInteractive(view: View): Boolean? =
+    view.context
+        .getSystemService(PowerManager::class.java)
+        ?.isInteractive
+
+internal fun dashboardRotaryRequiredWindowFocusEpoch(
+    windowHasFocus: Boolean,
+    currentWindowFocusEpoch: Int,
+): Int = if (windowHasFocus) currentWindowFocusEpoch else currentWindowFocusEpoch + 1
+
+internal fun dashboardRotaryFocusRequestReady(
+    currentWindowFocusEpoch: Int,
+    requiredWindowFocusEpoch: Int,
+): Boolean = currentWindowFocusEpoch >= requiredWindowFocusEpoch
 
 internal enum class DashboardRotaryLifecycleAction {
     NONE,
