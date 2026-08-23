@@ -696,9 +696,12 @@
     <ID>MaxLineLength:CombinedGuidanceRecordingOverlay.kt$"event=combined_expand_token handled=false suppressed=$suppressed active=${recordingState.active} saving=${recordingState.saving}"</ID>
     <ID>MaxLineLength:CombinedGuidanceRecordingOverlay.kt$"event=combined_expand_token handled=true suppressed=$suppressed active=${recordingState.active} saving=${recordingState.saving}"</ID>
     <ID>MaxLineLength:CombinedGuidanceRecordingOverlay.kt$"event=dashboard_metric_selected slot=$metricPickerSlot metric=$metricId source=combined_fullscreen"</ID>
+    <ID>MaxLineLength:CompassDeepTraceDiagnostics.kt$internal fun isCompassTelemetryCaptureActive(): Boolean</ID>
     <ID>MaxLineLength:CompassHeadingReferenceDiagnostics.kt$CompassHeadingReferenceMarker$"expectedGeomagneticDeclinationDeg=${declination.expectedGeomagneticDeclinationDeg.formatHeadingReference(2)} "</ID>
     <ID>MaxLineLength:CompassHeadingReferenceDiagnostics.kt$CompassHeadingReferenceMarker$"providerErrorAgainstExpectedTrueDeg=${signedProviderErrorAgainstExpectedTrueDeg.formatHeadingReference(1)} "</ID>
     <ID>MaxLineLength:CompassHeadingReferenceDiagnostics.kt$CompassHeadingReferenceMarker$"renderedErrorAgainstExpectedTrueDeg=${signedRenderedErrorAgainstExpectedTrueDeg.formatHeadingReference(1)} "</ID>
+    <ID>MaxLineLength:CompassHeadingReferenceDiagnostics.kt$private fun CompassHeadingReferenceIndependentSource.headingAt(nowElapsedMs: Long): Float?</ID>
+    <ID>MaxLineLength:CompassHeadingReferenceDiagnostics.kt$private fun Float?.formatHeadingReference(decimals: Int): String</ID>
     <ID>MaxLineLength:CompassManager.Support.kt$"heading_source_status requested=${status.requestedMode.name} active=${status.activeSource.telemetryToken} headingAvailable=${status.headingSensorAvailable} rotVecAvailable=${status.rotationVectorAvailable} magFallbackAvailable=${status.magAccelFallbackAvailable}"</ID>
     <ID>MaxLineLength:CompassManager.Support.kt$"magnetic_interference active=${step.state.detected} reason=${step.reason} fieldUt=${step.smoothedStrengthUt.format(1)} deltaUt=${step.deltaUt.format(1)}"</ID>
     <ID>MaxLineLength:CompassManager.Support.kt$logMessage = "magnetic_interference_grace armed reason=$reason windowMs=$MAG_INTERFERENCE_STARTUP_GRACE_MS until=$until"</ID>
@@ -823,9 +826,12 @@
     <ID>MaxLineLength:MapRenderer.kt$MapRenderer.Companion$fun captureCacheDiagnostics(context: Context): CacheDiagnosticsSnapshot</ID>
     <ID>MaxLineLength:MapViewModel.kt$MapViewModel$"Selection theme=${selection.themeId} mapsforge=${selection.mapsforgeThemeName} style=${selection.styleId} overlays=${selection.enabledOverlayLayerIds} hillShading=${selection.hillShadingEnabled} reliefOverlay=${selection.reliefOverlayEnabled}"</ID>
     <ID>MaxLineLength:MapViewModel.kt$MapViewModel$"Theme file=${latestThemeFile?.absolutePath} len=${latestThemeFile?.length()} lm=${latestThemeFile?.lastModified()}"</ID>
+    <ID>MaxLineLength:MapViewModel.kt$MapViewModel$private fun mapIdentity(path: String?): String</ID>
     <ID>MaxLineLength:MapsforgeHillshadeDemFolder.kt$GzipHgtDemFile$override fun openInputStream(bufferSize: Int): InputStream</ID>
     <ID>MaxLineLength:NavigateCalibrationEffects.kt$if</ID>
     <ID>MaxLineLength:NavigateEffects.kt$NavigateRotationSettleGate$"wakeHeadingDeltaDeg=${abs(angleDeltaDeg(firstFreshWakeHeadingDeg, heldHeadingDeg)).formatTelemetry(1)}"</ID>
+    <ID>MaxLineLength:NavigateEffects.kt$NavigateRotationSettleGate$private fun releaseVisualStepCap(nowElapsedMs: Long): Float?</ID>
+    <ID>MaxLineLength:NavigateEffects.kt$private fun Float.formatWakeAnchor(decimals: Int): String</ID>
     <ID>MaxLineLength:NavigateGuidanceHelpers.kt$internal fun Float?.telemetryPercent(): String</ID>
     <ID>MaxLineLength:NavigateGuidanceRuntime.kt$currentSession.totalDistanceMeters - projection.distanceFromStartMeters &gt; START_HERE_MIN_REMAINING_METERS</ID>
     <ID>MaxLineLength:NavigateLocationEffects.kt$internal fun computeMarkerPredictionFreshnessMaxAgeMs(expectedGpsIntervalMs: Long): Long</ID>
@@ -835,6 +841,7 @@
     <ID>MaxLineLength:NavigateScreen.kt$val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()</ID>
     <ID>MaxLineLength:NavigateScreen.kt$val turnByTurnScreenOffGpsIntervalSeconds by settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()</ID>
     <ID>MaxLineLength:NavigationMarkerVisuals.kt$internal fun compassMarkerQualityFromHeadingError(headingErrorDeg: Float): CompassMarkerQuality</ID>
+    <ID>MaxLineLength:OamDownloadForegroundService.kt$OamDownloadOperationGate$fun</ID>
     <ID>MaxLineLength:PoiRepositoryImpl.kt$PoiRepositoryImpl$private fun enabledCategoriesKey(path: String): String</ID>
     <ID>MaxLineLength:PoiRepositoryImpl.kt$PoiRepositoryImpl$private fun openPoiDatabase(path: String): SQLiteDatabase</ID>
     <ID>MaxLineLength:PoiRepositoryPointParsing.kt$"bus" in normalized || "transport" in normalized || "station" in normalized || "railway" in normalized -&gt; PoiType.TRANSPORT</ID>
@@ -850,6 +857,7 @@
     <ID>MaxLineLength:RecordingExternalSensorsScreen.kt$private fun String.isConnectedIn(connectedAddresses: Set&lt;String&gt;): Boolean</ID>
     <ID>MaxLineLength:RecordingMetricModels.kt$private fun Long.isFreshLivePointTime(nowMillis: Long): Boolean</ID>
     <ID>MaxLineLength:RecordingPointCaptureExpectation.kt$RecordingPointCaptureExpectation$private fun expectedSinceActive(nowElapsedMs: Long): Double</ID>
+    <ID>MaxLineLength:RecordingProgressVibration.kt$private fun Long.isFreshExternalDistanceTime(nowMillis: Long): Boolean</ID>
     <ID>MaxLineLength:RecordingSensorBridge.kt$externalBatteryLevelPercent = measurement.batteryLevelPercent ?: metrics.externalBatteryLevelPercent</ID>
     <ID>MaxLineLength:RecordingSensorBridge.kt$remember</ID>
     <ID>MaxLineLength:RecordingSettingsScreen.kt$"Progress vibration is off by default. Set it in Advanced to buzz at a distance or active-time interval."</ID>
