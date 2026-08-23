@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.location.model
 
+import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
+
 data class GpsSignalSnapshot(
     val lastFixElapsedRealtimeMs: Long = 0L,
     val lastFixAgeMs: Long = Long.MAX_VALUE,
@@ -19,3 +21,10 @@ data class GpsSignalSnapshot(
     val sourceEpoch: Long = 0L,
     val requiresFreshLiveFixAfterSourceChange: Boolean = false,
 )
+
+internal fun GpsSignalSnapshot.effectiveAccuracyMeters(): Float =
+    resolveEffectiveWatchGpsAccuracyMeters(
+        rawAccuracyMeters = lastFixAccuracyM,
+        watchGpsActive = watchGpsOnlyActive,
+        watchGpsDegraded = watchGpsDegraded,
+    ) ?: lastFixAccuracyM

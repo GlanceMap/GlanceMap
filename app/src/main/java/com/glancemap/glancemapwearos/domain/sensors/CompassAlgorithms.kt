@@ -5,20 +5,20 @@ import android.hardware.SensorManager
 import android.location.Location
 import kotlin.math.abs
 
+internal const val HEADING_SENSOR_TYPE = 42
+internal const val HEADING_SENSOR_STRING_TYPE = "android.sensor.heading"
+
 internal fun resolveHeadingSensor(sensorManager: SensorManager): Sensor? {
-    sensorManager.getDefaultSensor(Sensor.TYPE_HEADING)?.let { return it }
+    sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE)?.let { return it }
     runCatching {
-        sensorManager.getDefaultSensor(Sensor.TYPE_HEADING, true)
+        sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE, true)
     }.getOrNull()?.let { return it }
 
-    val headingStringType =
-        runCatching { Sensor.STRING_TYPE_HEADING }
-            .getOrDefault("android.sensor.heading")
     val allSensors =
         runCatching { sensorManager.getSensorList(Sensor.TYPE_ALL) }
             .getOrDefault(emptyList())
     return allSensors.firstOrNull { sensor ->
-        sensor.type == Sensor.TYPE_HEADING || sensor.stringType == headingStringType
+        sensor.type == HEADING_SENSOR_TYPE || sensor.stringType == HEADING_SENSOR_STRING_TYPE
     }
 }
 

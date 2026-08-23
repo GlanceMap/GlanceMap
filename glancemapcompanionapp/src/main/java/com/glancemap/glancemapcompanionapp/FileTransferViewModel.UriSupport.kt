@@ -461,6 +461,7 @@ private val GENERIC_SHARED_GPX_BASENAMES =
         "shared-route",
         "track",
         "unknown",
+        "view",
     )
 
 private const val GPX_SNIFF_MAX_BYTES = 8192

@@ -535,6 +535,50 @@ class RecordingTrackFilterTest {
         )
     }
 
+    @Test
+    fun `credible GPS progression eventually overrides unchanged step count`() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous = point(x = 0.0, y = 0.0, timeMillis = 0L, accuracyMeters = 18f, stepCount = 1)
+
+        val first =
+            gate.evaluate(
+                previous = previous,
+                candidate = motionSample(x = 16.8, elapsedMillis = 10_000L, stepCount = 1),
+                activityProfile = HIKE,
+            )
+        val continued =
+            gate.evaluate(
+                previous = previous,
+                candidate = motionSample(x = 32.0, elapsedMillis = 20_000L, stepCount = 1),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionStatus.HELD, first.status)
+        assertEquals(RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS, first.reason)
+        assertTrue(continued.accepted)
+        assertEquals(RecordingMotionReason.CONFIRMED_SLOW_PROGRESS, continued.reason)
+    }
+
+    @Test
+    fun `uncertain GPS remains suppressed by unchanged step count`() {
+        val gate = RecordingMovementConfidenceGate()
+        val result =
+            gate.evaluate(
+                previous = point(x = 0.0, y = 0.0, timeMillis = 0L, accuracyMeters = 18f, stepCount = 1),
+                candidate =
+                    motionSample(
+                        x = 16.8,
+                        elapsedMillis = 10_000L,
+                        stepCount = 1,
+                        speedAccuracyMps = 3f,
+                    ),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionStatus.SUPPRESSED, result.status)
+        assertEquals(RecordingMotionReason.STEP_STILLNESS, result.reason)
+    }
+
     private fun sample(
         x: Double,
         elapsedMillis: Long,
@@ -565,6 +609,22 @@ class RecordingTrackFilterTest {
             accuracyMeters = accuracyMeters,
             speedMps = 1.2f,
             stepCount = stepCount,
+        )
+
+    private fun motionSample(
+        x: Double,
+        elapsedMillis: Long,
+        stepCount: Int,
+        speedAccuracyMps: Float = 0.2f,
+    ): RecordingMotionSample =
+        RecordingMotionSample(
+            latLong = latLongFromMeters(x, 0.0),
+            elapsedRealtimeMillis = elapsedMillis,
+            accuracyMeters = 18f,
+            speedMps = 1.23f,
+            speedAccuracyMps = speedAccuracyMps,
+            stepCount = stepCount,
+            cadenceSpm = 2,
         )
 
     private fun latLongFromMeters(

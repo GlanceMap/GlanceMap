@@ -2,9 +2,11 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,23 +57,48 @@ internal fun TurnByTurnMetricDashboardPage(
     isMetric: Boolean,
     onSlotLongPress: (Int) -> Unit,
 ) {
-    val tileHeight = recordingDashboardMetricTileHeight(screenSize)
     val context = LocalContext.current
+    TurnByTurnMetricDashboardGrid(
+        metrics =
+            listOf(
+                formattedTurnByTurnMetric(slots[0], state, isMetric, context),
+                formattedTurnByTurnMetric(slots[1], state, isMetric, context),
+                formattedTurnByTurnMetric(slots[2], state, isMetric, context),
+                formattedTurnByTurnMetric(slots[3], state, isMetric, context),
+            ),
+        header = "REMAINING",
+        screenSize = screenSize,
+        onSlotLongPress = onSlotLongPress,
+    )
+}
+
+@Composable
+internal fun TurnByTurnMetricDashboardGrid(
+    metrics: List<RecordingMetricValue>,
+    header: String?,
+    screenSize: WearScreenSize,
+    onSlotLongPress: (Int) -> Unit,
+) {
+    val tileHeight = recordingDashboardMetricTileHeight(screenSize) - 4.dp
     cappedFontScale(maxFontScale = 1f) {
         Column(
             modifier = Modifier.fillMaxWidth(0.70f),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
         ) {
-            Text(
-                text = "REMAINING",
-                color = Color.White.copy(alpha = 0.58f),
-                fontSize = 10.sp,
-                lineHeight = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Box(modifier = Modifier.height(10.dp), contentAlignment = Alignment.Center) {
+                header?.let {
+                    Text(
+                        text = it,
+                        color = Color.White.copy(alpha = 0.58f),
+                        fontSize = 10.sp,
+                        lineHeight = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
             RecordingDashboardMetricTile(
-                metric = formattedTurnByTurnMetric(slots[0], state, isMetric, context),
+                metric = metrics[0],
                 height = tileHeight,
                 onLongPress = { onSlotLongPress(0) },
                 modifier = Modifier.fillMaxWidth(),
@@ -81,23 +108,23 @@ internal fun TurnByTurnMetricDashboardPage(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 RecordingDashboardMetricTile(
-                    metric = formattedTurnByTurnMetric(slots[1], state, isMetric, context),
+                    metric = metrics[1],
                     height = tileHeight,
                     onLongPress = { onSlotLongPress(1) },
                     modifier = Modifier.weight(1f),
                 )
                 RecordingDashboardMetricTile(
-                    metric = formattedTurnByTurnMetric(slots[2], state, isMetric, context),
+                    metric = metrics[2],
                     height = tileHeight,
                     onLongPress = { onSlotLongPress(2) },
                     modifier = Modifier.weight(1f),
                 )
             }
             RecordingDashboardMetricTile(
-                metric = formattedTurnByTurnMetric(slots[3], state, isMetric, context),
+                metric = metrics[3],
                 height = tileHeight,
                 onLongPress = { onSlotLongPress(3) },
-                modifier = Modifier.fillMaxWidth(0.86f),
+                modifier = Modifier.fillMaxWidth(0.82f),
             )
         }
     }

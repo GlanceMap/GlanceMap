@@ -14,6 +14,8 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Debug
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapwearos.domain.sensors.HEADING_SENSOR_STRING_TYPE
+import com.glancemap.glancemapwearos.domain.sensors.HEADING_SENSOR_TYPE
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import java.time.Instant
@@ -140,19 +142,16 @@ internal fun captureSensorInventory(context: Context): SensorInventorySnapshot {
 }
 
 internal fun resolveHeadingSensor(sensorManager: SensorManager): Sensor? {
-    sensorManager.getDefaultSensor(Sensor.TYPE_HEADING)?.let { return it }
+    sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE)?.let { return it }
     runCatching {
-        sensorManager.getDefaultSensor(Sensor.TYPE_HEADING, true)
+        sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE, true)
     }.getOrNull()?.let { return it }
 
-    val headingStringType =
-        runCatching { Sensor.STRING_TYPE_HEADING }
-            .getOrDefault("android.sensor.heading")
     val allSensors =
         runCatching { sensorManager.getSensorList(Sensor.TYPE_ALL) }
             .getOrDefault(emptyList())
     return allSensors.firstOrNull { sensor ->
-        sensor.type == Sensor.TYPE_HEADING || sensor.stringType == headingStringType
+        sensor.type == HEADING_SENSOR_TYPE || sensor.stringType == HEADING_SENSOR_STRING_TYPE
     }
 }
 

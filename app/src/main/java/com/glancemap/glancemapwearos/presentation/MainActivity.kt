@@ -46,7 +46,9 @@ import com.glancemap.glancemapwearos.presentation.features.home.MainScreen
 import com.glancemap.glancemapwearos.presentation.features.maps.MapsScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.AmbientScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScreen
+import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
@@ -137,6 +139,8 @@ class MainActivity : ComponentActivity() {
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
+            val recordingStartLocationPending by
+                appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
             val turnByTurnGuidancePaused by appContainer.gpxViewModel.turnByTurnGuidancePaused.collectAsState()
             val gpsInAmbientMode by appContainer.settingsViewModel.gpsInAmbientMode.collectAsState(initial = false)
@@ -159,9 +163,16 @@ class MainActivity : ComponentActivity() {
             val activityProfile by appContainer.settingsViewModel.activityProfile.collectAsState()
 
             LaunchedEffect(recordingLocationStartWarning) {
-                if (recordingLocationStartWarning != null) {
+                if (recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE) {
                     appContainer.locationViewModel.requestImmediateLocation(
                         source = "ui_recording_start_missing_location",
+                    )
+                }
+            }
+            LaunchedEffect(recordingStartLocationPending) {
+                if (recordingStartLocationPending) {
+                    appContainer.locationViewModel.requestImmediateLocation(
+                        source = UI_RECORDING_START_REACQUIRE_SOURCE,
                     )
                 }
             }
@@ -1084,13 +1095,41 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 WearActionDialog(
-                    visible = recordingLocationStartWarning != null,
+                    visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE,
                     title = "GPS needed",
                     message = "Wait for a fresh GPS position, then start REC again.",
                     confirmText = "OK",
                     onConfirm = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                     onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                 )
+                WearActionDialog(
+                    visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.LOW_ACCURACY,
+                    title = "GPS accuracy low",
+                    onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
+                    buttons =
+                        listOf(
+                            WearActionDialogButton(
+                                text = "Recheck",
+                                onClick = appContainer.traceRecordingViewModel::recheckRecordingStartLocation,
+                            ),
+                            WearActionDialogButton(
+                                text = "Start anyway",
+                                onClick = appContainer.traceRecordingViewModel::startRecordingWithLowAccuracyOverride,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                            WearActionDialogButton(
+                                text = "Cancel",
+                                onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                        ),
+                ) {
+                    Text(
+                        text = "Current GPS accuracy is too low. Recheck or start anyway.",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }

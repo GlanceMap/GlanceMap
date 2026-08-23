@@ -16,6 +16,11 @@ class LocationViewModelSupportTest {
     }
 
     @Test
+    fun recordingStartReacquireAlwaysBypassesFreshnessSkip() {
+        assertTrue(shouldForceUiImmediateLocationRequest(UI_RECORDING_START_REACQUIRE_SOURCE))
+    }
+
+    @Test
     fun initialWakeAndTimeoutFallbackUseTheSameCooldownGroup() {
         assertTrue(isWakeReacquireImmediateLocationRequest("ui_startup_fresh_fix"))
         assertTrue(isWakeReacquireImmediateLocationRequest(UI_WAKE_REACQUIRE_TIMEOUT_SOURCE))

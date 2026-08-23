@@ -20,11 +20,6 @@ class SettingsViewModel(
                 SettingsRepository.DEFAULT_GPS_INTERVAL_MS,
             )
 
-    fun setGpsInterval(interval: Long) =
-        viewModelScope.launch {
-            settingsRepository.setGpsInterval(interval)
-        }
-
     val ambientGpsInterval: StateFlow<Long> =
         settingsRepository.ambientGpsInterval
             .stateIn(
@@ -32,11 +27,6 @@ class SettingsViewModel(
                 SharingStarted.WhileSubscribed(5000),
                 SettingsRepository.DEFAULT_AMBIENT_GPS_INTERVAL_MS,
             )
-
-    fun setAmbientGpsInterval(interval: Long) =
-        viewModelScope.launch {
-            settingsRepository.setAmbientGpsInterval(interval)
-        }
 
     val watchGpsOnly: StateFlow<Boolean> =
         settingsRepository.watchGpsOnly
@@ -50,11 +40,6 @@ class SettingsViewModel(
     val gpsInAmbientMode: StateFlow<Boolean> =
         settingsRepository.gpsInAmbientMode
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    fun setGpsInAmbientMode(enabled: Boolean) =
-        viewModelScope.launch {
-            settingsRepository.setGpsInAmbientMode(enabled)
-        }
 
     val gpsDebugTelemetry: StateFlow<Boolean> =
         settingsRepository.gpsDebugTelemetry
@@ -635,33 +620,6 @@ class SettingsViewModel(
     fun setGpsAccuracyCircleEnabled(enabled: Boolean) =
         viewModelScope.launch {
             settingsRepository.setGpsAccuracyCircleEnabled(enabled)
-        }
-
-    val mapZoomDefault: StateFlow<Int> =
-        settingsRepository.mapZoomDefault
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16)
-
-    fun setMapZoomDefault(zoom: Int) =
-        viewModelScope.launch {
-            settingsRepository.setMapZoomDefault(zoom)
-        }
-
-    val mapZoomMin: StateFlow<Int> =
-        settingsRepository.mapZoomMin
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 8)
-
-    fun setMapZoomMin(zoom: Int) =
-        viewModelScope.launch {
-            settingsRepository.setMapZoomMin(zoom)
-        }
-
-    val mapZoomMax: StateFlow<Int> =
-        settingsRepository.mapZoomMax
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 20)
-
-    fun setMapZoomMax(zoom: Int) =
-        viewModelScope.launch {
-            settingsRepository.setMapZoomMax(zoom)
         }
 
     val mapZoomDefaultScaleMeters: StateFlow<Int> =

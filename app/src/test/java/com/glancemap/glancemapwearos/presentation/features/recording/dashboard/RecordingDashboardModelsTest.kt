@@ -93,6 +93,44 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotFallsBackToGpsAfterPodDistanceBecomesStale() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 1_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_200.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotUsesFreshPodDistance() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 15_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_000.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
     fun formattedRecordingMetricUsesClockDurationForRecordingDuration() {
         val metric =
             formattedRecordingMetric(
@@ -601,6 +639,26 @@ class RecordingDashboardModelsTest {
             )
 
         assertTrue(snapshot.elevationGainMeters < 100.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotDoesNotAccumulateSmallElevationCorrections() {
+        val points =
+            List(120) { index ->
+                recordingPoint(
+                    longitude = index * 0.000045,
+                    elevationMeters = 200.0 + if (index % 2 == 0) 0.12 else -0.12,
+                    timeMillis = index * 3_000L,
+                )
+            }
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state = TraceRecordingUiState(active = true, startedAtMillis = 0L, points = points),
+                nowMillis = 357_000L,
+            )
+
+        assertTrue(snapshot.elevationGainMeters < 0.5)
+        assertTrue(snapshot.elevationLossMeters < 0.5)
     }
 
     @Test

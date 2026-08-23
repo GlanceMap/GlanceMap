@@ -130,6 +130,27 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
+    fun implausibleLargeFusedStepWithoutFreshWitnessIsHeld() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.witnessUnavailable(horizontalProjection = 0.9f)
+        val snapshot =
+            replay.absolute(
+                headingDeg = 110f,
+                liveErrorDeg = 25f,
+                conservativeErrorDeg = 180f,
+            )
+
+        assertEquals(CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT, snapshot.reason)
+        assertTrue(snapshot.quarantineActive)
+        assertEquals(110f, snapshot.absoluteStepDeg ?: -1f, ANGLE_TOLERANCE_DEG)
+        assertEquals(20L, snapshot.absoluteStepIntervalMs)
+        assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
     fun coherentFastTurnWithoutWitnessUsesResponsiveBoundedCorrection() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 0f)

@@ -6,7 +6,7 @@ import android.util.Xml
 import com.glancemap.glancemapwearos.core.maps.theme.BundledRenderThemeAssetLocator
 import com.glancemap.glancemapwearos.core.maps.theme.RenderThemeXmlCapabilities
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
-import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
@@ -98,7 +98,7 @@ class BundledAssetThemeComposer(
                     .toList()
 
             val selectedStyleId =
-                if (styleId == ThemeRepositoryImpl.DEFAULT_STYLE_ID) {
+                if (styleId == ThemeUiIds.DEFAULT_STYLE_ID) {
                     resolveDefaultStyleIdFromAssets(normalizedThemeId)
                 } else {
                     styleId
@@ -109,7 +109,7 @@ class BundledAssetThemeComposer(
             }
 
             val isDefault =
-                styleId == ThemeRepositoryImpl.DEFAULT_STYLE_ID &&
+                styleId == ThemeUiIds.DEFAULT_STYLE_ID &&
                     overlays.isEmpty() &&
                     (
                         hillShadingEnabled ||

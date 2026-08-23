@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -50,7 +51,7 @@ internal fun NavigateCompassWakeTelemetry(
             renderedLogged = false
             firstRenderableLogged = false
             firstTrustedLogged = false
-            if (DebugTelemetry.isEnabled()) {
+            if (isCompassTelemetryCaptureActive()) {
                 startupMetrics.start(
                     sessionId = sessionId,
                     nowElapsedMs = now,
@@ -246,7 +247,7 @@ internal fun shortestHeadingDeltaDeg(
 }
 
 private fun logCompassWake(message: String) {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
 }
 

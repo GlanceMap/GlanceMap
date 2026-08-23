@@ -12,7 +12,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.GlanceMapWearApp
-import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.adapters.FusedLocationGateway
@@ -22,6 +21,7 @@ import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpda
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpdateRequestParams
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpdateSink
 import com.glancemap.glancemapwearos.core.service.location.adapters.PassiveExternalLocationGateway
+import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsAvailabilityReason
 import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsLocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.WearPhoneConnectionProbe
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
@@ -67,7 +67,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -99,6 +101,9 @@ class LocationService : Service() {
 
     private val _currentLocation = MutableStateFlow<Location?>(null)
     val currentLocation = _currentLocation.asStateFlow()
+    private val _acceptedLocationEvents =
+        MutableSharedFlow<Location>(replay = 1, extraBufferCapacity = ACCEPTED_LOCATION_EVENT_BUFFER_CAPACITY)
+    val acceptedLocationEvents = _acceptedLocationEvents.asSharedFlow()
 
     private val telemetry =
         LocationServiceTelemetry(
@@ -216,6 +221,9 @@ class LocationService : Service() {
             watchGpsOnly = { latestWatchGpsOnly },
             passiveLocationExperiment = { latestGpsDebugTelemetry && latestPassiveLocationExperiment },
             phoneConnected = { latestPhoneConnected },
+            watchGpsAvailable = {
+                watchGpsLocationGateway.availabilityReason() == WatchGpsAvailabilityReason.AVAILABLE
+            },
             checkPhoneConnection = {
                 phoneConnectionProbe.isPhoneConnected()?.also { latestPhoneConnected = it }
             },
@@ -290,7 +298,7 @@ class LocationService : Service() {
                 sourceModeWarmupUntilElapsedMs = { sourceModeWarmupUntilElapsedMs },
                 emitGpsSignalSnapshot = { _gpsSignalSnapshot.value = engine.gpsSignalSnapshot },
                 emitAcceptedLocation = { location, acceptedAtMs ->
-                    _currentLocation.value = location
+                    publishAcceptedLocation(location)
                     lastAnyAcceptedFixAtElapsedMs = acceptedAtMs
                     lastCallbackAcceptedFixAtElapsedMs = acceptedAtMs
                 },
@@ -357,7 +365,7 @@ class LocationService : Service() {
                 },
                 emitGpsSignalSnapshot = { _gpsSignalSnapshot.value = engine.gpsSignalSnapshot },
                 emitAcceptedImmediateLocation = { location, acceptedAtMs ->
-                    _currentLocation.value = location
+                    publishAcceptedLocation(location)
                     lastAnyAcceptedFixAtElapsedMs = acceptedAtMs
                 },
                 navigateOneShotTimeoutMs = NAVIGATE_ONE_SHOT_TIMEOUT_MS,
@@ -948,9 +956,11 @@ class LocationService : Service() {
     private fun updateLatestPhoneConnection(phoneConnected: Boolean?) {
         if (phoneConnected != null) {
             latestPhoneConnected = phoneConnected
-            selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
-                phoneConnected = phoneConnected,
-            )
+            if (phoneConnected) {
+                selfHealFailoverCoordinator.onPhoneConnectionStateChecked(
+                    phoneConnected = true,
+                )
+            }
         }
     }
 
@@ -1126,7 +1136,7 @@ class LocationService : Service() {
                                 nowElapsedMs = nowElapsedMs,
                                 ageMs = ageMs,
                             )
-                        _currentLocation.value = outputLocation
+                        publishAcceptedLocation(outputLocation)
                         lastAnyAcceptedFixAtElapsedMs = nowElapsedMs
                         telemetry.logCachedLocationAccepted(
                             ageMs = ageMs,
@@ -1381,10 +1391,6 @@ class LocationService : Service() {
             captureActive = captureActive,
             fullDiagnostics = fullDiagnostics,
         )
-        CompassDeepTraceDiagnostics.onDiagnosticsCaptureState(
-            captureActive = captureActive,
-            fullDiagnostics = fullDiagnostics,
-        )
         updateEnergySampling(captureActive)
         updateGnssDiagnostics(enabled = fullDiagnostics)
     }
@@ -1458,6 +1464,16 @@ class LocationService : Service() {
         reason == NavigationRuntimeDemandReason.GUIDANCE_VISIBLE ||
             reason == NavigationRuntimeDemandReason.GUIDANCE_AMBIENT ||
             reason == NavigationRuntimeDemandReason.GUIDANCE_BACKGROUND
+
+    private fun publishAcceptedLocation(location: Location) {
+        _currentLocation.value = location
+        if (!_acceptedLocationEvents.tryEmit(location)) {
+            DebugTelemetry.log(
+                TELEMETRY_TAG,
+                "event=recording_location_delivery_dropped reason=buffer_full",
+            )
+        }
+    }
 
     private fun currentLocationSourceMode(): LocationSourceMode =
         when {
@@ -1563,6 +1579,7 @@ class LocationService : Service() {
         private const val SOURCE_MODE_WARMUP_MS = 1_500L
         private const val MIN_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 1_000L
         private const val MAX_TURN_BY_TURN_SCREEN_OFF_INTERVAL_MS = 10_000L
+        private const val ACCEPTED_LOCATION_EVENT_BUFFER_CAPACITY = 64
     }
 }
 

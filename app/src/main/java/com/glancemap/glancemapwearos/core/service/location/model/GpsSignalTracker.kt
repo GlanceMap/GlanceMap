@@ -1,11 +1,9 @@
 package com.glancemap.glancemapwearos.core.service.location.model
 
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_DEGRADED_ACCURACY_M
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_DEGRADED_STREAK_THRESHOLD
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
-import kotlin.math.abs
 
 internal class GpsSignalTracker {
     var snapshot: GpsSignalSnapshot = GpsSignalSnapshot()
@@ -62,6 +60,9 @@ internal class GpsSignalTracker {
         isAvailable: Boolean,
         nowElapsedMs: Long,
     ): Boolean {
+        if (!isAvailable && hasFreshUsableFix(nowElapsedMs)) {
+            return false
+        }
         val previous = snapshot
         val changed = previous.isLocationAvailable != isAvailable
         if (changed) {
@@ -88,6 +89,14 @@ internal class GpsSignalTracker {
             hasLoggedAvailabilityState = true
         }
         return shouldLog
+    }
+
+    private fun hasFreshUsableFix(nowElapsedMs: Long): Boolean {
+        val fixElapsedMs = snapshot.lastFixElapsedRealtimeMs
+        val freshnessMaxAgeMs = snapshot.lastFixFreshMaxAgeMs
+        return fixElapsedMs > 0L &&
+            freshnessMaxAgeMs > 0L &&
+            (nowElapsedMs - fixElapsedMs).coerceAtLeast(0L) <= freshnessMaxAgeMs
     }
 
     fun onEnvironmentWarning(
@@ -127,7 +136,7 @@ internal class GpsSignalTracker {
             }
         val fixFresh = ageMs != Long.MAX_VALUE && ageMs <= freshnessMaxAgeMs
         val watchGpsOnlyActive = sourceMode == LocationSourceMode.WATCH_GPS
-        val nearKnownAccuracyFloor = isNearKnownWatchGpsAccuracyFloor(accuracyM)
+        val nearKnownAccuracyFloor = isKnownWatchGpsAccuracyFloor(accuracyM)
         if (watchGpsOnlyActive &&
             fixFresh &&
             accuracyM.isFinite() &&
@@ -210,11 +219,6 @@ internal class GpsSignalTracker {
         activeSourceMode = null
         lastLiveSourceMode = null
         snapshot = GpsSignalSnapshot()
-    }
-
-    private fun isNearKnownWatchGpsAccuracyFloor(accuracyM: Float): Boolean {
-        if (!accuracyM.isFinite()) return false
-        return abs(accuracyM - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
     }
 
     private fun updateLiveSourceMode(sourceMode: LocationSourceMode?): LiveSourceTransition {

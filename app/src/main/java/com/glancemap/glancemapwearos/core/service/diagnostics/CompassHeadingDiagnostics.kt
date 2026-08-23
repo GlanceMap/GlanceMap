@@ -27,6 +27,22 @@ internal object CompassHeadingDiagnostics {
 
     @Volatile private var lastRenderSampleAtElapsedMs = 0L
 
+    @Volatile private var latestWakeProviderSample: CompassWakeProviderSample? = null
+
+    @Volatile private var latestWakeRenderedSample: CompassWakeRenderedSample? = null
+
+    @Volatile private var lastRenderedHeadingDeg = Float.NaN
+
+    @Volatile private var lastRenderedHeadingAtElapsedMs = 0L
+
+    @Volatile private var lastRenderedStepDeg = Float.NaN
+
+    fun wakeHeadingSnapshot(): CompassWakeHeadingSnapshot =
+        CompassWakeHeadingSnapshot(
+            provider = latestWakeProviderSample,
+            rendered = latestWakeRenderedSample,
+        )
+
     fun reset() {
         synchronized(lock) {
             resetLocked()
@@ -49,8 +65,22 @@ internal object CompassHeadingDiagnostics {
         usable: Boolean,
         snapshot: FusedHeadingIntegritySnapshot,
         northBasis: CompassNorthBasis,
+        pitchDeg: Float?,
+        rollDeg: Float?,
         atElapsedMs: Long,
     ) {
+        val previousTargetHeadingDeg = latestWakeProviderSample?.targetHeadingDeg
+        if (provider == HeadingSource.FUSED_ORIENTATION) {
+            latestWakeProviderSample =
+                CompassWakeProviderSample(
+                    providerHeadingDeg = providerHeadingDeg,
+                    targetHeadingDeg = snapshot.renderHeadingDeg,
+                    pitchDeg = pitchDeg,
+                    rollDeg = rollDeg,
+                    projection = snapshot.relativeHorizontalProjection,
+                    atElapsedMs = atElapsedMs,
+                )
+        }
         if (CompassDeepTraceDiagnostics.state.value.active) {
             CompassDeepTraceDiagnostics.recordProviderSample(
                 CompassDeepTraceProviderSample(
@@ -81,10 +111,20 @@ internal object CompassHeadingDiagnostics {
             )
         }
 
-        if (!DebugTelemetry.isEnabled()) {
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
             return
         }
+
+        significantProviderStepLine(
+            provider = provider,
+            providerHeadingDeg = providerHeadingDeg,
+            snapshot = snapshot,
+            pitchDeg = pitchDeg,
+            rollDeg = rollDeg,
+            previousTargetHeadingDeg = previousTargetHeadingDeg,
+            atElapsedMs = atElapsedMs,
+        )?.let(::logLine)
 
         val lines =
             synchronized(lock) {
@@ -112,7 +152,7 @@ internal object CompassHeadingDiagnostics {
         northBasis: CompassNorthBasis,
         atElapsedMs: Long,
     ) {
-        if (!DebugTelemetry.isEnabled()) {
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
             return
         }
@@ -132,7 +172,33 @@ internal object CompassHeadingDiagnostics {
         mapRotationDeg: Float,
         atElapsedMs: Long,
     ) {
-        if (!DebugTelemetry.isEnabled()) {
+        if (isCompassTelemetryCaptureActive()) {
+            val previousRenderedHeadingDeg = lastRenderedHeadingDeg
+            lastRenderedStepDeg =
+                if (previousRenderedHeadingDeg.isFinite() && renderedHeadingDeg.isFinite()) {
+                    shortestSignedAngleDeg(renderedHeadingDeg, previousRenderedHeadingDeg)
+                } else {
+                    Float.NaN
+                }
+            lastRenderedHeadingDeg = renderedHeadingDeg
+            lastRenderedHeadingAtElapsedMs = atElapsedMs
+            latestWakeRenderedSample =
+                CompassWakeRenderedSample(
+                    targetHeadingDeg = targetHeadingDeg,
+                    renderedHeadingDeg = renderedHeadingDeg,
+                    mapRotationDeg = mapRotationDeg,
+                    atElapsedMs = atElapsedMs,
+                )
+        }
+        CompassHeadingReferenceDiagnostics.recordRender(
+            CompassHeadingReferenceRenderSample(
+                targetHeadingDeg = targetHeadingDeg,
+                renderedHeadingDeg = renderedHeadingDeg,
+                mapsforgeMapRotationDeg = mapRotationDeg,
+                atElapsedMs = atElapsedMs,
+            ),
+        )
+        if (!isCompassTelemetryCaptureActive()) {
             if (lightweightCaptureActive) markLightweightCaptureInactive()
         } else if (atElapsedMs - lastRenderSampleAtElapsedMs >= RENDER_SAMPLE_MIN_INTERVAL_MS) {
             synchronized(lock) {
@@ -198,6 +264,58 @@ internal object CompassHeadingDiagnostics {
 
     private fun logLine(line: String) {
         DebugTelemetry.log(TAG, line)
+    }
+
+    private fun significantProviderStepLine(
+        provider: HeadingSource,
+        providerHeadingDeg: Float,
+        snapshot: FusedHeadingIntegritySnapshot,
+        pitchDeg: Float?,
+        rollDeg: Float?,
+        previousTargetHeadingDeg: Float?,
+        atElapsedMs: Long,
+    ): String? {
+        val providerStepDeg = snapshot.absoluteStepDeg ?: return null
+        if (provider != HeadingSource.FUSED_ORIENTATION || abs(providerStepDeg) < SIGNIFICANT_PROVIDER_STEP_DEG) {
+            return null
+        }
+        val intervalMs = snapshot.absoluteStepIntervalMs?.coerceAtLeast(1L) ?: return null
+        val gyroMotion =
+            CompassDeepTraceDiagnostics.gyroMotionForInterval(
+                endElapsedMs = atElapsedMs,
+                intervalMs = intervalMs,
+            )
+        val targetStepDeg =
+            snapshot.renderHeadingDeg?.let { target ->
+                previousTargetHeadingDeg
+                    ?.let { previous -> shortestSignedAngleDeg(target, previous) }
+            }
+        val integrityDecision =
+            when {
+                snapshot.quarantineActive -> "quarantined"
+                snapshot.state == CompassTrackingState.DEGRADED -> "degraded"
+                snapshot.relativeWitnessSuppressed -> "accepted_without_witness"
+                else -> "accepted_with_witness"
+            }
+        return "heading_engine provider_step " +
+            "providerHeadingDeg=${providerHeadingDeg.formatOrNa(1)} " +
+            "providerStepDeg=${providerStepDeg.formatOrNa(1)} " +
+            "providerStepIntervalMs=$intervalMs " +
+            "providerRateDegPerSec=${(abs(providerStepDeg) * 1_000f / intervalMs).formatOrNa(1)} " +
+            "gyroIntegratedRotationDeg=${gyroMotion.integratedRotationDeg.formatOrNa(1)} " +
+            "gyroPeakDegPerSec=${gyroMotion.peakDegPerSec.formatOrNa(1)} " +
+            "pitchDeg=${pitchDeg.formatOrNa(1)} " +
+            "rollDeg=${rollDeg.formatOrNa(1)} " +
+            "relativeStepDeg=${snapshot.relativeStepDeg.formatOrNa(1)} " +
+            "relativeWitnessSuppressed=${snapshot.relativeWitnessSuppressed} " +
+            "projection=${snapshot.relativeHorizontalProjection.formatOrNa(2)} " +
+            "targetStepDeg=${targetStepDeg.formatOrNa(1)} " +
+            "renderStepDeg=${lastRenderedStepDeg.formatOrNa(1)} " +
+            "integrityDecision=$integrityDecision " +
+            "renderAgeMs=${
+                (atElapsedMs - lastRenderedHeadingAtElapsedMs)
+                    .takeIf { lastRenderedHeadingAtElapsedMs > 0L } ?: -1L
+            }"
     }
 
     private class WindowAccumulator(
@@ -339,6 +457,39 @@ internal object CompassHeadingDiagnostics {
         }
     }
 }
+
+private const val SIGNIFICANT_PROVIDER_STEP_DEG = 40f
+
+internal data class CompassWakeHeadingSnapshot(
+    val provider: CompassWakeProviderSample?,
+    val rendered: CompassWakeRenderedSample?,
+)
+
+internal data class CompassWakeProviderSample(
+    val providerHeadingDeg: Float,
+    val targetHeadingDeg: Float?,
+    val pitchDeg: Float?,
+    val rollDeg: Float?,
+    val projection: Float?,
+    val atElapsedMs: Long,
+)
+
+private fun shortestSignedAngleDeg(
+    target: Float,
+    current: Float,
+): Float {
+    var difference = (target - current) % 360f
+    if (difference > 180f) difference -= 360f
+    if (difference < -180f) difference += 360f
+    return difference
+}
+
+internal data class CompassWakeRenderedSample(
+    val targetHeadingDeg: Float,
+    val renderedHeadingDeg: Float,
+    val mapRotationDeg: Float,
+    val atElapsedMs: Long,
+)
 
 private data class TransitionSnapshot(
     val state: CompassTrackingState,

@@ -72,6 +72,9 @@ internal data class FusedHeadingIntegritySnapshot(
     val quarantineActive: Boolean,
     val recoveryActive: Boolean,
     val recoveryCorrectionDeg: Float,
+    val absoluteStepDeg: Float?,
+    val absoluteStepIntervalMs: Long?,
+    val relativeStepDeg: Float?,
 )
 
 internal data class FusedHeadingIntegrityConfig(
@@ -102,6 +105,7 @@ internal data class FusedHeadingIntegrityConfig(
     val unverifiedFusedFastTurnEnterRateDegPerSec: Float = 120f,
     val unverifiedFusedFastTurnMinimumSamples: Int = 2,
     val unverifiedHeadingJumpHoldDeg: Float = 60f,
+    val unverifiedHeadingJumpMaximumRateDegPerSec: Float = 1_080f,
 )
 
 private data class AbsoluteMovementEvidence(
@@ -171,6 +175,9 @@ internal class FusedHeadingIntegrityEngine(
     private var lastResidualSpreadDeg: Float? = null
     private var lastRecoveryCorrectionDeg = 0f
     private var quarantinedAbsoluteHeadingDeg: Float? = null
+    private var lastAbsoluteStepDeg: Float? = null
+    private var lastAbsoluteStepIntervalMs: Long? = null
+    private var lastRelativeStepDeg: Float? = null
     private var unverifiedFastTurnDirection = 0
     private var unverifiedFastTurnSampleCount = 0
     private val relativeHistory = ArrayDeque<TimedCircularValue>()
@@ -199,6 +206,9 @@ internal class FusedHeadingIntegrityEngine(
         lastResidualSpreadDeg = null
         lastRecoveryCorrectionDeg = 0f
         quarantinedAbsoluteHeadingDeg = null
+        lastAbsoluteStepDeg = null
+        lastAbsoluteStepIntervalMs = null
+        lastRelativeStepDeg = null
         resetUnverifiedFastTurnEvidence()
         residualWindow.clear()
         absoluteWindow.clear()
@@ -330,6 +340,9 @@ internal class FusedHeadingIntegrityEngine(
         val absoluteHeadingDeg = normalize360Deg(sample.headingDeg)
         val atElapsedMs = sample.atElapsedMs
         val movement = measureAbsoluteMovement(absoluteHeadingDeg, atElapsedMs)
+        lastAbsoluteStepDeg = movement.absoluteStepDeg
+        lastAbsoluteStepIntervalMs = movement.elapsedSinceAbsoluteMs
+        lastRelativeStepDeg = movement.relativeStepDeg
         appendEvidence(
             absoluteHeadingDeg = absoluteHeadingDeg,
             residualDeg = movement.residualDeg,
@@ -515,13 +528,28 @@ internal class FusedHeadingIntegrityEngine(
     private fun shouldHoldUnverifiedHeadingJump(evidence: AbsoluteHeadingEvidence): Boolean {
         val renderedHeading = renderHeadingDeg
         val disagreement = evidence.disagreementDeg
-        return renderedHeading != null &&
-            disagreement != null &&
+        val renderedDeltaDeg =
+            renderedHeading?.let { abs(shortestAngleDiffDeg(evidence.absoluteHeadingDeg, it)) }
+        val absoluteRateDegPerSec =
+            evidence.absoluteStepDeg?.let { stepDeg ->
+                abs(stepDeg) * 1_000f / evidence.elapsedSinceAbsoluteMs.coerceAtLeast(1L)
+            }
+        val unsupportedImplausibleStep =
             !evidence.strongAbsoluteConfidence &&
-            evidence.relativeStepDeg != null &&
-            disagreement >= config.weakConfidenceDisagreementEnterDeg &&
-            abs(shortestAngleDiffDeg(evidence.absoluteHeadingDeg, renderedHeading)) >=
-            config.unverifiedHeadingJumpHoldDeg
+                evidence.relativeStepDeg == null &&
+                evidence.absoluteStepDeg != null &&
+                absoluteRateDegPerSec != null &&
+                abs(evidence.absoluteStepDeg) >= config.unverifiedHeadingJumpHoldDeg &&
+                absoluteRateDegPerSec > config.unverifiedHeadingJumpMaximumRateDegPerSec
+        val relativeDisagreement =
+            disagreement != null &&
+                evidence.relativeStepDeg != null &&
+                disagreement >= config.weakConfidenceDisagreementEnterDeg
+        return renderedHeading != null &&
+            renderedDeltaDeg != null &&
+            renderedDeltaDeg >= config.unverifiedHeadingJumpHoldDeg &&
+            !evidence.strongAbsoluteConfidence &&
+            (relativeDisagreement || unsupportedImplausibleStep)
     }
 
     private fun updateTrackingAnchor(evidence: AbsoluteHeadingEvidence) {
@@ -784,6 +812,9 @@ internal class FusedHeadingIntegrityEngine(
             quarantineActive = quarantineActive,
             recoveryActive = recoveryActive,
             recoveryCorrectionDeg = lastRecoveryCorrectionDeg,
+            absoluteStepDeg = lastAbsoluteStepDeg,
+            absoluteStepIntervalMs = lastAbsoluteStepIntervalMs,
+            relativeStepDeg = lastRelativeStepDeg,
         )
 }
 

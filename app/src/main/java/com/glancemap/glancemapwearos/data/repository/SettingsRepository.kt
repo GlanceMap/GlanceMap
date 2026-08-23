@@ -39,7 +39,7 @@ interface SettingsRepository {
         const val RECORDING_AUTO_PAUSE_OFF = "OFF"
         const val RECORDING_AUTO_PAUSE_BIKE_ONLY = "BIKE_ONLY"
         const val RECORDING_AUTO_PAUSE_ALWAYS = "ALWAYS"
-        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_OFF
+        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_ALWAYS
         const val RECORDING_TRACK_SMOOTHING_OFF = "OFF"
         const val RECORDING_TRACK_SMOOTHING_ADAPTIVE = "ADAPTIVE"
         const val RECORDING_TRACK_SMOOTHING_STRONG = "STRONG"
@@ -299,19 +299,13 @@ interface SettingsRepository {
 
     val gpsInterval: Flow<Long>
 
-    suspend fun setGpsInterval(interval: Long)
-
     val ambientGpsInterval: Flow<Long>
-
-    suspend fun setAmbientGpsInterval(interval: Long)
 
     val watchGpsOnly: Flow<Boolean>
 
     suspend fun setWatchGpsOnly(isOnly: Boolean)
 
     val gpsInAmbientMode: Flow<Boolean>
-
-    suspend fun setGpsInAmbientMode(enabled: Boolean)
 
     val gpsDebugTelemetry: Flow<Boolean>
 
@@ -554,18 +548,6 @@ interface SettingsRepository {
     val gpsAccuracyCircleEnabled: Flow<Boolean>
 
     suspend fun setGpsAccuracyCircleEnabled(enabled: Boolean)
-
-    val mapZoomDefault: Flow<Int>
-
-    suspend fun setMapZoomDefault(zoom: Int)
-
-    val mapZoomMin: Flow<Int>
-
-    suspend fun setMapZoomMin(zoom: Int)
-
-    val mapZoomMax: Flow<Int>
-
-    suspend fun setMapZoomMax(zoom: Int)
 
     val mapZoomDefaultScaleMeters: Flow<Int>
 

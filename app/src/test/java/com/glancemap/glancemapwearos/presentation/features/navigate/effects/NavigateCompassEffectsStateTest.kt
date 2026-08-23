@@ -48,6 +48,38 @@ class NavigateCompassEffectsStateTest {
     }
 
     @Test
+    fun headingReferenceSensorsRunOnlyForAnInteractiveOnlineTest() {
+        assertTrue(
+            shouldRunHeadingReferenceSensors(
+                headingReferenceTestActive = true,
+                screenState = LocationScreenState.INTERACTIVE,
+                isOfflineMode = false,
+            ),
+        )
+        assertFalse(
+            shouldRunHeadingReferenceSensors(
+                headingReferenceTestActive = false,
+                screenState = LocationScreenState.INTERACTIVE,
+                isOfflineMode = false,
+            ),
+        )
+        assertFalse(
+            shouldRunHeadingReferenceSensors(
+                headingReferenceTestActive = true,
+                screenState = LocationScreenState.AMBIENT,
+                isOfflineMode = false,
+            ),
+        )
+        assertFalse(
+            shouldRunHeadingReferenceSensors(
+                headingReferenceTestActive = true,
+                screenState = LocationScreenState.INTERACTIVE,
+                isOfflineMode = true,
+            ),
+        )
+    }
+
+    @Test
     fun nonInteractiveAndOfflineStopsAreImmediate() {
         assertTrue(
             shouldStopNavigateCompassImmediately(

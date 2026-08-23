@@ -10,6 +10,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.totalDescent
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.recordingDisplayDistanceMeters
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import java.text.DecimalFormat
 import kotlin.math.max
@@ -201,12 +202,7 @@ internal fun buildRecordingDashboardSnapshot(
         state.latestLivePoint
             ?.takeIf { livePoint -> livePoint.timeMillis.isFreshLivePointTime(nowMillis) }
     val currentPoint = livePoint ?: lastRecordedPoint
-    val displayDistanceMeters =
-        when (state.distanceSource) {
-            SettingsRepository.RECORDING_SENSOR_SOURCE_POD ->
-                state.externalDistanceMeters ?: state.distanceMeters
-            else -> state.distanceMeters
-        }
+    val displayDistanceMeters = recordingDisplayDistanceMeters(state, nowMillis)
     val displayCurrentSpeedMps =
         when (state.speedSource) {
             SettingsRepository.RECORDING_SENSOR_SOURCE_POD -> state.externalSpeedMps

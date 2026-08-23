@@ -176,6 +176,113 @@ class OamBundlePipelineTest {
         assertEquals(100L, progress.totalBytes)
     }
 
+    @Test
+    fun `extraction telemetry keeps reporting after the screen turns off and retains keepalive state`() {
+        var wallMs = 0L
+        var uptimeMs = 0L
+        var cpuMs = 10L
+        var snapshot = extractionSnapshot(interactive = true, charging = false)
+        val events = mutableListOf<String>()
+        val reporter =
+            OamExtractionTelemetryReporter(
+                label = "Map",
+                entryFileName = "Area.map",
+                totalBytes = 100L,
+                wallNowMs = { wallMs },
+                uptimeNowMs = { uptimeMs },
+                processCpuMs = { cpuMs },
+                runtimeSnapshot = { snapshot },
+                emit = events::add,
+                progressIntervalMs = 5_000L,
+                heartbeatIntervalMs = 30_000L,
+            )
+
+        wallMs = 5_000L
+        uptimeMs = 5_000L
+        cpuMs = 30L
+        snapshot = extractionSnapshot(interactive = false, charging = false)
+        reporter.onBytesWritten(50L)
+
+        assertEquals(1, events.size)
+        assertTrue(events.single().contains("event=extract_progress"))
+        assertTrue(events.single().contains("screenState=OFF"))
+        assertTrue(events.single().contains("wakeLockType=unknown"))
+        assertTrue(events.single().contains("wakeLockIsHeld=true"))
+        assertTrue(events.single().contains("wakeLockGeneration=0"))
+        assertTrue(events.single().contains("wifiLockHeld=true"))
+    }
+
+    @Test
+    fun `extraction telemetry throttles progress and emits a bounded stall heartbeat`() {
+        var wallMs = 0L
+        var uptimeMs = 0L
+        var cpuMs = 0L
+        val events = mutableListOf<String>()
+        val reporter =
+            OamExtractionTelemetryReporter(
+                label = "Map",
+                entryFileName = "Area.map",
+                totalBytes = 100L,
+                wallNowMs = { wallMs },
+                uptimeNowMs = { uptimeMs },
+                processCpuMs = { cpuMs },
+                runtimeSnapshot = { extractionSnapshot(interactive = false, charging = false) },
+                emit = events::add,
+                progressIntervalMs = 5_000L,
+                heartbeatIntervalMs = 30_000L,
+            )
+
+        wallMs = 4_999L
+        uptimeMs = 4_999L
+        reporter.onBytesWritten(20L)
+        wallMs = 5_000L
+        uptimeMs = 5_000L
+        reporter.onBytesWritten(30L)
+        wallMs = 35_000L
+        uptimeMs = 35_000L
+        cpuMs = 40L
+        reporter.emitStallHeartbeatIfNeeded()
+
+        assertEquals(2, events.size)
+        assertTrue(events.first().contains("event=extract_progress"))
+        assertTrue(events.last().contains("event=extract_stall_heartbeat"))
+        assertTrue(events.last().contains("wallNoProgressMs=30000"))
+    }
+
+    @Test
+    fun `extraction telemetry exposes screen off suspension as wall time`() {
+        var wallMs = 0L
+        var uptimeMs = 0L
+        val events = mutableListOf<String>()
+        val reporter =
+            OamExtractionTelemetryReporter(
+                label = "Map",
+                entryFileName = "Area.map",
+                totalBytes = 100L,
+                wallNowMs = { wallMs },
+                uptimeNowMs = { uptimeMs },
+                processCpuMs = { uptimeMs },
+                runtimeSnapshot = { extractionSnapshot(interactive = false, charging = false) },
+                emit = events::add,
+                progressIntervalMs = 5_000L,
+            )
+
+        wallMs = 5_000L
+        uptimeMs = 5_000L
+        reporter.onBytesWritten(50L)
+        wallMs = 390_000L
+        uptimeMs = 10_000L
+        reporter.onBytesWritten(100L)
+        reporter.complete(100L)
+
+        assertTrue(events[1].contains("wallSinceLastProgressMs=385000"))
+        assertTrue(events[1].contains("uptimeSinceLastProgressMs=5000"))
+        assertTrue(events[1].contains("suspendOrSleepDeltaMs=380000"))
+        assertTrue(events.last().contains("wallDurationMs=390000"))
+        assertTrue(events.last().contains("activeCopyDurationMs=10000"))
+        assertTrue(events.last().contains("maxWallNoProgressMs=385000"))
+    }
+
     private fun writeZip(
         directory: File,
         fileName: String,
@@ -197,4 +304,17 @@ class OamBundlePipelineTest {
             directory.deleteRecursively()
         }
     }
+
+    private fun extractionSnapshot(
+        interactive: Boolean,
+        charging: Boolean,
+    ) = OamExtractionRuntimeSnapshot(
+        interactive = interactive,
+        charging = charging,
+        plugged = if (charging) "ac" else "battery",
+        batteryPercent = "50",
+        thermalStatus = "0",
+        wakeLockHeld = true,
+        wifiLockHeld = true,
+    )
 }

@@ -312,6 +312,42 @@ class DiagnosticsExporterTelemetryTest {
     }
 
     @Test
+    fun recordingPointDensityTelemetrySeparatesMovementFromStationarySuppression() {
+        val lines =
+            listOf(
+                "2026-04-20 20:07:20.000 [TraceRecording] event=summary " +
+                    "locationCallbackReceivedCount=160 usableLocationCallbackCount=150 " +
+                    "smartTrackDecisionCount=90 storedPointCount=72 " +
+                    "movingExpectedStoredSampleCount=50 movingStoredSampleCount=48 " +
+                    "movingStoredSampleCaptureRatePercent=96 movingGapCount=1 movingGapMaxMs=18000 " +
+                    "movingGapEndpointDistanceMaxM=80.5 stationaryGapCount=9 stationaryGapMaxMs=60000 " +
+                    "slowMovementGapCount=2 slowMovementGapMaxMs=12000 " +
+                    "unknownCallbackGapCount=1 unknownCallbackGapMaxMs=22000",
+            )
+
+        val insights =
+            deriveTelemetryInsights(
+                lines = lines,
+                captureWindowEndEpochMs = epochMs("2026-04-20T20:07:29"),
+            ).recordingTrackFilter.pointDensity
+
+        assertEquals(160, insights.callbackReceivedCount)
+        assertEquals(150, insights.usableCallbackCount)
+        assertEquals(50, insights.movingExpectedStoredSampleCount)
+        assertEquals(96, insights.movingStoredSampleCaptureRatePercent)
+        assertEquals(1, insights.movingGapCount)
+        assertEquals(9, insights.stationaryGapCount)
+        assertEquals(1, insights.unknownCallbackGapCount)
+
+        val output = StringWriter()
+        BufferedWriter(output).use { writer ->
+            writeRecordingPointDensitySection(writer, insights)
+        }
+        assertEquals(true, "recordingPointDensityMovingGapCount=1" in output.toString())
+        assertEquals(true, "recordingPointDensityStationaryGapCount=9" in output.toString())
+    }
+
+    @Test
     fun turnAlertOutcomesAreSummarizedSeparately() {
         val lines =
             listOf(
@@ -445,6 +481,9 @@ class DiagnosticsExporterTelemetryTest {
                         "id=1 reason=large_unverified_stationary_change headingDeltaDeg=81.5",
                     "2026-08-12 17:54:27.720 [CompassTelemetry] rotation_settle stage=unlock " +
                         "id=1 reason=relative_turn_confirmed heading=201.5",
+                    "2026-08-12 17:54:27.730 [CompassTelemetry] rotation_settle stage=release " +
+                        "id=1 wakeHoldDurationMs=710 wakeReleaseReason=settle_timeout " +
+                        "wakeReleaseHeadingDeltaDeg=81.5 firstVisibleReleaseStepDeg=10.0",
                 ),
             )
 
@@ -457,6 +496,11 @@ class DiagnosticsExporterTelemetryTest {
         )
         assertEquals("relative_turn_confirmed:1", insights.rotationSettleUnlockReasons)
         assertEquals(81.5f, insights.rotationSettleHoldMaxHeadingDeltaDeg)
+        assertEquals(1, insights.rotationSettleReleaseCount)
+        assertEquals("settle_timeout:1", insights.rotationSettleReleaseReasons)
+        assertEquals(710L, insights.rotationSettleWakeHoldDurationMaxMs)
+        assertEquals(81.5f, insights.rotationSettleReleaseHeadingDeltaMaxDeg)
+        assertEquals(10f, insights.rotationSettleFirstVisibleReleaseStepMaxDeg)
     }
 
     @Test

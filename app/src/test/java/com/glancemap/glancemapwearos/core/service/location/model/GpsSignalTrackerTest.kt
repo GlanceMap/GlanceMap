@@ -8,6 +8,24 @@ import org.junit.Test
 
 class GpsSignalTrackerTest {
     @Test
+    fun transientProviderUnavailableDoesNotInvalidateAFreshFix() {
+        val tracker = GpsSignalTracker()
+        tracker.onGpsSignalSample(
+            nowElapsedMs = 10_000L,
+            ageMs = 100L,
+            accuracyM = 8f,
+            freshnessMaxAgeMs = 6_000L,
+            sourceMode = LocationSourceMode.AUTO_FUSED,
+        )
+
+        assertFalse(tracker.onLocationAvailability(isAvailable = false, nowElapsedMs = 12_000L))
+        assertTrue(tracker.snapshot.isLocationAvailable)
+
+        assertTrue(tracker.onLocationAvailability(isAvailable = false, nowElapsedMs = 16_001L))
+        assertFalse(tracker.snapshot.isLocationAvailable)
+    }
+
+    @Test
     fun doesNotEnterDegradedStateForKnownWatchGpsAccuracyFloor() {
         val tracker = GpsSignalTracker()
 
@@ -25,6 +43,25 @@ class GpsSignalTrackerTest {
         assertFalse(tracker.snapshot.watchGpsDegraded)
         assertTrue(tracker.snapshot.watchGpsDegradedFixStreak == 0)
         assertTrue(tracker.snapshot.watchGpsDegradedSinceElapsedMs == 0L)
+        assertEquals(125f, tracker.snapshot.lastFixAccuracyM, 0f)
+        assertEquals(18f, tracker.snapshot.effectiveAccuracyMeters(), 0f)
+    }
+
+    @Test
+    fun fusedAccuracyFloorValueRemainsPoor() {
+        val tracker = GpsSignalTracker()
+
+        tracker.onGpsSignalSample(
+            nowElapsedMs = 10_000L,
+            ageMs = 100L,
+            accuracyM = 125f,
+            freshnessMaxAgeMs = 6_000L,
+            sourceMode = LocationSourceMode.AUTO_FUSED,
+        )
+
+        assertFalse(tracker.snapshot.watchGpsOnlyActive)
+        assertEquals(125f, tracker.snapshot.lastFixAccuracyM, 0f)
+        assertEquals(125f, tracker.snapshot.effectiveAccuracyMeters(), 0f)
     }
 
     @Test

@@ -4,7 +4,7 @@ import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.SystemClock
 import android.view.WindowManager
-import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +87,7 @@ internal fun buildCompassHeadingLogUpdate(
     magneticFieldStrengthEmaUt: Float,
     magneticInterferenceDetected: Boolean,
 ): CompassHeadingLogUpdate? {
-    if (!DebugTelemetry.isEnabled()) return null
+    if (!isCompassTelemetryCaptureActive()) return null
     if (pendingBootstrapRawSamplesToIgnore > 0) return null
     if (nowElapsedMs - lastHeadingDebugLogAtMs < HEADING_DEBUG_SAMPLE_MS) return null
     return CompassHeadingLogUpdate(

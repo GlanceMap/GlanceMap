@@ -2,19 +2,19 @@
 
 package com.glancemap.glancemapwearos.presentation.features.recording
 
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_M
-import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_EFFECTIVE_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.mapsforge.core.model.LatLong
-import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor as platformWatchGpsAccuracyFloor
 
-internal const val RECORDING_TRACK_FILTER_VERSION = 8
+internal const val RECORDING_TRACK_FILTER_VERSION = 9
 internal const val EARTH_RADIUS_METERS = 6_371_000.0
-internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = 18f
+internal const val RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M = WATCH_GPS_EFFECTIVE_ACCURACY_M
 
 /**
  * Some watches expose a fixed 125 m accuracy value for otherwise usable direct-GNSS fixes.
@@ -26,21 +26,13 @@ internal fun resolveRecordingFilterAccuracyMeters(
     knownWatchGpsAccuracyFloorActive: Boolean,
 ): Float? {
     val rawAccuracy = rawAccuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return rawAccuracyMeters
-    return if (
-        knownWatchGpsAccuracyFloorActive &&
-        isKnownWatchGpsAccuracyFloor(rawAccuracy)
-    ) {
-        RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M
-    } else {
-        rawAccuracy
-    }
+    return resolveEffectiveWatchGpsAccuracyMeters(
+        rawAccuracyMeters = rawAccuracy,
+        watchGpsActive = knownWatchGpsAccuracyFloorActive,
+    )
 }
 
-internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
-    accuracyMeters?.let { accuracy ->
-        accuracy.isFinite() &&
-            abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
-    } == true
+internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?) = platformWatchGpsAccuracyFloor(accuracyMeters)
 
 internal fun resolveRecordingContinuityRecoveryGapMillis(
     deliveryGapMillis: Long,
@@ -286,6 +278,7 @@ internal enum class RecordingMotionReason {
     SENSOR_MOTION,
     CONFIRMED_SLOW_PROGRESS,
     STATIONARY_JITTER,
+    STEP_STILLNESS,
     UNCONFIRMED_SLOW_PROGRESS,
 }
 
@@ -301,6 +294,7 @@ internal data class RecordingMotionResult(
 internal data class RecordingMotionEvidence(
     val stepDataAvailable: Boolean,
     val stepsAdvanced: Boolean,
+    val stepsUnchanged: Boolean,
     val cadenceDataAvailable: Boolean,
     val cadenceShowsMotion: Boolean,
     val speedAboveThreshold: Boolean,
@@ -339,13 +333,21 @@ internal class RecordingMovementConfidenceGate {
         activityProfile: String,
         previousFilterAccuracyMeters: Float? = previous?.accuracyMeters,
     ): RecordingMotionResult {
+        val previousObservedStepCount = lastObservedStepCount
         val stepsAdvanced = observeStepProgress(previous, candidate)
+        val stepsUnchanged =
+            candidate.stepCount?.let { current ->
+                (previousObservedStepCount ?: previous?.stepCount)?.let { previousCount ->
+                    current <= previousCount
+                }
+            } == true
         val cadenceShowsMotion = candidate.cadenceShowsMotion(activityProfile)
         val reportedMotion = candidate.reportedMotionAssessment(activityProfile)
         val evidence =
             RecordingMotionEvidence(
                 stepDataAvailable = candidate.stepCount != null,
                 stepsAdvanced = stepsAdvanced,
+                stepsUnchanged = stepsUnchanged,
                 cadenceDataAvailable = candidate.cadenceSpm != null,
                 cadenceShowsMotion = cadenceShowsMotion,
                 speedAboveThreshold = reportedMotion.aboveThreshold,
@@ -384,6 +386,46 @@ internal class RecordingMovementConfidenceGate {
             return candidate.result(
                 status = RecordingMotionStatus.SUPPRESSED,
                 reason = RecordingMotionReason.STATIONARY_JITTER,
+                displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
+            )
+        }
+        val stepStillness = candidate.isWeakHikingFixWithUnchangedSteps(activityProfile, stepsUnchanged)
+        val strongGpsMotion =
+            reportedMotion.credible &&
+                (candidate.speedMps ?: 0f) >= RECORDING_MOTION_STEP_STILLNESS_OVERRIDE_MIN_SPEED_MPS
+        if (stepStillness && !strongGpsMotion) {
+            pendingSlowProgress = null
+            return candidate.result(
+                status = RecordingMotionStatus.SUPPRESSED,
+                reason = RecordingMotionReason.STEP_STILLNESS,
+                displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
+            )
+        }
+        if (stepStillness) {
+            val pending = pendingSlowProgress
+            if (
+                pending != null &&
+                isConfirmedSlowProgress(
+                    anchor = previous.latLong,
+                    pending = pending,
+                    candidate = candidate,
+                    activityProfile = activityProfile,
+                )
+            ) {
+                pendingSlowProgress = null
+                return candidate.result(
+                    status = RecordingMotionStatus.ACCEPTED,
+                    reason = RecordingMotionReason.CONFIRMED_SLOW_PROGRESS,
+                    displacementMeters = displacementMeters,
+                    evidence = radiusEvidence,
+                )
+            }
+            pendingSlowProgress = candidate
+            return candidate.result(
+                status = RecordingMotionStatus.HELD,
+                reason = RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS,
                 displacementMeters = displacementMeters,
                 evidence = radiusEvidence,
             )
@@ -439,6 +481,15 @@ internal class RecordingMovementConfidenceGate {
         return baseline != null && current > baseline
     }
 }
+
+private fun RecordingMotionSample.isWeakHikingFixWithUnchangedSteps(
+    activityProfile: String,
+    stepsUnchanged: Boolean,
+): Boolean =
+    activityProfile == SettingsRepository.ACTIVITY_PROFILE_HIKE &&
+        stepsUnchanged &&
+        (accuracyMeters ?: 0f) >= RECORDING_MOTION_STEP_STILLNESS_MIN_ACCURACY_M &&
+        (speedMps == null || speedMps <= RECORDING_MOTION_STEP_STILLNESS_MAX_SPEED_MPS)
 
 private fun RecordingMotionSample.result(
     status: RecordingMotionStatus,
@@ -1179,7 +1230,7 @@ private fun Float?.isUnacceptablyPoor(maximumAccuracyMeters: Float): Boolean {
     return accuracy > maximumAccuracyMeters
 }
 
-private fun recordingFixProfileAccuracyLimitMeters(activityProfile: String): Float =
+internal fun recordingFixProfileAccuracyLimitMeters(activityProfile: String): Float =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
         RECORDING_FIX_MAX_BIKE_ACCURACY_M
     } else {
@@ -1389,6 +1440,9 @@ private const val RECORDING_MOTION_HIKE_MIN_CONFIRMED_PROGRESS_M = 1.5
 private const val RECORDING_MOTION_BIKE_MIN_CONFIRMED_PROGRESS_M = 3.0
 private const val RECORDING_MOTION_CONFIRMATION_MAX_INTERVAL_MS = 60_000L
 private const val RECORDING_MOTION_MAX_CONFIRMATION_ANGLE_DEGREES = 70.0
+private const val RECORDING_MOTION_STEP_STILLNESS_MIN_ACCURACY_M = 18f
+private const val RECORDING_MOTION_STEP_STILLNESS_MAX_SPEED_MPS = 1.5f
+private const val RECORDING_MOTION_STEP_STILLNESS_OVERRIDE_MIN_SPEED_MPS = 1.2f
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_CHORD_M = 24.0
 private const val RECORDING_STRAIGHT_DRIFT_BIKE_MIN_CHORD_M = 45.0
 private const val RECORDING_STRAIGHT_DRIFT_HIKE_MIN_LATERAL_ERROR_M = 2.5

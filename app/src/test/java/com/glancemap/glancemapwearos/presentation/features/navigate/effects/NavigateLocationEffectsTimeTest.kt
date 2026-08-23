@@ -371,6 +371,18 @@ class NavigateLocationEffectsTimeTest {
     }
 
     @Test
+    fun freshButImpreciseFixDoesNotEscalateToLost() {
+        val state =
+            resolveGpsIndicatorEscalationState(
+                rawState = GpsFixIndicatorState.POOR,
+                abnormalSinceElapsedMs = 10_000L,
+                nowElapsedMs = 50_000L,
+            )
+
+        assertEquals(GpsFixIndicatorState.POOR, state)
+    }
+
+    @Test
     fun displayStateKeepsUnavailableUnchanged() {
         val state =
             resolveGpsIndicatorDisplayState(

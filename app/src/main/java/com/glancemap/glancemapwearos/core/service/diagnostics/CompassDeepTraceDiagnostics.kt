@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.ArrayDeque
+import kotlin.math.sqrt
 
 internal data class CompassDeepTraceState(
     val active: Boolean = false,
@@ -37,6 +38,7 @@ internal object CompassDeepTraceDiagnostics {
     private var activeSessionStartWindowCount = 0
     private var currentWindow: CompassDeepTraceWindowAccumulator? = null
     private var sensorRegistration: CompassDeepTraceSensorRegistration? = null
+    private val gyroHistory = ArrayDeque<CompassDeepTraceGyroSample>()
 
     val state: StateFlow<CompassDeepTraceState> = _state.asStateFlow()
 
@@ -56,11 +58,7 @@ internal object CompassDeepTraceDiagnostics {
             currentWindow = CompassDeepTraceWindowAccumulator(startedAtElapsedMs = nowElapsedMs)
             registration =
                 startCompassDeepTraceSensorRegistration(context) { sensor, values, atElapsedMs ->
-                    if (values.size >= 3) {
-                        recordAt(atElapsedMs) { window ->
-                            window.recordRawSensor(sensor, values[0], values[1], values[2])
-                        }
-                    }
+                    recordRawSensorSample(sensor, values, atElapsedMs)
                 }
             sensorRegistration = registration
             _state.value =
@@ -101,6 +99,7 @@ internal object CompassDeepTraceDiagnostics {
             registration = sensorRegistration
             sensorRegistration = null
             currentWindow = null
+            gyroHistory.clear()
             _state.value = CompassDeepTraceState(lastStopReason = reason)
         }
         registration?.stop()
@@ -115,18 +114,8 @@ internal object CompassDeepTraceDiagnostics {
             sessionCount = 0
             windowCount = 0
             activeSessionStartWindowCount = 0
+            gyroHistory.clear()
             _state.value = CompassDeepTraceState()
-        }
-    }
-
-    fun onDiagnosticsCaptureState(
-        captureActive: Boolean,
-        fullDiagnostics: Boolean,
-    ) {
-        if (!captureActive) {
-            stop(reason = "capture_stopped")
-        } else if (!fullDiagnostics && _state.value.active) {
-            EnergyDiagnostics.markBatteryBenchmarkInvalid("compass_deep_trace")
         }
     }
 
@@ -136,6 +125,35 @@ internal object CompassDeepTraceDiagnostics {
 
     fun recordRenderSample(sample: CompassDeepTraceRenderSample) {
         recordAt(sample.atElapsedMs) { it.recordRender(sample) }
+    }
+
+    /** Stores compass lifecycle and integrity events while the optional trace is active. */
+    fun recordTelemetryLine(line: String) {
+        synchronized(lock) {
+            if (_state.value.active) appendLineLocked(line)
+        }
+    }
+
+    /** Values are available only while the optional deep trace is already running. */
+    fun gyroMotionForInterval(
+        endElapsedMs: Long,
+        intervalMs: Long,
+    ): CompassDeepTraceGyroMotion {
+        if (!_state.value.active) return CompassDeepTraceGyroMotion()
+        val startElapsedMs = endElapsedMs - intervalMs.coerceAtLeast(1L)
+        synchronized(lock) {
+            val samples = gyroHistory.filter { it.atElapsedMs in startElapsedMs..endElapsedMs }
+            if (samples.isEmpty()) return CompassDeepTraceGyroMotion()
+            var integratedRadians = 0f
+            samples.zipWithNext { previous, current ->
+                val intervalSeconds = (current.atElapsedMs - previous.atElapsedMs).coerceAtLeast(0L) / 1_000f
+                integratedRadians += previous.magnitudeRadPerSec * intervalSeconds
+            }
+            return CompassDeepTraceGyroMotion(
+                integratedRotationDeg = Math.toDegrees(integratedRadians.toDouble()).toFloat(),
+                peakDegPerSec = Math.toDegrees(samples.maxOf { it.magnitudeRadPerSec }.toDouble()).toFloat(),
+            )
+        }
     }
 
     fun snapshot(): CompassDeepTraceSnapshot =
@@ -167,6 +185,33 @@ internal object CompassDeepTraceDiagnostics {
         completedLine?.let { Log.d(TAG, it) }
     }
 
+    private fun recordRawSensorSample(
+        sensor: CompassDeepTraceRawSensor,
+        values: FloatArray,
+        atElapsedMs: Long,
+    ) {
+        if (values.size < 3) return
+        if (sensor == CompassDeepTraceRawSensor.GYROSCOPE) {
+            val magnitude = sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
+            if (magnitude.isFinite()) {
+                synchronized(lock) {
+                    if (_state.value.active) {
+                        gyroHistory.addLast(CompassDeepTraceGyroSample(atElapsedMs, magnitude))
+                        while (
+                            gyroHistory.firstOrNull()?.atElapsedMs ?: Long.MAX_VALUE <
+                            atElapsedMs - GYRO_HISTORY_MS
+                        ) {
+                            gyroHistory.removeFirst()
+                        }
+                    }
+                }
+            }
+        }
+        recordAt(atElapsedMs) { window ->
+            window.recordRawSensor(sensor, values[0], values[1], values[2])
+        }
+    }
+
     private fun flushWindowLocked(endedAtElapsedMs: Long): String? {
         val window = currentWindow
         return if (window == null || !window.hasSamples) {
@@ -190,4 +235,17 @@ internal object CompassDeepTraceDiagnostics {
     }
 }
 
+internal fun isCompassTelemetryCaptureActive(): Boolean = DebugTelemetry.isEnabled() || CompassDeepTraceDiagnostics.state.value.active
+
+internal data class CompassDeepTraceGyroMotion(
+    val integratedRotationDeg: Float? = null,
+    val peakDegPerSec: Float? = null,
+)
+
+private data class CompassDeepTraceGyroSample(
+    val atElapsedMs: Long,
+    val magnitudeRadPerSec: Float,
+)
+
 internal const val COMPASS_DEEP_TRACE_SCHEMA_VERSION = 2
+private const val GYRO_HISTORY_MS = 3_000L
