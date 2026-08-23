@@ -9,7 +9,7 @@ import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerRequest
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.GpxExportRepository
-import com.glancemap.glancemapwearos.data.repository.GpxRepository
+import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
@@ -64,7 +64,7 @@ data class GpxRouteServices(
 )
 
 class GpxViewModel(
-    private val gpxRepository: GpxRepository,
+    private val gpxRepository: GpxRepositoryImpl,
     private val gpxExportRepository: GpxExportRepository,
     private val syncManager: SyncManager,
     private val settingsRepository: SettingsRepository,
@@ -562,7 +562,8 @@ class GpxViewModel(
                             sig = sig,
                             title = cachedMeta?.title ?: parsed?.title,
                             distance =
-                                profile.totalDistance.takeIf { it > 0.0 }
+                                activitySummary?.distanceMeters?.takeIf { it > 0.0 }
+                                    ?: profile.totalDistance.takeIf { it > 0.0 }
                                     ?: parsed?.totalDistance
                                     ?: 0.0,
                             elevationGain = activityProfile.totalAscent,

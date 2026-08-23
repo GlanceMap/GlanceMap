@@ -1,6 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
+import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainConfirmation
+import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainDirection
+import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainPreview
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstruction
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionCommand
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
@@ -35,6 +38,90 @@ class TurnByTurnGuidancePresentationTest {
     }
 
     @Test
+    fun compactGuidanceAddsTerrainBadgeForTheRoadAfterTheTurn() {
+        val text =
+            guidanceCompactInstructionText(
+                state(
+                    distanceMeters = 180.0,
+                    terrain =
+                        GuidanceTerrainPreview(
+                            direction = GuidanceTerrainDirection.UPHILL,
+                            elevationChangeMeters = 20.0,
+                            distanceMeters = 100.0,
+                        ),
+                ),
+                isMetric = true,
+            )
+
+        assertEquals("180m +▲", text)
+    }
+
+    @Test
+    fun expandedGuidanceLinksTerrainToTheUpcomingTurn() {
+        val presentation =
+            guidanceTerrainPopupPresentation(
+                state(
+                    distanceMeters = 180.0,
+                    terrain =
+                        GuidanceTerrainPreview(
+                            direction = GuidanceTerrainDirection.FLAT,
+                            elevationChangeMeters = 1.0,
+                            distanceMeters = 100.0,
+                        ),
+                ),
+                isMetric = true,
+            )
+
+        assertEquals("— Flat", presentation?.expandedText)
+    }
+
+    @Test
+    fun expandedGuidanceConfirmsTheTerrainOfTheTakenBranch() {
+        val presentation =
+            guidanceTerrainPopupPresentation(
+                state(
+                    distanceMeters = 180.0,
+                    recentManeuverTerrain =
+                        GuidanceTerrainConfirmation(
+                            maneuver = RouteInstructionCommand.LEFT,
+                            terrain =
+                                GuidanceTerrainPreview(
+                                    direction = GuidanceTerrainDirection.UPHILL,
+                                    elevationChangeMeters = 20.0,
+                                    distanceMeters = 100.0,
+                                ),
+                        ),
+                ),
+                isMetric = true,
+            )
+
+        assertEquals("▲ Uphill +20 m", presentation?.expandedText)
+    }
+
+    @Test
+    fun pausedGuidanceKeepsTheLatestActiveDashboardState() {
+        val latestActiveState = state(distanceMeters = 180.0)
+        val pausedCurrentState =
+            latestActiveState.copy(
+                active = false,
+                mode = GuidanceMode.WAITING_FOR_LOCATION,
+                nextInstruction = null,
+                distanceToInstructionMeters = null,
+                distanceRemainingMeters = null,
+                routeProgressFraction = null,
+            )
+
+        val displayState =
+            pausedGuidanceDisplayState(
+                currentState = pausedCurrentState,
+                latestActiveState = latestActiveState,
+                paused = true,
+            )
+
+        assertEquals(latestActiveState, displayState)
+    }
+
+    @Test
     fun voiceContinueStraightPromptOnlySpeaksForMeaningfulStraightSections() {
         assertTrue(shouldSpeakContinueStraightPrompt(state(distanceMeters = 600.0)))
         assertFalse(shouldSpeakContinueStraightPrompt(state(distanceMeters = 300.0)))
@@ -63,6 +150,8 @@ class TurnByTurnGuidancePresentationTest {
     private fun state(
         distanceMeters: Double,
         command: RouteInstructionCommand = RouteInstructionCommand.RIGHT,
+        terrain: GuidanceTerrainPreview? = null,
+        recentManeuverTerrain: GuidanceTerrainConfirmation? = null,
     ): TurnByTurnGuidanceState =
         TurnByTurnGuidanceState(
             active = true,
@@ -85,5 +174,7 @@ class TurnByTurnGuidancePresentationTest {
             distanceRemainingMeters = 500.0,
             routeProgressFraction = 0.25f,
             offRoute = false,
+            nextSegmentTerrain = terrain,
+            recentManeuverTerrain = recentManeuverTerrain,
         )
 }

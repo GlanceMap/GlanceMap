@@ -12,7 +12,6 @@ import com.glancemap.glancemapwearos.core.service.transfer.notifications.Notific
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockManager
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepository
-import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepositoryImpl
 import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.WatchLiveHikeSyncPreferences
 import com.glancemap.shared.transfer.LiveHikeSyncSettingsCodec
 import com.glancemap.shared.transfer.TransferDataLayerContract
@@ -45,7 +44,7 @@ class DataLayerListenerService : WearableListenerService() {
         super.onCreate()
         TransferDiagnostics.log("Service", "Created instance=$serviceInstanceId")
 
-        dataLayerRepository = WatchDataLayerRepositoryImpl(this)
+        dataLayerRepository = WatchDataLayerRepository(this)
         notificationHelper = NotificationHelper(this)
         notificationHelper.createNotificationChannel()
 

@@ -93,6 +93,44 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotFallsBackToGpsAfterPodDistanceBecomesStale() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 1_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_200.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotUsesFreshPodDistance() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        distanceMeters = 1_400.0,
+                        externalDistanceMeters = 1_000.0,
+                        externalDistanceUpdatedAtMillis = 15_000L,
+                        externalDistanceFallbackBaseMeters = 1_000.0,
+                        externalDistanceFallbackGpsMeters = 1_200.0,
+                        distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
+                    ),
+                nowMillis = 16_001L,
+            )
+
+        assertEquals(1_000.0, snapshot.distanceMeters, 0.0)
+    }
+
+    @Test
     fun formattedRecordingMetricUsesClockDurationForRecordingDuration() {
         val metric =
             formattedRecordingMetric(
@@ -582,6 +620,48 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
+    fun buildRecordingDashboardSnapshotDoesNotCountElevationJumpAcrossGpsGap() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points =
+                            listOf(
+                                recordingPoint(0.0, 100.0, 0L),
+                                recordingPoint(0.001, 110.0, 10_000L),
+                                recordingPoint(0.100, 1_000.0, 60_000L, startsNewSegment = true),
+                                recordingPoint(0.101, 1_010.0, 70_000L),
+                            ),
+                    ),
+                nowMillis = 70_000L,
+            )
+
+        assertTrue(snapshot.elevationGainMeters < 100.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotDoesNotAccumulateSmallElevationCorrections() {
+        val points =
+            List(120) { index ->
+                recordingPoint(
+                    longitude = index * 0.000045,
+                    elevationMeters = 200.0 + if (index % 2 == 0) 0.12 else -0.12,
+                    timeMillis = index * 3_000L,
+                )
+            }
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state = TraceRecordingUiState(active = true, startedAtMillis = 0L, points = points),
+                nowMillis = 357_000L,
+            )
+
+        assertTrue(snapshot.elevationGainMeters < 0.5)
+        assertTrue(snapshot.elevationLossMeters < 0.5)
+    }
+
+    @Test
     fun formattedRecordingMetricEstimatesCaloriesFromWeightDistanceAndDuration() {
         val estimate =
             estimateRecordingCalories(
@@ -824,6 +904,7 @@ class RecordingDashboardModelsTest {
         timeMillis: Long,
         speedMps: Float? = null,
         powerWatts: Int? = null,
+        startsNewSegment: Boolean = false,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(0.0, longitude),
@@ -832,6 +913,7 @@ class RecordingDashboardModelsTest {
             accuracyMeters = null,
             speedMps = speedMps,
             powerWatts = powerWatts,
+            startsNewSegment = startsNewSegment,
         )
 
     private companion object {

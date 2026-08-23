@@ -36,4 +36,40 @@ class SensorManagerOrientationProviderSupportTest {
         assertEquals(12_345L, stoppedFreshness.sampleAtElapsedRealtimeMs)
         assertTrue(stoppedFreshness.stale)
     }
+
+    @Test
+    fun shutdownSensorThreadIsNeverReusedForFallbackRegistration() {
+        assertFalse(
+            shouldReuseSensorCallbackHandler(
+                callbackThreadAlive = true,
+                callbackThreadStopping = true,
+            ),
+        )
+        assertTrue(
+            shouldReuseSensorCallbackHandler(
+                callbackThreadAlive = true,
+                callbackThreadStopping = false,
+            ),
+        )
+    }
+
+    @Test
+    fun rapidStopStartRejectsBothTheOldTimeoutAndStoppingHandler() {
+        assertFalse(
+            isCurrentFusedReadyTimeout(
+                timeoutIsCurrent = false,
+                started = true,
+                usingFallback = false,
+                awaitingFusedReady = true,
+                timeoutRequestGeneration = 10L,
+                activeRequestGeneration = 12L,
+            ),
+        )
+        assertFalse(
+            shouldReuseSensorCallbackHandler(
+                callbackThreadAlive = true,
+                callbackThreadStopping = true,
+            ),
+        )
+    }
 }

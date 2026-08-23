@@ -17,18 +17,16 @@ import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
-import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupBottomSheet
 import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupReason
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.DemMapReadiness
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.ThemeViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 fun MapSettingsScreen(
     navController: NavHostController,
@@ -58,7 +56,7 @@ fun MapSettingsScreen(
         remember(themeItems) {
             themeItems
                 .filterIsInstance<ThemeListItem.GlobalToggle>()
-                .firstOrNull { it.id == ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID }
+                .firstOrNull { it.id == ThemeUiIds.HILL_SHADING }
                 ?.enabled
                 ?: false
         }
@@ -66,7 +64,7 @@ fun MapSettingsScreen(
         remember(themeItems) {
             themeItems
                 .filterIsInstance<ThemeListItem.GlobalToggle>()
-                .firstOrNull { it.id == ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID }
+                .firstOrNull { it.id == ThemeUiIds.HILL_SHADING }
                 ?.supported
                 ?: false
         }
@@ -74,7 +72,7 @@ fun MapSettingsScreen(
         remember(themeItems) {
             themeItems
                 .filterIsInstance<ThemeListItem.GlobalToggle>()
-                .firstOrNull { it.id == ThemeRepositoryImpl.GLOBAL_RELIEF_OVERLAY_ID }
+                .firstOrNull { it.id == ThemeUiIds.RELIEF_OVERLAY }
                 ?.enabled
                 ?: false
         }
@@ -82,11 +80,11 @@ fun MapSettingsScreen(
     val hillShadingSecondaryLabel =
         when {
             !hillShadingSupported -> stringResource(R.string.map_theme_not_supported)
-            hillShadingEnabled -> stringResource(R.string.state_on)
-            else -> stringResource(R.string.state_off)
+            hillShadingEnabled -> stringResource(R.string.glancemap_state_on)
+            else -> stringResource(R.string.glancemap_state_off)
         }
     val reliefOverlaySecondaryLabel =
-        stringResource(if (reliefOverlayEnabled) R.string.state_on else R.string.state_off)
+        stringResource(if (reliefOverlayEnabled) R.string.glancemap_state_on else R.string.glancemap_state_off)
 
     DemSetupBottomSheet(
         visible = showDemSetupDialog,
@@ -175,7 +173,7 @@ fun MapSettingsScreen(
                 },
                 label = stringResource(R.string.map_live_elevation),
                 secondaryLabel =
-                    stringResource(if (liveElevation) R.string.state_on else R.string.state_off),
+                    stringResource(if (liveElevation) R.string.glancemap_state_on else R.string.glancemap_state_off),
             )
         }
         item {
@@ -184,7 +182,7 @@ fun MapSettingsScreen(
                 onCheckedChanged = { viewModel.setLiveDistance(it) },
                 label = stringResource(R.string.map_live_distance),
                 secondaryLabel =
-                    stringResource(if (liveDistance) R.string.state_on else R.string.state_off),
+                    stringResource(if (liveDistance) R.string.glancemap_state_on else R.string.glancemap_state_off),
             )
         }
         item {
@@ -193,11 +191,11 @@ fun MapSettingsScreen(
                 enabled = hillShadingSupported,
                 onCheckedChanged = { enabled ->
                     if (!enabled) {
-                        themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID, false)
+                        themeViewModel.setGlobalToggle(ThemeUiIds.HILL_SHADING, false)
                     } else {
                         scope.launch {
                             if (selectedMapPath.isNullOrBlank()) {
-                                themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID, false)
+                                themeViewModel.setGlobalToggle(ThemeUiIds.HILL_SHADING, false)
                                 demSetupReason = DemSetupReason.HILL_SHADING_MAP_REQUIRED
                                 showDemSetupDialog = true
                                 return@launch
@@ -207,9 +205,9 @@ fun MapSettingsScreen(
                                     .demReadinessForMap(selectedMapPath)
                                     .hasAnyTerrain
                             if (terrainAvailable) {
-                                themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID, true)
+                                themeViewModel.setGlobalToggle(ThemeUiIds.HILL_SHADING, true)
                             } else {
-                                themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID, false)
+                                themeViewModel.setGlobalToggle(ThemeUiIds.HILL_SHADING, false)
                                 demSetupReason = DemSetupReason.HILL_SHADING
                                 showDemSetupDialog = true
                             }
@@ -225,14 +223,14 @@ fun MapSettingsScreen(
                 checked = reliefOverlayEnabled,
                 onCheckedChanged = { enabled ->
                     if (!enabled) {
-                        themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_RELIEF_OVERLAY_ID, false)
+                        themeViewModel.setGlobalToggle(ThemeUiIds.RELIEF_OVERLAY, false)
                     } else {
                         scope.launch {
                             val demReady = themeViewModel.demReadinessForMap(selectedMapPath).isReady
                             if (demReady) {
-                                themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_RELIEF_OVERLAY_ID, true)
+                                themeViewModel.setGlobalToggle(ThemeUiIds.RELIEF_OVERLAY, true)
                             } else {
-                                themeViewModel.setGlobalToggle(ThemeRepositoryImpl.GLOBAL_RELIEF_OVERLAY_ID, false)
+                                themeViewModel.setGlobalToggle(ThemeUiIds.RELIEF_OVERLAY, false)
                                 demSetupReason = DemSetupReason.SLOPE_OVERLAY
                                 showDemSetupDialog = true
                             }

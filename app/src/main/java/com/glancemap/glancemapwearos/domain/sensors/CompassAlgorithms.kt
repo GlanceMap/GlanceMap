@@ -5,20 +5,20 @@ import android.hardware.SensorManager
 import android.location.Location
 import kotlin.math.abs
 
+internal const val HEADING_SENSOR_TYPE = 42
+internal const val HEADING_SENSOR_STRING_TYPE = "android.sensor.heading"
+
 internal fun resolveHeadingSensor(sensorManager: SensorManager): Sensor? {
-    sensorManager.getDefaultSensor(Sensor.TYPE_HEADING)?.let { return it }
+    sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE)?.let { return it }
     runCatching {
-        sensorManager.getDefaultSensor(Sensor.TYPE_HEADING, true)
+        sensorManager.getDefaultSensor(HEADING_SENSOR_TYPE, true)
     }.getOrNull()?.let { return it }
 
-    val headingStringType =
-        runCatching { Sensor.STRING_TYPE_HEADING }
-            .getOrDefault("android.sensor.heading")
     val allSensors =
         runCatching { sensorManager.getSensorList(Sensor.TYPE_ALL) }
             .getOrDefault(emptyList())
     return allSensors.firstOrNull { sensor ->
-        sensor.type == Sensor.TYPE_HEADING || sensor.stringType == headingStringType
+        sensor.type == HEADING_SENSOR_TYPE || sensor.stringType == HEADING_SENSOR_STRING_TYPE
     }
 }
 
@@ -51,8 +51,6 @@ internal const val HEADING_NOISE_IMPROVING_DEG = 5.4f
 internal const val HEADING_NOISE_POOR_DEG = 8.8f
 internal const val DISPLAY_ROTATION_SAMPLE_INTERVAL_MS = 250L
 internal const val HEADING_DEBUG_SAMPLE_MS = 10_000L
-internal const val ENABLE_DECLINATION_SEED_FROM_LAST_KNOWN = true
-internal const val ENABLE_DECLINATION_CACHE = true
 internal const val DECLINATION_REFRESH_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000L
 internal const val DECLINATION_REFRESH_MIN_DISTANCE_M = 10_000f
 internal const val MAX_DECLINATION_SEED_LOCATION_AGE_MS = 48 * 60 * 60 * 1000L

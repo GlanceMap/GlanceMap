@@ -25,67 +25,45 @@ import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecord
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-/**
- * A simple container for dependencies so they can be easily replaced in tests.
- */
-interface AppContainer {
-    val settingsRepository: SettingsRepository
-    val gpxRepository: GpxRepository
-    val gpxExportRepository: GpxExportRepository
-    val mapRepository: MapRepository
-    val poiRepository: PoiRepository
-    val userPoiRepository: UserPoiRepository
-    val themeRepository: ThemeRepository
-    val compassViewModel: CompassViewModel
-    val gpxViewModel: GpxViewModel
-    val mapViewModel: MapViewModel
-    val poiViewModel: PoiViewModel
-    val syncManager: SyncManager
-    val downloadViewModel: DownloadViewModel
-    val themeViewModel: ThemeViewModel
-    val settingsViewModel: SettingsViewModel
-    val locationViewModel: LocationViewModel
-    val traceRecordingViewModel: TraceRecordingViewModel
-}
-
-class DefaultAppContainer(
+class AppContainer(
     private val applicationContext: Context,
     private val coroutineScope: CoroutineScope,
-) : AppContainer {
-    override val syncManager: SyncManager by lazy { SyncManager(scope = coroutineScope) }
+) {
+    val syncManager: SyncManager by lazy { SyncManager(scope = coroutineScope) }
 
-    override val settingsRepository: SettingsRepository by lazy {
+    val settingsRepository: SettingsRepository by lazy {
         SettingsRepositoryImpl.getInstance(applicationContext)
     }
 
-    override val gpxRepository: GpxRepository by lazy {
+    val gpxRepository: GpxRepositoryImpl by lazy {
         GpxRepositoryImpl(applicationContext)
     }
 
-    override val gpxExportRepository: GpxExportRepository by lazy {
+    val gpxExportRepository: GpxExportRepository by lazy {
         GpxExportRepositoryImpl(applicationContext)
     }
 
-    override val mapRepository: MapRepository by lazy {
+    val mapRepository: MapRepositoryImpl by lazy {
         MapRepositoryImpl(applicationContext)
     }
 
-    override val poiRepository: PoiRepository by lazy {
+    val poiRepository: PoiRepository by lazy {
         PoiRepositoryImpl(applicationContext)
     }
 
-    override val userPoiRepository: UserPoiRepository by lazy {
-        UserPoiRepositoryImpl(applicationContext)
+    val userPoiRepository: UserPoiRepository by lazy {
+        UserPoiRepository(applicationContext)
     }
 
-    override val themeRepository: ThemeRepository by lazy {
+    val themeRepository: ThemeRepository by lazy {
         ThemeRepositoryImpl(applicationContext)
     }
 
-    override val compassViewModel: CompassViewModel by lazy {
+    val compassViewModel: CompassViewModel by lazy {
         CompassViewModel(applicationContext as Application)
     }
 
@@ -93,7 +71,7 @@ class DefaultAppContainer(
         BRouterRoutePlanner(applicationContext)
     }
 
-    override val gpxViewModel: GpxViewModel by lazy {
+    val gpxViewModel: GpxViewModel by lazy {
         GpxViewModel(
             gpxRepository = gpxRepository,
             gpxExportRepository = gpxExportRepository,
@@ -108,7 +86,7 @@ class DefaultAppContainer(
         )
     }
 
-    override val mapViewModel: MapViewModel by lazy {
+    val mapViewModel: MapViewModel by lazy {
         // ✅ FIX: MapViewModel expects context first
         MapViewModel(
             context = applicationContext,
@@ -119,7 +97,7 @@ class DefaultAppContainer(
         )
     }
 
-    override val poiViewModel: PoiViewModel by lazy {
+    val poiViewModel: PoiViewModel by lazy {
         PoiViewModel(
             poiRepository = poiRepository,
             userPoiRepository = userPoiRepository,
@@ -128,7 +106,7 @@ class DefaultAppContainer(
         )
     }
 
-    override val downloadViewModel: DownloadViewModel by lazy {
+    val downloadViewModel: DownloadViewModel by lazy {
         DownloadViewModel(
             downloader =
                 OamBundleDownloader(
@@ -143,7 +121,7 @@ class DefaultAppContainer(
         )
     }
 
-    override val themeViewModel: ThemeViewModel by lazy {
+    val themeViewModel: ThemeViewModel by lazy {
         ThemeViewModel(
             themeRepository = themeRepository,
             context = applicationContext,
@@ -151,18 +129,18 @@ class DefaultAppContainer(
         )
     }
 
-    override val settingsViewModel: SettingsViewModel by lazy {
+    val settingsViewModel: SettingsViewModel by lazy {
         SettingsViewModel(settingsRepository)
     }
 
-    override val locationViewModel: LocationViewModel by lazy {
+    val locationViewModel: LocationViewModel by lazy {
         LocationViewModel(
             application = applicationContext as Application,
             settingsRepository = settingsRepository,
         )
     }
 
-    override val traceRecordingViewModel: TraceRecordingViewModel by lazy {
+    val traceRecordingViewModel: TraceRecordingViewModel by lazy {
         val viewModel =
             TraceRecordingViewModel(
                 gpxRepository = gpxRepository,
@@ -170,6 +148,7 @@ class DefaultAppContainer(
                 syncManager = syncManager,
                 elevationProvider = RecordingElevationProvider(applicationContext),
                 draftStore = TraceRecordingDraftStore(applicationContext),
+                applicationContext = applicationContext,
             )
         startRecordingLocationBridge(viewModel)
         viewModel
@@ -177,13 +156,18 @@ class DefaultAppContainer(
 
     private fun startRecordingLocationBridge(traceRecordingViewModel: TraceRecordingViewModel) {
         coroutineScope.launch {
-            locationViewModel.currentLocation.collectLatest { location ->
-                traceRecordingViewModel.onLocation(location)
+            locationViewModel.recordingLocations.collect { location ->
+                traceRecordingViewModel.onLocation(location)?.join()
             }
         }
         coroutineScope.launch {
             locationViewModel.gpsSignalSnapshot.collectLatest { snapshot ->
                 traceRecordingViewModel.onGpsSignalSnapshot(snapshot)
+            }
+        }
+        coroutineScope.launch {
+            locationViewModel.effectiveGpsIntervalMs.collect { intervalMs ->
+                traceRecordingViewModel.onEffectiveRecordingSamplingIntervalChanged(intervalMs)
             }
         }
     }

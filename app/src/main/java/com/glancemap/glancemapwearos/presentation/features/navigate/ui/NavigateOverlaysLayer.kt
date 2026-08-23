@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +46,7 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
@@ -88,7 +92,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
     northIndicatorIconSize: Dp,
     showZoomPlusButton: Boolean,
     showZoomMinusButton: Boolean,
-    currentZoomLevel: Int,
     triggerHaptic: () -> Unit,
     onZoomStep: (Int) -> Boolean,
     zoomButtonSize: Dp,
@@ -146,12 +149,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onCancelSelectingGpxPointB: () -> Unit,
     turnByTurnGuidanceState: TurnByTurnGuidanceState,
     turnByTurnGuidancePaused: Boolean,
-    turnByTurnPausedTrackTitle: String?,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
     turnByTurnFullScreenExpanded: Boolean,
     recordingDashboardFullScreenExpanded: Boolean,
+    combinedGuidanceRecordingFullScreenExpanded: Boolean,
     guideBackToRouteActive: Boolean,
     showGuideBackPrompt: Boolean,
     startDecisionPrompt: GuidanceDecisionPrompt?,
@@ -160,16 +163,18 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onStopTurnByTurnGuidance: () -> Unit,
     onTurnByTurnExpandedChange: (Boolean) -> Unit,
     onRecordingExpandedChange: (Boolean) -> Unit,
+    onCombinedGuidanceRecordingExpandedChange: (Boolean) -> Unit,
     onGuideBackToRoute: () -> Unit,
     onDismissGuideBackPrompt: () -> Unit,
     onAcceptStartDecisionPrompt: () -> Unit,
     onDismissStartDecisionPrompt: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
     var liveDistanceLineStart by
         remember(mapView, locationMarker, lastKnownLocation) {
             mutableStateOf<Offset?>(null)
         }
-    var combinedGuidanceRecordingFullScreenExpanded by remember { mutableStateOf(false) }
     var showRouteCompleteRecordingPrompt by remember(traceRecordingState.startedAtMillis) {
         mutableStateOf(false)
     }
@@ -221,8 +226,8 @@ internal fun BoxScope.NavigateOverlaysLayer(
         }
     }
 
-    LaunchedEffect(shortcutTrayExpanded, routeToolModeActive) {
-        if (!shortcutTrayExpanded || routeToolModeActive) return@LaunchedEffect
+    LaunchedEffect(shortcutTrayExpanded, routeToolModeActive, headingReferenceTestActive) {
+        if (!shortcutTrayExpanded || routeToolModeActive || headingReferenceTestActive) return@LaunchedEffect
         delay(5_000L)
         if (shortcutTrayExpanded) {
             onShortcutTrayDismiss()
@@ -281,7 +286,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
         processing = slopeOverlayProcessing,
         progressPercent = slopeOverlayProgressPercent,
         enabled = slopeOverlayEnabled,
-        currentZoomLevel = currentZoomLevel,
         screenSize = screenSize,
         sideButtonEdgePadding = sideButtonEdgePadding,
         sideButtonSize = sideButtonSize,
@@ -471,7 +475,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
             recordingActive = traceRecordingState.active,
             recordingPaused = traceRecordingState.paused,
             recordingSaving = traceRecordingState.saving,
+            headingReferenceTestActive = headingReferenceTestActive,
             onRecordingClick = onRecordingClick,
+            onHeadingReferenceMark = { referenceHeadingDeg ->
+                val result = CompassHeadingReferenceDiagnostics.recordReference(referenceHeadingDeg)
+                Toast.makeText(context, result.userMessage, Toast.LENGTH_SHORT).show()
+            },
         )
     }
 
@@ -495,7 +504,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
     TurnByTurnGuidanceOverlay(
         state = turnByTurnGuidanceState,
         paused = turnByTurnGuidancePaused,
-        pausedTrackTitle = turnByTurnPausedTrackTitle,
         dashboardMetricSlots = turnByTurnDashboardMetricSlots,
         voiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
         screenSize = screenSize,
@@ -507,6 +515,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
+        compactPopupSuppressed = shortcutTrayExpanded,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||
@@ -568,6 +577,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
+        compactPopupSuppressed = shortcutTrayExpanded,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||
@@ -585,9 +595,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         onMetricSelected = onRecordingMetricSelected,
         onGuidanceMetricSelected = onTurnByTurnMetricSelected,
         onExpandedChange = { expanded ->
-            combinedGuidanceRecordingFullScreenExpanded = expanded
-            onTurnByTurnExpandedChange(expanded)
-            onRecordingExpandedChange(expanded)
+            onCombinedGuidanceRecordingExpandedChange(expanded)
         },
     )
 }

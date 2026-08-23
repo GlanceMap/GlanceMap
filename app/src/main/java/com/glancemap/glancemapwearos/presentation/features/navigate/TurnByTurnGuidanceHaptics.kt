@@ -189,7 +189,10 @@ private val STRONG_TURN_ALERT_EFFECT: VibrationEffect =
     VibrationEffect.createWaveform(longArrayOf(0L, 100L, 70L, 100L), -1)
 
 private val OFF_ROUTE_ALERT_EFFECT: VibrationEffect =
-    VibrationEffect.createWaveform(longArrayOf(0L, 120L, 80L, 120L, 80L, 120L), -1)
+    VibrationEffect.createWaveform(
+        longArrayOf(0L, 100L, 70L, 100L, 70L, 100L, 70L, 100L, 70L, 220L),
+        -1,
+    )
 
 private val BACK_ON_ROUTE_ALERT_EFFECT: VibrationEffect =
     VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE)

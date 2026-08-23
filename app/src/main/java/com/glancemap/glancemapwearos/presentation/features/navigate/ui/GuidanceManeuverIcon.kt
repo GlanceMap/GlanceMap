@@ -6,15 +6,19 @@ import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.TurnLeft
 import androidx.compose.material.icons.filled.TurnRight
-import androidx.compose.material.icons.filled.TurnSharpLeft
-import androidx.compose.material.icons.filled.TurnSharpRight
 import androidx.compose.material.icons.filled.TurnSlightLeft
 import androidx.compose.material.icons.filled.TurnSlightRight
+import androidx.compose.material.icons.materialIcon
+import androidx.compose.material.icons.materialPath
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.wear.compose.material3.Icon
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionCommand
@@ -83,15 +87,59 @@ private fun RouteInstructionCommand?.maneuverIcon(): ImageVector =
     when (this) {
         RouteInstructionCommand.SLIGHT_LEFT -> Icons.Default.TurnSlightLeft
         RouteInstructionCommand.LEFT -> Icons.Default.TurnLeft
-        RouteInstructionCommand.SHARP_LEFT -> Icons.Default.TurnSharpLeft
+        RouteInstructionCommand.SHARP_LEFT -> SharpDogLegLeft
         RouteInstructionCommand.SLIGHT_RIGHT -> Icons.Default.TurnSlightRight
         RouteInstructionCommand.RIGHT -> Icons.Default.TurnRight
-        RouteInstructionCommand.SHARP_RIGHT -> Icons.Default.TurnSharpRight
+        RouteInstructionCommand.SHARP_RIGHT -> SharpDogLegRight
         RouteInstructionCommand.CONTINUE,
         RouteInstructionCommand.FINISH,
         null,
         -> Icons.Default.Straight
     }
+
+private val SharpDogLegLeft: ImageVector by lazy {
+    materialIcon(name = "SharpDogLegLeft") {
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.8f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(17f, 21f)
+            lineTo(17f, 11f)
+            lineTo(10.7f, 17.3f)
+        }
+        materialPath {
+            moveTo(5f, 22f)
+            lineTo(8.8f, 14.5f)
+            lineTo(12.5f, 18.2f)
+            close()
+        }
+    }
+}
+
+private val SharpDogLegRight: ImageVector by lazy {
+    materialIcon(name = "SharpDogLegRight") {
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.8f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(7f, 21f)
+            lineTo(7f, 11f)
+            lineTo(13.3f, 17.3f)
+        }
+        materialPath {
+            moveTo(19f, 22f)
+            lineTo(15.2f, 14.5f)
+            lineTo(11.5f, 18.2f)
+            close()
+        }
+    }
+}
 
 private fun RouteInstructionCommand?.maneuverContentDescription(): String =
     when (this) {

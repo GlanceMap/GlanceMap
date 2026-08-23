@@ -70,10 +70,6 @@ class CompassViewModel(
         compassManager.updateDeclinationFromLocation(location)
     }
 
-    fun setLowPowerMode(enabled: Boolean) {
-        compassManager.setLowPowerMode(enabled)
-    }
-
     fun primeDeclinationFromApproximateLocation(
         latitude: Double,
         longitude: Double,

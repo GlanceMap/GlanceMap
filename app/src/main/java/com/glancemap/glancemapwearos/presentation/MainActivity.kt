@@ -27,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.GlanceMapWearApp
@@ -45,10 +46,13 @@ import com.glancemap.glancemapwearos.presentation.features.home.MainScreen
 import com.glancemap.glancemapwearos.presentation.features.maps.MapsScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.AmbientScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScreen
+import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.GpsAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpsSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxAppearanceSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxSettingsScreen
@@ -58,6 +62,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.MapDisplaySe
 import com.glancemap.glancemapwearos.presentation.features.settings.MapSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapZoomSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.PoiSettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.RecordingAdvancedSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingBikeSensorSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingDashboardSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.RecordingExternalSensorsScreen
@@ -78,7 +83,6 @@ import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
-import com.google.android.horologist.compose.layout.AppScaffold
 import kotlinx.coroutines.launch
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 
@@ -135,6 +139,8 @@ class MainActivity : ComponentActivity() {
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
+            val recordingStartLocationPending by
+                appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
             val turnByTurnGuidancePaused by appContainer.gpxViewModel.turnByTurnGuidancePaused.collectAsState()
             val gpsInAmbientMode by appContainer.settingsViewModel.gpsInAmbientMode.collectAsState(initial = false)
@@ -145,6 +151,7 @@ class MainActivity : ComponentActivity() {
             val recordingScreenOffSampleIntervalSeconds by appContainer.settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
             val turnByTurnGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
             val turnByTurnScreenOffGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+            val recordingElevationSource by appContainer.settingsViewModel.recordingElevationSource.collectAsState()
             val recordingHeartRateSource by appContainer.settingsViewModel.recordingHeartRateSource.collectAsState()
             val recordingCadenceSource by appContainer.settingsViewModel.recordingCadenceSource.collectAsState()
             val recordingSpeedSource by appContainer.settingsViewModel.recordingSpeedSource.collectAsState()
@@ -156,9 +163,16 @@ class MainActivity : ComponentActivity() {
             val activityProfile by appContainer.settingsViewModel.activityProfile.collectAsState()
 
             LaunchedEffect(recordingLocationStartWarning) {
-                if (recordingLocationStartWarning != null) {
+                if (recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE) {
                     appContainer.locationViewModel.requestImmediateLocation(
                         source = "ui_recording_start_missing_location",
+                    )
+                }
+            }
+            LaunchedEffect(recordingStartLocationPending) {
+                if (recordingStartLocationPending) {
+                    appContainer.locationViewModel.requestImmediateLocation(
+                        source = UI_RECORDING_START_REACQUIRE_SOURCE,
                     )
                 }
             }
@@ -187,6 +201,7 @@ class MainActivity : ComponentActivity() {
                     active = traceRecordingState.active,
                     paused = traceRecordingState.paused,
                     selectedMetricIds = recordingDashboardMetricSlots,
+                    elevationSource = recordingElevationSource,
                     heartRateSource = recordingHeartRateSource,
                     cadenceSource = recordingCadenceSource,
                     speedSource = recordingSpeedSource,
@@ -443,7 +458,6 @@ class MainActivity : ComponentActivity() {
                                 PoiScreen(
                                     navController = navController,
                                     poiViewModel = appContainer.poiViewModel,
-                                    mapViewModel = appContainer.mapViewModel,
                                 )
                             }
                         }
@@ -586,6 +600,27 @@ class MainActivity : ComponentActivity() {
                                             restoreState = true
                                         }
                                     },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.GPS_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.GPS_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                GpsAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenGpsSettings = {
+                                        navController.navigate(WatchRoutes.GPS_SETTINGS) {
+                                            popUpTo(WatchRoutes.GPS_SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -631,6 +666,27 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onOpenDashboardSettings = {
                                         navController.navigate(WatchRoutes.RECORDING_DASHBOARD_SETTINGS)
+                                    },
+                                    onOpenAdvancedSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_ADVANCED_SETTINGS)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.RECORDING_ADVANCED_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                RecordingAdvancedSettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenRecordingSettings = {
+                                        navController.navigate(WatchRoutes.RECORDING_SETTINGS) {
+                                            popUpTo(WatchRoutes.RECORDING_SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     },
                                 )
                             }
@@ -803,7 +859,6 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 DebuggingSettingsScreen(
                                     viewModel = appContainer.settingsViewModel,
-                                    compassViewModel = appContainer.compassViewModel,
                                     onOpenGeneralSettings = {
                                         navController.navigate(WatchRoutes.SETTINGS) {
                                             popUpTo(WatchRoutes.SETTINGS) { inclusive = false }
@@ -1040,13 +1095,41 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 WearActionDialog(
-                    visible = recordingLocationStartWarning != null,
+                    visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE,
                     title = "GPS needed",
                     message = "Wait for a fresh GPS position, then start REC again.",
                     confirmText = "OK",
                     onConfirm = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                     onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                 )
+                WearActionDialog(
+                    visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.LOW_ACCURACY,
+                    title = "GPS accuracy low",
+                    onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
+                    buttons =
+                        listOf(
+                            WearActionDialogButton(
+                                text = "Recheck",
+                                onClick = appContainer.traceRecordingViewModel::recheckRecordingStartLocation,
+                            ),
+                            WearActionDialogButton(
+                                text = "Start anyway",
+                                onClick = appContainer.traceRecordingViewModel::startRecordingWithLowAccuracyOverride,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                            WearActionDialogButton(
+                                text = "Cancel",
+                                onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                        ),
+                ) {
+                    Text(
+                        text = "Current GPS accuracy is too low. Recheck or start anyway.",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }

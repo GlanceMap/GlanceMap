@@ -138,7 +138,10 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val liveDistanceEnabled by settingsViewModel.liveDistance.collectAsState(initial = false)
     val offlineMode by settingsViewModel.offlineMode.collectAsState(initial = false)
     val gpsDebugTelemetry by settingsViewModel.gpsDebugTelemetry.collectAsState()
-    val gpsDebugTelemetryPopupEnabled by settingsViewModel.gpsDebugTelemetryPopupEnabled.collectAsState(initial = true)
+    val gpsDebugTelemetryPopupEnabled by
+        settingsViewModel.gpsDebugTelemetryPopupEnabled.collectAsState(
+            initial = SettingsRepository.DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED,
+        )
     val isGpxInspectionEnabled by settingsViewModel.isGpxInspectionEnabled.collectAsState()
     val isMetric by settingsViewModel.isMetric.collectAsState()
     val backButtonExitsNavigation by settingsViewModel.backButtonExitsNavigation.collectAsState()

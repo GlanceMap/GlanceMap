@@ -181,7 +181,6 @@ internal fun rememberNavigateGuidanceRuntime(
             updateGuidanceOffRouteConfirmation(
                 previous = offRouteConfirmation,
                 distanceToRouteMeters = rawState.distanceToRouteMeters,
-                locationAccuracyMeters = rawCurrentLocation.accuracy,
                 thresholdMeters = offRouteThresholdMeters.toDouble(),
                 allowOffRouteEntry =
                     SystemClock.elapsedRealtime() - lastScreenResumeElapsedMs >=
@@ -225,6 +224,21 @@ internal fun rememberNavigateGuidanceRuntime(
                 currentLocation = guidanceLocation,
             )
         }
+    var latestActiveDisplayState by
+        remember(session?.trackId, session?.reversed) {
+            mutableStateOf<TurnByTurnGuidanceState?>(null)
+        }
+    LaunchedEffect(paused, brouterGuideBackState) {
+        if (!paused && brouterGuideBackState.active) {
+            latestActiveDisplayState = brouterGuideBackState
+        }
+    }
+    val displayState =
+        pausedGuidanceDisplayState(
+            currentState = brouterGuideBackState,
+            latestActiveState = latestActiveDisplayState,
+            paused = paused,
+        )
     val showGuideBackPrompt =
         state.active &&
             state.offRoute &&
@@ -433,7 +447,7 @@ internal fun rememberNavigateGuidanceRuntime(
     }
 
     return NavigateGuidanceRuntime(
-        state = brouterGuideBackState,
+        state = displayState,
         guideBackToRouteActive = guideBackToRouteActive && state.offRoute,
         showGuideBackPrompt = showGuideBackPrompt,
         startDecisionPrompt = startDecisionPrompt,

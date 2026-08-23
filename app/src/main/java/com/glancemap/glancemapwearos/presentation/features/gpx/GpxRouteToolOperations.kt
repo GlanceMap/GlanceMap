@@ -4,7 +4,7 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterConfig
 import com.glancemap.glancemapwearos.core.routing.RouteGeometryPoint
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerRequest
-import com.glancemap.glancemapwearos.data.repository.GpxRepository
+import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteCreateMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteModifyMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteReshapeBounds
@@ -45,7 +45,7 @@ import java.io.File
 
 @Suppress("LargeClass")
 internal class GpxRouteToolOperations(
-    private val gpxRepository: GpxRepository,
+    private val gpxRepository: GpxRepositoryImpl,
     private val routePlanner: RoutePlanner,
     private val activeGpxFiles: () -> List<GpxFileState>,
     private val elevationFilterConfig: () -> GpxElevationFilterConfig,

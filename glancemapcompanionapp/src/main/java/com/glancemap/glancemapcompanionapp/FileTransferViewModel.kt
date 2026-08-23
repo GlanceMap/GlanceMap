@@ -1165,9 +1165,6 @@ class FileTransferViewModel : ViewModel() {
                 _uiState.value.copy(
                     selectedFileUris = emptyList(),
                     selectedFileDisplayNames = emptyList(),
-                    selectedFileUri = null,
-                    selectedFileName = null,
-                    selectedFileSizeMb = 0,
                 )
         }
     }

@@ -22,24 +22,25 @@ internal class SelfHealFailoverCoordinator(
     private val requestImmediateLocation: (String) -> Unit,
     private val trackingEnabled: () -> Boolean,
     private val ambientModeActive: () -> Boolean,
+    private val backgroundGpsEnabled: () -> Boolean = { false },
     private val hasFinePermission: () -> Boolean,
     private val hasCoarsePermission: () -> Boolean,
     private val watchGpsOnly: () -> Boolean,
     private val passiveLocationExperiment: () -> Boolean,
     private val phoneConnected: () -> Boolean?,
+    private val watchGpsAvailable: () -> Boolean = { true },
+    private val checkPhoneConnection: suspend () -> Boolean? = { null },
     private val lastAnyAcceptedFixAtElapsedMs: () -> Long,
     private val lastCallbackAcceptedFixAtElapsedMs: () -> Long,
     private val lastRequestAppliedAtElapsedMs: () -> Long,
     private val expectedIntervalMs: () -> Long,
     private val strictFreshMaxAgeMs: () -> Long,
+    private val requestWatchGpsRecovery: (Long, Long, Long) -> Boolean = { _, _, _ -> false },
 ) {
     private var autoFusedPoorAccuracyStreak: Int = 0
-    private var autoFusedWatchGpsRecoveryStreak: Int = 0
     private var autoFusedFallbackToWatchGps: Boolean = false
-    private var autoFusedFallbackSinceElapsedMs: Long = 0L
-    private var lastAutoFusedRecoveryProbeAtElapsedMs: Long = 0L
-    private var autoFusedRecoveryGraceUntilElapsedMs: Long = 0L
     private var pendingNoFixRecoveryProbeUntilElapsedMs: Long = 0L
+    private var lastPhoneConnectionRecheckAtElapsedMs: Long = 0L
     private var lastSelfHealAtElapsedMs: Long = 0L
     private var selfHealJob: Job? = null
 
@@ -47,48 +48,38 @@ internal class SelfHealFailoverCoordinator(
 
     fun onPhoneConnectionStateChecked(
         phoneConnected: Boolean,
-        nowElapsedMs: Long = 0L,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
     ) {
-        if (phoneConnected && autoFusedFallbackToWatchGps) {
-            val fallbackDurationMs =
-                if (autoFusedFallbackSinceElapsedMs > 0L && nowElapsedMs > 0L) {
-                    (nowElapsedMs - autoFusedFallbackSinceElapsedMs).coerceAtLeast(0L)
-                } else {
-                    0L
-                }
-            val lastAcceptedFixAt = lastAnyAcceptedFixAtElapsedMs()
-            val fixGapMs =
-                if (lastAcceptedFixAt > 0L && nowElapsedMs > 0L) {
-                    (nowElapsedMs - lastAcceptedFixAt).coerceAtLeast(0L)
-                } else {
-                    0L
-                }
-            lastAutoFusedRecoveryProbeAtElapsedMs = 0L
-            clearAutoFusedFailoverStateInternal(reason = "phone_reconnected")
-            if (nowElapsedMs > 0L) {
-                autoFusedRecoveryGraceUntilElapsedMs = nowElapsedMs + AUTO_FUSED_RECOVERY_GRACE_MS
+        if (phoneConnected) {
+            if (autoFusedFallbackToWatchGps) {
+                clearAutoFusedFailoverStateInternal(reason = "phone_reconnected")
+                requestLocationUpdateIfNeeded()
             }
-            telemetry.logAutoFusedRecoveryTriggered(
-                reason = "phone_reconnected",
-                fallbackDurationMs = fallbackDurationMs,
-                fixGapMs = fixGapMs,
-                expectedIntervalMs = expectedIntervalMs(),
-            )
+        } else if (
+            shouldFailOverForDisconnectedPhone() &&
+            forceAutoFusedFallbackToWatchGps("phone_disconnected", nowElapsedMs)
+        ) {
             requestLocationUpdateIfNeeded()
         }
     }
 
+    private fun shouldFailOverForDisconnectedPhone(): Boolean {
+        if (!trackingEnabled() || watchGpsOnly() || passiveLocationExperiment()) return false
+        return !autoFusedFallbackToWatchGps &&
+            engine.currentSourceModeOrNull() == LocationSourceMode.AUTO_FUSED &&
+            watchGpsAvailable()
+    }
+
     fun currentLocationSourceMode(): LocationSourceMode =
         when {
-            watchGpsOnly() || autoFusedFallbackToWatchGps -> LocationSourceMode.WATCH_GPS
+            watchGpsOnly() || autoFusedFallbackToWatchGps ->
+                LocationSourceMode.WATCH_GPS
             passiveLocationExperiment() -> LocationSourceMode.PASSIVE_EXTERNAL
             else -> LocationSourceMode.AUTO_FUSED
         }
 
     fun clearAutoFusedFailoverState(reason: String) {
         clearAutoFusedFailoverStateInternal(reason = reason)
-        lastAutoFusedRecoveryProbeAtElapsedMs = 0L
-        autoFusedRecoveryGraceUntilElapsedMs = 0L
         pendingNoFixRecoveryProbeUntilElapsedMs = 0L
     }
 
@@ -98,10 +89,8 @@ internal class SelfHealFailoverCoordinator(
     ): Boolean {
         if (watchGpsOnly() || autoFusedFallbackToWatchGps) return false
         autoFusedPoorAccuracyStreak = 0
-        autoFusedWatchGpsRecoveryStreak = 0
         autoFusedFallbackToWatchGps = true
-        autoFusedFallbackSinceElapsedMs = nowElapsedMs
-        lastAutoFusedRecoveryProbeAtElapsedMs = 0L
+        lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
         pendingNoFixRecoveryProbeUntilElapsedMs = 0L
         telemetry.logAutoFusedFallbackForced(reason = reason)
         return true
@@ -120,17 +109,14 @@ internal class SelfHealFailoverCoordinator(
             autoFusedPoorAccuracyStreak = 0
             return
         }
+        if (phoneConnected() != false) {
+            autoFusedPoorAccuracyStreak = 0
+            return
+        }
         if (autoFusedFallbackToWatchGps) {
-            maybeRecoverAutoFusedFromWatchGps(
-                acceptedLocation = acceptedLocation,
-                callbackOrigin = callbackOrigin,
-                nowElapsedMs = nowElapsedMs,
-            )
             return
         }
         if (callbackOrigin != LocationSourceMode.AUTO_FUSED) return
-        if (nowElapsedMs < autoFusedRecoveryGraceUntilElapsedMs) return
-
         val ageMs = LocationFixPolicy.locationAgeMs(acceptedLocation, nowElapsedMs)
         val isFresh = ageMs != Long.MAX_VALUE && ageMs <= strictFreshMaxAgeMs()
         if (
@@ -174,9 +160,7 @@ internal class SelfHealFailoverCoordinator(
         if (autoFusedPoorAccuracyStreak < requiredStreak) return
 
         autoFusedFallbackToWatchGps = true
-        autoFusedWatchGpsRecoveryStreak = 0
-        autoFusedFallbackSinceElapsedMs = nowElapsedMs
-        lastAutoFusedRecoveryProbeAtElapsedMs = 0L
+        lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
         telemetry.logAutoFusedFallbackTriggered(
             accuracyM = accuracyM,
             streak = autoFusedPoorAccuracyStreak,
@@ -198,12 +182,24 @@ internal class SelfHealFailoverCoordinator(
         selfHealJob =
             serviceScope.launch {
                 while (isServiceActive() && shouldRunSelfHealMonitor()) {
-                    delay(SELF_HEAL_CHECK_INTERVAL_MS)
-                    maybeTriggerInteractiveSelfHeal(
-                        nowElapsedMs = SystemClock.elapsedRealtime(),
-                        interactiveTracking = trackingEnabled() && !ambientModeActive(),
-                        expectedIntervalMs = expectedIntervalMs(),
-                    )
+                    delay(resolveSelfHealMonitorIntervalMs())
+                    val nowElapsedMs = SystemClock.elapsedRealtime()
+                    maybeRecheckPhoneConnection(nowElapsedMs)
+                    val interactiveTracking = trackingEnabled() && !ambientModeActive()
+                    if (interactiveTracking) {
+                        maybeTriggerInteractiveSelfHeal(
+                            nowElapsedMs = nowElapsedMs,
+                            interactiveTracking = true,
+                            expectedIntervalMs = expectedIntervalMs(),
+                        )
+                    } else {
+                        maybeTriggerBackgroundAutoFusedFailover(
+                            nowElapsedMs = nowElapsedMs,
+                            backgroundTracking =
+                                trackingEnabled() && ambientModeActive() && backgroundGpsEnabled(),
+                            expectedIntervalMs = expectedIntervalMs(),
+                        )
+                    }
                 }
                 selfHealJob = null
             }
@@ -221,24 +217,70 @@ internal class SelfHealFailoverCoordinator(
         )
     }
 
+    internal fun maybeTriggerBackgroundAutoFusedFailoverNow(
+        nowElapsedMs: Long,
+        backgroundTracking: Boolean,
+        expectedIntervalMs: Long,
+    ) {
+        maybeTriggerBackgroundAutoFusedFailover(
+            nowElapsedMs = nowElapsedMs,
+            backgroundTracking = backgroundTracking,
+            expectedIntervalMs = expectedIntervalMs,
+        )
+    }
+
     fun stop() {
         selfHealJob?.cancel()
         selfHealJob = null
         autoFusedPoorAccuracyStreak = 0
-        autoFusedWatchGpsRecoveryStreak = 0
         autoFusedFallbackToWatchGps = false
-        autoFusedFallbackSinceElapsedMs = 0L
-        lastAutoFusedRecoveryProbeAtElapsedMs = 0L
-        autoFusedRecoveryGraceUntilElapsedMs = 0L
         pendingNoFixRecoveryProbeUntilElapsedMs = 0L
+        lastPhoneConnectionRecheckAtElapsedMs = 0L
         lastSelfHealAtElapsedMs = 0L
     }
 
     private fun shouldRunSelfHealMonitor(): Boolean {
         val hasAnyPermission = hasFinePermission() || hasCoarsePermission()
         return trackingEnabled() &&
-            !ambientModeActive() &&
+            (!ambientModeActive() || backgroundGpsEnabled()) &&
             hasAnyPermission
+    }
+
+    private fun resolveSelfHealMonitorIntervalMs(): Long =
+        if (ambientModeActive()) {
+            BACKGROUND_SELF_HEAL_CHECK_INTERVAL_MS
+        } else {
+            SELF_HEAL_CHECK_INTERVAL_MS
+        }
+
+    private fun maybeTriggerBackgroundAutoFusedFailover(
+        nowElapsedMs: Long,
+        backgroundTracking: Boolean,
+        expectedIntervalMs: Long,
+    ) {
+        if (!backgroundTracking || expectedIntervalMs <= 0L) return
+        if (phoneConnected() != false) return
+        if (watchGpsOnly() || passiveLocationExperiment() || autoFusedFallbackToWatchGps) return
+        if (engine.currentSourceModeOrNull() != LocationSourceMode.AUTO_FUSED) return
+
+        val lastFixAt =
+            resolveLatestAcceptedFixAtElapsedMs(
+                lastAnyAcceptedFixAtElapsedMs = lastAnyAcceptedFixAtElapsedMs(),
+                lastCallbackAcceptedFixAtElapsedMs = lastCallbackAcceptedFixAtElapsedMs(),
+            ).takeIf { it > 0L } ?: lastRequestAppliedAtElapsedMs()
+        if (lastFixAt <= 0L) return
+
+        val fixGapMs = (nowElapsedMs - lastFixAt).coerceAtLeast(0L)
+        if (fixGapMs < resolveBackgroundAutoFusedFailoverThresholdMs(expectedIntervalMs)) return
+
+        if (
+            forceAutoFusedFallbackToWatchGps(
+                reason = "background_no_fix",
+                nowElapsedMs = nowElapsedMs,
+            )
+        ) {
+            requestLocationUpdateIfNeeded()
+        }
     }
 
     private fun maybeTriggerInteractiveSelfHeal(
@@ -278,16 +320,6 @@ internal class SelfHealFailoverCoordinator(
         if (maybeTriggerPassiveExperimentNoFixFailover()) {
             return
         }
-        if (
-            maybeTriggerAutoFusedRecoveryProbe(
-                nowElapsedMs = nowElapsedMs,
-                fixGapMs = fixGapMs,
-                expectedIntervalMs = expectedIntervalMs,
-            )
-        ) {
-            return
-        }
-
         val noFixFailoverThresholdMs = timingProfile.autoFusedNoFixFailoverGapMs
         if (
             maybeTriggerAutoFusedNoFixFailover(
@@ -297,6 +329,17 @@ internal class SelfHealFailoverCoordinator(
             )
         ) {
             return
+        }
+
+        val currentSourceMode = engine.currentSourceModeOrNull()
+        if (currentSourceMode == LocationSourceMode.WATCH_GPS && hasFinePermission()) {
+            val recoveryThresholdMs = resolveWatchGpsRecoveryStaleThresholdMs(expectedIntervalMs)
+            if (
+                fixGapMs >= recoveryThresholdMs &&
+                requestWatchGpsRecovery(fixGapMs, recoveryThresholdMs, expectedIntervalMs)
+            ) {
+                return
+            }
         }
 
         val staleThresholdMs = timingProfile.selfHealFixGapMs
@@ -318,7 +361,6 @@ internal class SelfHealFailoverCoordinator(
             }
         if (sinceLastHealMs < SELF_HEAL_COOLDOWN_MS) return
 
-        val currentSourceMode = engine.currentSourceModeOrNull()
         if (
             maybeSkipWatchGpsFirstCallbackSelfHeal(
                 sourceMode = currentSourceMode,
@@ -471,105 +513,13 @@ internal class SelfHealFailoverCoordinator(
         return true
     }
 
-    private fun maybeRecoverAutoFusedFromWatchGps(
-        acceptedLocation: Location,
-        callbackOrigin: LocationSourceMode,
-        nowElapsedMs: Long,
-    ) {
-        if (callbackOrigin != LocationSourceMode.WATCH_GPS) return
-        if (shouldStayOnWatchGpsForDisconnectedPhone()) {
-            autoFusedWatchGpsRecoveryStreak = 0
-            return
-        }
-
-        val ageMs = LocationFixPolicy.locationAgeMs(acceptedLocation, nowElapsedMs)
-        val isFresh = ageMs != Long.MAX_VALUE && ageMs <= strictFreshMaxAgeMs()
-        val accuracyM = acceptedLocation.accuracy
-        val isGoodAccuracy = isWatchGpsGoodEnoughForAutoFusedRecovery(accuracyM)
-        if (!isFresh || !isGoodAccuracy) {
-            autoFusedWatchGpsRecoveryStreak = 0
-            return
-        }
-
-        autoFusedWatchGpsRecoveryStreak += 1
-        if (autoFusedWatchGpsRecoveryStreak < AUTO_FUSED_RECOVERY_STREAK) return
-
-        val fallbackDurationMs =
-            if (autoFusedFallbackSinceElapsedMs > 0L) {
-                (nowElapsedMs - autoFusedFallbackSinceElapsedMs).coerceAtLeast(0L)
-            } else {
-                0L
-            }
-        if (fallbackDurationMs < AUTO_FUSED_RECOVERY_MIN_FALLBACK_MS) return
-
-        clearAutoFusedFailoverStateInternal(reason = "auto_recovery_watch_gps_stable")
-        autoFusedRecoveryGraceUntilElapsedMs = nowElapsedMs + AUTO_FUSED_RECOVERY_GRACE_MS
-        telemetry.logAutoFusedRecoveryTriggered(
-            reason = "stable_watch_gps",
-            fallbackDurationMs = fallbackDurationMs,
-            fixGapMs = ageMs,
-            expectedIntervalMs = expectedIntervalMs(),
-        )
-        requestLocationUpdateIfNeeded()
-    }
-
-    private fun maybeTriggerAutoFusedRecoveryProbe(
-        nowElapsedMs: Long,
-        fixGapMs: Long,
-        expectedIntervalMs: Long,
-    ): Boolean {
-        if (!autoFusedFallbackToWatchGps || watchGpsOnly()) return false
-        if (expectedIntervalMs <= 0L) return false
-        val fallbackSince = autoFusedFallbackSinceElapsedMs
-        if (fallbackSince <= 0L) return false
-
-        val fallbackDurationMs = (nowElapsedMs - fallbackSince).coerceAtLeast(0L)
-        val minProbeDurationMs =
-            (expectedIntervalMs * AUTO_FUSED_RECOVERY_PROBE_MIN_MULTIPLIER)
-                .coerceAtLeast(AUTO_FUSED_RECOVERY_PROBE_MIN_FALLBACK_MS)
-        if (fallbackDurationMs < minProbeDurationMs) return false
-
-        val knownPhoneConnected = phoneConnected()
-        val sinceLastProbeMs =
-            if (lastAutoFusedRecoveryProbeAtElapsedMs > 0L) {
-                (nowElapsedMs - lastAutoFusedRecoveryProbeAtElapsedMs).coerceAtLeast(0L)
-            } else {
-                Long.MAX_VALUE
-            }
-        val recoveryProbeCooldownMs =
-            if (knownPhoneConnected == false) {
-                DISCONNECTED_PHONE_RECOVERY_CHECK_COOLDOWN_MS
-            } else {
-                AUTO_FUSED_RECOVERY_PROBE_COOLDOWN_MS
-            }
-        if (sinceLastProbeMs < recoveryProbeCooldownMs) return false
-
-        if (knownPhoneConnected == false) {
-            lastAutoFusedRecoveryProbeAtElapsedMs = nowElapsedMs
-            requestLocationUpdateIfNeeded()
-            return true
-        }
-
-        clearAutoFusedFailoverStateInternal(reason = "auto_recovery_probe")
-        lastAutoFusedRecoveryProbeAtElapsedMs = nowElapsedMs
-        autoFusedRecoveryGraceUntilElapsedMs = nowElapsedMs + AUTO_FUSED_RECOVERY_GRACE_MS
-        telemetry.logAutoFusedRecoveryTriggered(
-            reason = "periodic_probe",
-            fallbackDurationMs = fallbackDurationMs,
-            fixGapMs = fixGapMs,
-            expectedIntervalMs = expectedIntervalMs,
-        )
-        requestLocationUpdateIfNeeded()
-        return true
-    }
-
     private fun maybeTriggerAutoFusedNoFixFailover(
         nowElapsedMs: Long,
         fixGapMs: Long,
         thresholdMs: Long,
     ): Boolean {
+        if (phoneConnected() != false) return false
         if (watchGpsOnly() || autoFusedFallbackToWatchGps) return false
-        if (nowElapsedMs < autoFusedRecoveryGraceUntilElapsedMs) return false
         if (engine.currentSourceModeOrNull() != LocationSourceMode.AUTO_FUSED) return false
         if (
             shouldFallbackImmediatelyForInitialAutoFusedNoFix(
@@ -621,10 +571,8 @@ internal class SelfHealFailoverCoordinator(
         thresholdMs: Long,
     ) {
         autoFusedPoorAccuracyStreak = 0
-        autoFusedWatchGpsRecoveryStreak = 0
         autoFusedFallbackToWatchGps = true
-        autoFusedFallbackSinceElapsedMs = nowElapsedMs
-        lastAutoFusedRecoveryProbeAtElapsedMs = 0L
+        lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
         pendingNoFixRecoveryProbeUntilElapsedMs = 0L
         telemetry.logAutoFusedFallbackTriggeredNoFix(
             fixGapMs = fixGapMs,
@@ -645,22 +593,51 @@ internal class SelfHealFailoverCoordinator(
     private fun clearAutoFusedFailoverStateInternal(reason: String) {
         val wasEnabled = autoFusedFallbackToWatchGps
         autoFusedPoorAccuracyStreak = 0
-        autoFusedWatchGpsRecoveryStreak = 0
         autoFusedFallbackToWatchGps = false
-        autoFusedFallbackSinceElapsedMs = 0L
+        lastPhoneConnectionRecheckAtElapsedMs = 0L
         pendingNoFixRecoveryProbeUntilElapsedMs = 0L
         if (wasEnabled) {
             telemetry.logAutoFusedFallbackCleared(reason = reason)
         }
     }
 
-    private fun shouldStayOnWatchGpsForDisconnectedPhone(): Boolean = phoneConnected() == false
+    private suspend fun maybeRecheckPhoneConnection(nowElapsedMs: Long) {
+        if (
+            !shouldRecheckAutoFusedPhoneConnection(
+                fallbackToWatchGps = autoFusedFallbackToWatchGps,
+                autoFusedActive = engine.currentSourceModeOrNull() == LocationSourceMode.AUTO_FUSED,
+                watchGpsOnly = watchGpsOnly(),
+                nowElapsedMs = nowElapsedMs,
+                lastRecheckAtElapsedMs = lastPhoneConnectionRecheckAtElapsedMs,
+            )
+        ) {
+            return
+        }
+        lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
+        checkPhoneConnection()?.let { connected ->
+            onPhoneConnectionStateChecked(connected, nowElapsedMs)
+        }
+    }
 }
 
 internal fun resolveLatestAcceptedFixAtElapsedMs(
     lastAnyAcceptedFixAtElapsedMs: Long,
     lastCallbackAcceptedFixAtElapsedMs: Long,
 ): Long = maxOf(lastAnyAcceptedFixAtElapsedMs, lastCallbackAcceptedFixAtElapsedMs)
+
+internal fun shouldRecheckAutoFusedPhoneConnection(
+    fallbackToWatchGps: Boolean,
+    autoFusedActive: Boolean,
+    watchGpsOnly: Boolean,
+    nowElapsedMs: Long,
+    lastRecheckAtElapsedMs: Long,
+): Boolean =
+    (fallbackToWatchGps || autoFusedActive) &&
+        !watchGpsOnly &&
+        (
+            lastRecheckAtElapsedMs <= 0L ||
+                nowElapsedMs - lastRecheckAtElapsedMs >= AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS
+        )
 
 internal enum class AutoFusedNoFixRecoveryAction {
     NONE,
@@ -718,27 +695,25 @@ internal fun resolveAutoFusedFailoverThresholdM(requiredStreak: Int): Float =
         AUTO_FUSED_FAILOVER_ACCURACY_M
     }
 
-internal fun isWatchGpsGoodEnoughForAutoFusedRecovery(
-    accuracyM: Float,
-): Boolean = accuracyM.isFinite() && accuracyM <= AUTO_FUSED_RECOVERY_ACCURACY_M
+internal fun resolveBackgroundAutoFusedFailoverThresholdMs(expectedIntervalMs: Long): Long =
+    maxOf(
+        BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_MIN_GAP_MS,
+        expectedIntervalMs * BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_INTERVAL_MULTIPLIER,
+    )
 
 private const val SELF_HEAL_CHECK_INTERVAL_MS = 5_000L // was 2 s; cooldown is 15 s so 5 s is sufficient
+private const val BACKGROUND_SELF_HEAL_CHECK_INTERVAL_MS = 15_000L
 private const val SELF_HEAL_COOLDOWN_MS = 15_000L
 private const val AUTO_FUSED_FAILOVER_ACCURACY_M = 120f
 private const val AUTO_FUSED_FAILOVER_STREAK = 4
 private const val AUTO_FUSED_SEVERE_FAILOVER_ACCURACY_M = 100f
 private const val AUTO_FUSED_SEVERE_FAILOVER_STREAK = 3
-private const val AUTO_FUSED_RECOVERY_ACCURACY_M = 65f
-private const val AUTO_FUSED_RECOVERY_STREAK = 4
-private const val AUTO_FUSED_RECOVERY_MIN_FALLBACK_MS = 20_000L
-private const val AUTO_FUSED_RECOVERY_PROBE_MIN_MULTIPLIER = 6L
-private const val AUTO_FUSED_RECOVERY_PROBE_MIN_FALLBACK_MS = 30_000L
-private const val AUTO_FUSED_RECOVERY_PROBE_COOLDOWN_MS = 45_000L
-private const val DISCONNECTED_PHONE_RECOVERY_CHECK_COOLDOWN_MS = 10_000L
-private const val AUTO_FUSED_RECOVERY_GRACE_MS = 15_000L
 private const val PASSIVE_EXPERIMENT_NO_FIX_FAILOVER_MAX_GAP_MS = 8_000L
 private const val GPS_SEARCH_REFRESH_MIN_GAP_MS = 15_000L
 private const val WATCH_GPS_FIRST_CALLBACK_SELF_HEAL_GRACE_MS = 120_000L
 private const val AUTO_FUSED_NO_FIX_RECOVERY_PROBE_GRACE_MS = 4_000L
 private const val AUTO_FUSED_NO_FIX_RECOVERY_CLEAR_ACCURACY_M = 65f
 private const val AUTO_FUSED_NO_FIX_RECOVERY_SOURCE = "auto_fused_no_fix_recovery"
+private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_MIN_GAP_MS = 20_000L
+private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_INTERVAL_MULTIPLIER = 3L
+private const val AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS = 30_000L

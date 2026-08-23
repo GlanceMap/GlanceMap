@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.SettingsRepositoryImpl
-import com.glancemap.glancemapwearos.domain.sensors.CompassViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,8 +20,6 @@ import org.mapsforge.core.model.LatLong
 
 class NavigateViewModel(
     application: Application,
-    private val locationViewModel: LocationViewModel,
-    private val compassViewModel: CompassViewModel,
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(NavigateUiState())
     val uiState: StateFlow<NavigateUiState> = _uiState.asStateFlow()

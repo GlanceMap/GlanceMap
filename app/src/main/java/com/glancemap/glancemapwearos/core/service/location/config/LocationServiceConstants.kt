@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.location.config
 
+import kotlin.math.abs
+
 internal const val NOTIFICATION_ID = 1
 internal const val CHANNEL_ID = "LocationServiceChannel"
 internal const val TELEMETRY_TAG = "LocTelemetry"
@@ -45,8 +47,27 @@ internal const val WATCH_GPS_DEGRADED_ACCURACY_M = 100f
 internal const val WATCH_GPS_DEGRADED_STREAK_THRESHOLD = 4
 internal const val WATCH_GPS_ACCURACY_FLOOR_M = 125f
 internal const val WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M = 3f
+internal const val WATCH_GPS_EFFECTIVE_ACCURACY_M = 18f
+
+internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
+    accuracyMeters?.let { accuracy ->
+        accuracy.isFinite() &&
+            abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+    } == true
+
+internal fun resolveEffectiveWatchGpsAccuracyMeters(
+    rawAccuracyMeters: Float?,
+    watchGpsActive: Boolean,
+    watchGpsDegraded: Boolean = false,
+): Float? =
+    if (
+        watchGpsActive &&
+        !watchGpsDegraded &&
+        isKnownWatchGpsAccuracyFloor(rawAccuracyMeters)
+    ) {
+        WATCH_GPS_EFFECTIVE_ACCURACY_M
+    } else {
+        rawAccuracyMeters
+    }
 
 internal const val IMMEDIATE_COOLDOWN_MS = 2_500L
-
-// Production mode: reject stale/very inaccurate fixes in service-layer acceptance.
-internal val ENABLE_STRICT_FIX_FILTERING = true

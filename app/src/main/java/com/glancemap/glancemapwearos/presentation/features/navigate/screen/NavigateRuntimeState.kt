@@ -10,7 +10,6 @@ import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRunt
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeInputs
 import com.glancemap.glancemapwearos.core.service.location.policy.navigationRuntimeDemand
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
-import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 
 internal data class NavigateRuntimeState(
     val screenState: LocationScreenState,
@@ -36,7 +35,6 @@ internal fun rememberNavigateRuntimeState(
     turnByTurnPaused: Boolean,
     turnByTurnGpsInAmbient: Boolean,
     locationViewModel: LocationViewModel,
-    traceRecordingViewModel: TraceRecordingViewModel,
 ): NavigateRuntimeState {
     val screenState =
         remember(isAmbient, isDeviceInteractive) {
@@ -80,13 +78,7 @@ internal fun rememberNavigateRuntimeState(
     NavigateRuntimeEffects(
         screenState = screenState,
         runtimeDemand = runtimeDemand,
-        isScreenResumed = isScreenResumed,
-        hasLocationPermission = hasLocationPermission,
-        offlineMode = offlineMode,
-        traceRecordingState = traceRecordingState,
-        recordingGpsEnabled = recordingGpsEnabled,
         locationViewModel = locationViewModel,
-        traceRecordingViewModel = traceRecordingViewModel,
     )
 
     return NavigateRuntimeState(
@@ -101,19 +93,10 @@ internal fun rememberNavigateRuntimeState(
 private fun NavigateRuntimeEffects(
     screenState: LocationScreenState,
     runtimeDemand: NavigationRuntimeDemand,
-    isScreenResumed: Boolean,
-    hasLocationPermission: Boolean,
-    offlineMode: Boolean,
-    traceRecordingState: TraceRecordingUiState,
-    recordingGpsEnabled: Boolean,
     locationViewModel: LocationViewModel,
-    traceRecordingViewModel: TraceRecordingViewModel,
 ) {
-    val recordingRuntimePaused = traceRecordingState.paused && !traceRecordingState.autoPaused
-
     LaunchedEffect(
         screenState,
-        isScreenResumed,
         runtimeDemand.trackingEnabled,
         runtimeDemand.backgroundGpsEnabled,
         runtimeDemand.reason,
@@ -124,45 +107,5 @@ private fun NavigateRuntimeEffects(
             backgroundGpsEnabled = runtimeDemand.backgroundGpsEnabled,
             runtimeReason = runtimeDemand.reason,
         )
-    }
-
-    LaunchedEffect(screenState, isScreenResumed, offlineMode, hasLocationPermission) {
-        if (
-            isScreenResumed &&
-            screenState == LocationScreenState.INTERACTIVE &&
-            !offlineMode &&
-            hasLocationPermission
-        ) {
-            locationViewModel.requestImmediateLocation(
-                source = NAVIGATE_WAKE_REACQUIRE_AMBIENT_EXIT_SOURCE,
-            )
-        }
-    }
-
-    LaunchedEffect(
-        screenState,
-        isScreenResumed,
-        offlineMode,
-        hasLocationPermission,
-        traceRecordingState.active,
-        traceRecordingState.paused,
-        traceRecordingState.autoPaused,
-        recordingRuntimePaused,
-        traceRecordingState.saving,
-        recordingGpsEnabled,
-    ) {
-        if (
-            isScreenResumed &&
-            screenState == LocationScreenState.INTERACTIVE &&
-            !offlineMode &&
-            hasLocationPermission &&
-            traceRecordingState.active &&
-            !traceRecordingState.paused &&
-            !traceRecordingState.saving &&
-            recordingGpsEnabled
-        ) {
-            traceRecordingViewModel.onWakeRefreshRequested(UI_RECORDING_WAKE_REFRESH_SOURCE)
-            locationViewModel.requestImmediateLocation(source = UI_RECORDING_WAKE_REFRESH_SOURCE)
-        }
     }
 }

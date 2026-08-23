@@ -826,6 +826,7 @@ private fun buildCanonicalElevationCumulative(
 
     val smoothedElevations =
         smoothElevationsByDistance(
+            points = points,
             elevations = normalizedElevations,
             segmentLengths = segmentLengths,
             smoothingDistanceMeters = effectiveFilter.smoothingDistanceMeters,
@@ -844,6 +845,15 @@ private fun buildCanonicalElevationCumulative(
     var descentActive = false
 
     for (index in 1 until count) {
+        if (points[index].startsNewSegment) {
+            pendingAscent = 0.0
+            pendingDescent = 0.0
+            ascentActive = false
+            descentActive = false
+            cumAsc[index] = ascent
+            cumDesc[index] = descent
+            continue
+        }
         val stepMeters = segmentLengths.getOrElse(index - 1) { 0.0 }.coerceAtLeast(0.0)
         val diff =
             applyMinimumGradeGate(
@@ -1099,6 +1109,7 @@ private fun normalizeElevations(
 }
 
 private fun smoothElevationsByDistance(
+    points: List<TrackPoint>,
     elevations: DoubleArray,
     segmentLengths: DoubleArray,
     smoothingDistanceMeters: Double,
@@ -1107,6 +1118,10 @@ private fun smoothElevationsByDistance(
     val smoothed = DoubleArray(elevations.size)
     smoothed[0] = elevations[0]
     for (index in 1 until elevations.size) {
+        if (points.getOrNull(index)?.startsNewSegment == true) {
+            smoothed[index] = elevations[index]
+            continue
+        }
         val stepMeters = segmentLengths.getOrElse(index - 1) { 0.0 }.coerceAtLeast(0.0)
         val alpha =
             (stepMeters / (smoothingDistanceMeters + stepMeters))

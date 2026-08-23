@@ -9,9 +9,9 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,11 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -78,7 +74,6 @@ import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboar
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
-import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardMetricTile
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingFullscreenPageShell
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingStopPromptCard
@@ -86,15 +81,12 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.b
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.formattedRecordingMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.logRecordingDashboardPageChange
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.normalizedRecordingDashboardSlots
-import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingDashboardMetricTileHeight
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingMetricPickerOptionsForProfile
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 @Composable
 internal fun BoxScope.CombinedGuidanceRecordingOverlay(
@@ -115,6 +107,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     expandRequestToken: Long,
     actionPromptRequestToken: Long,
     compactPopupEnabled: Boolean,
+    compactPopupSuppressed: Boolean,
     suppressed: Boolean,
     onPauseGuidance: () -> Unit,
     onResumeGuidance: () -> Unit,
@@ -133,6 +126,18 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     if ((!guidanceState.active && !guidancePaused) || (!recordingState.active && !recordingState.saving)) return
 
     var expanded by remember { mutableStateOf(false) }
+    val expandedVisibility = remember { MutableTransitionState(false) }
+    expandedVisibility.targetState = expanded
+    val popupOwnsTimeChip =
+        fullScreenPopupTransitionOwnsTimeChip(
+            currentlyVisible = expandedVisibility.currentState,
+            targetVisible = expandedVisibility.targetState,
+        )
+
+    fun expandPopup() {
+        onExpandedChange(true)
+        expanded = true
+    }
     var showActions by remember { mutableStateOf(false) }
     var showStopPrompt by remember { mutableStateOf(false) }
     var stopPromptPausedRecording by remember { mutableStateOf(false) }
@@ -164,8 +169,8 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             onExpandedChange(false)
         }
     }
-    LaunchedEffect(expanded) {
-        onExpandedChange(expanded)
+    LaunchedEffect(popupOwnsTimeChip) {
+        onExpandedChange(popupOwnsTimeChip)
     }
     LaunchedEffect(actionPromptRequestToken) {
         val shouldHandle =
@@ -191,7 +196,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             )
             showActions = false
             showStopPrompt = false
-            expanded = true
+            expandPopup()
         } else if (shouldHandle) {
             DebugTelemetry.log(
                 "TraceRecording",
@@ -231,7 +236,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
         )
 
     AnimatedVisibility(
-        visible = expanded,
+        visibleState = expandedVisibility,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier =
@@ -251,7 +256,6 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
                     guidanceMetricPageCount = guidanceMetricPageCount,
                     pageIndex = pageIndex,
                     pageCount = pageCount,
-                    recordingPageIndex = recordingPageIndex,
                     snapshot = snapshot,
                     screenSize = screenSize,
                     isMetric = isMetric,
@@ -282,6 +286,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
                         }
                     },
                     onShowActions = { showActions = true },
+                    onDismiss = { expanded = false },
                     onVoiceGuidanceChange = onVoiceGuidanceChange,
                     onGuideBackToRoute = onGuideBackToRoute,
                     onDismissGuideBackPrompt = onDismissGuideBackPrompt,
@@ -290,7 +295,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
         }
     }
 
-    if (!expanded && compactPopupEnabled) {
+    if (!expanded && compactPopupEnabled && !compactPopupSuppressed) {
         CombinedCompactPopup(
             guidanceState = guidanceState,
             guidancePaused = guidancePaused,
@@ -302,7 +307,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             onExpand = {
                 DebugTelemetry.log("TurnByTurn", "event=compact_popup_tap mode=combined")
                 showActions = false
-                expanded = true
+                expandPopup()
             },
             onShowActions = {
                 DebugTelemetry.log("TurnByTurn", "event=compact_popup_long_press mode=combined")
@@ -524,7 +529,6 @@ private fun CombinedFullscreenDashboard(
     guidanceMetricPageCount: Int,
     pageIndex: Int,
     pageCount: Int,
-    recordingPageIndex: Int,
     snapshot: RecordingDashboardSnapshot,
     screenSize: WearScreenSize,
     isMetric: Boolean,
@@ -536,6 +540,7 @@ private fun CombinedFullscreenDashboard(
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
     onShowActions: () -> Unit,
+    onDismiss: () -> Unit,
     onVoiceGuidanceChange: (Boolean) -> Unit,
     onGuideBackToRoute: () -> Unit,
     onDismissGuideBackPrompt: () -> Unit,
@@ -550,8 +555,15 @@ private fun CombinedFullscreenDashboard(
         onPreviousPage = onPreviousPage,
         onNextPage = onNextPage,
         onShowActions = onShowActions,
+        onDismiss = onDismiss,
         telemetryTag = "TurnByTurn",
     ) {
+        GuidanceRouteProgressChrome(
+            state = guidanceState,
+            isMetric = isMetric,
+            showDetails = !guidanceState.offRoute || guideBackToRouteActive,
+            modifier = Modifier.fillMaxSize(),
+        )
         if (pageIndex == 0) {
             CombinedGuidancePage(
                 state = guidanceState,
@@ -623,6 +635,14 @@ private fun CombinedGuidancePage(
             WearScreenSize.SMALL -> 36.dp
         }
     val showRouteProgressDetails = !state.offRoute || guideBackToRouteActive
+    val combinedManeuverText =
+        if (!paused && !state.offRoute && !guideBackToRouteActive) {
+            guidanceInstructionDistanceText(state, isMetric)?.let { distance ->
+                "$distance ${guidanceInstructionPrimaryText(state)}"
+            }
+        } else {
+            null
+        }
     val showGuideBackShortcut = state.active && state.offRoute && !guideBackToRouteActive && !showGuideBackPrompt
     var showGuideBackShortcutConfirm by remember(state.trackTitle) { mutableStateOf(false) }
     LaunchedEffect(state.offRoute, guideBackToRouteActive, showGuideBackPrompt) {
@@ -632,11 +652,6 @@ private fun CombinedGuidancePage(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        CombinedRouteProgressRing(
-            progress = state.routeProgressFraction,
-            offRoute = state.offRoute,
-            modifier = Modifier.fillMaxSize(),
-        )
         CombinedVoiceToggle(
             enabled = voiceGuidanceEnabled,
             onClick = {
@@ -698,7 +713,7 @@ private fun CombinedGuidancePage(
                         if (paused) {
                             "Paused"
                         } else {
-                            combinedGuidancePrimaryText(state, guideBackToRouteActive)
+                            combinedManeuverText ?: combinedGuidancePrimaryText(state, guideBackToRouteActive)
                         },
                     color = if (state.offRoute) COMBINED_OFF_ROUTE_AMBER else Color.White,
                     fontWeight = FontWeight.Bold,
@@ -708,16 +723,33 @@ private fun CombinedGuidancePage(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = combinedGuidanceSecondaryText(state, isMetric, guideBackToRouteActive),
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    lineHeight = 15.sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (paused || combinedManeuverText == null) {
+                    Text(
+                        text = combinedGuidanceSecondaryText(state, isMetric, guideBackToRouteActive),
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        lineHeight = 15.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (showRouteProgressDetails) {
+                    guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
+                        Spacer(modifier = Modifier.size(2.dp))
+                        Text(
+                            text = terrain.expandedText,
+                            color = guidanceTerrainColor(terrain.direction),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            lineHeight = 15.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (showRouteProgressDetails) {
                     guidanceFollowingText(state, isMetric)?.let { followingText ->
                         Spacer(modifier = Modifier.size(2.dp))
@@ -729,26 +761,6 @@ private fun CombinedGuidancePage(
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    state.distanceRemainingMeters?.let { remaining ->
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Text(
-                            text = guidanceRemainingText(remaining, state.estimatedRemainingSeconds, isMetric),
-                            color = Color.White.copy(alpha = 0.64f),
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                    state.routeProgressFraction?.let { progress ->
-                        Spacer(modifier = Modifier.size(1.dp))
-                        Text(
-                            text = "${(progress * 100f).roundToInt()}%",
-                            color = Color.White.copy(alpha = 0.46f),
-                            fontSize = 9.sp,
-                            lineHeight = 10.sp,
-                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -802,100 +814,12 @@ private fun CombinedRecordingPage(
         List(RECORDING_DASHBOARD_PAGE_SLOT_COUNT) { index ->
             slots.getOrElse(index) { SettingsRepository.RECORDING_METRIC_DISTANCE }
         }
-    val contentWidthFraction =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 0.72f
-            WearScreenSize.MEDIUM -> 0.68f
-            WearScreenSize.SMALL -> 0.64f
-        }
-    val tileHeight = recordingDashboardMetricTileHeight(screenSize)
-    val statusRowHeight =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 18.dp
-            WearScreenSize.MEDIUM -> 16.dp
-            WearScreenSize.SMALL -> 14.dp
-        }
-
-    cappedFontScale(maxFontScale = 1f) {
-        Column(
-            modifier = Modifier.fillMaxWidth(contentWidthFraction),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
-        ) {
-            Box(modifier = Modifier.height(statusRowHeight))
-            RecordingDashboardMetricTile(
-                metric = formattedRecordingMetric(tileSlots[0], snapshot, isMetric),
-                height = tileHeight,
-                onLongPress = { onSlotLongPress(0) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                RecordingDashboardMetricTile(
-                    metric = formattedRecordingMetric(tileSlots[1], snapshot, isMetric),
-                    height = tileHeight,
-                    onLongPress = { onSlotLongPress(1) },
-                    modifier = Modifier.weight(1f),
-                )
-                RecordingDashboardMetricTile(
-                    metric = formattedRecordingMetric(tileSlots[2], snapshot, isMetric),
-                    height = tileHeight,
-                    onLongPress = { onSlotLongPress(2) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            RecordingDashboardMetricTile(
-                metric = formattedRecordingMetric(tileSlots[3], snapshot, isMetric),
-                height = tileHeight,
-                onLongPress = { onSlotLongPress(3) },
-                modifier = Modifier.fillMaxWidth(0.86f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CombinedRouteProgressRing(
-    progress: Float?,
-    offRoute: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val clampedProgress = progress?.coerceIn(0f, 1f) ?: return
-    val progressColor = if (offRoute) COMBINED_OFF_ROUTE_AMBER else MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier) {
-        val strokeWidth = 5.dp.toPx()
-        val inset = strokeWidth / 2f + 5.dp.toPx()
-        val side = min(size.width, size.height) - inset * 2f
-        if (side <= 0f) return@Canvas
-        val topLeft =
-            Offset(
-                x = (size.width - side) / 2f,
-                y = (size.height - side) / 2f,
-            )
-        val arcSize = Size(side, side)
-        drawArc(
-            color = Color.White.copy(alpha = 0.12f),
-            startAngle = COMBINED_PROGRESS_ARC_START_DEGREES,
-            sweepAngle = COMBINED_PROGRESS_ARC_SWEEP_DEGREES,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = strokeWidth),
-        )
-        if (clampedProgress > 0f) {
-            drawArc(
-                color = progressColor,
-                startAngle = COMBINED_PROGRESS_ARC_START_DEGREES,
-                sweepAngle = COMBINED_PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
-        }
-    }
+    TurnByTurnMetricDashboardGrid(
+        metrics = tileSlots.map { formattedRecordingMetric(it, snapshot, isMetric) },
+        header = null,
+        screenSize = screenSize,
+        onSlotLongPress = onSlotLongPress,
+    )
 }
 
 @Composable
@@ -1167,6 +1091,4 @@ private fun combinedGuidanceCompactText(
 
 private const val NO_SELECTED_SLOT = -1
 private const val COMBINED_POPUP_DRAG_THRESHOLD_PX = 24f
-private const val COMBINED_PROGRESS_ARC_START_DEGREES = -66f
-private const val COMBINED_PROGRESS_ARC_SWEEP_DEGREES = 312f
 private val COMBINED_OFF_ROUTE_AMBER = Color(0xFFFFC107)

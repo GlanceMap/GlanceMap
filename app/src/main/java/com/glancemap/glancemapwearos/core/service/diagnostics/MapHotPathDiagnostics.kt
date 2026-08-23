@@ -201,6 +201,21 @@ internal object MapHotPathDiagnostics {
         DebugTelemetry.log(TAG, eventLine)
     }
 
+    fun recordEvent(
+        stage: String,
+        status: String = "ok",
+        detail: String = "",
+    ) {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        recordInterval(
+            stage = stage,
+            startedAtElapsedMs = nowElapsedMs,
+            completedAtElapsedMs = nowElapsedMs,
+            status = status,
+            detail = detail,
+        )
+    }
+
     inline fun <T> measure(
         stage: String,
         detail: String = "",

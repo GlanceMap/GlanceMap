@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.data.repository.internal
 
 import android.util.Log
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -15,6 +16,7 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
 
 internal object AtomicStreamWriter {
@@ -91,6 +93,7 @@ internal object AtomicStreamWriter {
 
         var bytesCopied = existingLen
         var lastProgress = bytesCopied
+        val captureTiming = DebugTelemetry.isEnabled()
         val isResumingFromPartial = bytesCopied > 0L && partFile.exists()
         val digest =
             if (options.computeSha256 && !isResumingFromPartial) {
@@ -102,8 +105,11 @@ internal object AtomicStreamWriter {
         try {
             // Append if we have a partial
             val writeStartMs = monotonicNowMs()
+            var pipelineTiming: PipelineTiming? = null
+            var flushDurationMs = 0L
+            var fsyncDurationMs = 0L
             FileOutputStream(partFile, bytesCopied > 0L).use { fos ->
-                bytesCopied =
+                val pipeline =
                     writeWithPipeline(
                         inputStream = inputStream,
                         fos = fos,
@@ -115,11 +121,18 @@ internal object AtomicStreamWriter {
                         progressStepBytes = options.progressStepBytes,
                         onProgress = onProgress,
                         lastProgress = lastProgress,
+                        captureTiming = captureTiming,
                     )
+                bytesCopied = pipeline.bytesCopied
+                pipelineTiming = pipeline.timing
 
+                val flushStartedAtMs = monotonicNowMs()
                 fos.flush()
+                flushDurationMs = monotonicNowMs() - flushStartedAtMs
                 if (options.fsync) {
+                    val fsyncStartedAtMs = monotonicNowMs()
                     runCatching { fos.fd.sync() }
+                    fsyncDurationMs = monotonicNowMs() - fsyncStartedAtMs
                 }
             }
             val writeDurationMs = monotonicNowMs() - writeStartMs
@@ -130,12 +143,6 @@ internal object AtomicStreamWriter {
                 } else {
                     0.0
                 }
-            safeLogDebug(
-                TAG,
-                "Disk write $safeName: written=${writtenSincePart}B durationMs=$writeDurationMs " +
-                    "throughput=${String.format("%.2f", writeThroughputMBps)}MB/s fsync=${options.fsync}",
-            )
-
             onProgress(bytesCopied)
 
             if (options.requireExactSize) {
@@ -145,16 +152,37 @@ internal object AtomicStreamWriter {
                 }
             }
 
-            // Promote .part -> final
-            if (finalFile.exists() && !finalFile.delete()) {
-                throw IOException("Cannot delete existing file: ${finalFile.absolutePath}")
-            }
-
-            if (!moveAtomic(partFile, finalFile)) {
-                if (!copyAndDel(partFile, finalFile)) {
+            val promotionStartedAtMs = monotonicNowMs()
+            val promotion =
+                if (finalFile.exists() && !finalFile.delete()) {
+                    throw IOException("Cannot delete existing file: ${finalFile.absolutePath}")
+                } else if (moveAtomic(partFile, finalFile)) {
+                    "atomic_move"
+                } else if (copyAndDel(partFile, finalFile)) {
+                    "copy_fallback"
+                } else {
                     throw IOException("Rename and Copy failed for $safeName")
                 }
-            }
+            val promotionDurationMs = monotonicNowMs() - promotionStartedAtMs
+            val timing = pipelineTiming.takeIf { captureTiming }
+            val timingFields =
+                timing?.let {
+                    "inputReadMs=${it.inputReadNs / NANOS_PER_MILLISECOND} " +
+                        "outputWriteMs=${it.outputWriteNs / NANOS_PER_MILLISECOND}"
+                } ?: "inputReadMs=na outputWriteMs=na"
+            val timingSummary =
+                "$timingFields flushMs=$flushDurationMs fsyncMs=$fsyncDurationMs " +
+                    "finalizeMs=$promotionDurationMs promotion=$promotion"
+            val logMessage =
+                "Disk write $safeName: written=${writtenSincePart}B durationMs=$writeDurationMs " +
+                    "throughput=${String.format("%.2f", writeThroughputMBps)}MB/s fsync=${options.fsync} " +
+                    timingSummary
+            val telemetryMessage =
+                "event=atomic_output_complete file=$safeName written=${writtenSincePart}B " +
+                    "durationMs=$writeDurationMs throughput=${String.format("%.2f", writeThroughputMBps)}MBps " +
+                    "$timingSummary fsync=${options.fsync}"
+            safeLogDebug(TAG, logMessage)
+            if (captureTiming) DebugTelemetry.log(TAG, telemetryMessage)
 
             val sha256 = digest?.digest()?.joinToString("") { b -> "%02x".format(b) }
 
@@ -198,7 +226,8 @@ internal object AtomicStreamWriter {
         progressStepBytes: Long,
         onProgress: (Long) -> Unit,
         lastProgress: Long,
-    ): Long =
+        captureTiming: Boolean,
+    ): PipelineWriteResult =
         coroutineScope {
             val buffers = arrayOf(ByteArray(bufferSize), ByteArray(bufferSize))
             val availableBuffers = Channel<Int>(2)
@@ -209,6 +238,8 @@ internal object AtomicStreamWriter {
 
             var bytesCopied = initialBytesCopied
             var progress = lastProgress
+            val inputReadNs = AtomicLong(0L)
+            val outputWriteNs = AtomicLong(0L)
 
             // Producer: reads from input stream on IO dispatcher
             val reader =
@@ -217,7 +248,11 @@ internal object AtomicStreamWriter {
                         while (true) {
                             coroutineContext.ensureActive()
                             val idx = availableBuffers.receive()
+                            val readStartedAtNs = if (captureTiming) System.nanoTime() else 0L
                             val read = inputStream.read(buffers[idx])
+                            if (captureTiming) {
+                                inputReadNs.addAndGet(System.nanoTime() - readStartedAtNs)
+                            }
                             if (read < 0) {
                                 availableBuffers.trySend(idx)
                                 break
@@ -242,7 +277,11 @@ internal object AtomicStreamWriter {
                         }
                     }
 
+                    val writeStartedAtNs = if (captureTiming) System.nanoTime() else 0L
                     fos.write(buffers[idx], 0, read)
+                    if (captureTiming) {
+                        outputWriteNs.addAndGet(System.nanoTime() - writeStartedAtNs)
+                    }
                     digest?.update(buffers[idx], 0, read)
                     bytesCopied += read
                     availableBuffers.send(idx)
@@ -259,10 +298,33 @@ internal object AtomicStreamWriter {
                 availableBuffers.close()
             }
 
-            bytesCopied
+            PipelineWriteResult(
+                bytesCopied = bytesCopied,
+                timing =
+                    if (captureTiming) {
+                        PipelineTiming(
+                            inputReadNs = inputReadNs.get(),
+                            outputWriteNs = outputWriteNs.get(),
+                        )
+                    } else {
+                        null
+                    },
+            )
         }
 
+    private data class PipelineWriteResult(
+        val bytesCopied: Long,
+        val timing: PipelineTiming?,
+    )
+
+    private data class PipelineTiming(
+        val inputReadNs: Long,
+        val outputWriteNs: Long,
+    )
+
     private fun monotonicNowMs(): Long = System.nanoTime() / 1_000_000L
+
+    private const val NANOS_PER_MILLISECOND = 1_000_000L
 
     private fun safeLogDebug(
         tag: String,

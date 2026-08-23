@@ -1,13 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import android.content.Context
 import android.location.Location
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
-import com.glancemap.glancemapwearos.data.repository.GpxRepository
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
+import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
+import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
+import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
+import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.parseGpxData
@@ -24,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,12 +45,20 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private data class RecordingGapTelemetryContext(
+    val rawCallbackGapMillis: Long,
+    val liveCallbackGapMillis: Long,
+    val committedPointGapMillis: Long,
+    val continuityRecoveryGapMillis: Long?,
+)
+
 class TraceRecordingViewModel(
-    private val gpxRepository: GpxRepository,
+    private val gpxRepository: GpxRepositoryImpl,
     private val settingsRepository: SettingsRepository,
     private val syncManager: SyncManager,
     private val elevationProvider: RecordingElevationProvider,
     private val draftStore: TraceRecordingDraftStore,
+    private val applicationContext: Context? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TraceRecordingUiState())
     val uiState: StateFlow<TraceRecordingUiState> = _uiState.asStateFlow()
@@ -51,6 +66,8 @@ class TraceRecordingViewModel(
     val startWarning: StateFlow<RecordingStartWarning?> = _startWarning.asStateFlow()
     private val _locationStartWarning = MutableStateFlow<RecordingLocationStartWarning?>(null)
     val locationStartWarning: StateFlow<RecordingLocationStartWarning?> = _locationStartWarning.asStateFlow()
+    private val _recordingStartLocationPending = MutableStateFlow(false)
+    val recordingStartLocationPending: StateFlow<Boolean> = _recordingStartLocationPending.asStateFlow()
 
     private var sampleIntervalSeconds = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
     private var recordingElevationSource = SettingsRepository.DEFAULT_RECORDING_ELEVATION_SOURCE
@@ -62,6 +79,7 @@ class TraceRecordingViewModel(
     private var recordingStepsSource = SettingsRepository.DEFAULT_RECORDING_STEPS_SOURCE
     private var recordingAutoPauseMode = SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE
     private var recordingTrackSmoothingMode = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
+    private var recordingProgressVibrationSettings = RecordingProgressVibrationSettings()
     private var recordingExternalHeartRateAddress: String? = null
     private var recordingExternalRunPodAddress: String? = null
     private var userWeightKg = SettingsRepository.DEFAULT_USER_WEIGHT_KG
@@ -89,15 +107,16 @@ class TraceRecordingViewModel(
     private var recordingGapCount: Int = 0
     private var recordingMaxGapMillis: Long = 0L
     private var lastUiAction: String? = null
-    private var forceAcceptNextGoodFixReason: String? = null
-    private var forcedAcceptCount = 0
     private var gapRecoveryAcceptCount = 0
     private var maxSkippedIntervalElapsedMs = 0L
     private var lastSkippedIntervalElapsedMs = 0L
     private var lastLiveFixProvider: String? = null
     private var lastLiveFixAccuracyMeters: Float? = null
     private var lastLiveFixTimeMillis: Long? = null
-    private var startNewSegmentOnNextPoint = false
+    private var lastLiveCallbackElapsedMs: Long = Long.MIN_VALUE
+    private val recentLiveCallbackIntervalsMs = mutableListOf<Long>()
+    private var pendingGpsDeliveryGapMillis: Long = 0L
+    private var pendingSegmentStartReason: String? = null
     private var suppressedJitterPointCount = 0
     private var suppressedJitterDistanceMeters = 0.0
     private var latestSensorMetrics = RecordingSensorMetrics()
@@ -114,17 +133,37 @@ class TraceRecordingViewModel(
     private var autoPauseMovingSinceElapsedMs: Long? = null
     private var autoPauseTriggerCount = 0
     private var autoResumeTriggerCount = 0
+    private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
+    private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
+    private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
     private var qualityRelocationCount = 0
     private var smoothedPointCount = 0
     private var smoothedAdjustmentMeters = 0.0
     private var maxSmoothedAdjustmentMeters = 0.0
+    private var confirmedReversalCorrectionCount = 0
+    private var straightDriftCorrectedPointCount = 0
+    private var continuityDistanceCapCount = 0
+    private var continuityDistanceSuppressedMeters = 0.0
+    private val hybridElevationFilter = RecordingHybridElevationFilter()
+    private var hybridElevationPointCount = 0
+    private var hybridPressureDeltaMeters = 0.0
+    private var hybridAnchorCorrectionMeters = 0.0
     private var latestRecordingStartLocation: Location? = null
     private var latestGpsSignalSnapshot = GpsSignalSnapshot()
     private var pendingRecordingStartSource: String? = null
     private var pendingRecordingStartTimeout: Job? = null
+    private var recordingStartLocationOverride = false
+    private var latestEffectiveRecordingSamplingIntervalMs =
+        SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L
+    private val recordingPointCaptureExpectation = RecordingPointCaptureExpectation()
+    private val recordingProgressVibrationTracker = RecordingProgressVibrationTracker()
+    private var recordingProgressVibrationTimeJob: Job? = null
+    private val draftPersistMutex = Mutex()
+    private var pendingDraftPersistJob: Job? = null
+    private var lastDraftPersistElapsedMs = Long.MIN_VALUE
 
     init {
         settingsRepository.recordingSampleIntervalSeconds
@@ -145,6 +184,13 @@ class TraceRecordingViewModel(
                             "reason=session_mode_frozen",
                     )
                 }
+            }.launchIn(viewModelScope)
+        settingsRepository.recordingProgressVibrationSettings
+            .onEach { nextSettings ->
+                if (recordingProgressVibrationSettings == nextSettings) return@onEach
+                recordingProgressVibrationSettings = nextSettings
+                rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
+                syncRecordingProgressVibrationTimer()
             }.launchIn(viewModelScope)
         settingsRepository.recordingElevationSource
             .onEach { recordingElevationSource = it }
@@ -229,10 +275,18 @@ class TraceRecordingViewModel(
 
     fun startRecording() {
         if (isRecordingStartBlocked()) return
-        if (isLocationReadyForRecordingStart()) {
-            startRecordingAfterLocationPreflight()
-        } else {
-            waitForFreshLocationBeforeStartingRecording(source = "rec_tap")
+        when {
+            isLocationReadyForRecordingStart() -> {
+                logRecordingStartLocationCheck(result = "accepted", reason = "fresh_quality_fix")
+                startRecordingAfterLocationPreflight()
+            }
+            !latestGpsSignalSnapshot.isLocationAvailable -> {
+                showRecordingStartLocationWarning()
+                logRecordingStartLocationCheck(result = "gps_unavailable", reason = "location_unavailable")
+            }
+            else -> {
+                waitForFreshLocationBeforeStartingRecording(source = "rec_tap")
+            }
         }
     }
 
@@ -343,7 +397,22 @@ class TraceRecordingViewModel(
     fun cancelStartRecordingWithoutLocation() {
         if (_locationStartWarning.value == null) return
         _locationStartWarning.value = null
+        recordingStartLocationOverride = false
         DebugTelemetry.log("TraceRecording", "event=location_start_warning_cancelled")
+    }
+
+    fun recheckRecordingStartLocation() {
+        if (_locationStartWarning.value?.kind != RecordingLocationStartWarning.Kind.LOW_ACCURACY) return
+        _locationStartWarning.value = null
+        waitForFreshLocationBeforeStartingRecording(source = "rec_low_accuracy_recheck")
+    }
+
+    fun startRecordingWithLowAccuracyOverride() {
+        if (_locationStartWarning.value?.kind != RecordingLocationStartWarning.Kind.LOW_ACCURACY) return
+        _locationStartWarning.value = null
+        recordingStartLocationOverride = true
+        logRecordingStartLocationCheck(result = "user_override", reason = "low_accuracy")
+        startRecordingAfterLocationPreflight()
     }
 
     fun onGpsSignalSnapshot(snapshot: GpsSignalSnapshot) {
@@ -351,10 +420,29 @@ class TraceRecordingViewModel(
         startPendingRecordingWhenLocationReady()
     }
 
+    fun onEffectiveRecordingSamplingIntervalChanged(intervalMs: Long) {
+        val sanitizedIntervalMs = intervalMs.takeIf { it > 0L } ?: return
+        if (latestEffectiveRecordingSamplingIntervalMs == sanitizedIntervalMs) return
+        latestEffectiveRecordingSamplingIntervalMs = sanitizedIntervalMs
+        val state = _uiState.value
+        if (state.active && !state.paused) {
+            recordingPointCaptureExpectation.updateInterval(
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+                intervalMs = sanitizedIntervalMs,
+            )
+        }
+    }
+
     private fun startRecordingNow() {
         val now = System.currentTimeMillis()
         lastAcceptedElapsedMs = Long.MIN_VALUE
         resetSessionTelemetry()
+        recordingPointCaptureExpectation.start(
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            intervalMs = latestEffectiveRecordingSamplingIntervalMs,
+        )
+        recordingStartLocationOverride = false
+        _recordingStartLocationPending.value = false
         lastUiAction = "start"
         _uiState.value =
             TraceRecordingUiState(
@@ -369,6 +457,8 @@ class TraceRecordingViewModel(
                 stepsSource = recordingStepsSource,
                 message = "REC on · ${recordingProfileLabel(activityProfile)}",
             )
+        recordingProgressVibrationTracker.start(recordingProgressVibrationSettings)
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=start sampleIntervalSeconds=$sampleIntervalSeconds elevationSource=$recordingElevationSource " +
@@ -382,54 +472,68 @@ class TraceRecordingViewModel(
         persistDraftAsync(reason = "start")
     }
 
-    fun onLocation(location: Location?) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    fun onLocation(location: Location?): Job? {
         latestRecordingStartLocation = location
         startPendingRecordingWhenLocationReady()
-        if (location == null) return
+        if (location == null) return null
         val state = _uiState.value
-        if (!state.active || state.saving) return
+        if (!state.active || state.saving) return null
+        val callbackElapsedMs =
+            (location.elapsedRealtimeNanos / 1_000_000L)
+                .takeIf { it > 0L }
+                ?: SystemClock.elapsedRealtime()
+        val rawCallbackGapMillis =
+            recordingPointDensityTelemetry.observeCallbackReceived(
+                callbackElapsedMs = callbackElapsedMs,
+                significantGapMs = recordingGapTelemetryThresholdMillis(),
+            )
         if (state.paused && !state.autoPaused) {
             skippedPausedCount += 1
-            return
+            return null
         }
         if (!isGpsSamplingEnabled()) {
             skippedIntervalCount += 1
-            return
+            return null
         }
         if (!isUsableLocation(location)) {
             skippedUnusableLocationCount += 1
-            return
+            return null
         }
 
+        val liveCallbackGapMillis = observeLiveCallback(callbackElapsedMs)
+        recordingPointDensityTelemetry.observeUsableCallback()
+        if (liveCallbackGapMillis >= recordingGapTelemetryThresholdMillis()) {
+            pendingGpsDeliveryGapMillis = maxOf(pendingGpsDeliveryGapMillis, liveCallbackGapMillis)
+        }
         val livePoint = livePointFromLocation(location)
         lastLiveFixProvider = location.provider
         lastLiveFixAccuracyMeters = livePoint.accuracyMeters
         lastLiveFixTimeMillis = livePoint.timeMillis
         _uiState.value = _uiState.value.copy(latestLivePoint = livePoint)
 
-        val nowElapsedMs = SystemClock.elapsedRealtime()
+        // Batches retain each fix's monotonic timestamp. Using delivery time here would make
+        // every point in the batch look simultaneous and discard all but the first one.
+        val sampleElapsedMs = callbackElapsedMs
         if (state.paused && state.autoPaused) {
-            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+            if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
-                return
+                return null
             }
-        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = nowElapsedMs)) {
+        } else if (maybeAutoPauseRecording(state = state, livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
             skippedPausedCount += 1
-            return
+            return null
         }
-        val forceAcceptReason =
-            forceAcceptNextGoodFixReason
-                ?.takeIf { shouldForceAcceptNextFix(nowElapsedMs) }
         val elapsedSinceAcceptedMs =
             if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
-                nowElapsedMs - lastAcceptedElapsedMs
+                sampleElapsedMs - lastAcceptedElapsedMs
             } else {
                 -1L
             }
         val sampleAcceptThresholdMillis = recordingSampleAcceptThresholdMillis()
         if (elapsedSinceAcceptedMs >= 0L) {
             val elapsedMs = elapsedSinceAcceptedMs
-            if (elapsedMs < sampleAcceptThresholdMillis && forceAcceptReason == null) {
+            if (elapsedMs < sampleAcceptThresholdMillis) {
                 skippedIntervalCount += 1
                 lastSkippedIntervalElapsedMs = elapsedMs
                 maxSkippedIntervalElapsedMs = maxOf(maxSkippedIntervalElapsedMs, elapsedMs)
@@ -453,35 +557,84 @@ class TraceRecordingViewModel(
                             "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
                     )
                 }
-                return
+                return null
             }
         }
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
-        val suppressedJitterDistance =
-            previousRecordedPoint
-                ?.takeIf { forceAcceptReason == null && !startNewSegmentOnNextPoint }
-                ?.let { previous ->
-                    recordingJitterDistanceToSuppress(
-                        previous = previous,
-                        candidate = livePoint,
-                    )
-                }
-        if (suppressedJitterDistance != null) {
+        val watchGpsAccuracyFloorActive = isKnownWatchGpsAccuracyFloorActive(livePoint.accuracyMeters)
+        val filterAccuracyMeters =
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = livePoint.accuracyMeters,
+                knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
+            )
+        val previousFilterAccuracyMeters =
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = previousRecordedPoint?.accuracyMeters,
+                knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
+            )
+        val sensorMetricsAtFix = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+        val motionResult =
+            recordingMovementConfidenceGate.evaluate(
+                previous = previousRecordedPoint,
+                candidate =
+                    RecordingMotionSample(
+                        latLong = livePoint.latLong,
+                        elapsedRealtimeMillis = location.elapsedRealtimeNanos / 1_000_000L,
+                        accuracyMeters = filterAccuracyMeters,
+                        speedMps = livePoint.speedMps,
+                        speedAccuracyMps =
+                            if (location.hasSpeedAccuracy()) {
+                                location.speedAccuracyMetersPerSecond
+                                    .takeIf { it.isFinite() && it >= 0f }
+                            } else {
+                                null
+                            },
+                        stepCount = sensorMetricsAtFix?.stepCount,
+                        cadenceSpm = sensorMetricsAtFix?.cadenceSpm,
+                        trustReportedSpeedWithoutAccuracy = watchGpsAccuracyFloorActive,
+                    ),
+                activityProfile = state.activityProfile,
+                previousFilterAccuracyMeters = previousFilterAccuracyMeters,
+            )
+        recordingPointDensityTelemetry.observeSmartTrackDecision(motionResult)
+        if (DebugTelemetry.isEnabled()) {
+            smartTrackTelemetry.observeMotion(
+                result = motionResult,
+                bypassedForSegmentStart = !motionResult.accepted && pendingSegmentStartReason != null,
+            )
+        }
+        if (!motionResult.accepted && pendingSegmentStartReason == null) {
             suppressedJitterPointCount += 1
-            suppressedJitterDistanceMeters += suppressedJitterDistance
+            suppressedJitterDistanceMeters += motionResult.displacementMeters
             if (suppressedJitterPointCount == 1 ||
                 suppressedJitterPointCount % RECORDING_JITTER_TELEMETRY_INTERVAL == 0
             ) {
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=jitter_suppressed count=$suppressedJitterPointCount " +
-                        "distanceMeters=${suppressedJitterDistance.formatTelemetry(1)} " +
+                    "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
+                        "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
+                        "count=$suppressedJitterPointCount " +
+                        "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
                         "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
+                        "stationaryRadiusMeters=${
+                            motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
+                        } " +
                         "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                        "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
+                        "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
+                        "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
+                        "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
+                        "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
+                        "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
                 )
             }
-            return
+            return null
+        }
+        if (!motionResult.accepted) {
+            recordingMovementConfidenceGate.reset()
         }
         val fixQualityResult =
             recordingFixQualityGate.evaluate(
@@ -490,7 +643,7 @@ class TraceRecordingViewModel(
                         latLong = livePoint.latLong,
                         timeMillis = livePoint.timeMillis,
                         elapsedRealtimeMillis = location.elapsedRealtimeNanos / 1_000_000L,
-                        accuracyMeters = livePoint.accuracyMeters,
+                        accuracyMeters = filterAccuracyMeters,
                         speedMps = livePoint.speedMps,
                         speedAccuracyMps =
                             if (location.hasSpeedAccuracy()) {
@@ -502,6 +655,12 @@ class TraceRecordingViewModel(
                     ),
                 activityProfile = state.activityProfile,
             )
+        if (DebugTelemetry.isEnabled()) {
+            smartTrackTelemetry.observeQuality(
+                result = fixQualityResult,
+                policy = recordingFixQualityGate.latestAccuracyPolicySnapshot,
+            )
+        }
         if (!fixQualityResult.accepted) {
             when (fixQualityResult.status) {
                 RecordingFixQualityStatus.HELD -> qualityHeldFixCount += 1
@@ -510,28 +669,68 @@ class TraceRecordingViewModel(
             }
             val eventCount = qualityHeldFixCount + qualityRejectedFixCount
             if (eventCount == 1 || eventCount % RECORDING_QUALITY_TELEMETRY_INTERVAL == 0) {
+                val accuracyPolicy = recordingFixQualityGate.latestAccuracyPolicySnapshot
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
                         "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
                         "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
                         "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                        "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
+                        "accuracyBaselineMedianMeters=${
+                            accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+                        } " +
+                        "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+                        "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
                         "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
                         "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
                 )
             }
-            return
+            return null
         }
-        // A REC session stays continuous despite transient GPS gaps or fix reacquisition.
-        // Only a user-initiated pause/resume creates an explicit GPX segment boundary.
-        val startsNewSegmentForPoint = startNewSegmentOnNextPoint
-        startNewSegmentOnNextPoint = false
+        // A filtered point or a source relocation must not split the visual GPX trace. A REC
+        // session only starts a new segment for an explicit pause/resume boundary. Keep the
+        // recovery reason for diagnostics and let the canonical trace join the two accepted
+        // fixes, which also gives the user a continuous line after a real short GPS loss.
+        val deliveryGapForAcceptedPoint =
+            pendingGpsDeliveryGapMillis.takeIf { it > 0L } ?: liveCallbackGapMillis
+        val committedPointGapMillis =
+            previousRecordedPoint
+                ?.takeIf { pendingSegmentStartReason == null }
+                ?.let { previous ->
+                    (livePoint.timeMillis - previous.timeMillis).coerceAtLeast(0L)
+                } ?: 0L
+        val continuityRecoveryGapMillis =
+            resolveRecordingContinuityRecoveryGapMillis(
+                deliveryGapMillis = deliveryGapForAcceptedPoint,
+                committedPointGapMillis = committedPointGapMillis,
+                thresholdMillis = recordingGapTelemetryThresholdMillis(),
+            )
+        val continuityRecoveryReason =
+            when {
+                fixQualityResult.reason == RecordingFixQualityReason.CONFIRMED_RELOCATION ->
+                    RecordingSegmentStartReason.SOURCE_RELOCATION
+                continuityRecoveryGapMillis != null ->
+                    RecordingSegmentStartReason.GPS_GAP
+                else -> null
+            }
+        if (continuityRecoveryReason != null) {
+            pendingGpsDeliveryGapMillis = 0L
+        }
+        val pendingSegmentStartReasonForPoint = pendingSegmentStartReason
+        val segmentStartReason =
+            pendingSegmentStartReasonForPoint
+                ?.takeIf { previousRecordedPoint != null }
+        val startsNewSegmentForPoint = segmentStartReason != null
         if (fixQualityResult.reason == RecordingFixQualityReason.CONFIRMED_RELOCATION) {
             qualityRelocationCount += 1
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=fix_quality_confirmed_relocation count=$qualityRelocationCount " +
-                    "action=continue_track accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+                    "action=continue_track continuityReason=${continuityRecoveryReason ?: "na"} " +
+                    "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
             )
         }
         if (fixQualityResult.reason == RecordingFixQualityReason.CONFIRMED_SUSTAINED_MOVEMENT) {
@@ -542,38 +741,21 @@ class TraceRecordingViewModel(
                     "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
             )
         }
-        if (forceAcceptReason == null && elapsedSinceAcceptedMs >= recordingGapTelemetryThresholdMillis()) {
+        if (continuityRecoveryReason == RecordingSegmentStartReason.GPS_GAP) {
             gapRecoveryAcceptCount += 1
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=gap_recovery_accept gapRecoveryAcceptCount=$gapRecoveryAcceptCount " +
-                    "elapsedSinceAcceptedMs=$elapsedSinceAcceptedMs " +
+                    "acceptedPointGapMs=$committedPointGapMillis " +
+                    "liveCallbackGapMs=$deliveryGapForAcceptedPoint " +
+                    "continuityGapMs=$continuityRecoveryGapMillis " +
                     "thresholdMs=${recordingGapTelemetryThresholdMillis()} " +
                     "sampleIntervalSeconds=$sampleIntervalSeconds " +
                     "provider=${sanitizeTelemetryValue(location.provider ?: "na")} " +
                     "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
             )
         }
-        if (forceAcceptReason != null) {
-            forceAcceptNextGoodFixReason = null
-            forcedAcceptCount += 1
-            DebugTelemetry.log(
-                "TraceRecording",
-                "event=force_accept_next_fix reason=${sanitizeTelemetryValue(forceAcceptReason)} " +
-                    "forcedAcceptCount=$forcedAcceptCount " +
-                    "elapsedSinceAcceptedMs=${
-                        if (lastAcceptedElapsedMs != Long.MIN_VALUE) {
-                            nowElapsedMs - lastAcceptedElapsedMs
-                        } else {
-                            -1L
-                        }
-                    } " +
-                    "provider=${sanitizeTelemetryValue(location.provider ?: "na")} " +
-                    "accuracyMeters=${livePoint.accuracyMeters?.toInt() ?: -1}",
-            )
-        }
-
-        lastAcceptedElapsedMs = nowElapsedMs
+        lastAcceptedElapsedMs = sampleElapsedMs
         val latitude = location.latitude
         val longitude = location.longitude
         val gpsAltitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() }
@@ -581,7 +763,7 @@ class TraceRecordingViewModel(
         val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
         val speedMps = location.speed.takeIf { location.hasSpeed() }
         val selectedElevationSource = recordingElevationSource
-        viewModelScope.launch {
+        return viewModelScope.launch {
             locationPointMutex.withLock {
                 val elevation =
                     elevationProvider.resolveElevation(
@@ -604,54 +786,63 @@ class TraceRecordingViewModel(
                 if (elevation.gpsUsed) {
                     gpsElevationUsedCount += 1
                 }
-                val sensorMetrics = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+                val sensorMetrics = sensorMetricsAtFix
                 val startsNewSegment = startsNewSegmentForPoint
+                val fusedElevation =
+                    hybridElevationFilter.update(
+                        absoluteElevationMeters = elevation.elevationMeters,
+                        absoluteElevationSource = elevation.resolvedSource,
+                        pressureHpa = sensorMetrics?.barometricPressureHpa,
+                        timeMillis = timeMillis,
+                        enabled = selectedElevationSource.usesHybridRecordingElevation(),
+                        startsNewSegment = startsNewSegment,
+                    )
+                if (fusedElevation.pressureUsed) {
+                    hybridElevationPointCount += 1
+                    hybridPressureDeltaMeters += kotlin.math.abs(fusedElevation.pressureDeltaMeters)
+                    hybridAnchorCorrectionMeters += kotlin.math.abs(fusedElevation.absoluteAnchorCorrectionMeters)
+                }
                 val point =
                     RecordedTracePoint(
                         latLong = LatLong(latitude, longitude),
-                        elevationMeters = elevation.elevationMeters,
+                        elevationMeters = fusedElevation.elevationMeters,
                         timeMillis = timeMillis,
                         accuracyMeters = accuracyMeters,
                         speedMps = speedMps,
-                        elevationSource = elevation.resolvedSource,
+                        elevationSource = fusedElevation.elevationSource,
                         heartRateBpm = sensorMetrics?.heartRateBpm,
                         stepCount = sensorMetrics?.stepCount,
                         cadenceSpm = sensorMetrics?.cadenceSpm,
                         powerWatts = sensorMetrics?.externalPowerWatts,
                         barometricPressureHpa = sensorMetrics?.barometricPressureHpa,
                         startsNewSegment = startsNewSegment,
+                        segmentStartReason = segmentStartReason,
                     )
                 val currentState = _uiState.value
                 if (!currentState.active || currentState.saving) return@withLock
-                val originalMiddle = currentState.points.lastOrNull()
-                val beforeMiddle = currentState.points.getOrNull(currentState.points.lastIndex - 1)
-                val smoothingResult =
-                    if (beforeMiddle != null && originalMiddle != null) {
-                        smoothRecordingMiddlePoint(
-                            before = beforeMiddle,
-                            middle = originalMiddle,
-                            after = point,
-                            options =
-                                RecordingPointSmoothingOptions(
-                                    mode = currentState.trackSmoothingMode,
-                                    activityProfile = currentState.activityProfile,
-                                    sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
-                                ),
-                        )
-                    } else {
-                        null
-                    }
-                val pointsBeforeAppend =
-                    if (smoothingResult != null) {
-                        currentState.points.dropLast(1) + smoothingResult.point
-                    } else {
-                        currentState.points
-                    }
-                if (smoothingResult != null) {
-                    smoothedPointCount += 1
-                    smoothedAdjustmentMeters += smoothingResult.adjustmentMeters
+                if (pendingSegmentStartReason == pendingSegmentStartReasonForPoint) {
+                    pendingSegmentStartReason = null
+                }
+                val canonicalAppend =
+                    appendCanonicalRecordingPoint(
+                        existingPoints = currentState.points,
+                        point = point,
+                        options =
+                            RecordingPointSmoothingOptions(
+                                mode = currentState.trackSmoothingMode,
+                                activityProfile = currentState.activityProfile,
+                                sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
+                            ),
+                    )
+                if (canonicalAppend.adjustedPointCount > 0) {
+                    smoothedPointCount += canonicalAppend.adjustedPointCount
+                    smoothedAdjustmentMeters += canonicalAppend.adjustmentMeters
                     maxSmoothedAdjustmentMeters =
-                        maxOf(maxSmoothedAdjustmentMeters, smoothingResult.adjustmentMeters)
+                        maxOf(maxSmoothedAdjustmentMeters, canonicalAppend.maximumAdjustmentMeters)
+                    straightDriftCorrectedPointCount += canonicalAppend.straightDriftCorrectedPointCount
+                    if (canonicalAppend.confirmedReversalCorrected) {
+                        confirmedReversalCorrectionCount += 1
+                    }
                     if (
                         smoothedPointCount == 1 ||
                         smoothedPointCount % RECORDING_SMOOTHING_TELEMETRY_INTERVAL == 0
@@ -660,40 +851,67 @@ class TraceRecordingViewModel(
                             "TraceRecording",
                             "event=track_point_smoothed mode=${currentState.trackSmoothingMode} " +
                                 "count=$smoothedPointCount " +
-                                "adjustmentMeters=${smoothingResult.adjustmentMeters.formatTelemetry(2)} " +
+                                "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
                                 "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
-                                "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)}",
+                                "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
+                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                                "confirmedReversals=$confirmedReversalCorrectionCount",
                         )
                     }
                 }
-                val previous = pointsBeforeAppend.lastOrNull()
-                val previousSegmentCorrection =
-                    if (smoothingResult != null && beforeMiddle != null && originalMiddle != null) {
-                        haversineMeters(beforeMiddle.latLong, smoothingResult.point.latLong) -
-                            haversineMeters(beforeMiddle.latLong, originalMiddle.latLong)
-                    } else {
-                        0.0
-                    }
-                val addedDistance =
-                    if (startsNewSegment) {
-                        0.0
-                    } else {
-                        previousSegmentCorrection +
-                            (previous?.let { haversineMeters(it.latLong, point.latLong) } ?: 0.0)
-                    }
+                val distanceEstimate =
+                    estimateRecordingDistanceDelta(
+                        geometricDeltaMeters = canonicalAppend.distanceDeltaMeters,
+                        previous =
+                            currentState.points.lastOrNull()?.copy(
+                                accuracyMeters = previousFilterAccuracyMeters,
+                            ),
+                        current =
+                            canonicalAppend.points.last().copy(
+                                accuracyMeters = filterAccuracyMeters,
+                            ),
+                        elapsedSincePreviousMs =
+                            committedPointGapMillis.takeIf { it > 0L } ?: elapsedSinceAcceptedMs,
+                        activityProfile = currentState.activityProfile,
+                        isContinuityRecovery = continuityRecoveryReason != null,
+                    )
+                val addedDistance = distanceEstimate.distanceMeters
+                if (distanceEstimate.capped) {
+                    continuityDistanceCapCount += 1
+                    val suppressedMeters = canonicalAppend.distanceDeltaMeters - addedDistance
+                    continuityDistanceSuppressedMeters += suppressedMeters
+                    DebugTelemetry.log(
+                        "TraceRecording",
+                        "event=continuity_distance_capped count=$continuityDistanceCapCount " +
+                            "reason=${continuityRecoveryReason ?: "na"} " +
+                            "geometricMeters=${canonicalAppend.distanceDeltaMeters.formatTelemetry(1)} " +
+                            "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
+                            "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
+                            "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
+                            "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}",
+                    )
+                }
                 val pointCount = currentState.points.size + 1
                 updateGapTelemetry(
-                    previousPoint = previous,
                     point = point,
                     provider = location.provider,
-                    nextPointCount = pointCount,
+                    segmentStartReason = segmentStartReason,
+                    continuityRecoveryReason = continuityRecoveryReason,
+                    storedAfterMotion = motionResult.reason != RecordingMotionReason.FIRST_POINT,
+                    gapContext =
+                        RecordingGapTelemetryContext(
+                            rawCallbackGapMillis = rawCallbackGapMillis,
+                            liveCallbackGapMillis = deliveryGapForAcceptedPoint,
+                            committedPointGapMillis = committedPointGapMillis,
+                            continuityRecoveryGapMillis = continuityRecoveryGapMillis,
+                        ),
                 )
                 updateAccuracyTelemetry(point.accuracyMeters)
                 val updatedState =
                     currentState.copy(
-                        points = pointsBeforeAppend + point,
+                        points = canonicalAppend.points,
                         latestLivePoint = point,
-                        distanceMeters = currentState.distanceMeters + addedDistance,
+                        distanceMeters = (currentState.distanceMeters + addedDistance).coerceAtLeast(0.0),
                         gpsActiveDurationMillis = gpsActiveDurationMillis,
                         recordingGapCount = recordingGapCount,
                         recordingMaxGapMillis = recordingMaxGapMillis,
@@ -701,12 +919,18 @@ class TraceRecordingViewModel(
                     )
                 _uiState.value =
                     updatedState
+                maybeTriggerRecordingProgressVibration(
+                    state = updatedState,
+                    nowMillis = System.currentTimeMillis(),
+                )
                 if (pointCount == 1 || pointCount % RECORDING_TELEMETRY_POINT_INTERVAL == 0) {
                     DebugTelemetry.log(
                         "TraceRecording",
                         "event=point points=$pointCount " +
                             "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
                             "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
+                            "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
+                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
                             "elevationMeters=${point.elevationMeters?.toInt() ?: -1} " +
                             "elevationSource=${point.elevationSource ?: "na"} " +
                             "demHits=$demElevationHitCount demMisses=$demElevationMissCount " +
@@ -723,28 +947,26 @@ class TraceRecordingViewModel(
                             "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
                             "skippedUnusable=$skippedUnusableLocationCount " +
                             "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
-                            "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount",
+                            "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
+                            "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                            "continuityDistanceCaps=$continuityDistanceCapCount " +
+                            "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
+                            smartTrackTelemetryTokens() + " " +
+                            recordingPointDensityTelemetryTokens() + " " +
+                            "confirmedReversals=$confirmedReversalCorrectionCount " +
+                            "segmentReason=${segmentStartReason ?: "na"} " +
+                            "hybridElevationPoints=$hybridElevationPointCount",
                     )
                 }
-                persistDraft(state = updatedState, reason = "point")
+                schedulePointDraftPersist()
             }
         }
     }
 
     private fun ensureLocationReadyForRecordingStart(source: String): Boolean {
-        if (isLocationReadyForRecordingStart()) return true
-        val location = latestRecordingStartLocation
-        val hasUsableLocation = location?.let(::isUsableLocation) == true
-        _locationStartWarning.value =
-            RecordingLocationStartWarning
-        DebugTelemetry.log(
-            "TraceRecording",
-            "event=start_blocked_no_fresh_location source=$source " +
-                "locationPresent=${location != null} usableLocation=$hasUsableLocation " +
-                "locationAvailable=${latestGpsSignalSnapshot.isLocationAvailable} " +
-                "lastFixFresh=${latestGpsSignalSnapshot.lastFixFresh} " +
-                "lastFixAgeMs=${latestGpsSignalSnapshot.lastFixAgeMs}",
-        )
+        if (recordingStartLocationOverride || isLocationReadyForRecordingStart()) return true
+        showRecordingStartLocationWarning()
+        logRecordingStartLocationCheck(result = "timeout", reason = source)
         return false
     }
 
@@ -752,24 +974,38 @@ class TraceRecordingViewModel(
         isRecordingStartLocationReady(
             hasUsableLocation = latestRecordingStartLocation?.let(::isUsableLocation) == true,
             gpsSignalSnapshot = latestGpsSignalSnapshot,
+            decisionFixAgeMs = recordingStartFixAgeMs(),
+            activityProfile = activityProfile,
         )
+
+    private fun recordingStartFixAgeMs(): Long =
+        latestRecordingStartLocation?.let { location ->
+            LocationFixPolicy.locationAgeMs(
+                location = location,
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+            )
+        } ?: Long.MAX_VALUE
 
     private fun waitForFreshLocationBeforeStartingRecording(source: String) {
         pendingRecordingStartSource = source
-        _uiState.value = _uiState.value.copy(message = "Starting REC…")
-        DebugTelemetry.log(
-            "TraceRecording",
-            "event=start_waiting_for_fresh_location source=$source " +
-                "timeoutMs=$RECORDING_START_FRESH_FIX_TIMEOUT_MS",
-        )
+        _recordingStartLocationPending.value = true
+        _uiState.value = _uiState.value.copy(message = RECORDING_START_PENDING_MESSAGE)
+        logRecordingStartLocationCheck(result = "waiting", reason = source)
         pendingRecordingStartTimeout =
             viewModelScope.launch {
                 delay(RECORDING_START_FRESH_FIX_TIMEOUT_MS)
                 if (pendingRecordingStartSource != source) return@launch
                 pendingRecordingStartSource = null
                 pendingRecordingStartTimeout = null
+                _recordingStartLocationPending.value = false
                 _uiState.value = _uiState.value.copy(message = null)
-                ensureLocationReadyForRecordingStart(source = "${source}_timeout")
+                if (latestGpsSignalSnapshot.isLocationAvailable) {
+                    showRecordingStartLocationWarning()
+                    logRecordingStartLocationCheck(result = "timeout", reason = source)
+                } else {
+                    showRecordingStartLocationWarning()
+                    logRecordingStartLocationCheck(result = "gps_unavailable", reason = "${source}_timeout")
+                }
             }
     }
 
@@ -780,19 +1016,47 @@ class TraceRecordingViewModel(
         pendingRecordingStartSource = null
         pendingRecordingStartTimeout?.cancel()
         pendingRecordingStartTimeout = null
+        _recordingStartLocationPending.value = false
         _uiState.value = _uiState.value.copy(message = null)
+        logRecordingStartLocationCheck(result = "accepted", reason = "${source}_fresh_quality_fix")
+        startRecordingAfterLocationPreflight()
+    }
+
+    private fun showRecordingStartLocationWarning() {
+        val location = latestRecordingStartLocation
+        _locationStartWarning.value =
+            recordingLocationStartWarning(
+                gpsSignalSnapshot = latestGpsSignalSnapshot,
+                rawAccuracyMeters = location?.accuracy?.takeIf { location.hasAccuracy() },
+                decisionFixAgeMs = recordingStartFixAgeMs(),
+                provider = location?.provider,
+            )
+    }
+
+    private fun logRecordingStartLocationCheck(
+        result: String,
+        reason: String,
+    ) {
+        val location = latestRecordingStartLocation
+        val rawAccuracyMeters = location?.accuracy?.takeIf { location.hasAccuracy() }
+        val effectiveAccuracyMeters = latestGpsSignalSnapshot.effectiveAccuracyMeters()
         DebugTelemetry.log(
             "TraceRecording",
-            "event=start_pending_location_ready source=$source " +
-                "lastFixAgeMs=${latestGpsSignalSnapshot.lastFixAgeMs}",
+            "event=recording_start_location_check result=$result " +
+                "rawAccuracyM=${rawAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                "effectiveAccuracyM=${effectiveAccuracyMeters.takeIf(Float::isFinite)?.formatTelemetry(1) ?: "na"} " +
+                "fixAgeMs=${recordingStartFixAgeMs().takeIf { it != Long.MAX_VALUE } ?: -1L} " +
+                "provider=${sanitizeTelemetryValue(location?.provider ?: "na")} " +
+                "sourceMode=${sanitizeTelemetryValue(latestGpsSignalSnapshot.activeSourceModeValue ?: "na")} " +
+                "reason=${sanitizeTelemetryValue(reason)}",
         )
-        startRecordingAfterLocationPreflight()
     }
 
     fun onSensorMetrics(metrics: RecordingSensorMetrics) {
         val state = _uiState.value
         if (!state.active || state.saving) return
-        updateSensorEventTelemetry(previous = latestSensorMetrics, next = metrics)
+        val previousMetrics = latestSensorMetrics
+        updateSensorEventTelemetry(previous = previousMetrics, next = metrics)
         latestSensorMetrics = metrics
         val integratedDistanceMeters = updateExternalSpeedIntegration(metrics)
         val externalDistanceUpdate =
@@ -808,6 +1072,9 @@ class TraceRecordingViewModel(
             externalSessionDistanceMeters = update.sessionMeters
         }
         val externalDistanceMeters = externalDistanceUpdate?.sessionMeters
+        val hasNewExternalDistance =
+            externalDistanceMeters != null &&
+                metrics.externalDistanceUpdatedAtMillis > previousMetrics.externalDistanceUpdatedAtMillis
         val nextState =
             state.copy(
                 heartRateBpm = metrics.heartRateBpm,
@@ -815,6 +1082,12 @@ class TraceRecordingViewModel(
                 externalSpeedMps = metrics.externalSpeedMps,
                 externalRawDistanceUnits = metrics.externalDistanceRawUnits,
                 externalDistanceMeters = externalDistanceMeters ?: state.externalDistanceMeters,
+                externalDistanceUpdatedAtMillis =
+                    maxOf(state.externalDistanceUpdatedAtMillis, metrics.externalDistanceUpdatedAtMillis),
+                externalDistanceFallbackBaseMeters =
+                    if (hasNewExternalDistance) externalDistanceMeters else state.externalDistanceFallbackBaseMeters,
+                externalDistanceFallbackGpsMeters =
+                    if (hasNewExternalDistance) state.distanceMeters else state.externalDistanceFallbackGpsMeters,
                 externalIntegratedDistanceMeters = integratedDistanceMeters ?: state.externalIntegratedDistanceMeters,
                 externalPowerWatts = metrics.externalPowerWatts,
                 externalPowerFromBluetooth = metrics.externalPowerWatts != null,
@@ -831,41 +1104,98 @@ class TraceRecordingViewModel(
             )
         if (nextState != state) {
             _uiState.value = nextState
+            maybeTriggerRecordingProgressVibration(
+                state = nextState,
+                nowMillis = System.currentTimeMillis(),
+            )
         }
     }
 
     private fun updateRecordingSourceState() {
-        _uiState.value =
-            _uiState.value.copy(
+        val currentState = _uiState.value
+        val nextState =
+            currentState.copy(
                 cadenceSource = recordingCadenceSource,
                 speedSource = recordingSpeedSource,
                 distanceSource = recordingDistanceSource,
                 stepsSource = recordingStepsSource,
             )
+        _uiState.value = nextState
+        if (
+            nextState.active &&
+            nextState.distanceSource != currentState.distanceSource &&
+            recordingProgressVibrationSettings.distanceEnabled
+        ) {
+            rebaseRecordingProgressVibration(nextState, System.currentTimeMillis())
+        }
     }
 
-    fun onWakeRefreshRequested(source: String) {
-        val state = _uiState.value
+    private fun rebaseRecordingProgressVibration(
+        state: TraceRecordingUiState,
+        nowMillis: Long,
+    ) {
+        recordingProgressVibrationTracker.rebase(
+            settings = recordingProgressVibrationSettings,
+            distanceMeters = recordingDisplayDistanceMeters(state),
+            activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
+        )
+    }
+
+    private fun maybeTriggerRecordingProgressVibration(
+        state: TraceRecordingUiState,
+        nowMillis: Long,
+    ) {
         if (!state.active || state.paused || state.saving) return
-        if (!isGpsSamplingEnabled()) return
-        forceAcceptNextGoodFixReason = source
-        val nowMillis = System.currentTimeMillis()
+        val triggers =
+            recordingProgressVibrationTracker.next(
+                settings = recordingProgressVibrationSettings,
+                distanceMeters = recordingDisplayDistanceMeters(state),
+                activeDurationMillis = recordingActiveDurationMillis(state, nowMillis),
+            )
+        if (triggers.isEmpty()) return
+        val vibrated = vibrateRecordingProgress(applicationContext)
         DebugTelemetry.log(
             "TraceRecording",
-            "event=wake_refresh_requested source=${sanitizeTelemetryValue(source)} " +
-                "lastLivePointAgeMs=${state.latestLivePoint?.timeMillis?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1} " +
-                "lastAcceptedPointAgeMs=${state.points
-                    .lastOrNull()
-                    ?.timeMillis
-                    ?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1} " +
-                "points=${state.points.size} distanceMeters=${state.distanceMeters.toInt()} " +
-                "sampleIntervalSeconds=$sampleIntervalSeconds",
+            "event=progress_vibration type=${triggers.joinToString("+") { it.javaClass.simpleName.lowercase() }} " +
+                "milestone=${triggers.joinToString("+") { it.milestone.toString() }} " +
+                "distanceEnabled=${recordingProgressVibrationSettings.distanceEnabled} " +
+                "distanceIntervalMeters=${recordingProgressVibrationSettings.distanceMeters} " +
+                "timeEnabled=${recordingProgressVibrationSettings.timeEnabled} " +
+                "timeIntervalMinutes=${recordingProgressVibrationSettings.timeMinutes} " +
+                "distanceMeters=${recordingDisplayDistanceMeters(state).toInt()} " +
+                "activeDurationMs=${recordingActiveDurationMillis(state, nowMillis)} " +
+                "vibratorAvailable=$vibrated",
         )
+    }
+
+    private fun syncRecordingProgressVibrationTimer() {
+        recordingProgressVibrationTimeJob?.cancel()
+        recordingProgressVibrationTimeJob = null
+        if (!recordingProgressVibrationSettings.timeEnabled) {
+            return
+        }
+        val initialState = _uiState.value
+        if (!initialState.active || initialState.paused || initialState.saving) return
+        recordingProgressVibrationTimeJob =
+            viewModelScope.launch {
+                while (isActive) {
+                    val state = _uiState.value
+                    if (!state.active || state.paused || state.saving) return@launch
+                    val nowMillis = System.currentTimeMillis()
+                    maybeTriggerRecordingProgressVibration(state, nowMillis)
+                    val delayMillis =
+                        recordingProgressVibrationTracker.millisecondsUntilNextTimeMilestone(
+                            recordingActiveDurationMillis(_uiState.value, System.currentTimeMillis()),
+                        ) ?: return@launch
+                    delay(delayMillis)
+                }
+            }
     }
 
     fun pauseRecording() {
         val state = _uiState.value
         if (!state.active || state.paused || state.saving) return
+        recordingPointCaptureExpectation.pause(SystemClock.elapsedRealtime())
         resetAutoPauseMotionState()
         lastUiAction = "pause"
         _uiState.value =
@@ -875,6 +1205,7 @@ class TraceRecordingViewModel(
                 pausedAtMillis = System.currentTimeMillis(),
                 message = "REC paused",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=pause ${recordingSummaryTokens(state, System.currentTimeMillis())}",
@@ -889,8 +1220,17 @@ class TraceRecordingViewModel(
         val addedPausedMillis = state.pausedAtMillis?.let { now - it }?.coerceAtLeast(0L) ?: 0L
         lastAcceptedElapsedMs = Long.MIN_VALUE
         lastAcceptedPointTimeMillis = null
-        startNewSegmentOnNextPoint = state.points.isNotEmpty()
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
+        pendingSegmentStartReason =
+            RecordingSegmentStartReason.MANUAL_PAUSE.takeIf { state.points.isNotEmpty() }
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
+        recordingPointCaptureExpectation.resume(
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            intervalMs = latestEffectiveRecordingSamplingIntervalMs,
+        )
         resetAutoPauseMotionState()
         lastUiAction = "resume"
         _uiState.value =
@@ -901,6 +1241,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
                 message = "REC on",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=resume ${recordingSummaryTokens(_uiState.value, now)}",
@@ -911,9 +1252,12 @@ class TraceRecordingViewModel(
     fun finishAndSaveRecording(titleOverride: String? = null) {
         val state = _uiState.value
         if (!state.active || state.saving) return
+        pendingDraftPersistJob?.cancel()
+        pendingDraftPersistJob = null
         lastUiAction = "save"
         if (state.points.size < 2) {
             _uiState.value = TraceRecordingUiState(message = "Too few points")
+            syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=discard reason=not_enough_points ${recordingSummaryTokens(state, System.currentTimeMillis())}",
@@ -938,6 +1282,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + finalPausedMillis,
                 message = "Saving REC",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=save_start ${recordingSummaryTokens(state, now, finalPausedMillis)}",
@@ -1019,7 +1364,8 @@ class TraceRecordingViewModel(
                 val saveInfo = saveResult.getOrNull()
                 syncManager.requestGpxSync()
                 _uiState.value = TraceRecordingUiState(message = "REC saved")
-                draftStore.clear()
+                syncRecordingProgressVibrationTimer()
+                draftPersistMutex.withLock { draftStore.clear() }
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=save_success ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
@@ -1039,6 +1385,7 @@ class TraceRecordingViewModel(
                         saving = false,
                         message = errorMessage,
                     )
+                syncRecordingProgressVibrationTimer()
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=save_failure ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
@@ -1053,6 +1400,7 @@ class TraceRecordingViewModel(
         if (!state.active && !state.saving) return
         lastUiAction = "discard"
         _uiState.value = TraceRecordingUiState(message = "Discarded")
+        syncRecordingProgressVibrationTimer()
         clearDraftAsync(reason = "user_discard")
         DebugTelemetry.log(
             "TraceRecording",
@@ -1060,6 +1408,7 @@ class TraceRecordingViewModel(
         )
     }
 
+    @Suppress("LongMethod")
     private fun restoreDraftIfPresent() {
         viewModelScope.launch {
             val draft = draftStore.load() ?: return@launch
@@ -1079,6 +1428,9 @@ class TraceRecordingViewModel(
             externalSpeedIntegrationLastTimeMillis = null
             externalSpeedIntegrationLastMps = null
             rebuildTelemetryFromPoints(draft.points)
+            pendingSegmentStartReason =
+                RecordingSegmentStartReason.SESSION_RECOVERY
+                    .takeIf { !draft.paused && draft.points.isNotEmpty() }
             val recoveredStepCount =
                 draft.stepCount
                     ?: draft.points
@@ -1108,6 +1460,8 @@ class TraceRecordingViewModel(
                     stepCount = recoveredStepCount,
                     message = "REC recovered",
                 )
+            rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
+            syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
                 "event=recovered ${recordingSummaryTokens(_uiState.value, System.currentTimeMillis())} " +
@@ -1119,10 +1473,33 @@ class TraceRecordingViewModel(
     }
 
     private fun persistDraftAsync(reason: String) {
+        pendingDraftPersistJob?.cancel()
+        pendingDraftPersistJob = null
         val state = _uiState.value
+        lastDraftPersistElapsedMs = SystemClock.elapsedRealtime()
         viewModelScope.launch {
             persistDraft(state = state, reason = reason)
         }
+    }
+
+    private fun schedulePointDraftPersist() {
+        if (pendingDraftPersistJob?.isActive == true) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val elapsedSincePersist =
+            if (lastDraftPersistElapsedMs == Long.MIN_VALUE) {
+                RECORDING_DRAFT_PERSIST_INTERVAL_MS
+            } else {
+                (nowElapsedMs - lastDraftPersistElapsedMs).coerceAtLeast(0L)
+            }
+        val delayMillis = (RECORDING_DRAFT_PERSIST_INTERVAL_MS - elapsedSincePersist).coerceAtLeast(0L)
+        pendingDraftPersistJob =
+            viewModelScope.launch {
+                delay(delayMillis)
+                val latestState = _uiState.value
+                lastDraftPersistElapsedMs = SystemClock.elapsedRealtime()
+                persistDraft(state = latestState, reason = "point_batch")
+                pendingDraftPersistJob = null
+            }
     }
 
     private suspend fun persistDraft(
@@ -1130,28 +1507,34 @@ class TraceRecordingViewModel(
         reason: String,
     ) {
         if (!state.active || state.saving) return
-        runCatching {
-            draftStore.save(
-                state = state,
-                lastUiAction = lastUiAction,
-            )
-        }.onFailure { error ->
-            DebugTelemetry.log(
-                "TraceRecording",
-                "event=draft_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
-            )
+        draftPersistMutex.withLock {
+            runCatching {
+                draftStore.save(
+                    state = state,
+                    lastUiAction = lastUiAction,
+                )
+            }.onFailure { error ->
+                DebugTelemetry.log(
+                    "TraceRecording",
+                    "event=draft_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
+                )
+            }
         }
     }
 
     private fun clearDraftAsync(reason: String) {
+        pendingDraftPersistJob?.cancel()
+        pendingDraftPersistJob = null
         viewModelScope.launch {
-            runCatching { draftStore.clear() }
-                .onFailure { error ->
-                    DebugTelemetry.log(
-                        "TraceRecording",
-                        "event=draft_clear_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
-                    )
-                }
+            draftPersistMutex.withLock {
+                runCatching { draftStore.clear() }
+                    .onFailure { error ->
+                        DebugTelemetry.log(
+                            "TraceRecording",
+                            "event=draft_clear_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
+                        )
+                    }
+            }
         }
     }
 
@@ -1177,6 +1560,9 @@ class TraceRecordingViewModel(
     }
 
     private fun resetSessionTelemetry() {
+        pendingDraftPersistJob?.cancel()
+        pendingDraftPersistJob = null
+        lastDraftPersistElapsedMs = Long.MIN_VALUE
         skippedIntervalCount = 0
         skippedPausedCount = 0
         skippedUnusableLocationCount = 0
@@ -1194,15 +1580,16 @@ class TraceRecordingViewModel(
         gpsActiveDurationMillis = 0L
         recordingGapCount = 0
         recordingMaxGapMillis = 0L
-        forceAcceptNextGoodFixReason = null
-        forcedAcceptCount = 0
         gapRecoveryAcceptCount = 0
         maxSkippedIntervalElapsedMs = 0L
         lastSkippedIntervalElapsedMs = 0L
         lastLiveFixProvider = null
         lastLiveFixAccuracyMeters = null
         lastLiveFixTimeMillis = null
-        startNewSegmentOnNextPoint = false
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
+        pendingSegmentStartReason = null
         suppressedJitterPointCount = 0
         suppressedJitterDistanceMeters = 0.0
         latestSensorMetrics = RecordingSensorMetrics()
@@ -1218,13 +1605,24 @@ class TraceRecordingViewModel(
         resetAutoPauseMotionState()
         autoPauseTriggerCount = 0
         autoResumeTriggerCount = 0
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
+        smartTrackTelemetry.reset()
+        recordingPointDensityTelemetry.reset()
         qualityHeldFixCount = 0
         qualityRejectedFixCount = 0
         qualityRelocationCount = 0
         smoothedPointCount = 0
         smoothedAdjustmentMeters = 0.0
         maxSmoothedAdjustmentMeters = 0.0
+        confirmedReversalCorrectionCount = 0
+        straightDriftCorrectedPointCount = 0
+        continuityDistanceCapCount = 0
+        continuityDistanceSuppressedMeters = 0.0
+        hybridElevationFilter.reset()
+        hybridElevationPointCount = 0
+        hybridPressureDeltaMeters = 0.0
+        hybridAnchorCorrectionMeters = 0.0
     }
 
     private fun maybeAutoPauseRecording(
@@ -1256,6 +1654,7 @@ class TraceRecordingViewModel(
         if (stationaryDurationMs < autoPauseStopDurationMs()) return false
 
         autoPauseTriggerCount += 1
+        recordingPointCaptureExpectation.pause(nowElapsedMs)
         resetAutoPauseMotionState()
         val nowMillis = System.currentTimeMillis()
         lastUiAction = "auto_pause"
@@ -1267,6 +1666,7 @@ class TraceRecordingViewModel(
                 latestLivePoint = livePoint,
                 message = "REC auto-paused",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=auto_pause count=$autoPauseTriggerCount " +
@@ -1330,8 +1730,17 @@ class TraceRecordingViewModel(
         val addedPausedMillis = state.pausedAtMillis?.let { nowMillis - it }?.coerceAtLeast(0L) ?: 0L
         lastAcceptedElapsedMs = Long.MIN_VALUE
         lastAcceptedPointTimeMillis = null
-        startNewSegmentOnNextPoint = false
+        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recentLiveCallbackIntervalsMs.clear()
+        pendingGpsDeliveryGapMillis = 0L
+        pendingSegmentStartReason =
+            RecordingSegmentStartReason.AUTO_PAUSE.takeIf { state.points.isNotEmpty() }
+        recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
+        recordingPointCaptureExpectation.resume(
+            nowElapsedMs = nowElapsedMs,
+            intervalMs = latestEffectiveRecordingSamplingIntervalMs,
+        )
         resetAutoPauseMotionState()
         autoResumeTriggerCount += 1
         lastUiAction = "auto_resume"
@@ -1344,6 +1753,7 @@ class TraceRecordingViewModel(
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
                 message = "REC on",
             )
+        syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
             "TraceRecording",
             "event=auto_resume count=$autoResumeTriggerCount reason=$reason " +
@@ -1363,7 +1773,12 @@ class TraceRecordingViewModel(
     private fun isAutoPauseEnabledForCurrentProfile(): Boolean = recordingAutoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
 
     private fun hasReliableAutoPauseFix(livePoint: RecordedTracePoint): Boolean {
-        val accuracy = livePoint.accuracyMeters ?: return false
+        val accuracy =
+            resolveRecordingFilterAccuracyMeters(
+                rawAccuracyMeters = livePoint.accuracyMeters,
+                knownWatchGpsAccuracyFloorActive =
+                    isKnownWatchGpsAccuracyFloorActive(livePoint.accuracyMeters),
+            ) ?: return false
         if (!accuracy.isFinite() || accuracy < 0f) return false
         return accuracy <= autoPauseMaxAccuracyMeters()
     }
@@ -1490,33 +1905,76 @@ class TraceRecordingViewModel(
         lastAcceptedPointTimeMillis = points.lastOrNull()?.timeMillis
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun updateGapTelemetry(
-        previousPoint: RecordedTracePoint?,
         point: RecordedTracePoint,
         provider: String?,
-        nextPointCount: Int,
+        segmentStartReason: String?,
+        continuityRecoveryReason: String?,
+        storedAfterMotion: Boolean,
+        gapContext: RecordingGapTelemetryContext,
     ) {
+        val previousPoint = _uiState.value.points.lastOrNull()
         val previousPointTimeMillis = lastAcceptedPointTimeMillis
+        val gapMillis =
+            previousPointTimeMillis
+                ?.let { previousTimeMillis -> (point.timeMillis - previousTimeMillis).coerceAtLeast(0L) }
+                ?: 0L
+        val thresholdMillis = recordingGapTelemetryThresholdMillis()
+        val endpointDistanceMeters =
+            previousPoint?.let { previous ->
+                haversineMeters(previous.latLong, point.latLong)
+            }
+        val densityGap =
+            recordingPointDensityTelemetry.observeStoredPoint(
+                acceptedPointGapMs = gapMillis,
+                endpointDistanceMeters = endpointDistanceMeters,
+                significantGapMs = thresholdMillis,
+                storedAfterMotion = storedAfterMotion,
+            )
+        densityGap?.let { gap ->
+            DebugTelemetry.log(
+                "TraceRecording",
+                "event=point_density_gap classification=${gap.classification.telemetryValue} " +
+                    "acceptedPointGapMs=${gap.acceptedPointGapMs} " +
+                    "liveCallbackGapMs=${gap.maxLiveCallbackGapMs} " +
+                    "currentLiveCallbackGapMs=${gapContext.rawCallbackGapMillis} " +
+                    "usableCallbackGapMs=${gapContext.liveCallbackGapMillis} " +
+                    "screenState=${recordingScreenState()} " +
+                    "effectiveSamplingIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
+                    "provider=${sanitizeTelemetryValue(provider ?: "na")} " +
+                    "sourceMode=${sanitizeTelemetryValue(latestGpsSignalSnapshot.activeSourceModeValue ?: "na")} " +
+                    "previousSpeedMps=${previousPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "currentSpeedMps=${point.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "endpointDisplacementM=${endpointDistanceMeters?.formatTelemetry(1) ?: "na"} " +
+                    "smartTrackDecision=${gap.latestSmartTrackReason} " +
+                    "credibleMovementExisted=${gap.credibleMovementExisted} " +
+                    "callbacksAbsent=${gap.callbacksWereMissing} " +
+                    "callbacksRejectedOrNotStored=${!gap.callbacksWereMissing}",
+            )
+        }
         if (previousPointTimeMillis != null) {
-            val gapMillis = (point.timeMillis - previousPointTimeMillis).coerceAtLeast(0L)
             val expectedActiveGapMillis = expectedActivePointGapMillis()
             gpsActiveDurationMillis += minOf(gapMillis, expectedActiveGapMillis)
-            val thresholdMillis = recordingGapTelemetryThresholdMillis()
-            if (gapMillis > thresholdMillis) {
+            if (
+                continuityRecoveryReason == RecordingSegmentStartReason.GPS_GAP &&
+                gapContext.continuityRecoveryGapMillis != null
+            ) {
                 recordingGapCount += 1
-                recordingMaxGapMillis = maxOf(recordingMaxGapMillis, gapMillis)
-                val expectedPointCount = expectedPointCountForElapsed(elapsedSinceFirstPointMillis(point.timeMillis))
-                val endpointDistanceMeters =
-                    previousPoint?.let { previous ->
-                        haversineMeters(previous.latLong, point.latLong)
-                    }
+                recordingMaxGapMillis = maxOf(recordingMaxGapMillis, gapContext.continuityRecoveryGapMillis)
+                val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=gap gapMs=$gapMillis thresholdMs=$thresholdMillis " +
+                    "event=gap gapMs=${gapContext.continuityRecoveryGapMillis} " +
+                        "liveCallbackGapMs=${gapContext.liveCallbackGapMillis} " +
+                        "acceptedPointGapMs=${gapContext.committedPointGapMillis} pointTimeGapMs=$gapMillis " +
+                        "thresholdMs=$thresholdMillis " +
+                        "segmentReason=${segmentStartReason ?: "na"} " +
+                        "continuityRecoveryReason=$continuityRecoveryReason " +
                         "sampleIntervalSeconds=$sampleIntervalSeconds " +
                         "acceptThresholdMs=${recordingSampleAcceptThresholdMillis()} " +
-                        "expectedPointCount=$expectedPointCount " +
-                        "acceptedPointCount=$nextPointCount " +
+                        "expectedStoredSampleCount=$expectedPointCount " +
+                        "acceptedPointCount=${_uiState.value.points.size + 1} " +
                         "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
                         "gapEndpointDistanceM=${endpointDistanceMeters?.formatTelemetry(1) ?: "na"} " +
                         "gapPreviousSpeedMps=${previousPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
@@ -1530,7 +1988,6 @@ class TraceRecordingViewModel(
                         "skippedInterval=$skippedIntervalCount " +
                         "lastSkippedIntervalElapsedMs=$lastSkippedIntervalElapsedMs " +
                         "maxSkippedIntervalElapsedMs=$maxSkippedIntervalElapsedMs " +
-                        "forcedAcceptCount=$forcedAcceptCount " +
                         "gapCount=$recordingGapCount maxGapMs=$recordingMaxGapMillis",
                 )
             }
@@ -1542,7 +1999,16 @@ class TraceRecordingViewModel(
         previous: RecordingSensorMetrics,
         next: RecordingSensorMetrics,
     ) {
-        if (next.heartRateUpdatedAtMillis > previous.heartRateUpdatedAtMillis) {
+        if (next.heartRateSensorEventCount > previous.heartRateSensorEventCount) {
+            val newEvents = next.heartRateSensorEventCount - previous.heartRateSensorEventCount
+            heartRateSensorEventCount =
+                (heartRateSensorEventCount.toLong() + newEvents)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+        } else if (
+            next.heartRateFromBluetooth &&
+            next.heartRateUpdatedAtMillis > previous.heartRateUpdatedAtMillis
+        ) {
             heartRateSensorEventCount += 1
         }
         if (next.stepCountUpdatedAtMillis > previous.stepCountUpdatedAtMillis) {
@@ -1562,28 +2028,37 @@ class TraceRecordingViewModel(
     }
 
     private fun expectedActivePointGapMillis(): Long =
-        (effectiveSampleIntervalSeconds() * 1_000L)
+        effectiveLiveCallbackCadenceMillis()
             .coerceAtLeast(RECORDING_GPS_ACTIVE_GAP_FLOOR_MS)
             .coerceAtMost(RECORDING_GPS_ACTIVE_GAP_CAP_MS)
-
-    private fun elapsedSinceFirstPointMillis(pointTimeMillis: Long): Long {
-        val firstPointTimeMillis =
-            _uiState.value.points
-                .firstOrNull()
-                ?.timeMillis ?: return 0L
-        return (pointTimeMillis - firstPointTimeMillis).coerceAtLeast(0L)
-    }
-
-    private fun expectedPointCountForElapsed(durationMillis: Long): Int {
-        val intervalMillis = (effectiveSampleIntervalSeconds() * 1_000L).coerceAtLeast(1_000L)
-        return (durationMillis / intervalMillis + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-    }
 
     private fun recordingGapTelemetryThresholdMillis(): Long =
         maxOf(
             effectiveSampleIntervalSeconds() * 2_000L,
             RECORDING_GAP_TELEMETRY_MIN_THRESHOLD_MS,
+            effectiveLiveCallbackCadenceMillis() * RECORDING_GAP_LIVE_CALLBACK_MULTIPLIER,
         )
+
+    private fun observeLiveCallback(callbackElapsedMs: Long): Long {
+        val previous = lastLiveCallbackElapsedMs
+        lastLiveCallbackElapsedMs = callbackElapsedMs
+        if (previous == Long.MIN_VALUE || callbackElapsedMs <= previous) return 0L
+        val intervalMillis = callbackElapsedMs - previous
+        if (intervalMillis in RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS..RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS) {
+            recentLiveCallbackIntervalsMs += intervalMillis
+            while (recentLiveCallbackIntervalsMs.size > RECORDING_LIVE_CALLBACK_CADENCE_WINDOW) {
+                recentLiveCallbackIntervalsMs.removeAt(0)
+            }
+        }
+        return intervalMillis
+    }
+
+    private fun effectiveLiveCallbackCadenceMillis(): Long =
+        recentLiveCallbackIntervalsMs
+            .takeIf { it.isNotEmpty() }
+            ?.sorted()
+            ?.let { samples -> samples[samples.size / 2] }
+            ?: (effectiveSampleIntervalSeconds() * 1_000L)
 
     private fun updateAccuracyTelemetry(accuracyMeters: Float?) {
         val accuracy = accuracyMeters ?: return
@@ -1613,7 +2088,6 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it - pausedMillis }
                 ?.coerceAtLeast(0L)
                 ?: 0L
-        val elevation = elevationGainLossMeters(state.points)
         val lastPoint = state.points.lastOrNull()
         val avgAccuracy =
             if (acceptedAccuracyCount > 0) {
@@ -1632,7 +2106,9 @@ class TraceRecordingViewModel(
             )
         val calories = displaySnapshot.calorieEstimate
         val sensorTokens = sensorTelemetryTokens(nowMillis)
-        val expectedPointCount = expectedPointCountForElapsed(durationMillis)
+        val smartTrackTokens = smartTrackTelemetryTokens()
+        val pointDensityTokens = recordingPointDensityTelemetryTokens()
+        val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
         val averagePointIntervalMillis =
             if (state.points.size > 1) {
                 durationMillis / (state.points.size - 1)
@@ -1656,10 +2132,9 @@ class TraceRecordingViewModel(
             "cadenceSource=$recordingCadenceSource speedSource=$recordingSpeedSource " +
             "distanceSource=$recordingDistanceSource stepsSource=$recordingStepsSource " +
             "gpsActiveDurationMs=${state.gpsActiveDurationMillis} " +
-            "expectedPointCount=$expectedPointCount averagePointIntervalMs=$averagePointIntervalMillis " +
-            "pointCaptureRatePercent=$pointCaptureRatePercent " +
+            "expectedStoredSampleCount=$expectedPointCount averagePointIntervalMs=$averagePointIntervalMillis " +
+            "storedSampleCaptureRatePercent=$pointCaptureRatePercent " +
             "recordingGapCount=${state.recordingGapCount} recordingMaxGapMs=${state.recordingMaxGapMillis} " +
-            "forcedAcceptCount=$forcedAcceptCount " +
             "gapRecoveryAcceptCount=$gapRecoveryAcceptCount " +
             "suppressedJitterPointCount=$suppressedJitterPointCount " +
             "suppressedJitterDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
@@ -1672,7 +2147,8 @@ class TraceRecordingViewModel(
                 ?.let { nowMillis - it }
                 ?.coerceAtLeast(0L) ?: -1} " +
             "lastPointAgeMs=${lastPoint?.timeMillis?.let { nowMillis - it }?.coerceAtLeast(0L) ?: -1} " +
-            "elevationGainMeters=${elevation.first.toInt()} elevationLossMeters=${elevation.second.toInt()} " +
+            "elevationGainMeters=${displaySnapshot.elevationGainMeters.toInt()} " +
+            "elevationLossMeters=${displaySnapshot.elevationLossMeters.toInt()} " +
             "elevationSource=$recordingElevationSource demHits=$demElevationHitCount " +
             "demResolution=${lastDemResolutionLabel ?: "na"} " +
             "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
@@ -1686,12 +2162,20 @@ class TraceRecordingViewModel(
             "activityProfile=${state.activityProfile} " +
             "trackSmoothingMode=${state.trackSmoothingMode} " +
             "trackFilterVersion=$RECORDING_TRACK_FILTER_VERSION " +
+            "storedSampleCaptureRateDefinition=configured_cadence_includes_stationary_suppression " +
+            "$smartTrackTokens " +
+            "$pointDensityTokens " +
             "qualityHeldFixCount=$qualityHeldFixCount " +
             "qualityRejectedFixCount=$qualityRejectedFixCount " +
             "qualityRelocationCount=$qualityRelocationCount " +
             "smoothedPointCount=$smoothedPointCount " +
             "smoothedAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
             "maxSmoothedAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
+            "confirmedReversalCorrectionCount=$confirmedReversalCorrectionCount " +
+            "hybridElevationPointCount=$hybridElevationPointCount " +
+            "hybridPressureDeltaMeters=${hybridPressureDeltaMeters.formatTelemetry(1)} " +
+            "hybridAnchorCorrectionMeters=${hybridAnchorCorrectionMeters.formatTelemetry(1)} " +
+            "draftPersistIntervalMs=$RECORDING_DRAFT_PERSIST_INTERVAL_MS " +
             "calorieModel=${calories.model} " +
             "caloriesGrossKcal=${calories.grossKcal.roundToInt()} " +
             "caloriesActiveKcal=${calories.activeKcal.roundToInt()} " +
@@ -1713,6 +2197,77 @@ class TraceRecordingViewModel(
             "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
             "skippedUnusable=$skippedUnusableLocationCount"
     }
+
+    private fun smartTrackTelemetryTokens(): String {
+        val snapshot = smartTrackTelemetry.snapshot()
+        val policy = snapshot.accuracyPolicy
+        return "smartTrackMotionEvaluatedFixCount=${snapshot.motionEvaluatedFixCount} " +
+            "smartTrackAcceptedReportedSpeedCount=${snapshot.acceptedReportedSpeedCount} " +
+            "smartTrackAcceptedSensorCount=${snapshot.acceptedSensorCount} " +
+            "smartTrackAcceptedConfirmedSlowCount=${snapshot.acceptedConfirmedSlowCount} " +
+            "smartTrackSuppressedStationaryCount=${snapshot.suppressedStationaryCount} " +
+            "smartTrackSuppressedStepStillnessCount=${snapshot.suppressedStepStillnessCount} " +
+            "smartTrackHeldSlowCount=${snapshot.heldSlowCount} " +
+            "smartTrackSegmentStartBypassCount=${snapshot.segmentStartBypassCount} " +
+            "smartTrackStepMotionEvidenceCount=${snapshot.stepMotionEvidenceCount} " +
+            "smartTrackCadenceMotionEvidenceCount=${snapshot.cadenceMotionEvidenceCount} " +
+            "smartTrackSpeedAboveThresholdCount=${snapshot.speedAboveThresholdCount} " +
+            "smartTrackCredibleSpeedCount=${snapshot.credibleSpeedCount} " +
+            "smartTrackNoMotionSensorDataCount=${snapshot.noMotionSensorDataCount} " +
+            "smartTrackStationaryRadiusSampleCount=${snapshot.stationaryRadiusSampleCount} " +
+            "smartTrackStationaryRadiusAvgMeters=${
+                snapshot.stationaryRadiusAverageMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackStationaryRadiusMaxMeters=${
+                snapshot.stationaryRadiusMaxMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackNonAcceptedDisplacementSampleCount=${snapshot.nonAcceptedDisplacementSampleCount} " +
+            "smartTrackNonAcceptedDisplacementAvgMeters=${
+                snapshot.nonAcceptedDisplacementAverageMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackNonAcceptedDisplacementMaxMeters=${
+                snapshot.nonAcceptedDisplacementMaxMeters?.formatTelemetry(2) ?: "na"
+            } " +
+            "smartTrackPoorAccuracyRejectedCount=${snapshot.poorAccuracyRejectedCount} " +
+            "smartTrackNonMonotonicRejectedCount=${snapshot.nonMonotonicRejectedCount} " +
+            "smartTrackImplausibleJumpHeldCount=${snapshot.implausibleJumpHeldCount} " +
+            "smartTrackConfirmedSustainedMovementCount=${snapshot.confirmedSustainedMovementCount} " +
+            "smartTrackAdaptiveAccuracyFixCount=${snapshot.adaptiveAccuracyFixCount} " +
+            "smartTrackAccuracyBaselineSampleCount=${policy?.sampleCount ?: -1} " +
+            "smartTrackAccuracyBaselineMedianMeters=${
+                policy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+            } " +
+            "smartTrackAccuracyProfileLimitMeters=${policy?.profileLimitMeters?.formatTelemetry(1) ?: "na"} " +
+            "smartTrackAccuracyResolvedLimitMeters=${policy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+            "smartTrackAdaptiveAccuracyLimitActive=${policy?.adaptiveLimitActive ?: "na"}"
+    }
+
+    private fun recordingPointDensityTelemetryTokens(): String {
+        val snapshot = recordingPointDensityTelemetry.snapshot()
+        return "locationCallbackReceivedCount=${snapshot.callbackReceivedCount} " +
+            "usableLocationCallbackCount=${snapshot.usableCallbackCount} " +
+            "smartTrackDecisionCount=${snapshot.smartTrackDecisionCount} " +
+            "storedPointCount=${snapshot.storedPointCount} " +
+            "movingExpectedStoredSampleCount=${snapshot.movingExpectedStoredSampleCount} " +
+            "movingStoredSampleCount=${snapshot.movingStoredSampleCount} " +
+            "movingStoredSampleCaptureRatePercent=${snapshot.movingStoredSampleCaptureRatePercent ?: "na"} " +
+            "movingGapCount=${snapshot.movingGapCount} " +
+            "movingGapMaxMs=${snapshot.movingGapMaxMs} " +
+            "movingGapEndpointDistanceMaxM=${snapshot.movingGapEndpointDistanceMaxM?.formatTelemetry(1) ?: "na"} " +
+            "stationaryGapCount=${snapshot.stationaryGapCount} " +
+            "stationaryGapMaxMs=${snapshot.stationaryGapMaxMs} " +
+            "slowMovementGapCount=${snapshot.slowMovementGapCount} " +
+            "slowMovementGapMaxMs=${snapshot.slowMovementGapMaxMs} " +
+            "unknownCallbackGapCount=${snapshot.unknownCallbackGapCount} " +
+            "unknownCallbackGapMaxMs=${snapshot.unknownCallbackGapMaxMs}"
+    }
+
+    private fun recordingScreenState(): String =
+        when (applicationContext?.getSystemService(PowerManager::class.java)?.isInteractive) {
+            true -> "INTERACTIVE"
+            false -> "SCREEN_OFF"
+            null -> "UNKNOWN"
+        }
 
     private fun sensorTelemetryTokens(nowMillis: Long): String =
         "liveHeartRateBpm=${latestSensorMetrics.heartRateBpm ?: -1} " +
@@ -1757,10 +2312,6 @@ class TraceRecordingViewModel(
         return externalIntegratedDistanceMeters
     }
 
-    private fun shouldForceAcceptNextFix(nowElapsedMs: Long): Boolean =
-        lastAcceptedElapsedMs == Long.MIN_VALUE ||
-            nowElapsedMs - lastAcceptedElapsedMs >= RECORDING_FORCE_ACCEPT_MIN_AGE_MS
-
     private fun recordingSampleAcceptThresholdMillis(): Long =
         (effectiveSampleIntervalSeconds() * 1_000L - RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS)
             .coerceAtLeast(RECORDING_MIN_SAMPLE_ACCEPT_THRESHOLD_MS)
@@ -1768,6 +2319,12 @@ class TraceRecordingViewModel(
     private fun lastLiveFixAgeMillis(): Long = lastLiveFixTimeMillis?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: -1L
 
     private fun isGpsSamplingEnabled(): Boolean = sampleIntervalSeconds != SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
+
+    private fun isKnownWatchGpsAccuracyFloorActive(rawAccuracyMeters: Float?): Boolean =
+        latestGpsSignalSnapshot.watchGpsOnlyActive &&
+            !latestGpsSignalSnapshot.watchGpsDegraded &&
+            latestGpsSignalSnapshot.activeSourceModeValue == LocationSourceMode.WATCH_GPS.telemetryValue &&
+            isKnownWatchGpsAccuracyFloor(rawAccuracyMeters)
 
     private fun recordingActivityProfile(): String = _uiState.value.activityProfile
 
@@ -1822,13 +2379,17 @@ private fun sensorAgeMillis(
 ): Long = updatedAtMillis.takeIf { it > 0L }?.let { (nowMillis - it).coerceAtLeast(0L) } ?: -1L
 
 private const val RECORDING_GAP_TELEMETRY_MIN_THRESHOLD_MS = 15_000L
+private const val RECORDING_GAP_LIVE_CALLBACK_MULTIPLIER = 5L / 2L
+private const val RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS = 500L
+private const val RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS = 60_000L
+private const val RECORDING_LIVE_CALLBACK_CADENCE_WINDOW = 5
 private const val RECORDING_GPS_ACTIVE_GAP_FLOOR_MS = 1_000L
 private const val RECORDING_GPS_ACTIVE_GAP_CAP_MS = 15_000L
-private const val RECORDING_FORCE_ACCEPT_MIN_AGE_MS = 2_000L
 private const val RECORDING_SAMPLE_ACCEPT_TOLERANCE_MS = 500L
 private const val RECORDING_MIN_SAMPLE_ACCEPT_THRESHOLD_MS = 850L
 private const val RECORDING_QUALITY_TELEMETRY_INTERVAL = 5
 private const val RECORDING_SMOOTHING_TELEMETRY_INTERVAL = 25
+private const val RECORDING_DRAFT_PERSIST_INTERVAL_MS = 60_000L
 private const val EXTERNAL_SPEED_INTEGRATION_MAX_GAP_MS = 5_000L
 private const val SENSOR_SNAPSHOT_MAX_AGE_MS = 15_000L
 private const val MAX_RECORDING_TITLE_LENGTH = 64
@@ -1888,48 +2449,6 @@ internal fun haversineMeters(
     return 2.0 * EARTH_RADIUS_METERS * atan2(sqrt(h), sqrt(1.0 - h))
 }
 
-internal fun recordingJitterDistanceToSuppress(
-    previous: RecordedTracePoint,
-    candidate: RecordedTracePoint,
-): Double? {
-    val elapsedMs = candidate.timeMillis - previous.timeMillis
-    if (elapsedMs <= 0L || elapsedMs >= RECORDING_JITTER_KEEPALIVE_MS) return null
-    val speedMps = candidate.speedMps?.takeIf { it.isFinite() && it >= 0f } ?: return null
-    if (speedMps > RECORDING_JITTER_MAX_SPEED_MPS) return null
-    val accuracyMeters =
-        listOfNotNull(previous.accuracyMeters, candidate.accuracyMeters)
-            .filter { it.isFinite() && it >= 0f }
-            .maxOrNull()
-            ?: return null
-    val deadbandMeters =
-        (accuracyMeters * RECORDING_JITTER_ACCURACY_FACTOR)
-            .coerceIn(RECORDING_JITTER_MIN_DEADBAND_M, RECORDING_JITTER_MAX_DEADBAND_M)
-            .toDouble()
-    val distanceMeters = haversineMeters(previous.latLong, candidate.latLong)
-    return distanceMeters.takeIf { it <= deadbandMeters }
-}
-
-private fun elevationGainLossMeters(points: List<RecordedTracePoint>): Pair<Double, Double> {
-    var gain = 0.0
-    var loss = 0.0
-    var previous = points.firstOrNull()?.elevationMeters ?: return 0.0 to 0.0
-    points.drop(1).forEach { point ->
-        val elevation = point.elevationMeters ?: return@forEach
-        if (point.startsNewSegment) {
-            previous = elevation
-            return@forEach
-        }
-        val delta = elevation - previous
-        if (delta > 0.0) {
-            gain += delta
-        } else {
-            loss += -delta
-        }
-        previous = elevation
-    }
-    return gain to loss
-}
-
 private fun sanitizeTelemetryValue(value: String): String =
     value
         .replace(Regex("\\s+"), "_")
@@ -1957,10 +2476,5 @@ private fun Float.formatTelemetry(decimalPlaces: Int): String = toDouble().forma
 
 private const val RECORDING_TELEMETRY_POINT_INTERVAL = 10
 private const val RECORDING_LIVE_TELEMETRY_SKIP_INTERVAL = 20
-private const val RECORDING_START_FRESH_FIX_TIMEOUT_MS = 6_000L
+private const val RECORDING_START_FRESH_FIX_TIMEOUT_MS = 8_000L
 private const val RECORDING_JITTER_TELEMETRY_INTERVAL = 10
-private const val RECORDING_JITTER_KEEPALIVE_MS = 30_000L
-private const val RECORDING_JITTER_MAX_SPEED_MPS = 0.5f
-private const val RECORDING_JITTER_ACCURACY_FACTOR = 0.2f
-private const val RECORDING_JITTER_MIN_DEADBAND_M = 2f
-private const val RECORDING_JITTER_MAX_DEADBAND_M = 4f

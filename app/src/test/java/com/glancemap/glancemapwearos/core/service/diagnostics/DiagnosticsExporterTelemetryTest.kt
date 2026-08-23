@@ -2,6 +2,8 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.BufferedWriter
+import java.io.StringWriter
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -238,7 +240,26 @@ class DiagnosticsExporterTelemetryTest {
                 "2026-04-20 20:07:20.000 [TraceRecording] event=pause points=6 " +
                     "trackSmoothingMode=ADAPTIVE trackFilterVersion=1 " +
                     "qualityHeldFixCount=1 qualityRejectedFixCount=0 qualityRelocationCount=0 " +
-                    "smoothedPointCount=3 smoothedAdjustmentMeters=2.4 maxSmoothedAdjustmentMeters=1.1",
+                    "smoothedPointCount=3 smoothedAdjustmentMeters=2.4 maxSmoothedAdjustmentMeters=1.1 " +
+                    "smartTrackMotionEvaluatedFixCount=12 smartTrackAcceptedReportedSpeedCount=7 " +
+                    "smartTrackAcceptedSensorCount=2 smartTrackAcceptedConfirmedSlowCount=1 " +
+                    "smartTrackSuppressedStationaryCount=1 smartTrackHeldSlowCount=1 " +
+                    "smartTrackSegmentStartBypassCount=0 smartTrackStepMotionEvidenceCount=2 " +
+                    "smartTrackCadenceMotionEvidenceCount=0 smartTrackSpeedAboveThresholdCount=8 " +
+                    "smartTrackCredibleSpeedCount=7 smartTrackNoMotionSensorDataCount=10 " +
+                    "smartTrackStationaryRadiusSampleCount=3 smartTrackStationaryRadiusAvgMeters=4.20 " +
+                    "smartTrackStationaryRadiusMaxMeters=5.10 " +
+                    "smartTrackNonAcceptedDisplacementSampleCount=2 " +
+                    "smartTrackNonAcceptedDisplacementAvgMeters=4.70 " +
+                    "smartTrackNonAcceptedDisplacementMaxMeters=5.30 " +
+                    "smartTrackPoorAccuracyRejectedCount=2 smartTrackNonMonotonicRejectedCount=0 " +
+                    "smartTrackImplausibleJumpHeldCount=1 " +
+                    "smartTrackConfirmedSustainedMovementCount=1 " +
+                    "smartTrackAdaptiveAccuracyFixCount=6 smartTrackAccuracyBaselineSampleCount=9 " +
+                    "smartTrackAccuracyBaselineMedianMeters=24.0 " +
+                    "smartTrackAccuracyProfileLimitMeters=35.0 " +
+                    "smartTrackAccuracyResolvedLimitMeters=45.0 " +
+                    "smartTrackAdaptiveAccuracyLimitActive=true",
             )
 
         val insights =
@@ -255,6 +276,75 @@ class DiagnosticsExporterTelemetryTest {
         assertEquals(3, insights.recordingTrackFilter.smoothedPointCount)
         assertEquals("2.4", insights.recordingTrackFilter.smoothedAdjustmentMeters)
         assertEquals("1.1", insights.recordingTrackFilter.maxSmoothedAdjustmentMeters)
+        val smartTrack = insights.recordingTrackFilter.smartTrack
+        assertEquals(12, smartTrack.motionEvaluatedFixCount)
+        assertEquals(7, smartTrack.acceptedReportedSpeedCount)
+        assertEquals(1, smartTrack.suppressedStationaryCount)
+        assertEquals(1, smartTrack.heldSlowCount)
+        assertEquals("4.20", smartTrack.stationaryRadiusAvgMeters)
+        assertEquals("5.30", smartTrack.nonAcceptedDisplacementMaxMeters)
+        assertEquals(2, smartTrack.poorAccuracyRejectedCount)
+        assertEquals(9, smartTrack.accuracyBaselineSampleCount)
+        assertEquals("45.0", smartTrack.accuracyResolvedLimitMeters)
+        assertEquals(true, smartTrack.adaptiveAccuracyLimitActive)
+    }
+
+    @Test
+    fun recordingSmartTrackTelemetryIsWrittenToDiagnosticReport() {
+        val output = StringWriter()
+        BufferedWriter(output).use { writer ->
+            writeRecordingSmartTrackSection(
+                writer = writer,
+                insights =
+                    DiagnosticsExporter.RecordingSmartTrackInsights(
+                        motionEvaluatedFixCount = 12,
+                        suppressedStationaryCount = 3,
+                        accuracyResolvedLimitMeters = "45.0",
+                        adaptiveAccuracyLimitActive = true,
+                    ),
+            )
+        }
+
+        assertEquals(true, "recordingSmartTrackMotionEvaluatedFixCount=12" in output.toString())
+        assertEquals(true, "recordingSmartTrackSuppressedStationaryCount=3" in output.toString())
+        assertEquals(true, "recordingSmartTrackAccuracyResolvedLimitMeters=45.0" in output.toString())
+        assertEquals(true, "recordingSmartTrackAdaptiveAccuracyLimitActive=true" in output.toString())
+    }
+
+    @Test
+    fun recordingPointDensityTelemetrySeparatesMovementFromStationarySuppression() {
+        val lines =
+            listOf(
+                "2026-04-20 20:07:20.000 [TraceRecording] event=summary " +
+                    "locationCallbackReceivedCount=160 usableLocationCallbackCount=150 " +
+                    "smartTrackDecisionCount=90 storedPointCount=72 " +
+                    "movingExpectedStoredSampleCount=50 movingStoredSampleCount=48 " +
+                    "movingStoredSampleCaptureRatePercent=96 movingGapCount=1 movingGapMaxMs=18000 " +
+                    "movingGapEndpointDistanceMaxM=80.5 stationaryGapCount=9 stationaryGapMaxMs=60000 " +
+                    "slowMovementGapCount=2 slowMovementGapMaxMs=12000 " +
+                    "unknownCallbackGapCount=1 unknownCallbackGapMaxMs=22000",
+            )
+
+        val insights =
+            deriveTelemetryInsights(
+                lines = lines,
+                captureWindowEndEpochMs = epochMs("2026-04-20T20:07:29"),
+            ).recordingTrackFilter.pointDensity
+
+        assertEquals(160, insights.callbackReceivedCount)
+        assertEquals(150, insights.usableCallbackCount)
+        assertEquals(50, insights.movingExpectedStoredSampleCount)
+        assertEquals(96, insights.movingStoredSampleCaptureRatePercent)
+        assertEquals(1, insights.movingGapCount)
+        assertEquals(9, insights.stationaryGapCount)
+        assertEquals(1, insights.unknownCallbackGapCount)
+
+        val output = StringWriter()
+        BufferedWriter(output).use { writer ->
+            writeRecordingPointDensitySection(writer, insights)
+        }
+        assertEquals(true, "recordingPointDensityMovingGapCount=1" in output.toString())
+        assertEquals(true, "recordingPointDensityStationaryGapCount=9" in output.toString())
     }
 
     @Test
@@ -379,6 +469,41 @@ class DiagnosticsExporterTelemetryTest {
     }
 
     @Test
+    fun compassRotationSettleTelemetrySummarizesWakeHoldsAndUnlocks() {
+        val insights =
+            deriveCompassTelemetryInsights(
+                listOf(
+                    "2026-08-12 17:54:27.000 [CompassTelemetry] rotation_settle stage=start " +
+                        "id=1 heldHeading=120.0",
+                    "2026-08-12 17:54:27.010 [CompassTelemetry] rotation_settle stage=hold " +
+                        "id=1 reason=await_heading_consensus headingDeltaDeg=na",
+                    "2026-08-12 17:54:27.650 [CompassTelemetry] rotation_settle stage=hold " +
+                        "id=1 reason=large_unverified_stationary_change headingDeltaDeg=81.5",
+                    "2026-08-12 17:54:27.720 [CompassTelemetry] rotation_settle stage=unlock " +
+                        "id=1 reason=relative_turn_confirmed heading=201.5",
+                    "2026-08-12 17:54:27.730 [CompassTelemetry] rotation_settle stage=release " +
+                        "id=1 wakeHoldDurationMs=710 wakeReleaseReason=settle_timeout " +
+                        "wakeReleaseHeadingDeltaDeg=81.5 firstVisibleReleaseStepDeg=10.0",
+                ),
+            )
+
+        assertEquals(1, insights.rotationSettleSessionStartCount)
+        assertEquals(2, insights.rotationSettleHoldCount)
+        assertEquals(1, insights.rotationSettleUnlockCount)
+        assertEquals(
+            "await_heading_consensus:1,large_unverified_stationary_change:1",
+            insights.rotationSettleHoldReasons,
+        )
+        assertEquals("relative_turn_confirmed:1", insights.rotationSettleUnlockReasons)
+        assertEquals(81.5f, insights.rotationSettleHoldMaxHeadingDeltaDeg)
+        assertEquals(1, insights.rotationSettleReleaseCount)
+        assertEquals("settle_timeout:1", insights.rotationSettleReleaseReasons)
+        assertEquals(710L, insights.rotationSettleWakeHoldDurationMaxMs)
+        assertEquals(81.5f, insights.rotationSettleReleaseHeadingDeltaMaxDeg)
+        assertEquals(10f, insights.rotationSettleFirstVisibleReleaseStepMaxDeg)
+    }
+
+    @Test
     fun compassHeadingSampleCountIsExplicitlyDiagnosticOnly() {
         val insights =
             deriveCompassTelemetryInsights(
@@ -410,8 +535,14 @@ class DiagnosticsExporterTelemetryTest {
                     "2026-08-02 16:00:02.000 status sats=12 used=0 signal=3 almanac=3 ephemeris=0 acquisition=signals_no_ephemeris cn0Avg=18.0 cn0Max=21.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
                     "2026-08-02 16:00:03.000 event=acquisition_ephemeris_available afterRegisterMs=3200 ephemerisSats=2",
                     "2026-08-02 16:00:03.000 status sats=12 used=0 signal=4 almanac=4 ephemeris=2 acquisition=ephemeris_no_fix cn0Avg=20.0 cn0Max=23.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
+                    "2026-08-02 16:00:03.100 event=status_location_disagreement " +
+                        "kind=signals_without_fresh_location sourceMode=watch_gps used=0 " +
+                        "signal=4 fixFresh=false fixAgeMs=na fixAccuracyM=na",
                     "2026-08-02 16:00:04.000 event=acquisition_satellites_used afterRegisterMs=4200 used=4",
                     "2026-08-02 16:00:04.000 status sats=12 used=4 signal=5 almanac=5 ephemeris=4 acquisition=satellites_used cn0Avg=21.0 cn0Max=25.0 carrier=0 l1=0 l5=0 dual=false gps=0 gal=0 glo=0 bds=0 qzss=0 sbas=0 unk=12",
+                    "2026-08-02 16:00:04.100 event=status_location_disagreement " +
+                        "kind=used_zero_with_fresh_location sourceMode=watch_gps used=0 " +
+                        "signal=5 fixFresh=true fixAgeMs=1000 fixAccuracyM=8.0",
                 ),
             )
 
@@ -427,6 +558,8 @@ class DiagnosticsExporterTelemetryTest {
         assertEquals(1, insights.acquisitionSignalDetectedCount)
         assertEquals(1, insights.acquisitionEphemerisAvailableCount)
         assertEquals(1, insights.acquisitionSatellitesUsedCount)
+        assertEquals(1, insights.usedZeroWithFreshLocationCount)
+        assertEquals(1, insights.signalsWithoutFreshLocationCount)
     }
 
     private fun epochMs(localDateTime: String): Long =

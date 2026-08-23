@@ -18,7 +18,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentBounds
 import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
-import com.glancemap.glancemapwearos.data.repository.MapRepository
+import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeSelection
@@ -130,7 +130,7 @@ internal fun shouldForceOfflineStartCenterForContext(
 class MapViewModel(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
-    private val mapRepository: MapRepository,
+    private val mapRepository: MapRepositoryImpl,
     private val syncManager: SyncManager,
     private val themeRepository: ThemeRepository,
 ) : ViewModel() {
@@ -182,9 +182,11 @@ class MapViewModel(
     private var rendererConfigApplyPending: Boolean = false
     private var themeApplyJob: Job? = null
     private var rendererWorkJob: Job? = null
+    private var mapAppearanceIndicatorGeneration: Long = 0L
     private var hillshadeTerrainEventJob: Job? = null
     private var rendererWorkGeneration: Long = 0L
     private var pendingMapLayerPath: String? = null
+    private var lastRequestedMapLayerPath: String? = null
     private var pendingExternalCacheClear: Boolean = false
 
     private var mapHolder: MapHolder? = null
@@ -323,6 +325,13 @@ class MapViewModel(
     }
 
     fun destroyMapHolder() {
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_lifecycle",
+            status = "holder_destroy",
+            detail =
+                "renderer=${mapRenderer?.let(System::identityHashCode) ?: 0} " +
+                    "mapView=${mapHolder?.mapView?.let(System::identityHashCode) ?: 0}",
+        )
         rendererWorkJob?.cancel()
         rendererWorkJob = null
         mapHolder?.renderer?.destroy()
@@ -580,6 +589,13 @@ class MapViewModel(
 
     fun setMapRenderer(renderer: MapRenderer?) {
         if (mapRenderer !== renderer) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_lifecycle",
+                status = "renderer_changed",
+                detail =
+                    "previous=${mapRenderer?.let(System::identityHashCode) ?: 0} " +
+                        "next=${renderer?.let(System::identityHashCode) ?: 0}",
+            )
             hillshadeTerrainEventJob?.cancel()
             _hillshadeTerrainUnavailableEvent.value = null
             mapRenderer = renderer
@@ -962,12 +978,11 @@ class MapViewModel(
         themeApplyJob?.cancel()
         themeApplyJob =
             viewModelScope.launch {
-                val startedAtMs =
+                val indicator =
                     if (showIndicator) {
-                        _mapAppearanceApplyInProgress.value = true
-                        SystemClock.elapsedRealtime()
+                        showMapAppearanceIndicator(reason = "theme_selection")
                     } else {
-                        0L
+                        null
                     }
                 try {
                     applyThemeSelection(
@@ -979,14 +994,14 @@ class MapViewModel(
                         schedulePendingRendererWorkIfReady()
                     }
                 } finally {
-                    if (showIndicator) {
-                        val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+                    indicator?.let { activeIndicator ->
+                        val elapsedMs = SystemClock.elapsedRealtime() - activeIndicator.startedAtMs
                         val remainingMs =
                             (MAP_APPEARANCE_APPLY_INDICATOR_MIN_MS - elapsedMs).coerceAtLeast(0L)
                         if (remainingMs > 0L) {
                             runCatching { delay(remainingMs) }
                         }
-                        _mapAppearanceApplyInProgress.value = false
+                        hideMapAppearanceIndicator(activeIndicator, reason = "theme_selection_complete")
                     }
                 }
             }
@@ -1007,6 +1022,16 @@ class MapViewModel(
 
     private fun requestMapLayerUpdate(path: String?) {
         pendingMapLayerPath = path?.trim()?.takeIf { it.isNotEmpty() }
+        val previousPath = lastRequestedMapLayerPath
+        lastRequestedMapLayerPath = pendingMapLayerPath
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_update_request",
+            status = "map_layer",
+            detail =
+                "same=${previousPath == pendingMapLayerPath} previous=${mapIdentity(previousPath)} " +
+                    "requested=${mapIdentity(pendingMapLayerPath)} " +
+                    "renderer=${mapRenderer?.let(System::identityHashCode) ?: 0}",
+        )
         rendererWorkGeneration += 1L
         schedulePendingRendererWorkIfReady()
     }
@@ -1016,6 +1041,8 @@ class MapViewModel(
         rendererWorkGeneration += 1L
         schedulePendingRendererWorkIfReady()
     }
+
+    private fun mapIdentity(path: String?): String = path?.let { value -> value.hashCode().toUInt().toString(16) } ?: "none"
 
     private fun schedulePendingRendererWorkIfReady() {
         val renderer =
@@ -1036,13 +1063,12 @@ class MapViewModel(
                     initialMapLoadIndicatorPending &&
                         !pendingExternalCacheClear &&
                         !pendingMapLayerPath.isNullOrBlank()
-                val indicatorStartedAtMs =
+                val indicator =
                     if (showInitialMapLoadIndicator) {
                         initialMapLoadIndicatorPending = false
-                        _mapAppearanceApplyInProgress.value = true
-                        SystemClock.elapsedRealtime()
+                        showMapAppearanceIndicator(reason = "initial_map_load")
                     } else {
-                        0L
+                        null
                     }
 
                 try {
@@ -1051,17 +1077,61 @@ class MapViewModel(
                         awaitInitialVisibleMap = showInitialMapLoadIndicator,
                     )
                 } finally {
-                    if (showInitialMapLoadIndicator) {
-                        val elapsedMs = SystemClock.elapsedRealtime() - indicatorStartedAtMs
+                    indicator?.let { activeIndicator ->
+                        val elapsedMs = SystemClock.elapsedRealtime() - activeIndicator.startedAtMs
                         val remainingMs =
                             (INITIAL_MAP_LOAD_INDICATOR_MIN_MS - elapsedMs).coerceAtLeast(0L)
                         if (remainingMs > 0L) {
                             runCatching { delay(remainingMs) }
                         }
-                        _mapAppearanceApplyInProgress.value = false
+                        hideMapAppearanceIndicator(activeIndicator, reason = "initial_map_load_complete")
                     }
                 }
             }
+    }
+
+    private data class MapAppearanceIndicator(
+        val generation: Long,
+        val startedAtMs: Long,
+    )
+
+    private fun showMapAppearanceIndicator(reason: String): MapAppearanceIndicator {
+        val indicator =
+            MapAppearanceIndicator(
+                generation = ++mapAppearanceIndicatorGeneration,
+                startedAtMs = SystemClock.elapsedRealtime(),
+            )
+        _mapAppearanceApplyInProgress.value = true
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_update_ui",
+            status = "show",
+            detail = "reason=$reason generation=${indicator.generation}",
+        )
+        return indicator
+    }
+
+    private fun hideMapAppearanceIndicator(
+        indicator: MapAppearanceIndicator,
+        reason: String,
+    ) {
+        if (indicator.generation != mapAppearanceIndicatorGeneration) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "hide_stale",
+                detail =
+                    "reason=$reason generation=${indicator.generation} " +
+                        "activeGeneration=$mapAppearanceIndicatorGeneration",
+            )
+            return
+        }
+        _mapAppearanceApplyInProgress.value = false
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_update_ui",
+            status = "hide",
+            detail =
+                "reason=$reason generation=${indicator.generation} " +
+                    "durationMs=${SystemClock.elapsedRealtime() - indicator.startedAtMs}",
+        )
     }
 
     private suspend fun applyPendingRendererWork(

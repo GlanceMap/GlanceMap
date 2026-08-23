@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
 
 class FusedHeadingIntegrityEngineTest {
     @Test
@@ -56,31 +55,40 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
-    fun persistentWitnessDisagreementIsSuppressedAndCannotSteerTheMap() {
+    fun acquiringWithoutCachedHeadingRendersFirstUsableSample() {
+        val replay = Replay(integrityEngine())
+        replay.magnetic(42f)
+        replay.advance(200L)
+        replay.magnetic(42f)
+
+        val snapshot = replay.absolute(headingDeg = 72f)
+
+        assertEquals(CompassTrackingState.ACQUIRING, snapshot.state)
+        assertTrue(snapshot.renderable)
+        assertEquals(72f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun weakLargeFusedJumpWithoutRelativeConfirmationIsHeld() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 10f)
 
         var latest: FusedHeadingIntegritySnapshot? = null
-        var previousHeading = 10f
         repeat(12) {
             replay.advance(20L)
             replay.magnetic(42f)
             replay.relative(headingDeg = 0f)
             latest = replay.absolute(headingDeg = 100f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
-            val currentHeading = requireNotNull(latest.renderHeadingDeg)
-            assertTrue(
-                abs(shortestAngleDiffDeg(currentHeading, previousHeading)) <=
-                    MAX_UNVERIFIED_20_MS_CORRECTION_DEG + ANGLE_TOLERANCE_DEG,
-            )
-            previousHeading = currentHeading
+            assertEquals(10f, requireNotNull(latest.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
         }
 
         val snapshot = requireNotNull(latest)
         assertEquals(CompassTrackingState.TRACKING, snapshot.state)
+        assertEquals(CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT, snapshot.reason)
+        assertTrue(snapshot.quarantineActive)
         assertTrue(snapshot.relativeWitnessSuppressed)
         assertFalse(snapshot.relativeWitnessAvailable)
         assertFalse(snapshot.relativeWitnessSupportsHighRate)
-        assertTrue(requireNotNull(snapshot.renderHeadingDeg) in 10f..60f)
     }
 
     @Test
@@ -119,6 +127,27 @@ class FusedHeadingIntegrityEngineTest {
             requireNotNull(snapshot.renderHeadingDeg),
             ANGLE_TOLERANCE_DEG,
         )
+    }
+
+    @Test
+    fun implausibleLargeFusedStepWithoutFreshWitnessIsHeld() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.witnessUnavailable(horizontalProjection = 0.9f)
+        val snapshot =
+            replay.absolute(
+                headingDeg = 110f,
+                liveErrorDeg = 25f,
+                conservativeErrorDeg = 180f,
+            )
+
+        assertEquals(CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT, snapshot.reason)
+        assertTrue(snapshot.quarantineActive)
+        assertEquals(110f, snapshot.absoluteStepDeg ?: -1f, ANGLE_TOLERANCE_DEG)
+        assertEquals(20L, snapshot.absoluteStepIntervalMs)
+        assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
     }
 
     @Test

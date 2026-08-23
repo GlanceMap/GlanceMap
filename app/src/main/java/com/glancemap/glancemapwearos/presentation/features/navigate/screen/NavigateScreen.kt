@@ -22,6 +22,8 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
 import com.glancemap.glancemapwearos.data.repository.PoiType
@@ -89,15 +91,7 @@ fun NavigateScreen(
     onMenuClick: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
     compassViewModel: CompassViewModel = viewModel(),
-    navigateViewModel: NavigateViewModel =
-        viewModel(
-            factory =
-                NavigateViewModelFactory(
-                    application = LocalContext.current.applicationContext as android.app.Application,
-                    locationViewModel = locationViewModel,
-                    compassViewModel = compassViewModel,
-                ),
-        ),
+    navigateViewModel: NavigateViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val activeHikePublisher =
@@ -295,7 +289,6 @@ fun NavigateScreen(
                 turnByTurnPaused = turnByTurnGuidancePaused,
                 turnByTurnGpsInAmbient = turnByTurnScreenOffGpsEnabled,
                 locationViewModel = locationViewModel,
-                traceRecordingViewModel = traceRecordingViewModel,
             )
         val screenState = runtimeState.screenState
         val shouldTrackLocation = runtimeState.shouldTrackLocation
@@ -323,7 +316,7 @@ fun NavigateScreen(
                 serviceEffectiveIntervalMs = serviceEffectiveGpsIntervalMs,
                 configuredIntervalMs = configuredMarkerGpsIntervalMs,
             )
-        val effectiveNavMode = if (offlineMode) NavMode.PANNING else navMode
+        val effectiveNavMode = if (offlineMode || navigateTarget != null) NavMode.PANNING else navMode
         // ---- Heading + Accuracy ----
         val compassUiState =
             rememberNavigateCompassUiState(
@@ -453,12 +446,6 @@ fun NavigateScreen(
         }
 
         var pendingPoiFocusTarget by remember { mutableStateOf<PoiNavigateTarget?>(null) }
-        val markerMotionDebugOverlayLabel =
-            rememberMarkerMotionDebugOverlayLabel(
-                gpsDebugTelemetry = gpsDebugTelemetry,
-                gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
-                offlineMode = offlineMode,
-            )
 
         val mapView = mapHolder.mapView
 
@@ -550,6 +537,14 @@ fun NavigateScreen(
                 )
             }
         var visiblePoiMarkers by remember { mutableStateOf<List<PoiOverlayMarker>>(emptyList()) }
+        val markerMotionDebugOverlayLabel =
+            rememberMarkerMotionDebugOverlayLabel(
+                gpsDebugTelemetry = gpsDebugTelemetry,
+                gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
+                offlineMode = offlineMode,
+                renderState = compassRenderState,
+                renderedHeadingDeg = renderedCompassHeadingDeg,
+            )
         val displayedRouteToolCreatePreview =
             visibleRouteToolCreatePreview(
                 session = routeToolSession,
@@ -583,6 +578,7 @@ fun NavigateScreen(
             gpxTrackOpacityPercent = gpxTrackOpacityPercent,
             gpxTrackDirectionArrowsEnabled = gpxTrackDirectionArrowsEnabled,
             compassRenderStateFlow = compassViewModel.renderState,
+            compassInteractive = isScreenResumed && screenState.isInteractive && !offlineMode,
             navMode = effectiveNavMode,
             forceNorthUpInPanning = offlineMode,
             showRealMarkerInCompassMode = true,
@@ -591,7 +587,7 @@ fun NavigateScreen(
             compassQuality = compassConeQuality,
             compassHeadingErrorDeg = compassConeHeadingErrorDeg,
             gpsAccuracyCircleEnabled = gpsAccuracyCircleEnabled && !offlineMode,
-            gpsFixAccuracyM = gpsSignalSnapshot.lastFixAccuracyM,
+            gpsFixAccuracyM = gpsSignalSnapshot.effectiveAccuracyMeters(),
             gpsFixFresh = gpsFixFreshForAccuracyCircle,
             gpsFixSpeedMps = locationUiState.lastFixSpeedMps,
             gpsFixBearingDeg = locationUiState.lastFixBearingDeg,
@@ -732,6 +728,31 @@ fun NavigateScreen(
                 gpxUphillVerticalMetersPerHour = gpxUphillVerticalMetersPerHour,
                 gpxDownhillVerticalMetersPerHour = gpxDownhillVerticalMetersPerHour,
             )
+        val adaptiveTurnByTurnScreenOffIntervalMs =
+            if (
+                turnByTurnScreenOffGpsIntervalSeconds ==
+                SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS &&
+                screenState.isNonInteractive &&
+                activeTurnByTurnGuidanceSession != null
+            ) {
+                resolveAdaptiveTurnByTurnScreenOffIntervalMs(
+                    state = guidanceRuntime.state,
+                    currentSpeedMps = rawCurrentLocation?.speed,
+                    activityProfile = activityProfile,
+                )
+            } else {
+                null
+            }
+        LaunchedEffect(adaptiveTurnByTurnScreenOffIntervalMs) {
+            locationViewModel.setTurnByTurnScreenOffIntervalOverride(
+                intervalMs = adaptiveTurnByTurnScreenOffIntervalMs,
+            )
+        }
+        DisposableEffect(locationViewModel) {
+            onDispose {
+                locationViewModel.setTurnByTurnScreenOffIntervalOverride(intervalMs = null)
+            }
+        }
 
         LaunchedEffect(
             guidanceRuntime.state,
@@ -811,7 +832,6 @@ fun NavigateScreen(
                 setRouteToolOptions = { routeToolOptions = it },
                 routeToolSession = routeToolSession,
                 setRouteToolSession = { routeToolSession = it },
-                completedRouteToolDraft = completedRouteToolDraft,
                 setCompletedRouteToolDraft = { completedRouteToolDraft = it },
                 routeToolExecutionInProgress = routeToolExecutionInProgress,
                 setRouteToolExecutionInProgress = { routeToolExecutionInProgress = it },
@@ -821,7 +841,6 @@ fun NavigateScreen(
                 setRouteToolResult = { routeToolResult = it },
                 setRouteToolRenameInProgress = { routeToolRenameInProgress = it },
                 setRouteToolRenameError = { routeToolRenameError = it },
-                routeToolPreview = routeToolPreview,
                 setRouteToolPreview = { routeToolPreview = it },
                 routeToolCreatePreview = routeToolCreatePreview,
                 setRouteToolCreatePreview = { routeToolCreatePreview = it },
@@ -975,7 +994,6 @@ fun NavigateScreen(
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
-            onMapHolderChange = { /* no-op */ },
             onMapViewReadyForRendering = { mapViewModel.onMapViewReadyForRendering() },
             onNavigateTimeSuppressedChange = onNavigateTimeSuppressedChange,
             showNavigateTime = showNavigateTime,
@@ -985,7 +1003,6 @@ fun NavigateScreen(
             slopeOverlayEnabled = slopeOverlayState.enabled,
             slopeOverlayProcessing = slopeOverlayState.processing,
             slopeOverlayProgressPercent = slopeOverlayState.progressPercent,
-            zoomDefault = zoomDefault,
             zoomMin = zoomMin,
             zoomMax = zoomMax,
             zoomMinScaleMeters = zoomMinScaleMeters,
@@ -1081,9 +1098,9 @@ fun NavigateScreen(
             onCancelSelectingGpxPointB = { gpxViewModel.cancelSelectingB() },
             turnByTurnGuidanceState = guidanceRuntime.state,
             turnByTurnGuidancePaused = turnByTurnGuidancePaused,
-            turnByTurnPausedTrackTitle = turnByTurnGuidanceSession?.trackTitle,
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
-            turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+            turnByTurnCompactPopupEnabled =
+                turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
             onTurnByTurnVoiceGuidanceChange = settingsViewModel::setTurnByTurnVoiceGuidanceEnabled,
             guideBackToRouteActive = guidanceRuntime.guideBackToRouteActive,
             showGuideBackPrompt = guidanceRuntime.showGuideBackPrompt,
@@ -1236,6 +1253,8 @@ private fun screenOffGpsIntervalMs(
     screenOffSeconds: Int,
 ): Long =
     when (screenOffSeconds) {
+        SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
+            SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
         SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> screenOnIntervalMs
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> SettingsRepository.DEFAULT_GPS_INTERVAL_MS
         else -> gpsIntervalMsOrDefault(screenOffSeconds)
@@ -1246,5 +1265,3 @@ private fun gpsIntervalMsOrDefault(seconds: Int): Long =
         SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> SettingsRepository.DEFAULT_GPS_INTERVAL_MS
         else -> seconds.coerceAtLeast(1) * 1_000L
     }
-
-private const val RECORDING_STATUS_MESSAGE_DURATION_MS = 1_200L

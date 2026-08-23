@@ -11,7 +11,14 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.sqlite.SQLiteDatabase
+import android.os.BatteryManager
+import android.os.Build
+import android.os.PowerManager
+import android.os.Process
+import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
@@ -20,7 +27,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentTargetFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
-import com.glancemap.glancemapwearos.data.repository.MapRepository
+import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.createMissingDemMarker
@@ -117,7 +124,7 @@ internal fun buildRemoteFileRequestsForBundle(
 
 class OamBundleDownloader(
     private val context: Context,
-    private val mapRepository: MapRepository,
+    private val mapRepository: MapRepositoryImpl,
     private val poiRepository: PoiRepository,
     private val bundleStore: OamBundleStore = OamBundleStore(context),
 ) {
@@ -338,6 +345,7 @@ class OamBundleDownloader(
         forceRoutingFileNames: Set<String> = emptySet(),
         forceDemTiles: Boolean = false,
         forceDemTileIds: Set<String> = emptySet(),
+        extractionKeepAliveState: () -> OamDownloadKeepAliveState = { OamDownloadKeepAliveState() },
         onProgress: (OamDownloadProgress) -> Unit,
     ): OamInstalledBundle =
         coroutineScope {
@@ -431,6 +439,7 @@ class OamBundleDownloader(
                                             zipFile = archive,
                                             extension = ".map",
                                             label = "Map",
+                                            extractionKeepAliveState = extractionKeepAliveState,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             mapRepository.saveMapFileAtomic(
@@ -524,6 +533,7 @@ class OamBundleDownloader(
                                             zipFile = archive,
                                             extension = ".poi",
                                             label = "POI",
+                                            extractionKeepAliveState = extractionKeepAliveState,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             poiRepository.savePoiFileAtomic(
@@ -1498,8 +1508,8 @@ class OamBundleDownloader(
                     ioRetryCount += 1
                     onProgress(
                         OamDownloadProgress(
-                            phase = "PAUSED",
-                            detail = "$progressDetail interrupted",
+                            phase = "RECONNECTING",
+                            detail = "$progressDetail reconnecting",
                             bytesDone = resumeOffset,
                         ),
                     )
@@ -1589,6 +1599,7 @@ class OamBundleDownloader(
         zipFile: File,
         extension: String,
         label: String,
+        extractionKeepAliveState: () -> OamDownloadKeepAliveState,
         onProgress: (OamDownloadProgress) -> Unit,
         saveEntry: suspend (
             fileName: String,
@@ -1610,6 +1621,23 @@ class OamBundleDownloader(
                     val expectedSize = entry.size.takeIf { it > 0L }
                     val extractStartedAtMs = System.currentTimeMillis()
                     var extractedBytes = 0L
+                    val extractionTelemetry =
+                        if (DebugTelemetry.isEnabled()) {
+                            OamExtractionTelemetryReporter(
+                                label = label,
+                                entryFileName = entryFileName,
+                                totalBytes = expectedSize,
+                                wallNowMs = SystemClock::elapsedRealtime,
+                                uptimeNowMs = SystemClock::uptimeMillis,
+                                processCpuMs = Process::getElapsedCpuTime,
+                                runtimeSnapshot = {
+                                    captureExtractionRuntimeSnapshot(extractionKeepAliveState())
+                                },
+                                emit = { message -> DebugTelemetry.log(OAM_DOWNLOAD_TELEMETRY_TAG, message) },
+                            )
+                        } else {
+                            null
+                        }
                     logExtraction(
                         event = "extract_start",
                         label = label,
@@ -1626,20 +1654,35 @@ class OamBundleDownloader(
                             totalBytes = expectedSize,
                         ),
                     )
-                    saveEntry(
-                        entryFileName,
-                        zip,
-                        expectedSize,
-                    ) { bytes ->
-                        extractedBytes = bytes
-                        onProgress(
-                            OamDownloadProgress(
-                                phase = "EXTRACTING",
-                                detail = entryFileName,
-                                bytesDone = bytes,
-                                totalBytes = expectedSize,
-                            ),
-                        )
+                    val heartbeatJob =
+                        extractionTelemetry?.let { telemetry ->
+                            launch {
+                                while (isActive) {
+                                    delay(EXTRACTION_STALL_HEARTBEAT_INTERVAL_MS)
+                                    telemetry.emitStallHeartbeatIfNeeded()
+                                }
+                            }
+                        }
+                    try {
+                        saveEntry(
+                            entryFileName,
+                            zip,
+                            expectedSize,
+                        ) { bytes ->
+                            extractedBytes = bytes
+                            extractionTelemetry?.onBytesWritten(bytes)
+                            onProgress(
+                                OamDownloadProgress(
+                                    phase = "EXTRACTING",
+                                    detail = entryFileName,
+                                    bytesDone = bytes,
+                                    totalBytes = expectedSize,
+                                ),
+                            )
+                        }
+                    } finally {
+                        heartbeatJob?.cancel()
+                        extractionTelemetry?.complete(extractedBytes)
                     }
                     logExtraction(
                         event = "extract_complete",
@@ -1680,6 +1723,53 @@ class OamBundleDownloader(
         )
     }
 
+    private fun captureExtractionRuntimeSnapshot(
+        keepAliveState: OamDownloadKeepAliveState,
+    ): OamExtractionRuntimeSnapshot {
+        val powerManager = context.getSystemService(PowerManager::class.java)
+        val batteryIntent =
+            runCatching {
+                context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }.getOrNull()
+        val batteryStatus = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryPercent =
+            if (level >= 0 && scale > 0) {
+                ((level * 100f) / scale).toInt().toString()
+            } else {
+                "na"
+            }
+        val pluggedLabel =
+            when (plugged) {
+                BatteryManager.BATTERY_PLUGGED_AC -> "ac"
+                BatteryManager.BATTERY_PLUGGED_USB -> "usb"
+                BatteryManager.BATTERY_PLUGGED_WIRELESS -> "wireless"
+                else -> "battery"
+            }
+        return OamExtractionRuntimeSnapshot(
+            interactive = powerManager?.isInteractive == true,
+            charging =
+                batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    batteryStatus == BatteryManager.BATTERY_STATUS_FULL,
+            plugged = pluggedLabel,
+            batteryPercent = batteryPercent,
+            thermalStatus =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && powerManager != null) {
+                    powerManager.currentThermalStatus.toString()
+                } else {
+                    "na"
+                },
+            wakeLockHeld = keepAliveState.wakeLockHeld,
+            wifiLockHeld = keepAliveState.wifiLockHeld,
+            wakeLockType = keepAliveState.wakeLockType,
+            wakeLockAcquireAgeMs = keepAliveState.wakeLockAcquireAgeMs,
+            wakeLockTimeoutMs = keepAliveState.wakeLockTimeoutMs,
+            wakeLockGeneration = keepAliveState.wakeLockGeneration,
+        )
+    }
+
     private companion object {
         private const val CONNECT_TIMEOUT_MS = 20_000
         private const val READ_TIMEOUT_MS = 60_000
@@ -1692,6 +1782,7 @@ class OamBundleDownloader(
         private const val OAM_ZIP_DOWNLOAD_BUFFER_SIZE = 2 * 1024 * 1024
         private const val ZIP_READ_BUFFER_SIZE = 1024 * 1024
         private const val DOWNLOAD_PROGRESS_TELEMETRY_INTERVAL_MS = 5_000L
+        private const val EXTRACTION_STALL_HEARTBEAT_INTERVAL_MS = 30_000L
         private const val LARGE_DETAILED_DEM_TILE_THRESHOLD = 100
         private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
         private const val USER_AGENT = "GlanceMap-WearOS-OAM-Downloader/1.0 https://www.openandromaps.org"

@@ -1,7 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="app_name">GlanceMap</string>
-    <string name="state_on">On</string>
-    <string name="state_off">Off</string>
+    <string name="glancemap_state_on">On</string>
+    <string name="glancemap_state_off">Off</string>
     <string name="action_increase">Increase</string>
     <string name="action_decrease">Decrease</string>
 
@@ -30,6 +30,13 @@
     <string name="gps_source">GPS Source</string>
     <string name="gps_source_watch_only">Watch Only (more ⚡)</string>
     <string name="gps_source_auto">Auto (Watch + Phone)</string>
+    <string name="gps_profile">GPS profile</string>
+    <string name="gps_profile_rec_summary">REC: %1$s on · %2$s off</string>
+    <string name="gps_profile_tbt_summary">TBT: %1$s on · %2$s off</string>
+    <string name="gps_advanced">Advanced</string>
+    <string name="gps_advanced_summary">Custom REC and TBT timing</string>
+    <string name="gps_settings">GPS settings</string>
+    <string name="gps_profiles_and_source">Profiles and source</string>
     <string name="gps_basic_interval_summary">Basic GPS uses 3s when the screen is on.</string>
     <string name="gps_recording_guidance_interval_summary">REC + TBT: shorter timing is used.</string>
     <string name="gps_recording_activity_summary">Hike: 3s. Bike: 1s.</string>
@@ -54,6 +61,11 @@
     <string name="gps_stepper_hint_compact">Tap ±1s · hold ±5s</string>
     <string name="gps_stepper_hint">Tap ±1s · long press ±5s</string>
     <string name="gps_same">Same</string>
+    <string name="gps_adaptive">Adaptive</string>
+    <string name="gps_adaptive_tbt_detail">10–3s near turns</string>
+    <string name="gps_tbt_adaptive_tap_hint">Tap to choose fixed seconds</string>
+    <string name="gps_tbt_fixed_tap_hint">Tap to restore adaptive timing</string>
+    <string name="gps_timing_fixed_mode_hint">Tap value: mode</string>
     <string name="gps_same_with_value">Same (%1$s)</string>
     <string name="gps_same_as_screen_on">Same as screen on</string>
     <string name="gps_screen_on_with_value">Screen on · %1$s</string>

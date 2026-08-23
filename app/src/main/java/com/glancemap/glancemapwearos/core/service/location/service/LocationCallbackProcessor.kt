@@ -15,6 +15,7 @@ internal data class LocationBatchSummary(
     val acceptedCandidates: Int,
 )
 
+@Suppress("LongParameterList")
 internal class LocationCallbackProcessor(
     private val engine: LocationEngine,
     private val telemetry: LocationServiceTelemetry,

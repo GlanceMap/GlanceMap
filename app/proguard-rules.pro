@@ -3,7 +3,7 @@
 -renamesourcefileattribute SourceFile
 
 # ✅ Keep the Listener Service (entry point)
--keep class com.glancemap.glancemapwearos.presentation.service.DataLayerListenerService { *; }
+-keep class com.glancemap.glancemapwearos.core.service.DataLayerListenerService { *; }
 
 # ✅ Coroutines (Standard safety)
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}

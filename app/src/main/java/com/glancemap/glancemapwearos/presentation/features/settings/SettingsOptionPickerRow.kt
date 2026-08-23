@@ -10,9 +10,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.material.ToggleChip
-import com.google.android.horologist.compose.material.ToggleChipToggleControl
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.wear.compose.material.Icon
+import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.ToggleChipDefaults
 
 @Composable
 internal fun <T> SettingsOptionPickerRow(
@@ -64,7 +67,6 @@ internal fun <T> SettingsOptionPickerHost(
     )
 }
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun OptionPickerChoiceRow(
     label: String,
@@ -75,12 +77,25 @@ internal fun OptionPickerChoiceRow(
     ToggleChip(
         modifier = modifier.fillMaxWidth(),
         checked = selected,
-        onCheckedChanged = { checked ->
+        onCheckedChange = { checked ->
             if (checked || selected) {
                 onSelect()
             }
         },
-        label = label,
-        toggleControl = ToggleChipToggleControl.Radio,
+        label = {
+            Text(
+                text = label,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 2,
+            )
+        },
+        toggleControl = {
+            Icon(
+                imageVector = ToggleChipDefaults.radioIcon(selected),
+                contentDescription = null,
+            )
+        },
     )
 }

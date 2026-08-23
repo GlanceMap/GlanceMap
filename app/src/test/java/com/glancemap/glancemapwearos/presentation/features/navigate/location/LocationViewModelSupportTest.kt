@@ -16,6 +16,18 @@ class LocationViewModelSupportTest {
     }
 
     @Test
+    fun recordingStartReacquireAlwaysBypassesFreshnessSkip() {
+        assertTrue(shouldForceUiImmediateLocationRequest(UI_RECORDING_START_REACQUIRE_SOURCE))
+    }
+
+    @Test
+    fun initialWakeAndTimeoutFallbackUseTheSameCooldownGroup() {
+        assertTrue(isWakeReacquireImmediateLocationRequest("ui_startup_fresh_fix"))
+        assertTrue(isWakeReacquireImmediateLocationRequest(UI_WAKE_REACQUIRE_TIMEOUT_SOURCE))
+        assertFalse(isWakeReacquireImmediateLocationRequest("ui_unknown"))
+    }
+
+    @Test
     fun ordinaryUiRequestStillUsesFreshnessSkip() {
         assertFalse(shouldForceUiImmediateLocationRequest("ui_unknown"))
     }
@@ -28,12 +40,12 @@ class LocationViewModelSupportTest {
     }
 
     @Test
-    fun wakeBurstSkipsOnlyForARecentAccurateFixAfterAShortScreenOff() {
+    fun wakeBurstReusesARecentAccurateFixForTheActiveCadence() {
         val decision =
             evaluateWakeBurstSkipCandidate(
-                fixAgeMs = 1_500L,
+                fixAgeMs = 6_500L,
                 accuracyM = 12f,
-                screenOffMs = 5_000L,
+                freshnessMaxAgeMs = 7_000L,
             )
 
         assertTrue(decision.wouldSkip)
@@ -43,16 +55,16 @@ class LocationViewModelSupportTest {
     fun wakeBurstDoesNotSkipForAnOldOrWeakFix() {
         assertFalse(
             evaluateWakeBurstSkipCandidate(
-                fixAgeMs = 2_500L,
+                fixAgeMs = 7_001L,
                 accuracyM = 12f,
-                screenOffMs = 5_000L,
+                freshnessMaxAgeMs = 7_000L,
             ).wouldSkip,
         )
         assertFalse(
             evaluateWakeBurstSkipCandidate(
-                fixAgeMs = 1_500L,
+                fixAgeMs = 6_500L,
                 accuracyM = 36f,
-                screenOffMs = 5_000L,
+                freshnessMaxAgeMs = 7_000L,
             ).wouldSkip,
         )
     }

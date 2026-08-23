@@ -282,16 +282,18 @@ internal fun chooseGpxTransferFileName(
     preferFallbackName: Boolean,
 ): String {
     val displayFileName = displayName.toSafeFileName()
-    val displayHasGpxExtension = displayFileName.endsWith(".gpx", ignoreCase = true)
-    val candidateName = uriCandidates.firstNotNullOfOrNull { it.extractGpxFileName() }
+    // The document id often preserves the original file name even when a sharing provider
+    // supplies a route/waypoint label as DISPLAY_NAME. It may not include the .gpx extension.
+    val candidateName = uriCandidates.firstNotNullOfOrNull { it.extractGpxSourceFileName() }
     val metadataName = gpxText?.extractGpxDisplayName()?.toGpxFileName()
 
     val chosen =
         when {
-            preferFallbackName && candidateName != null -> candidateName
-            preferFallbackName && metadataName != null -> metadataName
-            displayHasGpxExtension && !displayFileName.isGenericSharedGpxName() -> displayFileName
+            displayFileName.isNotBlank() && !displayFileName.isGenericSharedGpxName() ->
+                displayFileName.ensureGpxExtension()
+
             candidateName != null -> candidateName
+            preferFallbackName && metadataName != null -> metadataName
             metadataName != null -> metadataName
             displayFileName.isNotBlank() -> displayFileName.ensureGpxExtension()
             else -> "shared-route.gpx"
@@ -305,9 +307,8 @@ private fun prepareGpxUriForTransferName(
     uri: Uri,
     preferredName: String,
 ): Uri {
-    val displayName = resolveUriDisplayName(context, uri)
-    val currentName = displayName.toSafeFileName().ensureGpxExtension()
-    if (preferredName.equals(currentName, ignoreCase = false)) return uri
+    val currentName = resolveUriDisplayName(context, uri)
+    if (!shouldCopyGpxToPreserveTransferName(currentName, preferredName)) return uri
 
     return runCatching {
         copyUriToTransferCache(
@@ -320,6 +321,11 @@ private fun prepareGpxUriForTransferName(
         uri
     }
 }
+
+internal fun shouldCopyGpxToPreserveTransferName(
+    sourceDisplayName: String,
+    preferredName: String,
+): Boolean = !preferredName.equals(sourceDisplayName.toSafeFileName(), ignoreCase = false)
 
 private fun copyUriToTransferCache(
     context: Context,
@@ -349,14 +355,22 @@ private fun uriNameCandidates(uri: Uri): List<String> {
     return candidates
 }
 
-private fun String.extractGpxFileName(): String? {
+private fun String.extractGpxSourceFileName(): String? {
     val decoded = decodeUriNameCandidate(this).replace('\\', '/')
     val match =
         Regex("""([^/?:#]+\.gpx)(?:$|[?#])""", RegexOption.IGNORE_CASE)
             .findAll(decoded)
             .lastOrNull()
-            ?: return null
-    return match.groupValues[1].toSafeFileName()
+    val pathComponent =
+        decoded
+            .takeIf { '/' in it }
+            ?.substringBefore('?')
+            ?.substringBefore('#')
+            ?.substringAfterLast('/')
+            ?.substringAfterLast(':')
+            ?.toSafeFileName()
+            ?.takeIf { it.isNotBlank() && !it.isGenericSharedGpxName() && !it.isOpaqueDocumentId() }
+    return match?.groupValues?.get(1)?.toSafeFileName() ?: pathComponent
 }
 
 private fun decodeUriNameCandidate(value: String): String =
@@ -364,20 +378,42 @@ private fun decodeUriNameCandidate(value: String): String =
         .getOrDefault(value)
 
 private fun String.extractGpxDisplayName(): String? {
-    val match =
+    val containerRegex =
         Regex(
-            pattern = """<(?:metadata|trk|rte)[\s\S]*?<name>([\s\S]*?)</name>""",
+            pattern = """<(metadata|trk|rte)\b[^>]*>([\s\S]*?)</\1\s*>""",
             option = RegexOption.IGNORE_CASE,
-        ).find(this)
-            ?: Regex(
-                pattern = """<name>([\s\S]*?)</name>""",
-                option = RegexOption.IGNORE_CASE,
-            ).find(this)
-            ?: return null
-    return match.groupValues[1]
-        .replace(Regex("<[^>]+>"), "")
-        .trim()
-        .takeIf { it.isNotBlank() }
+        )
+    val nameRegex =
+        Regex(
+            pattern = """<name\b[^>]*>([\s\S]*?)</name\s*>""",
+            option = RegexOption.IGNORE_CASE,
+        )
+    val nestedPointOrSegmentRegex =
+        Regex(
+            pattern = """<(?:wpt|rtept|trkseg|extensions)\b""",
+            option = RegexOption.IGNORE_CASE,
+        )
+
+    // A GPX metadata block can be present without a name. Do not let a loose search escape that
+    // block and promote the first waypoint name (for example, "Guidepost") to the route title.
+    val titleByContainer =
+        containerRegex
+            .findAll(this)
+            .mapNotNull { container ->
+                val kind = container.groupValues[1].lowercase(Locale.ROOT)
+                val body = container.groupValues[2]
+                val directContent =
+                    body.substring(
+                        0,
+                        nestedPointOrSegmentRegex.find(body)?.range?.first ?: body.length,
+                    )
+                nameRegex.find(directContent)?.groupValues?.getOrNull(1)?.let { title ->
+                    kind to title.replace(Regex("<[^>]+>"), "").trim().takeIf { it.isNotBlank() }
+                }
+            }.toList()
+
+    return listOf("metadata", "trk", "rte")
+        .firstNotNullOfOrNull { kind -> titleByContainer.firstOrNull { it.first == kind }?.second }
 }
 
 private fun String.toGpxFileName(): String? =
@@ -404,16 +440,28 @@ private fun String.isGenericSharedGpxName(): Boolean {
     return base in GENERIC_SHARED_GPX_BASENAMES || base.startsWith("document-")
 }
 
+private fun String.isOpaqueDocumentId(): Boolean =
+    matches(Regex("""\d+""")) ||
+        matches(Regex("""[0-9a-f]{16,}""", RegexOption.IGNORE_CASE)) ||
+        matches(
+            Regex(
+                """[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}""",
+                RegexOption.IGNORE_CASE,
+            ),
+        )
+
 private val GENERIC_SHARED_GPX_BASENAMES =
     setOf(
         "attachment",
         "document",
         "file",
         "gpx",
+        "guidepost",
         "route",
         "shared-route",
         "track",
         "unknown",
+        "view",
     )
 
 private const val GPX_SNIFF_MAX_BYTES = 8192

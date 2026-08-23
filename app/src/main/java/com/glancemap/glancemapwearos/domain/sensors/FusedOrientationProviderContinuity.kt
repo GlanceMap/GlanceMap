@@ -16,3 +16,17 @@ internal fun resolveFusedReadyTimeoutMs(
             FUSED_STALE_RETRY_LOW_POWER_READY_TIMEOUT_MS
         else -> FUSED_STALE_RETRY_READY_TIMEOUT_MS
     }
+
+internal fun isCurrentFusedReadyTimeout(
+    timeoutIsCurrent: Boolean,
+    started: Boolean,
+    usingFallback: Boolean,
+    awaitingFusedReady: Boolean,
+    timeoutRequestGeneration: Long,
+    activeRequestGeneration: Long,
+): Boolean =
+    timeoutIsCurrent &&
+        started &&
+        !usingFallback &&
+        awaitingFusedReady &&
+        timeoutRequestGeneration == activeRequestGeneration

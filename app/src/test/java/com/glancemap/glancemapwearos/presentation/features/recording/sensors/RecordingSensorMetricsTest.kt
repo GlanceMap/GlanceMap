@@ -1,10 +1,39 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.sensors
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RecordingSensorMetricsTest {
+    @Test
+    fun barometerRunsOnlyForSmartElevationOrDisplayedPressure() {
+        assertEquals(
+            true,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO,
+                selectedMetricIds = emptyList(),
+            ),
+        )
+        assertEquals(
+            false,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
+                selectedMetricIds = emptyList(),
+            ),
+        )
+        assertEquals(
+            true,
+            shouldCollectRecordingBarometricPressure(
+                active = true,
+                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
+                selectedMetricIds = listOf(SettingsRepository.RECORDING_METRIC_BAROMETRIC_PRESSURE),
+            ),
+        )
+    }
+
     @Test
     fun unavailableRunPodClearsOnlyMetricsOwnedByExternalSensor() {
         val metrics =
@@ -73,5 +102,13 @@ class RecordingSensorMetricsTest {
         val next = runtime.updateStepCounter(value = 2_003f, nowMillis = 61_000L)
 
         assertEquals(103, next.steps)
+    }
+
+    @Test
+    fun watchHeartRatePublishesAtOneHertzOrPromptlyForMeaningfulChange() {
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_000L, 0L, 80, null))
+        assertEquals(false, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_200L, 1_000L, 82, 80))
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_250L, 1_000L, 86, 80))
+        assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(2_000L, 1_000L, 82, 80))
     }
 }

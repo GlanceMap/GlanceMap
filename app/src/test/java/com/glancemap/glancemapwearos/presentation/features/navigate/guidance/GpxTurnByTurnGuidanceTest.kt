@@ -272,6 +272,65 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
+    fun guidancePreviewsUphillTerrainAfterTheNextManeuver() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "terrain-up.gpx",
+                trackTitle = "Terrain route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 200.0),
+                        point(45.0, 6.001, elevation = 100.0),
+                        point(45.001, 6.001, elevation = 130.0),
+                    ),
+                startReached = true,
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.0001),
+            )
+
+        assertEquals(RouteInstructionCommand.LEFT, state.nextInstruction?.command)
+        assertEquals(GuidanceTerrainDirection.UPHILL, state.nextSegmentTerrain?.direction)
+        assertTrue((state.nextSegmentTerrain?.elevationChangeMeters ?: 0.0) > 25.0)
+
+        val confirmedState =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.00025, 6.001),
+            )
+
+        assertEquals(RouteInstructionCommand.LEFT, confirmedState.recentManeuverTerrain?.maneuver)
+        assertEquals(GuidanceTerrainDirection.UPHILL, confirmedState.recentManeuverTerrain?.terrain?.direction)
+    }
+
+    @Test
+    fun guidancePreviewsFlatWhenNextSegmentIsBelowTerrainThreshold() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "terrain-flat.gpx",
+                trackTitle = "Terrain route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 200.0),
+                        point(45.0, 6.001, elevation = 100.0),
+                        point(45.001, 6.001, elevation = 104.0),
+                    ),
+                startReached = true,
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.0001),
+            )
+
+        assertEquals(GuidanceTerrainDirection.FLAT, state.nextSegmentTerrain?.direction)
+    }
+
+    @Test
     fun guidanceFinishesWhenNearRouteEnd() {
         val session =
             buildGpxGuidanceSession(
@@ -396,7 +455,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 80.0,
-                locationAccuracyMeters = 10f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -406,7 +464,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 80.0,
-                locationAccuracyMeters = 10f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -414,14 +471,13 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
-    fun offRouteIgnoresReportedAccuracyAndClearsOnStrongRecovery() {
+    fun offRouteClearsOnStrongRecovery() {
         var state = GuidanceOffRouteConfirmationState()
         repeat(2) {
             state =
                 updateGuidanceOffRouteConfirmation(
                     previous = state,
                     distanceToRouteMeters = 150.0,
-                    locationAccuracyMeters = 90f,
                     thresholdMeters = 60.0,
                     allowOffRouteEntry = true,
                 )
@@ -433,7 +489,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 25.0,
-                locationAccuracyMeters = 125f,
                 thresholdMeters = 60.0,
                 allowOffRouteEntry = true,
             )
@@ -441,14 +496,13 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
-    fun offRouteUsesSelectedThresholdWithoutAccuracyAllowance() {
+    fun offRouteUsesSelectedThreshold() {
         var state = GuidanceOffRouteConfirmationState()
 
         state =
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 32.0,
-                locationAccuracyMeters = 18f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -458,7 +512,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 32.0,
-                locationAccuracyMeters = 18f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -473,7 +526,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 18.0,
-                locationAccuracyMeters = 12f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )
@@ -482,7 +534,6 @@ class GpxTurnByTurnGuidanceTest {
             updateGuidanceOffRouteConfirmation(
                 previous = state,
                 distanceToRouteMeters = 18.0,
-                locationAccuracyMeters = 12f,
                 thresholdMeters = 20.0,
                 allowOffRouteEntry = true,
             )

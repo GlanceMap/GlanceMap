@@ -213,7 +213,6 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.partial.content)
-    implementation(libs.okhttp)
 
     // Gson for JSON serialization
     implementation(libs.gson)
@@ -221,9 +220,6 @@ dependencies {
     // Native map picker
     implementation(libs.maplibre.android)
     implementation(libs.okhttp)
-
-    // Permissions (Critical for requesting POST_NOTIFICATIONS for the Service)
-    implementation(libs.accompanist.permissions)
 
     implementation(project(":transfercontract"))
     implementation(project(":trailcore"))

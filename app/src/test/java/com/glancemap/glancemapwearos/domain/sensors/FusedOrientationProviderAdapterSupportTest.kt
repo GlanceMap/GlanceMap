@@ -43,10 +43,26 @@ class FusedOrientationProviderAdapterSupportTest {
     }
 
     @Test
-    fun activeTurnPublishesAtFiftyHertzWithoutChangingTheSensorRequest() {
+    fun freshProviderStartDoesNotRetainThePreviousSessionHeading() {
+        assertFalse(
+            shouldRetainCachedFusedHeading(
+                cachedHeadingAgeMs = 2_000L,
+                retainCachedHeading = false,
+            ),
+        )
+        assertTrue(
+            shouldRetainCachedFusedHeading(
+                cachedHeadingAgeMs = 20L,
+                retainCachedHeading = true,
+            ),
+        )
+    }
+
+    @Test
+    fun activeTurnPublishesNineteenMsCallbacksWhileIdleKeepsItsNormalCadence() {
         assertFalse(
             shouldPublishFusedHeading(
-                nowElapsedMs = 1_019L,
+                nowElapsedMs = 1_015L,
                 lastPublishAtElapsedMs = 1_000L,
                 lowPowerMode = false,
                 activeTurn = true,
@@ -55,10 +71,28 @@ class FusedOrientationProviderAdapterSupportTest {
         )
         assertTrue(
             shouldPublishFusedHeading(
-                nowElapsedMs = 1_020L,
+                nowElapsedMs = 1_019L,
                 lastPublishAtElapsedMs = 1_000L,
                 lowPowerMode = false,
                 activeTurn = true,
+                force = false,
+            ),
+        )
+        assertFalse(
+            shouldPublishFusedHeading(
+                nowElapsedMs = 1_019L,
+                lastPublishAtElapsedMs = 1_000L,
+                lowPowerMode = false,
+                activeTurn = false,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldPublishFusedHeading(
+                nowElapsedMs = 1_040L,
+                lastPublishAtElapsedMs = 1_000L,
+                lowPowerMode = false,
+                activeTurn = false,
                 force = false,
             ),
         )
@@ -95,6 +129,34 @@ class FusedOrientationProviderAdapterSupportTest {
         assertTrue(third.shouldFallback)
         assertEquals(3, third.state.consecutiveSamples)
         assertEquals(1_100L, third.durationMs)
+    }
+
+    @Test
+    fun stoppedProviderMakesItsPendingReadyTimeoutANoOp() {
+        assertFalse(
+            isCurrentFusedReadyTimeout(
+                timeoutIsCurrent = true,
+                started = false,
+                usingFallback = false,
+                awaitingFusedReady = true,
+                timeoutRequestGeneration = 4L,
+                activeRequestGeneration = 4L,
+            ),
+        )
+    }
+
+    @Test
+    fun oldReadyTimeoutCannotAffectARestartedFusedRequest() {
+        assertFalse(
+            isCurrentFusedReadyTimeout(
+                timeoutIsCurrent = false,
+                started = true,
+                usingFallback = false,
+                awaitingFusedReady = true,
+                timeoutRequestGeneration = 4L,
+                activeRequestGeneration = 6L,
+            ),
+        )
     }
 
     private fun unusableUpdate(

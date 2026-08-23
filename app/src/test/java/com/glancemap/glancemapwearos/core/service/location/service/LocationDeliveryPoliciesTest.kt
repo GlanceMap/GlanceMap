@@ -28,6 +28,43 @@ class LocationDeliveryPoliciesTest {
     }
 
     @Test
+    fun freshKnownWatchGpsAccuracyFloorSuppressesRedundantBurst() {
+        assertTrue(
+            shouldSuppressImmediateBurstForFreshStream(
+                runtimeReason = NavigationRuntimeDemandReason.RECORDING,
+                runtimeMode = LocationRuntimeMode.INTERACTIVE,
+                intervalMs = 3_000L,
+                signal =
+                    GpsSignalSnapshot(
+                        lastFixElapsedRealtimeMs = 98_000L,
+                        lastFixAccuracyM = 125f,
+                        lastFixFresh = true,
+                        watchGpsOnlyActive = true,
+                    ),
+                nowElapsedMs = 100_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun fusedAccuracyFloorValueDoesNotSuppressRedundantBurst() {
+        assertFalse(
+            shouldSuppressImmediateBurstForFreshStream(
+                runtimeReason = NavigationRuntimeDemandReason.RECORDING,
+                runtimeMode = LocationRuntimeMode.INTERACTIVE,
+                intervalMs = 3_000L,
+                signal =
+                    GpsSignalSnapshot(
+                        lastFixElapsedRealtimeMs = 98_000L,
+                        lastFixAccuracyM = 125f,
+                        lastFixFresh = true,
+                    ),
+                nowElapsedMs = 100_000L,
+            ),
+        )
+    }
+
+    @Test
     fun staleOrOrdinaryMapStreamDoesNotSuppressBurst() {
         assertFalse(
             shouldSuppressImmediateBurstForFreshStream(

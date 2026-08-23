@@ -1,17 +1,63 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
+import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 
-data object RecordingLocationStartWarning
+data class RecordingLocationStartWarning(
+    val kind: Kind,
+    val rawAccuracyMeters: Float? = null,
+    val effectiveAccuracyMeters: Float? = null,
+    val fixAgeMs: Long = -1L,
+    val provider: String? = null,
+    val sourceMode: String? = null,
+) {
+    enum class Kind {
+        GPS_UNAVAILABLE,
+        LOW_ACCURACY,
+    }
+}
+
+internal const val RECORDING_START_PENDING_MESSAGE = "Starting REC…"
 
 internal fun isRecordingStartLocationReady(
     hasUsableLocation: Boolean,
     gpsSignalSnapshot: GpsSignalSnapshot,
+    decisionFixAgeMs: Long,
+    activityProfile: String = SettingsRepository.ACTIVITY_PROFILE_HIKE,
 ): Boolean =
     hasUsableLocation &&
         gpsSignalSnapshot.isLocationAvailable &&
-        gpsSignalSnapshot.lastFixFresh
+        decisionFixAgeMs != Long.MAX_VALUE &&
+        decisionFixAgeMs <= gpsSignalSnapshot.lastFixFreshMaxAgeMs &&
+        gpsSignalSnapshot
+            .effectiveAccuracyMeters()
+            .let { accuracy ->
+                accuracy.isFinite() && accuracy <= recordingFixProfileAccuracyLimitMeters(activityProfile)
+            }
+
+internal fun recordingLocationStartWarning(
+    gpsSignalSnapshot: GpsSignalSnapshot,
+    rawAccuracyMeters: Float?,
+    decisionFixAgeMs: Long,
+    provider: String?,
+): RecordingLocationStartWarning =
+    RecordingLocationStartWarning(
+        kind =
+            if (gpsSignalSnapshot.isLocationAvailable) {
+                RecordingLocationStartWarning.Kind.LOW_ACCURACY
+            } else {
+                RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE
+            },
+        rawAccuracyMeters = rawAccuracyMeters?.takeIf { it.isFinite() && it >= 0f },
+        effectiveAccuracyMeters =
+            gpsSignalSnapshot
+                .effectiveAccuracyMeters()
+                .takeIf { it.isFinite() && it >= 0f },
+        fixAgeMs = decisionFixAgeMs.takeIf { it != Long.MAX_VALUE } ?: -1L,
+        provider = provider,
+        sourceMode = gpsSignalSnapshot.activeSourceModeValue,
+    )
 
 data class RecordingStartWarning(
     val unlinkedDevices: List<String>,

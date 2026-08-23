@@ -1,0 +1,4 @@
+# Preserve the vendored Elevate snapshots exactly as supplied upstream.
+app/src/main/assets/theme/elevate/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+app/src/main/assets/theme/elevate-winter/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+app/src/main/assets/theme/elevate-winter-white/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

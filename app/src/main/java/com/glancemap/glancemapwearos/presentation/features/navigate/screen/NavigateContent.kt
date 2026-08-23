@@ -83,7 +83,6 @@ internal fun NavigateContent(
     hasLocationPermission: Boolean,
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
-    onMapHolderChange: (MapHolder?) -> Unit,
     onMapViewReadyForRendering: () -> Unit,
     onNavigateTimeSuppressedChange: (Boolean) -> Unit,
     showNavigateTime: Boolean,
@@ -93,7 +92,6 @@ internal fun NavigateContent(
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
     slopeOverlayProgressPercent: Int?,
-    zoomDefault: Int,
     zoomMin: Int,
     zoomMax: Int,
     zoomMinScaleMeters: Int,
@@ -156,7 +154,6 @@ internal fun NavigateContent(
     onCancelSelectingGpxPointB: () -> Unit,
     turnByTurnGuidanceState: TurnByTurnGuidanceState,
     turnByTurnGuidancePaused: Boolean,
-    turnByTurnPausedTrackTitle: String?,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
@@ -226,6 +223,8 @@ internal fun NavigateContent(
         )
     val turnByTurnFullScreenExpanded = expandedOverlayState.turnByTurnFullScreenExpanded
     val recordingDashboardFullScreenExpanded = expandedOverlayState.recordingDashboardFullScreenExpanded
+    val combinedGuidanceRecordingFullScreenExpanded =
+        expandedOverlayState.combinedGuidanceRecordingFullScreenExpanded
     val effectiveRecordingActionPromptRequestToken =
         expandedOverlayState.effectiveRecordingActionPromptRequestToken
     val suppressMapRenderingForGuidance = expandedOverlayState.suppressMapRenderingForGuidance
@@ -269,10 +268,6 @@ internal fun NavigateContent(
     val latestRouteToolSession = rememberUpdatedState(routeToolSession)
     val latestCrosshairSelectionActive = rememberUpdatedState(crosshairSelectionActive)
     val latestReshapePreviewInspectMode = rememberUpdatedState(reshapePreviewInspectMode)
-    val latestRouteToolModeActive =
-        rememberUpdatedState(
-            routeToolSession != null || crosshairSelectionActive || reshapePreviewInspectMode,
-        )
     val latestMapView = rememberUpdatedState(mapView)
     val latestOnZoomLevelChange = rememberUpdatedState(onZoomLevelChange)
     val latestOnViewportChanged = rememberUpdatedState(onViewportChanged)
@@ -288,6 +283,7 @@ internal fun NavigateContent(
     var poiTapPopupScrollInProgress by remember { mutableStateOf(false) }
     var routeToolOverlayRevision by remember { mutableIntStateOf(0) }
     var pendingDoubleTapPanningCheck by remember { mutableStateOf(false) }
+    val panTelemetry = remember(mapView) { NavigatePanTelemetry() }
     val latestPoiTapPopupScrollInProgress = rememberUpdatedState(poiTapPopupScrollInProgress)
 
     LaunchedEffect(poiFocusTarget) {
@@ -493,7 +489,8 @@ internal fun NavigateContent(
     val liveDistanceLabel = liveHudState.liveDistanceLabel
     val fullScreenPopupExpanded =
         turnByTurnFullScreenExpanded ||
-            recordingDashboardFullScreenExpanded
+            recordingDashboardFullScreenExpanded ||
+            combinedGuidanceRecordingFullScreenExpanded
     val shouldSuppressNavigateTime =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -657,7 +654,14 @@ internal fun NavigateContent(
                         }
                         if (centerChanged || zoomChanged) {
                             lastCenter = newCenter
-                            routeToolOverlayRevision++
+                            val routeToolOverlayRefreshed =
+                                shouldRefreshRouteToolOverlayForViewport(
+                                    routeToolSessionActive = latestRouteToolSession.value != null,
+                                )
+                            if (routeToolOverlayRefreshed) {
+                                routeToolOverlayRevision++
+                            }
+                            panTelemetry.onViewportChanged(routeToolOverlayRefreshed)
                             latestOnViewportChanged.value(newCenter, newZoom)
                             if (pendingDoubleTapPanningCheck) {
                                 scheduleDoubleTapPanningCheck()
@@ -704,6 +708,13 @@ internal fun NavigateContent(
                                             event.actionMasked == MotionEvent.ACTION_POINTER_UP
                                         ) {
                                             if (!isMultiTouchGestureSuppressed) {
+                                                panTelemetry.onPanFinished(
+                                                    navMode = latestNavMode.value,
+                                                    reason = "multi_touch",
+                                                    zoomLevel =
+                                                        mapView.model.mapViewPosition.zoomLevel
+                                                            .toInt(),
+                                                )
                                                 isMultiTouchGestureSuppressed = true
                                                 MotionEvent.obtain(event).run {
                                                     action = MotionEvent.ACTION_CANCEL
@@ -735,7 +746,18 @@ internal fun NavigateContent(
                                         // Reliable panning detection (MapView gets these events).
                                         when (event.actionMasked) {
                                             MotionEvent.ACTION_MOVE -> {
-                                                if (!isDragging) isDragging = true
+                                                if (!isDragging) {
+                                                    isDragging = true
+                                                    panTelemetry.onPanStarted(
+                                                        navMode = latestNavMode.value,
+                                                        routeToolSessionActive =
+                                                            latestRouteToolSession.value != null,
+                                                        zoomLevel =
+                                                            mapView.model.mapViewPosition.zoomLevel
+                                                                .toInt(),
+                                                    )
+                                                }
+                                                panTelemetry.onInputMove()
                                                 if (latestNavMode.value != NavMode.PANNING) {
                                                     latestOnUserPanStarted.value.invoke()
                                                 }
@@ -745,6 +767,18 @@ internal fun NavigateContent(
                                             MotionEvent.ACTION_CANCEL,
                                             -> {
                                                 isDragging = false
+                                                panTelemetry.onPanFinished(
+                                                    navMode = latestNavMode.value,
+                                                    reason =
+                                                        if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                                            "touch_up"
+                                                        } else {
+                                                            "cancel"
+                                                        },
+                                                    zoomLevel =
+                                                        mapView.model.mapViewPosition.zoomLevel
+                                                            .toInt(),
+                                                )
                                                 MapLayerMutationCoordinator.setGestureActive(mapView, false)
                                                 v.parent?.requestDisallowInterceptTouchEvent(false)
                                             }
@@ -850,7 +884,6 @@ internal fun NavigateContent(
                     northIndicatorIconSize = northIndicatorIconSize,
                     showZoomPlusButton = showZoomPlusButton,
                     showZoomMinusButton = showZoomMinusButton,
-                    currentZoomLevel = currentZoomLevel,
                     triggerHaptic = triggerHaptic,
                     onZoomStep = ::applyMapZoomStep,
                     zoomButtonSize = zoomButtonSize,
@@ -932,12 +965,13 @@ internal fun NavigateContent(
                     onCancelSelectingGpxPointB = onCancelSelectingGpxPointB,
                     turnByTurnGuidanceState = turnByTurnGuidanceState,
                     turnByTurnGuidancePaused = turnByTurnGuidancePaused,
-                    turnByTurnPausedTrackTitle = turnByTurnPausedTrackTitle,
                     turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
                     turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
                     onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
                     turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
                     recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
+                    combinedGuidanceRecordingFullScreenExpanded =
+                    combinedGuidanceRecordingFullScreenExpanded,
                     guideBackToRouteActive = guideBackToRouteActive,
                     showGuideBackPrompt = showGuideBackPrompt,
                     startDecisionPrompt = startDecisionPrompt,
@@ -946,6 +980,8 @@ internal fun NavigateContent(
                     onStopTurnByTurnGuidance = onStopTurnByTurnGuidance,
                     onTurnByTurnExpandedChange = expandedOverlayState.onTurnByTurnExpandedChange,
                     onRecordingExpandedChange = expandedOverlayState.onRecordingExpandedChange,
+                    onCombinedGuidanceRecordingExpandedChange =
+                        expandedOverlayState.onCombinedGuidanceRecordingExpandedChange,
                     onGuideBackToRoute = onGuideBackToRoute,
                     onDismissGuideBackPrompt = onDismissGuideBackPrompt,
                     onAcceptStartDecisionPrompt = onAcceptStartDecisionPrompt,
@@ -1055,7 +1091,7 @@ private fun CenteredNavigateTimeChip(
     }
     val label =
         when {
-            showTime -> formatNavigateClockTime(context, nowMillis, timeFormat)
+            showTime -> formatNavigateClockTime(nowMillis, timeFormat)
             recordingSaving -> "SAVE"
             recordingPaused -> "PAUSE"
             recordingActive -> "REC"
@@ -1154,6 +1190,9 @@ internal fun shouldEnterPanningAfterDoubleTap(
     return navigateHaversineMeters(center, marker) > thresholdMeters
 }
 
-private const val LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS = 3.0
+internal fun shouldRefreshRouteToolOverlayForViewport(
+    routeToolSessionActive: Boolean,
+): Boolean = routeToolSessionActive
+
 private const val DOUBLE_TAP_PANNING_DISTANCE_THRESHOLD_METERS = 4.0
 private const val DOUBLE_TAP_PANNING_CHECK_DELAY_MS = 120L

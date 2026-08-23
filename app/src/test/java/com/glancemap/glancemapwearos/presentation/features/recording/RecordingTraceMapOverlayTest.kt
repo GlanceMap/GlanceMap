@@ -7,14 +7,15 @@ import org.mapsforge.core.model.LatLong
 
 class RecordingTraceMapOverlayTest {
     @Test
-    fun liveTraceWithholdsNewestFixAndEndsFromPreviousFixAtMarker() {
+    fun liveTraceWithholdsMutableTailAndEndsFromLastStableFixAtMarker() {
         val first = LatLong(45.0, 6.0)
         val second = LatLong(45.0001, 6.0001)
-        val newest = LatLong(45.0002, 6.0002)
+        val third = LatLong(45.0002, 6.0002)
+        val newest = LatLong(45.0003, 6.0003)
 
         val state =
             recordingTraceRenderState(
-                segments = listOf(listOf(first, second, newest)),
+                segments = listOf(listOf(first, second, third, newest)),
                 followLocationMarker = true,
             )
 

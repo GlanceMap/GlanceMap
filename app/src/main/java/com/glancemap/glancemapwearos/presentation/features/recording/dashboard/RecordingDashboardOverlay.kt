@@ -191,6 +191,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
                         expanded = false
                         showCompactControls = true
                     },
+                    onDismiss = { expanded = false },
                 )
             }
         }

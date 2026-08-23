@@ -50,6 +50,7 @@ class TraceGpxEncoderTest {
                     longitude = 6.001,
                     timeMillis = 60_000L,
                     startsNewSegment = true,
+                    segmentStartReason = RecordingSegmentStartReason.GPS_GAP,
                 ),
             )
 
@@ -61,6 +62,7 @@ class TraceGpxEncoderTest {
 
         assertEquals(2, "<trkseg>".toRegex().findAll(xml).count())
         assertEquals(listOf(2, 1), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+        assertTrue(xml.contains("<gmap:segmentStartReason>GPS_GAP</gmap:segmentStartReason>"))
     }
 
     @Test
@@ -216,6 +218,7 @@ class TraceGpxEncoderTest {
         longitude: Double,
         timeMillis: Long,
         startsNewSegment: Boolean = false,
+        segmentStartReason: String? = null,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(latitude, longitude),
@@ -224,6 +227,7 @@ class TraceGpxEncoderTest {
             accuracyMeters = 8f,
             speedMps = 1f,
             startsNewSegment = startsNewSegment,
+            segmentStartReason = segmentStartReason,
         )
 
     private fun localTime(value: String): Long =

@@ -9,10 +9,10 @@ import java.io.InputStream
 
 class MapRepositoryImpl(
     private val context: Context,
-) : MapRepository {
+) {
     private val mapDir by lazy { context.getDir("maps", Context.MODE_PRIVATE) }
 
-    override suspend fun listMapFiles(): List<File> =
+    suspend fun listMapFiles(): List<File> =
         withContext(Dispatchers.IO) {
             if (!mapDir.exists()) return@withContext emptyList()
 
@@ -22,19 +22,20 @@ class MapRepositoryImpl(
                 ?: emptyList()
         }
 
-    override suspend fun fileExists(fileName: String): Boolean =
+    suspend fun fileExists(fileName: String): Boolean =
         withContext(Dispatchers.IO) {
             val safeName = File(fileName).name
             File(mapDir, safeName).exists()
         }
 
-    override suspend fun saveMapFileAtomic(
+    @Suppress("LongParameterList")
+    suspend fun saveMapFileAtomic(
         fileName: String,
         inputStream: InputStream,
         onProgress: (bytesCopied: Long) -> Unit,
-        expectedSize: Long?,
-        resumeOffset: Long,
-        computeSha256: Boolean,
+        expectedSize: Long? = null,
+        resumeOffset: Long = 0L,
+        computeSha256: Boolean = true,
     ): String? =
         withContext(Dispatchers.IO) {
             val exp = expectedSize?.takeIf { it > 0L }
@@ -65,7 +66,7 @@ class MapRepositoryImpl(
             result.sha256
         }
 
-    override suspend fun deleteMapFile(path: String): Boolean =
+    suspend fun deleteMapFile(path: String): Boolean =
         withContext(Dispatchers.IO) {
             val file = File(path)
             val isInsideDir = file.canonicalFile.parentFile?.canonicalPath == mapDir.canonicalPath
@@ -77,7 +78,7 @@ class MapRepositoryImpl(
             ok
         }
 
-    override suspend fun renameMapFile(
+    suspend fun renameMapFile(
         path: String,
         newName: String,
     ): File =

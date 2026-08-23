@@ -186,9 +186,14 @@ internal fun prepareCompassRegistrationResetState(
 
 internal fun sensorDelayForRate(mode: SensorRateMode): Int =
     when (mode) {
-        SensorRateMode.HIGH -> SensorManager.SENSOR_DELAY_UI // ~16 Hz (was GAME ~50 Hz)
+        SensorRateMode.HIGH -> SensorManager.SENSOR_DELAY_GAME // ~50 Hz while compass is active
         SensorRateMode.LOW -> SensorManager.SENSOR_DELAY_NORMAL // ~5 Hz (was UI ~16 Hz)
     }
+
+internal fun shouldReuseSensorCallbackHandler(
+    callbackThreadAlive: Boolean,
+    callbackThreadStopping: Boolean,
+): Boolean = callbackThreadAlive && !callbackThreadStopping
 
 internal fun registerCompassSensors(
     sensorManager: SensorManager,

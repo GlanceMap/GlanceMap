@@ -10,10 +10,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
-import com.google.android.horologist.annotations.ExperimentalHorologistApi
-import com.google.android.horologist.compose.layout.ScreenScaffold
+import androidx.wear.compose.material3.ScreenScaffold
 
-@OptIn(ExperimentalHorologistApi::class)
 @Composable
 internal fun WearSettingsListScreen(
     listTokens: SettingsListTokens = rememberSettingsListTokens(),

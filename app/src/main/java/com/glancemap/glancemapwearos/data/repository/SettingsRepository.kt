@@ -4,6 +4,13 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import kotlinx.coroutines.flow.Flow
 
+data class RecordingProgressVibrationSettings(
+    val distanceEnabled: Boolean = false,
+    val distanceMeters: Int = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+    val timeEnabled: Boolean = false,
+    val timeMinutes: Int = SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+)
+
 interface SettingsRepository {
     companion object {
         const val TIME_FORMAT_24_HOUR = "24_HOUR"
@@ -14,21 +21,44 @@ interface SettingsRepository {
         const val DIAGNOSTICS_CAPTURE_MODE_FULL = "FULL"
         const val DIAGNOSTICS_CAPTURE_MODE_BATTERY = "BATTERY"
         const val DEFAULT_DIAGNOSTICS_CAPTURE_MODE = DIAGNOSTICS_CAPTURE_MODE_FULL
+        const val DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED = false
         const val MIN_AMBIENT_GPS_INTERVAL_MS = 1_000L
         const val MAX_AMBIENT_GPS_INTERVAL_MS = 120_000L
         const val RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS = -1
+        const val GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS = -2
         const val GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS = 0
         const val DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS = 3
         const val DEFAULT_BIKE_RECORDING_SAMPLE_INTERVAL_SECONDS = 1
-        const val DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS = GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
+        const val DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS = 10
+        const val DEFAULT_BIKE_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS = 5
+        const val GPS_USAGE_PROFILE_BEST_TRACE = "BEST_TRACE"
+        const val GPS_USAGE_PROFILE_BALANCED = "BALANCED"
+        const val GPS_USAGE_PROFILE_LONG_BATTERY = "LONG_BATTERY"
+        const val GPS_USAGE_PROFILE_CUSTOM = "CUSTOM"
+        const val DEFAULT_GPS_USAGE_PROFILE = GPS_USAGE_PROFILE_BALANCED
         const val RECORDING_AUTO_PAUSE_OFF = "OFF"
         const val RECORDING_AUTO_PAUSE_BIKE_ONLY = "BIKE_ONLY"
         const val RECORDING_AUTO_PAUSE_ALWAYS = "ALWAYS"
-        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_OFF
+        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_ALWAYS
         const val RECORDING_TRACK_SMOOTHING_OFF = "OFF"
         const val RECORDING_TRACK_SMOOTHING_ADAPTIVE = "ADAPTIVE"
         const val RECORDING_TRACK_SMOOTHING_STRONG = "STRONG"
         const val DEFAULT_RECORDING_TRACK_SMOOTHING_MODE = RECORDING_TRACK_SMOOTHING_ADAPTIVE
+        const val RECORDING_PROGRESS_VIBRATION_OFF = "OFF"
+        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS = "DISTANCE_500_METERS"
+        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER = "DISTANCE_1_KILOMETER"
+        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS = "DISTANCE_2_KILOMETERS"
+        const val RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS = "DISTANCE_5_KILOMETERS"
+        const val RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES = "TIME_15_MINUTES"
+        const val RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES = "TIME_30_MINUTES"
+        const val RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES = "TIME_60_MINUTES"
+        const val DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE = RECORDING_PROGRESS_VIBRATION_OFF
+        const val DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 1_000
+        const val MIN_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 50
+        const val MAX_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS = 10_000
+        const val DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 30
+        const val MIN_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 1
+        const val MAX_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES = 120
         const val RECORDING_METRIC_DISTANCE = "distance"
         const val RECORDING_METRIC_TOTAL_TIME = "total_time"
         const val RECORDING_METRIC_DURATION = "duration"
@@ -158,7 +188,10 @@ interface SettingsRepository {
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS = 40
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_REPEAT_SECONDS = 60
         const val DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS = 3
-        const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS = GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
+        const val DEFAULT_BIKE_TURN_BY_TURN_GPS_INTERVAL_SECONDS = 1
+        const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS =
+            GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
+        const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_FIXED_GPS_INTERVAL_SECONDS = 10
         const val DEFAULT_TURN_BY_TURN_GPS_IN_AMBIENT_MODE = true
         const val DEFAULT_TURN_BY_TURN_SCREEN_OFF_BATCHING_ENABLED = false
         const val TURN_BY_TURN_METRIC_REMAINING_DISTANCE = "remaining_distance"
@@ -266,19 +299,13 @@ interface SettingsRepository {
 
     val gpsInterval: Flow<Long>
 
-    suspend fun setGpsInterval(interval: Long)
-
     val ambientGpsInterval: Flow<Long>
-
-    suspend fun setAmbientGpsInterval(interval: Long)
 
     val watchGpsOnly: Flow<Boolean>
 
     suspend fun setWatchGpsOnly(isOnly: Boolean)
 
     val gpsInAmbientMode: Flow<Boolean>
-
-    suspend fun setGpsInAmbientMode(enabled: Boolean)
 
     val gpsDebugTelemetry: Flow<Boolean>
 
@@ -296,13 +323,23 @@ interface SettingsRepository {
 
     suspend fun setGpsDebugTelemetryPopupEnabled(enabled: Boolean)
 
+    val gpsUsageProfile: Flow<String>
+
+    suspend fun setGpsUsageProfile(profile: String)
+
     val recordingSampleIntervalSeconds: Flow<Int>
 
     suspend fun setRecordingSampleIntervalSeconds(seconds: Int)
 
+    /** The last fixed REC screen-on cadence, retained while GPS is off. */
+    val recordingScreenOnFixedGpsIntervalSeconds: Flow<Int>
+
     val recordingScreenOffSampleIntervalSeconds: Flow<Int>
 
     suspend fun setRecordingScreenOffSampleIntervalSeconds(seconds: Int)
+
+    /** The last fixed REC screen-off cadence, retained while using off or same-as-screen-on. */
+    val recordingScreenOffFixedGpsIntervalSeconds: Flow<Int>
 
     val recordingAutoPauseMode: Flow<String>
 
@@ -311,6 +348,16 @@ interface SettingsRepository {
     val recordingTrackSmoothingMode: Flow<String>
 
     suspend fun setRecordingTrackSmoothingMode(mode: String)
+
+    val recordingProgressVibrationSettings: Flow<RecordingProgressVibrationSettings>
+
+    suspend fun setRecordingProgressVibrationDistanceEnabled(enabled: Boolean)
+
+    suspend fun setRecordingProgressVibrationDistanceMeters(distanceMeters: Int)
+
+    suspend fun setRecordingProgressVibrationTimeEnabled(enabled: Boolean)
+
+    suspend fun setRecordingProgressVibrationTimeMinutes(timeMinutes: Int)
 
     val recordingElevationSource: Flow<String>
 
@@ -437,9 +484,15 @@ interface SettingsRepository {
 
     suspend fun setTurnByTurnGpsIntervalSeconds(seconds: Int)
 
+    /** The last fixed TBT screen-on cadence, retained while GPS is off. */
+    val turnByTurnScreenOnFixedGpsIntervalSeconds: Flow<Int>
+
     val turnByTurnScreenOffGpsIntervalSeconds: Flow<Int>
 
     suspend fun setTurnByTurnScreenOffGpsIntervalSeconds(seconds: Int)
+
+    /** The last fixed TBT screen-off cadence, retained while adaptive mode is active. */
+    val turnByTurnScreenOffFixedGpsIntervalSeconds: Flow<Int>
 
     val turnByTurnBrouterGuideBackEnabled: Flow<Boolean>
 
@@ -495,18 +548,6 @@ interface SettingsRepository {
     val gpsAccuracyCircleEnabled: Flow<Boolean>
 
     suspend fun setGpsAccuracyCircleEnabled(enabled: Boolean)
-
-    val mapZoomDefault: Flow<Int>
-
-    suspend fun setMapZoomDefault(zoom: Int)
-
-    val mapZoomMin: Flow<Int>
-
-    suspend fun setMapZoomMin(zoom: Int)
-
-    val mapZoomMax: Flow<Int>
-
-    suspend fun setMapZoomMax(zoom: Int)
 
     val mapZoomDefaultScaleMeters: Flow<Int>
 

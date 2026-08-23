@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -30,8 +31,13 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
     areaFolders: List<Pair<String, List<OamDownloadArea>>>,
     selectedAreaFolder: String?,
     selectedAreaIds: Set<String>,
+    suggestedAreas: List<OamDownloadArea>,
     selection: OamDownloadSelection,
+    isFindingCurrentLocation: Boolean,
+    locationSuggestionMessage: String?,
     onDone: () -> Unit,
+    onUseCurrentLocation: () -> Unit,
+    onToggleSuggestedArea: (String) -> Unit,
     onOpenSearch: () -> Unit,
     onClearSearch: () -> Unit,
     onClearAreaSelection: () -> Unit,
@@ -50,6 +56,50 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
             icon = Icons.Filled.Check,
             onClick = onDone,
         )
+    }
+
+    item {
+        DownloadChip(
+            label = "Current location",
+            secondaryLabel =
+                when {
+                    isFindingCurrentLocation -> "Finding matching bundles…"
+                    locationSuggestionMessage != null -> locationSuggestionMessage
+                    suggestedAreas.isEmpty() -> "Find nearby bundles"
+                    else -> "Refresh nearby bundles"
+                },
+            icon = Icons.Filled.MyLocation,
+            onClick = onUseCurrentLocation,
+        )
+    }
+
+    if (suggestedAreas.isNotEmpty()) {
+        item {
+            Text(
+                text = "Suggested bundles",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        suggestedAreas.forEachIndexed { index, area ->
+            val selected = area.id in selectedAreaIds
+            item {
+                DownloadChip(
+                    label = area.region,
+                    secondaryLabel =
+                        when {
+                            selected -> "Selected"
+                            index == 0 -> "Best match"
+                            else -> "Also covers location"
+                        },
+                    icon = if (selected) Icons.Filled.Check else Icons.Filled.MyLocation,
+                    selected = selected,
+                    onClick = { onToggleSuggestedArea(area.id) },
+                )
+            }
+        }
     }
 
     item {

@@ -935,68 +935,6 @@ class MapRenderer(
         updateMapLayer(mapPath)
     }
 
-    private fun rebuildCurrentLayerWithExistingStore(
-        theme: XmlRenderTheme,
-        demSignature: String?,
-    ): Boolean {
-        val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.rebuildCurrentLayerWithExistingStore")
-        var timingStatus = "ok"
-        val mapDataStore = currentStore ?: return false
-        return runCatching {
-            currentLayer?.let { layer ->
-                mapView.mutateLayers { layers ->
-                    layers.remove(layer)
-                    releaseTileRendererLayerForStoreReuse(layer)
-                }
-            }
-            currentLayer = null
-
-            val tileRendererLayer =
-                createTileRendererLayer(
-                    mapDataStore = mapDataStore,
-                    theme = theme,
-                    warmStartupCache = false,
-                )
-            currentLayer = tileRendererLayer
-            mapView.mutateLayers { layers -> layers.add(0, tileRendererLayer) }
-            currentDemSignature = demSignature
-            currentMapPath
-                ?.let(::File)
-                ?.takeIf { it.isFile }
-                ?.let { mapFile ->
-                    updateHillshadeLayer(
-                        mapFile = mapFile,
-                        demSignature = demSignature,
-                        requiredDemTileIds = Dem3CoverageUtils.requiredTileIdsForMap(mapFile),
-                    )
-                }
-            updateReliefOverlayLayer()
-            publishReliefOverlayState(force = true)
-            forceRedraw()
-            timingStatus = "lightweight_reload"
-            true
-        }.getOrElse { error ->
-            timingStatus = "error_${error.javaClass.simpleName}"
-            Log.w(TAG, "rebuildCurrentLayerWithExistingStore: lightweight theme reload failed", error)
-            false
-        }.also {
-            MapHotPathDiagnostics.end(
-                marker = timingMarker,
-                status = timingStatus,
-                detail = "demPresent=${demSignature != null}",
-            )
-        }
-    }
-
-    private fun releaseTileRendererLayerForStoreReuse(layer: TileRendererLayer) {
-        runCatching {
-            disableLayerTileExpansion(layer, reason = "store_reuse")
-            layer.renderThemeFuture?.decrementRefCount()
-        }.onFailure { error ->
-            Log.w(TAG, "releaseTileRendererLayerForStoreReuse: Failed to release render theme", error)
-        }
-    }
-
     private fun armStartupTilePrewarm(layer: TileRendererLayer) {
         val config = tileCacheConfig
         if (

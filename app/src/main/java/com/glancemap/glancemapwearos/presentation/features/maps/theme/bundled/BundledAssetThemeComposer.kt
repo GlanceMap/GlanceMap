@@ -6,7 +6,7 @@ import android.util.Xml
 import com.glancemap.glancemapwearos.core.maps.theme.BundledRenderThemeAssetLocator
 import com.glancemap.glancemapwearos.core.maps.theme.RenderThemeXmlCapabilities
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
-import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
@@ -98,7 +98,7 @@ class BundledAssetThemeComposer(
                     .toList()
 
             val selectedStyleId =
-                if (styleId == ThemeRepositoryImpl.DEFAULT_STYLE_ID) {
+                if (styleId == ThemeUiIds.DEFAULT_STYLE_ID) {
                     resolveDefaultStyleIdFromAssets(normalizedThemeId)
                 } else {
                     styleId
@@ -109,7 +109,7 @@ class BundledAssetThemeComposer(
             }
 
             val isDefault =
-                styleId == ThemeRepositoryImpl.DEFAULT_STYLE_ID &&
+                styleId == ThemeUiIds.DEFAULT_STYLE_ID &&
                     overlays.isEmpty() &&
                     (
                         hillShadingEnabled ||
@@ -671,51 +671,6 @@ class BundledAssetThemeComposer(
                 toggleableOverlayLayerIds = emptySet(),
             )
         }
-
-    private fun collectToggleableOverlayLayerIds(originalXml: String): Set<String> {
-        val parser =
-            XmlPullParserFactory.newInstance().newPullParser().apply {
-                setInput(StringReader(originalXml))
-            }
-
-        val toggleable = HashSet<String>(256)
-
-        var insideStyleMenu = false
-        var styleMenuDepth = -1
-
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            when (parser.eventType) {
-                XmlPullParser.START_TAG -> {
-                    val tag = parser.name
-                    if (tag == "stylemenu") {
-                        insideStyleMenu = true
-                        styleMenuDepth = parser.depth
-                    } else if (insideStyleMenu && tag == "layer") {
-                        val id =
-                            parser.getAttributeValue(null, "id") ?: run {
-                                // no id -> ignore this layer
-                                parser.next()
-                                continue
-                            }
-                        val isStyle = parser.getAttributeValue(null, "visible") == "true"
-                        if (!isStyle) toggleable.add(id)
-                    }
-                }
-
-                XmlPullParser.END_TAG -> {
-                    val tag = parser.name
-                    if (insideStyleMenu && tag == "stylemenu" && parser.depth == styleMenuDepth) {
-                        insideStyleMenu = false
-                        styleMenuDepth = -1
-                        break
-                    }
-                }
-            }
-            parser.next()
-        }
-
-        return toggleable
-    }
 
     private fun copyStartTagWithAttributes(
         parser: XmlPullParser,

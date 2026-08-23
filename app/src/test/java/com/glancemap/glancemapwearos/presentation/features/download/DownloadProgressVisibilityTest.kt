@@ -26,4 +26,14 @@ class DownloadProgressVisibilityTest {
 
         assertTrue(progress.shouldShowInBundleProgress())
     }
+
+    @Test
+    fun `automatic reconnect progress remains visible`() {
+        assertTrue(
+            OamDownloadProgress(
+                phase = "RECONNECTING",
+                detail = "alps.map.zip reconnecting",
+            ).shouldShowInBundleProgress(),
+        )
+    }
 }

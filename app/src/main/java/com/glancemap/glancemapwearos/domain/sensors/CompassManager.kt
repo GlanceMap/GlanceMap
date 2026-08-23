@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.domain.sensors
 import android.content.Context
 import android.location.Location
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -263,7 +264,7 @@ class CompassManager private constructor(
     }
 
     private fun logDiagnostics(message: String) {
-        if (!DebugTelemetry.isEnabled()) return
+        if (!isCompassTelemetryCaptureActive()) return
         DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
     }
 }

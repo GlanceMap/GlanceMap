@@ -3,16 +3,20 @@ package com.glancemap.glancemapwearos.presentation.features.navigate.effects
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
@@ -30,11 +34,31 @@ internal fun NavigateCompassEffects(
     isOfflineMode: Boolean,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
     val latestCompassProviderType = rememberUpdatedState(compassProviderType)
     val latestScreenState = rememberUpdatedState(screenState)
     val latestIsOfflineMode = rememberUpdatedState(isOfflineMode)
     var pendingStopJob by remember { mutableStateOf<Job?>(null) }
+
+    val headingReferenceSensorsActive =
+        shouldRunHeadingReferenceSensors(
+            headingReferenceTestActive = headingReferenceTestActive,
+            screenState = screenState,
+            isOfflineMode = isOfflineMode,
+        )
+
+    DisposableEffect(headingReferenceSensorsActive) {
+        if (headingReferenceSensorsActive) {
+            CompassHeadingReferenceDiagnostics.attachNavigate(context)
+        }
+        onDispose {
+            if (headingReferenceSensorsActive) {
+                CompassHeadingReferenceDiagnostics.detachNavigate()
+            }
+        }
+    }
 
     fun stopCompass(
         immediate: Boolean,
@@ -210,6 +234,15 @@ internal fun shouldRunNavigateCompass(
         screenState == LocationScreenState.INTERACTIVE &&
         !isOfflineMode
 
+internal fun shouldRunHeadingReferenceSensors(
+    headingReferenceTestActive: Boolean,
+    screenState: LocationScreenState,
+    isOfflineMode: Boolean,
+): Boolean =
+    headingReferenceTestActive &&
+        screenState == LocationScreenState.INTERACTIVE &&
+        !isOfflineMode
+
 internal fun shouldStopNavigateCompassImmediately(
     screenState: LocationScreenState,
     isOfflineMode: Boolean,
@@ -258,7 +291,7 @@ internal fun resolveNavigateCompassImmediateStopDelayMs(
 }
 
 private fun logNavigateCompassEffect(message: String) {
-    if (!DebugTelemetry.isEnabled()) return
+    if (!isCompassTelemetryCaptureActive()) return
     DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
 }
 

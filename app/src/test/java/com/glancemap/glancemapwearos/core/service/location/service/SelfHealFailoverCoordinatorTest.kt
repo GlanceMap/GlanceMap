@@ -27,7 +27,198 @@ class SelfHealFailoverCoordinatorTest {
     }
 
     @Test
-    fun successfulImmediateFixClearsPendingNoFixFailoverProbe() {
+    fun phoneConnectionRecheckRunsDuringAutoFusedAndWatchGpsFailover() {
+        assertTrue(
+            shouldRecheckAutoFusedPhoneConnection(
+                fallbackToWatchGps = false,
+                autoFusedActive = true,
+                watchGpsOnly = false,
+                nowElapsedMs = 30_000L,
+                lastRecheckAtElapsedMs = 0L,
+            ),
+        )
+        assertFalse(
+            shouldRecheckAutoFusedPhoneConnection(
+                fallbackToWatchGps = true,
+                autoFusedActive = false,
+                watchGpsOnly = true,
+                nowElapsedMs = 30_000L,
+                lastRecheckAtElapsedMs = 0L,
+            ),
+        )
+        assertFalse(
+            shouldRecheckAutoFusedPhoneConnection(
+                fallbackToWatchGps = true,
+                autoFusedActive = false,
+                watchGpsOnly = false,
+                nowElapsedMs = 29_999L,
+                lastRecheckAtElapsedMs = 1L,
+            ),
+        )
+        assertTrue(
+            shouldRecheckAutoFusedPhoneConnection(
+                fallbackToWatchGps = true,
+                autoFusedActive = false,
+                watchGpsOnly = false,
+                nowElapsedMs = 30_001L,
+                lastRecheckAtElapsedMs = 1L,
+            ),
+        )
+    }
+
+    @Test
+    fun phoneDisconnectWhileTrackingSwitchesToWatchGpsWithoutScreenWake() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        telemetry.setDebugEnabled(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(
+            RequestSpec(
+                priority = Priority.PRIORITY_HIGH_ACCURACY,
+                intervalMs = 10_000L,
+                minDistanceMeters = 1f,
+                mode = LocationRuntimeMode.INTERACTIVE,
+                sourceMode = LocationSourceMode.AUTO_FUSED,
+            ),
+        )
+        var requestRefreshes = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(SupervisorJob()),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = { requestRefreshes += 1 },
+                requestImmediateLocation = {},
+                trackingEnabled = { true },
+                ambientModeActive = { true },
+                backgroundGpsEnabled = { true },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { false },
+                passiveLocationExperiment = { false },
+                phoneConnected = { false },
+                watchGpsAvailable = { true },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 10_000L },
+                strictFreshMaxAgeMs = { 20_000L },
+            )
+
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = false, nowElapsedMs = 5_000L)
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = false, nowElapsedMs = 6_000L)
+
+        assertTrue(coordinator.isAutoFusedFallbackToWatchGps())
+        assertEquals(LocationSourceMode.WATCH_GPS, coordinator.currentLocationSourceMode())
+        assertEquals(1, requestRefreshes)
+
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = true, nowElapsedMs = 7_000L)
+
+        assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
+        assertEquals(LocationSourceMode.AUTO_FUSED, coordinator.currentLocationSourceMode())
+        assertEquals(2, requestRefreshes)
+    }
+
+    @Test
+    fun phoneDisconnectDoesNotFailOverWhenTrackingIsInactiveOrWatchGpsUnavailable() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        telemetry.setDebugEnabled(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(interactiveAutoFusedRequestSpec())
+        var tracking = false
+        var watchGpsAvailable = true
+        var requestRefreshes = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(SupervisorJob()),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = { requestRefreshes += 1 },
+                requestImmediateLocation = {},
+                trackingEnabled = { tracking },
+                ambientModeActive = { true },
+                backgroundGpsEnabled = { true },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { false },
+                passiveLocationExperiment = { false },
+                phoneConnected = { false },
+                watchGpsAvailable = { watchGpsAvailable },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 10_000L },
+                strictFreshMaxAgeMs = { 20_000L },
+            )
+
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = false, nowElapsedMs = 5_000L)
+        tracking = true
+        watchGpsAvailable = false
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = false, nowElapsedMs = 6_000L)
+
+        assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
+        assertEquals(0, requestRefreshes)
+    }
+
+    @Test
+    fun backgroundFailoverUsesAConservativeNoFixThreshold() {
+        assertEquals(20_000L, resolveBackgroundAutoFusedFailoverThresholdMs(3_000L))
+        assertEquals(30_000L, resolveBackgroundAutoFusedFailoverThresholdMs(10_000L))
+    }
+
+    @Test
+    fun backgroundNoFixSwitchesFromPhoneToWatchGpsWithoutImmediateBurst() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        telemetry.setDebugEnabled(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(
+            RequestSpec(
+                priority = Priority.PRIORITY_HIGH_ACCURACY,
+                intervalMs = 10_000L,
+                minDistanceMeters = 1f,
+                mode = LocationRuntimeMode.INTERACTIVE,
+                sourceMode = LocationSourceMode.AUTO_FUSED,
+            ),
+        )
+        var requestRefreshes = 0
+        var immediateRequests = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(SupervisorJob()),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = { requestRefreshes += 1 },
+                requestImmediateLocation = { immediateRequests += 1 },
+                trackingEnabled = { true },
+                ambientModeActive = { true },
+                backgroundGpsEnabled = { true },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { false },
+                passiveLocationExperiment = { false },
+                phoneConnected = { false },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 10_000L },
+                strictFreshMaxAgeMs = { 20_000L },
+            )
+
+        coordinator.maybeTriggerBackgroundAutoFusedFailoverNow(
+            nowElapsedMs = 31_000L,
+            backgroundTracking = true,
+            expectedIntervalMs = 10_000L,
+        )
+
+        assertTrue(coordinator.isAutoFusedFallbackToWatchGps())
+        assertEquals(1, requestRefreshes)
+        assertEquals(0, immediateRequests)
+    }
+
+    @Test
+    fun connectedPhoneNoFixDoesNotTriggerWatchGpsFallback() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
         telemetry.setDebugEnabled(false)
         val engine = LocationEngine(telemetry)
@@ -40,7 +231,7 @@ class SelfHealFailoverCoordinatorTest {
                 sourceMode = LocationSourceMode.AUTO_FUSED,
             ),
         )
-        var lastAnyAcceptedFixAtElapsedMs = 1_000L
+        val lastAnyAcceptedFixAtElapsedMs = 1_000L
         var immediateRequests = 0
         val coordinator =
             SelfHealFailoverCoordinator(
@@ -69,16 +260,7 @@ class SelfHealFailoverCoordinatorTest {
             interactiveTracking = true,
             expectedIntervalMs = 3_000L,
         )
-        assertEquals(1, immediateRequests)
-
-        lastAnyAcceptedFixAtElapsedMs = 14_000L
-        coordinator.maybeTriggerInteractiveSelfHealNow(
-            nowElapsedMs = 28_000L,
-            interactiveTracking = true,
-            expectedIntervalMs = 3_000L,
-        )
-
-        assertEquals(2, immediateRequests)
+        assertEquals(0, immediateRequests)
         assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
     }
 
@@ -232,7 +414,7 @@ class SelfHealFailoverCoordinatorTest {
     }
 
     @Test
-    fun initialAutoFusedNoFixFallsBackToWatchGpsWithoutSecondFusedProbe() {
+    fun disconnectedInitialAutoFusedNoFixFallsBackToWatchGpsWithoutSecondFusedProbe() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
         telemetry.setDebugEnabled(false)
         val engine = LocationEngine(telemetry)
@@ -261,7 +443,7 @@ class SelfHealFailoverCoordinatorTest {
                 hasCoarsePermission = { true },
                 watchGpsOnly = { false },
                 passiveLocationExperiment = { false },
-                phoneConnected = { true },
+                phoneConnected = { false },
                 lastAnyAcceptedFixAtElapsedMs = { 0L },
                 lastCallbackAcceptedFixAtElapsedMs = { 0L },
                 lastRequestAppliedAtElapsedMs = { 1_000L },
@@ -465,7 +647,7 @@ class SelfHealFailoverCoordinatorTest {
     }
 
     @Test
-    fun disconnectedPhoneRefreshesConnectionInsteadOfProbingAutoFusedUntilPhoneReconnects() {
+    fun phoneReconnectionReturnsFromWatchGpsFallbackToAutoFused() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
         telemetry.setDebugEnabled(false)
         val engine = LocationEngine(telemetry)
@@ -510,81 +692,65 @@ class SelfHealFailoverCoordinatorTest {
         )
 
         assertTrue(coordinator.isAutoFusedFallbackToWatchGps())
-        assertEquals(1, requestRefreshes)
+        assertEquals(0, requestRefreshes)
 
         phoneConnected = true
-        coordinator.onPhoneConnectionStateChecked(phoneConnected = true)
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = true, nowElapsedMs = 41_000L)
         assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
-        assertEquals(2, requestRefreshes)
-
-        coordinator.maybeTriggerInteractiveSelfHealNow(
-            nowElapsedMs = 41_000L,
-            interactiveTracking = true,
-            expectedIntervalMs = 3_000L,
-        )
-
-        assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
-        assertEquals(2, requestRefreshes)
+        assertEquals(LocationSourceMode.AUTO_FUSED, coordinator.currentLocationSourceMode())
+        assertEquals(1, requestRefreshes)
     }
 
     @Test
-    fun disconnectedPhoneFallbackRechecksConnectionWithoutWaitingFullRecoveryProbeCooldown() {
+    fun watchGpsNoFixRequestsBoundedDirectRecoveryBeforeRestartingTheStream() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
         telemetry.setDebugEnabled(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(interactiveWatchGpsRequestSpec())
-        var requestRefreshes = 0
+        var immediateRequests = 0
+        var recoveryRequests = 0
         val coordinator =
             SelfHealFailoverCoordinator(
                 serviceScope = CoroutineScope(SupervisorJob()),
                 isServiceActive = { true },
                 engine = engine,
                 telemetry = telemetry,
-                requestLocationUpdateIfNeeded = {
-                    requestRefreshes += 1
-                    engine.forceRequestRefresh()
-                },
-                requestImmediateLocation = {},
+                requestLocationUpdateIfNeeded = {},
+                requestImmediateLocation = { immediateRequests += 1 },
                 trackingEnabled = { true },
                 ambientModeActive = { false },
                 hasFinePermission = { true },
                 hasCoarsePermission = { true },
-                watchGpsOnly = { false },
+                watchGpsOnly = { true },
                 passiveLocationExperiment = { false },
                 phoneConnected = { false },
-                lastAnyAcceptedFixAtElapsedMs = { 39_000L },
-                lastCallbackAcceptedFixAtElapsedMs = { 39_000L },
-                lastRequestAppliedAtElapsedMs = { 39_000L },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
                 expectedIntervalMs = { 3_000L },
                 strictFreshMaxAgeMs = { 6_000L },
+                requestWatchGpsRecovery = { _, _, _ ->
+                    recoveryRequests += 1
+                    true
+                },
             )
 
-        assertTrue(coordinator.forceAutoFusedFallbackToWatchGps("phone_disconnected", nowElapsedMs = 1_000L))
         coordinator.maybeTriggerInteractiveSelfHealNow(
-            nowElapsedMs = 40_000L,
-            interactiveTracking = true,
-            expectedIntervalMs = 3_000L,
-        )
-        assertEquals(1, requestRefreshes)
-
-        engine.markRequestApplied(interactiveWatchGpsRequestSpec())
-        coordinator.maybeTriggerInteractiveSelfHealNow(
-            nowElapsedMs = 50_000L,
+            nowElapsedMs = 16_000L,
             interactiveTracking = true,
             expectedIntervalMs = 3_000L,
         )
 
-        assertEquals(2, requestRefreshes)
+        assertEquals(1, recoveryRequests)
+        assertEquals(0, immediateRequests)
     }
 
     @Test
-    fun knownWatchGpsAccuracyFloorDoesNotCountAsAutoFusedRecovery() {
-        assertFalse(isWatchGpsGoodEnoughForAutoFusedRecovery(125f))
-    }
-
-    @Test
-    fun goodWatchGpsAccuracyCountsAsAutoFusedRecovery() {
-        assertTrue(isWatchGpsGoodEnoughForAutoFusedRecovery(35f))
+    fun watchGpsRecoveryUsesThreeIntervalsWithAFifteenSecondFloor() {
+        assertEquals(15_000L, resolveWatchGpsRecoveryStaleThresholdMs(3_000L))
+        assertEquals(30_000L, resolveWatchGpsRecoveryStaleThresholdMs(10_000L))
+        assertTrue(isWatchGpsRecoveryCooldownActive(60_000L, 1_000L))
+        assertFalse(isWatchGpsRecoveryCooldownActive(61_000L, 1_000L))
     }
 
     private fun interactiveWatchGpsRequestSpec(): RequestSpec =
@@ -594,5 +760,14 @@ class SelfHealFailoverCoordinatorTest {
             minDistanceMeters = 1f,
             mode = LocationRuntimeMode.INTERACTIVE,
             sourceMode = LocationSourceMode.WATCH_GPS,
+        )
+
+    private fun interactiveAutoFusedRequestSpec(): RequestSpec =
+        RequestSpec(
+            priority = Priority.PRIORITY_HIGH_ACCURACY,
+            intervalMs = 3_000L,
+            minDistanceMeters = 1f,
+            mode = LocationRuntimeMode.INTERACTIVE,
+            sourceMode = LocationSourceMode.AUTO_FUSED,
         )
 }

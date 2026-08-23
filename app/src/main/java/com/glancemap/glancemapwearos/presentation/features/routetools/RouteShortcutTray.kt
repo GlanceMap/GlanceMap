@@ -24,6 +24,10 @@ import androidx.compose.material.icons.filled.ViewComfyAlt
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,12 +56,16 @@ internal fun BoxScope.RouteShortcutTray(
     recordingActive: Boolean,
     recordingPaused: Boolean,
     recordingSaving: Boolean,
+    headingReferenceTestActive: Boolean,
     onToggleExpanded: () -> Unit,
     onKeepAppOpenClick: () -> Unit,
     onGpxToolsClick: () -> Unit,
     onCreatePoiClick: () -> Unit,
     onRecordingClick: () -> Unit,
+    onHeadingReferenceMark: (Float) -> Unit,
 ) {
+    var headingReferenceIndex by remember(headingReferenceTestActive) { mutableIntStateOf(0) }
+    val headingReferenceDeg = headingReferenceIndex * 90f
     Box(
         modifier =
             Modifier
@@ -77,6 +85,23 @@ internal fun BoxScope.RouteShortcutTray(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
+                if (headingReferenceTestActive) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ShortcutActionChip(
+                            text = "Ref ${headingReferenceLabel(headingReferenceIndex)}",
+                            height = actionHeight,
+                            onClick = { headingReferenceIndex = (headingReferenceIndex + 1) % 4 },
+                        )
+                        ShortcutActionChip(
+                            text = "Mark",
+                            height = actionHeight,
+                            onClick = { onHeadingReferenceMark(headingReferenceDeg) },
+                        )
+                    }
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -180,6 +205,14 @@ internal fun BoxScope.RouteShortcutTray(
         }
     }
 }
+
+private fun headingReferenceLabel(index: Int): String =
+    when (index) {
+        0 -> "N"
+        1 -> "E"
+        2 -> "S"
+        else -> "W"
+    }
 
 @Composable
 private fun ShortcutActionChip(

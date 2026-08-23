@@ -15,8 +15,8 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DemDownloadDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
-import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -229,7 +229,7 @@ class ThemeViewModel(
                     .filterIsInstance<ThemeListItem.Style>()
                     .firstOrNull { it.selected }
                     ?.id
-                    ?: ThemeRepositoryImpl.DEFAULT_STYLE_ID
+                    ?: ThemeUiIds.DEFAULT_STYLE_ID
 
             val overlays = snapshot.filterIsInstance<ThemeListItem.Overlay>()
             if (overlays.isEmpty()) return@launch
@@ -286,15 +286,15 @@ class ThemeViewModel(
     ) {
         viewModelScope.launch {
             when (toggleId) {
-                ThemeRepositoryImpl.GLOBAL_HILL_SHADING_ID -> {
+                ThemeUiIds.HILL_SHADING -> {
                     Log.d("Theme", "setGlobalToggle: hillShading=$enabled")
                     themeRepository.setHillShadingEnabled(enabled)
                 }
-                ThemeRepositoryImpl.GLOBAL_RELIEF_OVERLAY_ID -> {
+                ThemeUiIds.RELIEF_OVERLAY -> {
                     Log.d("Theme", "setGlobalToggle: reliefOverlay=$enabled")
                     themeRepository.setReliefOverlayEnabled(enabled)
                 }
-                ThemeRepositoryImpl.GLOBAL_NIGHT_MODE_ID -> {
+                ThemeUiIds.NIGHT_MODE -> {
                     Log.d("Theme", "setGlobalToggle: nightMode=$enabled")
                     themeRepository.setNightModeEnabled(enabled)
                 }
