@@ -112,10 +112,11 @@ class NavigateEffectsSupportTest {
             heldHeadingDeg = 100f,
             requirePostStableHeading = true,
         )
-        val acquiringState = readyGoogleFusedState().copy(
-            trackingState = CompassTrackingState.ACQUIRING,
-            trackingReason = CompassTrackingReason.RECOVERING,
-        )
+        val acquiringState =
+            readyGoogleFusedState().copy(
+                trackingState = CompassTrackingState.ACQUIRING,
+                trackingReason = CompassTrackingReason.RECOVERING,
+            )
         val stableState = stableTrackingState(acquiringState)
 
         // A provider restart must publish its raw 104° heading, not the prior wrist-down 42°
@@ -300,22 +301,24 @@ class NavigateEffectsSupportTest {
 
         assertEquals(
             90f,
-            gate.resolve(
-                renderState = stableMagneticGoogleFusedState(),
-                compassHeadingDeg = 90f,
-                headingSampleElapsedRealtimeMs = 1_001L,
-                nowElapsedMs = 1_010L,
-            )?.headingDeg ?: -1f,
+            gate
+                .resolve(
+                    renderState = stableMagneticGoogleFusedState(),
+                    compassHeadingDeg = 90f,
+                    headingSampleElapsedRealtimeMs = 1_001L,
+                    nowElapsedMs = 1_010L,
+                )?.headingDeg ?: -1f,
             0f,
         )
         assertEquals(
             180f,
-            gate.resolve(
-                renderState = interferenceGoogleFusedState(),
-                compassHeadingDeg = 180f,
-                headingSampleElapsedRealtimeMs = 1_050L,
-                nowElapsedMs = 1_060L,
-            )?.headingDeg ?: -1f,
+            gate
+                .resolve(
+                    renderState = interferenceGoogleFusedState(),
+                    compassHeadingDeg = 180f,
+                    headingSampleElapsedRealtimeMs = 1_050L,
+                    nowElapsedMs = 1_060L,
+                )?.headingDeg ?: -1f,
             0f,
         )
     }
@@ -544,12 +547,13 @@ class NavigateEffectsSupportTest {
         )
         assertEquals(
             300f,
-            gate.resolve(
-                renderState = stableTrackingState(readyGoogleFusedState()),
-                compassHeadingDeg = 300f,
-                headingSampleElapsedRealtimeMs = 1_021L,
-                nowElapsedMs = 1_030L,
-            )?.headingDeg ?: -1f,
+            gate
+                .resolve(
+                    renderState = stableTrackingState(readyGoogleFusedState()),
+                    compassHeadingDeg = 300f,
+                    headingSampleElapsedRealtimeMs = 1_021L,
+                    nowElapsedMs = 1_030L,
+                )?.headingDeg ?: -1f,
             0f,
         )
     }

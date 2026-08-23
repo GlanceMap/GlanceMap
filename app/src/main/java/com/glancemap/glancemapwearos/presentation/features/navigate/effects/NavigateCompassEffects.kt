@@ -10,10 +10,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive

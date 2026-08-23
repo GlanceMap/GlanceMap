@@ -1,7 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
-import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.CompassHeadingTelemetrySummary
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason

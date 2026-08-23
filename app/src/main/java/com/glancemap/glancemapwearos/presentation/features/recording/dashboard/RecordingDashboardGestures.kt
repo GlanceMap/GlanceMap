@@ -42,11 +42,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.wear.compose.material3.MaterialTheme
-import androidx.wear.compose.material3.Text
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.formatNavigateClockTime
@@ -172,7 +172,7 @@ internal fun RecordingFullscreenPageShell(
                 }.onPreRotaryScrollEvent { event ->
                     if (
                         rotaryFocusGeneration > 0 &&
-                            pendingWakeRotaryEventGeneration == rotaryFocusGeneration
+                        pendingWakeRotaryEventGeneration == rotaryFocusGeneration
                     ) {
                         val latencyMs =
                             (SystemClock.elapsedRealtime() - wakeResumedAtElapsedMs).coerceAtLeast(0L)

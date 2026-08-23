@@ -133,6 +133,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
             currentlyVisible = expandedVisibility.currentState,
             targetVisible = expandedVisibility.targetState,
         )
+
     fun expandPopup() {
         onExpandedChange(true)
         expanded = true

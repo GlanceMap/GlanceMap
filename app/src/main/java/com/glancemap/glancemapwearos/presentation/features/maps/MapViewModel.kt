@@ -1042,8 +1042,7 @@ class MapViewModel(
         schedulePendingRendererWorkIfReady()
     }
 
-    private fun mapIdentity(path: String?): String =
-        path?.let { value -> value.hashCode().toUInt().toString(16) } ?: "none"
+    private fun mapIdentity(path: String?): String = path?.let { value -> value.hashCode().toUInt().toString(16) } ?: "none"
 
     private fun schedulePendingRendererWorkIfReady() {
         val renderer =

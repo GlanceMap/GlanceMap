@@ -66,22 +66,23 @@ internal class OamExtractionTelemetryReporter(
     private var batteryDurationMs = 0L
     private var maxWallNoProgressMs = 0L
 
-    fun onBytesWritten(bytesWritten: Long) = synchronized(lock) {
-        val wallNow = wallNowMs()
-        val uptimeNow = uptimeNowMs()
-        val snapshot = observe(wallNow)
-        val safeBytes = bytesWritten.coerceAtLeast(0L)
-        if (safeBytes > latestBytes) {
-            maxWallNoProgressMs =
-                maxOf(maxWallNoProgressMs, elapsed(wallNow, lastProgressAtWallMs))
-            latestBytes = safeBytes
-            lastProgressAtWallMs = wallNow
-            lastProgressAtUptimeMs = uptimeNow
+    fun onBytesWritten(bytesWritten: Long) =
+        synchronized(lock) {
+            val wallNow = wallNowMs()
+            val uptimeNow = uptimeNowMs()
+            val snapshot = observe(wallNow)
+            val safeBytes = bytesWritten.coerceAtLeast(0L)
+            if (safeBytes > latestBytes) {
+                maxWallNoProgressMs =
+                    maxOf(maxWallNoProgressMs, elapsed(wallNow, lastProgressAtWallMs))
+                latestBytes = safeBytes
+                lastProgressAtWallMs = wallNow
+                lastProgressAtUptimeMs = uptimeNow
+            }
+            if (elapsed(wallNow, lastProgressLogAtWallMs) >= progressIntervalMs) {
+                emitProgress(wallNow, uptimeNow, snapshot)
+            }
         }
-        if (elapsed(wallNow, lastProgressLogAtWallMs) >= progressIntervalMs) {
-            emitProgress(wallNow, uptimeNow, snapshot)
-        }
-    }
 
     fun emitStallHeartbeatIfNeeded() {
         synchronized(lock) {
@@ -111,31 +112,32 @@ internal class OamExtractionTelemetryReporter(
         }
     }
 
-    fun complete(finalBytes: Long) = synchronized(lock) {
-        val wallNow = wallNowMs()
-        val uptimeNow = uptimeNowMs()
-        observe(wallNow)
-        if (finalBytes > latestBytes) {
-            maxWallNoProgressMs =
-                maxOf(maxWallNoProgressMs, elapsed(wallNow, lastProgressAtWallMs))
-            latestBytes = finalBytes
-            lastProgressAtWallMs = wallNow
-            lastProgressAtUptimeMs = uptimeNow
+    fun complete(finalBytes: Long) =
+        synchronized(lock) {
+            val wallNow = wallNowMs()
+            val uptimeNow = uptimeNowMs()
+            observe(wallNow)
+            if (finalBytes > latestBytes) {
+                maxWallNoProgressMs =
+                    maxOf(maxWallNoProgressMs, elapsed(wallNow, lastProgressAtWallMs))
+                latestBytes = finalBytes
+                lastProgressAtWallMs = wallNow
+                lastProgressAtUptimeMs = uptimeNow
+            }
+            val wallDurationMs = elapsed(wallNow, startedAtWallMs)
+            val activeCopyDurationMs = elapsed(uptimeNow, startedAtUptimeMs)
+            emit(
+                "event=extract_summary label=$label entry=$entryFileName " +
+                    "wallDurationMs=$wallDurationMs activeCopyDurationMs=$activeCopyDurationMs " +
+                    "suspendOrSleepDurationMs=${(wallDurationMs - activeCopyDurationMs).coerceAtLeast(0L)} " +
+                    "wallAverageMBps=${mbPerSecond(latestBytes, wallDurationMs)} " +
+                    "activeCopyAverageMBps=${mbPerSecond(latestBytes, activeCopyDurationMs)} " +
+                    "screenOnDurationMs=$screenOnDurationMs screenOffDurationMs=$screenOffDurationMs " +
+                    "chargingDurationMs=$chargingDurationMs batteryDurationMs=$batteryDurationMs " +
+                    "maxWallNoProgressMs=$maxWallNoProgressMs " +
+                    "cpuTimeDeltaMs=${(processCpuMs() - startCpuMs).coerceAtLeast(0L)}",
+            )
         }
-        val wallDurationMs = elapsed(wallNow, startedAtWallMs)
-        val activeCopyDurationMs = elapsed(uptimeNow, startedAtUptimeMs)
-        emit(
-            "event=extract_summary label=$label entry=$entryFileName " +
-                "wallDurationMs=$wallDurationMs activeCopyDurationMs=$activeCopyDurationMs " +
-                "suspendOrSleepDurationMs=${(wallDurationMs - activeCopyDurationMs).coerceAtLeast(0L)} " +
-                "wallAverageMBps=${mbPerSecond(latestBytes, wallDurationMs)} " +
-                "activeCopyAverageMBps=${mbPerSecond(latestBytes, activeCopyDurationMs)} " +
-                "screenOnDurationMs=$screenOnDurationMs screenOffDurationMs=$screenOffDurationMs " +
-                "chargingDurationMs=$chargingDurationMs batteryDurationMs=$batteryDurationMs " +
-                "maxWallNoProgressMs=$maxWallNoProgressMs " +
-                "cpuTimeDeltaMs=${(processCpuMs() - startCpuMs).coerceAtLeast(0L)}",
-        )
-    }
 
     private fun emitProgress(
         wallNow: Long,

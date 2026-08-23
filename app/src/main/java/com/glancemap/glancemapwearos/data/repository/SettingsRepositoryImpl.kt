@@ -2638,7 +2638,6 @@ class SettingsRepositoryImpl private constructor(
                     SettingsRepository.MAX_CYCLING_WHEEL_CIRCUMFERENCE_METERS,
                 )
                 ?: SettingsRepository.DEFAULT_CYCLING_WHEEL_CIRCUMFERENCE_METERS
-
     }
 
     private fun applyProfileDefaultIfUncustomized(

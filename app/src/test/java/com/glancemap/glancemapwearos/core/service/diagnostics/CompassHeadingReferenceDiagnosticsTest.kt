@@ -276,28 +276,27 @@ class CompassHeadingReferenceDiagnosticsTest {
         referenceHeadingDeg: Float,
         providerHeadingDeg: Float,
         renderedHeadingDeg: Float,
-    ) =
-        CompassHeadingReferenceMarker(
-            referenceHeadingDeg = referenceHeadingDeg,
-            provider =
-                CompassHeadingReferenceProviderSample(
-                    googleFusedHeadingDeg = providerHeadingDeg,
-                    targetHeadingDeg = providerHeadingDeg,
-                    usable = true,
-                    northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
-                    magneticFieldUt = 48f,
-                    integrityState = CompassTrackingState.TRACKING,
-                    pitchDeg = 0f,
-                    rollDeg = 0f,
-                    atElapsedMs = 1_000L,
-                ),
-            render =
-                CompassHeadingReferenceRenderSample(
-                    targetHeadingDeg = providerHeadingDeg,
-                    renderedHeadingDeg = renderedHeadingDeg,
-                    mapsforgeMapRotationDeg = -renderedHeadingDeg,
-                    atElapsedMs = 1_000L,
-                ),
-            capturedAtElapsedMs = 1_010L,
-        )
+    ) = CompassHeadingReferenceMarker(
+        referenceHeadingDeg = referenceHeadingDeg,
+        provider =
+            CompassHeadingReferenceProviderSample(
+                googleFusedHeadingDeg = providerHeadingDeg,
+                targetHeadingDeg = providerHeadingDeg,
+                usable = true,
+                northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
+                magneticFieldUt = 48f,
+                integrityState = CompassTrackingState.TRACKING,
+                pitchDeg = 0f,
+                rollDeg = 0f,
+                atElapsedMs = 1_000L,
+            ),
+        render =
+            CompassHeadingReferenceRenderSample(
+                targetHeadingDeg = providerHeadingDeg,
+                renderedHeadingDeg = renderedHeadingDeg,
+                mapsforgeMapRotationDeg = -renderedHeadingDeg,
+                atElapsedMs = 1_000L,
+            ),
+        capturedAtElapsedMs = 1_010L,
+    )
 }

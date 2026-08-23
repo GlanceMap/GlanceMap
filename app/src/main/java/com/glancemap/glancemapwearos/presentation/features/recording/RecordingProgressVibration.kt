@@ -111,8 +111,7 @@ internal fun recordingDisplayDistanceMeters(
         else -> state.distanceMeters
     }.takeIf { it.isFinite() }?.coerceAtLeast(0.0) ?: 0.0
 
-private fun Long.isFreshExternalDistanceTime(nowMillis: Long): Boolean =
-    this > 0L && (nowMillis - this).coerceAtLeast(0L) <= EXTERNAL_DISTANCE_FALLBACK_STALE_MS
+private fun Long.isFreshExternalDistanceTime(nowMillis: Long): Boolean = this > 0L && (nowMillis - this).coerceAtLeast(0L) <= EXTERNAL_DISTANCE_FALLBACK_STALE_MS
 
 private const val EXTERNAL_DISTANCE_FALLBACK_STALE_MS = 15_000L
 

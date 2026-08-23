@@ -308,14 +308,13 @@ class OamBundlePipelineTest {
     private fun extractionSnapshot(
         interactive: Boolean,
         charging: Boolean,
-    ) =
-        OamExtractionRuntimeSnapshot(
-            interactive = interactive,
-            charging = charging,
-            plugged = if (charging) "ac" else "battery",
-            batteryPercent = "50",
-            thermalStatus = "0",
-            wakeLockHeld = true,
-            wifiLockHeld = true,
-        )
+    ) = OamExtractionRuntimeSnapshot(
+        interactive = interactive,
+        charging = charging,
+        plugged = if (charging) "ac" else "battery",
+        batteryPercent = "50",
+        thermalStatus = "0",
+        wakeLockHeld = true,
+        wifiLockHeld = true,
+    )
 }

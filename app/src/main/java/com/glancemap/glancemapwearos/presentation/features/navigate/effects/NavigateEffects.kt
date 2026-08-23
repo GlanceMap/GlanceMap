@@ -689,11 +689,12 @@ internal class NavigateWakeContinuityCapture {
             preLoweringDetected = selection.preLoweringDetected,
             motionStartAgeMs = selection.motionStartAgeMs,
             selectionReason = selection.reason,
-            diagnosticHistory = diagnosticHistory(
-                currentHeadingDeg = fallbackHeadingDeg,
-                nowElapsedMs = nowElapsedMs,
-                selection = selection,
-            ),
+            diagnosticHistory =
+                diagnosticHistory(
+                    currentHeadingDeg = fallbackHeadingDeg,
+                    nowElapsedMs = nowElapsedMs,
+                    selection = selection,
+                ),
         )
     }
 
@@ -718,8 +719,9 @@ internal class NavigateWakeContinuityCapture {
         nowElapsedMs: Long,
     ): WakeAnchorSelection {
         val samples = interactiveHistory.filter { nowElapsedMs - it.atElapsedMs in 0L..WAKE_ANCHOR_HISTORY_MS }
-        val latestSample = samples.lastOrNull()
-            ?: return WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_history")
+        val latestSample =
+            samples.lastOrNull()
+                ?: return WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_history")
         if (nowElapsedMs - latestSample.atElapsedMs > WAKE_ANCHOR_RECENT_MOTION_MS) {
             return WakeAnchorSelection(currentHeadingDeg, 0L, false, null, "current_no_recent_motion")
         }
@@ -729,7 +731,7 @@ internal class NavigateWakeContinuityCapture {
                 .firstOrNull { candidate ->
                     isStableBefore(candidate, samples) &&
                         abs(angleDeltaDeg(currentHeadingDeg, candidate.renderedHeadingDeg)) >=
-                            WAKE_ANCHOR_MIN_HEADING_CHANGE_DEG &&
+                        WAKE_ANCHOR_MIN_HEADING_CHANGE_DEG &&
                         hasLoweringTiltSignature(candidate, latestSample)
                 }
         return if (stableCandidate == null) {
@@ -762,8 +764,7 @@ internal class NavigateWakeContinuityCapture {
                 .groupBy { (nowElapsedMs - it.atElapsedMs) / WAKE_ANCHOR_DIAGNOSTIC_SAMPLE_MS }
                 .values
                 .map { bucket -> bucket.last() } + selectedSample
-            )
-            .filterNotNull()
+        ).filterNotNull()
             .distinctBy { it.atElapsedMs }
             .sortedBy { it.atElapsedMs }
             .map { sample ->
@@ -975,8 +976,10 @@ internal fun shouldHoldCompassFollowStartupForMagneticInterference(
     renderState: CompassRenderState,
 ): Boolean =
     renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
-        (renderState.magneticInterference ||
-            renderState.magneticQuality == CompassMagneticQuality.INTERFERENCE)
+        (
+            renderState.magneticInterference ||
+                renderState.magneticQuality == CompassMagneticQuality.INTERFERENCE
+        )
 
 internal fun hasStableMagneticCompassHeading(renderState: CompassRenderState): Boolean =
     renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
@@ -985,8 +988,7 @@ internal fun hasStableMagneticCompassHeading(renderState: CompassRenderState): B
         renderState.trackingState == CompassTrackingState.TRACKING &&
         renderState.trackingReason == CompassTrackingReason.STABLE
 
-internal fun shouldUseWakeContinuityAnchor(navMode: NavMode): Boolean =
-    navMode == NavMode.COMPASS_FOLLOW
+internal fun shouldUseWakeContinuityAnchor(navMode: NavMode): Boolean = navMode == NavMode.COMPASS_FOLLOW
 
 internal fun shouldUseResponsiveCompassMapRotation(renderState: CompassRenderState): Boolean =
     shouldDriveCompassFollowMap(renderState) &&
@@ -1098,13 +1100,15 @@ internal class NavigateRotationSettleGate {
         val hasStableRecoveryHeading = hasStableMagneticCompassHeading(renderState)
         val hasStableTracking =
             hasStableRecoveryHeading ||
-                (!magneticRecoveryRequired &&
-                    renderState.trackingState == CompassTrackingState.TRACKING &&
-                    renderState.trackingReason == CompassTrackingReason.STABLE)
+                (
+                    !magneticRecoveryRequired &&
+                        renderState.trackingState == CompassTrackingState.TRACKING &&
+                        renderState.trackingReason == CompassTrackingReason.STABLE
+                )
         if (
             requirePostStableHeading &&
-                hasStableTracking &&
-                stableTrackingObservedAtElapsedMs == Long.MIN_VALUE
+            hasStableTracking &&
+            stableTrackingObservedAtElapsedMs == Long.MIN_VALUE
         ) {
             stableTrackingObservedAtElapsedMs = nowElapsedMs
         }
@@ -1187,8 +1191,7 @@ internal class NavigateRotationSettleGate {
         )
     }
 
-    private fun releaseVisualStepCap(nowElapsedMs: Long): Float? =
-        WAKE_RELEASE_MAX_VISIBLE_STEP_DEG.takeIf { nowElapsedMs < releaseVisualCapUntilElapsedMs }
+    private fun releaseVisualStepCap(nowElapsedMs: Long): Float? = WAKE_RELEASE_MAX_VISIBLE_STEP_DEG.takeIf { nowElapsedMs < releaseVisualCapUntilElapsedMs }
 
     private fun log(message: String) {
         if (isCompassTelemetryCaptureActive()) DebugTelemetry.log(COMPASS_TELEMETRY_TAG, message)
@@ -1329,14 +1332,15 @@ internal fun resolveHeadingAnimationDelta(
                 responsiveRotation = responsiveRotation,
             )
     // A delayed frame must not turn a transient provider jump into a visible snap.
-    val maximumStepDeg = minOf(
-        maxStepDeg ?: Float.POSITIVE_INFINITY,
-        if (responsiveRotation) {
-            RESPONSIVE_HEADING_ANIMATION_MAX_STEP_DEG
-        } else {
-            HEADING_ANIMATION_MAX_STEP_DEG
-        },
-    )
+    val maximumStepDeg =
+        minOf(
+            maxStepDeg ?: Float.POSITIVE_INFINITY,
+            if (responsiveRotation) {
+                RESPONSIVE_HEADING_ANIMATION_MAX_STEP_DEG
+            } else {
+                HEADING_ANIMATION_MAX_STEP_DEG
+            },
+        )
     return animatedDelta.coerceIn(
         minimumValue = -maximumStepDeg,
         maximumValue = maximumStepDeg,
@@ -1433,8 +1437,7 @@ private fun markMapOrientationInitialized(mapView: MapView) {
 
 private fun Float.formatTelemetry(decimals: Int): String = "%.${decimals}f".format(Locale.US, this)
 
-private fun Float.formatWakeAnchor(decimals: Int): String =
-    takeIf(Float::isFinite)?.let { "%.${decimals}f".format(Locale.US, it) } ?: "na"
+private fun Float.formatWakeAnchor(decimals: Int): String = takeIf(Float::isFinite)?.let { "%.${decimals}f".format(Locale.US, it) } ?: "na"
 
 private fun WakeAnchorHistoryPoint.formatWakeAnchorHistoryPoint(): String =
     "age=$ageMs," +

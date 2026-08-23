@@ -41,11 +41,11 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
         while (isActive) {
             markerMotionDebugOverlayLabel =
                 MarkerMotionTelemetry.latestSnapshot().overlayLabel() +
-                    "\n" +
-                    compassIntegrityDebugOverlayLabel(
-                        renderState = latestRenderState,
-                        renderedHeadingDeg = latestRenderedHeadingDeg,
-                    )
+                "\n" +
+                compassIntegrityDebugOverlayLabel(
+                    renderState = latestRenderState,
+                    renderedHeadingDeg = latestRenderedHeadingDeg,
+                )
             delay(250L)
         }
     }
@@ -71,7 +71,7 @@ internal fun compassDisplayedHeadingDebugState(
         renderState.trackingState == CompassTrackingState.DEGRADED &&
             renderState.magneticQuality == CompassMagneticQuality.INTERFERENCE &&
             kotlin.math.abs(shortestAngleDiffDeg(renderState.headingDeg, renderedHeadingDeg)) >=
-                HELD_ANCHOR_DISPLAY_DELTA_DEG
+            HELD_ANCHOR_DISPLAY_DELTA_DEG
     return when {
         !renderState.headingRenderable || renderState.headingSampleStale || visiblyHeldAnchor ->
             "held/frozen anchor"

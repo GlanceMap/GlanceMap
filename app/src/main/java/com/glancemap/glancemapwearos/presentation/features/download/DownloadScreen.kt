@@ -72,8 +72,8 @@ import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import androidx.wear.compose.material3.Icon as Material3Icon
 import kotlinx.coroutines.launch
+import androidx.wear.compose.material3.Icon as Material3Icon
 
 @Composable
 fun DownloadScreen(

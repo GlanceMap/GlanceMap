@@ -234,8 +234,9 @@ private fun expectedDeclination(
     locationReceivedAtElapsedMs: Long,
     nowElapsedMs: Long,
 ): CompassHeadingReferenceDeclination {
-    val validLocation = location?.takeIf { it.latitude.isFinite() && it.longitude.isFinite() }
-        ?: return CompassHeadingReferenceDeclination()
+    val validLocation =
+        location?.takeIf { it.latitude.isFinite() && it.longitude.isFinite() }
+            ?: return CompassHeadingReferenceDeclination()
     val expectedDeclinationDeg =
         runCatching {
             GeomagneticField(
@@ -501,8 +502,7 @@ internal data class CompassHeadingReferenceIndependentSource(
             else -> "available"
         }
 
-    fun ageAt(nowElapsedMs: Long): Long? =
-        atElapsedMs?.let { (nowElapsedMs - it).coerceAtLeast(0L) }
+    fun ageAt(nowElapsedMs: Long): Long? = atElapsedMs?.let { (nowElapsedMs - it).coerceAtLeast(0L) }
 }
 
 internal data class CompassHeadingReferenceMagneticFieldSample(
@@ -518,8 +518,7 @@ internal data class CompassHeadingReferenceMagneticFieldSample(
             else -> "available"
         }
 
-    fun ageAt(nowElapsedMs: Long): Long? =
-        atElapsedMs?.let { (nowElapsedMs - it).coerceAtLeast(0L) }
+    fun ageAt(nowElapsedMs: Long): Long? = atElapsedMs?.let { (nowElapsedMs - it).coerceAtLeast(0L) }
 }
 
 internal data class CompassHeadingReferenceIndependentSamples(
@@ -660,11 +659,12 @@ internal class CompassHeadingReferenceAccumulator(
             fusedMinusRotationVector = fusedMinusRotationVector.asRange(),
             expectedGeomagneticDeclination = expectedGeomagneticDeclination.asRange(),
             errorByReferenceHeading =
-                byReference.entries.joinToString(separator = "|") { (reference, bucket) ->
-                    "${referenceLabel(reference)}:p${bucket.provider.average.formatHeadingReference(1)}" +
-                        "/r${bucket.rendered.average.formatHeadingReference(1)}" +
-                        "/n${bucket.count}"
-                }.ifBlank { "na" },
+                byReference.entries
+                    .joinToString(separator = "|") { (reference, bucket) ->
+                        "${referenceLabel(reference)}:p${bucket.provider.average.formatHeadingReference(1)}" +
+                            "/r${bucket.rendered.average.formatHeadingReference(1)}" +
+                            "/n${bucket.count}"
+                    }.ifBlank { "na" },
         )
 }
 
@@ -780,8 +780,7 @@ private fun CompassHeadingReferenceStats.addFusedMinusSource(
     add(shortestAngleDiffDeg(target = marker.provider.googleFusedHeadingDeg, current = headingDeg))
 }
 
-private fun CompassHeadingReferenceIndependentSource.headingAt(nowElapsedMs: Long): Float? =
-    headingDeg?.takeIf(Float::isFinite)?.takeIf { statusAt(nowElapsedMs) == "available" }
+private fun CompassHeadingReferenceIndependentSource.headingAt(nowElapsedMs: Long): Float? = headingDeg?.takeIf(Float::isFinite)?.takeIf { statusAt(nowElapsedMs) == "available" }
 
 private fun referenceLabel(referenceHeadingDeg: Float): String =
     when (referenceHeadingDeg.toInt().mod(360)) {
@@ -792,7 +791,6 @@ private fun referenceLabel(referenceHeadingDeg: Float): String =
         else -> referenceHeadingDeg.formatHeadingReference(0)
     }
 
-private fun Float?.formatHeadingReference(decimals: Int): String =
-    this?.takeIf(Float::isFinite)?.let { String.format(Locale.US, "%.${decimals}f", it) } ?: "na"
+private fun Float?.formatHeadingReference(decimals: Int): String = this?.takeIf(Float::isFinite)?.let { String.format(Locale.US, "%.${decimals}f", it) } ?: "na"
 
 private const val NANOS_PER_MILLISECOND = 1_000_000L

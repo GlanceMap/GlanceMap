@@ -483,10 +483,11 @@ class TraceRecordingViewModel(
             (location.elapsedRealtimeNanos / 1_000_000L)
                 .takeIf { it > 0L }
                 ?: SystemClock.elapsedRealtime()
-        val rawCallbackGapMillis = recordingPointDensityTelemetry.observeCallbackReceived(
-            callbackElapsedMs = callbackElapsedMs,
-            significantGapMs = recordingGapTelemetryThresholdMillis(),
-        )
+        val rawCallbackGapMillis =
+            recordingPointDensityTelemetry.observeCallbackReceived(
+                callbackElapsedMs = callbackElapsedMs,
+                significantGapMs = recordingGapTelemetryThresholdMillis(),
+            )
         if (state.paused && !state.autoPaused) {
             skippedPausedCount += 1
             return null

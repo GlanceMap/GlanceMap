@@ -199,7 +199,8 @@ private class CompassHeadingReferenceSensorCollector(
 
 private fun displayRotation(windowManager: WindowManager): Int =
     @Suppress("DEPRECATION")
-    windowManager.defaultDisplay?.rotation ?: Surface.ROTATION_0
+    windowManager.defaultDisplay?.rotation
+        ?: Surface.ROTATION_0
 
 private fun magneticFieldMagnitude(values: FloatArray): Float? {
     if (values.size < 3) return null

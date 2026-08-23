@@ -670,8 +670,7 @@ internal class OamDownloadOperationGate {
     }
 
     @Synchronized
-    fun claimActive(end: OamDownloadOperationEnd): OamDownloadOperationSession? =
-        activeSession?.let { claim(it, end) }
+    fun claimActive(end: OamDownloadOperationEnd): OamDownloadOperationSession? = activeSession?.let { claim(it, end) }
 
     @Synchronized
     fun claim(
@@ -693,8 +692,7 @@ internal class OamDownloadOperationGate {
     fun hasActiveSession(): Boolean = activeSession != null
 
     @Synchronized
-    fun terminalEndFor(session: OamDownloadOperationSession): OamDownloadOperationEnd? =
-        if (activeSession == session) terminalEnd else null
+    fun terminalEndFor(session: OamDownloadOperationSession): OamDownloadOperationEnd? = if (activeSession == session) terminalEnd else null
 
     @Synchronized
     fun finish(session: OamDownloadOperationSession): Boolean {

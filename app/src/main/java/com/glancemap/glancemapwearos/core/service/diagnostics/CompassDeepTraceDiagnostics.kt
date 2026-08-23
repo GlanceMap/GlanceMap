@@ -199,7 +199,7 @@ internal object CompassDeepTraceDiagnostics {
                         gyroHistory.addLast(CompassDeepTraceGyroSample(atElapsedMs, magnitude))
                         while (
                             gyroHistory.firstOrNull()?.atElapsedMs ?: Long.MAX_VALUE <
-                                atElapsedMs - GYRO_HISTORY_MS
+                            atElapsedMs - GYRO_HISTORY_MS
                         ) {
                             gyroHistory.removeFirst()
                         }
@@ -235,8 +235,7 @@ internal object CompassDeepTraceDiagnostics {
     }
 }
 
-internal fun isCompassTelemetryCaptureActive(): Boolean =
-    DebugTelemetry.isEnabled() || CompassDeepTraceDiagnostics.state.value.active
+internal fun isCompassTelemetryCaptureActive(): Boolean = DebugTelemetry.isEnabled() || CompassDeepTraceDiagnostics.state.value.active
 
 internal data class CompassDeepTraceGyroMotion(
     val integratedRotationDeg: Float? = null,

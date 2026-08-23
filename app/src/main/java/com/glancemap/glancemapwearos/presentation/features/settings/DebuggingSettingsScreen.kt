@@ -767,9 +767,10 @@ fun DebuggingSettingsScreen(
         item {
             Chip(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = compassDeepTraceState.active &&
-                    !exportInProgress &&
-                    !compassHeadingReferenceTestActive,
+                enabled =
+                    compassDeepTraceState.active &&
+                        !exportInProgress &&
+                        !compassHeadingReferenceTestActive,
                 label = {
                     WearText(
                         text = "Reference north: ${compassHeadingReferenceBasis.displayLabel}",

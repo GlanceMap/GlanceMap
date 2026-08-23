@@ -2,8 +2,8 @@ package com.glancemap.glancemapwearos.domain.sensors
 
 import android.content.Context
 import android.location.Location
-import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -26,10 +26,10 @@ internal data class OamDownloadCoveragePolygon(
             if (
                 (current.latitude > latitude) != (previous.latitude > latitude) &&
                 longitude <
-                    (previous.longitude - current.longitude) *
-                        (latitude - current.latitude) /
-                        (previous.latitude - current.latitude) +
-                        current.longitude
+                (previous.longitude - current.longitude) *
+                (latitude - current.latitude) /
+                (previous.latitude - current.latitude) +
+                current.longitude
             ) {
                 inside = !inside
             }

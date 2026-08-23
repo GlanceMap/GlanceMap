@@ -26,10 +26,15 @@ internal object CompassHeadingDiagnostics {
     private val transitionTelemetry = CompassTransitionTelemetry()
 
     @Volatile private var lastRenderSampleAtElapsedMs = 0L
+
     @Volatile private var latestWakeProviderSample: CompassWakeProviderSample? = null
+
     @Volatile private var latestWakeRenderedSample: CompassWakeRenderedSample? = null
+
     @Volatile private var lastRenderedHeadingDeg = Float.NaN
+
     @Volatile private var lastRenderedHeadingAtElapsedMs = 0L
+
     @Volatile private var lastRenderedStepDeg = Float.NaN
 
     fun wakeHeadingSnapshot(): CompassWakeHeadingSnapshot =

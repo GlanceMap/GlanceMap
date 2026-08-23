@@ -1071,10 +1071,10 @@ internal class FusedOrientationProviderAdapter(
     ) {
         if (
             !started ||
-                (
-                    expectedRequestGeneration != null &&
-                        expectedRequestGeneration != orientationRequestGeneration
-                )
+            (
+                expectedRequestGeneration != null &&
+                    expectedRequestGeneration != orientationRequestGeneration
+            )
         ) {
             logDiagnostics(
                 "google_fused fallback ignored reason=$reason " +

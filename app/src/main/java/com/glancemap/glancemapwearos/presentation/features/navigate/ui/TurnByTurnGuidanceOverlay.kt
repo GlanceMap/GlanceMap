@@ -61,8 +61,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.wear.compose.foundation.AnchorType
 import androidx.wear.compose.foundation.ArcPaddingValues
-import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedDirection
+import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.basicCurvedText
@@ -126,6 +126,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
             currentlyVisible = expandedVisibility.currentState,
             targetVisible = expandedVisibility.targetState,
         )
+
     fun expandPopup() {
         onExpandedChange(true)
         expanded = true
