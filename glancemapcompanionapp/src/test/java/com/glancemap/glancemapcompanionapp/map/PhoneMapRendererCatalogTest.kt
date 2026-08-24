@@ -8,13 +8,14 @@ import org.junit.Test
 
 class PhoneMapRendererCatalogTest {
     @Test
-    fun onlineModeUsesAReplaceableProviderConfiguration() {
+    fun onlineModeUsesTheFutureMainMapProviderWithoutChangingUtilityPickers() {
         val renderer = PhoneMapRendererCatalog.rendererFor(MapMode.ONLINE)
 
         assertTrue(renderer.isAvailable)
         assertEquals(MapMode.ONLINE, renderer.mode)
-        assertEquals("open_street_map", renderer.onlineProvider?.id)
-        assertEquals(renderer.onlineProvider, PhoneMapRendererCatalog.onlineProvider)
+        assertEquals("open_topo_map", renderer.rasterOnlineProvider?.id)
+        assertEquals(renderer.rasterOnlineProvider, PhoneMapRendererCatalog.mainOnlineRasterProvider)
+        assertEquals("open_street_map", PhoneMapRendererCatalog.utilityPickerRasterProvider.id)
     }
 
     @Test
@@ -22,8 +23,9 @@ class PhoneMapRendererCatalogTest {
         val renderer = PhoneMapRendererCatalog.rendererFor(MapMode.OFFLINE)
 
         assertFalse(renderer.isAvailable)
-        assertTrue(renderer.capabilities.hillshade)
-        assertTrue(renderer.capabilities.slopeOverlay)
-        assertTrue(renderer.capabilities.themes)
+        assertFalse(renderer.capabilities.hillshade)
+        assertFalse(renderer.capabilities.slopeOverlay)
+        assertFalse(renderer.capabilities.contoursToggle)
+        assertFalse(renderer.capabilities.themes)
     }
 }

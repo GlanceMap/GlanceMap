@@ -370,7 +370,9 @@ internal abstract class BaseMapLibrePickerView(
             map = loadedMap
             configureMapCallbacks(loadedMap)
             loadedMap.setStyle(
-                Style.Builder().fromJson(PhoneMapRendererCatalog.onlineProvider.mapLibreRasterStyleJson()),
+                Style.Builder().fromJson(
+                    PhoneMapRendererCatalog.utilityPickerRasterProvider.mapLibreRasterStyleJson(),
+                ),
             ) {
                 onStyleReady(loadedMap)
                 notifyReady()

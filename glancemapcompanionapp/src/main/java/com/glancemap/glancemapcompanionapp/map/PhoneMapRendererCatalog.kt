@@ -3,8 +3,8 @@ package com.glancemap.glancemapcompanionapp.map
 import com.glancemap.trailcore.map.MapMode
 import com.glancemap.trailcore.map.MapRendererCapabilities
 
-/** Replaceable configuration for an online provider; renderer adapters own how it is consumed. */
-internal data class OnlineMapProvider(
+/** Configuration for a raster-tile online provider; renderer adapters own how it is consumed. */
+internal data class RasterOnlineMapProvider(
     val id: String,
     val displayName: String,
     val attribution: String,
@@ -26,10 +26,10 @@ internal data class PhoneMapRenderer(
     val mode: MapMode,
     val isAvailable: Boolean,
     val capabilities: MapRendererCapabilities,
-    val onlineProvider: OnlineMapProvider? = null,
+    val rasterOnlineProvider: RasterOnlineMapProvider? = null,
 ) {
     init {
-        require((mode == MapMode.ONLINE) == (onlineProvider != null)) {
+        require((mode == MapMode.ONLINE) == (rasterOnlineProvider != null)) {
             "Only an online renderer may define an online provider."
         }
     }
@@ -38,35 +38,43 @@ internal data class PhoneMapRenderer(
 /**
  * The single source of renderer/provider choices for the companion.
  *
- * The existing picker remains online and continues to use OpenStreetMap. The full-screen online
- * map can select a topographic provider here without making that provider the global map mode.
+ * Utility pickers intentionally remain on OpenStreetMap. The future full-screen online map uses
+ * its own topographic provider, without making either provider the global map mode.
  */
 internal object PhoneMapRendererCatalog {
+    private val openStreetMapPickerProvider =
+        RasterOnlineMapProvider(
+            id = "open_street_map",
+            displayName = "OpenStreetMap",
+            attribution = "© OpenStreetMap contributors",
+            rasterTileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        )
+
+    val utilityPickerRasterProvider: RasterOnlineMapProvider
+        get() = openStreetMapPickerProvider
+
+    val mainOnlineRasterProvider =
+        RasterOnlineMapProvider(
+            id = "open_topo_map",
+            displayName = "OpenTopoMap",
+            attribution =
+                "© OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)",
+            rasterTileUrlTemplate = "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+        )
+
     val online =
         PhoneMapRenderer(
             mode = MapMode.ONLINE,
             isAvailable = true,
             capabilities = MapRendererCapabilities(),
-            onlineProvider =
-                OnlineMapProvider(
-                    id = "open_street_map",
-                    displayName = "OpenStreetMap",
-                    attribution = "© OpenStreetMap contributors",
-                    rasterTileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                ),
+            rasterOnlineProvider = mainOnlineRasterProvider,
         )
 
     val offline =
         PhoneMapRenderer(
             mode = MapMode.OFFLINE,
             isAvailable = false,
-            capabilities =
-                MapRendererCapabilities(
-                    hillshade = true,
-                    slopeOverlay = true,
-                    contoursToggle = true,
-                    themes = true,
-                ),
+            capabilities = MapRendererCapabilities(),
         )
 
     fun rendererFor(mode: MapMode): PhoneMapRenderer =
@@ -74,7 +82,4 @@ internal object PhoneMapRendererCatalog {
             MapMode.ONLINE -> online
             MapMode.OFFLINE -> offline
         }
-
-    val onlineProvider: OnlineMapProvider
-        get() = checkNotNull(online.onlineProvider)
 }

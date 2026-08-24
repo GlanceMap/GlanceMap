@@ -1,9 +1,9 @@
 package com.glancemap.glancemapcompanionapp.map.maplibre
 
-import com.glancemap.glancemapcompanionapp.map.OnlineMapProvider
+import com.glancemap.glancemapcompanionapp.map.RasterOnlineMapProvider
 
-/** MapLibre-specific translation of an [OnlineMapProvider] into a raster style document. */
-internal fun OnlineMapProvider.mapLibreRasterStyleJson(): String =
+/** MapLibre-specific translation of a [RasterOnlineMapProvider] into a raster style document. */
+internal fun RasterOnlineMapProvider.mapLibreRasterStyleJson(): String =
     """
     {
       "version": 8,

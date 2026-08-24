@@ -65,10 +65,11 @@ class DataLayerListenerService : WearableListenerService() {
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
         if (messageEvent.path == TransferDataLayerContract.PATH_LIVE_HIKE_SYNC_SETTINGS) {
-            val enabled = LiveHikeSyncSettingsCodec.decode(messageEvent.data) ?: run {
-                Log.w(TAG, "Ignoring malformed Live Hike sync setting")
-                return
-            }
+            val enabled =
+                LiveHikeSyncSettingsCodec.decode(messageEvent.data) ?: run {
+                    Log.w(TAG, "Ignoring malformed Live Hike sync setting")
+                    return
+                }
             WatchLiveHikeSyncPreferences.setEnabled(applicationContext, enabled)
             Log.d(TAG, "Live Hike sync ${if (enabled) "enabled" else "disabled"} by companion")
             return

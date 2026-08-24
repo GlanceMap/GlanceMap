@@ -1,6 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map.maplibre
 
-import com.glancemap.glancemapcompanionapp.map.OnlineMapProvider
+import com.glancemap.glancemapcompanionapp.map.RasterOnlineMapProvider
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -8,7 +8,7 @@ class MapLibreRasterStyleTest {
     @Test
     fun styleIsBuiltFromProviderConfigurationAndEscapesText() {
         val style =
-            OnlineMapProvider(
+            RasterOnlineMapProvider(
                 id = "test",
                 displayName = "Test",
                 attribution = "Test \"attribution\"",
