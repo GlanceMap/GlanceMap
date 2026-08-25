@@ -148,6 +148,10 @@ class TraceGpxEncoderTest {
                         barometricPressureHpa = null,
                         recordingTrackSmoothingMode = "ADAPTIVE",
                         recordingTrackFilterVersion = 1,
+                        recordingElevationFilterVersion = 2,
+                        smartElevationPressurePointCount = 8,
+                        smartElevationDemAnchorPointCount = 10,
+                        smartElevationGpsFallbackPointCount = 2,
                     ),
             )
 
@@ -156,6 +160,7 @@ class TraceGpxEncoderTest {
         assertTrue(xml.contains("<gmap:activityProfile>BIKE</gmap:activityProfile>"))
         assertTrue(xml.contains("<gmap:recordingTrackSmoothingMode>ADAPTIVE</gmap:recordingTrackSmoothingMode>"))
         assertTrue(xml.contains("<gmap:recordingTrackFilterVersion>1</gmap:recordingTrackFilterVersion>"))
+        assertSmartElevationSummaryExtensions(xml)
         assertTrue(xml.contains("<gmap:calorieModel>cycling_physics_fallback_v1</gmap:calorieModel>"))
         assertTrue(xml.contains("<gmap:cyclingMechanicalKj>202.40</gmap:cyclingMechanicalKj>"))
         assertFalse(xml.contains("<gmap:cyclingPowerSampleSegments>"))
@@ -229,6 +234,21 @@ class TraceGpxEncoderTest {
             startsNewSegment = startsNewSegment,
             segmentStartReason = segmentStartReason,
         )
+
+    private fun assertSmartElevationSummaryExtensions(xml: String) {
+        assertSummaryExtension(xml, "recordingElevationFilterVersion", "2")
+        assertSummaryExtension(xml, "smartElevationPressurePointCount", "8")
+        assertSummaryExtension(xml, "smartElevationDemAnchorPointCount", "10")
+        assertSummaryExtension(xml, "smartElevationGpsFallbackPointCount", "2")
+    }
+
+    private fun assertSummaryExtension(
+        xml: String,
+        name: String,
+        value: String,
+    ) {
+        assertTrue(xml.contains("<gmap:$name>$value</gmap:$name>"))
+    }
 
     private fun localTime(value: String): Long =
         LocalDateTime

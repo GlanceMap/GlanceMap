@@ -790,12 +790,20 @@ class TraceRecordingViewModel(
                 val startsNewSegment = startsNewSegmentForPoint
                 val fusedElevation =
                     hybridElevationFilter.update(
-                        absoluteElevationMeters = elevation.elevationMeters,
-                        absoluteElevationSource = elevation.resolvedSource,
-                        pressureHpa = sensorMetrics?.barometricPressureHpa,
-                        timeMillis = timeMillis,
-                        enabled = selectedElevationSource.usesHybridRecordingElevation(),
-                        startsNewSegment = startsNewSegment,
+                        RecordingHybridElevationInput(
+                            demElevationMeters = elevation.demElevationMeters,
+                            demAxisLen = elevation.demAxisLen,
+                            gpsElevationMeters = elevation.gpsElevationMeters,
+                            gpsVerticalAccuracyMeters =
+                                location.verticalAccuracyMeters.takeIf { location.hasVerticalAccuracy() },
+                            horizontalAccuracyMeters = filterAccuracyMeters,
+                            absoluteElevationMeters = elevation.elevationMeters,
+                            absoluteElevationSource = elevation.resolvedSource,
+                            elapsedRealtimeMillis = sampleElapsedMs,
+                            enabled = selectedElevationSource.usesHybridRecordingElevation(),
+                            startsNewSegment = startsNewSegment,
+                            activityProfile = _uiState.value.activityProfile,
+                        ),
                     )
                 if (fusedElevation.pressureUsed) {
                     hybridElevationPointCount += 1
@@ -955,7 +963,8 @@ class TraceRecordingViewModel(
                             recordingPointDensityTelemetryTokens() + " " +
                             "confirmedReversals=$confirmedReversalCorrectionCount " +
                             "segmentReason=${segmentStartReason ?: "na"} " +
-                            "hybridElevationPoints=$hybridElevationPointCount",
+                            "hybridElevationPoints=$hybridElevationPointCount " +
+                            smartElevationTelemetryTokens(),
                     )
                 }
                 schedulePointDraftPersist()
@@ -1110,6 +1119,19 @@ class TraceRecordingViewModel(
             )
         }
     }
+
+    fun onPressureSample(sample: RecordingPressureSample) {
+        val state = _uiState.value
+        if (shouldObserveSmartPressure(state)) {
+            hybridElevationFilter.observePressure(sample)
+        }
+    }
+
+    private fun shouldObserveSmartPressure(state: TraceRecordingUiState): Boolean =
+        state.active &&
+            !state.paused &&
+            !state.saving &&
+            recordingElevationSource.usesHybridRecordingElevation()
 
     private fun updateRecordingSourceState() {
         val currentState = _uiState.value
@@ -1287,6 +1309,7 @@ class TraceRecordingViewModel(
             "TraceRecording",
             "event=save_start ${recordingSummaryTokens(state, now, finalPausedMillis)}",
         )
+        val smartElevationDiagnostics = hybridElevationFilter.diagnostics()
         viewModelScope.launch {
             val saveResult =
                 withContext(Dispatchers.IO) {
@@ -1328,6 +1351,7 @@ class TraceRecordingViewModel(
                                     summarySnapshot.toRecordedTraceSummary(
                                         activityProfile = state.activityProfile,
                                         trackSmoothingMode = state.trackSmoothingMode,
+                                        smartElevationDiagnostics = smartElevationDiagnostics,
                                     ),
                             )
                         gpxRepository.saveGpxFileAtomic(
@@ -2107,6 +2131,7 @@ class TraceRecordingViewModel(
         val calories = displaySnapshot.calorieEstimate
         val sensorTokens = sensorTelemetryTokens(nowMillis)
         val smartTrackTokens = smartTrackTelemetryTokens()
+        val smartElevationTokens = smartElevationTelemetryTokens()
         val pointDensityTokens = recordingPointDensityTelemetryTokens()
         val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
         val averagePointIntervalMillis =
@@ -2175,6 +2200,7 @@ class TraceRecordingViewModel(
             "hybridElevationPointCount=$hybridElevationPointCount " +
             "hybridPressureDeltaMeters=${hybridPressureDeltaMeters.formatTelemetry(1)} " +
             "hybridAnchorCorrectionMeters=${hybridAnchorCorrectionMeters.formatTelemetry(1)} " +
+            "$smartElevationTokens " +
             "draftPersistIntervalMs=$RECORDING_DRAFT_PERSIST_INTERVAL_MS " +
             "calorieModel=${calories.model} " +
             "caloriesGrossKcal=${calories.grossKcal.roundToInt()} " +
@@ -2294,6 +2320,25 @@ class TraceRecordingViewModel(
             "cadenceSensorEvents=$cadenceSensorEventCount " +
             "pressureSensorEvents=$pressureSensorEventCount"
 
+    private fun smartElevationTelemetryTokens(): String {
+        val diagnostics = hybridElevationFilter.diagnostics()
+        return "smartElevationVersion=$RECORDING_ELEVATION_FILTER_VERSION " +
+            "pressureObservations=${diagnostics.pressure.observationCount} " +
+            "pressureOutliers=${diagnostics.pressure.outlierCount} " +
+            "pressureInvalid=${diagnostics.pressure.invalidCount} " +
+            "pressureRestarts=${diagnostics.pressure.restartCount} " +
+            "pressureDeltas=${diagnostics.pressureDeltaCount} " +
+            "pressurePlausibilityLimited=${diagnostics.plausibilityLimitedCount} " +
+            "pressureWarmupSuppressed=${diagnostics.pressureWarmupSuppressedCount} " +
+            "pressureWarmupDownWeighted=${diagnostics.pressureWarmupDownWeightedCount} " +
+            "pressureStalePoints=${diagnostics.stalePressurePointCount} " +
+            "pressureGapRebases=${diagnostics.gapRebaseCount} " +
+            "pressureRawDeltaM=${diagnostics.lastPressureDeltaMeters.formatTelemetry(2)} " +
+            "pressureAcceptedDeltaM=${diagnostics.lastAcceptedPressureDeltaMeters.formatTelemetry(2)} " +
+            "anchorResidualM=${diagnostics.lastAnchorResidualMeters?.formatTelemetry(1) ?: "na"} " +
+            "demAnchorPoints=${diagnostics.demAnchorCount} gpsAnchorPoints=${diagnostics.gpsAnchorCount}"
+    }
+
     private fun updateExternalSpeedIntegration(metrics: RecordingSensorMetrics): Double? {
         val speedMps = metrics.externalSpeedMps?.takeIf { it.isFinite() && it >= 0f } ?: return externalIntegratedDistanceMeters
         val sampleTimeMillis = metrics.externalSpeedUpdatedAtMillis.takeIf { it > 0L } ?: return externalIntegratedDistanceMeters
@@ -2334,6 +2379,7 @@ class TraceRecordingViewModel(
 private fun RecordingDashboardSnapshot.toRecordedTraceSummary(
     activityProfile: String,
     trackSmoothingMode: String,
+    smartElevationDiagnostics: RecordingSmartElevationDiagnostics,
 ): RecordedTraceSummary =
     RecordedTraceSummary(
         activityProfile = activityProfile,
@@ -2371,6 +2417,10 @@ private fun RecordingDashboardSnapshot.toRecordedTraceSummary(
         barometricPressureHpa = barometricPressureHpa,
         recordingTrackSmoothingMode = trackSmoothingMode,
         recordingTrackFilterVersion = RECORDING_TRACK_FILTER_VERSION,
+        recordingElevationFilterVersion = RECORDING_ELEVATION_FILTER_VERSION,
+        smartElevationPressurePointCount = smartElevationDiagnostics.pressureDeltaCount,
+        smartElevationDemAnchorPointCount = smartElevationDiagnostics.demAnchorCount,
+        smartElevationGpsFallbackPointCount = smartElevationDiagnostics.gpsAnchorCount,
     )
 
 private fun sensorAgeMillis(

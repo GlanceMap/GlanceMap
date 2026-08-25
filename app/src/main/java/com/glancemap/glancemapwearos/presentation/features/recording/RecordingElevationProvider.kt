@@ -42,6 +42,8 @@ class RecordingElevationProvider(
             RecordingElevationResult(
                 elevationMeters = elevation,
                 resolvedSource = resolvedSource,
+                demElevationMeters = demElevation,
+                gpsElevationMeters = gpsAltitudeMeters?.takeIf(Double::isFinite),
                 demAttempted = demAttempted,
                 demHit = demElevation != null,
                 gpsUsed = elevation != null && resolvedSource == SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
@@ -112,6 +114,8 @@ class RecordingElevationProvider(
 data class RecordingElevationResult(
     val elevationMeters: Double?,
     val resolvedSource: String,
+    val demElevationMeters: Double?,
+    val gpsElevationMeters: Double?,
     val demAttempted: Boolean,
     val demHit: Boolean,
     val gpsUsed: Boolean,

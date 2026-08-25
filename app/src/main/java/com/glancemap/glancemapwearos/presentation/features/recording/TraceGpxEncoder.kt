@@ -95,6 +95,10 @@ data class RecordedTraceSummary(
     val barometricPressureHpa: Double?,
     val recordingTrackSmoothingMode: String? = null,
     val recordingTrackFilterVersion: Int? = null,
+    val recordingElevationFilterVersion: Int? = null,
+    val smartElevationPressurePointCount: Long? = null,
+    val smartElevationDemAnchorPointCount: Long? = null,
+    val smartElevationGpsFallbackPointCount: Long? = null,
 )
 
 private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceSummary) {
@@ -113,6 +117,7 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     summary.recordingTrackFilterVersion?.takeIf { it > 0 }?.let {
         textTag("gmap:recordingTrackFilterVersion", it.toString())
     }
+    writeRecordingElevationSummary(summary)
     textTag("gmap:durationSeconds", formatDouble(summary.durationSeconds))
     textTag("gmap:totalDurationSeconds", formatDouble(summary.totalDurationSeconds))
     textTag("gmap:distanceMeters", formatDouble(summary.distanceMeters))
@@ -137,6 +142,21 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     textTag("gmap:gpsActiveDurationSeconds", formatDouble(summary.gpsActiveDurationSeconds))
     textTag("gmap:recordingGapCount", summary.recordingGapCount.coerceAtLeast(0).toString())
     textTag("gmap:recordingMaxGapSeconds", formatDouble(summary.recordingMaxGapSeconds))
+}
+
+private fun StringWriter.writeRecordingElevationSummary(summary: RecordedTraceSummary) {
+    summary.recordingElevationFilterVersion?.takeIf { it > 0 }?.let {
+        textTag("gmap:recordingElevationFilterVersion", it.toString())
+    }
+    summary.smartElevationPressurePointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationPressurePointCount", it.toString())
+    }
+    summary.smartElevationDemAnchorPointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationDemAnchorPointCount", it.toString())
+    }
+    summary.smartElevationGpsFallbackPointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationGpsFallbackPointCount", it.toString())
+    }
 }
 
 private fun StringWriter.writeRecordingEnergySummary(summary: RecordedTraceSummary) {
