@@ -5,7 +5,6 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.mapsforge.core.model.LatLong
 import kotlin.math.acos
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
@@ -182,22 +181,60 @@ internal fun recordingCanonicalPathDistance(points: List<RecordedTracePoint>): D
     }
 
 private data class RecordingTrajectoryPolicy(
-    val minimumLagMillis: Long,
-    val maximumLagMillis: Long,
-    val maximumTailDistanceMeters: Double,
+    val adaptiveTailLagMillis: Long,
+    val strongTailLagMillis: Long,
+    val adaptiveTailDistanceMeters: Double,
+    val strongTailDistanceMeters: Double,
     val maximumTailPointCount: Int,
     val minimumGapResetMillis: Long,
     val maximumGapResetMillis: Long,
+    val directionContextMillis: Long,
+    val directionContextDistanceMeters: Double,
+    val directionMaximumPointCount: Int,
+    val minimumDirectionLegCount: Int,
     val minimumTurnEvidenceMeters: Double,
+    val minimumDirectionCoherence: Double,
     val barrierTurnDegrees: Double,
+    val adaptiveFitLagMillis: Long,
+    val strongFitLagMillis: Long,
+    val adaptiveFitDistanceMeters: Double,
+    val strongFitDistanceMeters: Double,
+    val adaptiveFitMaximumPointCount: Int,
+    val strongFitMaximumPointCount: Int,
     val adaptiveStrength: Double,
     val strongStrength: Double,
     val adjustmentAccuracyCapFactor: Double,
-    val maximumAdjustmentMeters: Double,
+    val adaptiveMaximumAdjustmentMeters: Double,
+    val strongMaximumAdjustmentMeters: Double,
     val minimumAdjustmentMeters: Double,
-    val maximumBackwardFitPoints: Int,
-    val maximumForwardFitPoints: Int,
     val barrierGuardPoints: Int,
+    val detourContextMillis: Long,
+    val detourContextDistanceMeters: Double,
+    val detourMaximumPointCount: Int,
+    val detourMinimumRatio: Double,
+    val detourMinimumLateralMeters: Double,
+    val detourMaximumRejoinHeadingDegrees: Double,
+    val adaptiveDetourFraction: Double,
+    val strongDetourFraction: Double,
+)
+
+private data class RecordingTrajectoryContext(
+    val maximumElapsedMillis: Long,
+    val maximumTravelledMeters: Double,
+    val maximumPointCount: Int,
+)
+
+private data class RecordingTrajectoryDirectionEvidence(
+    val direction: LocalMeters,
+    val coherence: Double,
+    val legCount: Int,
+    val travelledMeters: Double,
+)
+
+private data class RecordingTrajectoryTurnEvidence(
+    val incoming: RecordingTrajectoryDirectionEvidence,
+    val outgoing: RecordingTrajectoryDirectionEvidence,
+    val turnDegrees: Double,
 )
 
 private data class RecordingTrajectoryRevision(
@@ -213,50 +250,174 @@ private data class RecordingTrajectoryRevision(
 private fun recordingTrajectoryPolicy(activityProfile: String): RecordingTrajectoryPolicy =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
         RecordingTrajectoryPolicy(
-            minimumLagMillis = 18_000L,
-            maximumLagMillis = 60_000L,
-            maximumTailDistanceMeters = 120.0,
-            maximumTailPointCount = 14,
+            adaptiveTailLagMillis = 18_000L,
+            strongTailLagMillis = 26_000L,
+            adaptiveTailDistanceMeters = 120.0,
+            strongTailDistanceMeters = 160.0,
+            maximumTailPointCount = 16,
             minimumGapResetMillis = 12_000L,
             maximumGapResetMillis = 60_000L,
+            directionContextMillis = 15_000L,
+            directionContextDistanceMeters = 70.0,
+            directionMaximumPointCount = 3,
+            minimumDirectionLegCount = 2,
             minimumTurnEvidenceMeters = 18.0,
+            minimumDirectionCoherence = 0.72,
             barrierTurnDegrees = 65.0,
-            adaptiveStrength = 0.65,
+            adaptiveFitLagMillis = 18_000L,
+            strongFitLagMillis = 26_000L,
+            adaptiveFitDistanceMeters = 120.0,
+            strongFitDistanceMeters = 160.0,
+            adaptiveFitMaximumPointCount = 8,
+            strongFitMaximumPointCount = 12,
+            adaptiveStrength = 0.60,
             strongStrength = 0.78,
-            adjustmentAccuracyCapFactor = 0.65,
-            maximumAdjustmentMeters = 14.0,
+            adjustmentAccuracyCapFactor = 0.60,
+            adaptiveMaximumAdjustmentMeters = 12.0,
+            strongMaximumAdjustmentMeters = 16.0,
             minimumAdjustmentMeters = 0.45,
-            maximumBackwardFitPoints = 2,
-            maximumForwardFitPoints = 5,
             barrierGuardPoints = 2,
+            detourContextMillis = 18_000L,
+            detourContextDistanceMeters = 75.0,
+            detourMaximumPointCount = 6,
+            detourMinimumRatio = 1.35,
+            detourMinimumLateralMeters = 5.0,
+            detourMaximumRejoinHeadingDegrees = 35.0,
+            adaptiveDetourFraction = 0.50,
+            strongDetourFraction = 0.75,
         )
     } else {
         RecordingTrajectoryPolicy(
-            minimumLagMillis = 30_000L,
-            maximumLagMillis = 90_000L,
-            maximumTailDistanceMeters = 65.0,
+            adaptiveTailLagMillis = 30_000L,
+            strongTailLagMillis = 42_000L,
+            adaptiveTailDistanceMeters = 65.0,
+            strongTailDistanceMeters = 90.0,
             maximumTailPointCount = 14,
             minimumGapResetMillis = 18_000L,
             maximumGapResetMillis = 90_000L,
+            directionContextMillis = 21_000L,
+            directionContextDistanceMeters = 42.0,
+            directionMaximumPointCount = 3,
+            minimumDirectionLegCount = 2,
             minimumTurnEvidenceMeters = 12.0,
+            minimumDirectionCoherence = 0.72,
             barrierTurnDegrees = 55.0,
-            adaptiveStrength = 0.82,
-            strongStrength = 0.90,
-            adjustmentAccuracyCapFactor = 0.70,
-            maximumAdjustmentMeters = 10.0,
+            adaptiveFitLagMillis = 30_000L,
+            strongFitLagMillis = 42_000L,
+            adaptiveFitDistanceMeters = 65.0,
+            strongFitDistanceMeters = 90.0,
+            adaptiveFitMaximumPointCount = 8,
+            strongFitMaximumPointCount = 12,
+            adaptiveStrength = 0.72,
+            strongStrength = 0.88,
+            adjustmentAccuracyCapFactor = 0.65,
+            adaptiveMaximumAdjustmentMeters = 9.0,
+            strongMaximumAdjustmentMeters = 12.0,
             minimumAdjustmentMeters = 0.35,
-            maximumBackwardFitPoints = 2,
-            maximumForwardFitPoints = 5,
             barrierGuardPoints = 2,
+            detourContextMillis = 25_000L,
+            detourContextDistanceMeters = 45.0,
+            detourMaximumPointCount = 6,
+            detourMinimumRatio = 1.40,
+            detourMinimumLateralMeters = 4.0,
+            detourMaximumRejoinHeadingDegrees = 35.0,
+            adaptiveDetourFraction = 0.55,
+            strongDetourFraction = 0.78,
         )
     }
 
-private fun recordingTrajectoryLagMillis(
+private fun recordingTrajectoryTailContext(
     policy: RecordingTrajectoryPolicy,
     options: RecordingPointSmoothingOptions,
+): RecordingTrajectoryContext =
+    RecordingTrajectoryContext(
+        maximumElapsedMillis =
+            recordingTrajectoryContextMillis(
+                baseMillis =
+                    if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                        policy.strongTailLagMillis
+                    } else {
+                        policy.adaptiveTailLagMillis
+                    },
+                maximumMillis = policy.maximumGapResetMillis,
+                options = options,
+            ),
+        maximumTravelledMeters =
+            if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                policy.strongTailDistanceMeters
+            } else {
+                policy.adaptiveTailDistanceMeters
+            },
+        maximumPointCount = policy.maximumTailPointCount,
+    )
+
+private fun recordingTrajectoryFitContext(
+    policy: RecordingTrajectoryPolicy,
+    options: RecordingPointSmoothingOptions,
+): RecordingTrajectoryContext =
+    RecordingTrajectoryContext(
+        maximumElapsedMillis =
+            recordingTrajectoryContextMillis(
+                baseMillis =
+                    if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                        policy.strongFitLagMillis
+                    } else {
+                        policy.adaptiveFitLagMillis
+                    },
+                maximumMillis = policy.maximumGapResetMillis,
+                options = options,
+            ),
+        maximumTravelledMeters =
+            if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                policy.strongFitDistanceMeters
+            } else {
+                policy.adaptiveFitDistanceMeters
+            },
+        maximumPointCount =
+            if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                policy.strongFitMaximumPointCount
+            } else {
+                policy.adaptiveFitMaximumPointCount
+            },
+    )
+
+private fun recordingTrajectoryDirectionContext(
+    policy: RecordingTrajectoryPolicy,
+    options: RecordingPointSmoothingOptions,
+): RecordingTrajectoryContext =
+    RecordingTrajectoryContext(
+        maximumElapsedMillis =
+            recordingTrajectoryContextMillis(
+                baseMillis = policy.directionContextMillis,
+                maximumMillis = policy.maximumGapResetMillis,
+                options = options,
+            ),
+        maximumTravelledMeters = policy.directionContextDistanceMeters,
+        maximumPointCount = policy.directionMaximumPointCount,
+    )
+
+private fun recordingTrajectoryDetourContext(
+    policy: RecordingTrajectoryPolicy,
+    options: RecordingPointSmoothingOptions,
+): RecordingTrajectoryContext =
+    RecordingTrajectoryContext(
+        maximumElapsedMillis =
+            recordingTrajectoryContextMillis(
+                baseMillis = policy.detourContextMillis,
+                maximumMillis = policy.maximumGapResetMillis,
+                options = options,
+            ),
+        maximumTravelledMeters = policy.detourContextDistanceMeters,
+        maximumPointCount = policy.detourMaximumPointCount,
+    )
+
+private fun recordingTrajectoryContextMillis(
+    baseMillis: Long,
+    maximumMillis: Long,
+    options: RecordingPointSmoothingOptions,
 ): Long =
-    maxOf(policy.minimumLagMillis, options.sampleIntervalSeconds.coerceAtLeast(1) * 3_000L)
-        .coerceAtMost(policy.maximumLagMillis)
+    maxOf(baseMillis, options.sampleIntervalSeconds.coerceAtLeast(1) * 3_000L)
+        .coerceAtMost(maximumMillis)
 
 private fun recordingTrajectoryGapResetMillis(
     policy: RecordingTrajectoryPolicy,
@@ -274,20 +435,18 @@ private fun recordingTrajectoryTailStartIndex(
     if (firstUnfinalizedIndex < 0) return points.size
     val policy = recordingTrajectoryPolicy(options.activityProfile)
     val newest = points.last()
-    val lagMillis = recordingTrajectoryLagMillis(policy, options)
-    val gapResetMillis = recordingTrajectoryGapResetMillis(policy, options)
+    val context = recordingTrajectoryTailContext(policy, options)
     var startIndex = points.lastIndex
     var travelledMeters = 0.0
     var pointCount = 1
-    while (startIndex > firstUnfinalizedIndex && pointCount < policy.maximumTailPointCount) {
+    while (startIndex > firstUnfinalizedIndex && pointCount < context.maximumPointCount) {
         val current = points[startIndex]
         val previous = points[startIndex - 1]
         if (current.startsNewSegment || previous.trajectoryFinalized) break
-        val intervalMillis = current.timeMillis - previous.timeMillis
-        if (intervalMillis !in 1..gapResetMillis) break
-        if (newest.timeMillis - previous.timeMillis > lagMillis) break
+        if (!recordingTrajectoryPointsAreContinuous(previous, current, options)) break
+        if (newest.timeMillis - previous.timeMillis > context.maximumElapsedMillis) break
         val legMeters = haversineMeters(previous.latLong, current.latLong)
-        if (travelledMeters + legMeters > policy.maximumTailDistanceMeters) break
+        if (travelledMeters + legMeters > context.maximumTravelledMeters) break
         travelledMeters += legMeters
         startIndex -= 1
         pointCount += 1
@@ -303,6 +462,16 @@ private fun recordingTrajectoryGap(
     val policy = recordingTrajectoryPolicy(options.activityProfile)
     val intervalMillis = current.timeMillis - previous.timeMillis
     return intervalMillis !in 1..recordingTrajectoryGapResetMillis(policy, options)
+}
+
+private fun recordingTrajectoryPointsAreContinuous(
+    previous: RecordedTracePoint,
+    current: RecordedTracePoint,
+    options: RecordingPointSmoothingOptions,
+): Boolean {
+    val policy = recordingTrajectoryPolicy(options.activityProfile)
+    return !current.startsNewSegment &&
+        current.timeMillis - previous.timeMillis in 1..recordingTrajectoryGapResetMillis(policy, options)
 }
 
 private fun finalizeRecordingTrajectoryPoints(
@@ -368,6 +537,25 @@ private fun finalizeRecordingTrajectoryPoints(
             totalAdjustmentMeters += reversal.adjustmentMeters
             maximumAdjustmentMeters = maxOf(maximumAdjustmentMeters, reversal.adjustmentMeters)
             confirmedReversalCorrected = true
+            continue
+        }
+
+        val detour =
+            smoothConfirmedRecordingDetour(
+                sourcePoints = sourcePoints,
+                index = index,
+                barriers = barriers,
+                options = options,
+                policy = policy,
+            )
+        if (detour != null) {
+            revisedPoints[index] = detour.point.copy(trajectoryFinalized = true)
+            adjustedPointCount += 1
+            totalAdjustmentMeters += detour.adjustmentMeters
+            maximumAdjustmentMeters = maxOf(maximumAdjustmentMeters, detour.adjustmentMeters)
+            trajectoryAdjustedPointCount += 1
+            trajectoryAdjustmentMeters += detour.adjustmentMeters
+            trajectoryMaximumAdjustmentMeters = maxOf(trajectoryMaximumAdjustmentMeters, detour.adjustmentMeters)
             continue
         }
 
@@ -454,47 +642,104 @@ private fun recordingTrajectoryTurnBarriers(
     if (points.size < 5) return emptySet()
     val barriers = mutableSetOf<Int>()
     for (index in 2..points.lastIndex - 2) {
-        val turnDegrees = recordingTrajectoryTurnDegrees(points, index, options, policy) ?: continue
-        if (turnDegrees >= policy.barrierTurnDegrees) {
+        val turn = recordingTrajectoryTurnEvidence(points, index, options, policy) ?: continue
+        if (turn.turnDegrees >= policy.barrierTurnDegrees) {
             barriers += index
         }
     }
     return barriers
 }
 
-private fun recordingTrajectoryTurnDegrees(
+private fun recordingTrajectoryTurnEvidence(
     points: List<RecordedTracePoint>,
     index: Int,
     options: RecordingPointSmoothingOptions,
     policy: RecordingTrajectoryPolicy,
-): Double? {
-    if (index < 2 || index + 2 > points.lastIndex) return null
-    if (!recordingTrajectoryWindowIsContinuous(points, index - 2, index + 2, options)) return null
-    val incoming = points[index].latLong.toLocalMeters(points[index - 2].latLong)
-    val outgoing = points[index + 2].latLong.toLocalMeters(points[index].latLong)
-    if (incoming.length() < policy.minimumTurnEvidenceMeters || outgoing.length() < policy.minimumTurnEvidenceMeters) {
-        return null
-    }
-    return angleDegrees(incoming, outgoing)
+): RecordingTrajectoryTurnEvidence? {
+    val incoming =
+        recordingTrajectoryDirectionEvidence(
+            points = points,
+            index = index,
+            incoming = true,
+            options = options,
+            policy = policy,
+        ) ?: return null
+    val outgoing =
+        recordingTrajectoryDirectionEvidence(
+            points = points,
+            index = index,
+            incoming = false,
+            options = options,
+            policy = policy,
+        ) ?: return null
+    return RecordingTrajectoryTurnEvidence(
+        incoming = incoming,
+        outgoing = outgoing,
+        turnDegrees = angleDegrees(incoming.direction, outgoing.direction),
+    )
 }
 
-private fun recordingTrajectoryWindowIsContinuous(
+private fun recordingTrajectoryDirectionEvidence(
     points: List<RecordedTracePoint>,
-    startIndex: Int,
-    endIndex: Int,
+    index: Int,
+    incoming: Boolean,
     options: RecordingPointSmoothingOptions,
-): Boolean {
-    if (startIndex < 0 || endIndex > points.lastIndex || startIndex >= endIndex) return false
-    val policy = recordingTrajectoryPolicy(options.activityProfile)
-    val maximumGapMillis = recordingTrajectoryGapResetMillis(policy, options)
-    for (index in (startIndex + 1)..endIndex) {
-        val current = points[index]
-        val previous = points[index - 1]
-        if (current.startsNewSegment || current.timeMillis - previous.timeMillis !in 1..maximumGapMillis) {
-            return false
-        }
+    policy: RecordingTrajectoryPolicy,
+): RecordingTrajectoryDirectionEvidence? {
+    val context = recordingTrajectoryDirectionContext(policy, options)
+    var cursor = index
+    var pointCount = 1
+    var travelledMeters = 0.0
+    var weightedDistance = 0.0
+    var directionX = 0.0
+    var directionY = 0.0
+    var legCount = 0
+    while (pointCount < context.maximumPointCount) {
+        val next = if (incoming) cursor - 1 else cursor + 1
+        if (next !in points.indices) break
+        val fromIndex = if (incoming) next else cursor
+        val toIndex = if (incoming) cursor else next
+        val from = points[fromIndex]
+        val to = points[toIndex]
+        if (!recordingTrajectoryPointsAreContinuous(from, to, options)) break
+        val elapsedMillis =
+            if (incoming) {
+                points[index].timeMillis - from.timeMillis
+            } else {
+                to.timeMillis - points[index].timeMillis
+            }
+        if (elapsedMillis > context.maximumElapsedMillis) break
+        val vector = to.latLong.toLocalMeters(from.latLong)
+        val length = vector.length()
+        if (length <= 0.0 || travelledMeters + length > context.maximumTravelledMeters) break
+        val accuracy =
+            (from.accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M) +
+                to.accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M)) / 2.0
+        val weight = length / accuracy.coerceAtLeast(RECORDING_TRAJECTORY_MIN_WEIGHT_ACCURACY_M)
+        directionX += vector.x / length * weight
+        directionY += vector.y / length * weight
+        weightedDistance += weight
+        travelledMeters += length
+        legCount += 1
+        pointCount += 1
+        cursor = next
     }
-    return true
+    val direction = LocalMeters(directionX, directionY)
+    if (
+        legCount < policy.minimumDirectionLegCount ||
+        travelledMeters < policy.minimumTurnEvidenceMeters ||
+        weightedDistance <= 0.0
+    ) {
+        return null
+    }
+    val coherence = direction.length() / weightedDistance
+    if (coherence < policy.minimumDirectionCoherence) return null
+    return RecordingTrajectoryDirectionEvidence(
+        direction = direction,
+        coherence = coherence,
+        legCount = legCount,
+        travelledMeters = travelledMeters,
+    )
 }
 
 private fun smoothFixedLagRecordingTrajectoryPoint(
@@ -508,53 +753,38 @@ private fun smoothFixedLagRecordingTrajectoryPoint(
     val point = sourcePoints[index]
     val origin = point.latLong
     var totalWeight = 0.0
-    var meanX = 0.0
-    var meanY = 0.0
+    var totalTime = 0.0
+    var totalTimeSquared = 0.0
+    var totalX = 0.0
+    var totalY = 0.0
+    var totalTimeX = 0.0
+    var totalTimeY = 0.0
     for (fitIndex in fitRange) {
         val accuracy = sourcePoints[fitIndex].accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M)
         val weight = 1.0 / (accuracy.coerceAtLeast(RECORDING_TRAJECTORY_MIN_WEIGHT_ACCURACY_M).let { it * it })
         val local = sourcePoints[fitIndex].latLong.toLocalMeters(origin)
+        val timeSeconds = (sourcePoints[fitIndex].timeMillis - point.timeMillis) / 1_000.0
         totalWeight += weight
-        meanX += local.x * weight
-        meanY += local.y * weight
+        totalTime += timeSeconds * weight
+        totalTimeSquared += timeSeconds * timeSeconds * weight
+        totalX += local.x * weight
+        totalY += local.y * weight
+        totalTimeX += timeSeconds * local.x * weight
+        totalTimeY += timeSeconds * local.y * weight
     }
     if (totalWeight <= 0.0) return null
-    meanX /= totalWeight
-    meanY /= totalWeight
-    var covarianceXx = 0.0
-    var covarianceXy = 0.0
-    var covarianceYy = 0.0
-    for (fitIndex in fitRange) {
-        val accuracy = sourcePoints[fitIndex].accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M)
-        val weight = 1.0 / (accuracy.coerceAtLeast(RECORDING_TRAJECTORY_MIN_WEIGHT_ACCURACY_M).let { it * it })
-        val local = sourcePoints[fitIndex].latLong.toLocalMeters(origin)
-        val x = local.x - meanX
-        val y = local.y - meanY
-        covarianceXx += weight * x * x
-        covarianceXy += weight * x * y
-        covarianceYy += weight * y * y
-    }
-    if (covarianceXx + covarianceYy < RECORDING_TRAJECTORY_MIN_VARIANCE_M2) return null
-    val directionAngle = 0.5 * atan2(2.0 * covarianceXy, covarianceXx - covarianceYy)
-    val directionX = cos(directionAngle)
-    val directionY = sin(directionAngle)
-    val pointFromMeanX = -meanX
-    val pointFromMeanY = -meanY
-    val alongLine = pointFromMeanX * directionX + pointFromMeanY * directionY
-    val projectedX = meanX + alongLine * directionX
-    val projectedY = meanY + alongLine * directionY
-    val correctionX = projectedX
-    val correctionY = projectedY
-    val correctionAlongDirection = correctionX * directionX + correctionY * directionY
-    val lateralCorrection =
+    val timeVariance = totalWeight * totalTimeSquared - totalTime * totalTime
+    if (timeVariance <= RECORDING_TRAJECTORY_MIN_TIME_VARIANCE) return null
+    val predicted =
         LocalMeters(
-            x = correctionX - correctionAlongDirection * directionX,
-            y = correctionY - correctionAlongDirection * directionY,
+            x = (totalX - ((totalWeight * totalTimeX - totalTime * totalX) / timeVariance) * totalTime) / totalWeight,
+            y = (totalY - ((totalWeight * totalTimeY - totalTime * totalY) / timeVariance) * totalTime) / totalWeight,
         )
-    val lateralErrorMeters = lateralCorrection.length()
-    if (lateralErrorMeters < policy.minimumAdjustmentMeters) return null
-    val turnDegrees = recordingTrajectoryTurnDegrees(sourcePoints, index, options, policy) ?: 0.0
-    val curvatureFactor = (1.0 - (turnDegrees / policy.barrierTurnDegrees) * 0.85).coerceIn(0.20, 1.0)
+    val correction = predicted
+    val correctionMeters = correction.length()
+    if (correctionMeters < policy.minimumAdjustmentMeters) return null
+    val turnDegrees = recordingTrajectoryTurnEvidence(sourcePoints, index, options, policy)?.turnDegrees ?: 0.0
+    val curvatureFactor = (1.0 - (turnDegrees / policy.barrierTurnDegrees) * 0.80).coerceIn(0.25, 1.0)
     val pointAccuracy = point.accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M)
     val accuracyNeed =
         (pointAccuracy / (pointAccuracy + RECORDING_TRAJECTORY_ACCURACY_PIVOT_M)).coerceIn(0.25, 0.95)
@@ -566,17 +796,24 @@ private fun smoothFixedLagRecordingTrajectoryPoint(
         }) * curvatureFactor * accuracyNeed
     val adjustmentCap =
         (pointAccuracy * policy.adjustmentAccuracyCapFactor)
-            .coerceIn(policy.minimumAdjustmentMeters, policy.maximumAdjustmentMeters)
-    val adjustmentMeters = min(lateralErrorMeters * strength, adjustmentCap)
+            .coerceIn(
+                policy.minimumAdjustmentMeters,
+                if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                    policy.strongMaximumAdjustmentMeters
+                } else {
+                    policy.adaptiveMaximumAdjustmentMeters
+                },
+            )
+    val adjustmentMeters = min(correctionMeters * strength, adjustmentCap)
     if (adjustmentMeters < policy.minimumAdjustmentMeters) return null
-    val fraction = (adjustmentMeters / lateralErrorMeters).coerceIn(0.0, 1.0)
+    val fraction = (adjustmentMeters / correctionMeters).coerceIn(0.0, 1.0)
     return RecordingPointSmoothingResult(
         point =
             point.copy(
                 latLong =
                     LocalMeters(
-                        x = lateralCorrection.x * fraction,
-                        y = lateralCorrection.y * fraction,
+                        x = correction.x * fraction,
+                        y = correction.y * fraction,
                     ).toLatLong(origin),
             ),
         adjustmentMeters = adjustmentMeters,
@@ -590,25 +827,160 @@ private fun recordingTrajectoryFitRange(
     options: RecordingPointSmoothingOptions,
     policy: RecordingTrajectoryPolicy,
 ): IntRange? {
+    val context = recordingTrajectoryFitContext(policy, options)
     var startIndex = index
+    var backwardTravelledMeters = 0.0
     var backwardPointCount = 0
-    while (backwardPointCount < policy.maximumBackwardFitPoints) {
+    val backwardPointLimit = (context.maximumPointCount - 1) / 2
+    while (backwardPointCount < backwardPointLimit) {
         val candidate = startIndex - 1
         if (candidate < 0 || candidate in barriers || startIndex in barriers) break
-        if (!recordingTrajectoryWindowIsContinuous(points, candidate, startIndex, options)) break
+        if (!recordingTrajectoryPointsAreContinuous(points[candidate], points[startIndex], options)) break
+        if (points[index].timeMillis - points[candidate].timeMillis > context.maximumElapsedMillis) break
+        val legMeters = haversineMeters(points[candidate].latLong, points[startIndex].latLong)
+        if (backwardTravelledMeters + legMeters > context.maximumTravelledMeters) break
+        backwardTravelledMeters += legMeters
         startIndex = candidate
         backwardPointCount += 1
     }
     var endIndex = index
+    var forwardTravelledMeters = 0.0
     var forwardPointCount = 0
-    while (forwardPointCount < policy.maximumForwardFitPoints) {
+    val forwardPointLimit = context.maximumPointCount - 1 - backwardPointLimit
+    while (forwardPointCount < forwardPointLimit) {
         val candidate = endIndex + 1
         if (candidate > points.lastIndex || candidate in barriers || endIndex in barriers) break
-        if (!recordingTrajectoryWindowIsContinuous(points, endIndex, candidate, options)) break
+        if (!recordingTrajectoryPointsAreContinuous(points[endIndex], points[candidate], options)) break
+        if (points[candidate].timeMillis - points[index].timeMillis > context.maximumElapsedMillis) break
+        val legMeters = haversineMeters(points[endIndex].latLong, points[candidate].latLong)
+        if (forwardTravelledMeters + legMeters > context.maximumTravelledMeters) break
+        forwardTravelledMeters += legMeters
         endIndex = candidate
         forwardPointCount += 1
     }
     return (startIndex..endIndex).takeIf { it.last - it.first + 1 >= RECORDING_TRAJECTORY_MIN_FIT_POINT_COUNT }
+}
+
+private fun smoothConfirmedRecordingDetour(
+    sourcePoints: List<RecordedTracePoint>,
+    index: Int,
+    barriers: Set<Int>,
+    options: RecordingPointSmoothingOptions,
+    policy: RecordingTrajectoryPolicy,
+): RecordingPointSmoothingResult? {
+    val context = recordingTrajectoryDetourContext(policy, options)
+    for (interiorCount in 1..RECORDING_TRAJECTORY_MAX_DETOUR_INTERIOR_POINTS) {
+        for (interiorPosition in 0 until interiorCount) {
+            val startIndex = index - interiorPosition - 1
+            val rejoinIndex = startIndex + interiorCount + 1
+            if (startIndex < 0 || rejoinIndex + policy.minimumDirectionLegCount > sourcePoints.lastIndex) continue
+            if (barriers.any { barrier -> barrier in startIndex..(rejoinIndex + policy.minimumDirectionLegCount) }) continue
+            if (!recordingTrajectoryWindowFitsContext(sourcePoints, startIndex, rejoinIndex, context, options)) continue
+            val incoming =
+                recordingTrajectoryDirectionEvidence(
+                    points = sourcePoints,
+                    index = startIndex,
+                    incoming = true,
+                    options = options,
+                    policy = policy,
+                ) ?: continue
+            val outgoing =
+                recordingTrajectoryDirectionEvidence(
+                    points = sourcePoints,
+                    index = rejoinIndex,
+                    incoming = false,
+                    options = options,
+                    policy = policy,
+                ) ?: continue
+            val start = sourcePoints[startIndex]
+            val rejoin = sourcePoints[rejoinIndex]
+            val rejoinLocal = rejoin.latLong.toLocalMeters(start.latLong)
+            val directDistanceMeters = rejoinLocal.length()
+            if (directDistanceMeters < policy.minimumTurnEvidenceMeters) continue
+            if (
+                angleDegrees(incoming.direction, rejoinLocal) > policy.detourMaximumRejoinHeadingDegrees ||
+                angleDegrees(rejoinLocal, outgoing.direction) > policy.detourMaximumRejoinHeadingDegrees
+            ) {
+                continue
+            }
+            val polylineMeters =
+                (startIndex until rejoinIndex).sumOf { pointIndex ->
+                    haversineMeters(sourcePoints[pointIndex].latLong, sourcePoints[pointIndex + 1].latLong)
+                }
+            if (polylineMeters / directDistanceMeters < policy.detourMinimumRatio) continue
+            val directSquared = rejoinLocal.x * rejoinLocal.x + rejoinLocal.y * rejoinLocal.y
+            val largestInteriorLateralMeters =
+                (startIndex + 1 until rejoinIndex).maxOf { interiorIndex ->
+                    val interior = sourcePoints[interiorIndex].latLong.toLocalMeters(start.latLong)
+                    val projection = (interior.x * rejoinLocal.x + interior.y * rejoinLocal.y) / directSquared
+                    LocalMeters(
+                        x = rejoinLocal.x * projection - interior.x,
+                        y = rejoinLocal.y * projection - interior.y,
+                    ).length()
+                }
+            if (largestInteriorLateralMeters < policy.detourMinimumLateralMeters) continue
+            val candidate = sourcePoints[index]
+            val candidateLocal = candidate.latLong.toLocalMeters(start.latLong)
+            val projection = (candidateLocal.x * rejoinLocal.x + candidateLocal.y * rejoinLocal.y) / directSquared
+            if (projection !in RECORDING_TRAJECTORY_DETOUR_MIN_PROJECTION..RECORDING_TRAJECTORY_DETOUR_MAX_PROJECTION) continue
+            val correction =
+                LocalMeters(
+                    x = rejoinLocal.x * projection - candidateLocal.x,
+                    y = rejoinLocal.y * projection - candidateLocal.y,
+                )
+            val correctionMeters = correction.length()
+            if (correctionMeters < policy.detourMinimumLateralMeters) continue
+            val pointAccuracy = candidate.accuracyMeters.validAccuracyOr(RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M)
+            val maximumAdjustment =
+                (pointAccuracy * policy.adjustmentAccuracyCapFactor).coerceIn(
+                    policy.minimumAdjustmentMeters,
+                    if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                        policy.strongMaximumAdjustmentMeters
+                    } else {
+                        policy.adaptiveMaximumAdjustmentMeters
+                    },
+                )
+            val requestedFraction =
+                if (options.mode == SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG) {
+                    policy.strongDetourFraction
+                } else {
+                    policy.adaptiveDetourFraction
+                }
+            val adjustmentMeters = min(correctionMeters * requestedFraction, maximumAdjustment)
+            if (adjustmentMeters < policy.minimumAdjustmentMeters) continue
+            val fraction = (adjustmentMeters / correctionMeters).coerceIn(0.0, 1.0)
+            return RecordingPointSmoothingResult(
+                point =
+                    candidate.copy(
+                        latLong =
+                            LocalMeters(
+                                x = candidateLocal.x + correction.x * fraction,
+                                y = candidateLocal.y + correction.y * fraction,
+                            ).toLatLong(start.latLong),
+                    ),
+                adjustmentMeters = adjustmentMeters,
+            )
+        }
+    }
+    return null
+}
+
+private fun recordingTrajectoryWindowFitsContext(
+    points: List<RecordedTracePoint>,
+    startIndex: Int,
+    endIndex: Int,
+    context: RecordingTrajectoryContext,
+    options: RecordingPointSmoothingOptions,
+): Boolean {
+    if (endIndex - startIndex + 1 > context.maximumPointCount) return false
+    if (points[endIndex].timeMillis - points[startIndex].timeMillis > context.maximumElapsedMillis) return false
+    var travelledMeters = 0.0
+    for (index in startIndex + 1..endIndex) {
+        if (!recordingTrajectoryPointsAreContinuous(points[index - 1], points[index], options)) return false
+        travelledMeters += haversineMeters(points[index - 1].latLong, points[index].latLong)
+        if (travelledMeters > context.maximumTravelledMeters) return false
+    }
+    return true
 }
 
 /**
@@ -1160,8 +1532,11 @@ private const val RECORDING_SPIKE_MIN_DETOUR_RATIO = 1.50
 private const val RECORDING_TRAJECTORY_FALLBACK_ACCURACY_M = 8.0
 private const val RECORDING_TRAJECTORY_MIN_WEIGHT_ACCURACY_M = 2.0
 private const val RECORDING_TRAJECTORY_ACCURACY_PIVOT_M = 4.0
-private const val RECORDING_TRAJECTORY_MIN_VARIANCE_M2 = 4.0
+private const val RECORDING_TRAJECTORY_MIN_TIME_VARIANCE = 1e-6
 private const val RECORDING_TRAJECTORY_MIN_FIT_POINT_COUNT = 4
+private const val RECORDING_TRAJECTORY_MAX_DETOUR_INTERIOR_POINTS = 2
+private const val RECORDING_TRAJECTORY_DETOUR_MIN_PROJECTION = 0.05
+private const val RECORDING_TRAJECTORY_DETOUR_MAX_PROJECTION = 0.95
 private const val RECORDING_REVERSAL_MAX_RECOVERY_HEADING_DEGREES = 55.0
 private const val RECORDING_REVERSAL_SENSOR_BACKED_MAX_RECOVERY_HEADING_DEGREES = 65.0
 private const val RECORDING_REVERSAL_SENSOR_BACKED_MIN_PROJECTION = 0.0
