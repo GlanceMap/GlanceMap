@@ -11,11 +11,15 @@ internal fun resolveRecordingContinuityRecoveryGapMillis(
     maxOf(deliveryGapMillis, committedPointGapMillis)
         .takeIf { it >= thresholdMillis }
 
+internal fun watchGpsRecordingGeometryDeltaMeters(
+    previous: RecordedTracePoint?,
+    current: RecordedTracePoint,
+): Double = previous?.let { haversineMeters(it.latLong, current.latLong) } ?: 0.0
+
 /**
- * Keeps the distance total independent from a visual recovery connector. Normal canonical
- * points contribute their smoothed geometry. When a real delivery outage or confirmed
- * relocation is bridged for a continuous GPX line, reported pace and accuracy bound the
- * contribution so a bad reacquisition cannot add a large diagonal to the activity total.
+ * Keeps Watch-GPS activity distance independent from saved-track smoothing and visual
+ * recovery connectors. A real delivery outage or confirmed relocation is still bounded by
+ * reported pace and accuracy so a bad reacquisition cannot add a large diagonal.
  */
 internal data class RecordingDistanceEstimate(
     val distanceMeters: Double,

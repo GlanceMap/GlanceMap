@@ -71,6 +71,28 @@ data class TraceRecordingUiState(
     val pointCount: Int get() = points.size
 }
 
+internal fun effectiveAutoPauseStartMillis(
+    state: TraceRecordingUiState,
+    confirmationMillis: Long,
+    stationaryDurationMillis: Long,
+): Long {
+    val confirmation = confirmationMillis.coerceAtLeast(0L)
+    val earliest = state.startedAtMillis?.coerceIn(0L, confirmation) ?: 0L
+    return (confirmation - stationaryDurationMillis.coerceAtLeast(0L)).coerceAtLeast(earliest)
+}
+
+internal fun autoPauseAddedMillisAtResume(
+    state: TraceRecordingUiState,
+    confirmationMillis: Long,
+    movingDurationMillis: Long,
+): Long {
+    val confirmation = confirmationMillis.coerceAtLeast(0L)
+    val pausedAt = state.pausedAtMillis?.coerceIn(0L, confirmation) ?: return 0L
+    val effectiveResume =
+        (confirmation - movingDurationMillis.coerceAtLeast(0L)).coerceIn(pausedAt, confirmation)
+    return (effectiveResume - pausedAt).coerceAtLeast(0L)
+}
+
 internal data class ExternalDistanceSessionState(
     val baseMeters: Double,
     val sessionMeters: Double,

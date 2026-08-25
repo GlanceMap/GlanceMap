@@ -66,6 +66,46 @@ class TraceGpxEncoderTest {
     }
 
     @Test
+    fun fiveMeterManualPauseIsVisuallyContinuous() {
+        val points = pauseBoundary(displacementMeters = 5.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
+
+        val xml = encodeRecordedTraceAsGpx(title = "Pause", points = points).toString(Charsets.UTF_8)
+
+        assertEquals(listOf(2), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+        assertEquals(1, "<trkseg>".toRegex().findAll(xml).count())
+        assertTrue(xml.contains("<gmap:segmentStartReason>MANUAL_PAUSE</gmap:segmentStartReason>"))
+    }
+
+    @Test
+    fun twentyFiveMeterAutoPauseWithNormalAccuracyIsVisuallyContinuous() {
+        val points = pauseBoundary(displacementMeters = 25.0, reason = RecordingSegmentStartReason.AUTO_PAUSE)
+
+        assertEquals(listOf(2), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+    }
+
+    @Test
+    fun pauseBridgeUsesCombinedEndpointAccuracyAroundThirtyMeters() {
+        val normalAccuracy = pauseBoundary(displacementMeters = 33.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
+        val widerAccuracy =
+            pauseBoundary(
+                displacementMeters = 33.0,
+                reason = RecordingSegmentStartReason.MANUAL_PAUSE,
+                beforeAccuracyMeters = 20f,
+                afterAccuracyMeters = 20f,
+            )
+
+        assertEquals(2, recordedTraceSegments(normalAccuracy).size)
+        assertEquals(1, recordedTraceSegments(widerAccuracy).size)
+    }
+
+    @Test
+    fun largePausedDisplacementRemainsSeparateTrackSegment() {
+        val points = pauseBoundary(displacementMeters = 100.0, reason = RecordingSegmentStartReason.AUTO_PAUSE)
+
+        assertEquals(listOf(1, 1), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+    }
+
+    @Test
     fun encodeRecordedTraceAsGpxWritesCoreTrackPointAndExtensions() {
         val bytes =
             encodeRecordedTraceAsGpx(
@@ -224,15 +264,39 @@ class TraceGpxEncoderTest {
         timeMillis: Long,
         startsNewSegment: Boolean = false,
         segmentStartReason: String? = null,
+        accuracyMeters: Float? = 8f,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(latitude, longitude),
             elevationMeters = null,
             timeMillis = timeMillis,
-            accuracyMeters = 8f,
+            accuracyMeters = accuracyMeters,
             speedMps = 1f,
             startsNewSegment = startsNewSegment,
             segmentStartReason = segmentStartReason,
+        )
+
+    private fun pauseBoundary(
+        displacementMeters: Double,
+        reason: String,
+        beforeAccuracyMeters: Float? = 8f,
+        afterAccuracyMeters: Float? = 8f,
+    ): List<RecordedTracePoint> =
+        listOf(
+            recordedPoint(
+                latitude = 45.0,
+                longitude = 6.0,
+                timeMillis = 1_000L,
+                accuracyMeters = beforeAccuracyMeters,
+            ),
+            recordedPoint(
+                latitude = 45.0 + displacementMeters / 111_320.0,
+                longitude = 6.0,
+                timeMillis = 2_000L,
+                startsNewSegment = true,
+                segmentStartReason = reason,
+                accuracyMeters = afterAccuracyMeters,
+            ),
         )
 
     private fun assertSmartElevationSummaryExtensions(xml: String) {

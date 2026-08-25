@@ -48,7 +48,11 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
     buildList {
         var currentSegment = mutableListOf<RecordedTracePoint>()
         points.forEach { point ->
-            if (point.startsNewSegment && currentSegment.isNotEmpty()) {
+            if (
+                point.startsNewSegment &&
+                currentSegment.isNotEmpty() &&
+                !shouldVisuallyBridgeRecordedPause(currentSegment.last(), point)
+            ) {
                 add(currentSegment)
                 currentSegment = mutableListOf()
             }
@@ -58,6 +62,31 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
             add(currentSegment)
         }
     }
+
+private fun shouldVisuallyBridgeRecordedPause(
+    previous: RecordedTracePoint,
+    resumed: RecordedTracePoint,
+): Boolean {
+    if (
+        resumed.segmentStartReason != RecordingSegmentStartReason.MANUAL_PAUSE &&
+        resumed.segmentStartReason != RecordingSegmentStartReason.AUTO_PAUSE
+    ) {
+        return false
+    }
+    val beforeAccuracy = previous.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val afterAccuracy = resumed.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val thresholdMeters =
+        if (beforeAccuracy != null && afterAccuracy != null) {
+            maxOf(RECORDING_PAUSE_BRIDGE_MIN_METERS, beforeAccuracy + afterAccuracy)
+                .coerceAtMost(RECORDING_PAUSE_BRIDGE_MAX_METERS)
+        } else {
+            RECORDING_PAUSE_BRIDGE_MIN_METERS
+        }
+    return haversineMeters(previous.latLong, resumed.latLong) <= thresholdMeters
+}
+
+private const val RECORDING_PAUSE_BRIDGE_MIN_METERS = 30.0
+private const val RECORDING_PAUSE_BRIDGE_MAX_METERS = 60.0
 
 data class RecordedTraceSummary(
     val activityProfile: String?,
