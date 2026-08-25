@@ -1,10 +1,14 @@
 package com.glancemap.glancemapwearos.presentation.features.maps
 
+import android.os.SystemClock
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
+import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.datastore.MapDataStore
 import org.mapsforge.map.layer.cache.TileCache
 import org.mapsforge.map.layer.hills.HillsRenderConfig
@@ -12,6 +16,7 @@ import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.MapViewPosition
 import org.mapsforge.map.util.LayerUtil
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 internal enum class FirstVisibleBaseTileSource(
     val telemetryToken: String,
@@ -27,6 +32,9 @@ internal class FirstVisibleTileRendererLayer(
     mapViewPosition: MapViewPosition,
     graphicFactory: GraphicFactory,
     hillsRenderConfig: HillsRenderConfig?,
+    private val mapView: MapView,
+    private val rendererId: Int,
+    private val cacheId: String,
     private val onFirstVisibleBaseTile: (
         layer: FirstVisibleTileRendererLayer,
         source: FirstVisibleBaseTileSource,
@@ -42,7 +50,11 @@ internal class FirstVisibleTileRendererLayer(
         hillsRenderConfig,
     ) {
     private val firstVisibleTileReported = AtomicBoolean(false)
+    private val visibleTileDiagnosticsActivated = AtomicBoolean(false)
+    private val pendingVisibleTileSnapshotReason = AtomicReference<String?>(null)
     private var hasDrawn = false
+    private var lastDiagnosticState: String? = null
+    private var lastCoverageSampleAtElapsedMs: Long? = null
 
     override fun draw(
         boundingBox: BoundingBox,
@@ -58,6 +70,12 @@ internal class FirstVisibleTileRendererLayer(
         super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
 
         val visibleTileReady = cachedBeforeDraw || hasCachedVisibleBaseTile(boundingBox, zoomLevel)
+        reportVisibleTileAvailability(
+            boundingBox = boundingBox,
+            zoomLevel = zoomLevel,
+            rotation = rotation,
+            snapshotReason = pendingVisibleTileSnapshotReason.getAndSet(null),
+        )
         if (visibleTileReady && firstVisibleTileReported.compareAndSet(false, true)) {
             onFirstVisibleBaseTile(
                 this,
@@ -68,6 +86,107 @@ internal class FirstVisibleTileRendererLayer(
                 },
             )
         }
+    }
+
+    /** Queues one FULL-diagnostics visibility snapshot for the next completed map draw. */
+    fun requestVisibleTileDiagnosticSnapshot(reason: String) {
+        if (DebugTelemetry.isFullDiagnosticsCaptureEnabled()) {
+            pendingVisibleTileSnapshotReason.set(reason)
+        }
+    }
+
+    private fun reportVisibleTileAvailability(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        rotation: Rotation,
+        snapshotReason: String?,
+    ) {
+        if (!DebugTelemetry.isFullDiagnosticsCaptureEnabled()) return
+        if (visibleTileDiagnosticsActivated.compareAndSet(false, true)) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "mapRenderer.visibleTilesDiagnostics",
+                status = "active",
+                detail =
+                    "full=true cacheId=$cacheId renderer=$rendererId " +
+                        "mapView=${System.identityHashCode(mapView)} " +
+                        "layer=${System.identityHashCode(this)}",
+            )
+        }
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val forcedSnapshot = snapshotReason != null
+        val sampleIntervalElapsed =
+            isVisibleTileDiagnosticSampleDue(
+                lastSampleAtElapsedMs = lastCoverageSampleAtElapsedMs,
+                nowElapsedMs = nowElapsedMs,
+                sampleIntervalMs = COVERAGE_SAMPLE_INTERVAL_MS,
+            )
+        if (!forcedSnapshot && !sampleIntervalElapsed) {
+            return
+        }
+        lastCoverageSampleAtElapsedMs = nowElapsedMs
+        val coverage = visibleTileCoverage(boundingBox, zoomLevel)
+        val drawable = coverage.usableTileCount > 0
+        val state = visibleTileDiagnosticState(lastDiagnosticState, drawable, coverage.pendingJobCount)
+        if (!forcedSnapshot && lastDiagnosticState == state) return
+        lastDiagnosticState = state
+        val center = mapView.model.mapViewPosition.center
+        MapHotPathDiagnostics.recordEvent(
+            stage = "mapRenderer.visibleTiles",
+            status = state,
+            detail =
+                    "cacheId=$cacheId renderer=$rendererId layer=${System.identityHashCode(this)} " +
+                    "zoom=$zoomLevel center=${center.latitude},${center.longitude} " +
+                    "rotation=${rotation.degrees} attached=${mapView.isAttachedToWindow} " +
+                    "size=${mapView.width}x${mapView.height} drawable=$drawable " +
+                    "exactEntries=${coverage.exactCacheEntryCount}/${coverage.totalTileCount} " +
+                    "exactDrawableTiles=${coverage.baseTileCount}/${coverage.totalTileCount} " +
+                    "parentFallbackTiles=${coverage.parentTileCount}/${coverage.totalTileCount} " +
+                    "pendingJobs=${coverage.pendingJobCount} " +
+                    "semanticState=$state reason=${snapshotReason ?: "state_changed"} " +
+                    "bounds=${boundingBox.minLatitude},${boundingBox.minLongitude}," +
+                    "${boundingBox.maxLatitude},${boundingBox.maxLongitude}",
+        )
+    }
+
+    private fun visibleTileCoverage(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+    ): VisibleTileCoverage =
+        runCatching {
+            if (renderThemeFuture == null) return@runCatching VisibleTileCoverage()
+            val tileSize = displayModel?.tileSize ?: return@runCatching VisibleTileCoverage()
+            var totalTileCount = 0
+            var exactCacheEntryCount = 0
+            var baseTileCount = 0
+            var parentTileCount = 0
+            LayerUtil.getTiles(boundingBox, zoomLevel, tileSize).forEach { tile ->
+                totalTileCount += 1
+                val job = createJob(tile)
+                if (tileCache.containsKey(job)) {
+                    exactCacheEntryCount += 1
+                }
+                if (tileCache.getImmediately(job) != null) {
+                    baseTileCount += 1
+                } else if (hasCachedParentTile(tile)) {
+                    parentTileCount += 1
+                }
+            }
+            VisibleTileCoverage(
+                totalTileCount = totalTileCount,
+                exactCacheEntryCount = exactCacheEntryCount,
+                baseTileCount = baseTileCount,
+                parentTileCount = parentTileCount,
+                pendingJobCount = jobQueue?.size() ?: -1,
+            )
+        }.getOrDefault(VisibleTileCoverage())
+
+    private fun hasCachedParentTile(tile: org.mapsforge.core.model.Tile): Boolean {
+        var parent = tile
+        repeat(MAX_PARENT_TILE_DEPTH) {
+            parent = parent.parent ?: return false
+            if (tileCache.getImmediately(createJob(parent)) != null) return true
+        }
+        return false
     }
 
     private fun hasCachedVisibleBaseTile(
@@ -81,4 +200,39 @@ internal class FirstVisibleTileRendererLayer(
                 .getTiles(boundingBox, zoomLevel, tileSize)
                 .any { tile -> tileCache.containsKey(createJob(tile)) }
         }.getOrDefault(false)
+
+    private data class VisibleTileCoverage(
+        val totalTileCount: Int = 0,
+        val exactCacheEntryCount: Int = 0,
+        val baseTileCount: Int = 0,
+        val parentTileCount: Int = 0,
+        val pendingJobCount: Int = -1,
+    ) {
+        val usableTileCount: Int
+            get() = baseTileCount + parentTileCount
+    }
+
+    private companion object {
+        const val MAX_PARENT_TILE_DEPTH = 4
+        const val COVERAGE_SAMPLE_INTERVAL_MS = 250L
+    }
 }
+
+internal fun visibleTileDiagnosticState(
+    previousState: String?,
+    drawable: Boolean,
+    pendingJobCount: Int,
+): String =
+    when {
+        drawable && (previousState == "pending_no_tiles" || previousState == "no_tiles_no_jobs") -> "tile_arrived"
+        drawable -> "drawable"
+        pendingJobCount > 0 -> "pending_no_tiles"
+        else -> "no_tiles_no_jobs"
+    }
+
+internal fun isVisibleTileDiagnosticSampleDue(
+    lastSampleAtElapsedMs: Long?,
+    nowElapsedMs: Long,
+    sampleIntervalMs: Long,
+): Boolean =
+    lastSampleAtElapsedMs == null || nowElapsedMs - lastSampleAtElapsedMs >= sampleIntervalMs
