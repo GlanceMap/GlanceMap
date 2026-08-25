@@ -49,6 +49,7 @@ class TraceRecordingDraftStore(
                                     barometricPressureHpa = pointJson.optionalDouble("barometricPressureHpa"),
                                     startsNewSegment = pointJson.optBoolean("startsNewSegment", false),
                                     segmentStartReason = pointJson.optionalString("segmentStartReason"),
+                                    trajectoryFinalized = pointJson.optBoolean("trajectoryFinalized", false),
                                 ),
                             )
                         }
@@ -174,6 +175,7 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("barometricPressureHpa", barometricPressureHpa ?: JSONObject.NULL)
         .put("startsNewSegment", startsNewSegment)
         .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
+        .put("trajectoryFinalized", trajectoryFinalized)
 
 private fun JSONObject.optionalDouble(key: String): Double? =
     if (isNull(key)) {

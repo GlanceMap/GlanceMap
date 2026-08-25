@@ -17,6 +17,8 @@ data class RecordedTracePoint(
     val barometricPressureHpa: Double? = null,
     val startsNewSegment: Boolean = false,
     val segmentStartReason: String? = null,
+    /** Internal fixed-lag provenance; it is not written to GPX. */
+    val trajectoryFinalized: Boolean = false,
 )
 
 internal object RecordingSegmentStartReason {

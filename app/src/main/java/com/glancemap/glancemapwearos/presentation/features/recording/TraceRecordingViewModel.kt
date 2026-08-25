@@ -1221,7 +1221,7 @@ class TraceRecordingViewModel(
         resetAutoPauseMotionState()
         lastUiAction = "pause"
         _uiState.value =
-            state.copy(
+            finalizeSavedRecordingGeometry(state).copy(
                 paused = true,
                 autoPaused = false,
                 pausedAtMillis = System.currentTimeMillis(),
@@ -1271,9 +1271,25 @@ class TraceRecordingViewModel(
         persistDraftAsync(reason = "resume")
     }
 
+    private fun finalizeSavedRecordingGeometry(state: TraceRecordingUiState): TraceRecordingUiState {
+        val finalized =
+            flushCanonicalRecordingTail(
+                existingPoints = state.points,
+                options =
+                    RecordingPointSmoothingOptions(
+                        mode = state.trackSmoothingMode,
+                        activityProfile = state.activityProfile,
+                        sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
+                    ),
+            )
+        return state.copy(points = finalized.points)
+    }
+
     fun finishAndSaveRecording(titleOverride: String? = null) {
-        val state = _uiState.value
-        if (!state.active || state.saving) return
+        val activeState = _uiState.value
+        if (!activeState.active || activeState.saving) return
+        val state = finalizeSavedRecordingGeometry(activeState)
+        _uiState.value = state
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
         lastUiAction = "save"
@@ -1683,7 +1699,7 @@ class TraceRecordingViewModel(
         val nowMillis = System.currentTimeMillis()
         lastUiAction = "auto_pause"
         _uiState.value =
-            state.copy(
+            finalizeSavedRecordingGeometry(state).copy(
                 paused = true,
                 autoPaused = true,
                 pausedAtMillis = nowMillis,
