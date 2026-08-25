@@ -88,7 +88,7 @@ class TraceRecordingViewModel(
     private var activityProfile = SettingsRepository.DEFAULT_ACTIVITY_PROFILE
     private var showSavedGpxOnMap = SettingsRepository.DEFAULT_RECORDING_SHOW_SAVED_GPX_ON_MAP
     private var lastAcceptedElapsedMs: Long = Long.MIN_VALUE
-    private var previousWatchGpsDistancePoint: RecordedTracePoint? = null
+    private val watchGpsDistanceGeometry = RecordingWatchGpsDistanceGeometry()
     private val locationPointMutex = Mutex()
     private var skippedIntervalCount = 0
     private var skippedPausedCount = 0
@@ -868,21 +868,25 @@ class TraceRecordingViewModel(
                         )
                     }
                 }
-                val watchGpsGeometricDelta =
-                    watchGpsRecordingGeometryDeltaMeters(
-                        previous = previousWatchGpsDistancePoint,
-                        current = point,
-                    )
-                val distanceEstimate =
-                    estimateRecordingDistanceDelta(
-                        geometricDeltaMeters = watchGpsGeometricDelta,
-                        previous = previousWatchGpsDistancePoint,
+                val distanceSegment =
+                    watchGpsDistanceGeometry.append(
                         current = point.copy(accuracyMeters = filterAccuracyMeters),
-                        elapsedSincePreviousMs =
-                            committedPointGapMillis.takeIf { it > 0L } ?: elapsedSinceAcceptedMs,
-                        activityProfile = currentState.activityProfile,
                         isContinuityRecovery = continuityRecoveryReason != null,
+                        activityProfile = currentState.activityProfile,
+                        sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
                     )
+                val watchGpsGeometricDelta = distanceSegment?.geometricDeltaMeters ?: 0.0
+                val distanceEstimate =
+                    distanceSegment?.let { segment ->
+                        estimateRecordingDistanceDelta(
+                            geometricDeltaMeters = segment.geometricDeltaMeters,
+                            previous = segment.previous,
+                            current = segment.current,
+                            elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
+                            activityProfile = currentState.activityProfile,
+                            isContinuityRecovery = segment.isContinuityRecovery,
+                        )
+                    } ?: RecordingDistanceEstimate(distanceMeters = 0.0, capped = false)
                 val addedDistance = distanceEstimate.distanceMeters
                 if (distanceEstimate.capped) {
                     continuityDistanceCapCount += 1
@@ -927,7 +931,6 @@ class TraceRecordingViewModel(
                     )
                 _uiState.value =
                     updatedState
-                previousWatchGpsDistancePoint = point.copy(accuracyMeters = filterAccuracyMeters)
                 maybeTriggerRecordingProgressVibration(
                     state = updatedState,
                     nowMillis = System.currentTimeMillis(),
@@ -1219,11 +1222,12 @@ class TraceRecordingViewModel(
         val state = _uiState.value
         if (!state.active || state.paused || state.saving) return
         recordingPointCaptureExpectation.pause(SystemClock.elapsedRealtime())
-        previousWatchGpsDistancePoint = null
+        val stateWithDistance = flushWatchGpsDistanceGeometry(state)
+        watchGpsDistanceGeometry.reset()
         resetAutoPauseMotionState()
         lastUiAction = "pause"
         _uiState.value =
-            finalizeSavedRecordingGeometry(state).copy(
+            finalizeSavedRecordingGeometry(stateWithDistance).copy(
                 paused = true,
                 autoPaused = false,
                 pausedAtMillis = System.currentTimeMillis(),
@@ -1243,7 +1247,7 @@ class TraceRecordingViewModel(
         val now = System.currentTimeMillis()
         val addedPausedMillis = state.pausedAtMillis?.let { now - it }?.coerceAtLeast(0L) ?: 0L
         lastAcceptedElapsedMs = Long.MIN_VALUE
-        previousWatchGpsDistancePoint = null
+        watchGpsDistanceGeometry.reset()
         lastAcceptedPointTimeMillis = null
         lastLiveCallbackElapsedMs = Long.MIN_VALUE
         recentLiveCallbackIntervalsMs.clear()
@@ -1288,10 +1292,24 @@ class TraceRecordingViewModel(
         return state.copy(points = finalized.points)
     }
 
+    private fun flushWatchGpsDistanceGeometry(state: TraceRecordingUiState): TraceRecordingUiState {
+        val segment = watchGpsDistanceGeometry.flush() ?: return state
+        val estimate =
+            estimateRecordingDistanceDelta(
+                geometricDeltaMeters = segment.geometricDeltaMeters,
+                previous = segment.previous,
+                current = segment.current,
+                elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
+                activityProfile = state.activityProfile,
+                isContinuityRecovery = segment.isContinuityRecovery,
+            )
+        return state.copy(distanceMeters = (state.distanceMeters + estimate.distanceMeters).coerceAtLeast(0.0))
+    }
+
     fun finishAndSaveRecording(titleOverride: String? = null) {
         val activeState = _uiState.value
         if (!activeState.active || activeState.saving) return
-        val state = finalizeSavedRecordingGeometry(activeState)
+        val state = finalizeSavedRecordingGeometry(flushWatchGpsDistanceGeometry(activeState))
         _uiState.value = state
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
@@ -1620,7 +1638,7 @@ class TraceRecordingViewModel(
         acceptedAccuracyMinMeters = null
         acceptedAccuracyMaxMeters = null
         lastAcceptedPointTimeMillis = null
-        previousWatchGpsDistancePoint = null
+        watchGpsDistanceGeometry.reset()
         gpsActiveDurationMillis = 0L
         recordingGapCount = 0
         recordingMaxGapMillis = 0L
@@ -1699,7 +1717,8 @@ class TraceRecordingViewModel(
 
         autoPauseTriggerCount += 1
         recordingPointCaptureExpectation.pause(nowElapsedMs)
-        previousWatchGpsDistancePoint = null
+        val stateWithDistance = flushWatchGpsDistanceGeometry(state)
+        watchGpsDistanceGeometry.reset()
         resetAutoPauseMotionState()
         val nowMillis = System.currentTimeMillis()
         val effectivePauseMillis =
@@ -1710,7 +1729,7 @@ class TraceRecordingViewModel(
             )
         lastUiAction = "auto_pause"
         _uiState.value =
-            finalizeSavedRecordingGeometry(state).copy(
+            finalizeSavedRecordingGeometry(stateWithDistance).copy(
                 paused = true,
                 autoPaused = true,
                 pausedAtMillis = effectivePauseMillis,
@@ -1785,7 +1804,7 @@ class TraceRecordingViewModel(
                 movingDurationMillis = movingDurationMs,
             )
         lastAcceptedElapsedMs = Long.MIN_VALUE
-        previousWatchGpsDistancePoint = null
+        watchGpsDistanceGeometry.reset()
         lastAcceptedPointTimeMillis = null
         lastLiveCallbackElapsedMs = Long.MIN_VALUE
         recentLiveCallbackIntervalsMs.clear()

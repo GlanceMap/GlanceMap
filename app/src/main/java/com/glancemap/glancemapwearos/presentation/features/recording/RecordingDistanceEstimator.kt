@@ -11,10 +11,84 @@ internal fun resolveRecordingContinuityRecoveryGapMillis(
     maxOf(deliveryGapMillis, committedPointGapMillis)
         .takeIf { it >= thresholdMillis }
 
-internal fun watchGpsRecordingGeometryDeltaMeters(
-    previous: RecordedTracePoint?,
-    current: RecordedTracePoint,
-): Double = previous?.let { haversineMeters(it.latLong, current.latLong) } ?: 0.0
+/**
+ * Keeps a one-point provisional tail for Watch-GPS distance only. It always uses the fixed
+ * local Adaptive policy, regardless of the user's saved-track smoothing choice.
+ */
+internal class RecordingWatchGpsDistanceGeometry {
+    private var finalizedPoint: RecordedTracePoint? = null
+    private var provisionalPoint: PendingWatchGpsDistancePoint? = null
+
+    fun append(
+        current: RecordedTracePoint,
+        isContinuityRecovery: Boolean,
+        activityProfile: String,
+        sampleIntervalSeconds: Int,
+    ): RecordingWatchGpsDistanceSegment? {
+        val previous = finalizedPoint
+        if (previous == null) {
+            finalizedPoint = current
+            return null
+        }
+        val provisional = provisionalPoint
+        if (provisional == null) {
+            provisionalPoint = PendingWatchGpsDistancePoint(current, isContinuityRecovery)
+            return null
+        }
+        val finalizedCurrent =
+            smoothRecordingMiddlePoint(
+                before = previous,
+                middle = provisional.point,
+                after = current,
+                options =
+                    RecordingPointSmoothingOptions(
+                        mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+                        activityProfile = activityProfile,
+                        sampleIntervalSeconds = sampleIntervalSeconds,
+                    ),
+            )?.point ?: provisional.point
+        finalizedPoint = finalizedCurrent
+        provisionalPoint = PendingWatchGpsDistancePoint(current, isContinuityRecovery)
+        return RecordingWatchGpsDistanceSegment(
+            previous = previous,
+            current = finalizedCurrent,
+            isContinuityRecovery = provisional.isContinuityRecovery,
+        )
+    }
+
+    fun flush(): RecordingWatchGpsDistanceSegment? {
+        val previous = finalizedPoint ?: return null
+        val provisional = provisionalPoint ?: return null
+        finalizedPoint = provisional.point
+        provisionalPoint = null
+        return RecordingWatchGpsDistanceSegment(
+            previous = previous,
+            current = provisional.point,
+            isContinuityRecovery = provisional.isContinuityRecovery,
+        )
+    }
+
+    fun reset() {
+        finalizedPoint = null
+        provisionalPoint = null
+    }
+}
+
+internal data class RecordingWatchGpsDistanceSegment(
+    val previous: RecordedTracePoint,
+    val current: RecordedTracePoint,
+    val isContinuityRecovery: Boolean,
+) {
+    val geometricDeltaMeters: Double
+        get() = haversineMeters(previous.latLong, current.latLong)
+    val elapsedSincePreviousMs: Long
+        get() = (current.timeMillis - previous.timeMillis).coerceAtLeast(0L)
+}
+
+private data class PendingWatchGpsDistancePoint(
+    val point: RecordedTracePoint,
+    val isContinuityRecovery: Boolean,
+)
 
 /**
  * Keeps Watch-GPS activity distance independent from saved-track smoothing and visual

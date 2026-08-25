@@ -2,6 +2,8 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
 
@@ -27,13 +29,51 @@ class RecordingWatchGpsDistanceTest {
                 startsNewSegment = true,
                 segmentStartReason = RecordingSegmentStartReason.MANUAL_PAUSE,
             )
-
-        val bridgeDistance = watchGpsRecordingGeometryDeltaMeters(beforePause, resumed)
-        val resumedDistance = watchGpsRecordingGeometryDeltaMeters(previous = null, current = resumed)
+        val geometry = RecordingWatchGpsDistanceGeometry()
+        geometry.append(beforePause, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+        geometry.reset()
 
         assertEquals(1, recordedTraceSegments(listOf(beforePause, resumed)).size)
-        assertEquals(0.0, resumedDistance, 0.0)
-        assertEquals(true, bridgeDistance > 0.0)
+        assertEquals(null, geometry.append(resumed, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3))
+        assertEquals(null, geometry.flush())
+    }
+
+    @Test
+    fun alternatingLateralZigZagAddsMateriallyLessDistanceThanRawPolyline() {
+        val points = listOf(0.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, 0.0)
+            .mapIndexed(::point)
+
+        val rawDistance = naiveDistance(points)
+        val filteredDistance = watchGpsDistance(points)
+        val forwardProgress = haversineMeters(points.first().latLong, points.last().latLong)
+
+        assertTrue(filteredDistance < rawDistance * 0.90)
+        assertTrue(filteredDistance >= forwardProgress * 0.90)
+    }
+
+    @Test
+    fun straightCleanMovementRemainsEssentiallyUnchanged() {
+        val points = (0..6).map { index -> point(index, lateralMeters = 0.0) }
+
+        assertEquals(naiveDistance(points), watchGpsDistance(points), 0.01)
+    }
+
+    @Test
+    fun recoverySegmentStillUsesExistingDistanceCap() {
+        val geometry = RecordingWatchGpsDistanceGeometry()
+        val before = point(index = 0, lateralMeters = 0.0)
+        val recovered = point(index = 18, lateralMeters = 0.0).copy(timeMillis = 20_000L)
+        val after = point(index = 19, lateralMeters = 0.0).copy(timeMillis = 23_000L)
+
+        geometry.append(before, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+        geometry.append(recovered, isContinuityRecovery = true, activityProfile = HIKE, sampleIntervalSeconds = 3)
+        val segment =
+            geometry.append(after, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+        assertNotNull(segment)
+        val estimate = estimate(segment!!)
+
+        assertTrue(estimate.capped)
+        assertTrue(estimate.distanceMeters < segment.geometricDeltaMeters)
     }
 
     @Test
@@ -70,7 +110,7 @@ class RecordingWatchGpsDistanceTest {
 
     private fun distanceForMode(mode: String): Double {
         var canonical = emptyList<RecordedTracePoint>()
-        var previousWatchGpsPoint: RecordedTracePoint? = null
+        val geometry = RecordingWatchGpsDistanceGeometry()
         var distanceMeters = 0.0
         listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0).forEachIndexed { index, lateralMeters ->
             val current = point(index, lateralMeters)
@@ -85,21 +125,38 @@ class RecordingWatchGpsDistanceTest {
                             sampleIntervalSeconds = 3,
                         ),
                 ).points
-            val estimate =
-                estimateRecordingDistanceDelta(
-                    geometricDeltaMeters = watchGpsRecordingGeometryDeltaMeters(previousWatchGpsPoint, current),
-                    previous = previousWatchGpsPoint,
-                    current = current,
-                    elapsedSincePreviousMs =
-                        previousWatchGpsPoint?.let { previous -> current.timeMillis - previous.timeMillis } ?: 0L,
-                    activityProfile = SettingsRepository.ACTIVITY_PROFILE_HIKE,
-                    isContinuityRecovery = false,
-                )
-            distanceMeters += estimate.distanceMeters
-            previousWatchGpsPoint = current
+            geometry
+                .append(current, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+                ?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
         }
+        geometry.flush()?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
         return distanceMeters
     }
+
+    private fun watchGpsDistance(points: List<RecordedTracePoint>): Double {
+        val geometry = RecordingWatchGpsDistanceGeometry()
+        var distanceMeters = 0.0
+        points.forEach { point ->
+            geometry
+                .append(point, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+                ?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
+        }
+        geometry.flush()?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
+        return distanceMeters
+    }
+
+    private fun naiveDistance(points: List<RecordedTracePoint>): Double =
+        points.zipWithNext().sumOf { (before, after) -> haversineMeters(before.latLong, after.latLong) }
+
+    private fun estimate(segment: RecordingWatchGpsDistanceSegment): RecordingDistanceEstimate =
+        estimateRecordingDistanceDelta(
+            geometricDeltaMeters = segment.geometricDeltaMeters,
+            previous = segment.previous,
+            current = segment.current,
+            elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
+            activityProfile = HIKE,
+            isContinuityRecovery = segment.isContinuityRecovery,
+        )
 
     private fun point(
         index: Int,
@@ -116,4 +173,8 @@ class RecordingWatchGpsDistanceTest {
             accuracyMeters = 12f,
             speedMps = 1.2f,
         )
+
+    private companion object {
+        const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
+    }
 }
