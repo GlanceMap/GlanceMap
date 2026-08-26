@@ -439,7 +439,7 @@ class RecordingTrackFilterTest {
     }
 
     @Test
-    fun fourthPointConfirmsAndCorrectsShortGpsReversal() {
+    fun finalizedTailConfirmsAndCorrectsShortGpsReversal() {
         val options =
             RecordingPointSmoothingOptions(
                 mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
@@ -453,12 +453,14 @@ class RecordingTrackFilterTest {
                 point(x = 20.0, y = 0.0, timeMillis = 20_000L, accuracyMeters = 5f),
             )
 
-        val result =
+        val appended =
             appendCanonicalRecordingPoint(
                 existingPoints = points,
                 point = point(x = 30.0, y = 0.0, timeMillis = 30_000L, accuracyMeters = 5f),
                 options = options,
             )
+        points = appended.points
+        val result = flushCanonicalRecordingTail(existingPoints = points, options = options)
         points = result.points
 
         assertTrue(result.confirmedReversalCorrected)
@@ -468,7 +470,7 @@ class RecordingTrackFilterTest {
     }
 
     @Test
-    fun fourthPointCorrectsBackwardGpsZWithoutStepProgress() {
+    fun finalizedTailCorrectsBackwardGpsZWithoutStepProgress() {
         val points =
             listOf(
                 point(x = 0.0, y = 0.0, timeMillis = 0L, accuracyMeters = 6f, stepCount = 100),
@@ -476,7 +478,7 @@ class RecordingTrackFilterTest {
                 point(x = 4.2, y = -6.1, timeMillis = 23_000L, accuracyMeters = 31f, stepCount = 100),
             )
 
-        val result =
+        val appended =
             appendCanonicalRecordingPoint(
                 existingPoints = points,
                 point = point(x = 33.1, y = -4.2, timeMillis = 33_000L, accuracyMeters = 15f, stepCount = 110),
@@ -488,7 +490,17 @@ class RecordingTrackFilterTest {
                     ),
             )
 
-        assertTrue(result.confirmedReversalCorrected)
+        val result =
+            flushCanonicalRecordingTail(
+                existingPoints = appended.points,
+                options =
+                    RecordingPointSmoothingOptions(
+                        mode = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+                        activityProfile = HIKE,
+                        sampleIntervalSeconds = 10,
+                    ),
+            )
+
         assertTrue(
             haversineMeters(result.points[1].latLong, result.points[0].latLong) <
                 haversineMeters(points[1].latLong, points[0].latLong),

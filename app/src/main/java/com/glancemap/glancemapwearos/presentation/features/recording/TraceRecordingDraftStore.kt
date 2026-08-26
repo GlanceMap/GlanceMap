@@ -20,64 +20,19 @@ class TraceRecordingDraftStore(
 
     suspend fun load(): TraceRecordingDraft? =
         withContext(Dispatchers.IO) {
-            runCatching {
-                if (!metadataFile.exists()) return@withContext null
-                val json = JSONObject(metadataFile.readText())
-                val pointsJson = json.optJSONArray("points") ?: JSONArray()
-                val points =
-                    buildList {
-                        for (index in 0 until pointsJson.length()) {
-                            val pointJson = pointsJson.optJSONObject(index) ?: continue
-                            add(
-                                RecordedTracePoint(
-                                    latLong =
-                                        LatLong(
-                                            pointJson.getDouble("lat"),
-                                            pointJson.getDouble("lon"),
-                                        ),
-                                    elevationMeters = pointJson.optionalDouble("elevationMeters"),
-                                    timeMillis =
-                                        pointJson.optLong("timeMillis", 0L).takeIf { it > 0L }
-                                            ?: continue,
-                                    accuracyMeters = pointJson.optionalFloat("accuracyMeters"),
-                                    speedMps = pointJson.optionalFloat("speedMps"),
-                                    elevationSource = pointJson.optionalString("elevationSource"),
-                                    heartRateBpm = pointJson.optionalInt("heartRateBpm"),
-                                    stepCount = pointJson.optionalInt("stepCount"),
-                                    cadenceSpm = pointJson.optionalInt("cadenceSpm"),
-                                    powerWatts = pointJson.optionalInt("powerWatts"),
-                                    barometricPressureHpa = pointJson.optionalDouble("barometricPressureHpa"),
-                                    startsNewSegment = pointJson.optBoolean("startsNewSegment", false),
-                                    segmentStartReason = pointJson.optionalString("segmentStartReason"),
-                                ),
-                            )
-                        }
-                    }
-                TraceRecordingDraft(
-                    active = json.optBoolean("active", true),
-                    paused = json.optBoolean("paused", false),
-                    autoPaused = json.optBoolean("autoPaused", false),
-                    activityProfile = json.optionalString("activityProfile"),
-                    trackSmoothingMode =
-                        json
-                            .optionalString("trackSmoothingMode")
-                            .toRecordingTrackSmoothingMode(),
-                    startedAtMillis = json.optLong("startedAtMillis", 0L).takeIf { it > 0L },
-                    pausedAtMillis = json.optLong("pausedAtMillis", 0L).takeIf { it > 0L },
-                    accumulatedPausedMillis = json.optLong("accumulatedPausedMillis", 0L).coerceAtLeast(0L),
-                    distanceMeters = json.optDouble("distanceMeters", 0.0).takeIf { it.isFinite() } ?: 0.0,
-                    gpsActiveDurationMillis = json.optLong("gpsActiveDurationMillis", 0L).coerceAtLeast(0L),
-                    recordingGapCount = json.optInt("recordingGapCount", 0).coerceAtLeast(0),
-                    recordingMaxGapMillis = json.optLong("recordingMaxGapMillis", 0L).coerceAtLeast(0L),
-                    externalRawDistanceUnits = json.optionalLong("externalRawDistanceUnits"),
-                    externalDistanceMeters = json.optionalDouble("externalDistanceMeters"),
-                    externalIntegratedDistanceMeters = json.optionalDouble("externalIntegratedDistanceMeters"),
-                    stepCount = json.optionalInt("stepCount"),
-                    lastUiAction = json.optionalString("lastUiAction"),
-                    points = points,
-                )
-            }.getOrNull()
+            runCatching(::readDraft).getOrNull()
         }
+
+    private fun readDraft(): TraceRecordingDraft? =
+        metadataFile
+            .takeIf(File::exists)
+            ?.readText()
+            ?.let(::JSONObject)
+            ?.let { json ->
+                with(TraceRecordingDraftJson) {
+                    json.toTraceRecordingDraft()
+                }
+            }
 
     suspend fun save(
         state: TraceRecordingUiState,
@@ -93,6 +48,7 @@ class TraceRecordingDraftStore(
                 .put("autoPaused", state.autoPaused)
                 .put("activityProfile", state.activityProfile)
                 .put("trackSmoothingMode", state.trackSmoothingMode)
+                .put("distanceSource", state.distanceSource)
                 .put("startedAtMillis", state.startedAtMillis ?: 0L)
                 .put("pausedAtMillis", state.pausedAtMillis ?: 0L)
                 .put("accumulatedPausedMillis", state.accumulatedPausedMillis)
@@ -137,12 +93,66 @@ class TraceRecordingDraftStore(
     fun draftPath(): String = gpxFile.absolutePath
 }
 
+private object TraceRecordingDraftJson {
+    fun JSONObject.toTraceRecordingDraft(): TraceRecordingDraft =
+        TraceRecordingDraft(
+            active = optBoolean("active", true),
+            paused = optBoolean("paused", false),
+            autoPaused = optBoolean("autoPaused", false),
+            activityProfile = optionalString("activityProfile"),
+            trackSmoothingMode = optionalString("trackSmoothingMode").toRecordingTrackSmoothingMode(),
+            distanceSource = optionalString("distanceSource"),
+            startedAtMillis = optLong("startedAtMillis", 0L).takeIf { it > 0L },
+            pausedAtMillis = optLong("pausedAtMillis", 0L).takeIf { it > 0L },
+            accumulatedPausedMillis = optLong("accumulatedPausedMillis", 0L).coerceAtLeast(0L),
+            distanceMeters = optDouble("distanceMeters", 0.0).takeIf { it.isFinite() } ?: 0.0,
+            gpsActiveDurationMillis = optLong("gpsActiveDurationMillis", 0L).coerceAtLeast(0L),
+            recordingGapCount = optInt("recordingGapCount", 0).coerceAtLeast(0),
+            recordingMaxGapMillis = optLong("recordingMaxGapMillis", 0L).coerceAtLeast(0L),
+            externalRawDistanceUnits = optionalLong("externalRawDistanceUnits"),
+            externalDistanceMeters = optionalDouble("externalDistanceMeters"),
+            externalIntegratedDistanceMeters = optionalDouble("externalIntegratedDistanceMeters"),
+            stepCount = optionalInt("stepCount"),
+            lastUiAction = optionalString("lastUiAction"),
+            points = (optJSONArray("points") ?: JSONArray()).toRecordedTracePoints(),
+        )
+
+    private fun JSONArray.toRecordedTracePoints(): List<RecordedTracePoint> =
+        buildList {
+            for (index in 0 until length()) {
+                optJSONObject(index)?.toRecordedTracePoint()?.let(::add)
+            }
+        }
+
+    private fun JSONObject.toRecordedTracePoint(): RecordedTracePoint? {
+        val latLong = LatLong(getDouble("lat"), getDouble("lon"))
+        val timeMillis = optLong("timeMillis", 0L).takeIf { it > 0L } ?: return null
+        return RecordedTracePoint(
+            latLong = latLong,
+            elevationMeters = optionalDouble("elevationMeters"),
+            timeMillis = timeMillis,
+            accuracyMeters = optionalFloat("accuracyMeters"),
+            speedMps = optionalFloat("speedMps"),
+            elevationSource = optionalString("elevationSource"),
+            heartRateBpm = optionalInt("heartRateBpm"),
+            stepCount = optionalInt("stepCount"),
+            cadenceSpm = optionalInt("cadenceSpm"),
+            powerWatts = optionalInt("powerWatts"),
+            barometricPressureHpa = optionalDouble("barometricPressureHpa"),
+            startsNewSegment = optBoolean("startsNewSegment", false),
+            segmentStartReason = optionalString("segmentStartReason"),
+            trajectoryFinalized = optBoolean("trajectoryFinalized", false),
+        )
+    }
+}
+
 data class TraceRecordingDraft(
     val active: Boolean,
     val paused: Boolean,
     val autoPaused: Boolean,
     val activityProfile: String?,
     val trackSmoothingMode: String,
+    val distanceSource: String?,
     val startedAtMillis: Long?,
     val pausedAtMillis: Long?,
     val accumulatedPausedMillis: Long,
@@ -174,6 +184,7 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("barometricPressureHpa", barometricPressureHpa ?: JSONObject.NULL)
         .put("startsNewSegment", startsNewSegment)
         .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
+        .put("trajectoryFinalized", trajectoryFinalized)
 
 private fun JSONObject.optionalDouble(key: String): Double? =
     if (isNull(key)) {

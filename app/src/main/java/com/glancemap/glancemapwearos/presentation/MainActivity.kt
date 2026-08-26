@@ -213,6 +213,7 @@ class MainActivity : ComponentActivity() {
                     activityProfile = traceRecordingState.activityProfile,
                     initialStepCount = traceRecordingState.stepCount,
                     onMetrics = appContainer.traceRecordingViewModel::onSensorMetrics,
+                    onPressureSample = appContainer.traceRecordingViewModel::onPressureSample,
                 )
                 val locationPermissionGranted =
                     ContextCompat.checkSelfPermission(

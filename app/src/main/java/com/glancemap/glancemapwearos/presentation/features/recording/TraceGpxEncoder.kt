@@ -48,7 +48,11 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
     buildList {
         var currentSegment = mutableListOf<RecordedTracePoint>()
         points.forEach { point ->
-            if (point.startsNewSegment && currentSegment.isNotEmpty()) {
+            if (
+                point.startsNewSegment &&
+                currentSegment.isNotEmpty() &&
+                !shouldVisuallyBridgeRecordedPause(currentSegment.last(), point)
+            ) {
                 add(currentSegment)
                 currentSegment = mutableListOf()
             }
@@ -58,6 +62,31 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
             add(currentSegment)
         }
     }
+
+private fun shouldVisuallyBridgeRecordedPause(
+    previous: RecordedTracePoint,
+    resumed: RecordedTracePoint,
+): Boolean {
+    if (
+        resumed.segmentStartReason != RecordingSegmentStartReason.MANUAL_PAUSE &&
+        resumed.segmentStartReason != RecordingSegmentStartReason.AUTO_PAUSE
+    ) {
+        return false
+    }
+    val beforeAccuracy = previous.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val afterAccuracy = resumed.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val thresholdMeters =
+        if (beforeAccuracy != null && afterAccuracy != null) {
+            maxOf(RECORDING_PAUSE_BRIDGE_MIN_METERS, beforeAccuracy + afterAccuracy)
+                .coerceAtMost(RECORDING_PAUSE_BRIDGE_MAX_METERS)
+        } else {
+            RECORDING_PAUSE_BRIDGE_MIN_METERS
+        }
+    return haversineMeters(previous.latLong, resumed.latLong) <= thresholdMeters
+}
+
+private const val RECORDING_PAUSE_BRIDGE_MIN_METERS = 30.0
+private const val RECORDING_PAUSE_BRIDGE_MAX_METERS = 60.0
 
 data class RecordedTraceSummary(
     val activityProfile: String?,
@@ -94,7 +123,12 @@ data class RecordedTraceSummary(
     val maxPowerWatts: Int?,
     val barometricPressureHpa: Double?,
     val recordingTrackSmoothingMode: String? = null,
+    val recordingDistanceSource: String? = null,
     val recordingTrackFilterVersion: Int? = null,
+    val recordingElevationFilterVersion: Int? = null,
+    val smartElevationPressurePointCount: Long? = null,
+    val smartElevationDemAnchorPointCount: Long? = null,
+    val smartElevationGpsFallbackPointCount: Long? = null,
 )
 
 private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceSummary) {
@@ -110,9 +144,13 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     summary.recordingTrackSmoothingMode?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:recordingTrackSmoothingMode", it)
     }
+    summary.recordingDistanceSource?.takeIf { it.isNotBlank() }?.let {
+        textTag("gmap:recordingDistanceSource", it)
+    }
     summary.recordingTrackFilterVersion?.takeIf { it > 0 }?.let {
         textTag("gmap:recordingTrackFilterVersion", it.toString())
     }
+    writeRecordingElevationSummary(summary)
     textTag("gmap:durationSeconds", formatDouble(summary.durationSeconds))
     textTag("gmap:totalDurationSeconds", formatDouble(summary.totalDurationSeconds))
     textTag("gmap:distanceMeters", formatDouble(summary.distanceMeters))
@@ -137,6 +175,21 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     textTag("gmap:gpsActiveDurationSeconds", formatDouble(summary.gpsActiveDurationSeconds))
     textTag("gmap:recordingGapCount", summary.recordingGapCount.coerceAtLeast(0).toString())
     textTag("gmap:recordingMaxGapSeconds", formatDouble(summary.recordingMaxGapSeconds))
+}
+
+private fun StringWriter.writeRecordingElevationSummary(summary: RecordedTraceSummary) {
+    summary.recordingElevationFilterVersion?.takeIf { it > 0 }?.let {
+        textTag("gmap:recordingElevationFilterVersion", it.toString())
+    }
+    summary.smartElevationPressurePointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationPressurePointCount", it.toString())
+    }
+    summary.smartElevationDemAnchorPointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationDemAnchorPointCount", it.toString())
+    }
+    summary.smartElevationGpsFallbackPointCount?.takeIf { it >= 0L }?.let {
+        textTag("gmap:smartElevationGpsFallbackPointCount", it.toString())
+    }
 }
 
 private fun StringWriter.writeRecordingEnergySummary(summary: RecordedTraceSummary) {
