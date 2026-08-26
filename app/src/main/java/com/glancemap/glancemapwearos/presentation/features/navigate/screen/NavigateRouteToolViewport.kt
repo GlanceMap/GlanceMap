@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.util.MercatorProjection
 import org.mapsforge.map.android.view.MapView
@@ -49,5 +50,6 @@ internal fun fitMapViewToPreviewPoints(
     }
 
     mapView.setCenter(center)
+    MapZoomChangeAttribution.prepare(mapView, "route_preview_fit")
     mapView.model.mapViewPosition.setZoomLevel(chosenZoom.toByte(), false)
 }

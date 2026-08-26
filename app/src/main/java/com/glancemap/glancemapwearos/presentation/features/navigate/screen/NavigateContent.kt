@@ -57,6 +57,7 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapLayerMutationCoordinator
+import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
@@ -101,7 +102,8 @@ internal fun NavigateContent(
     mapZoomButtonsMode: String,
     northIndicatorMode: String,
     currentZoomLevel: Int,
-    onZoomLevelChange: (Int) -> Unit,
+    onZoomLevelChange: (oldZoom: Int, newZoom: Int, inputSource: String) -> Unit,
+    onMapPanCompleted: () -> Unit,
     onViewportChanged: (LatLong, Int) -> Unit,
     isMetric: Boolean,
     navMode: NavMode,
@@ -318,7 +320,10 @@ internal fun NavigateContent(
         }
     }
 
-    fun applyMapZoomStep(step: Int): Boolean {
+    fun applyMapZoomStep(
+        step: Int,
+        inputSource: String,
+    ): Boolean {
         val zoomApplied =
             mapView?.let { currentMapView ->
                 val current =
@@ -330,6 +335,7 @@ internal fun NavigateContent(
                 } else {
                     MapLayerMutationCoordinator.setGestureActive(currentMapView, true)
                     try {
+                        MapZoomChangeAttribution.prepare(currentMapView, inputSource)
                         currentMapView.model.mapViewPosition.setZoomLevel(next.toByte(), false)
                     } finally {
                         MapLayerMutationCoordinator.setGestureActive(currentMapView, false)
@@ -568,11 +574,21 @@ internal fun NavigateContent(
                     var consumed = false
 
                     while (rotaryScrollAccumulator >= thresholdPx) {
-                        consumed = applyMapZoomStep(step = positiveStep) || consumed
+                        consumed =
+                            applyMapZoomStep(
+                                step = positiveStep,
+                                inputSource = "rotary_crown",
+                            ) ||
+                            consumed
                         rotaryScrollAccumulator -= thresholdPx
                     }
                     while (rotaryScrollAccumulator <= -thresholdPx) {
-                        consumed = applyMapZoomStep(step = negativeStep) || consumed
+                        consumed =
+                            applyMapZoomStep(
+                                step = negativeStep,
+                                inputSource = "rotary_crown",
+                            ) ||
+                            consumed
                         rotaryScrollAccumulator += thresholdPx
                     }
 
@@ -603,6 +619,7 @@ internal fun NavigateContent(
                         .toInt()
                 val boundedZoom = currentZoom.coerceIn(zoomMin, zoomMax)
                 if (boundedZoom != currentZoom) {
+                    MapZoomChangeAttribution.prepare(mapView, "zoom_bounds_clamp")
                     mapView.model.mapViewPosition.setZoomLevel(boundedZoom.toByte(), false)
                 }
                 onDispose { }
@@ -649,8 +666,13 @@ internal fun NavigateContent(
                             newCenter.latitude != lastCenter.latitude ||
                                 newCenter.longitude != lastCenter.longitude
                         if (zoomChanged) {
+                            val oldZoom = lastZoom
                             lastZoom = newZoom
-                            latestOnZoomLevelChange.value(newZoom)
+                            latestOnZoomLevelChange.value(
+                                oldZoom,
+                                newZoom,
+                                MapZoomChangeAttribution.consume(mapView),
+                            )
                         }
                         if (centerChanged || zoomChanged) {
                             lastCenter = newCenter
@@ -708,13 +730,17 @@ internal fun NavigateContent(
                                             event.actionMasked == MotionEvent.ACTION_POINTER_UP
                                         ) {
                                             if (!isMultiTouchGestureSuppressed) {
-                                                panTelemetry.onPanFinished(
-                                                    navMode = latestNavMode.value,
-                                                    reason = "multi_touch",
-                                                    zoomLevel =
-                                                        mapView.model.mapViewPosition.zoomLevel
-                                                            .toInt(),
-                                                )
+                                                if (
+                                                    panTelemetry.onPanFinished(
+                                                        navMode = latestNavMode.value,
+                                                        reason = "multi_touch",
+                                                        zoomLevel =
+                                                            mapView.model.mapViewPosition.zoomLevel
+                                                                .toInt(),
+                                                    ) != null
+                                                ) {
+                                                    onMapPanCompleted()
+                                                }
                                                 isMultiTouchGestureSuppressed = true
                                                 MotionEvent.obtain(event).run {
                                                     action = MotionEvent.ACTION_CANCEL
@@ -767,18 +793,22 @@ internal fun NavigateContent(
                                             MotionEvent.ACTION_CANCEL,
                                             -> {
                                                 isDragging = false
-                                                panTelemetry.onPanFinished(
-                                                    navMode = latestNavMode.value,
-                                                    reason =
-                                                        if (event.actionMasked == MotionEvent.ACTION_UP) {
-                                                            "touch_up"
-                                                        } else {
-                                                            "cancel"
-                                                        },
-                                                    zoomLevel =
-                                                        mapView.model.mapViewPosition.zoomLevel
-                                                            .toInt(),
-                                                )
+                                                if (
+                                                    panTelemetry.onPanFinished(
+                                                        navMode = latestNavMode.value,
+                                                        reason =
+                                                            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                                                "touch_up"
+                                                            } else {
+                                                                "cancel"
+                                                            },
+                                                        zoomLevel =
+                                                            mapView.model.mapViewPosition.zoomLevel
+                                                                .toInt(),
+                                                    ) != null
+                                                ) {
+                                                    onMapPanCompleted()
+                                                }
                                                 MapLayerMutationCoordinator.setGestureActive(mapView, false)
                                                 v.parent?.requestDisallowInterceptTouchEvent(false)
                                             }
@@ -885,7 +915,7 @@ internal fun NavigateContent(
                     showZoomPlusButton = showZoomPlusButton,
                     showZoomMinusButton = showZoomMinusButton,
                     triggerHaptic = triggerHaptic,
-                    onZoomStep = ::applyMapZoomStep,
+                    onZoomStep = { step -> applyMapZoomStep(step, inputSource = "zoom_button") },
                     zoomButtonSize = zoomButtonSize,
                     zoomIconSize = zoomIconSize,
                     scaleIndicator = scaleIndicator,

@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Debug
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -9,6 +10,7 @@ import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -238,13 +240,18 @@ class MapRenderer(
         val config = tileCacheConfig
 
         val cache =
-            AndroidUtil.createExternalStorageTileCache(
-                context,
-                cacheId,
-                config.firstLevelTiles,
-                tileSize,
-                true,
-            )
+            MapHotPathDiagnostics.measure(
+                stage = "mapRenderer.openTileCache",
+                detail = "cacheId=$cacheId",
+            ) {
+                AndroidUtil.createExternalStorageTileCache(
+                    context,
+                    cacheId,
+                    config.firstLevelTiles,
+                    tileSize,
+                    true,
+                )
+            }
         cache.addObserver(tileCacheObserver)
         Log.i(
             TAG,
@@ -586,6 +593,43 @@ class MapRenderer(
 
     fun currentTileCacheUpdateVersion(): Long = tileCacheUpdateCounter.get()
 
+    /** Debug-only snapshot taken after a map-position observer reports a completed zoom change. */
+    fun recordCompletedZoomChange(
+        oldZoom: Int,
+        newZoom: Int,
+        inputSource: String,
+    ) {
+        if (!DebugTelemetry.isFullDiagnosticsCaptureEnabled()) return
+        val center = mapView.model.mapViewPosition.center
+        val runtime = Runtime.getRuntime()
+        val totalHeapBytes = runtime.totalMemory()
+        val usedHeapBytes = totalHeapBytes - runtime.freeMemory()
+        MapHotPathDiagnostics.recordEvent(
+            stage = "mapRenderer.viewportZoom",
+            status = "completed",
+            detail =
+                "input=$inputSource oldZoom=$oldZoom newZoom=$newZoom " +
+                    "center=${center.latitude},${center.longitude} " +
+                    "rotation=${mapView.mapRotation.degrees} " +
+                    "attached=${mapView.isAttachedToWindow} size=${mapView.width}x${mapView.height} " +
+                    "renderer=${System.identityHashCode(this)} " +
+                    "mapView=${System.identityHashCode(mapView)} " +
+                    "layer=${currentLayer?.let(System::identityHashCode) ?: 0} " +
+                    "cacheId=$currentTileCacheId cache=${System.identityHashCode(tileCache)} " +
+                    "heapUsedKb=${usedHeapBytes / 1024L} heapTotalKb=${totalHeapBytes / 1024L} " +
+                    "nativeAllocatedKb=${Debug.getNativeHeapAllocatedSize() / 1024L}",
+        )
+        (currentLayer as? FirstVisibleTileRendererLayer)
+            ?.requestVisibleTileDiagnosticSnapshot("zoom_completed")
+    }
+
+    /** Requests one FULL-diagnostics visibility snapshot after a completed user pan. */
+    fun recordCompletedPan() {
+        if (!DebugTelemetry.isFullDiagnosticsCaptureEnabled()) return
+        (currentLayer as? FirstVisibleTileRendererLayer)
+            ?.requestVisibleTileDiagnosticSnapshot("pan_completed")
+    }
+
     internal suspend fun awaitFirstVisibleMapAfter(
         baselineVersion: Long,
         timeoutMs: Long,
@@ -732,6 +776,13 @@ class MapRenderer(
             skipNextStartupTilePrewarm = false
             currentLayer = tileRendererLayer
             mapView.mutateLayers { layers -> layers.add(0, tileRendererLayer) }
+            MapHotPathDiagnostics.recordEvent(
+                stage = "mapRenderer.rendererLayerAttached",
+                detail =
+                    "cacheId=$currentTileCacheId zoom=${mapView.model.mapViewPosition.zoomLevel} " +
+                        "center=${mapView.model.mapViewPosition.center.latitude}," +
+                        mapView.model.mapViewPosition.center.longitude,
+            )
             currentMapPath = mapPath
             currentMapSignature = newMapSignature
             currentDemSignature = newDemSignature
@@ -1090,7 +1141,11 @@ class MapRenderer(
                 mapDataStore,
                 mapView.model.mapViewPosition,
                 AndroidGraphicFactory.INSTANCE,
-                null,
+                VisibleTileDiagnosticsContext(
+                    mapView = mapView,
+                    rendererId = System.identityHashCode(this@MapRenderer),
+                    cacheId = currentTileCacheId,
+                ),
                 onFirstVisibleBaseTile = { layer, source ->
                     val visibleAtElapsedMs = SystemClock.elapsedRealtime()
                     mapView.post {
@@ -1147,12 +1202,16 @@ class MapRenderer(
             )
         val cache = createHillshadeTileCache(cacheId)
         val hillshadeMapStore =
-            runCatching { MapFile(mapFile) }
-                .getOrElse { error ->
-                    runCatching { cache.destroy() }
-                    Log.w(TAG, "updateHillshadeLayer: Failed opening map store", error)
-                    return
-                }
+            runCatching {
+                MapHotPathDiagnostics.measure(
+                    stage = "mapRenderer.openHillshadeMapFile",
+                    detail = "file=${mapFile.name}",
+                ) { MapFile(mapFile) }
+            }.getOrElse { error ->
+                runCatching { cache.destroy() }
+                Log.w(TAG, "updateHillshadeLayer: Failed opening map store", error)
+                return
+            }
         var cachedVisibleTerrainCoverage: VisibleHillshadeTerrainCoverage? = null
         val layer =
             runCatching {

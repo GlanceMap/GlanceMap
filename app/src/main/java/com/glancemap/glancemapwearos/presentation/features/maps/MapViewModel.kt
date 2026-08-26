@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.glancemapwearos.presentation.features.maps
 
 import android.content.Context
@@ -26,6 +28,7 @@ import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.Mapsforge
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.bundled.BundledAssetThemeComposer
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,6 +98,93 @@ private data class OfflineViewportSnapshot(
     val zoomLevel: Int,
 )
 
+internal enum class MapAppearanceIndicatorRequest {
+    INITIAL_MAP_LOAD,
+    MAP_CHANGE,
+    THEME_CHANGE,
+    EXTERNAL_CACHE_RELOAD,
+}
+
+internal data class MapAppearanceIndicatorPolicy(
+    val showDelayMs: Long,
+    val minimumVisibleMs: Long,
+    val retainOnFirstVisibleTimeout: Boolean,
+)
+
+internal fun mapAppearanceIndicatorPolicy(
+    request: MapAppearanceIndicatorRequest,
+): MapAppearanceIndicatorPolicy =
+    when (request) {
+        MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD ->
+            MapAppearanceIndicatorPolicy(
+                showDelayMs = 400L,
+                minimumVisibleMs = 0L,
+                retainOnFirstVisibleTimeout = true,
+            )
+        else ->
+            MapAppearanceIndicatorPolicy(
+                showDelayMs = 0L,
+                minimumVisibleMs = 900L,
+                retainOnFirstVisibleTimeout = false,
+            )
+    }
+
+private val MapAppearanceIndicatorRequest.telemetryReason: String
+    get() =
+        when (this) {
+            MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD -> "initial_map_load"
+            MapAppearanceIndicatorRequest.MAP_CHANGE -> "map_change"
+            MapAppearanceIndicatorRequest.THEME_CHANGE -> "theme_selection"
+            MapAppearanceIndicatorRequest.EXTERNAL_CACHE_RELOAD -> "external_cache_reload"
+        }
+
+internal fun canMapAppearanceIndicatorOwnGeneration(
+    candidateGeneration: Long,
+    currentGeneration: Long,
+): Boolean = candidateGeneration == currentGeneration
+
+internal fun shouldShowInitialMapLoadIndicator(firstVisibleMapReceived: Boolean): Boolean = !firstVisibleMapReceived
+
+internal fun shouldRetainInitialMapLoadIndicator(
+    policy: MapAppearanceIndicatorPolicy,
+    mapReady: Boolean,
+): Boolean = policy.retainOnFirstVisibleTimeout && !mapReady
+
+internal fun firstVisibleMapBaselineVersion(
+    request: MapAppearanceIndicatorRequest,
+    currentVersion: Long,
+): Long =
+    if (request == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
+        0L
+    } else {
+        currentVersion
+    }
+
+internal fun shouldClearVisibleIndicatorForInitialLoadReplacement(
+    visibleGeneration: Long?,
+    nextGeneration: Long,
+): Boolean = visibleGeneration != null && visibleGeneration != nextGeneration
+
+internal fun shouldCancelActiveRendererWork(
+    activeGeneration: Long?,
+    requestedGeneration: Long,
+): Boolean = activeGeneration != requestedGeneration
+
+internal suspend fun <T> awaitInitialFirstVisibleAfterTimeout(
+    timeoutMs: Long,
+    awaitFirstVisible: suspend (Long) -> T?,
+    onTimeout: () -> Unit,
+): T {
+    var firstVisible = awaitFirstVisible(timeoutMs)
+    if (firstVisible != null) return firstVisible
+
+    onTimeout()
+    while (firstVisible == null) {
+        firstVisible = awaitFirstVisible(timeoutMs)
+    }
+    return checkNotNull(firstVisible)
+}
+
 internal fun buildOfflineStartCenterContextKey(
     selectedMapPath: String?,
     activeGpxDetails: List<GpxTrackDetails>,
@@ -135,8 +225,6 @@ class MapViewModel(
     private val themeRepository: ThemeRepository,
 ) : ViewModel() {
     companion object {
-        private const val MAP_APPEARANCE_APPLY_INDICATOR_MIN_MS = 900L
-        private const val INITIAL_MAP_LOAD_INDICATOR_MIN_MS = 1_400L
         private const val MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS = 4_500L
         private const val MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS = 220L
         private const val MAP_RENDERER_APPLY_DELAY_MS = 16L
@@ -183,10 +271,13 @@ class MapViewModel(
     private var themeApplyJob: Job? = null
     private var rendererWorkJob: Job? = null
     private var mapAppearanceIndicatorGeneration: Long = 0L
+    private var visibleMapAppearanceIndicator: MapAppearanceIndicator? = null
     private var hillshadeTerrainEventJob: Job? = null
     private var rendererWorkGeneration: Long = 0L
+    private var rendererWorkJobGeneration: Long? = null
     private var pendingMapLayerPath: String? = null
     private var lastRequestedMapLayerPath: String? = null
+    private var pendingMapChangeIndicator: Boolean = false
     private var pendingExternalCacheClear: Boolean = false
 
     private var mapHolder: MapHolder? = null
@@ -306,17 +397,28 @@ class MapViewModel(
                         minOf(zoomMin, zoomMax),
                         maxOf(zoomMin, zoomMax),
                     )
+                MapZoomChangeAttribution.prepare(this, "map_holder_default")
                 model.mapViewPosition.setZoomLevel(normalizedDefault.toByte(), false)
 
                 setBuiltInZoomControls(false)
                 mapScaleBar.isVisible = false
             }
 
-        val renderer = MapRenderer(appContext, mv)
+        val renderer =
+            MapHotPathDiagnostics.measure(stage = "mapViewModel.createMapRenderer") {
+                MapRenderer(appContext, mv)
+            }
         val holder = MapHolder(mv, renderer)
 
         mapHolder = holder
         initialMapLoadIndicatorPending = true
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_lifecycle",
+            status = "holder_created",
+            detail =
+                "renderer=${System.identityHashCode(holder.renderer)} " +
+                    "mapView=${System.identityHashCode(holder.mapView)}",
+        )
 
         setMapRenderer(renderer)
         requestMapLayerUpdate(selectedMapPath.value)
@@ -334,6 +436,7 @@ class MapViewModel(
         )
         rendererWorkJob?.cancel()
         rendererWorkJob = null
+        rendererWorkJobGeneration = null
         mapHolder?.renderer?.destroy()
         runCatching { mapHolder?.mapView?.destroyAll() }
         mapHolder = null
@@ -571,6 +674,7 @@ class MapViewModel(
 
         val clampedZoom = beforeZoom.coerceIn(effectiveMin, effectiveMax)
         if (clampedZoom != beforeZoom) {
+            MapZoomChangeAttribution.prepare(mapView, "zoom_bounds_$reason")
             position.setZoomLevel(clampedZoom.toByte(), false)
         }
 
@@ -607,6 +711,22 @@ class MapViewModel(
         }
         applyRendererConfigIfReady()
         schedulePendingRendererWorkIfReady()
+    }
+
+    fun recordCompletedZoomChange(
+        oldZoom: Int,
+        newZoom: Int,
+        inputSource: String,
+    ) {
+        mapRenderer?.recordCompletedZoomChange(
+            oldZoom = oldZoom,
+            newZoom = newZoom,
+            inputSource = inputSource,
+        )
+    }
+
+    fun recordCompletedPan() {
+        mapRenderer?.recordCompletedPan()
     }
 
     fun dismissHillshadeTerrainUnavailable() {
@@ -997,7 +1117,11 @@ class MapViewModel(
                     indicator?.let { activeIndicator ->
                         val elapsedMs = SystemClock.elapsedRealtime() - activeIndicator.startedAtMs
                         val remainingMs =
-                            (MAP_APPEARANCE_APPLY_INDICATOR_MIN_MS - elapsedMs).coerceAtLeast(0L)
+                            (
+                                mapAppearanceIndicatorPolicy(
+                                    MapAppearanceIndicatorRequest.THEME_CHANGE,
+                                ).minimumVisibleMs - elapsedMs
+                            ).coerceAtLeast(0L)
                         if (remainingMs > 0L) {
                             runCatching { delay(remainingMs) }
                         }
@@ -1024,6 +1148,14 @@ class MapViewModel(
         pendingMapLayerPath = path?.trim()?.takeIf { it.isNotEmpty() }
         val previousPath = lastRequestedMapLayerPath
         lastRequestedMapLayerPath = pendingMapLayerPath
+        pendingMapChangeIndicator =
+            pendingMapChangeIndicator ||
+            (
+                !initialMapLoadIndicatorPending &&
+                    previousPath != null &&
+                    pendingMapLayerPath != null &&
+                    previousPath != pendingMapLayerPath
+            )
         MapHotPathDiagnostics.recordEvent(
             stage = "map_update_request",
             status = "map_layer",
@@ -1044,6 +1176,7 @@ class MapViewModel(
 
     private fun mapIdentity(path: String?): String = path?.let { value -> value.hashCode().toUInt().toString(16) } ?: "none"
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun schedulePendingRendererWorkIfReady() {
         val renderer =
             mapRenderer
@@ -1051,7 +1184,14 @@ class MapViewModel(
                 ?: return
 
         val generation = rendererWorkGeneration
+        if (
+            rendererWorkJob?.isActive == true &&
+            !shouldCancelActiveRendererWork(rendererWorkJobGeneration, generation)
+        ) {
+            return
+        }
         rendererWorkJob?.cancel()
+        rendererWorkJobGeneration = generation
         rendererWorkJob =
             viewModelScope.launch {
                 // Let the first frame settle before doing renderer work that can block.
@@ -1063,28 +1203,124 @@ class MapViewModel(
                     initialMapLoadIndicatorPending &&
                         !pendingExternalCacheClear &&
                         !pendingMapLayerPath.isNullOrBlank()
-                val indicator =
+                if (showInitialMapLoadIndicator) {
+                    initialMapLoadIndicatorPending = false
+                }
+                val immediateIndicatorRequest =
+                    when {
+                        pendingExternalCacheClear -> MapAppearanceIndicatorRequest.EXTERNAL_CACHE_RELOAD
+                        pendingMapChangeIndicator -> MapAppearanceIndicatorRequest.MAP_CHANGE
+                        else -> null
+                    }
+                pendingMapChangeIndicator = false
+                val initialLoadPolicy =
+                    mapAppearanceIndicatorPolicy(MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD)
+                var firstVisibleMapReceived = false
+                var delayedInitialIndicator: MapAppearanceIndicator? = null
+                var delayedInitialIndicatorGeneration: Long? = null
+                val delayedInitialShow =
                     if (showInitialMapLoadIndicator) {
-                        initialMapLoadIndicatorPending = false
-                        showMapAppearanceIndicator(reason = "initial_map_load")
+                        val indicatorGeneration = reserveInitialMapAppearanceIndicatorGeneration()
+                        delayedInitialIndicatorGeneration = indicatorGeneration
+                        MapHotPathDiagnostics.recordEvent(
+                            stage = "map_update_ui",
+                            status = "delayed_show_scheduled",
+                            detail =
+                                "reason=initial_map_load generation=$indicatorGeneration " +
+                                    "delayMs=${initialLoadPolicy.showDelayMs}",
+                        )
+                        launch(start = CoroutineStart.UNDISPATCHED) {
+                            delay(initialLoadPolicy.showDelayMs)
+                            if (shouldShowInitialMapLoadIndicator(firstVisibleMapReceived)) {
+                                MapHotPathDiagnostics.recordEvent(
+                                    stage = "map_update_ui",
+                                    status = "delayed_show_fired",
+                                    detail = "reason=initial_map_load generation=$indicatorGeneration",
+                                )
+                                delayedInitialIndicator =
+                                    showReservedMapAppearanceIndicator(
+                                        reason = "initial_map_load",
+                                        generation = indicatorGeneration,
+                                    )
+                            } else {
+                                MapHotPathDiagnostics.recordEvent(
+                                    stage = "map_update_ui",
+                                    status = "delayed_show_skipped_ready",
+                                    detail = "reason=initial_map_load generation=$indicatorGeneration",
+                                )
+                            }
+                        }
                     } else {
                         null
                     }
+                val immediateIndicator =
+                    immediateIndicatorRequest?.let { request ->
+                        showMapAppearanceIndicator(reason = request.telemetryReason)
+                    }
+                var retainInitialIndicator = false
 
                 try {
-                    applyPendingRendererWork(
-                        renderer = renderer,
-                        awaitInitialVisibleMap = showInitialMapLoadIndicator,
-                    )
+                    val mapReady =
+                        applyPendingRendererWork(
+                            renderer = renderer,
+                            awaitVisibleMap = showInitialMapLoadIndicator || immediateIndicator != null,
+                            firstVisibleRequest =
+                                if (showInitialMapLoadIndicator) {
+                                    MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD
+                                } else {
+                                    immediateIndicatorRequest
+                                },
+                            onFirstVisibleMap = {
+                                firstVisibleMapReceived = true
+                                if (delayedInitialShow?.isActive == true) {
+                                    delayedInitialShow.cancel()
+                                    MapHotPathDiagnostics.recordEvent(
+                                        stage = "map_update_ui",
+                                        status = "delayed_show_cancelled",
+                                        detail =
+                                            "reason=initial_map_load " +
+                                                "generation=$delayedInitialIndicatorGeneration",
+                                    )
+                                }
+                            },
+                        )
+                    retainInitialIndicator =
+                        showInitialMapLoadIndicator &&
+                        shouldRetainInitialMapLoadIndicator(initialLoadPolicy, mapReady)
                 } finally {
-                    indicator?.let { activeIndicator ->
+                    if (delayedInitialShow?.isActive == true) {
+                        delayedInitialShow.cancel()
+                        MapHotPathDiagnostics.recordEvent(
+                            stage = "map_update_ui",
+                            status = "delayed_show_cancelled",
+                            detail =
+                                "reason=initial_map_load " +
+                                    "generation=$delayedInitialIndicatorGeneration",
+                        )
+                    }
+                    if (showInitialMapLoadIndicator && !retainInitialIndicator) {
+                        delayedInitialIndicator?.let { activeIndicator ->
+                            hideMapAppearanceIndicator(
+                                indicator = activeIndicator,
+                                reason = "initial_map_load_complete",
+                            )
+                        }
+                    }
+                    immediateIndicator?.let { activeIndicator ->
                         val elapsedMs = SystemClock.elapsedRealtime() - activeIndicator.startedAtMs
                         val remainingMs =
-                            (INITIAL_MAP_LOAD_INDICATOR_MIN_MS - elapsedMs).coerceAtLeast(0L)
+                            (
+                                mapAppearanceIndicatorPolicy(
+                                    checkNotNull(immediateIndicatorRequest),
+                                ).minimumVisibleMs - elapsedMs
+                            ).coerceAtLeast(0L)
                         if (remainingMs > 0L) {
                             runCatching { delay(remainingMs) }
                         }
-                        hideMapAppearanceIndicator(activeIndicator, reason = "initial_map_load_complete")
+                        hideMapAppearanceIndicator(
+                            indicator = activeIndicator,
+                            reason = "${checkNotNull(immediateIndicatorRequest).telemetryReason}_complete",
+                        )
                     }
                 }
             }
@@ -1093,14 +1329,70 @@ class MapViewModel(
     private data class MapAppearanceIndicator(
         val generation: Long,
         val startedAtMs: Long,
+        val reason: String,
     )
 
-    private fun showMapAppearanceIndicator(reason: String): MapAppearanceIndicator {
+    private fun reserveMapAppearanceIndicatorGeneration(reason: String): Long {
+        val generation = ++mapAppearanceIndicatorGeneration
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_update_ui",
+            status = "generation_reserved",
+            detail = "reason=$reason generation=$generation",
+        )
+        return generation
+    }
+
+    private fun reserveInitialMapAppearanceIndicatorGeneration(): Long {
+        val generation = reserveMapAppearanceIndicatorGeneration(reason = "initial_map_load")
+        val visibleIndicator = visibleMapAppearanceIndicator
+        if (
+            shouldClearVisibleIndicatorForInitialLoadReplacement(
+                visibleGeneration = visibleIndicator?.generation,
+                nextGeneration = generation,
+            )
+        ) {
+            visibleMapAppearanceIndicator = null
+            _mapAppearanceApplyInProgress.value = false
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "hide_replaced",
+                detail =
+                    "reason=${visibleIndicator?.reason} generation=${visibleIndicator?.generation} " +
+                        "replacementGeneration=$generation",
+            )
+        }
+        return generation
+    }
+
+    private fun showMapAppearanceIndicator(reason: String): MapAppearanceIndicator =
+        checkNotNull(
+            showReservedMapAppearanceIndicator(
+                reason = reason,
+                generation = reserveMapAppearanceIndicatorGeneration(reason),
+            ),
+        )
+
+    private fun showReservedMapAppearanceIndicator(
+        reason: String,
+        generation: Long,
+    ): MapAppearanceIndicator? {
+        if (!canMapAppearanceIndicatorOwnGeneration(generation, mapAppearanceIndicatorGeneration)) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "show_stale",
+                detail =
+                    "reason=$reason generation=$generation " +
+                        "activeGeneration=$mapAppearanceIndicatorGeneration",
+            )
+            return null
+        }
         val indicator =
             MapAppearanceIndicator(
-                generation = ++mapAppearanceIndicatorGeneration,
+                generation = generation,
                 startedAtMs = SystemClock.elapsedRealtime(),
+                reason = reason,
             )
+        visibleMapAppearanceIndicator = indicator
         _mapAppearanceApplyInProgress.value = true
         MapHotPathDiagnostics.recordEvent(
             stage = "map_update_ui",
@@ -1114,7 +1406,7 @@ class MapViewModel(
         indicator: MapAppearanceIndicator,
         reason: String,
     ) {
-        if (indicator.generation != mapAppearanceIndicatorGeneration) {
+        if (!canMapAppearanceIndicatorOwnGeneration(indicator.generation, mapAppearanceIndicatorGeneration)) {
             MapHotPathDiagnostics.recordEvent(
                 stage = "map_update_ui",
                 status = "hide_stale",
@@ -1124,6 +1416,17 @@ class MapViewModel(
             )
             return
         }
+        if (visibleMapAppearanceIndicator?.generation != indicator.generation) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "hide_not_visible",
+                detail =
+                    "reason=$reason generation=${indicator.generation} " +
+                        "visibleGeneration=${visibleMapAppearanceIndicator?.generation}",
+            )
+            return
+        }
+        visibleMapAppearanceIndicator = null
         _mapAppearanceApplyInProgress.value = false
         MapHotPathDiagnostics.recordEvent(
             stage = "map_update_ui",
@@ -1134,33 +1437,84 @@ class MapViewModel(
         )
     }
 
+    @Suppress("LongMethod")
     private suspend fun applyPendingRendererWork(
         renderer: MapRenderer,
-        awaitInitialVisibleMap: Boolean,
-    ) {
+        awaitVisibleMap: Boolean,
+        firstVisibleRequest: MapAppearanceIndicatorRequest?,
+        onFirstVisibleMap: () -> Unit,
+    ): Boolean {
+        val firstVisibleMapBaselineVersion =
+            if (awaitVisibleMap) {
+                firstVisibleMapBaselineVersion(
+                    request = checkNotNull(firstVisibleRequest),
+                    currentVersion = renderer.currentFirstVisibleMapVersion(),
+                )
+            } else {
+                0L
+            }
         if (pendingExternalCacheClear) {
             pendingExternalCacheClear = false
             renderer.onExternalCachesCleared()
             renderer.updateMapLayer(selectedMapPath.value)
             applyLatestZoomBounds(reason = "external_cache_clear")
-            return
+        } else {
+            renderer.updateMapLayer(pendingMapLayerPath)
+            applyLatestZoomBounds(reason = "map_layer_update")
         }
 
-        val firstVisibleMapBaselineVersion =
-            if (awaitInitialVisibleMap) {
-                renderer.currentFirstVisibleMapVersion()
+        if (!awaitVisibleMap) return true
+        MapHotPathDiagnostics.recordEvent(
+            stage = "map_update_ui",
+            status = "first_visible_timeout_scheduled",
+            detail =
+                "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
+                    "baseline=$firstVisibleMapBaselineVersion timeoutMs=$MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS",
+        )
+        val firstVisibleMap =
+            if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
+                awaitInitialFirstVisibleAfterTimeout(
+                    timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
+                    awaitFirstVisible = { timeoutMs ->
+                        renderer.awaitFirstVisibleMapAfter(
+                            baselineVersion = firstVisibleMapBaselineVersion,
+                            timeoutMs = timeoutMs,
+                        )
+                    },
+                    onTimeout = {
+                        MapHotPathDiagnostics.recordEvent(
+                            stage = "map_update_ui",
+                            status = "first_visible_timeout_fired",
+                            detail = "reason=initial_map_load baseline=$firstVisibleMapBaselineVersion",
+                        )
+                    },
+                )
             } else {
-                0L
+                renderer.awaitFirstVisibleMapAfter(
+                    baselineVersion = firstVisibleMapBaselineVersion,
+                    timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
+                )
             }
-        renderer.updateMapLayer(pendingMapLayerPath)
-        applyLatestZoomBounds(reason = "map_layer_update")
-        if (awaitInitialVisibleMap) {
-            renderer.awaitFirstVisibleMapAfter(
-                baselineVersion = firstVisibleMapBaselineVersion,
-                timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
+        if (firstVisibleMap != null) {
+            onFirstVisibleMap()
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "first_visible_observed",
+                detail =
+                    "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
+                        "baseline=$firstVisibleMapBaselineVersion version=${firstVisibleMap.version} " +
+                        "source=${firstVisibleMap.source.telemetryToken}",
             )
-            delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
         }
+        delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
+        if (firstVisibleMap != null) {
+            MapHotPathDiagnostics.recordEvent(
+                stage = "map_update_ui",
+                status = "first_visible_settled",
+                detail = "reason=${checkNotNull(firstVisibleRequest).telemetryReason}",
+            )
+        }
+        return firstVisibleMap != null
     }
 
     private fun applyRendererConfigIfReady(): MapRenderer.ThemeApplyResult {

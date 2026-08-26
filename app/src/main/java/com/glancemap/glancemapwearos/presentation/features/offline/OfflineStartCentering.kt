@@ -9,6 +9,7 @@ import com.glancemap.glancemapwearos.core.maps.GeoBounds
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapFileState
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
+import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.view.MapView
 
@@ -52,6 +53,7 @@ internal fun OfflineStartCenteringEffect(
             )
         if (!skipInitialCentering && !forceStartupCenter) {
             mapViewModel.restoreOfflineViewport(selectedMapPath, activeGpxDetails)?.let { (center, zoomLevel) ->
+                MapZoomChangeAttribution.prepare(mapView, "offline_viewport_restore")
                 mapView.model.mapViewPosition.setZoomLevel(zoomLevel.toByte(), false)
                 mapView.setCenter(center)
                 mapViewModel.markOfflineStartCenterHandled(selectedMapPath, activeGpxDetails)
