@@ -73,6 +73,29 @@ class RecordingWatchGpsDistanceTest {
     }
 
     @Test
+    fun sparseCadenceWatchGpsDistanceKeepsOriginalGeometryAndIgnoresSavedMode() {
+        listOf(HIKE, BIKE).forEach { activityProfile ->
+            listOf(60, 120).forEach { sampleIntervalSeconds ->
+                val points = sparseStraightTrack(sampleIntervalSeconds)
+                val distances =
+                    listOf(OFF, ADAPTIVE, STRONG).map { mode ->
+                        distanceForMode(
+                            mode = mode,
+                            points = points,
+                            activityProfile = activityProfile,
+                            sampleIntervalSeconds = sampleIntervalSeconds,
+                        )
+                    }
+
+                assertTrue(distances.first() > 0.0)
+                distances.forEach { distance ->
+                    assertEquals(naiveDistance(points), distance, 0.01)
+                }
+            }
+        }
+    }
+
+    @Test
     fun recoverySegmentStillUsesExistingDistanceCap() {
         val geometry = RecordingWatchGpsDistanceGeometry()
         val before = point(index = 0, lateralMeters = 0.0)
@@ -127,31 +150,47 @@ class RecordingWatchGpsDistanceTest {
         assertEquals(true, finalizedBeforePause.all { it.trajectoryFinalized })
     }
 
-    private fun distanceForMode(mode: String): Double {
+    private fun distanceForMode(
+        mode: String,
+        points: List<RecordedTracePoint> = modeIndependenceTrack(),
+        activityProfile: String = HIKE,
+        sampleIntervalSeconds: Int = 3,
+    ): Double {
         var canonical = emptyList<RecordedTracePoint>()
         val geometry = RecordingWatchGpsDistanceGeometry()
         var distanceMeters = 0.0
-        listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0)
-            .forEachIndexed { index, lateralMeters ->
-                val current = point(index, lateralMeters)
-                canonical =
-                    appendCanonicalRecordingPoint(
-                        existingPoints = canonical,
-                        point = current,
-                        options =
-                            RecordingPointSmoothingOptions(
-                                mode = mode,
-                                activityProfile = SettingsRepository.ACTIVITY_PROFILE_HIKE,
-                                sampleIntervalSeconds = 3,
-                            ),
-                    ).points
-                geometry
-                    .append(current, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
-                    ?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
-            }
-        geometry.flush()?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
+        points.forEach { current ->
+            canonical =
+                appendCanonicalRecordingPoint(
+                    existingPoints = canonical,
+                    point = current,
+                    options =
+                        RecordingPointSmoothingOptions(
+                            mode = mode,
+                            activityProfile = activityProfile,
+                            sampleIntervalSeconds = sampleIntervalSeconds,
+                        ),
+                ).points
+            geometry
+                .append(
+                    current,
+                    isContinuityRecovery = false,
+                    activityProfile = activityProfile,
+                    sampleIntervalSeconds = sampleIntervalSeconds,
+                )?.let { segment -> distanceMeters += estimate(segment, activityProfile).distanceMeters }
+        }
+        geometry.flush()?.let { segment -> distanceMeters += estimate(segment, activityProfile).distanceMeters }
         return distanceMeters
     }
+
+    private fun modeIndependenceTrack(): List<RecordedTracePoint> =
+        listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0)
+            .mapIndexed(::point)
+
+    private fun sparseStraightTrack(sampleIntervalSeconds: Int): List<RecordedTracePoint> =
+        (0..3).map { index ->
+            point(index, lateralMeters = 0.0, sampleIntervalSeconds = sampleIntervalSeconds)
+        }
 
     private fun watchGpsDistance(points: List<RecordedTracePoint>): Double {
         val geometry = RecordingWatchGpsDistanceGeometry()
@@ -170,14 +209,17 @@ class RecordingWatchGpsDistanceTest {
             haversineMeters(before.latLong, after.latLong)
         }
 
-    private fun estimate(segment: RecordingWatchGpsDistanceSegment): RecordingDistanceEstimate =
+    private fun estimate(
+        segment: RecordingWatchGpsDistanceSegment,
+        activityProfile: String = HIKE,
+    ): RecordingDistanceEstimate =
         estimateRecordingDistanceDelta(
             RecordingDistanceInput(
                 geometricDeltaMeters = segment.geometricDeltaMeters,
                 previous = segment.previous,
                 current = segment.current,
                 elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
-                activityProfile = HIKE,
+                activityProfile = activityProfile,
                 isContinuityRecovery = segment.isContinuityRecovery,
             ),
         )
@@ -185,6 +227,7 @@ class RecordingWatchGpsDistanceTest {
     private fun point(
         index: Int,
         lateralMeters: Double,
+        sampleIntervalSeconds: Int = 3,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong =
@@ -193,12 +236,16 @@ class RecordingWatchGpsDistanceTest {
                     6.0 + lateralMeters / (111_320.0 * kotlin.math.cos(Math.toRadians(45.0))),
                 ),
             elevationMeters = null,
-            timeMillis = index * 3_000L,
+            timeMillis = index * sampleIntervalSeconds * 1_000L,
             accuracyMeters = 12f,
             speedMps = 1.2f,
         )
 
     private companion object {
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
+        const val BIKE = SettingsRepository.ACTIVITY_PROFILE_BIKE
+        const val ADAPTIVE = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE
+        const val OFF = SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF
+        const val STRONG = SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG
     }
 }

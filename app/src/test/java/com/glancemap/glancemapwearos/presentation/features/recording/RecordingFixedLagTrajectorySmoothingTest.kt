@@ -128,6 +128,26 @@ class RecordingFixedLagTrajectorySmoothingTest {
     }
 
     @Test
+    fun sparseCadenceSmoothingKeepsOneGpxSegment() {
+        sparseSmoothingScenarios().forEach { scenario ->
+            val smoothed =
+                replay(
+                    raw = sparseStraightTrack(scenario.sampleIntervalSeconds),
+                    activityProfile = scenario.activityProfile,
+                    mode = scenario.mode,
+                    sampleIntervalSeconds = scenario.sampleIntervalSeconds,
+                )
+
+            val segments = recordedTraceSegments(smoothed.points)
+            assertEquals(1, segments.size)
+            assertEquals(4, segments.single().size)
+            if (scenario.sampleIntervalSeconds == 120) {
+                assertTrue(smoothed.diagnostics.gapResetCount > 0)
+            }
+        }
+    }
+
+    @Test
     fun longGapFlushesAndResetsTheEstimator() {
         val options = options(mode = ADAPTIVE, sampleIntervalSeconds = 3)
         var canonical = emptyList<RecordedTracePoint>()
@@ -279,6 +299,27 @@ class RecordingFixedLagTrajectorySmoothingTest {
                 )
             }
 
+    private fun sparseStraightTrack(sampleIntervalSeconds: Int): List<RecordedTracePoint> =
+        (0..3).map { index ->
+            point(
+                x = index * 25.0,
+                y = 0.0,
+                timeMillis = index * sampleIntervalSeconds * 1_000L,
+            )
+        }
+
+    private fun sparseSmoothingScenarios() =
+        listOf(
+            SparseSmoothingScenario(HIKE, ADAPTIVE, 60),
+            SparseSmoothingScenario(HIKE, ADAPTIVE, 120),
+            SparseSmoothingScenario(HIKE, STRONG, 60),
+            SparseSmoothingScenario(HIKE, STRONG, 120),
+            SparseSmoothingScenario(BIKE, ADAPTIVE, 60),
+            SparseSmoothingScenario(BIKE, ADAPTIVE, 120),
+            SparseSmoothingScenario(BIKE, STRONG, 60),
+            SparseSmoothingScenario(BIKE, STRONG, 120),
+        )
+
     private fun rightAngleCorner(): List<RecordedTracePoint> =
         listOf(
             point(0.0, 0.0, 0L),
@@ -337,8 +378,15 @@ class RecordingFixedLagTrajectorySmoothingTest {
         val diagnostics: RecordingTrajectorySmoothingDiagnostics,
     )
 
+    private data class SparseSmoothingScenario(
+        val activityProfile: String,
+        val mode: String,
+        val sampleIntervalSeconds: Int,
+    )
+
     private companion object {
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
+        const val BIKE = SettingsRepository.ACTIVITY_PROFILE_BIKE
         const val ADAPTIVE = SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE
         const val OFF = SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF
         const val STRONG = SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG
