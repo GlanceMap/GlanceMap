@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.em
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
 import kotlinx.coroutines.CoroutineScope
@@ -105,9 +107,9 @@ internal fun DebugCaptureDialog(
         title = {
             Text(
                 if (debugCaptureState.active) {
-                    "Phone debug capture"
+                    stringResource(R.string.home_debug_capture_active_title)
                 } else {
-                    "Start phone debug capture?"
+                    stringResource(R.string.home_debug_capture_start_title)
                 },
             )
         },
@@ -133,7 +135,7 @@ internal fun DebugCaptureDialog(
                         viewModel.stopPhoneDebugCaptureAndSend(context)
                     },
                 ) {
-                    Text("Stop & email")
+                    Text(stringResource(R.string.home_debug_capture_stop_email_action))
                 }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -144,7 +146,7 @@ internal fun DebugCaptureDialog(
                                 viewModel.sendLastPhoneDebugCapture(context)
                             },
                         ) {
-                            Text("Send last recording")
+                            Text(stringResource(R.string.home_debug_capture_send_last_action))
                         }
                     }
                     TextButton(
@@ -153,14 +155,22 @@ internal fun DebugCaptureDialog(
                             viewModel.startPhoneDebugCapture(context)
                         },
                     ) {
-                        Text("Start recording")
+                        Text(stringResource(R.string.home_debug_capture_start_action))
                     }
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(if (debugCaptureState.active) "Keep recording" else "Cancel")
+                Text(
+                    stringResource(
+                        if (debugCaptureState.active) {
+                            R.string.home_debug_capture_keep_recording
+                        } else {
+                            R.string.common_action_cancel
+                        },
+                    ),
+                )
             }
         },
     )
@@ -184,37 +194,37 @@ internal fun ManagePhoneFilesDialog(
         onDismissRequest = {
             if (!isClearingPhoneStoredFiles) onDismiss()
         },
-        title = { Text("Manage downloaded files") },
+        title = { Text(stringResource(R.string.transfer_action_manage_downloads)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    "Generated POI and routing files stay in the companion app until you clear them.",
+                    stringResource(R.string.transfer_manage_downloads_message),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (isLoadingPhoneStoredFiles) {
                     Text(
-                        "Loading phone files...",
+                        stringResource(R.string.transfer_manage_loading_phone_files),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else {
                     PhoneStoredFilesSummaryRow(
-                        label = "Imported POI",
+                        label = stringResource(R.string.transfer_manage_imported_poi_label),
                         group = phoneStoredFilesSummary.poi,
                         context = context,
                     )
                     PhoneStoredFilesSummaryRow(
-                        label = "Routing packs (.rd5)",
+                        label = stringResource(R.string.transfer_manage_routing_packs_label),
                         group = phoneStoredFilesSummary.routing,
                         context = context,
                     )
                 }
                 if (isClearingPhoneStoredFiles) {
                     Text(
-                        "Clearing phone files...",
+                        stringResource(R.string.transfer_manage_clearing_phone_files),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -249,7 +259,7 @@ internal fun ManagePhoneFilesDialog(
                             phoneStoredFilesSummary.poi.fileCount > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear POI")
+                    Text(stringResource(R.string.transfer_manage_clear_poi))
                 }
                 OutlinedButton(
                     onClick = {
@@ -281,7 +291,7 @@ internal fun ManagePhoneFilesDialog(
                             phoneStoredFilesSummary.routing.fileCount > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear routing")
+                    Text(stringResource(R.string.transfer_manage_clear_routing))
                 }
                 Button(
                     onClick = {
@@ -316,7 +326,7 @@ internal fun ManagePhoneFilesDialog(
                             ),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear all")
+                    Text(stringResource(R.string.transfer_manage_clear_all))
                 }
             }
         },
@@ -325,7 +335,7 @@ internal fun ManagePhoneFilesDialog(
                 onClick = onDismiss,
                 enabled = !isClearingPhoneStoredFiles,
             ) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -546,13 +556,16 @@ internal fun FilePickerQuickGuideDialog(
                                 IconButton(onClick = { showLiveTrackingPrivacyDialog = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.Gavel,
-                                        contentDescription = "Privacy policy",
+                                        contentDescription = stringResource(R.string.settings_privacy_policy_title),
                                     )
                                 }
                                 IconButton(onClick = { showLiveTrackingContactDialog = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.ContactMail,
-                                        contentDescription = "Contact and contributions",
+                                        contentDescription =
+                                            stringResource(
+                                                R.string.settings_contact_contributions_title,
+                                            ),
                                     )
                                 }
                             }
@@ -641,7 +654,7 @@ internal fun FilePickerQuickGuideDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
         confirmButton = {
@@ -651,7 +664,7 @@ internal fun FilePickerQuickGuideDialog(
                         onClick = { pageIndex -= 1 },
                         enabled = pageIndex > 0,
                     ) {
-                        Text("Back")
+                        Text(stringResource(R.string.common_action_back))
                     }
                 }
                 Button(
@@ -663,7 +676,15 @@ internal fun FilePickerQuickGuideDialog(
                         }
                     },
                 ) {
-                    Text(if (pageIndex == pages.lastIndex) "Done" else "Next")
+                    Text(
+                        stringResource(
+                            if (pageIndex == pages.lastIndex) {
+                                R.string.common_action_done
+                            } else {
+                                R.string.common_action_next
+                            },
+                        ),
+                    )
                 }
             }
         },
@@ -685,18 +706,18 @@ internal fun FilePickerQuickGuideDialog(
 private fun LiveTrackingPrivacyPolicyDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Privacy policy") },
+        title = { Text(stringResource(R.string.settings_privacy_policy_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Live Tracking is optional and uses Arkluz.")
-                Text("When tracking is active, GPS positions, group details, participant name, battery level, and optional GPX/comments are sent to Arkluz.")
-                Text("Notification and alert emails are saved locally for convenience and sent to Arkluz only when you configure them.")
-                Text("If the network is unavailable, GPS points may be stored locally for retry. Arkluz tracks are expected to be deleted after 7 days.")
+                Text(stringResource(R.string.live_tracking_privacy_intro))
+                Text(stringResource(R.string.live_tracking_privacy_tracking_data))
+                Text(stringResource(R.string.live_tracking_privacy_email_data))
+                Text(stringResource(R.string.live_tracking_privacy_offline_data))
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -707,27 +728,27 @@ private fun LiveTrackingContactDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Contact & contributions") },
+        title = { Text(stringResource(R.string.settings_contact_contributions_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Contact",
+                    text = stringResource(R.string.live_tracking_contact_action),
                     modifier = Modifier.clickable { openQuickGuideUrl(context, ARKLUZ_CONTACT_URL) },
                     style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Arkluz Website",
+                    text = stringResource(R.string.live_tracking_arkluz_website_action),
                     modifier = Modifier.clickable { openQuickGuideUrl(context, ARKLUZ_WEBSITE_URL) },
                     style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Text("Contributions: Jérôme Seydoux.")
+                Text(stringResource(R.string.live_tracking_contributions))
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -802,7 +823,7 @@ private fun welcomeLiveTrackingLineText() {
 @Composable
 private fun welcomeOfflineLineText() {
     Text(
-        text = "Once files are on the watch, GlanceMap can work offline without the phone.",
+        text = stringResource(R.string.transfer_quick_guide_offline_hint),
         modifier = Modifier.fillMaxWidth(),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -976,16 +997,19 @@ internal fun CancelTransferDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cancel Transfer?") },
-        text = { Text("Are you sure you want to stop sending files?") },
+        title = { Text(stringResource(R.string.transfer_action_cancel_transfer)) },
+        text = { Text(stringResource(R.string.transfer_cancel_transfer_message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Yes, Stop", color = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(R.string.transfer_action_confirm_stop),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("No, Continue")
+                Text(stringResource(R.string.transfer_action_continue_sending))
             }
         },
     )

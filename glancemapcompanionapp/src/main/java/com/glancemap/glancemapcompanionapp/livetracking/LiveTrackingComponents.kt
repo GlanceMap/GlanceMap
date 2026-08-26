@@ -32,8 +32,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 import kotlin.math.roundToInt
 
 @Composable
@@ -57,7 +59,7 @@ internal fun HeaderRow(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = stringResource(R.string.common_content_description_back),
                 modifier = Modifier.size(20.dp),
             )
         }

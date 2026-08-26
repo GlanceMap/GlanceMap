@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.filepicker.PageScrollbar
@@ -85,9 +86,17 @@ internal fun RefugesImportDialog(
         remember(pointTypeOptions) {
             pointTypeOptions.map { it.id }.toSet()
         }
+    val hutsOnlyLabel = stringResource(R.string.refuges_preset_huts_only)
+    val hutsAndWaterLabel = stringResource(R.string.refuges_preset_huts_water)
+    val allTypesLabel = stringResource(R.string.refuges_preset_all)
     val pointTypePresets =
-        remember(allPointTypeIds) {
-            buildRefugesTypePresets(allPointTypeIds)
+        remember(allPointTypeIds, hutsOnlyLabel, hutsAndWaterLabel, allTypesLabel) {
+            buildRefugesTypePresets(
+                allPointTypeIds = allPointTypeIds,
+                hutsOnlyLabel = hutsOnlyLabel,
+                hutsAndWaterLabel = hutsAndWaterLabel,
+                allTypesLabel = allTypesLabel,
+            )
         }
     val osmCategoryOptions =
         remember {
@@ -129,12 +138,14 @@ internal fun RefugesImportDialog(
         mutableStateOf(defaultOsmPoiCategoryIds())
     }
     var regionMenuExpanded by remember { mutableStateOf(false) }
-    var selectedRegionLabel by remember(lastRefugesRequest?.bbox, refugesRegionPresets) {
+    val selectRegionHint = stringResource(R.string.refuges_select_region_hint)
+    val customRegionLabel = stringResource(R.string.refuges_custom_region)
+    var selectedRegionLabel by remember(lastRefugesRequest?.bbox, refugesRegionPresets, selectRegionHint) {
         mutableStateOf(
             refugesRegionPresets
                 .firstOrNull {
                     it.bbox.isNotBlank() && it.bbox == lastRefugesRequest?.bbox
-                }?.label ?: "Tap to select region",
+                }?.label ?: selectRegionHint,
         )
     }
     var mapMenuExpanded by remember { mutableStateOf(false) }
@@ -164,17 +175,21 @@ internal fun RefugesImportDialog(
         )
     val watchSelectionLabel =
         when {
-            uiState.selectedWatch == null -> "Tap to select watch"
+            uiState.selectedWatch == null -> stringResource(R.string.refuges_select_watch_hint)
             selectedWatchReachable -> uiState.selectedWatch.displayName
-            else -> "${uiState.selectedWatch.displayName} (Disconnected)"
+            else ->
+                stringResource(
+                    R.string.refuges_watch_disconnected,
+                    uiState.selectedWatch.displayName,
+                )
         }
     val watchIsSelected = uiState.selectedWatch != null
     val mapSelectionLabel =
         when {
-            uiState.selectedWatch == null -> "Select watch first"
-            !selectedWatchReachable -> "Reconnect watch first"
+            uiState.selectedWatch == null -> stringResource(R.string.refuges_select_watch_first)
+            !selectedWatchReachable -> stringResource(R.string.refuges_reconnect_watch_first)
             selectedMapCandidate != null -> selectedMapCandidate.fileName
-            else -> "Tap to select map"
+            else -> stringResource(R.string.refuges_select_map_hint)
         }
     val suggestedPoiFileName =
         remember(
@@ -190,17 +205,17 @@ internal fun RefugesImportDialog(
         }
     val areaMethodLabel =
         when (areaMethod) {
-            PoiAreaMethod.WATCH_MAP -> "Auto from watch map"
-            PoiAreaMethod.REFUGES_PRESET -> "Choose refuges.info region"
-            PoiAreaMethod.MAP_PICKER -> "Pick on map"
-            PoiAreaMethod.MANUAL_BBOX -> "Enter BBox manually"
+            PoiAreaMethod.WATCH_MAP -> stringResource(R.string.refuges_area_method_watch_map)
+            PoiAreaMethod.REFUGES_PRESET -> stringResource(R.string.refuges_area_method_region)
+            PoiAreaMethod.MAP_PICKER -> stringResource(R.string.refuges_area_method_map_picker)
+            PoiAreaMethod.MANUAL_BBOX -> stringResource(R.string.refuges_area_method_manual_bbox)
         }
     val areaMethodDescription =
         when (areaMethod) {
-            PoiAreaMethod.WATCH_MAP -> "Use a .map file on the watch to auto-detect the area (BBox)."
-            PoiAreaMethod.REFUGES_PRESET -> "Pick a refuges.info region preset to fill the area automatically."
-            PoiAreaMethod.MAP_PICKER -> "Pan and zoom an online map to choose the import rectangle."
-            PoiAreaMethod.MANUAL_BBOX -> "Enter your own area rectangle as west,south,east,north."
+            PoiAreaMethod.WATCH_MAP -> stringResource(R.string.refuges_area_method_watch_map_description)
+            PoiAreaMethod.REFUGES_PRESET -> stringResource(R.string.refuges_area_method_region_description)
+            PoiAreaMethod.MAP_PICKER -> stringResource(R.string.refuges_area_method_map_picker_description)
+            PoiAreaMethod.MANUAL_BBOX -> stringResource(R.string.refuges_area_method_manual_bbox_description)
         }
     val resolvedImportBbox =
         when (areaMethod) {
@@ -257,7 +272,7 @@ internal fun RefugesImportDialog(
             onDismiss = { showBboxMapPicker = false },
             onConfirm = { pickedBbox ->
                 bboxInput = pickedBbox
-                selectedRegionLabel = "Custom"
+                selectedRegionLabel = customRegionLabel
                 areaMethod = PoiAreaMethod.MAP_PICKER
                 showBboxMapPicker = false
                 if (!poiImportProgress.isRunning) {
@@ -271,7 +286,7 @@ internal fun RefugesImportDialog(
         onDismissRequest = {
             if (!isImportingRefuges) onDismiss()
         },
-        title = { Text("Import POI") },
+        title = { Text(stringResource(R.string.refuges_import_title)) },
         text = {
             Box(
                 modifier =
@@ -287,7 +302,7 @@ internal fun RefugesImportDialog(
                             .verticalScroll(importPoiScrollState),
                 ) {
                     Text(
-                        "Select watch",
+                        stringResource(R.string.refuges_select_watch_label),
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -353,7 +368,10 @@ internal fun RefugesImportDialog(
                         ) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Refresh Watch List",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.common_refresh_watch_list_content_description,
+                                    ),
                                 modifier = Modifier.size(18.dp),
                             )
                         }
@@ -361,27 +379,30 @@ internal fun RefugesImportDialog(
                     if (uiState.selectedWatch != null && !selectedWatchReachable) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "${selectedWatchDisconnectedStatusMessage()} You can also switch to manual BBox or a refuges.info region.",
+                            stringResource(
+                                R.string.refuges_watch_disconnected_hint,
+                                selectedWatchDisconnectedStatusMessage(),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
                     } else if (uiState.availableWatches.isEmpty()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "No watches found. Keep the watch app open and tap refresh.",
+                            stringResource(R.string.refuges_no_watches_hint),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     } else if (uiState.selectedWatch == null) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "Select a watch first if you want to use Auto from watch map.",
+                            stringResource(R.string.refuges_select_watch_hint_for_map),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        "Source",
+                        stringResource(R.string.refuges_source_label),
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -412,7 +433,7 @@ internal fun RefugesImportDialog(
                     if (selectedSource == PoiImportSource.REFUGES) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "refuges.info POIs for France, the Alps, and the Pyrenees.",
+                            stringResource(R.string.refuges_source_description),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -422,7 +443,7 @@ internal fun RefugesImportDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Enrich with OSM",
+                                text = stringResource(R.string.refuges_enrich_with_osm),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Switch(
@@ -433,14 +454,14 @@ internal fun RefugesImportDialog(
                     } else {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "All OSM categories are shown below. Essentials = huts, water, peaks.",
+                            stringResource(R.string.refuges_osm_categories_hint),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     if (requiresOsmTypeSelection) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            "OSM categories",
+                            stringResource(R.string.refuges_osm_categories_label),
                             style = MaterialTheme.typography.labelSmall,
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -467,7 +488,7 @@ internal fun RefugesImportDialog(
                         if (selectedOsmCategoryIds.isEmpty()) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Select at least one OSM category.",
+                                stringResource(R.string.refuges_osm_category_error),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -476,7 +497,7 @@ internal fun RefugesImportDialog(
                     if (selectedSource == PoiImportSource.REFUGES) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            "Point types",
+                            stringResource(R.string.refuges_point_types_label),
                             style = MaterialTheme.typography.labelSmall,
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -503,7 +524,7 @@ internal fun RefugesImportDialog(
                         if (selectedTypeIds.isEmpty()) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Select at least one type.",
+                                stringResource(R.string.refuges_select_type_error),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -512,7 +533,7 @@ internal fun RefugesImportDialog(
 
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        "Select area source",
+                        stringResource(R.string.refuges_select_area_source_label),
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -533,7 +554,7 @@ internal fun RefugesImportDialog(
                             onDismissRequest = { areaMethodMenuExpanded = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Auto from watch map") },
+                                text = { Text(stringResource(R.string.refuges_area_method_watch_map)) },
                                 onClick = {
                                     areaMethod = PoiAreaMethod.WATCH_MAP
                                     regionMenuExpanded = false
@@ -542,7 +563,7 @@ internal fun RefugesImportDialog(
                                 enabled = selectedWatchReachable,
                             )
                             DropdownMenuItem(
-                                text = { Text("Choose refuges.info region") },
+                                text = { Text(stringResource(R.string.refuges_area_method_region)) },
                                 onClick = {
                                     areaMethod = PoiAreaMethod.REFUGES_PRESET
                                     mapMenuExpanded = false
@@ -550,7 +571,7 @@ internal fun RefugesImportDialog(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Pick on map") },
+                                text = { Text(stringResource(R.string.refuges_area_method_map_picker)) },
                                 onClick = {
                                     areaMethod = PoiAreaMethod.MAP_PICKER
                                     mapMenuExpanded = false
@@ -559,7 +580,7 @@ internal fun RefugesImportDialog(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Enter BBox manually") },
+                                text = { Text(stringResource(R.string.refuges_area_method_manual_bbox)) },
                                 onClick = {
                                     areaMethod = PoiAreaMethod.MANUAL_BBOX
                                     mapMenuExpanded = false
@@ -579,7 +600,7 @@ internal fun RefugesImportDialog(
                     when (areaMethod) {
                         PoiAreaMethod.WATCH_MAP -> {
                             Text(
-                                "Select map on watch",
+                                stringResource(R.string.refuges_select_map_on_watch_label),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -623,7 +644,10 @@ internal fun RefugesImportDialog(
                                 ) {
                                     Icon(
                                         Icons.Default.Refresh,
-                                        contentDescription = "Refresh Watch Maps",
+                                        contentDescription =
+                                            stringResource(
+                                                R.string.refuges_refresh_watch_maps_content_description,
+                                            ),
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
@@ -631,14 +655,17 @@ internal fun RefugesImportDialog(
                             if (uiState.selectedWatch != null && !selectedWatchReachable) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "${selectedWatchDisconnectedStatusMessage()} Use manual BBox or a refuges.info region while the watch is disconnected.",
+                                    stringResource(
+                                        R.string.refuges_watch_map_disconnected_hint,
+                                        selectedWatchDisconnectedStatusMessage(),
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )
                             } else if (isLoadingWatchInstalledMaps) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "Loading watch maps...",
+                                    stringResource(R.string.refuges_loading_watch_maps),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             } else if (!watchInstalledMapsStatusMessage.isNullOrBlank()) {
@@ -651,14 +678,17 @@ internal fun RefugesImportDialog(
                             } else if (uiState.selectedWatch != null && watchInstalledMaps.isEmpty()) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "No .map files found on watch. Transfer a map first, or switch area method.",
+                                    stringResource(R.string.refuges_no_watch_maps_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
                             if (selectedMapCandidate != null) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "Area BBox: ${selectedMapCandidate.bbox}",
+                                    stringResource(
+                                        R.string.refuges_area_bbox,
+                                        selectedMapCandidate.bbox,
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -666,7 +696,7 @@ internal fun RefugesImportDialog(
 
                         PoiAreaMethod.REFUGES_PRESET -> {
                             Text(
-                                "Region preset",
+                                stringResource(R.string.refuges_region_preset_label),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -678,9 +708,9 @@ internal fun RefugesImportDialog(
                                 Text(
                                     text =
                                         if (useDetailedRefugesRegionPresets) {
-                                            "Detailed massifs list"
+                                            stringResource(R.string.refuges_detailed_massifs)
                                         } else {
-                                            "Compact zones list (Recommended)"
+                                            stringResource(R.string.refuges_compact_zones)
                                         },
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -696,9 +726,9 @@ internal fun RefugesImportDialog(
                             Text(
                                 text =
                                     if (useDetailedRefugesRegionPresets) {
-                                        "Large list (~490 massifs)"
+                                        stringResource(R.string.refuges_detailed_massifs_hint)
                                     } else {
-                                        "Smaller official list (~25 zones, recommended)"
+                                        stringResource(R.string.refuges_compact_zones_hint)
                                     },
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -742,12 +772,12 @@ internal fun RefugesImportDialog(
                             Spacer(modifier = Modifier.height(6.dp))
                             if (bboxInput.isBlank()) {
                                 Text(
-                                    "Select a preset to define area.",
+                                    stringResource(R.string.refuges_select_preset_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             } else {
                                 Text(
-                                    "Area BBox: $bboxInput",
+                                    stringResource(R.string.refuges_area_bbox, bboxInput),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -761,9 +791,9 @@ internal fun RefugesImportDialog(
                             ) {
                                 Text(
                                     if (bboxInput.isBlank()) {
-                                        "Open map picker"
+                                        stringResource(R.string.refuges_action_open_map_picker)
                                     } else {
-                                        "Edit area on map"
+                                        stringResource(R.string.refuges_action_edit_area_map)
                                     },
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -772,12 +802,12 @@ internal fun RefugesImportDialog(
                             Spacer(modifier = Modifier.height(6.dp))
                             if (bboxInput.isBlank()) {
                                 Text(
-                                    "No map area selected yet.",
+                                    stringResource(R.string.refuges_no_map_area_selected),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             } else {
                                 Text(
-                                    "Area BBox: $bboxInput",
+                                    stringResource(R.string.refuges_area_bbox, bboxInput),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -785,14 +815,14 @@ internal fun RefugesImportDialog(
 
                         PoiAreaMethod.MANUAL_BBOX -> {
                             Text(
-                                "Enter BBox (rectangle) as west,south,east,north (minLon,minLat,maxLon,maxLat). Example: 5.50,45.10,6.50,45.60",
+                                stringResource(R.string.refuges_manual_bbox_hint),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = bboxInput,
                                 onValueChange = { bboxInput = it },
-                                label = { Text("BBox") },
+                                label = { Text(stringResource(R.string.refuges_bbox_label)) },
                                 singleLine = true,
                             )
                         }
@@ -802,7 +832,7 @@ internal fun RefugesImportDialog(
                     OutlinedTextField(
                         value = fileNameInput,
                         onValueChange = { fileNameInput = it },
-                        label = { Text("File name (.poi)") },
+                        label = { Text(stringResource(R.string.refuges_file_name_label)) },
                         singleLine = true,
                     )
                     if (poiImportProgress.isRunning || poiImportProgress.completed) {
@@ -817,9 +847,9 @@ internal fun RefugesImportDialog(
                             val currentStatus =
                                 poiImportProgress.status.ifBlank {
                                     if (poiImportProgress.isRunning) {
-                                        "Importing POI..."
+                                        stringResource(R.string.refuges_importing_status)
                                     } else {
-                                        "Import finished."
+                                        stringResource(R.string.refuges_import_finished_status)
                                     }
                                 }
                             val showBusySpinner =
@@ -870,7 +900,7 @@ internal fun RefugesImportDialog(
                             if (importCompletedSuccessfully) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    "Import complete. You can save it on phone or send it to the watch.",
+                                    stringResource(R.string.refuges_import_complete_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -895,7 +925,7 @@ internal fun RefugesImportDialog(
                         viewModel.sendFiles(context)
                     },
                 ) {
-                    Text("Send")
+                    Text(stringResource(R.string.common_action_send))
                 }
             } else {
                 TextButton(
@@ -916,7 +946,15 @@ internal fun RefugesImportDialog(
                     },
                     enabled = canImport && !isImportingRefuges,
                 ) {
-                    Text(if (isImportingRefuges) "Importing..." else "Import")
+                    Text(
+                        stringResource(
+                            if (isImportingRefuges) {
+                                R.string.refuges_action_importing
+                            } else {
+                                R.string.refuges_action_import
+                            },
+                        ),
+                    )
                 }
             }
         },
@@ -929,7 +967,7 @@ internal fun RefugesImportDialog(
                             onDismiss()
                         },
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                     TextButton(
                         onClick = {
@@ -939,7 +977,7 @@ internal fun RefugesImportDialog(
                         },
                         enabled = lastImportedPoiFile != null,
                     ) {
-                        Text("Save on phone")
+                        Text(stringResource(R.string.refuges_action_save_on_phone))
                     }
                 }
             } else {
@@ -954,7 +992,7 @@ internal fun RefugesImportDialog(
                     },
                     enabled = true,
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_action_cancel))
                 }
             }
         },
@@ -1023,20 +1061,25 @@ internal fun RefugesTypeSelectionGroup(
     }
 }
 
-internal fun buildRefugesTypePresets(allPointTypeIds: Set<Int>): List<RefugesTypePreset> {
+internal fun buildRefugesTypePresets(
+    allPointTypeIds: Set<Int>,
+    hutsOnlyLabel: String,
+    hutsAndWaterLabel: String,
+    allTypesLabel: String,
+): List<RefugesTypePreset> {
     val hutsOnly = allPointTypeIds.intersect(setOf(7, 10, 9))
     val hutsAndWater = allPointTypeIds.intersect(setOf(7, 10, 9, 23))
     return listOf(
         RefugesTypePreset(
-            label = "Huts only",
+            label = hutsOnlyLabel,
             typeIds = hutsOnly.ifEmpty { allPointTypeIds },
         ),
         RefugesTypePreset(
-            label = "Huts+Water",
+            label = hutsAndWaterLabel,
             typeIds = hutsAndWater.ifEmpty { allPointTypeIds },
         ),
         RefugesTypePreset(
-            label = "All",
+            label = allTypesLabel,
             typeIds = allPointTypeIds,
         ),
     )
