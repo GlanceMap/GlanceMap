@@ -578,7 +578,8 @@ internal fun NavigateContent(
                             applyMapZoomStep(
                                 step = positiveStep,
                                 inputSource = "rotary_crown",
-                            ) || consumed
+                            ) ||
+                            consumed
                         rotaryScrollAccumulator -= thresholdPx
                     }
                     while (rotaryScrollAccumulator <= -thresholdPx) {
@@ -586,7 +587,8 @@ internal fun NavigateContent(
                             applyMapZoomStep(
                                 step = negativeStep,
                                 inputSource = "rotary_crown",
-                            ) || consumed
+                            ) ||
+                            consumed
                         rotaryScrollAccumulator += thresholdPx
                     }
 

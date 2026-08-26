@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.glancemapwearos.presentation.features.maps
 
 import android.content.Context
@@ -141,8 +143,7 @@ internal fun canMapAppearanceIndicatorOwnGeneration(
     currentGeneration: Long,
 ): Boolean = candidateGeneration == currentGeneration
 
-internal fun shouldShowInitialMapLoadIndicator(firstVisibleMapReceived: Boolean): Boolean =
-    !firstVisibleMapReceived
+internal fun shouldShowInitialMapLoadIndicator(firstVisibleMapReceived: Boolean): Boolean = !firstVisibleMapReceived
 
 internal fun shouldRetainInitialMapLoadIndicator(
     policy: MapAppearanceIndicatorPolicy,
@@ -1149,10 +1150,12 @@ class MapViewModel(
         lastRequestedMapLayerPath = pendingMapLayerPath
         pendingMapChangeIndicator =
             pendingMapChangeIndicator ||
-                (!initialMapLoadIndicatorPending &&
+            (
+                !initialMapLoadIndicatorPending &&
                     previousPath != null &&
                     pendingMapLayerPath != null &&
-                    previousPath != pendingMapLayerPath)
+                    previousPath != pendingMapLayerPath
+            )
         MapHotPathDiagnostics.recordEvent(
             stage = "map_update_request",
             status = "map_layer",
@@ -1173,6 +1176,7 @@ class MapViewModel(
 
     private fun mapIdentity(path: String?): String = path?.let { value -> value.hashCode().toUInt().toString(16) } ?: "none"
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun schedulePendingRendererWorkIfReady() {
         val renderer =
             mapRenderer
@@ -1282,7 +1286,7 @@ class MapViewModel(
                         )
                     retainInitialIndicator =
                         showInitialMapLoadIndicator &&
-                            shouldRetainInitialMapLoadIndicator(initialLoadPolicy, mapReady)
+                        shouldRetainInitialMapLoadIndicator(initialLoadPolicy, mapReady)
                 } finally {
                     if (delayedInitialShow?.isActive == true) {
                         delayedInitialShow.cancel()
@@ -1433,6 +1437,7 @@ class MapViewModel(
         )
     }
 
+    @Suppress("LongMethod")
     private suspend fun applyPendingRendererWork(
         renderer: MapRenderer,
         awaitVisibleMap: Boolean,

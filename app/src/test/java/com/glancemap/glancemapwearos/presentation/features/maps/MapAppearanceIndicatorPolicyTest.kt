@@ -113,27 +113,28 @@ class MapAppearanceIndicatorPolicyTest {
     }
 
     @Test
-    fun `initial timeout retains feedback until a later first visible signal`() = runBlocking {
-        val policy = mapAppearanceIndicatorPolicy(MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD)
-        var calls = 0
-        var timeoutObserved = false
+    fun `initial timeout retains feedback until a later first visible signal`() =
+        runBlocking {
+            val policy = mapAppearanceIndicatorPolicy(MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD)
+            var calls = 0
+            var timeoutObserved = false
 
-        val firstVisible =
-            awaitInitialFirstVisibleAfterTimeout(
-                timeoutMs = 4_500L,
-                awaitFirstVisible = {
-                    calls += 1
-                    if (calls == 1) null else "visible"
-                },
-                onTimeout = { timeoutObserved = true },
-            )
+            val firstVisible =
+                awaitInitialFirstVisibleAfterTimeout(
+                    timeoutMs = 4_500L,
+                    awaitFirstVisible = {
+                        calls += 1
+                        if (calls == 1) null else "visible"
+                    },
+                    onTimeout = { timeoutObserved = true },
+                )
 
-        assertTrue(shouldRetainInitialMapLoadIndicator(policy, mapReady = false))
-        assertFalse(shouldRetainInitialMapLoadIndicator(policy, mapReady = true))
-        assertEquals("visible", firstVisible)
-        assertEquals(2, calls)
-        assertTrue(timeoutObserved)
-    }
+            assertTrue(shouldRetainInitialMapLoadIndicator(policy, mapReady = false))
+            assertFalse(shouldRetainInitialMapLoadIndicator(policy, mapReady = true))
+            assertEquals("visible", firstVisible)
+            assertEquals(2, calls)
+            assertTrue(timeoutObserved)
+        }
 
     @Test
     fun `clean process state starts without an inherited first visible token`() {
@@ -156,7 +157,10 @@ class MapAppearanceIndicatorPolicyTest {
     fun `visible tile diagnostic states distinguish availability from redraw evidence`() {
         assertEquals("pending_no_tiles", visibleTileDiagnosticState(null, drawable = false, pendingJobCount = 2))
         assertEquals("no_tiles_no_jobs", visibleTileDiagnosticState(null, drawable = false, pendingJobCount = 0))
-        assertEquals("tile_arrived", visibleTileDiagnosticState("pending_no_tiles", drawable = true, pendingJobCount = 0))
+        assertEquals(
+            "tile_arrived",
+            visibleTileDiagnosticState("pending_no_tiles", drawable = true, pendingJobCount = 0),
+        )
         assertEquals("drawable", visibleTileDiagnosticState(null, drawable = true, pendingJobCount = 0))
     }
 

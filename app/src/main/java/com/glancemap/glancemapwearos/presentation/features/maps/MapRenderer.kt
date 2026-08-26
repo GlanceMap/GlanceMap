@@ -1141,10 +1141,11 @@ class MapRenderer(
                 mapDataStore,
                 mapView.model.mapViewPosition,
                 AndroidGraphicFactory.INSTANCE,
-                null,
-                mapView,
-                System.identityHashCode(this@MapRenderer),
-                currentTileCacheId,
+                VisibleTileDiagnosticsContext(
+                    mapView = mapView,
+                    rendererId = System.identityHashCode(this@MapRenderer),
+                    cacheId = currentTileCacheId,
+                ),
                 onFirstVisibleBaseTile = { layer, source ->
                     val visibleAtElapsedMs = SystemClock.elapsedRealtime()
                     mapView.post {
@@ -1206,12 +1207,11 @@ class MapRenderer(
                     stage = "mapRenderer.openHillshadeMapFile",
                     detail = "file=${mapFile.name}",
                 ) { MapFile(mapFile) }
+            }.getOrElse { error ->
+                runCatching { cache.destroy() }
+                Log.w(TAG, "updateHillshadeLayer: Failed opening map store", error)
+                return
             }
-                .getOrElse { error ->
-                    runCatching { cache.destroy() }
-                    Log.w(TAG, "updateHillshadeLayer: Failed opening map store", error)
-                    return
-                }
         var cachedVisibleTerrainCoverage: VisibleHillshadeTerrainCoverage? = null
         val layer =
             runCatching {
