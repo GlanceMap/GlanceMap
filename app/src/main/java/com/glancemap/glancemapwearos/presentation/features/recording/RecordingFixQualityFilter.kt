@@ -259,6 +259,7 @@ private fun isPlausibleTransition(
  * limit into the profile maximum. Combined with the bounded accuracy allowance below, this
  * rejects short poor-accuracy jumps without splitting normal 8–10 second hiking fixes.
  */
+@Suppress("ReturnCount")
 internal fun recordingTransitionMaximumSpeedMps(
     candidate: RecordingFixSample,
     activityProfile: String,

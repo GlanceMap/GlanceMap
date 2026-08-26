@@ -30,18 +30,32 @@ class RecordingWatchGpsDistanceTest {
                 segmentStartReason = RecordingSegmentStartReason.MANUAL_PAUSE,
             )
         val geometry = RecordingWatchGpsDistanceGeometry()
-        geometry.append(beforePause, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+        geometry.append(
+            beforePause,
+            isContinuityRecovery = false,
+            activityProfile = HIKE,
+            sampleIntervalSeconds = 3,
+        )
         geometry.reset()
 
         assertEquals(1, recordedTraceSegments(listOf(beforePause, resumed)).size)
-        assertEquals(null, geometry.append(resumed, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3))
+        assertEquals(
+            null,
+            geometry.append(
+                resumed,
+                isContinuityRecovery = false,
+                activityProfile = HIKE,
+                sampleIntervalSeconds = 3,
+            ),
+        )
         assertEquals(null, geometry.flush())
     }
 
     @Test
     fun alternatingLateralZigZagAddsMateriallyLessDistanceThanRawPolyline() {
-        val points = listOf(0.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, 0.0)
-            .mapIndexed(::point)
+        val points =
+            listOf(0.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, -8.0, 8.0, 0.0)
+                .mapIndexed(::point)
 
         val rawDistance = naiveDistance(points)
         val filteredDistance = watchGpsDistance(points)
@@ -86,7 +100,12 @@ class RecordingWatchGpsDistanceTest {
             )
         var canonical = emptyList<RecordedTracePoint>()
         (0..4).forEach { index ->
-            canonical = appendCanonicalRecordingPoint(canonical, point(index, if (index % 2 == 0) 3.0 else -3.0), options).points
+            canonical =
+                appendCanonicalRecordingPoint(
+                    canonical,
+                    point(index, if (index % 2 == 0) 3.0 else -3.0),
+                    options,
+                ).points
         }
         canonical =
             appendCanonicalRecordingPoint(
@@ -112,23 +131,24 @@ class RecordingWatchGpsDistanceTest {
         var canonical = emptyList<RecordedTracePoint>()
         val geometry = RecordingWatchGpsDistanceGeometry()
         var distanceMeters = 0.0
-        listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0).forEachIndexed { index, lateralMeters ->
-            val current = point(index, lateralMeters)
-            canonical =
-                appendCanonicalRecordingPoint(
-                    existingPoints = canonical,
-                    point = current,
-                    options =
-                        RecordingPointSmoothingOptions(
-                            mode = mode,
-                            activityProfile = SettingsRepository.ACTIVITY_PROFILE_HIKE,
-                            sampleIntervalSeconds = 3,
-                        ),
-                ).points
-            geometry
-                .append(current, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
-                ?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
-        }
+        listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0)
+            .forEachIndexed { index, lateralMeters ->
+                val current = point(index, lateralMeters)
+                canonical =
+                    appendCanonicalRecordingPoint(
+                        existingPoints = canonical,
+                        point = current,
+                        options =
+                            RecordingPointSmoothingOptions(
+                                mode = mode,
+                                activityProfile = SettingsRepository.ACTIVITY_PROFILE_HIKE,
+                                sampleIntervalSeconds = 3,
+                            ),
+                    ).points
+                geometry
+                    .append(current, isContinuityRecovery = false, activityProfile = HIKE, sampleIntervalSeconds = 3)
+                    ?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
+            }
         geometry.flush()?.let { segment -> distanceMeters += estimate(segment).distanceMeters }
         return distanceMeters
     }
@@ -146,16 +166,20 @@ class RecordingWatchGpsDistanceTest {
     }
 
     private fun naiveDistance(points: List<RecordedTracePoint>): Double =
-        points.zipWithNext().sumOf { (before, after) -> haversineMeters(before.latLong, after.latLong) }
+        points.zipWithNext().sumOf { (before, after) ->
+            haversineMeters(before.latLong, after.latLong)
+        }
 
     private fun estimate(segment: RecordingWatchGpsDistanceSegment): RecordingDistanceEstimate =
         estimateRecordingDistanceDelta(
-            geometricDeltaMeters = segment.geometricDeltaMeters,
-            previous = segment.previous,
-            current = segment.current,
-            elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
-            activityProfile = HIKE,
-            isContinuityRecovery = segment.isContinuityRecovery,
+            RecordingDistanceInput(
+                geometricDeltaMeters = segment.geometricDeltaMeters,
+                previous = segment.previous,
+                current = segment.current,
+                elapsedSincePreviousMs = segment.elapsedSincePreviousMs,
+                activityProfile = HIKE,
+                isContinuityRecovery = segment.isContinuityRecovery,
+            ),
         )
 
     private fun point(

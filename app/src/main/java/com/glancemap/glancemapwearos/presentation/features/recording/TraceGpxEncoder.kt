@@ -123,6 +123,7 @@ data class RecordedTraceSummary(
     val maxPowerWatts: Int?,
     val barometricPressureHpa: Double?,
     val recordingTrackSmoothingMode: String? = null,
+    val recordingDistanceSource: String? = null,
     val recordingTrackFilterVersion: Int? = null,
     val recordingElevationFilterVersion: Int? = null,
     val smartElevationPressurePointCount: Long? = null,
@@ -142,6 +143,9 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     }
     summary.recordingTrackSmoothingMode?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:recordingTrackSmoothingMode", it)
+    }
+    summary.recordingDistanceSource?.takeIf { it.isNotBlank() }?.let {
+        textTag("gmap:recordingDistanceSource", it)
     }
     summary.recordingTrackFilterVersion?.takeIf { it > 0 }?.let {
         textTag("gmap:recordingTrackFilterVersion", it.toString())

@@ -37,7 +37,13 @@ class RecordingAutoPauseTimingTest {
                 confirmationMillis = 100_000L,
                 movingDurationMillis = 8_000L,
             )
-        val resumedState = state.copy(paused = false, autoPaused = false, pausedAtMillis = null, accumulatedPausedMillis = addedPausedMillis)
+        val resumedState =
+            state.copy(
+                paused = false,
+                autoPaused = false,
+                pausedAtMillis = null,
+                accumulatedPausedMillis = addedPausedMillis,
+            )
 
         assertEquals(77_000L, addedPausedMillis)
         assertEquals(22_000L, recordingActiveDurationMillis(resumedState, nowMillis = 100_000L))
@@ -45,7 +51,14 @@ class RecordingAutoPauseTimingTest {
 
     @Test
     fun multipleAutoPauseCyclesAccumulateEffectivePausedIntervals() {
-        val firstPause = TraceRecordingUiState(active = true, paused = true, autoPaused = true, startedAtMillis = 1_000L, pausedAtMillis = 15_000L)
+        val firstPause =
+            TraceRecordingUiState(
+                active = true,
+                paused = true,
+                autoPaused = true,
+                startedAtMillis = 1_000L,
+                pausedAtMillis = 15_000L,
+            )
         val afterFirstResume =
             firstPause.copy(
                 paused = false,
@@ -93,7 +106,10 @@ class RecordingAutoPauseTimingTest {
                 pausedAtMillis = 15_000L,
             )
 
-        assertEquals(85_000L, autoPauseAddedMillisAtResume(state, confirmationMillis = 100_000L, movingDurationMillis = 0L))
+        assertEquals(
+            85_000L,
+            autoPauseAddedMillisAtResume(state, confirmationMillis = 100_000L, movingDurationMillis = 0L),
+        )
     }
 
     @Test
@@ -109,13 +125,20 @@ class RecordingAutoPauseTimingTest {
             )
 
         assertEquals(82_000L, autoPauseAddedMillisAtResume(restored, 210_000L, 8_000L))
-        assertEquals(159_000L, restored.accumulatedPausedMillis + autoPauseAddedMillisAtResume(restored, 210_000L, 8_000L))
+        assertEquals(
+            159_000L,
+            restored.accumulatedPausedMillis + autoPauseAddedMillisAtResume(restored, 210_000L, 8_000L),
+        )
     }
 
     @Test
     fun invalidRestoredPauseTimeCannotProduceNegativePausedDuration() {
-        val restored = TraceRecordingUiState(paused = true, autoPaused = true, pausedAtMillis = 120_000L)
+        val restored =
+            TraceRecordingUiState(paused = true, autoPaused = true, pausedAtMillis = 120_000L)
 
-        assertEquals(0L, autoPauseAddedMillisAtResume(restored, confirmationMillis = 100_000L, movingDurationMillis = 8_000L))
+        assertEquals(
+            0L,
+            autoPauseAddedMillisAtResume(restored, confirmationMillis = 100_000L, movingDurationMillis = 8_000L),
+        )
     }
 }

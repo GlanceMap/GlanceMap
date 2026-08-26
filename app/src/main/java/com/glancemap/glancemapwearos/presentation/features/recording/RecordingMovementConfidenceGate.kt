@@ -74,7 +74,7 @@ internal class RecordingMovementConfidenceGate {
         lastObservedStepCount = null
     }
 
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     fun evaluate(
         previous: RecordedTracePoint?,
         candidate: RecordingMotionSample,

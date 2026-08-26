@@ -50,6 +50,7 @@ internal data class RecordingSmartElevationDiagnostics(
  * DEM is unavailable) slowly anchors long-term drift. Sensor samples enter independently of
  * GPS cadence, and all state is guarded because sensor callbacks use a background thread.
  */
+@Suppress("TooManyFunctions")
 internal class RecordingHybridElevationFilter {
     private val pressureFilter = RecordingPressureFilter()
     private var lastPressureForFusion: RecordingPressureSnapshot? = null

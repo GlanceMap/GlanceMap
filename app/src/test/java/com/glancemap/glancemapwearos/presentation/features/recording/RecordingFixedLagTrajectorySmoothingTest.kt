@@ -90,9 +90,15 @@ class RecordingFixedLagTrajectorySmoothingTest {
     fun realSwitchbackIsNotClassifiedAsDetour() {
         val raw =
             listOf(
-                point(0.0, 0.0, 0L), point(10.0, 0.0, 3_000L), point(20.0, 0.0, 6_000L),
-                point(20.0, 10.0, 9_000L), point(20.0, 20.0, 12_000L), point(10.0, 20.0, 15_000L),
-                point(0.0, 20.0, 18_000L), point(0.0, 30.0, 21_000L), point(0.0, 40.0, 24_000L),
+                point(0.0, 0.0, 0L),
+                point(10.0, 0.0, 3_000L),
+                point(20.0, 0.0, 6_000L),
+                point(20.0, 10.0, 9_000L),
+                point(20.0, 20.0, 12_000L),
+                point(10.0, 20.0, 15_000L),
+                point(0.0, 20.0, 18_000L),
+                point(0.0, 30.0, 21_000L),
+                point(0.0, 40.0, 24_000L),
             )
 
         val adaptive = replay(raw, mode = ADAPTIVE)
@@ -147,6 +153,27 @@ class RecordingFixedLagTrajectorySmoothingTest {
     }
 
     @Test
+    fun gpsGapSegmentBoundaryFlushesTheTailWithoutFittingAcrossIt() {
+        val raw =
+            listOf(
+                point(0.0, 0.0, 0L),
+                point(10.0, 4.0, 3_000L),
+                point(20.0, -4.0, 6_000L),
+                point(1_000.0, 30.0, 90_000L).copy(
+                    startsNewSegment = true,
+                    segmentStartReason = RecordingSegmentStartReason.GPS_GAP,
+                ),
+                point(1_010.0, 34.0, 93_000L),
+            )
+
+        val adaptive = replay(raw, mode = ADAPTIVE)
+
+        assertTrue(adaptive.points.take(3).all { it.trajectoryFinalized })
+        assertTrue(haversineMeters(adaptive.points[3].latLong, raw[3].latLong) < 0.1)
+        assertTrue(recordingCanonicalPathDistance(adaptive.points) < 100.0)
+    }
+
+    @Test
     fun finalProvisionalTailIsFlushed() {
         val options = options(mode = ADAPTIVE, sampleIntervalSeconds = 3)
         var canonical = emptyList<RecordedTracePoint>()
@@ -170,7 +197,11 @@ class RecordingFixedLagTrajectorySmoothingTest {
         val adaptive = replay(raw, mode = ADAPTIVE)
 
         assertTrue(lateralError(adaptive.points) < lateralError(off.points))
-        assertTrue(off.points.zip(raw).all { (saved, original) -> haversineMeters(saved.latLong, original.latLong) < 0.1 })
+        assertTrue(
+            off.points.zip(raw).all { (saved, original) ->
+                haversineMeters(saved.latLong, original.latLong) < 0.1
+            },
+        )
     }
 
     @Test
@@ -203,7 +234,12 @@ class RecordingFixedLagTrajectorySmoothingTest {
         mode: String,
         sampleIntervalSeconds: Int = 3,
     ): ReplayResult {
-        val options = options(mode = mode, activityProfile = activityProfile, sampleIntervalSeconds = sampleIntervalSeconds)
+        val options =
+            options(
+                mode = mode,
+                activityProfile = activityProfile,
+                sampleIntervalSeconds = sampleIntervalSeconds,
+            )
         var points = emptyList<RecordedTracePoint>()
         var diagnostics = RecordingTrajectorySmoothingDiagnostics()
         raw.forEach { point ->
@@ -222,12 +258,11 @@ class RecordingFixedLagTrajectorySmoothingTest {
         mode: String,
         activityProfile: String = HIKE,
         sampleIntervalSeconds: Int,
-    ) =
-        RecordingPointSmoothingOptions(
-            mode = mode,
-            activityProfile = activityProfile,
-            sampleIntervalSeconds = sampleIntervalSeconds,
-        )
+    ) = RecordingPointSmoothingOptions(
+        mode = mode,
+        activityProfile = activityProfile,
+        sampleIntervalSeconds = sampleIntervalSeconds,
+    )
 
     private fun noisyStraightTrack(): List<RecordedTracePoint> =
         listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0, 0.0)
@@ -258,10 +293,18 @@ class RecordingFixedLagTrajectorySmoothingTest {
 
     private fun alpineSwitchbacks(): List<RecordedTracePoint> =
         listOf(
-            point(0.0, 0.0, 0L), point(10.0, 0.0, 3_000L), point(20.0, 0.0, 6_000L),
-            point(20.0, 10.0, 9_000L), point(20.0, 20.0, 12_000L), point(10.0, 20.0, 15_000L),
-            point(0.0, 20.0, 18_000L), point(0.0, 30.0, 21_000L), point(0.0, 40.0, 24_000L),
-            point(10.0, 40.0, 27_000L), point(20.0, 40.0, 30_000L), point(20.0, 50.0, 33_000L),
+            point(0.0, 0.0, 0L),
+            point(10.0, 0.0, 3_000L),
+            point(20.0, 0.0, 6_000L),
+            point(20.0, 10.0, 9_000L),
+            point(20.0, 20.0, 12_000L),
+            point(10.0, 20.0, 15_000L),
+            point(0.0, 20.0, 18_000L),
+            point(0.0, 30.0, 21_000L),
+            point(0.0, 40.0, 24_000L),
+            point(10.0, 40.0, 27_000L),
+            point(20.0, 40.0, 30_000L),
+            point(20.0, 50.0, 33_000L),
             point(20.0, 60.0, 36_000L),
         )
 
@@ -287,8 +330,7 @@ class RecordingFixedLagTrajectorySmoothingTest {
     private fun latLongFromMeters(
         x: Double,
         y: Double,
-    ): LatLong =
-        LocalMeters(x, y).toLatLong(TEST_ORIGIN)
+    ): LatLong = LocalMeters(x, y).toLatLong(TEST_ORIGIN)
 
     private data class ReplayResult(
         val points: List<RecordedTracePoint>,

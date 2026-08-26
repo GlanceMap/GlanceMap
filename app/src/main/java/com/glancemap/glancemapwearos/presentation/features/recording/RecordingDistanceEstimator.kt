@@ -11,6 +11,47 @@ internal fun resolveRecordingContinuityRecoveryGapMillis(
     maxOf(deliveryGapMillis, committedPointGapMillis)
         .takeIf { it >= thresholdMillis }
 
+@Suppress("ReturnCount")
+internal fun shouldStartRecordingGpsGapSegment(
+    previous: RecordedTracePoint?,
+    current: RecordedTracePoint,
+    continuityGapMillis: Long?,
+    activityProfile: String,
+): Boolean {
+    val gapMillis = continuityGapMillis ?: return false
+    val profile =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            RecordingGpsGapSegmentPolicy(
+                minimumGapMillis = 30_000L,
+                baseAllowanceMeters = 80.0,
+                maximumAllowanceMeters = 150.0,
+            )
+        } else {
+            RecordingGpsGapSegmentPolicy(
+                minimumGapMillis = 60_000L,
+                baseAllowanceMeters = 40.0,
+                maximumAllowanceMeters = 80.0,
+            )
+        }
+    if (gapMillis < profile.minimumGapMillis || previous == null) return false
+    val beforeAccuracy = previous.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val afterAccuracy = current.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val allowanceMeters =
+        if (beforeAccuracy != null && afterAccuracy != null) {
+            maxOf(profile.baseAllowanceMeters, beforeAccuracy + afterAccuracy)
+                .coerceAtMost(profile.maximumAllowanceMeters)
+        } else {
+            profile.baseAllowanceMeters
+        }
+    return haversineMeters(previous.latLong, current.latLong) > allowanceMeters
+}
+
+private data class RecordingGpsGapSegmentPolicy(
+    val minimumGapMillis: Long,
+    val baseAllowanceMeters: Double,
+    val maximumAllowanceMeters: Double,
+)
+
 /**
  * Keeps a one-point provisional tail for Watch-GPS distance only. It always uses the fixed
  * local Adaptive policy, regardless of the user's saved-track smoothing choice.
@@ -19,6 +60,7 @@ internal class RecordingWatchGpsDistanceGeometry {
     private var finalizedPoint: RecordedTracePoint? = null
     private var provisionalPoint: PendingWatchGpsDistancePoint? = null
 
+    @Suppress("ReturnCount")
     fun append(
         current: RecordedTracePoint,
         isContinuityRecovery: Boolean,
@@ -56,6 +98,7 @@ internal class RecordingWatchGpsDistanceGeometry {
         )
     }
 
+    @Suppress("ReturnCount")
     fun flush(): RecordingWatchGpsDistanceSegment? {
         val previous = finalizedPoint ?: return null
         val provisional = provisionalPoint ?: return null
@@ -101,14 +144,24 @@ internal data class RecordingDistanceEstimate(
     val maximumTrustedMeters: Double? = null,
 )
 
+internal data class RecordingDistanceInput(
+    val geometricDeltaMeters: Double,
+    val previous: RecordedTracePoint?,
+    val current: RecordedTracePoint,
+    val elapsedSincePreviousMs: Long,
+    val activityProfile: String,
+    val isContinuityRecovery: Boolean,
+)
+
 internal fun estimateRecordingDistanceDelta(
-    geometricDeltaMeters: Double,
-    previous: RecordedTracePoint?,
-    current: RecordedTracePoint,
-    elapsedSincePreviousMs: Long,
-    activityProfile: String,
-    isContinuityRecovery: Boolean,
+    input: RecordingDistanceInput,
 ): RecordingDistanceEstimate {
+    val geometricDeltaMeters = input.geometricDeltaMeters
+    val previous = input.previous
+    val current = input.current
+    val elapsedSincePreviousMs = input.elapsedSincePreviousMs
+    val activityProfile = input.activityProfile
+    val isContinuityRecovery = input.isContinuityRecovery
     if (!isContinuityRecovery || previous == null || elapsedSincePreviousMs <= 0L) {
         return RecordingDistanceEstimate(distanceMeters = geometricDeltaMeters, capped = false)
     }

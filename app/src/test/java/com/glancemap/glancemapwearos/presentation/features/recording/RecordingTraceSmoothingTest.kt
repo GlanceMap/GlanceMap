@@ -211,12 +211,14 @@ class RecordingTraceSmoothingTest {
 
         val estimate =
             estimateRecordingDistanceDelta(
-                geometricDeltaMeters = geometryMeters,
-                previous = previous,
-                current = current,
-                elapsedSincePreviousMs = 20_000L,
-                activityProfile = HIKE,
-                isContinuityRecovery = true,
+                RecordingDistanceInput(
+                    geometricDeltaMeters = geometryMeters,
+                    previous = previous,
+                    current = current,
+                    elapsedSincePreviousMs = 20_000L,
+                    activityProfile = HIKE,
+                    isContinuityRecovery = true,
+                ),
             )
 
         assertTrue(estimate.capped)
@@ -258,12 +260,14 @@ class RecordingTraceSmoothingTest {
 
         val estimate =
             estimateRecordingDistanceDelta(
-                geometricDeltaMeters = geometryMeters,
-                previous = previous.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
-                current = current.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
-                elapsedSincePreviousMs = 20_000L,
-                activityProfile = HIKE,
-                isContinuityRecovery = true,
+                RecordingDistanceInput(
+                    geometricDeltaMeters = geometryMeters,
+                    previous = previous.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
+                    current = current.copy(accuracyMeters = RECORDING_WATCH_GPS_FLOOR_FILTER_ACCURACY_M),
+                    elapsedSincePreviousMs = 20_000L,
+                    activityProfile = HIKE,
+                    isContinuityRecovery = true,
+                ),
             )
 
         assertTrue(estimate.capped)

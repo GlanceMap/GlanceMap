@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -151,60 +152,45 @@ class TraceGpxEncoderTest {
             encodeRecordedTraceAsGpx(
                 title = "Bike Test",
                 points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
-                summary =
-                    RecordedTraceSummary(
-                        activityProfile = "BIKE",
-                        durationSeconds = 600.0,
-                        totalDurationSeconds = 620.0,
-                        distanceMeters = 4_000.0,
-                        elevationGainMeters = 50.0,
-                        elevationLossMeters = 20.0,
-                        currentElevationMeters = 300.0,
-                        currentSpeedMps = 6.0f,
-                        averageSpeedMps = 6.67,
-                        fastestSpeedMps = 8.4,
-                        gpsAccuracyMeters = 5.0f,
-                        pointCount = 10,
-                        gpsActiveDurationSeconds = 590.0,
-                        recordingGapCount = 0,
-                        recordingMaxGapSeconds = 0.0,
-                        caloriesGrossKcal = 220.0,
-                        caloriesActiveKcal = 210.0,
-                        caloriesRestingKcal = 10.0,
-                        calorieModel = "cycling_physics_fallback_v1",
-                        cyclingMechanicalKj = 202.4,
-                        cyclingPowerSampleSegments = 0,
-                        cyclingPhysicsSegments = 9,
-                        heartRateBpm = 130,
-                        averageHeartRateBpm = 128,
-                        maxHeartRateBpm = 142,
-                        stepCount = null,
-                        cadenceSpm = 82,
-                        averageCadenceSpm = 80,
-                        maxCadenceSpm = 96,
-                        powerWatts = null,
-                        averagePowerWatts = null,
-                        maxPowerWatts = null,
-                        barometricPressureHpa = null,
-                        recordingTrackSmoothingMode = "ADAPTIVE",
-                        recordingTrackFilterVersion = 1,
-                        recordingElevationFilterVersion = 2,
-                        smartElevationPressurePointCount = 8,
-                        smartElevationDemAnchorPointCount = 10,
-                        smartElevationGpsFallbackPointCount = 2,
-                    ),
+                summary = recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_POD),
             )
 
         val xml = bytes.toString(Charsets.UTF_8)
 
         assertTrue(xml.contains("<gmap:activityProfile>BIKE</gmap:activityProfile>"))
         assertTrue(xml.contains("<gmap:recordingTrackSmoothingMode>ADAPTIVE</gmap:recordingTrackSmoothingMode>"))
+        assertTrue(
+            xml.contains(recordingDistanceSourceTag(SettingsRepository.RECORDING_SENSOR_SOURCE_POD)),
+        )
         assertTrue(xml.contains("<gmap:recordingTrackFilterVersion>1</gmap:recordingTrackFilterVersion>"))
         assertSmartElevationSummaryExtensions(xml)
         assertTrue(xml.contains("<gmap:calorieModel>cycling_physics_fallback_v1</gmap:calorieModel>"))
         assertTrue(xml.contains("<gmap:cyclingMechanicalKj>202.40</gmap:cyclingMechanicalKj>"))
         assertFalse(xml.contains("<gmap:cyclingPowerSampleSegments>"))
         assertTrue(xml.contains("<gmap:cyclingPhysicsSegments>9</gmap:cyclingPhysicsSegments>"))
+    }
+
+    @Test
+    fun recordingDistanceSourceUsesTheStoredSummaryValueAndOmitsBlankValues() {
+        val watchGps =
+            encodeRecordedTraceAsGpx(
+                title = "Watch GPS",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS),
+            ).toString(Charsets.UTF_8)
+        val blank =
+            encodeRecordedTraceAsGpx(
+                title = "Blank source",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = recordingSummary(" "),
+            ).toString(Charsets.UTF_8)
+
+        assertTrue(
+            watchGps.contains(
+                recordingDistanceSourceTag(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS),
+            ),
+        )
+        assertFalse(blank.contains("<gmap:recordingDistanceSource>"))
     }
 
     @Test
@@ -258,6 +244,7 @@ class TraceGpxEncoderTest {
         assertFalse(xml.contains("gmap:accuracyMeters"))
     }
 
+    @Suppress("LongParameterList")
     private fun recordedPoint(
         latitude: Double,
         longitude: Double,
@@ -275,6 +262,55 @@ class TraceGpxEncoderTest {
             startsNewSegment = startsNewSegment,
             segmentStartReason = segmentStartReason,
         )
+
+    private fun recordingSummary(recordingDistanceSource: String?) =
+        RecordedTraceSummary(
+            activityProfile = "BIKE",
+            durationSeconds = 600.0,
+            totalDurationSeconds = 620.0,
+            distanceMeters = 4_000.0,
+            elevationGainMeters = 50.0,
+            elevationLossMeters = 20.0,
+            currentElevationMeters = 300.0,
+            currentSpeedMps = 6.0f,
+            averageSpeedMps = 6.67,
+            fastestSpeedMps = 8.4,
+            gpsAccuracyMeters = 5.0f,
+            pointCount = 10,
+            gpsActiveDurationSeconds = 590.0,
+            recordingGapCount = 0,
+            recordingMaxGapSeconds = 0.0,
+            caloriesGrossKcal = 220.0,
+            caloriesActiveKcal = 210.0,
+            caloriesRestingKcal = 10.0,
+            calorieModel = "cycling_physics_fallback_v1",
+            cyclingMechanicalKj = 202.4,
+            cyclingPowerSampleSegments = 0,
+            cyclingPhysicsSegments = 9,
+            heartRateBpm = 130,
+            averageHeartRateBpm = 128,
+            maxHeartRateBpm = 142,
+            stepCount = null,
+            cadenceSpm = 82,
+            averageCadenceSpm = 80,
+            maxCadenceSpm = 96,
+            powerWatts = null,
+            averagePowerWatts = null,
+            maxPowerWatts = null,
+            barometricPressureHpa = null,
+            recordingTrackSmoothingMode = "ADAPTIVE",
+            recordingDistanceSource = recordingDistanceSource,
+            recordingTrackFilterVersion = 1,
+            recordingElevationFilterVersion = 2,
+            smartElevationPressurePointCount = 8,
+            smartElevationDemAnchorPointCount = 10,
+            smartElevationGpsFallbackPointCount = 2,
+        )
+
+    private fun recordingDistanceSourceTag(value: String): String {
+        val tagName = "gmap:recordingDistanceSource"
+        return "<$tagName>$value</$tagName>"
+    }
 
     private fun pauseBoundary(
         displacementMeters: Double,

@@ -492,6 +492,7 @@ class RecordingHybridElevationFilterTest {
         pressureHpa: Double,
     ): RecordingPressureSample = RecordingPressureSample(pressureHpa, elapsedRealtimeMillis)
 
-    private fun pressureForAltitude(relativeAltitudeMeters: Double): Double = 1_000.0 *
-        (1.0 - relativeAltitudeMeters / 44_330.0).pow(1.0 / 0.190294957)
+    private fun pressureForAltitude(relativeAltitudeMeters: Double): Double =
+        1_000.0 *
+            (1.0 - relativeAltitudeMeters / 44_330.0).pow(1.0 / 0.190294957)
 }
