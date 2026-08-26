@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">GlanceMap</string>
+    <string name="common_back_to_home_content_description">Back to home</string>
+    <string name="common_quick_guide_content_description">Quick Guide</string>
+    <string name="home_title">GlanceMap Companion</string>
+    <string name="home_debug_capture_start_content_description">Start phone debug capture</string>
+    <string name="home_debug_capture_stop_content_description">Stop phone debug capture</string>
+    <string name="transfer_title_send_to_watch">Send to Watch</string>
+    <string name="transfer_send_to_watch_description">Maps, GPX, POI and routing files</string>
+    <string name="live_tracking_title">Live Tracking</string>
+    <string name="live_tracking_home_description">Share your GPS location</string>
+    <string name="map_legend_title">Map Legend</string>
+    <string name="map_legend_home_description">Open theme legends and reference pages</string>
+    <string name="settings_credits_legal_title">Credits &amp; Legal</string>
+    <string name="settings_credits_legal_home_description">Privacy, licences and acknowledgements</string>
 </resources>

@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,7 @@ import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PrivacyPolicyActivity
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
@@ -633,12 +635,13 @@ fun FilePickerScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to home",
+                                contentDescription =
+                                    stringResource(R.string.common_back_to_home_content_description),
                                 modifier = Modifier.size(adaptive.helpIconSize),
                             )
                         }
                         Text(
-                            text = "Send to Watch",
+                            text = stringResource(R.string.transfer_title_send_to_watch),
                             style =
                                 if (isCompactScreen) {
                                     MaterialTheme.typography.titleSmall
@@ -660,7 +663,8 @@ fun FilePickerScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription = "Quick Guide",
+                                contentDescription =
+                                    stringResource(R.string.common_quick_guide_content_description),
                                 modifier = Modifier.size(adaptive.helpIconSize),
                             )
                         }
@@ -1090,16 +1094,18 @@ private fun CompanionHomeScreen(
                 Icon(
                     imageVector = Icons.Filled.BugReport,
                     contentDescription =
-                        if (debugCaptureActive) {
-                            "Stop phone debug capture"
-                        } else {
-                            "Start phone debug capture"
-                        },
+                        stringResource(
+                            if (debugCaptureActive) {
+                                R.string.home_debug_capture_stop_content_description
+                            } else {
+                                R.string.home_debug_capture_start_content_description
+                            },
+                        ),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
             Text(
-                text = "GlanceMap Companion",
+                text = stringResource(R.string.home_title),
                 style =
                     if (adaptive.isCompactScreen) {
                         MaterialTheme.typography.titleLarge
@@ -1118,7 +1124,8 @@ private fun CompanionHomeScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = "Quick Guide",
+                    contentDescription =
+                        stringResource(R.string.common_quick_guide_content_description),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
@@ -1156,11 +1163,11 @@ private fun CompanionHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = "Send to Watch",
+                            text = stringResource(R.string.transfer_title_send_to_watch),
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "Maps, GPX, POI and routing files",
+                            text = stringResource(R.string.transfer_send_to_watch_description),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -1168,20 +1175,20 @@ private fun CompanionHomeScreen(
 
                 HomeActionButton(
                     icon = Icons.Filled.SpatialTracking,
-                    title = "Live Tracking",
-                    description = "Share your GPS location",
+                    title = stringResource(R.string.live_tracking_title),
+                    description = stringResource(R.string.live_tracking_home_description),
                     onClick = onOpenLiveTracking,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.Map,
-                    title = "Map Legend",
-                    description = "Open theme legends and reference pages",
+                    title = stringResource(R.string.map_legend_title),
+                    description = stringResource(R.string.map_legend_home_description),
                     onClick = onOpenMapLegend,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.Gavel,
-                    title = "Credits & Legal",
-                    description = "Privacy, licences and acknowledgements",
+                    title = stringResource(R.string.settings_credits_legal_title),
+                    description = stringResource(R.string.settings_credits_legal_home_description),
                     onClick = onOpenCreditsLegal,
                 )
             }
