@@ -644,6 +644,24 @@ class MapRenderer(
         }
     }
 
+    internal fun armInitialViewportReadiness(): VisibleTileViewportReadinessRequest? {
+        val layer = currentLayer as? FirstVisibleTileRendererLayer ?: return null
+        val request = layer.armCurrentViewportReadiness()
+        return request.takeIf { currentLayer === layer }
+    }
+
+    internal suspend fun awaitInitialViewportReadiness(
+        request: VisibleTileViewportReadinessRequest,
+        timeoutMs: Long,
+    ): VisibleTileViewportReadinessEvent? =
+        (currentLayer as? FirstVisibleTileRendererLayer)
+            ?.takeIf { layer -> System.identityHashCode(layer) == request.layerId }
+            ?.let { layer ->
+                layer
+                    .awaitViewportReadiness(request, timeoutMs)
+                    ?.takeIf { currentLayer === layer }
+            }
+
     internal fun currentFirstVisibleMapVersion(): Long = firstVisibleMapCounter.get()
 
     fun setElevationLabelUnitsMetric(isMetric: Boolean) {
