@@ -47,6 +47,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -649,12 +650,12 @@ private fun FrequencyPresetGrid(
 ) {
     val presets =
         listOf(
-            15 to "15s",
-            30 to "30s",
-            60 to "1 min",
-            120 to "2 min",
-            300 to "5 min",
-            600 to "10 min",
+            15 to formatUpdateIntervalCompact(15),
+            30 to formatUpdateIntervalCompact(30),
+            60 to formatUpdateIntervalCompact(60),
+            120 to formatUpdateIntervalCompact(120),
+            300 to formatUpdateIntervalCompact(300),
+            600 to formatUpdateIntervalCompact(600),
         )
     presets.chunked(3).forEach { row ->
         Row(
@@ -686,13 +687,28 @@ private fun FrequencyPresetGrid(
     }
 }
 
+@Composable
 internal fun formatUpdateInterval(seconds: Int): String {
-    if (seconds < 60) return "$seconds seconds"
+    if (seconds < 60) {
+        return pluralStringResource(
+            R.plurals.live_tracking_duration_seconds,
+            seconds,
+            seconds,
+        )
+    }
     val minutes = seconds / 60
     val remainingSeconds = seconds % 60
     return if (remainingSeconds == 0) {
-        "$minutes min"
+        stringResource(R.string.live_tracking_duration_minutes, minutes)
     } else {
-        "$minutes min $remainingSeconds sec"
+        stringResource(R.string.live_tracking_duration_minutes_seconds, minutes, remainingSeconds)
     }
 }
+
+@Composable
+private fun formatUpdateIntervalCompact(seconds: Int): String =
+    if (seconds < 60) {
+        stringResource(R.string.live_tracking_duration_seconds_compact, seconds)
+    } else {
+        stringResource(R.string.live_tracking_duration_minutes_compact, seconds / 60)
+    }

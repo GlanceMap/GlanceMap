@@ -353,6 +353,78 @@
     <string name="routing_download_files_hint">The files are downloaded to your phone. In section 2, select the ones you want to send to the watch.</string>
     <string name="routing_downloading_status">Downloading routing packs…</string>
     <string name="routing_download_finished_status">Routing download finished.</string>
+    <plurals name="home_debug_capture_active_message">
+        <item quantity="one">Recording is active on the phone. Stop when you are done and an email draft will open for %2$s.\n\nCaptured line: %1$d</item>
+        <item quantity="other">Recording is active on the phone. Stop when you are done and an email draft will open for %2$s.\n\nCaptured lines: %1$d</item>
+    </plurals>
+    <string name="home_debug_capture_start_message">This records redacted companion app transfer and live tracking logs on the phone. Start it before reproducing the issue, then stop it to open an email draft to %1$s.</string>
+    <string name="home_debug_capture_start_message_saved">This records redacted companion app transfer and live tracking logs on the phone. Start it before reproducing the issue, then stop it to open an email draft to %1$s.\n\nA saved phone recording is available and can be resent.</string>
+    <string name="quick_guide_dialog_title_general">Quick guide</string>
+    <string name="quick_guide_dialog_title_transfer">Send to Watch Guide</string>
+    <string name="quick_guide_dialog_title_live_tracking">Live Tracking</string>
+    <string name="quick_guide_dialog_title_map_legend">Map Legend Guide</string>
+    <string name="quick_guide_step">Step %1$d of %2$d</string>
+    <string name="quick_guide_bullet_line">• %1$s</string>
+    <string name="quick_guide_general_title">Welcome to GlanceMap Companion</string>
+    <string name="quick_guide_welcome_download_intro">Start on the watch and use %1$s to download offline maps.</string>
+    <string name="quick_guide_welcome_send_to_watch">%1$s Use the phone companion to send GPX routes to your watch. You can also send maps, POI, routing data and elevation files.</string>
+    <string name="quick_guide_welcome_live_tracking">%1$s Start Live Tracking from the phone to share your GPS position to friends &amp; family.</string>
+    <string name="quick_guide_welcome_book_icon">Tap the %1$s book icon in the top-right corner of each area to open its quick guide again.</string>
+    <string name="quick_guide_stay_open">• Tap %1$s tools, then %2$s Stay. You can also enable Always-on display.</string>
+    <string name="quick_guide_transfer_files_title">Get files ready</string>
+    <string name="quick_guide_transfer_files_download">Use 1. Download to get Mapsforge OSM .map, POI, GPX, or routing files.</string>
+    <string name="quick_guide_transfer_files_select">Tap 2. Select file(s) to add files from the phone:</string>
+    <string name="quick_guide_transfer_files_map">.map = offline map</string>
+    <string name="quick_guide_transfer_files_poi">.poi = points of interest</string>
+    <string name="quick_guide_transfer_files_gpx">.gpx = route/track</string>
+    <string name="quick_guide_transfer_files_routing">.rd5 = offline routing tile</string>
+    <string name="quick_guide_transfer_files_elevation">.hgt / .hgt.zip / .hgt.gz = elevation data for hill shading / slope</string>
+    <string name="quick_guide_transfer_watch_title">Prepare the watch</string>
+    <string name="quick_guide_transfer_watch_open">Open GlanceMap on the watch and keep it near the phone.</string>
+    <string name="quick_guide_transfer_watch_large_files">For large transfers, charge the watch and use the same Wi-Fi or phone hotspot.</string>
+    <string name="quick_guide_transfer_watch_bluetooth">Without Wi-Fi, Bluetooth can send files up to 50 MB.</string>
+    <string name="quick_guide_transfer_areas_title">POI &amp; routing areas</string>
+    <string name="quick_guide_transfer_areas_choose">For POI and routing downloads, first choose the area you need.</string>
+    <string name="quick_guide_transfer_areas_poi">POI downloads OSM points of interest.</string>
+    <string name="quick_guide_transfer_areas_routing">Routing downloads data for creating GPX routes offline on the watch.</string>
+    <string name="quick_guide_transfer_areas_map">You can choose an area on the map, pick a region.</string>
+    <string name="quick_guide_transfer_areas_refresh">Refresh last import repeats the previous area.</string>
+    <string name="quick_guide_transfer_send_title">Send</string>
+    <string name="quick_guide_transfer_send_close">Tap Send and keep phone and watch close until it finishes.</string>
+    <string name="quick_guide_transfer_send_resume">If it stops, send the same file again; it usually resumes from the partial file already on the watch.</string>
+    <string name="quick_guide_transfer_send_history">History shows each transfer status.</string>
+    <string name="quick_guide_live_tracking_start_title">Get started</string>
+    <string name="quick_guide_live_tracking_start_intro">Live Tracking is provided by Arkluz. GlanceMap acts as the phone interface to configure it.</string>
+    <string name="quick_guide_live_tracking_start_setup">Tap Set up live tracking.</string>
+    <string name="quick_guide_live_tracking_start_group">Connect to an existing private group or create one.</string>
+    <string name="quick_guide_live_tracking_start_options">Add your name, GPS update frequency, and safety alerts.</string>
+    <string name="quick_guide_live_tracking_updates_title">Share updates</string>
+    <string name="quick_guide_live_tracking_updates_plan">Optionally upload a GPX route or add a comment to send to your contacts.</string>
+    <string name="quick_guide_live_tracking_updates_start">Start tracking.</string>
+    <string name="quick_guide_live_tracking_updates_change">While tracking, you can modify GPX and share a new comment by clicking on "Send update".</string>
+    <string name="quick_guide_live_tracking_links_title">Track links</string>
+    <string name="quick_guide_live_tracking_links_participant">Participant link opens your own live track.</string>
+    <string name="quick_guide_live_tracking_links_group">Group link opens the shared group map.</string>
+    <string name="quick_guide_live_tracking_links_share">Use View &amp; Share to open or share your live tracking links.</string>
+    <string name="quick_guide_map_legend_title">Map Legend</string>
+    <string name="quick_guide_map_legend_intro">Use this area to open reference material for the map themes used by GlanceMap.</string>
+    <string name="quick_guide_map_legend_select">Select the theme you use on the watch.</string>
+    <string name="quick_guide_map_legend_reference">Open the legend PDF or reference page to understand symbols, colors, and paths.</string>
+    <string name="quick_guide_map_legend_external">These links are external references and may open in your browser.</string>
+    <string name="quick_guide_download_icon_content_description">Download</string>
+    <string name="quick_guide_send_to_watch_icon_content_description">Send to watch</string>
+    <string name="quick_guide_live_tracking_icon_content_description">Live Tracking</string>
+    <string name="quick_guide_book_icon_content_description">Quick Guide</string>
+    <string name="quick_guide_tools_icon_content_description">Tools</string>
+    <string name="quick_guide_stay_icon_content_description">Stay</string>
+    <plurals name="live_tracking_duration_seconds">
+        <item quantity="one">%1$d second</item>
+        <item quantity="other">%1$d seconds</item>
+    </plurals>
+    <string name="live_tracking_duration_minutes">%1$d min</string>
+    <string name="live_tracking_duration_minutes_seconds">%1$d min %2$d sec</string>
+    <string name="live_tracking_duration_seconds_compact">%1$ds</string>
+    <string name="live_tracking_duration_minutes_compact">%1$d min</string>
     <string name="routing_bbox_label">BBox</string>
     <string name="routing_action_save_on_phone">Save on phone</string>
 </resources>
