@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.buildRecordingDashboardSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -168,6 +169,49 @@ class TraceGpxEncoderTest {
         assertTrue(xml.contains("<gmap:cyclingMechanicalKj>202.40</gmap:cyclingMechanicalKj>"))
         assertFalse(xml.contains("<gmap:cyclingPowerSampleSegments>"))
         assertTrue(xml.contains("<gmap:cyclingPhysicsSegments>9</gmap:cyclingPhysicsSegments>"))
+    }
+
+    @Test
+    fun saveSummaryMetadataUsesFinalCanonicalElevationInsteadOfFreshRawLiveAltitude() {
+        val canonicalPoint =
+            RecordedTracePoint(
+                latLong = LatLong(45.0, 6.0),
+                elevationMeters = 181.5,
+                timeMillis = 9_000L,
+                accuracyMeters = 8f,
+                speedMps = 1f,
+                elevationSource = RECORDING_ELEVATION_SOURCE_HYBRID,
+            )
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points = listOf(canonicalPoint),
+                        latestLivePoint =
+                            canonicalPoint.copy(
+                                elevationMeters = 225.1,
+                                timeMillis = 10_000L,
+                                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
+                            ),
+                    ),
+                nowMillis = 10_000L,
+            )
+
+        val xml =
+            encodeRecordedTraceAsGpx(
+                title = "Elevation",
+                points = listOf(canonicalPoint),
+                summary =
+                    recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS).copy(
+                        currentElevationMeters = snapshot.currentElevationMeters,
+                    ),
+            ).toString(Charsets.UTF_8)
+
+        assertTrue(xml.contains("<ele>181.5</ele>"))
+        assertTrue(xml.contains("<gmap:currentElevationMeters>181.50</gmap:currentElevationMeters>"))
+        assertFalse(xml.contains("225.10"))
     }
 
     @Test

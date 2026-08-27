@@ -31,6 +31,33 @@ import java.security.MessageDigest
 private const val WATCH_GPX_COPY_BUFFER_BYTES = 64 * 1024
 private const val WATCH_GPX_MIME_TYPE = "application/gpx+xml"
 
+internal data class WatchGpxSuccessNotificationDescription(
+    val contentText: String,
+    val expandedText: String,
+    val saveCopyActionLabel: String,
+    val openActionLabel: String,
+    val shareActionLabel: String,
+)
+
+internal fun buildWatchGpxSuccessNotificationDescription(
+    fileName: String,
+    downloadsUriAvailable: Boolean,
+): WatchGpxSuccessNotificationDescription {
+    val location =
+        if (downloadsUriAvailable) {
+            "Saved to Downloads/GlanceMap"
+        } else {
+            "Received from watch"
+        }
+    return WatchGpxSuccessNotificationDescription(
+        contentText = "$location. $fileName",
+        expandedText = "$location\n$fileName",
+        saveCopyActionLabel = "Save copy",
+        openActionLabel = "Open",
+        shareActionLabel = "Share",
+    )
+}
+
 class WatchGpxExportListenerService : WearableListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val channelClient by lazy { Wearable.getChannelClient(this) }
@@ -173,24 +200,23 @@ class WatchGpxExportListenerService : WearableListenerService() {
                 Intent.createChooser(shareIntent, "Share GPX"),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        val location =
-            if (downloadsUri != null) {
-                "Saved to Downloads/GlanceMap"
-            } else {
-                "Received from watch"
-            }
+        val description =
+            buildWatchGpxSuccessNotificationDescription(
+                fileName = file.name,
+                downloadsUriAvailable = downloadsUri != null,
+            )
 
         val notification =
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
                 .setContentTitle("GPX ready")
-                .setContentText("$location. Tap to save a copy: ${file.name}")
-                .setStyle(NotificationCompat.BigTextStyle().bigText("$location\nTap to save a copy.\n${file.name}"))
+                .setContentText(description.contentText)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(description.expandedText))
                 .setAutoCancel(true)
-                .setContentIntent(savePendingIntent)
-                .addAction(android.R.drawable.ic_menu_view, "Open", openPendingIntent)
-                .addAction(android.R.drawable.ic_menu_share, "Share", sharePendingIntent)
+                .addAction(android.R.drawable.ic_menu_save, description.saveCopyActionLabel, savePendingIntent)
+                .addAction(android.R.drawable.ic_menu_view, description.openActionLabel, openPendingIntent)
+                .addAction(android.R.drawable.ic_menu_share, description.shareActionLabel, sharePendingIntent)
                 .build()
 
         runCatching { notificationManager.notify(file.name.hashCode(), notification) }

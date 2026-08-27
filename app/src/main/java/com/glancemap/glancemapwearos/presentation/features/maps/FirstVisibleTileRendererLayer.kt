@@ -3,11 +3,16 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
+import org.mapsforge.core.model.Tile
 import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.datastore.MapDataStore
 import org.mapsforge.map.layer.cache.TileCache
@@ -15,6 +20,7 @@ import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.MapViewPosition
 import org.mapsforge.map.util.LayerUtil
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 internal enum class FirstVisibleBaseTileSource(
@@ -29,6 +35,31 @@ internal class VisibleTileDiagnosticsContext(
     val rendererId: Int,
     val cacheId: String,
 )
+
+internal data class VisibleTileViewportKey(
+    val zoomLevel: Byte,
+    val tiles: Set<Tile>,
+)
+
+internal data class VisibleTileViewportReadinessRequest(
+    val layerId: Int,
+    val requestId: Long,
+    val viewportKey: VisibleTileViewportKey,
+)
+
+internal data class VisibleTileViewportReadinessEvent(
+    val layerId: Int,
+    val requestId: Long,
+    val viewportKey: VisibleTileViewportKey,
+)
+
+internal fun visibleTileViewportReadinessMatches(
+    request: VisibleTileViewportReadinessRequest,
+    event: VisibleTileViewportReadinessEvent,
+): Boolean =
+    request.layerId == event.layerId &&
+        request.requestId == event.requestId &&
+        request.viewportKey == event.viewportKey
 
 /** Reports when an exact tile from the visible viewport is first available to draw. */
 internal class FirstVisibleTileRendererLayer(
@@ -54,6 +85,10 @@ internal class FirstVisibleTileRendererLayer(
     private val firstVisibleTileReported = AtomicBoolean(false)
     private val visibleTileDiagnosticsActivated = AtomicBoolean(false)
     private val pendingVisibleTileSnapshotReason = AtomicReference<String?>(null)
+    private val viewportReadinessCounter = AtomicLong(0L)
+    private val viewportReadinessEvent = MutableStateFlow<VisibleTileViewportReadinessEvent?>(null)
+    private val viewportReadinessLock = Any()
+    private var armedViewportReadiness: VisibleTileViewportReadinessRequest? = null
     private var hasDrawn = false
     private var lastDiagnosticState: String? = null
     private var lastCoverageSampleAtElapsedMs: Long? = null
@@ -87,6 +122,46 @@ internal class FirstVisibleTileRendererLayer(
                     FirstVisibleBaseTileSource.COLD_RENDER
                 },
             )
+        }
+        completeArmedViewportReadiness(boundingBox, zoomLevel)
+    }
+
+    /** Arms one readiness signal for the map's current visible tile set. */
+    fun armCurrentViewportReadiness(): VisibleTileViewportReadinessRequest {
+        val mapView = diagnostics.mapView
+        val viewportKey =
+            visibleTileViewportKey(
+                boundingBox = mapView.boundingBox,
+                zoomLevel = mapView.model.mapViewPosition.zoomLevel,
+                tileSize = displayModel?.tileSize ?: 0,
+            )
+        val request =
+            VisibleTileViewportReadinessRequest(
+                layerId = System.identityHashCode(this),
+                requestId = viewportReadinessCounter.incrementAndGet(),
+                viewportKey = viewportKey,
+            )
+        synchronized(viewportReadinessLock) {
+            if (hasDrawableTile(request.viewportKey)) {
+                viewportReadinessEvent.value = request.toReadinessEvent()
+            } else {
+                armedViewportReadiness = request
+            }
+        }
+        return request
+    }
+
+    suspend fun awaitViewportReadiness(
+        request: VisibleTileViewportReadinessRequest,
+        timeoutMs: Long,
+    ): VisibleTileViewportReadinessEvent? {
+        viewportReadinessEvent.value?.let { event ->
+            if (visibleTileViewportReadinessMatches(request, event)) return event
+        }
+        return withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
+            viewportReadinessEvent
+                .filterNotNull()
+                .first { event -> visibleTileViewportReadinessMatches(request, event) }
         }
     }
 
@@ -208,6 +283,42 @@ internal class FirstVisibleTileRendererLayer(
                 .any { tile -> tileCache.containsKey(createJob(tile)) }
         }.getOrDefault(false)
 
+    private fun completeArmedViewportReadiness(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+    ) {
+        val request = synchronized(viewportReadinessLock) { armedViewportReadiness }
+        val tileSize = displayModel?.tileSize
+        if (request == null || tileSize == null) return
+        val viewportKey =
+            visibleTileViewportKey(
+                boundingBox = boundingBox,
+                zoomLevel = zoomLevel,
+                tileSize = tileSize,
+            )
+        if (request.viewportKey == viewportKey && hasDrawableTile(viewportKey)) {
+            synchronized(viewportReadinessLock) {
+                if (armedViewportReadiness == request) {
+                    armedViewportReadiness = null
+                    viewportReadinessEvent.value = request.toReadinessEvent()
+                }
+            }
+        }
+    }
+
+    private fun hasDrawableTile(viewportKey: VisibleTileViewportKey): Boolean =
+        renderThemeFuture != null &&
+            viewportKey.tiles.any { tile ->
+                generateSequence(tile) { candidate -> candidate.parent }
+                    .take(MAX_PARENT_TILE_DEPTH + 1)
+                    .any { candidate ->
+                        tileCache.getImmediately(createJob(candidate))?.let { bitmap ->
+                            bitmap.decrementRefCount()
+                            true
+                        } ?: false
+                    }
+            }
+
     private data class VisibleTileCoverage(
         val totalTileCount: Int = 0,
         val exactCacheEntryCount: Int = 0,
@@ -224,6 +335,23 @@ internal class FirstVisibleTileRendererLayer(
         const val COVERAGE_SAMPLE_INTERVAL_MS = 250L
     }
 }
+
+private fun VisibleTileViewportReadinessRequest.toReadinessEvent(): VisibleTileViewportReadinessEvent =
+    VisibleTileViewportReadinessEvent(
+        layerId = layerId,
+        requestId = requestId,
+        viewportKey = viewportKey,
+    )
+
+internal fun visibleTileViewportKey(
+    boundingBox: BoundingBox,
+    zoomLevel: Byte,
+    tileSize: Int,
+): VisibleTileViewportKey =
+    VisibleTileViewportKey(
+        zoomLevel = zoomLevel,
+        tiles = if (tileSize > 0) LayerUtil.getTiles(boundingBox, zoomLevel, tileSize).toSet() else emptySet(),
+    )
 
 internal fun visibleTileDiagnosticState(
     previousState: String?,

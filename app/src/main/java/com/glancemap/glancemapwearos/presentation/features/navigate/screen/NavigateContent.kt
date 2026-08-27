@@ -279,6 +279,10 @@ internal fun NavigateContent(
     var rotaryScrollAccumulator by remember(mapView, crownZoomEnabled, crownZoomInverted) {
         mutableStateOf(0f)
     }
+    val crownZoomCoalescer =
+        remember(mapView, crownZoomEnabled, crownZoomInverted, zoomMin, zoomMax) {
+            CrownZoomCoalescer()
+        }
     var poiTapMarker by remember { mutableStateOf<PoiOverlayMarker?>(null) }
     var poiTapPopup by remember { mutableStateOf<PoiTapPopupContent?>(null) }
     var poiTapPopupExpanded by remember { mutableStateOf(false) }
@@ -320,8 +324,8 @@ internal fun NavigateContent(
         }
     }
 
-    fun applyMapZoomStep(
-        step: Int,
+    fun applyMapZoomTarget(
+        targetZoom: Int,
         inputSource: String,
     ): Boolean {
         val zoomApplied =
@@ -329,7 +333,7 @@ internal fun NavigateContent(
                 val current =
                     currentMapView.model.mapViewPosition.zoomLevel
                         .toInt()
-                val next = (current + step).coerceIn(zoomMin, zoomMax)
+                val next = targetZoom.coerceIn(zoomMin, zoomMax)
                 if (next == current) {
                     false
                 } else {
@@ -345,6 +349,41 @@ internal fun NavigateContent(
             } ?: false
         if (zoomApplied) triggerHaptic()
         return zoomApplied
+    }
+
+    fun applyMapZoomStep(
+        step: Int,
+        inputSource: String,
+    ): Boolean {
+        val current =
+            mapView
+                ?.model
+                ?.mapViewPosition
+                ?.zoomLevel
+                ?.toInt() ?: return false
+        return applyMapZoomTarget(current + step, inputSource)
+    }
+
+    fun enqueueCrownZoomStep(step: Int): Boolean {
+        val currentMapView = mapView ?: return false
+        val accepted =
+            crownZoomCoalescer.enqueue(
+                currentZoom =
+                    currentMapView.model.mapViewPosition.zoomLevel
+                        .toInt(),
+                step = step,
+                minZoom = zoomMin,
+                maxZoom = zoomMax,
+            )
+        if (accepted && crownZoomCoalescer.shouldScheduleFrame()) {
+            crownZoomCoalescer.markFrameScheduled()
+            currentMapView.postOnAnimation {
+                crownZoomCoalescer.consumeFrameTarget()?.let { targetZoom ->
+                    applyMapZoomTarget(targetZoom, inputSource = "rotary_crown")
+                }
+            }
+        }
+        return accepted
     }
 
     fun canApplyMapZoomStep(step: Int): Boolean {
@@ -575,19 +614,13 @@ internal fun NavigateContent(
 
                     while (rotaryScrollAccumulator >= thresholdPx) {
                         consumed =
-                            applyMapZoomStep(
-                                step = positiveStep,
-                                inputSource = "rotary_crown",
-                            ) ||
+                            enqueueCrownZoomStep(step = positiveStep) ||
                             consumed
                         rotaryScrollAccumulator -= thresholdPx
                     }
                     while (rotaryScrollAccumulator <= -thresholdPx) {
                         consumed =
-                            applyMapZoomStep(
-                                step = negativeStep,
-                                inputSource = "rotary_crown",
-                            ) ||
+                            enqueueCrownZoomStep(step = negativeStep) ||
                             consumed
                         rotaryScrollAccumulator += thresholdPx
                     }

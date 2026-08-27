@@ -88,6 +88,7 @@ internal class RecordingPointDensityTelemetry {
             RecordingMotionReason.REPORTED_MOTION,
             RecordingMotionReason.SENSOR_MOTION,
             RecordingMotionReason.CONFIRMED_SLOW_PROGRESS,
+            RecordingMotionReason.DELAYED_DELIVERY_RECOVERY,
             -> {
                 credibleMovementSinceStoredPoint = true
                 movingExpectedStoredSampleCount += 1

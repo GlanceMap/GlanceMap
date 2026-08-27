@@ -3,6 +3,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ELEVATION_SOURCE_HYBRID
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import org.junit.Assert.assertEquals
@@ -551,7 +552,7 @@ class RecordingDashboardModelsTest {
     }
 
     @Test
-    fun buildRecordingDashboardSnapshotUsesFreshLivePointOnlyForCurrentMetrics() {
+    fun buildRecordingDashboardSnapshotKeepsCanonicalElevationWhenFreshLivePointIsRaw() {
         val snapshot =
             buildRecordingDashboardSnapshot(
                 state =
@@ -562,17 +563,17 @@ class RecordingDashboardModelsTest {
                             listOf(
                                 recordingPoint(
                                     longitude = 0.0,
-                                    elevationMeters = 100.0,
+                                    elevationMeters = 182.0,
                                     timeMillis = 0L,
-                                ),
+                                ).copy(elevationSource = RECORDING_ELEVATION_SOURCE_HYBRID),
                             ),
                         latestLivePoint =
                             recordingPoint(
                                 longitude = 0.001,
-                                elevationMeters = 104.0,
+                                elevationMeters = 230.0,
                                 timeMillis = 9_000L,
                                 speedMps = 2.5f,
-                            ),
+                            ).copy(elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS),
                         distanceMeters = 0.0,
                     ),
                 nowMillis = 10_000L,
@@ -580,10 +581,73 @@ class RecordingDashboardModelsTest {
 
         assertEquals(0.0, snapshot.distanceMeters, 0.0)
         assertEquals(1, snapshot.pointCount)
-        assertEquals(104.0, snapshot.currentElevationMeters!!, 0.0)
+        assertEquals(182.0, snapshot.currentElevationMeters!!, 0.0)
         assertEquals(2.5f, snapshot.currentSpeedMps!!)
         assertEquals(1_000L, snapshot.lastLiveFixAgeMillis)
         assertEquals(10_000L, snapshot.lastRecordedPointAgeMillis)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotKeepsMatchingLiveAndCanonicalElevation() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points = listOf(recordingPoint(0.0, 182.0, 0L)),
+                        latestLivePoint = recordingPoint(0.001, 182.0, 9_000L),
+                    ),
+                nowMillis = 10_000L,
+            )
+
+        assertEquals(182.0, snapshot.currentElevationMeters!!, 0.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotUsesLiveElevationBeforeFirstCanonicalPoint() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        latestLivePoint = recordingPoint(0.001, 230.0, 9_000L),
+                    ),
+                nowMillis = 10_000L,
+            )
+
+        assertEquals(230.0, snapshot.currentElevationMeters!!, 0.0)
+    }
+
+    @Test
+    fun buildRecordingDashboardSnapshotUsesNewestAcceptedHybridPointAsCurrentElevation() {
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points =
+                            listOf(
+                                recordingPoint(0.0, 180.0, 0L),
+                                recordingPoint(
+                                    longitude = 0.001,
+                                    elevationMeters = 181.5,
+                                    timeMillis = 9_000L,
+                                ).copy(elevationSource = RECORDING_ELEVATION_SOURCE_HYBRID),
+                            ),
+                        latestLivePoint =
+                            recordingPoint(
+                                longitude = 0.0011,
+                                elevationMeters = 225.1,
+                                timeMillis = 10_000L,
+                            ).copy(elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS),
+                    ),
+                nowMillis = 10_000L,
+            )
+
+        assertEquals(181.5, snapshot.currentElevationMeters!!, 0.0)
     }
 
     @Test
