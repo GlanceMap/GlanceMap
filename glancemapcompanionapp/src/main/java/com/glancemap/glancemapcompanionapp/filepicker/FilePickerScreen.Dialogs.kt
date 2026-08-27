@@ -827,14 +827,12 @@ private fun quickGuideInlineTextContent(
     val annotatedText =
         buildAnnotatedString {
             var textStart = 0
-            inlineIcons.forEachIndexed { index, inlineIcon ->
-                val placeholder = placeholders[index]
-                val placeholderStart = text.indexOf(placeholder, textStart)
-                if (placeholderStart >= 0) {
-                    append(text.substring(textStart, placeholderStart))
-                    appendInlineContent(inlineIcon.id, placeholder)
-                    textStart = placeholderStart + placeholder.length
-                }
+            guideInlinePlaceholderOccurrences(text, placeholders).forEach { occurrence ->
+                val inlineIcon = inlineIcons[occurrence.inlineIconIndex]
+                val placeholder = placeholders[occurrence.inlineIconIndex]
+                append(text.substring(textStart, occurrence.startIndex))
+                appendInlineContent(inlineIcon.id, placeholder)
+                textStart = occurrence.startIndex + placeholder.length
             }
             append(text.substring(textStart))
         }
@@ -932,6 +930,28 @@ private data class QuickGuideInlineIcon(
     val imageVector: ImageVector,
     @StringRes val contentDescriptionResId: Int,
 )
+
+internal data class GuideInlinePlaceholderOccurrence(
+    val inlineIconIndex: Int,
+    val startIndex: Int,
+)
+
+internal fun guideInlinePlaceholderOccurrences(
+    text: String,
+    placeholders: List<String>,
+): List<GuideInlinePlaceholderOccurrence> =
+    placeholders
+        .mapIndexedNotNull { index, placeholder ->
+            text
+                .indexOf(placeholder)
+                .takeIf { it >= 0 }
+                ?.let { startIndex ->
+                    GuideInlinePlaceholderOccurrence(
+                        inlineIconIndex = index,
+                        startIndex = startIndex,
+                    )
+                }
+        }.sortedBy(GuideInlinePlaceholderOccurrence::startIndex)
 
 private fun quickGuidePages(mode: QuickGuideMode): List<QuickGuidePage> =
     when (mode) {
