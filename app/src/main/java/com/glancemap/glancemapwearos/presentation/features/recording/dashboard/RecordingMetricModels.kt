@@ -225,7 +225,7 @@ internal fun buildRecordingDashboardSnapshot(
         elevationGainMeters = canonicalProfile?.totalAscent ?: 0.0,
         elevationLossMeters = canonicalProfile?.totalDescent ?: 0.0,
         hasElevationData = hasElevationData,
-        currentElevationMeters = currentPoint?.elevationMeters ?: lastRecordedPoint?.elevationMeters,
+        currentElevationMeters = (lastRecordedPoint ?: livePoint)?.elevationMeters,
         currentSpeedMps = displayCurrentSpeedMps,
         externalSpeedMps = state.externalSpeedMps,
         averageSpeedMps =
