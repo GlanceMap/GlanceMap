@@ -114,7 +114,10 @@ class TraceRecordingViewModel(
     private var lastLiveFixProvider: String? = null
     private var lastLiveFixAccuracyMeters: Float? = null
     private var lastLiveFixTimeMillis: Long? = null
-    private var lastLiveCallbackElapsedMs: Long = Long.MIN_VALUE
+    private val recordingCallbackGapTracker =
+        RecordingCallbackGapTracker(
+            SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS * 1_000L,
+        )
     private val recentLiveCallbackIntervalsMs = mutableListOf<Long>()
     private var pendingGpsDeliveryGapMillis: Long = 0L
     private var pendingSegmentStartReason: String? = null
@@ -425,6 +428,7 @@ class TraceRecordingViewModel(
         val sanitizedIntervalMs = intervalMs.takeIf { it > 0L } ?: return
         if (latestEffectiveRecordingSamplingIntervalMs == sanitizedIntervalMs) return
         latestEffectiveRecordingSamplingIntervalMs = sanitizedIntervalMs
+        recordingCallbackGapTracker.updateEffectiveInterval(sanitizedIntervalMs)
         val state = _uiState.value
         if (state.active && !state.paused) {
             recordingPointCaptureExpectation.updateInterval(
@@ -502,7 +506,8 @@ class TraceRecordingViewModel(
             return null
         }
 
-        val liveCallbackGapMillis = observeLiveCallback(callbackElapsedMs)
+        val callbackGapTiming = observeLiveCallback(callbackElapsedMs)
+        val liveCallbackGapMillis = callbackGapTiming.callbackGapMillis
         recordingPointDensityTelemetry.observeUsableCallback()
         if (liveCallbackGapMillis >= recordingGapTelemetryThresholdMillis()) {
             pendingGpsDeliveryGapMillis = maxOf(pendingGpsDeliveryGapMillis, liveCallbackGapMillis)
@@ -593,6 +598,12 @@ class TraceRecordingViewModel(
                         stepCount = sensorMetricsAtFix?.stepCount,
                         cadenceSpm = sensorMetricsAtFix?.cadenceSpm,
                         trustReportedSpeedWithoutAccuracy = watchGpsAccuracyFloorActive,
+                        delayedDelivery =
+                            RecordingDelayedDeliveryEvidence(
+                                acceptedPointGapMillis = elapsedSinceAcceptedMs,
+                                callbackGapMillis = liveCallbackGapMillis,
+                                expectedIntervalMillis = callbackGapTiming.expectedIntervalMillis,
+                            ),
                     ),
                 activityProfile = state.activityProfile,
                 previousFilterAccuracyMeters = previousFilterAccuracyMeters,
@@ -633,6 +644,20 @@ class TraceRecordingViewModel(
                 )
             }
             return null
+        }
+        if (motionResult.reason == RecordingMotionReason.DELAYED_DELIVERY_RECOVERY) {
+            DebugTelemetry.log(
+                "TraceRecording",
+                "event=motion_delayed_delivery_recovery " +
+                    "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
+                    "liveCallbackGapMs=$liveCallbackGapMillis " +
+                    "gapExpectedIntervalMs=${callbackGapTiming.expectedIntervalMillis} " +
+                    "currentEffectiveIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
+                    "endpointDisplacementM=${motionResult.displacementMeters.formatTelemetry(1)} " +
+                    "previousSpeedMps=${previousRecordedPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "currentSpeedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                    "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+            )
         }
         if (!motionResult.accepted) {
             recordingMovementConfidenceGate.reset()
@@ -1258,7 +1283,7 @@ class TraceRecordingViewModel(
         lastAcceptedElapsedMs = Long.MIN_VALUE
         watchGpsDistanceGeometry.reset()
         lastAcceptedPointTimeMillis = null
-        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recordingCallbackGapTracker.reset()
         recentLiveCallbackIntervalsMs.clear()
         pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason =
@@ -1662,7 +1687,7 @@ class TraceRecordingViewModel(
         lastLiveFixProvider = null
         lastLiveFixAccuracyMeters = null
         lastLiveFixTimeMillis = null
-        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recordingCallbackGapTracker.reset()
         recentLiveCallbackIntervalsMs.clear()
         pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason = null
@@ -1820,7 +1845,7 @@ class TraceRecordingViewModel(
         lastAcceptedElapsedMs = Long.MIN_VALUE
         watchGpsDistanceGeometry.reset()
         lastAcceptedPointTimeMillis = null
-        lastLiveCallbackElapsedMs = Long.MIN_VALUE
+        recordingCallbackGapTracker.reset()
         recentLiveCallbackIntervalsMs.clear()
         pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason =
@@ -2129,18 +2154,16 @@ class TraceRecordingViewModel(
             effectiveLiveCallbackCadenceMillis() * RECORDING_GAP_LIVE_CALLBACK_MULTIPLIER,
         )
 
-    private fun observeLiveCallback(callbackElapsedMs: Long): Long {
-        val previous = lastLiveCallbackElapsedMs
-        lastLiveCallbackElapsedMs = callbackElapsedMs
-        if (previous == Long.MIN_VALUE || callbackElapsedMs <= previous) return 0L
-        val intervalMillis = callbackElapsedMs - previous
-        if (intervalMillis in RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS..RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS) {
-            recentLiveCallbackIntervalsMs += intervalMillis
+    private fun observeLiveCallback(callbackElapsedMs: Long): RecordingCallbackGapTiming {
+        val timing = recordingCallbackGapTracker.observeCallback(callbackElapsedMs)
+        val callbackGapMillis = timing.callbackGapMillis
+        if (callbackGapMillis in RECORDING_LIVE_CALLBACK_MIN_INTERVAL_MS..RECORDING_LIVE_CALLBACK_MAX_INTERVAL_MS) {
+            recentLiveCallbackIntervalsMs += callbackGapMillis
             while (recentLiveCallbackIntervalsMs.size > RECORDING_LIVE_CALLBACK_CADENCE_WINDOW) {
                 recentLiveCallbackIntervalsMs.removeAt(0)
             }
         }
-        return intervalMillis
+        return timing
     }
 
     private fun effectiveLiveCallbackCadenceMillis(): Long =
@@ -2297,6 +2320,7 @@ class TraceRecordingViewModel(
             "smartTrackAcceptedReportedSpeedCount=${snapshot.acceptedReportedSpeedCount} " +
             "smartTrackAcceptedSensorCount=${snapshot.acceptedSensorCount} " +
             "smartTrackAcceptedConfirmedSlowCount=${snapshot.acceptedConfirmedSlowCount} " +
+            "smartTrackAcceptedDelayedDeliveryRecoveryCount=${snapshot.acceptedDelayedDeliveryRecoveryCount} " +
             "smartTrackSuppressedStationaryCount=${snapshot.suppressedStationaryCount} " +
             "smartTrackSuppressedStepStillnessCount=${snapshot.suppressedStepStillnessCount} " +
             "smartTrackHeldSlowCount=${snapshot.heldSlowCount} " +

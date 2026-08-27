@@ -12,6 +12,13 @@ internal data class RecordingMotionSample(
     val stepCount: Int?,
     val cadenceSpm: Int?,
     val trustReportedSpeedWithoutAccuracy: Boolean = false,
+    val delayedDelivery: RecordingDelayedDeliveryEvidence? = null,
+)
+
+internal data class RecordingDelayedDeliveryEvidence(
+    val acceptedPointGapMillis: Long,
+    val callbackGapMillis: Long,
+    val expectedIntervalMillis: Long,
 )
 
 internal enum class RecordingMotionStatus {
@@ -25,6 +32,7 @@ internal enum class RecordingMotionReason {
     REPORTED_MOTION,
     SENSOR_MOTION,
     CONFIRMED_SLOW_PROGRESS,
+    DELAYED_DELIVERY_RECOVERY,
     STATIONARY_JITTER,
     STEP_STILLNESS,
     UNCONFIRMED_SLOW_PROGRESS,
@@ -190,6 +198,23 @@ internal class RecordingMovementConfidenceGate {
                 evidence = radiusEvidence,
             )
         }
+        if (
+            isDelayedDeliveryBikeRecovery(
+                previous = previous,
+                candidate = candidate,
+                activityProfile = activityProfile,
+                displacementMeters = displacementMeters,
+                previousFilterAccuracyMeters = previousFilterAccuracyMeters,
+            )
+        ) {
+            pendingSlowProgress = null
+            return candidate.result(
+                status = RecordingMotionStatus.ACCEPTED,
+                reason = RecordingMotionReason.DELAYED_DELIVERY_RECOVERY,
+                displacementMeters = displacementMeters,
+                evidence = radiusEvidence,
+            )
+        }
 
         val pending = pendingSlowProgress
         if (
@@ -228,6 +253,47 @@ internal class RecordingMovementConfidenceGate {
         lastObservedStepCount = current
         return baseline != null && current > baseline
     }
+}
+
+@Suppress("CyclomaticComplexMethod", "ComplexCondition", "ReturnCount")
+private fun isDelayedDeliveryBikeRecovery(
+    previous: RecordedTracePoint,
+    candidate: RecordingMotionSample,
+    activityProfile: String,
+    displacementMeters: Double,
+    previousFilterAccuracyMeters: Float?,
+): Boolean {
+    if (activityProfile != SettingsRepository.ACTIVITY_PROFILE_BIKE) return false
+    val delivery = candidate.delayedDelivery ?: return false
+    val previousSpeed = previous.speedMps?.takeIf { it.isFinite() && it >= 0f } ?: return false
+    val candidateSpeed = candidate.speedMps?.takeIf { it.isFinite() && it >= 0f } ?: return false
+    if (
+        previousSpeed <= RECORDING_MOTION_BIKE_SPEED_THRESHOLD_MPS ||
+        candidateSpeed > RECORDING_MOTION_BIKE_SPEED_THRESHOLD_MPS
+    ) {
+        return false
+    }
+    val acceptedPointGapMillis = delivery.acceptedPointGapMillis
+    val callbackGapMillis = delivery.callbackGapMillis
+    val expectedIntervalMillis = delivery.expectedIntervalMillis
+    if (
+        acceptedPointGapMillis <= 0L ||
+        acceptedPointGapMillis > RECORDING_MOTION_CONFIRMATION_MAX_INTERVAL_MS ||
+        expectedIntervalMillis <= 0L ||
+        callbackGapMillis <= expectedIntervalMillis * 2L ||
+        callbackGapMillis * 2L < acceptedPointGapMillis
+    ) {
+        return false
+    }
+    val candidateAccuracyMeters = candidate.accuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return false
+    val previousAccuracyMeters =
+        previousFilterAccuracyMeters
+            ?.takeIf { it.isFinite() && it >= 0f }
+            ?: previous.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }
+            ?: return false
+    val inferredSpeedMps = displacementMeters / (acceptedPointGapMillis / 1_000.0)
+    return inferredSpeedMps > RECORDING_MOTION_BIKE_SPEED_THRESHOLD_MPS &&
+        displacementMeters >= (previousAccuracyMeters + candidateAccuracyMeters) * 2.0
 }
 
 private fun RecordingMotionSample.isWeakHikingFixWithUnchangedSteps(
