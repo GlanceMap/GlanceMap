@@ -21,6 +21,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.theme.ThemeViewM
 import com.glancemap.glancemapwearos.presentation.features.navigate.LocationViewModel
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingElevationProvider
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingRuntimeDependencies
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingDraftStore
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
@@ -148,7 +149,13 @@ class AppContainer(
                 syncManager = syncManager,
                 elevationProvider = RecordingElevationProvider(applicationContext),
                 draftStore = TraceRecordingDraftStore(applicationContext),
-                applicationContext = applicationContext,
+                runtimeDependencies =
+                    RecordingRuntimeDependencies(
+                        applicationContext = applicationContext,
+                        requestImmediateLocation = { source ->
+                            locationViewModel.requestImmediateLocation(source = source)
+                        },
+                    ),
             )
         startRecordingLocationBridge(viewModel)
         viewModel

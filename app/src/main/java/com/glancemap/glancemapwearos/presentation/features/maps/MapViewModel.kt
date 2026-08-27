@@ -150,15 +150,7 @@ internal fun shouldRetainInitialMapLoadIndicator(
     mapReady: Boolean,
 ): Boolean = policy.retainOnFirstVisibleTimeout && !mapReady
 
-internal fun firstVisibleMapBaselineVersion(
-    request: MapAppearanceIndicatorRequest,
-    currentVersion: Long,
-): Long =
-    if (request == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
-        0L
-    } else {
-        currentVersion
-    }
+internal fun firstVisibleMapBaselineVersion(currentVersion: Long): Long = currentVersion
 
 internal fun shouldClearVisibleIndicatorForInitialLoadReplacement(
     visibleGeneration: Long?,
@@ -1437,7 +1429,7 @@ class MapViewModel(
         )
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private suspend fun applyPendingRendererWork(
         renderer: MapRenderer,
         awaitVisibleMap: Boolean,
@@ -1445,11 +1437,8 @@ class MapViewModel(
         onFirstVisibleMap: () -> Unit,
     ): Boolean {
         val firstVisibleMapBaselineVersion =
-            if (awaitVisibleMap) {
-                firstVisibleMapBaselineVersion(
-                    request = checkNotNull(firstVisibleRequest),
-                    currentVersion = renderer.currentFirstVisibleMapVersion(),
-                )
+            if (awaitVisibleMap && firstVisibleRequest != MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
+                firstVisibleMapBaselineVersion(renderer.currentFirstVisibleMapVersion())
             } else {
                 0L
             }
@@ -1464,57 +1453,85 @@ class MapViewModel(
         }
 
         if (!awaitVisibleMap) return true
+        val initialViewportReadiness =
+            if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
+                renderer.armInitialViewportReadiness()
+            } else {
+                null
+            }
         MapHotPathDiagnostics.recordEvent(
             stage = "map_update_ui",
             status = "first_visible_timeout_scheduled",
             detail =
                 "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
-                    "baseline=$firstVisibleMapBaselineVersion timeoutMs=$MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS",
+                    if (initialViewportReadiness != null) {
+                        "scope=viewport layer=${initialViewportReadiness.layerId} " +
+                            "request=${initialViewportReadiness.requestId} " +
+                            "tiles=${initialViewportReadiness.viewportKey.tiles.size} " +
+                            "timeoutMs=$MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS"
+                    } else {
+                        "baseline=$firstVisibleMapBaselineVersion timeoutMs=$MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS"
+                    },
         )
-        val firstVisibleMap =
+        val initialViewportReady =
             if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
                 awaitInitialFirstVisibleAfterTimeout(
                     timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
                     awaitFirstVisible = { timeoutMs ->
-                        renderer.awaitFirstVisibleMapAfter(
-                            baselineVersion = firstVisibleMapBaselineVersion,
-                            timeoutMs = timeoutMs,
-                        )
+                        initialViewportReadiness?.let { request ->
+                            renderer.awaitInitialViewportReadiness(request, timeoutMs)
+                        }
                     },
                     onTimeout = {
                         MapHotPathDiagnostics.recordEvent(
                             stage = "map_update_ui",
                             status = "first_visible_timeout_fired",
-                            detail = "reason=initial_map_load baseline=$firstVisibleMapBaselineVersion",
+                            detail =
+                                "reason=initial_map_load scope=viewport " +
+                                    "request=${initialViewportReadiness?.requestId ?: 0L}",
                         )
                     },
                 )
+            } else {
+                null
+            }
+        val firstVisibleMap =
+            if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
+                null
             } else {
                 renderer.awaitFirstVisibleMapAfter(
                     baselineVersion = firstVisibleMapBaselineVersion,
                     timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
                 )
             }
-        if (firstVisibleMap != null) {
+        val mapReady = initialViewportReady != null || firstVisibleMap != null
+        if (mapReady) {
             onFirstVisibleMap()
             MapHotPathDiagnostics.recordEvent(
                 stage = "map_update_ui",
                 status = "first_visible_observed",
                 detail =
-                    "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
-                        "baseline=$firstVisibleMapBaselineVersion version=${firstVisibleMap.version} " +
-                        "source=${firstVisibleMap.source.telemetryToken}",
+                    if (initialViewportReady != null) {
+                        "reason=initial_map_load scope=viewport " +
+                            "layer=${initialViewportReady.layerId} " +
+                            "request=${initialViewportReady.requestId} " +
+                            "tiles=${initialViewportReady.viewportKey.tiles.size}"
+                    } else {
+                        "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
+                            "baseline=$firstVisibleMapBaselineVersion version=${firstVisibleMap?.version} " +
+                            "source=${firstVisibleMap?.source?.telemetryToken}"
+                    },
             )
         }
         delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
-        if (firstVisibleMap != null) {
+        if (mapReady) {
             MapHotPathDiagnostics.recordEvent(
                 stage = "map_update_ui",
                 status = "first_visible_settled",
                 detail = "reason=${checkNotNull(firstVisibleRequest).telemetryReason}",
             )
         }
-        return firstVisibleMap != null
+        return mapReady
     }
 
     private fun applyRendererConfigIfReady(): MapRenderer.ThemeApplyResult {

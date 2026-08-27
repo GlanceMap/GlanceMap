@@ -17,17 +17,12 @@ class MapAppearanceIndicatorPolicyTest {
     }
 
     @Test
-    fun `initial load accepts first visible emitted before its waiter starts`() {
+    fun `non initial readiness starts after the current first visible version`() {
         val emittedVersion = 1L
 
-        val baseline =
-            firstVisibleMapBaselineVersion(
-                request = MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD,
-                currentVersion = emittedVersion,
-            )
+        val baseline = firstVisibleMapBaselineVersion(currentVersion = emittedVersion)
 
-        assertEquals(0L, baseline)
-        assertTrue(emittedVersion > baseline)
+        assertEquals(emittedVersion, baseline)
     }
 
     @Test
@@ -140,9 +135,69 @@ class MapAppearanceIndicatorPolicyTest {
     fun `clean process state starts without an inherited first visible token`() {
         assertEquals(
             0L,
-            firstVisibleMapBaselineVersion(
-                request = MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD,
-                currentVersion = 0L,
+            firstVisibleMapBaselineVersion(currentVersion = 0L),
+        )
+    }
+
+    @Test
+    fun `viewport readiness accepts an already arrived tile for the same request`() {
+        val viewport = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet())
+        val request =
+            VisibleTileViewportReadinessRequest(
+                layerId = 101,
+                requestId = 7L,
+                viewportKey = viewport,
+            )
+
+        assertTrue(
+            visibleTileViewportReadinessMatches(
+                request,
+                VisibleTileViewportReadinessEvent(
+                    layerId = 101,
+                    requestId = 7L,
+                    viewportKey = viewport,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `viewport readiness rejects old viewport layer or request events`() {
+        val request =
+            VisibleTileViewportReadinessRequest(
+                layerId = 101,
+                requestId = 7L,
+                viewportKey = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet()),
+            )
+
+        assertFalse(
+            visibleTileViewportReadinessMatches(
+                request,
+                VisibleTileViewportReadinessEvent(
+                    layerId = 101,
+                    requestId = 7L,
+                    viewportKey = VisibleTileViewportKey(zoomLevel = 15, tiles = emptySet()),
+                ),
+            ),
+        )
+        assertFalse(
+            visibleTileViewportReadinessMatches(
+                request,
+                VisibleTileViewportReadinessEvent(
+                    layerId = 102,
+                    requestId = 7L,
+                    viewportKey = request.viewportKey,
+                ),
+            ),
+        )
+        assertFalse(
+            visibleTileViewportReadinessMatches(
+                request,
+                VisibleTileViewportReadinessEvent(
+                    layerId = 101,
+                    requestId = 6L,
+                    viewportKey = request.viewportKey,
+                ),
             ),
         )
     }
