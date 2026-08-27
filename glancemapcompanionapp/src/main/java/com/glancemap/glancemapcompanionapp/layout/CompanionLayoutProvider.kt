@@ -1,7 +1,6 @@
 package com.glancemap.glancemapcompanionapp.layout
 
 import android.app.Activity
-import android.graphics.Rect
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -86,11 +85,29 @@ private fun WindowLayoutInfo?.toCompanionWindowTopology(
             .filterIsInstance<FoldingFeature>()
             .firstOrNull { it.isSeparating }
     val usableBounds = contentBounds
+    val foldOrientation =
+        when (foldingFeature?.orientation) {
+            FoldingFeature.Orientation.VERTICAL -> CompanionFoldOrientation.VERTICAL
+            FoldingFeature.Orientation.HORIZONTAL -> CompanionFoldOrientation.HORIZONTAL
+            else -> null
+        }
+    val foldBounds = foldingFeature?.bounds
 
-    return if (foldingFeature == null || usableBounds == null || !usableBounds.intersects(foldingFeature.bounds)) {
-        CompanionWindowTopology.SingleRegion
-    } else {
-        foldingFeature.toCompanionWindowTopology(usableBounds, density)
+    return when {
+        foldingFeature == null || usableBounds == null -> CompanionWindowTopology.SingleRegion
+        foldOrientation == null || foldBounds == null -> CompanionWindowTopology.SingleRegion
+        !usableBounds.intersectsSeparatingFold(
+            foldBounds =
+                CompanionWindowPixelBounds(
+                    left = foldBounds.left,
+                    top = foldBounds.top,
+                    right = foldBounds.right,
+                    bottom = foldBounds.bottom,
+                ),
+            orientation = foldOrientation,
+        ) -> CompanionWindowTopology.SingleRegion
+
+        else -> foldingFeature.toCompanionWindowTopology(usableBounds, density)
     }
 }
 
@@ -142,18 +159,50 @@ private fun FoldingFeature.horizontalTopology(
     )
 }
 
-private data class CompanionWindowPixelBounds(
+internal data class CompanionWindowPixelBounds(
     val left: Int,
     val top: Int,
     val right: Int,
     val bottom: Int,
-) {
-    fun intersects(bounds: Rect): Boolean = overlapsHorizontally(bounds) && overlapsVertically(bounds)
+)
 
-    private fun overlapsHorizontally(bounds: Rect): Boolean = left < bounds.right && right > bounds.left
-
-    private fun overlapsVertically(bounds: Rect): Boolean = top < bounds.bottom && bottom > bounds.top
+internal enum class CompanionFoldOrientation {
+    VERTICAL,
+    HORIZONTAL,
 }
+
+internal fun CompanionWindowPixelBounds.intersectsSeparatingFold(
+    foldBounds: CompanionWindowPixelBounds,
+    orientation: CompanionFoldOrientation,
+): Boolean =
+    when (orientation) {
+        CompanionFoldOrientation.VERTICAL ->
+            rangeOverlapsOrContainsLine(left, right, foldBounds.left, foldBounds.right) &&
+                rangesOverlap(top, bottom, foldBounds.top, foldBounds.bottom)
+
+        CompanionFoldOrientation.HORIZONTAL ->
+            rangeOverlapsOrContainsLine(top, bottom, foldBounds.top, foldBounds.bottom) &&
+                rangesOverlap(left, right, foldBounds.left, foldBounds.right)
+    }
+
+private fun rangeOverlapsOrContainsLine(
+    rangeStart: Int,
+    rangeEnd: Int,
+    foldStart: Int,
+    foldEnd: Int,
+): Boolean =
+    if (foldStart == foldEnd) {
+        foldStart in rangeStart..rangeEnd
+    } else {
+        rangesOverlap(rangeStart, rangeEnd, foldStart, foldEnd)
+    }
+
+private fun rangesOverlap(
+    firstStart: Int,
+    firstEnd: Int,
+    secondStart: Int,
+    secondEnd: Int,
+): Boolean = firstStart < secondEnd && firstEnd > secondStart
 
 private fun LayoutCoordinates.toWindowPixelBounds(): CompanionWindowPixelBounds {
     val position = positionInWindow()
