@@ -104,6 +104,7 @@ private data class MapSourceSelectorActions(
     val onSelectOnline: () -> Unit,
     val onSelectOffline: (PhoneOfflineMap) -> Unit,
     val onImportMap: () -> Unit,
+    val onConfigureOfflineTheme: () -> Unit,
     val folder: MapFolderActions,
 )
 
@@ -124,6 +125,7 @@ internal fun CompanionMapScreen(
         remember(context, offlineMapStore) {
             PhoneOfflineMapFolderSource(context.applicationContext, offlineMapStore)
         }
+    val offlineThemePreferences = remember(context) { PhoneOfflineThemePreferences(context.applicationContext) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -132,8 +134,12 @@ internal fun CompanionMapScreen(
     var hasSelectedMapFolder by remember(mapFolderSource) {
         mutableStateOf(mapFolderSource.hasSelectedFolder())
     }
+    var offlineThemeConfig by remember(offlineThemePreferences) {
+        mutableStateOf(offlineThemePreferences.load())
+    }
     var mapCamera by remember { mutableStateOf(defaultMapCamera) }
     var showMapSourceSelector by remember { mutableStateOf(false) }
+    var showOfflineThemeSelector by remember { mutableStateOf(false) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     var pendingRecenter by remember { mutableStateOf(false) }
@@ -270,6 +276,7 @@ internal fun CompanionMapScreen(
             is PhoneMapSource.Offline -> {
                 offlineMapSurface(
                     map = source.map,
+                    themeConfig = offlineThemeConfig,
                     initialCamera = mapCamera,
                     onCameraChanged = { mapCamera = it },
                     onMapError = { error ->
@@ -385,6 +392,10 @@ internal fun CompanionMapScreen(
                     onImportMap = {
                         selectLocalMapLauncher.launch(arrayOf("application/octet-stream"))
                     },
+                    onConfigureOfflineTheme = {
+                        showMapSourceSelector = false
+                        showOfflineThemeSelector = true
+                    },
                     folder =
                         MapFolderActions(
                             hasSelectedFolder = hasSelectedMapFolder,
@@ -406,6 +417,28 @@ internal fun CompanionMapScreen(
                             },
                         ),
                 ),
+        )
+    }
+
+    if (showOfflineThemeSelector) {
+        offlineThemeSelector(
+            config = offlineThemeConfig,
+            onDismiss = { showOfflineThemeSelector = false },
+            onSelectTheme = { themeId ->
+                offlineThemeConfig =
+                    offlineThemePreferences.save(
+                        PhoneOfflineThemeCatalog.resolve(themeId, styleId = null),
+                    )
+            },
+            onSelectStyle = { styleId ->
+                offlineThemeConfig =
+                    offlineThemePreferences.save(
+                        PhoneOfflineThemeConfig(
+                            themeId = offlineThemeConfig.themeId,
+                            styleId = styleId,
+                        ),
+                    )
+            },
         )
     }
 }
@@ -438,6 +471,9 @@ private fun mapSourceSelector(
                 TextButton(onClick = actions.onImportMap) {
                     Text(stringResource(R.string.map_source_import_local_map))
                 }
+                TextButton(onClick = actions.onConfigureOfflineTheme) {
+                    Text(stringResource(R.string.map_source_configure_offline_theme))
+                }
                 TextButton(onClick = actions.folder.onSelectFolder) {
                     Text(stringResource(R.string.map_source_select_map_folder))
                 }
@@ -457,6 +493,42 @@ private fun mapSourceSelector(
         },
         confirmButton = {
             TextButton(onClick = actions.onDismiss) { Text(stringResource(R.string.common_action_close)) }
+        },
+    )
+}
+
+@Composable
+private fun offlineThemeSelector(
+    config: PhoneOfflineThemeConfig,
+    onDismiss: () -> Unit,
+    onSelectTheme: (String) -> Unit,
+    onSelectStyle: (String) -> Unit,
+) {
+    val selectedTheme = PhoneOfflineThemeCatalog.themeFor(config.themeId)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.map_theme_selector_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.map_theme_selector_theme_label))
+                PhoneOfflineThemeCatalog.themes.forEach { theme ->
+                    TextButton(onClick = { onSelectTheme(theme.id) }) {
+                        Text(stringResource(theme.labelRes))
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.map_theme_selector_style_label),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                selectedTheme.styles.forEach { style ->
+                    TextButton(onClick = { onSelectStyle(style.id) }) {
+                        Text(stringResource(style.labelRes))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
         },
     )
 }

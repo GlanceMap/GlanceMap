@@ -30,6 +30,7 @@ private const val PHONE_OFFLINE_TILE_CACHE_ID = "phone-offline"
 @Composable
 internal fun offlineMapSurface(
     map: PhoneOfflineMap,
+    themeConfig: PhoneOfflineThemeConfig,
     initialCamera: PhoneMapCameraSnapshot,
     onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
     onMapError: (PhoneOfflineMapError) -> Unit,
@@ -43,11 +44,13 @@ internal fun offlineMapSurface(
             PhoneOfflineMapsforgeView(
                 context = context,
                 offlineMap = map,
+                initialThemeConfig = themeConfig,
                 initialCamera = initialCamera,
                 onCameraChanged = { currentOnCameraChanged(it) },
                 onMapError = { currentOnMapError(it) },
             ).also { view = it }
         },
+        update = { activeView -> activeView.applyTheme(themeConfig) },
         modifier = Modifier.fillMaxSize(),
     )
 
@@ -60,6 +63,7 @@ internal fun offlineMapSurface(
 private class PhoneOfflineMapsforgeView(
     context: Context,
     offlineMap: PhoneOfflineMap,
+    initialThemeConfig: PhoneOfflineThemeConfig,
     initialCamera: PhoneMapCameraSnapshot,
     private val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
     private val onMapError: (PhoneOfflineMapError) -> Unit,
@@ -68,6 +72,7 @@ private class PhoneOfflineMapsforgeView(
     private var tileCache: TileCache? = null
     private var mapFile: MapFile? = null
     private var tileLayer: TileRendererLayer? = null
+    private var appliedThemeConfig: PhoneOfflineThemeConfig? = null
     private var disposed = false
     private val cameraObserver = Observer { publishCamera() }
 
@@ -110,10 +115,9 @@ private class PhoneOfflineMapsforgeView(
                         openedMapFile,
                         mapView.model.mapViewPosition,
                         AndroidGraphicFactory.INSTANCE,
-                    ).apply {
-                        setXmlRenderTheme(MapsforgeThemes.DEFAULT)
-                    }
+                    )
                 this.tileLayer = tileLayer
+                applyTheme(initialThemeConfig)
                 mapView.layerManager.layers.add(tileLayer)
                 mapView.model.mapViewPosition.addObserver(cameraObserver)
                 addView(
@@ -147,6 +151,20 @@ private class PhoneOfflineMapsforgeView(
         runCatching { activeMapView?.destroyAll() }
         mapView = null
         removeAllViews()
+    }
+
+    fun applyTheme(config: PhoneOfflineThemeConfig) {
+        val resolved = PhoneOfflineThemeCatalog.resolve(config.themeId, config.styleId)
+        if (resolved == appliedThemeConfig) return
+        val layer = tileLayer ?: return
+        tileCache?.purge()
+        runCatching {
+            layer.setXmlRenderTheme(PhoneOfflineThemeCatalog.renderTheme(resolved, context))
+        }.onFailure {
+            layer.setXmlRenderTheme(MapsforgeThemes.DEFAULT)
+        }
+        mapView?.layerManager?.redrawLayers()
+        appliedThemeConfig = resolved
     }
 
     private fun publishCamera() {

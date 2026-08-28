@@ -75,7 +75,7 @@ internal object PhoneMapRendererCatalog {
         PhoneMapRenderer(
             mode = MapMode.OFFLINE,
             isAvailable = true,
-            capabilities = MapRendererCapabilities(),
+            capabilities = MapRendererCapabilities(themes = true),
         )
 
     fun rendererFor(mode: MapMode): PhoneMapRenderer =

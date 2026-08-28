@@ -175,6 +175,7 @@ android {
         getByName("main") {
             assets {
                 directories.add(rootProject.file("licenses").absolutePath)
+                directories.add(rootProject.file("shared-theme-assets").absolutePath)
             }
         }
     }

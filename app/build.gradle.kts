@@ -163,6 +163,14 @@ android {
         // Temporarily skip release-gating lint because lintAnalyzeRelease stalls/crashes on this project.
         checkReleaseBuilds = false
     }
+
+    sourceSets {
+        getByName("main") {
+            assets {
+                directories.add(rootProject.file("shared-theme-assets").absolutePath)
+            }
+        }
+    }
 }
 
 kotlin {

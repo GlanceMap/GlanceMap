@@ -28,6 +28,6 @@ class PhoneMapRendererCatalogTest {
         assertTrue(!renderer.capabilities.hillshade)
         assertTrue(!renderer.capabilities.slopeOverlay)
         assertTrue(!renderer.capabilities.contoursToggle)
-        assertTrue(!renderer.capabilities.themes)
+        assertTrue(renderer.capabilities.themes)
     }
 }
