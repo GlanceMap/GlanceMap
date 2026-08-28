@@ -1100,7 +1100,7 @@ private fun formatTileCoord(
     return "$prefix${abs(value)}"
 }
 
-private fun ensureMapLibreConfigured(context: Context) {
+internal fun ensureMapLibreConfigured(context: Context) {
     if (MapLibreConfiguration.initialized) return
     synchronized(MapLibreConfiguration) {
         if (MapLibreConfiguration.initialized) return

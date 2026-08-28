@@ -11,6 +11,9 @@
     <string name="live_tracking_home_description">Share your GPS location</string>
     <string name="map_legend_title">Map Legend</string>
     <string name="map_legend_home_description">Open theme legends and reference pages</string>
+    <string name="map_title">Map</string>
+    <string name="map_home_description">Explore the topographic map</string>
+    <string name="map_recenter_content_description">Recenter on your location</string>
     <string name="settings_credits_legal_title">Credits &amp; Legal</string>
     <string name="settings_credits_legal_home_description">Privacy, licences and acknowledgements</string>
     <string name="common_action_back">Back</string>

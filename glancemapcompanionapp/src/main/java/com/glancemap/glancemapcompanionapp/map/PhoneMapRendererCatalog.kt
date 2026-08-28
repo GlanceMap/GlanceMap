@@ -60,6 +60,7 @@ internal object PhoneMapRendererCatalog {
             attribution =
                 "© OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)",
             rasterTileUrlTemplate = "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+            maximumZoom = 17,
         )
 
     val online =

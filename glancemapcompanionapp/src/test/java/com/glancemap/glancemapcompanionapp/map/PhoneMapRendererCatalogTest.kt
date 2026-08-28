@@ -14,8 +14,11 @@ class PhoneMapRendererCatalogTest {
         assertTrue(renderer.isAvailable)
         assertEquals(MapMode.ONLINE, renderer.mode)
         assertEquals("open_topo_map", renderer.rasterOnlineProvider?.id)
+        assertEquals("OpenTopoMap", renderer.rasterOnlineProvider?.displayName)
+        assertEquals(17, renderer.rasterOnlineProvider?.maximumZoom)
         assertEquals(renderer.rasterOnlineProvider, PhoneMapRendererCatalog.mainOnlineRasterProvider)
         assertEquals("open_street_map", PhoneMapRendererCatalog.utilityPickerRasterProvider.id)
+        assertEquals("OpenStreetMap", PhoneMapRendererCatalog.utilityPickerRasterProvider.displayName)
     }
 
     @Test

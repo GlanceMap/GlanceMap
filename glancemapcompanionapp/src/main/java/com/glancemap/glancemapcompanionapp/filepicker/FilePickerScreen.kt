@@ -64,6 +64,7 @@ import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
+import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
@@ -94,6 +95,7 @@ private enum class CompanionHomeArea {
     SEND_TO_WATCH,
     LIVE_TRACKING,
     LIVE_HIKE,
+    MAP,
     MAP_LEGEND,
     MISSION_PLAN,
     ROUTES,
@@ -513,6 +515,7 @@ fun FilePickerScreen(
 
             CompanionHomeArea.HOME,
             CompanionHomeArea.LIVE_HIKE,
+            CompanionHomeArea.MAP,
             CompanionHomeArea.MAP_LEGEND,
             CompanionHomeArea.MISSION_PLAN,
             CompanionHomeArea.ROUTES,
@@ -645,7 +648,13 @@ fun FilePickerScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(adaptive.pagePadding),
+                    .then(
+                        if (activeHomeArea == CompanionHomeArea.MAP) {
+                            Modifier
+                        } else {
+                            Modifier.padding(adaptive.pagePadding)
+                        },
+                    ),
         ) {
             when (activeHomeArea) {
                 CompanionHomeArea.HOME -> {
@@ -717,6 +726,7 @@ fun FilePickerScreen(
                         },
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
+                        onOpenMap = { activeHomeArea = CompanionHomeArea.MAP },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
                         onOpenQuickGuide = {
                             quickGuideMode = QuickGuideMode.GENERAL
@@ -841,6 +851,10 @@ fun FilePickerScreen(
                         lastTransferGpxUri = lastTransferGpx?.first,
                         lastTransferGpxName = lastTransferGpx?.second.orEmpty(),
                     )
+                }
+
+                CompanionHomeArea.MAP -> {
+                    CompanionMapScreen(onBack = { activeHomeArea = CompanionHomeArea.HOME })
                 }
 
                 CompanionHomeArea.MAP_LEGEND -> {
@@ -1332,6 +1346,7 @@ private fun CompanionHomeScreen(
     onLiveHikeSyncEnabledChange: (Boolean) -> Unit,
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
+    onOpenMap: () -> Unit,
     onOpenMapLegend: () -> Unit,
     onOpenQuickGuide: () -> Unit,
     onOpenCreditsLegal: () -> Unit,
@@ -1507,6 +1522,12 @@ private fun CompanionHomeScreen(
                     title = stringResource(R.string.live_tracking_title),
                     description = stringResource(R.string.live_tracking_home_description),
                     onClick = onOpenLiveTracking,
+                )
+                HomeActionButton(
+                    icon = Icons.Filled.Map,
+                    title = stringResource(R.string.map_title),
+                    description = stringResource(R.string.map_home_description),
+                    onClick = onOpenMap,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.Map,
