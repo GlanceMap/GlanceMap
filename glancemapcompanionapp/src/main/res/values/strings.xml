@@ -13,6 +13,17 @@
     <string name="map_legend_home_description">Open theme legends and reference pages</string>
     <string name="map_title">Map</string>
     <string name="map_home_description">Explore the topographic map</string>
+    <string name="map_source_online">Online</string>
+    <string name="map_source_offline">Offline: %1$s</string>
+    <string name="map_source_selector_title">Map source</string>
+    <string name="map_source_select_online">Online map</string>
+    <string name="map_source_select_offline">Offline: %1$s</string>
+    <string name="map_source_import_local_map">Choose local .map file</string>
+    <string name="map_source_no_offline_maps">No local offline maps are available.</string>
+    <string name="map_offline_overlays_unavailable">GPX tracks and points of interest remain selected and are shown on the online map. Offline currently shows the base map only.</string>
+    <string name="map_offline_map_missing">The selected offline map is no longer available.</string>
+    <string name="map_offline_map_invalid">This file is not a valid Mapsforge map.</string>
+    <string name="map_offline_map_import_failed">The local map could not be added.</string>
     <string name="map_recenter_content_description">Recenter on your location</string>
     <string name="map_gpx_hide_content_description">Hide GPX track</string>
     <string name="map_gpx_show_content_description">Show GPX track</string>

@@ -221,6 +221,9 @@ dependencies {
     // Native map picker
     implementation(libs.maplibre.android)
     implementation(libs.okhttp)
+    implementation(libs.mapsforge.map)
+    implementation(libs.mapsforge.map.android)
+    implementation(libs.mapsforge.themes)
 
     implementation(project(":transfercontract"))
     implementation(project(":trailcore"))

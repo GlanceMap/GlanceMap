@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.glancemapcompanionapp.map
 
 import android.Manifest
@@ -16,14 +18,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +50,10 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import com.glancemap.trailcore.map.MapContentVisibility
+import com.glancemap.trailcore.map.MapMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
@@ -49,7 +62,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 
-private val defaultMapCamera = CameraUpdateFactory.newLatLngZoom(LatLng(20.0, 0.0), 2.0)
+private val defaultMapCamera = PhoneMapCameraSnapshot(latitude = 20.0, longitude = 0.0, zoom = 2.0)
 private const val RECENTER_ZOOM = 14.0
 private val locationPermissions =
     arrayOf(
@@ -80,7 +93,7 @@ private data class MapContentControlState(
 )
 
 /** Keeps Compose-owned MapLibre, permission, and GPX overlay sequencing in one visible flow. */
-@Suppress("FunctionNaming", "LongMethod")
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod")
 @Composable
 internal fun CompanionMapScreen(
     gpxTrack: PhoneMapGpxTrack?,
@@ -90,9 +103,16 @@ internal fun CompanionMapScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
+    var mapSource by remember { mutableStateOf<PhoneMapSource>(PhoneMapSource.Online) }
+    var offlineMaps by remember { mutableStateOf(emptyList<PhoneOfflineMap>()) }
+    var mapCamera by remember { mutableStateOf(defaultMapCamera) }
+    var showMapSourceSelector by remember { mutableStateOf(false) }
+    var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     var pendingRecenter by remember { mutableStateOf(false) }
     var contentVisibility by remember { mutableStateOf(MapContentVisibility()) }
@@ -112,6 +132,31 @@ internal fun CompanionMapScreen(
             segments = gpxSegments,
             isVisible = contentVisibility.gpxTracks,
         )
+    val selectLocalMapLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                val imported =
+                    withContext(Dispatchers.IO) {
+                        offlineMapStore.import(context.contentResolver, uri)
+                    }
+                imported.fold(
+                    onSuccess = { importedMap ->
+                        offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                        map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+                        mapView = null
+                        map = null
+                        style = null
+                        mapSource = PhoneMapSource.Offline(importedMap)
+                        offlineMapError = null
+                        showMapSourceSelector = false
+                    },
+                    onFailure = { offlineMapError = PhoneOfflineMapError.IMPORT_FAILED },
+                )
+            }
+        }
     val locationPermissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -120,39 +165,16 @@ internal fun CompanionMapScreen(
             pendingRecenter = hasLocationPermission
         }
 
-    mapViewLifecycle(mapView)
-
-    synchronizeMapLocation(
-        runtime = mapRuntime,
-        locationState = locationState,
-        onRecenterHandled = { pendingRecenter = false },
-        context = context,
-    )
-    synchronizeGpxOverlay(
-        runtime = mapRuntime,
-        overlayState = gpxOverlayState,
-        fittedGpxTrackId = fittedGpxTrackId,
-        onTrackFitted = { fittedGpxTrackId = it },
-    )
-    synchronizePoiOverlay(
-        style = style,
-        pois = pois,
-        isVisible = contentVisibility.pois,
-    )
-    observePoiViewport(
-        map = map,
-        isVisible = contentVisibility.pois,
-        onViewportChanged = onPoiViewportChanged,
-    )
-    observePoiSelection(
-        map = map,
-        pois = pois,
-        isVisible = contentVisibility.pois,
-        onPoiSelected = { selectedPoi = it },
-    )
-
-    LaunchedEffect(contentVisibility.pois) {
-        onPoiVisibilityChanged(contentVisibility.pois)
+    LaunchedEffect(offlineMapStore) {
+        offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+        val selectedOfflineMap = (mapSource as? PhoneMapSource.Offline)?.map
+        if (selectedOfflineMap != null && selectedOfflineMap !in offlineMaps) {
+            mapSource = PhoneMapSource.Online
+            offlineMapError = PhoneOfflineMapError.MISSING
+        }
+    }
+    LaunchedEffect(contentVisibility.pois, mapSource.mode) {
+        onPoiVisibilityChanged(contentVisibility.pois && mapSource.mode == MapMode.ONLINE)
         if (!contentVisibility.pois) selectedPoi = null
     }
     LaunchedEffect(pois) {
@@ -160,19 +182,84 @@ internal fun CompanionMapScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        mapSurface(
-            onMapViewCreated = { mapView = it },
-            onMapReady = { map = it },
-            onStyleReady = { style = it },
-        )
+        when (val source = mapSource) {
+            PhoneMapSource.Online -> {
+                mapViewLifecycle(mapView)
+                synchronizeMapLocation(
+                    runtime = mapRuntime,
+                    locationState = locationState,
+                    onRecenterHandled = { pendingRecenter = false },
+                    context = context,
+                )
+                synchronizeGpxOverlay(
+                    runtime = mapRuntime,
+                    overlayState = gpxOverlayState,
+                    fittedGpxTrackId = fittedGpxTrackId,
+                    onTrackFitted = { fittedGpxTrackId = it },
+                )
+                synchronizePoiOverlay(
+                    style = style,
+                    pois = pois,
+                    isVisible = contentVisibility.pois,
+                )
+                observePoiViewport(
+                    map = map,
+                    isVisible = contentVisibility.pois,
+                    onViewportChanged = onPoiViewportChanged,
+                )
+                observePoiSelection(
+                    map = map,
+                    pois = pois,
+                    isVisible = contentVisibility.pois,
+                    onPoiSelected = { selectedPoi = it },
+                )
+                observeOnlineCamera(map = map, onCameraChanged = { mapCamera = it })
+                mapSurface(
+                    initialCamera = mapCamera,
+                    onMapViewCreated = { mapView = it },
+                    onMapReady = { map = it },
+                    onStyleReady = { style = it },
+                )
+            }
+
+            is PhoneMapSource.Offline -> {
+                offlineMapSurface(
+                    map = source.map,
+                    initialCamera = mapCamera,
+                    onCameraChanged = { mapCamera = it },
+                    onMapError = { error ->
+                        offlineMapError = error
+                        mapSource = PhoneMapSource.Online
+                    },
+                )
+                Card(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.map_offline_overlays_unavailable),
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            }
+        }
 
         mapControls(
+            mapSourceLabel =
+                when (val source = mapSource) {
+                    PhoneMapSource.Online -> stringResource(R.string.map_source_online)
+                    is PhoneMapSource.Offline ->
+                        stringResource(R.string.map_source_offline, source.map.displayName)
+                },
             contentState =
                 MapContentControlState(
                     gpxTracksVisible = contentVisibility.gpxTracks.takeIf { hasRenderableGpxTrack },
                     poisVisible = contentVisibility.pois,
                 ),
             onBack = onBack,
+            onMapSourceClick = { showMapSourceSelector = true },
             onRecenter = {
                 if (context.hasLocationPermission()) {
                     hasLocationPermission = true
@@ -181,6 +268,7 @@ internal fun CompanionMapScreen(
                     locationPermissionLauncher.launch(locationPermissions)
                 }
             },
+            showOnlineControls = mapSource is PhoneMapSource.Online,
             onGpxVisibilityToggle =
                 if (hasRenderableGpxTrack) {
                     {
@@ -195,18 +283,126 @@ internal fun CompanionMapScreen(
             },
         )
 
-        selectedPoi?.let { poi ->
-            phoneMapPoiDetailsCard(
-                poi = poi,
-                onDismiss = { selectedPoi = null },
+        if (mapSource is PhoneMapSource.Online) {
+            selectedPoi?.let { poi ->
+                phoneMapPoiDetailsCard(
+                    poi = poi,
+                    onDismiss = { selectedPoi = null },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                )
+            }
+        }
+        offlineMapError?.let { error ->
+            Card(
                 modifier =
                     Modifier
-                        .align(Alignment.BottomCenter)
+                        .align(Alignment.TopCenter)
                         .padding(16.dp),
-            )
+            ) {
+                Text(
+                    text = stringResource(error.messageResource()),
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
         }
     }
+
+    if (showMapSourceSelector) {
+        mapSourceSelector(
+            offlineMaps = offlineMaps,
+            onDismiss = { showMapSourceSelector = false },
+            onSelectOnline = {
+                mapSource = PhoneMapSource.Online
+                offlineMapError = null
+                showMapSourceSelector = false
+            },
+            onSelectOffline = { selectedMap ->
+                coroutineScope.launch {
+                    val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
+                    if (error == null) {
+                        map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+                        mapView = null
+                        map = null
+                        style = null
+                        mapSource = PhoneMapSource.Offline(selectedMap)
+                        offlineMapError = null
+                        showMapSourceSelector = false
+                    } else {
+                        offlineMapError = error
+                    }
+                }
+            },
+            onImportMap = { selectLocalMapLauncher.launch(arrayOf("application/octet-stream")) },
+        )
+    }
 }
+
+@Composable
+private fun mapSourceSelector(
+    offlineMaps: List<PhoneOfflineMap>,
+    onDismiss: () -> Unit,
+    onSelectOnline: () -> Unit,
+    onSelectOffline: (PhoneOfflineMap) -> Unit,
+    onImportMap: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.map_source_selector_title)) },
+        text = {
+            Column {
+                TextButton(onClick = onSelectOnline) {
+                    Text(stringResource(R.string.map_source_select_online))
+                }
+                if (offlineMaps.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.map_source_no_offline_maps),
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                } else {
+                    offlineMaps.forEach { map ->
+                        TextButton(onClick = { onSelectOffline(map) }) {
+                            Text(stringResource(R.string.map_source_select_offline, map.displayName))
+                        }
+                    }
+                }
+                TextButton(onClick = onImportMap) {
+                    Text(stringResource(R.string.map_source_import_local_map))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
+        },
+    )
+}
+
+@Composable
+private fun observeOnlineCamera(
+    map: MapLibreMap?,
+    onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
+) {
+    val currentOnCameraChanged by rememberUpdatedState(onCameraChanged)
+    DisposableEffect(map) {
+        val activeMap = map ?: return@DisposableEffect onDispose {}
+        val listener =
+            MapLibreMap.OnCameraIdleListener {
+                activeMap.cameraSnapshotOrNull()?.let(currentOnCameraChanged)
+            }
+        activeMap.addOnCameraIdleListener(listener)
+        listener.onCameraIdle()
+        onDispose { activeMap.removeOnCameraIdleListener(listener) }
+    }
+}
+
+private fun PhoneOfflineMapError.messageResource(): Int =
+    when (this) {
+        PhoneOfflineMapError.MISSING -> R.string.map_offline_map_missing
+        PhoneOfflineMapError.INVALID -> R.string.map_offline_map_invalid
+        PhoneOfflineMapError.IMPORT_FAILED -> R.string.map_offline_map_import_failed
+    }
 
 @Composable
 private fun synchronizeMapLocation(
@@ -271,6 +467,7 @@ private fun synchronizeGpxOverlay(
 
 @Composable
 private fun mapSurface(
+    initialCamera: PhoneMapCameraSnapshot,
     onMapViewCreated: (MapView) -> Unit,
     onMapReady: (MapLibreMap) -> Unit,
     onStyleReady: (Style) -> Unit,
@@ -279,6 +476,7 @@ private fun mapSurface(
         factory = { viewContext ->
             createMapView(
                 context = viewContext,
+                initialCamera = initialCamera,
                 onCreated = onMapViewCreated,
                 onMapReady = onMapReady,
                 onStyleReady = onStyleReady,
@@ -289,10 +487,14 @@ private fun mapSurface(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun mapControls(
+    mapSourceLabel: String,
     contentState: MapContentControlState,
     onBack: () -> Unit,
+    onMapSourceClick: () -> Unit,
     onRecenter: () -> Unit,
+    showOnlineControls: Boolean,
     onGpxVisibilityToggle: (() -> Unit)?,
     onPoiVisibilityToggle: () -> Unit,
 ) {
@@ -316,32 +518,36 @@ private fun mapControls(
                     .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilledTonalIconButton(onClick = onRecenter) {
-                Icon(
-                    imageVector = Icons.Filled.MyLocation,
-                    contentDescription = stringResource(R.string.map_recenter_content_description),
-                )
-            }
-            if (onGpxVisibilityToggle != null) {
+            FilledTonalButton(onClick = onMapSourceClick) { Text(mapSourceLabel) }
+            if (showOnlineControls) {
+                FilledTonalIconButton(onClick = onRecenter) {
+                    Icon(
+                        imageVector = Icons.Filled.MyLocation,
+                        contentDescription = stringResource(R.string.map_recenter_content_description),
+                    )
+                }
+                if (onGpxVisibilityToggle != null) {
+                    mapContentVisibilityButton(
+                        isVisible = contentState.gpxTracksVisible == true,
+                        onClick = onGpxVisibilityToggle,
+                        hideContentDescription = R.string.map_gpx_hide_content_description,
+                        showContentDescription = R.string.map_gpx_show_content_description,
+                    )
+                }
                 mapContentVisibilityButton(
-                    isVisible = contentState.gpxTracksVisible == true,
-                    onClick = onGpxVisibilityToggle,
-                    hideContentDescription = R.string.map_gpx_hide_content_description,
-                    showContentDescription = R.string.map_gpx_show_content_description,
+                    isVisible = contentState.poisVisible,
+                    onClick = onPoiVisibilityToggle,
+                    hideContentDescription = R.string.map_poi_hide_content_description,
+                    showContentDescription = R.string.map_poi_show_content_description,
                 )
             }
-            mapContentVisibilityButton(
-                isVisible = contentState.poisVisible,
-                onClick = onPoiVisibilityToggle,
-                hideContentDescription = R.string.map_poi_hide_content_description,
-                showContentDescription = R.string.map_poi_show_content_description,
-            )
         }
     }
 }
 
 private fun createMapView(
     context: Context,
+    initialCamera: PhoneMapCameraSnapshot,
     onCreated: (MapView) -> Unit,
     onMapReady: (MapLibreMap) -> Unit,
     onStyleReady: (Style) -> Unit,
@@ -359,7 +565,7 @@ private fun createMapView(
                 ),
             ) { style ->
                 if (!mapView.isDestroyed) {
-                    map.moveCamera(defaultMapCamera)
+                    map.moveCamera(initialCamera.toMapLibreCameraUpdate())
                     onStyleReady(style)
                 }
             }
@@ -500,3 +706,20 @@ private fun Context.hasLocationPermission(): Boolean =
     locationPermissions.any { permission ->
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
+
+private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate() =
+    CameraUpdateFactory.newLatLngZoom(
+        LatLng(latitude, longitude),
+        zoom,
+    )
+
+private fun MapLibreMap.cameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
+    runCatching {
+        val camera = cameraPosition
+        val target = camera.target ?: return@runCatching null
+        PhoneMapCameraSnapshot(
+            latitude = target.latitude,
+            longitude = target.longitude,
+            zoom = camera.zoom,
+        )
+    }.getOrNull()

@@ -74,7 +74,7 @@ internal object PhoneMapRendererCatalog {
     val offline =
         PhoneMapRenderer(
             mode = MapMode.OFFLINE,
-            isAvailable = false,
+            isAvailable = true,
             capabilities = MapRendererCapabilities(),
         )
 
