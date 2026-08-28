@@ -14,6 +14,8 @@
     <string name="map_title">Map</string>
     <string name="map_home_description">Explore the topographic map</string>
     <string name="map_recenter_content_description">Recenter on your location</string>
+    <string name="map_gpx_hide_content_description">Hide GPX track</string>
+    <string name="map_gpx_show_content_description">Show GPX track</string>
     <string name="settings_credits_legal_title">Credits &amp; Legal</string>
     <string name="settings_credits_legal_home_description">Privacy, licences and acknowledgements</string>
     <string name="common_action_back">Back</string>

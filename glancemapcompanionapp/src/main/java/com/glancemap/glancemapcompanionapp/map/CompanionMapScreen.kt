@@ -8,12 +8,16 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -35,7 +39,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
+import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
+import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
+import com.glancemap.trailcore.map.MapContentVisibility
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
@@ -52,15 +59,52 @@ private val locationPermissions =
         Manifest.permission.ACCESS_COARSE_LOCATION,
     )
 
-@Suppress("FunctionNaming")
+private data class MapRuntime(
+    val map: MapLibreMap?,
+    val mapView: MapView?,
+    val style: Style?,
+)
+
+private data class MapLocationState(
+    val hasPermission: Boolean,
+    val pendingRecenter: Boolean,
+)
+
+private data class GpxOverlayState(
+    val track: PhoneMapGpxTrack?,
+    val segments: List<PhoneMapRouteSegment>,
+    val isVisible: Boolean,
+)
+
+/** Keeps Compose-owned MapLibre, permission, and GPX overlay sequencing in one visible flow. */
+@Suppress("FunctionNaming", "LongMethod")
 @Composable
-internal fun CompanionMapScreen(onBack: () -> Unit) {
+internal fun CompanionMapScreen(
+    gpxTrack: PhoneMapGpxTrack?,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     var pendingRecenter by remember { mutableStateOf(false) }
+    var contentVisibility by remember { mutableStateOf(MapContentVisibility()) }
+    var fittedGpxTrackId by remember { mutableStateOf<String?>(null) }
+    val gpxSegments = remember(gpxTrack) { gpxTrack?.toRouteSegments().orEmpty() }
+    val hasRenderableGpxTrack = gpxSegments.isNotEmpty()
+    val mapRuntime = MapRuntime(map = map, mapView = mapView, style = style)
+    val locationState =
+        MapLocationState(
+            hasPermission = hasLocationPermission,
+            pendingRecenter = pendingRecenter,
+        )
+    val gpxOverlayState =
+        GpxOverlayState(
+            track = gpxTrack,
+            segments = gpxSegments,
+            isVisible = contentVisibility.gpxTracks,
+        )
     val locationPermissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -71,38 +115,28 @@ internal fun CompanionMapScreen(onBack: () -> Unit) {
 
     mapViewLifecycle(mapView)
 
-    LaunchedEffect(map, style, hasLocationPermission) {
-        if (!hasLocationPermission) return@LaunchedEffect
-        val activeMap = map ?: return@LaunchedEffect
-        val activeStyle = style ?: return@LaunchedEffect
-        activeMap.enableLocationPuck(style = activeStyle, context = context)
-    }
-
-    LaunchedEffect(pendingRecenter, map, style, hasLocationPermission) {
-        if (!pendingRecenter || !hasLocationPermission) return@LaunchedEffect
-        val activeMap = map ?: return@LaunchedEffect
-        val activeStyle = style ?: return@LaunchedEffect
-        activeMap.recenterOnLocation(style = activeStyle, context = context)
-        pendingRecenter = false
-    }
+    synchronizeMapLocation(
+        runtime = mapRuntime,
+        locationState = locationState,
+        onRecenterHandled = { pendingRecenter = false },
+        context = context,
+    )
+    synchronizeGpxOverlay(
+        runtime = mapRuntime,
+        overlayState = gpxOverlayState,
+        fittedGpxTrackId = fittedGpxTrackId,
+        onTrackFitted = { fittedGpxTrackId = it },
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { viewContext ->
-                createMapView(
-                    context = viewContext,
-                    onCreated = { createdMapView -> mapView = createdMapView },
-                    onMapReady = { createdMap -> map = createdMap },
-                    onStyleReady = { createdMap, createdStyle ->
-                        createdMap.moveCamera(defaultMapCamera)
-                        style = createdStyle
-                    },
-                )
-            },
-            modifier = Modifier.fillMaxSize(),
+        mapSurface(
+            onMapViewCreated = { mapView = it },
+            onMapReady = { map = it },
+            onStyleReady = { style = it },
         )
 
         mapControls(
+            gpxTracksVisible = contentVisibility.gpxTracks.takeIf { hasRenderableGpxTrack },
             onBack = onBack,
             onRecenter = {
                 if (context.hasLocationPermission()) {
@@ -112,14 +146,105 @@ internal fun CompanionMapScreen(onBack: () -> Unit) {
                     locationPermissionLauncher.launch(locationPermissions)
                 }
             },
+            onGpxVisibilityToggle =
+                if (hasRenderableGpxTrack) {
+                    {
+                        contentVisibility =
+                            contentVisibility.copy(gpxTracks = !contentVisibility.gpxTracks)
+                    }
+                } else {
+                    null
+                },
         )
     }
 }
 
 @Composable
+private fun synchronizeMapLocation(
+    runtime: MapRuntime,
+    locationState: MapLocationState,
+    onRecenterHandled: () -> Unit,
+    context: Context,
+) {
+    LaunchedEffect(runtime.map, runtime.style, locationState.hasPermission) {
+        if (!locationState.hasPermission) return@LaunchedEffect
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        val activeStyle = runtime.style ?: return@LaunchedEffect
+        activeMap.enableLocationPuck(style = activeStyle, context = context)
+    }
+
+    LaunchedEffect(
+        locationState.pendingRecenter,
+        runtime.map,
+        runtime.style,
+        locationState.hasPermission,
+    ) {
+        if (!locationState.pendingRecenter || !locationState.hasPermission) return@LaunchedEffect
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        val activeStyle = runtime.style ?: return@LaunchedEffect
+        activeMap.recenterOnLocation(style = activeStyle, context = context)
+        onRecenterHandled()
+    }
+}
+
+@Composable
+private fun synchronizeGpxOverlay(
+    runtime: MapRuntime,
+    overlayState: GpxOverlayState,
+    fittedGpxTrackId: String?,
+    onTrackFitted: (String) -> Unit,
+) {
+    LaunchedEffect(
+        runtime.map,
+        runtime.mapView,
+        runtime.style,
+        overlayState.track?.id,
+        overlayState.segments,
+        overlayState.isVisible,
+    ) {
+        val activeStyle = runtime.style ?: return@LaunchedEffect
+        activeStyle.renderGpxTrack(
+            segments = overlayState.segments,
+            isVisible = overlayState.isVisible,
+        )
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        val activeMapView = runtime.mapView ?: return@LaunchedEffect
+        val trackId = overlayState.track?.id ?: return@LaunchedEffect
+        if (overlayState.isVisible && overlayState.segments.isNotEmpty() && fittedGpxTrackId != trackId) {
+            activeMap.fitGpxTrackBounds(
+                mapView = activeMapView,
+                segments = overlayState.segments,
+                onFitted = { onTrackFitted(trackId) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun mapSurface(
+    onMapViewCreated: (MapView) -> Unit,
+    onMapReady: (MapLibreMap) -> Unit,
+    onStyleReady: (Style) -> Unit,
+) {
+    AndroidView(
+        factory = { viewContext ->
+            createMapView(
+                context = viewContext,
+                onCreated = onMapViewCreated,
+                onMapReady = onMapReady,
+                onStyleReady = onStyleReady,
+            )
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
 private fun mapControls(
+    gpxTracksVisible: Boolean?,
     onBack: () -> Unit,
     onRecenter: () -> Unit,
+    onGpxVisibilityToggle: (() -> Unit)?,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         FilledTonalIconButton(
@@ -134,17 +259,39 @@ private fun mapControls(
                 contentDescription = stringResource(R.string.common_action_back),
             )
         }
-        FilledTonalIconButton(
-            onClick = onRecenter,
+        Column(
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                imageVector = Icons.Filled.MyLocation,
-                contentDescription = stringResource(R.string.map_recenter_content_description),
-            )
+            FilledTonalIconButton(onClick = onRecenter) {
+                Icon(
+                    imageVector = Icons.Filled.MyLocation,
+                    contentDescription = stringResource(R.string.map_recenter_content_description),
+                )
+            }
+            if (onGpxVisibilityToggle != null) {
+                FilledTonalIconButton(onClick = onGpxVisibilityToggle) {
+                    Icon(
+                        imageVector =
+                            if (gpxTracksVisible == true) {
+                                Icons.Filled.Visibility
+                            } else {
+                                Icons.Filled.VisibilityOff
+                            },
+                        contentDescription =
+                            stringResource(
+                                if (gpxTracksVisible == true) {
+                                    R.string.map_gpx_hide_content_description
+                                } else {
+                                    R.string.map_gpx_show_content_description
+                                },
+                            ),
+                    )
+                }
+            }
         }
     }
 }
@@ -153,7 +300,7 @@ private fun createMapView(
     context: Context,
     onCreated: (MapView) -> Unit,
     onMapReady: (MapLibreMap) -> Unit,
-    onStyleReady: (MapLibreMap, Style) -> Unit,
+    onStyleReady: (Style) -> Unit,
 ): MapView {
     ensureMapLibreConfigured(context)
     return MapView(context).also { mapView ->
@@ -168,7 +315,8 @@ private fun createMapView(
                 ),
             ) { style ->
                 if (!mapView.isDestroyed) {
-                    onStyleReady(map, style)
+                    map.moveCamera(defaultMapCamera)
+                    onStyleReady(style)
                 }
             }
         }

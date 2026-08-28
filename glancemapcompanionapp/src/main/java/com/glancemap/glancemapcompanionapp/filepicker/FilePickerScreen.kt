@@ -65,6 +65,7 @@ import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxTrack
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
@@ -854,7 +855,16 @@ fun FilePickerScreen(
                 }
 
                 CompanionHomeArea.MAP -> {
-                    CompanionMapScreen(onBack = { activeHomeArea = CompanionHomeArea.HOME })
+                    CompanionMapScreen(
+                        gpxTrack =
+                            selectedRouteDetails?.let { details ->
+                                PhoneMapGpxTrack(
+                                    id = details.route.id,
+                                    points = details.profile.points,
+                                )
+                            },
+                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
+                    )
                 }
 
                 CompanionHomeArea.MAP_LEGEND -> {
