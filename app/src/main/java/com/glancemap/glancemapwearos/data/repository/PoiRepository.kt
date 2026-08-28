@@ -1,8 +1,12 @@
 package com.glancemap.glancemapwearos.data.repository
 
 import com.glancemap.glancemapwearos.core.maps.GeoBounds
+import com.glancemap.trailcore.poi.PoiDetails
 import java.io.File
 import java.io.InputStream
+
+typealias PoiPointDetails = PoiDetails
+typealias PoiType = com.glancemap.trailcore.poi.PoiType
 
 data class PoiCategory(
     val id: Int,
@@ -27,32 +31,6 @@ data class PoiPoint(
     val type: PoiType,
     val details: PoiPointDetails? = null,
 )
-
-data class PoiPointDetails(
-    val typeLabel: String? = null,
-    val elevationMeters: Int? = null,
-    val sleepingPlaces: Int? = null,
-    val state: String? = null,
-    val shortDescription: String? = null,
-    val website: String? = null,
-    val source: String? = null,
-)
-
-enum class PoiType {
-    PEAK,
-    WATER,
-    HUT,
-    CAMP,
-    FOOD,
-    TOILET,
-    TRANSPORT,
-    BIKE,
-    VIEWPOINT,
-    PARKING,
-    SHOP,
-    GENERIC,
-    CUSTOM,
-}
 
 interface PoiRepository {
     suspend fun listPoiFiles(): List<File>

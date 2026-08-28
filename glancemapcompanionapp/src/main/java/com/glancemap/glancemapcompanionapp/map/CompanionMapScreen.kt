@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -76,11 +74,19 @@ private data class GpxOverlayState(
     val isVisible: Boolean,
 )
 
+private data class MapContentControlState(
+    val gpxTracksVisible: Boolean?,
+    val poisVisible: Boolean,
+)
+
 /** Keeps Compose-owned MapLibre, permission, and GPX overlay sequencing in one visible flow. */
 @Suppress("FunctionNaming", "LongMethod")
 @Composable
 internal fun CompanionMapScreen(
     gpxTrack: PhoneMapGpxTrack?,
+    pois: List<PhoneMapPoi>,
+    onPoiViewportChanged: (PhoneMapViewport) -> Unit,
+    onPoiVisibilityChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -91,6 +97,7 @@ internal fun CompanionMapScreen(
     var pendingRecenter by remember { mutableStateOf(false) }
     var contentVisibility by remember { mutableStateOf(MapContentVisibility()) }
     var fittedGpxTrackId by remember { mutableStateOf<String?>(null) }
+    var selectedPoi by remember { mutableStateOf<PhoneMapPoi?>(null) }
     val gpxSegments = remember(gpxTrack) { gpxTrack?.toRouteSegments().orEmpty() }
     val hasRenderableGpxTrack = gpxSegments.isNotEmpty()
     val mapRuntime = MapRuntime(map = map, mapView = mapView, style = style)
@@ -127,6 +134,30 @@ internal fun CompanionMapScreen(
         fittedGpxTrackId = fittedGpxTrackId,
         onTrackFitted = { fittedGpxTrackId = it },
     )
+    synchronizePoiOverlay(
+        style = style,
+        pois = pois,
+        isVisible = contentVisibility.pois,
+    )
+    observePoiViewport(
+        map = map,
+        isVisible = contentVisibility.pois,
+        onViewportChanged = onPoiViewportChanged,
+    )
+    observePoiSelection(
+        map = map,
+        pois = pois,
+        isVisible = contentVisibility.pois,
+        onPoiSelected = { selectedPoi = it },
+    )
+
+    LaunchedEffect(contentVisibility.pois) {
+        onPoiVisibilityChanged(contentVisibility.pois)
+        if (!contentVisibility.pois) selectedPoi = null
+    }
+    LaunchedEffect(pois) {
+        if (selectedPoi?.id !in pois.map(PhoneMapPoi::id).toSet()) selectedPoi = null
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         mapSurface(
@@ -136,7 +167,11 @@ internal fun CompanionMapScreen(
         )
 
         mapControls(
-            gpxTracksVisible = contentVisibility.gpxTracks.takeIf { hasRenderableGpxTrack },
+            contentState =
+                MapContentControlState(
+                    gpxTracksVisible = contentVisibility.gpxTracks.takeIf { hasRenderableGpxTrack },
+                    poisVisible = contentVisibility.pois,
+                ),
             onBack = onBack,
             onRecenter = {
                 if (context.hasLocationPermission()) {
@@ -155,7 +190,21 @@ internal fun CompanionMapScreen(
                 } else {
                     null
                 },
+            onPoiVisibilityToggle = {
+                contentVisibility = contentVisibility.copy(pois = !contentVisibility.pois)
+            },
         )
+
+        selectedPoi?.let { poi ->
+            phoneMapPoiDetailsCard(
+                poi = poi,
+                onDismiss = { selectedPoi = null },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+            )
+        }
     }
 }
 
@@ -241,10 +290,11 @@ private fun mapSurface(
 
 @Composable
 private fun mapControls(
-    gpxTracksVisible: Boolean?,
+    contentState: MapContentControlState,
     onBack: () -> Unit,
     onRecenter: () -> Unit,
     onGpxVisibilityToggle: (() -> Unit)?,
+    onPoiVisibilityToggle: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         FilledTonalIconButton(
@@ -273,25 +323,19 @@ private fun mapControls(
                 )
             }
             if (onGpxVisibilityToggle != null) {
-                FilledTonalIconButton(onClick = onGpxVisibilityToggle) {
-                    Icon(
-                        imageVector =
-                            if (gpxTracksVisible == true) {
-                                Icons.Filled.Visibility
-                            } else {
-                                Icons.Filled.VisibilityOff
-                            },
-                        contentDescription =
-                            stringResource(
-                                if (gpxTracksVisible == true) {
-                                    R.string.map_gpx_hide_content_description
-                                } else {
-                                    R.string.map_gpx_show_content_description
-                                },
-                            ),
-                    )
-                }
+                mapContentVisibilityButton(
+                    isVisible = contentState.gpxTracksVisible == true,
+                    onClick = onGpxVisibilityToggle,
+                    hideContentDescription = R.string.map_gpx_hide_content_description,
+                    showContentDescription = R.string.map_gpx_show_content_description,
+                )
             }
+            mapContentVisibilityButton(
+                isVisible = contentState.poisVisible,
+                onClick = onPoiVisibilityToggle,
+                hideContentDescription = R.string.map_poi_hide_content_description,
+                showContentDescription = R.string.map_poi_show_content_description,
+            )
         }
     }
 }

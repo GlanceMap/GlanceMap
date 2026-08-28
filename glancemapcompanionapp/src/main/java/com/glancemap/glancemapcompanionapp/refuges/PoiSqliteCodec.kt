@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.refuges
 
+import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import java.io.File
 import java.util.Locale
@@ -11,6 +12,14 @@ data class PoiSqlitePoint(
     val lon: Double,
     val categoryName: String,
     val tags: Map<String, String>,
+    val rawData: String = "",
+)
+
+internal data class PoiSqliteViewport(
+    val minLat: Double,
+    val maxLat: Double,
+    val minLon: Double,
+    val maxLon: Double,
 )
 
 data class PoiSqliteWriteOptions(
@@ -170,65 +179,7 @@ internal object PoiSqliteCodec {
 
     fun read(file: File): List<PoiSqlitePoint> {
         if (!file.exists() || !file.isFile) return emptyList()
-
-        val sql =
-            """
-            SELECT
-                pi.id,
-                pi.lat,
-                pi.lon,
-                pd.data,
-                (
-                    SELECT pc.name
-                    FROM poi_category_map pcm2
-                    JOIN poi_categories pc ON pc.id = pcm2.category
-                    WHERE pcm2.id = pi.id
-                    ORDER BY pc.id
-                    LIMIT 1
-                ) AS category_name
-            FROM poi_index pi
-            JOIN poi_data pd ON pd.id = pi.id
-            ORDER BY pi.id
-            """.trimIndent()
-
-        val points = mutableListOf<PoiSqlitePoint>()
-        val db = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-        try {
-            db.rawQuery(sql, emptyArray()).use { cursor ->
-                val idIdx = cursor.getColumnIndex("id")
-                val latIdx = cursor.getColumnIndex("lat")
-                val lonIdx = cursor.getColumnIndex("lon")
-                val dataIdx = cursor.getColumnIndex("data")
-                val categoryIdx = cursor.getColumnIndex("category_name")
-                while (cursor.moveToNext()) {
-                    if (idIdx < 0 || latIdx < 0 || lonIdx < 0) continue
-                    val tags =
-                        if (dataIdx >= 0 && !cursor.isNull(dataIdx)) {
-                            parseTagMap(cursor.getString(dataIdx).orEmpty())
-                        } else {
-                            emptyMap()
-                        }
-                    val categoryName =
-                        if (categoryIdx >= 0 && !cursor.isNull(categoryIdx)) {
-                            cursor.getString(categoryIdx).orEmpty().ifBlank { "Other" }
-                        } else {
-                            "Other"
-                        }
-                    points +=
-                        PoiSqlitePoint(
-                            sourceId = cursor.getLong(idIdx),
-                            lat = cursor.getDouble(latIdx),
-                            lon = cursor.getDouble(lonIdx),
-                            categoryName = categoryName,
-                            tags = tags,
-                        )
-                }
-            }
-        } finally {
-            db.close()
-        }
-
-        return points
+        return readPoiSqlitePoints(file = file, sql = ALL_POI_SQL, selectionArgs = emptyArray())
     }
 
     private fun assignStableIds(
@@ -304,25 +255,6 @@ internal object PoiSqliteCodec {
             .replace('\u0000', ' ')
             .trim()
 
-    private fun parseTagMap(data: String): Map<String, String> {
-        if (data.isBlank()) return emptyMap()
-        return data
-            .split('\r', '\n')
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() && '=' in it }
-            .mapNotNull { token ->
-                val idx = token.indexOf('=')
-                if (idx <= 0 || idx >= token.lastIndex) {
-                    null
-                } else {
-                    val key = token.substring(0, idx).trim()
-                    val value = token.substring(idx + 1).trim()
-                    if (key.isBlank() || value.isBlank()) null else key to value
-                }
-            }.toMap()
-    }
-
     private data class AssignedPoiPoint(
         val id: Long,
         val lat: Double,
@@ -338,6 +270,156 @@ internal object PoiSqliteCodec {
         val maxLon: Double,
     )
 }
+
+/** Reads only the indexed map viewport so phone map refreshes do not scan whole POI files. */
+internal fun readPoiSqliteViewport(
+    file: File,
+    viewport: PoiSqliteViewport,
+    limit: Int,
+): List<PoiSqlitePoint> {
+    if (!file.isReadablePoiFile() || limit <= 0 || !viewport.hasOrderedBounds()) {
+        return emptyList()
+    }
+    return readPoiSqlitePoints(
+        file = file,
+        sql = VIEWPORT_POI_SQL,
+        selectionArgs =
+            arrayOf(
+                viewport.minLat.toString(),
+                viewport.maxLat.toString(),
+                viewport.minLon.toString(),
+                viewport.maxLon.toString(),
+                limit.toString(),
+            ),
+    )
+}
+
+private fun readPoiSqlitePoints(
+    file: File,
+    sql: String,
+    selectionArgs: Array<String>,
+): List<PoiSqlitePoint> {
+    val db = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+    try {
+        return db.rawQuery(sql, selectionArgs).use { cursor ->
+            val indices = PoiSqliteColumnIndices(cursor)
+            buildList {
+                while (cursor.moveToNext()) {
+                    indices.pointOrNull(cursor)?.let(::add)
+                }
+            }
+        }
+    } finally {
+        db.close()
+    }
+}
+
+private data class PoiSqliteColumnIndices(
+    val id: Int,
+    val lat: Int,
+    val lon: Int,
+    val data: Int,
+    val categoryName: Int,
+) {
+    constructor(cursor: Cursor) : this(
+        id = cursor.getColumnIndex("id"),
+        lat = cursor.getColumnIndex("lat"),
+        lon = cursor.getColumnIndex("lon"),
+        data = cursor.getColumnIndex("data"),
+        categoryName = cursor.getColumnIndex("category_name"),
+    )
+
+    fun pointOrNull(cursor: Cursor): PoiSqlitePoint? {
+        if (id < 0 || lat < 0 || lon < 0) return null
+        val rawData =
+            if (data >= 0 && !cursor.isNull(data)) {
+                cursor.getString(data).orEmpty()
+            } else {
+                ""
+            }
+        return PoiSqlitePoint(
+            sourceId = cursor.getLong(id),
+            lat = cursor.getDouble(lat),
+            lon = cursor.getDouble(lon),
+            categoryName = cursor.stringOrDefault(categoryName),
+            tags = parseTagMap(rawData),
+            rawData = rawData,
+        )
+    }
+}
+
+private fun PoiSqliteViewport.hasOrderedBounds(): Boolean = minLat <= maxLat && minLon <= maxLon
+
+private fun File.isReadablePoiFile(): Boolean = exists() && isFile
+
+private fun Cursor.stringOrDefault(index: Int): String =
+    if (index >= 0 && !isNull(index)) {
+        getString(index).orEmpty().ifBlank { "Other" }
+    } else {
+        "Other"
+    }
+
+private fun parseTagMap(data: String): Map<String, String> {
+    if (data.isBlank()) return emptyMap()
+    return data
+        .split('\r', '\n')
+        .asSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() && '=' in it }
+        .mapNotNull { token ->
+            val index = token.indexOf('=')
+            if (index <= 0 || index >= token.lastIndex) {
+                null
+            } else {
+                val key = token.substring(0, index).trim()
+                val value = token.substring(index + 1).trim()
+                if (key.isBlank() || value.isBlank()) null else key to value
+            }
+        }.toMap()
+}
+
+private val ALL_POI_SQL =
+    """
+    SELECT
+        pi.id,
+        pi.lat,
+        pi.lon,
+        pd.data,
+        (
+            SELECT pc.name
+            FROM poi_category_map pcm2
+            JOIN poi_categories pc ON pc.id = pcm2.category
+            WHERE pcm2.id = pi.id
+            ORDER BY pc.id
+            LIMIT 1
+        ) AS category_name
+    FROM poi_index pi
+    JOIN poi_data pd ON pd.id = pi.id
+    ORDER BY pi.id
+    """.trimIndent()
+
+private val VIEWPORT_POI_SQL =
+    """
+    SELECT
+        pi.id,
+        pi.lat,
+        pi.lon,
+        pd.data,
+        (
+            SELECT pc.name
+            FROM poi_category_map pcm2
+            JOIN poi_categories pc ON pc.id = pcm2.category
+            WHERE pcm2.id = pi.id
+            ORDER BY pc.id
+            LIMIT 1
+        ) AS category_name
+    FROM poi_index pi
+    JOIN poi_data pd ON pd.id = pi.id
+    WHERE pi.lat BETWEEN ? AND ?
+      AND pi.lon BETWEEN ? AND ?
+    ORDER BY pi.id
+    LIMIT ?
+    """.trimIndent()
 
 internal class PoiSqliteStreamingWriter(
     file: File,

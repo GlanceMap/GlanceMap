@@ -66,6 +66,7 @@ import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnosti
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxTrack
+import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
@@ -104,10 +105,11 @@ private enum class CompanionHomeArea {
 }
 
 @Composable
-fun FilePickerScreen(
+internal fun FilePickerScreen(
     viewModel: FileTransferViewModel,
     routeLibraryViewModel: RouteLibraryViewModel,
     missionPlanViewModel: MissionPlanViewModel,
+    phoneMapPoiViewModel: PhoneMapPoiViewModel,
     openSendToWatchToken: Long = 0L,
     openLiveTrackingToken: Long = 0L,
     watchGpxSaveToken: Long = 0L,
@@ -121,6 +123,7 @@ fun FilePickerScreen(
     val liveHikeSyncEnabled by viewModel.liveHikeSyncEnabled.collectAsState()
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
+    val phoneMapPoiUiState by phoneMapPoiViewModel.uiState.collectAsState()
     val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
     val missionPlanUiState by missionPlanViewModel.uiState.collectAsState()
     val lastTransferGpx =
@@ -146,6 +149,10 @@ fun FilePickerScreen(
     val debugCaptureState by viewModel.debugCaptureState.collectAsState()
     val canRefreshLastRefuges = lastRefugesRequest?.bbox?.isNotBlank() == true
     val canRefreshLastRouting = lastRoutingRequest?.bbox?.isNotBlank() == true
+
+    LaunchedEffect(lastImportedPoiFile?.uri) {
+        if (lastImportedPoiFile != null) phoneMapPoiViewModel.refresh()
+    }
 
     val autoOpenHelpOnFirstLaunch =
         remember(context) {
@@ -863,6 +870,9 @@ fun FilePickerScreen(
                                     points = details.profile.points,
                                 )
                             },
+                        pois = phoneMapPoiUiState.pois,
+                        onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
+                        onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
                         onBack = { activeHomeArea = CompanionHomeArea.HOME },
                     )
                 }
