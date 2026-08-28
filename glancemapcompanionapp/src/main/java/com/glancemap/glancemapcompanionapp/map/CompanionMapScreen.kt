@@ -92,6 +92,21 @@ private data class MapContentControlState(
     val poisVisible: Boolean,
 )
 
+private data class MapFolderActions(
+    val hasSelectedFolder: Boolean,
+    val onSelectFolder: () -> Unit,
+    val onRescanFolder: () -> Unit,
+    val onClearFolder: () -> Unit,
+)
+
+private data class MapSourceSelectorActions(
+    val onDismiss: () -> Unit,
+    val onSelectOnline: () -> Unit,
+    val onSelectOffline: (PhoneOfflineMap) -> Unit,
+    val onImportMap: () -> Unit,
+    val folder: MapFolderActions,
+)
+
 /** Keeps Compose-owned MapLibre, permission, and GPX overlay sequencing in one visible flow. */
 @Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod")
 @Composable
@@ -105,11 +120,18 @@ internal fun CompanionMapScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
+    val mapFolderSource =
+        remember(context, offlineMapStore) {
+            PhoneOfflineMapFolderSource(context.applicationContext, offlineMapStore)
+        }
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var mapSource by remember { mutableStateOf<PhoneMapSource>(PhoneMapSource.Online) }
     var offlineMaps by remember { mutableStateOf(emptyList<PhoneOfflineMap>()) }
+    var hasSelectedMapFolder by remember(mapFolderSource) {
+        mutableStateOf(mapFolderSource.hasSelectedFolder())
+    }
     var mapCamera by remember { mutableStateOf(defaultMapCamera) }
     var showMapSourceSelector by remember { mutableStateOf(false) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
@@ -142,8 +164,9 @@ internal fun CompanionMapScreen(
                     withContext(Dispatchers.IO) {
                         offlineMapStore.import(context.contentResolver, uri)
                     }
-                imported.fold(
-                    onSuccess = { importedMap ->
+                when (imported) {
+                    is PhoneOfflineMapImportResult.Success -> {
+                        val importedMap = imported.map
                         offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
                         map?.cameraSnapshotOrNull()?.let { mapCamera = it }
                         mapView = null
@@ -152,9 +175,28 @@ internal fun CompanionMapScreen(
                         mapSource = PhoneMapSource.Offline(importedMap)
                         offlineMapError = null
                         showMapSourceSelector = false
-                    },
-                    onFailure = { offlineMapError = PhoneOfflineMapError.IMPORT_FAILED },
-                )
+                    }
+
+                    is PhoneOfflineMapImportResult.Failure -> offlineMapError = imported.error
+                }
+            }
+        }
+    val selectMapFolderLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocumentTree(),
+        ) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                val selectionError =
+                    withContext(Dispatchers.IO) { mapFolderSource.selectFolder(treeUri) }
+                if (selectionError != null) {
+                    offlineMapError = selectionError
+                    return@launch
+                }
+                val syncResult = withContext(Dispatchers.IO) { mapFolderSource.syncSelectedFolder() }
+                offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                hasSelectedMapFolder = mapFolderSource.hasSelectedFolder()
+                offlineMapError = syncResult.error
             }
         }
     val locationPermissionLauncher =
@@ -165,8 +207,11 @@ internal fun CompanionMapScreen(
             pendingRecenter = hasLocationPermission
         }
 
-    LaunchedEffect(offlineMapStore) {
+    LaunchedEffect(offlineMapStore, mapFolderSource) {
+        val syncResult = withContext(Dispatchers.IO) { mapFolderSource.syncSelectedFolder() }
         offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+        hasSelectedMapFolder = mapFolderSource.hasSelectedFolder()
+        offlineMapError = syncResult.error
         val selectedOfflineMap = (mapSource as? PhoneMapSource.Offline)?.map
         if (selectedOfflineMap != null && selectedOfflineMap !in offlineMaps) {
             mapSource = PhoneMapSource.Online
@@ -313,29 +358,54 @@ internal fun CompanionMapScreen(
     if (showMapSourceSelector) {
         mapSourceSelector(
             offlineMaps = offlineMaps,
-            onDismiss = { showMapSourceSelector = false },
-            onSelectOnline = {
-                mapSource = PhoneMapSource.Online
-                offlineMapError = null
-                showMapSourceSelector = false
-            },
-            onSelectOffline = { selectedMap ->
-                coroutineScope.launch {
-                    val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
-                    if (error == null) {
-                        map?.cameraSnapshotOrNull()?.let { mapCamera = it }
-                        mapView = null
-                        map = null
-                        style = null
-                        mapSource = PhoneMapSource.Offline(selectedMap)
+            actions =
+                MapSourceSelectorActions(
+                    onDismiss = { showMapSourceSelector = false },
+                    onSelectOnline = {
+                        mapSource = PhoneMapSource.Online
                         offlineMapError = null
                         showMapSourceSelector = false
-                    } else {
-                        offlineMapError = error
-                    }
-                }
-            },
-            onImportMap = { selectLocalMapLauncher.launch(arrayOf("application/octet-stream")) },
+                    },
+                    onSelectOffline = { selectedMap ->
+                        coroutineScope.launch {
+                            val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
+                            if (error == null) {
+                                map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+                                mapView = null
+                                map = null
+                                style = null
+                                mapSource = PhoneMapSource.Offline(selectedMap)
+                                offlineMapError = null
+                                showMapSourceSelector = false
+                            } else {
+                                offlineMapError = error
+                            }
+                        }
+                    },
+                    onImportMap = {
+                        selectLocalMapLauncher.launch(arrayOf("application/octet-stream"))
+                    },
+                    folder =
+                        MapFolderActions(
+                            hasSelectedFolder = hasSelectedMapFolder,
+                            onSelectFolder = { selectMapFolderLauncher.launch(null) },
+                            onRescanFolder = {
+                                coroutineScope.launch {
+                                    val syncResult =
+                                        withContext(Dispatchers.IO) {
+                                            mapFolderSource.syncSelectedFolder()
+                                        }
+                                    offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                                    hasSelectedMapFolder = mapFolderSource.hasSelectedFolder()
+                                    offlineMapError = syncResult.error
+                                }
+                            },
+                            onClearFolder = {
+                                mapFolderSource.clearSelectedFolder()
+                                hasSelectedMapFolder = false
+                            },
+                        ),
+                ),
         )
     }
 }
@@ -343,17 +413,14 @@ internal fun CompanionMapScreen(
 @Composable
 private fun mapSourceSelector(
     offlineMaps: List<PhoneOfflineMap>,
-    onDismiss: () -> Unit,
-    onSelectOnline: () -> Unit,
-    onSelectOffline: (PhoneOfflineMap) -> Unit,
-    onImportMap: () -> Unit,
+    actions: MapSourceSelectorActions,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = actions.onDismiss,
         title = { Text(stringResource(R.string.map_source_selector_title)) },
         text = {
             Column {
-                TextButton(onClick = onSelectOnline) {
+                TextButton(onClick = actions.onSelectOnline) {
                     Text(stringResource(R.string.map_source_select_online))
                 }
                 if (offlineMaps.isEmpty()) {
@@ -363,18 +430,33 @@ private fun mapSourceSelector(
                     )
                 } else {
                     offlineMaps.forEach { map ->
-                        TextButton(onClick = { onSelectOffline(map) }) {
+                        TextButton(onClick = { actions.onSelectOffline(map) }) {
                             Text(stringResource(R.string.map_source_select_offline, map.displayName))
                         }
                     }
                 }
-                TextButton(onClick = onImportMap) {
+                TextButton(onClick = actions.onImportMap) {
                     Text(stringResource(R.string.map_source_import_local_map))
+                }
+                TextButton(onClick = actions.folder.onSelectFolder) {
+                    Text(stringResource(R.string.map_source_select_map_folder))
+                }
+                if (actions.folder.hasSelectedFolder) {
+                    Text(
+                        text = stringResource(R.string.map_source_map_folder_selected),
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                    TextButton(onClick = actions.folder.onRescanFolder) {
+                        Text(stringResource(R.string.map_source_rescan_map_folder))
+                    }
+                    TextButton(onClick = actions.folder.onClearFolder) {
+                        Text(stringResource(R.string.map_source_clear_map_folder))
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
+            TextButton(onClick = actions.onDismiss) { Text(stringResource(R.string.common_action_close)) }
         },
     )
 }
@@ -401,7 +483,11 @@ private fun PhoneOfflineMapError.messageResource(): Int =
     when (this) {
         PhoneOfflineMapError.MISSING -> R.string.map_offline_map_missing
         PhoneOfflineMapError.INVALID -> R.string.map_offline_map_invalid
-        PhoneOfflineMapError.IMPORT_FAILED -> R.string.map_offline_map_import_failed
+        PhoneOfflineMapError.FILE_NOT_READABLE -> R.string.map_offline_map_file_not_readable
+        PhoneOfflineMapError.FILE_NOT_MAP -> R.string.map_offline_map_file_not_map
+        PhoneOfflineMapError.FOLDER_PERMISSION_LOST -> R.string.map_offline_map_folder_permission_lost
+        PhoneOfflineMapError.FOLDER_SCAN_FAILED -> R.string.map_offline_map_folder_scan_failed
+        PhoneOfflineMapError.COPY_FAILED -> R.string.map_offline_map_copy_failed
     }
 
 @Composable

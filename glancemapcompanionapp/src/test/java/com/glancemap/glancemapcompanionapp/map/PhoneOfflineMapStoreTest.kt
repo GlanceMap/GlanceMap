@@ -14,13 +14,15 @@ class PhoneOfflineMapStoreTest {
         val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
         try {
             File(directory, "alps.map").writeText("map")
+            File(directory, "alps-upper.MAP").writeText("map")
             File(directory, "empty.map").createNewFile()
+            File(directory, "temporary.map.part").writeText("partial map")
             File(directory, "notes.txt").writeText("not a map")
             File(directory, "nested.map").mkdir()
 
             val maps = PhoneOfflineMapStore(directory).discover()
 
-            assertEquals(listOf("alps.map"), maps.map(PhoneOfflineMap::displayName))
+            assertEquals(listOf("alps-upper.MAP", "alps.map"), maps.map(PhoneOfflineMap::displayName))
         } finally {
             directory.deleteRecursively()
         }
@@ -50,6 +52,77 @@ class PhoneOfflineMapStoreTest {
         } finally {
             directory.deleteRecursively()
         }
+    }
+
+    @Test
+    fun temporaryImportValidationDoesNotRequireAMapFileSuffix() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            var validatedName: String? = null
+            val store =
+                PhoneOfflineMapStore(directory) { candidate ->
+                    validatedName = candidate.name
+                    null
+                }
+
+            val result = store.import("example.map", "valid Mapsforge data".byteInputStream())
+
+            assertEquals("example.map.part", validatedName)
+            assertEquals(
+                "example.map",
+                (result as PhoneOfflineMapImportResult.Success).map.displayName,
+            )
+            assertTrue(File(directory, "example.map").isFile)
+            assertFalse(File(directory, "example.map.part").exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedImportValidationLeavesNoPartialOrFinalMap() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val store = PhoneOfflineMapStore(directory) { PhoneOfflineMapError.INVALID }
+
+            val result = store.import("example.map", "corrupt".byteInputStream())
+
+            assertEquals(
+                PhoneOfflineMapError.INVALID,
+                (result as PhoneOfflineMapImportResult.Failure).error,
+            )
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun duplicateImportsUseSafeNameCollisionsAndAreFoundByFolderSyncMatching() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val store = PhoneOfflineMapStore(directory) { null }
+
+            val first = store.import("example.map", "first".byteInputStream())
+            val second = store.import("example.map", "second".byteInputStream())
+
+            assertEquals("example.map", (first as PhoneOfflineMapImportResult.Success).map.displayName)
+            assertEquals("example (1).map", (second as PhoneOfflineMapImportResult.Success).map.displayName)
+            assertEquals("example.map", store.findSynchronizedMap("example.map", 5L)?.displayName)
+            assertEquals("example (1).map", store.findSynchronizedMap("example.map", 6L)?.displayName)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun folderDocumentFilterOnlyAcceptsMapFiles() {
+        assertTrue(isPhoneOfflineMapDocumentCandidate("alps.map", isFile = true))
+        assertTrue(isPhoneOfflineMapDocumentCandidate("alps.MAP", isFile = true))
+        assertFalse(isPhoneOfflineMapDocumentCandidate("alps.map.part", isFile = true))
+        assertFalse(isPhoneOfflineMapDocumentCandidate("alps.zip", isFile = true))
+        assertFalse(isPhoneOfflineMapDocumentCandidate("alps.map", isFile = false))
+        assertFalse(isPhoneOfflineMapDocumentCandidate(null, isFile = true))
     }
 
     @Test
