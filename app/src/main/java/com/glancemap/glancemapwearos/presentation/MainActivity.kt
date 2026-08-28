@@ -38,6 +38,8 @@ import com.glancemap.glancemapwearos.core.service.location.model.resolveLocation
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeInputs
 import com.glancemap.glancemapwearos.core.service.location.policy.navigationRuntimeDemand
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.resolveCompassHardwareCapability
+import com.glancemap.glancemapwearos.domain.sensors.shouldShowCompassHardwareUnavailableNotice
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadScreen
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadSettingsScreen
@@ -1051,6 +1053,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                compassHardwareUnavailableNotice()
                 WearActionDialog(
                     visible = recordingStartWarning != null,
                     title = "External sensors unavailable",
@@ -1133,6 +1136,42 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    @Composable
+    private fun compassHardwareUnavailableNotice() {
+        val context = LocalContext.current.applicationContext
+        val prefs =
+            remember(context) {
+                context.getSharedPreferences(COMPASS_HARDWARE_NOTICE_PREFS, Context.MODE_PRIVATE)
+            }
+        val capability = remember(context) { resolveCompassHardwareCapability(context) }
+        var acknowledged by
+            remember {
+                mutableStateOf(
+                    prefs.getBoolean(COMPASS_HARDWARE_NOTICE_ACKNOWLEDGED, false),
+                )
+            }
+        val acknowledge = {
+            prefs.edit().putBoolean(COMPASS_HARDWARE_NOTICE_ACKNOWLEDGED, true).apply()
+            acknowledged = true
+        }
+
+        WearActionDialog(
+            visible =
+                shouldShowCompassHardwareUnavailableNotice(
+                    capability = capability,
+                    acknowledged = acknowledged,
+                ),
+            title = "Compass not available on this watch",
+            message =
+                "This watch does not expose a hardware compass to apps. Maps, GPS navigation and activity " +
+                    "recording will continue to work, but compass-follow map rotation and directional " +
+                    "heading may be limited.",
+            confirmText = "Continue",
+            onConfirm = acknowledge,
+            onDismissRequest = {},
+        )
     }
 
     override fun onResume() {
@@ -1248,3 +1287,6 @@ class MainActivity : ComponentActivity() {
             interactive = getSystemService(PowerManager::class.java)?.isInteractive,
         )
 }
+
+private const val COMPASS_HARDWARE_NOTICE_PREFS = "compass_hardware_notice"
+private const val COMPASS_HARDWARE_NOTICE_ACKNOWLEDGED = "acknowledged"
