@@ -45,10 +45,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
+import com.glancemap.glancemapcompanionapp.R
 import kotlinx.coroutines.delay
 
 @Composable
@@ -121,13 +123,13 @@ internal fun ColumnScope.MainTrackingContent(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back to home",
+                contentDescription = stringResource(R.string.common_back_to_home_content_description),
                 modifier = Modifier.size(adaptive.helpIconSize),
             )
         }
         Spacer(modifier = Modifier.size(adaptive.helpIconButtonSize))
         Text(
-            text = "Live Tracking",
+            text = stringResource(R.string.live_tracking_title),
             style =
                 if (isCompactScreen) {
                     MaterialTheme.typography.titleSmall
@@ -146,7 +148,7 @@ internal fun ColumnScope.MainTrackingContent(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                contentDescription = "Live Tracking Guide",
+                contentDescription = stringResource(R.string.live_tracking_guide_content_description),
                 modifier = Modifier.size(adaptive.helpIconSize),
             )
         }
@@ -156,9 +158,13 @@ internal fun ColumnScope.MainTrackingContent(
         scrollState = scrollState,
         contentSpacing = contentSpacing,
     ) {
-        TrackingPanel(title = "Session") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_session_title)) {
             Text(
-                text = "GPS update frequency: every ${formatUpdateInterval(updateIntervalSeconds)}",
+                text =
+                    stringResource(
+                        R.string.live_tracking_gps_update_frequency,
+                        formatUpdateInterval(updateIntervalSeconds),
+                    ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -189,10 +195,10 @@ internal fun ColumnScope.MainTrackingContent(
                     Spacer(modifier = Modifier.size(6.dp))
                     Text(
                         when {
-                            isStartingSession -> "Starting"
-                            sessionState.isPaused -> "Resume"
-                            sessionState.isTracking -> "Pause"
-                            else -> "Start"
+                            isStartingSession -> stringResource(R.string.live_tracking_action_starting)
+                            sessionState.isPaused -> stringResource(R.string.common_action_resume)
+                            sessionState.isTracking -> stringResource(R.string.common_action_pause)
+                            else -> stringResource(R.string.live_tracking_action_start)
                         },
                     )
                 }
@@ -207,7 +213,7 @@ internal fun ColumnScope.MainTrackingContent(
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(modifier = Modifier.size(6.dp))
-                    Text("Stop")
+                    Text(stringResource(R.string.common_action_stop))
                 }
             }
             Text(
@@ -217,7 +223,7 @@ internal fun ColumnScope.MainTrackingContent(
             )
             if (showArkluzPendingWarning) {
                 Text(
-                    text = "Arkluz has not been notified yet. No-movement alerts may still be triggered.",
+                    text = stringResource(R.string.live_tracking_arkluz_pending_message),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -239,14 +245,14 @@ internal fun ColumnScope.MainTrackingContent(
                     onClick = { emailArkluzSupport(context, error) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Email Arkluz")
+                    Text(stringResource(R.string.live_tracking_action_email_arkluz))
                 }
             }
         }
 
-        TrackingPanel(title = "Planned route & comments (optional)") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_planned_route_title)) {
             Text(
-                text = "Add a GPX route or comments only when you want to include them with tracking.",
+                text = stringResource(R.string.live_tracking_plan_optional_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -260,7 +266,7 @@ internal fun ColumnScope.MainTrackingContent(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.size(8.dp))
-                Text("Select GPX")
+                Text(stringResource(R.string.live_tracking_action_select_gpx))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -270,9 +276,14 @@ internal fun ColumnScope.MainTrackingContent(
                 Text(
                     text =
                         if (hasSelectedGpx) {
-                            "GPX name: ${selectedGpxName.ifBlank { "Selected GPX" }}"
+                            stringResource(
+                                R.string.live_tracking_selected_gpx_name,
+                                selectedGpxName.ifBlank {
+                                    stringResource(R.string.live_tracking_selected_gpx_fallback)
+                                },
+                            )
                         } else {
-                            "No GPX selected"
+                            stringResource(R.string.live_tracking_no_gpx_selected)
                         },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -287,7 +298,10 @@ internal fun ColumnScope.MainTrackingContent(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Clear selected GPX",
+                            contentDescription =
+                                stringResource(
+                                    R.string.live_tracking_clear_gpx_content_description,
+                                ),
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -296,7 +310,7 @@ internal fun ColumnScope.MainTrackingContent(
             }
             if (sessionState.isTracking) {
                 Text(
-                    text = "Choose another GPX anytime, then tap Send update to update the planned route.",
+                    text = stringResource(R.string.live_tracking_update_planned_route_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -304,14 +318,14 @@ internal fun ColumnScope.MainTrackingContent(
             OutlinedTextField(
                 value = comments,
                 onValueChange = onCommentsChange,
-                label = { Text("Comments") },
-                placeholder = { Text("Estimated time of arrival") },
+                label = { Text(stringResource(R.string.live_tracking_comments_label)) },
+                placeholder = { Text(stringResource(R.string.live_tracking_comments_placeholder)) },
                 minLines = if (isCompactLayout) 2 else 4,
                 modifier = Modifier.fillMaxWidth(),
             )
             if (sessionState.isTracking) {
                 Text(
-                    text = "Tracking is active. You can change the GPX or comment, then tap Send update.",
+                    text = stringResource(R.string.live_tracking_active_update_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -324,9 +338,9 @@ internal fun ColumnScope.MainTrackingContent(
                 ) {
                     Text(
                         when {
-                            isSendingPlan -> "Sending"
-                            planSent -> "Comment sent"
-                            else -> "Send update"
+                            isSendingPlan -> stringResource(R.string.live_tracking_action_sending)
+                            planSent -> stringResource(R.string.live_tracking_action_comment_sent)
+                            else -> stringResource(R.string.live_tracking_action_send_update)
                         },
                     )
                 }
@@ -348,21 +362,21 @@ internal fun ColumnScope.MainTrackingContent(
                         onClick = { emailArkluzSupport(context, message) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Email Arkluz")
+                        Text(stringResource(R.string.live_tracking_action_email_arkluz))
                     }
                 }
             }
         }
 
-        TrackingPanel(title = "View & share tracks") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_tracks_title)) {
             TrackLinkRow(
-                label = userName.trim().ifBlank { "Participant" },
+                label = userName.trim().ifBlank { stringResource(R.string.live_tracking_participant_fallback) },
                 url = userTrackUrl,
                 onView = { openUrl(context, userTrackUrl) },
                 onShare = { shareUrl(context, userTrackUrl) },
             )
             TrackLinkRow(
-                label = "Group",
+                label = stringResource(R.string.live_tracking_group),
                 url = groupTrackUrl,
                 onView = { openUrl(context, groupTrackUrl) },
                 onShare = { shareUrl(context, groupTrackUrl) },
@@ -373,7 +387,14 @@ internal fun ColumnScope.MainTrackingContent(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = if (isDownloadingRecordedTrack) "Downloading" else "Download my GPX",
+                    text =
+                        stringResource(
+                            if (isDownloadingRecordedTrack) {
+                                R.string.live_tracking_action_downloading
+                            } else {
+                                R.string.live_tracking_action_download_my_gpx
+                            },
+                        ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -401,10 +422,18 @@ internal fun ColumnScope.MainTrackingContent(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.size(6.dp))
-                Text(if (isDeletingTracks) "Deleting" else "Delete recorded tracks")
+                Text(
+                    stringResource(
+                        if (isDeletingTracks) {
+                            R.string.live_tracking_action_deleting
+                        } else {
+                            R.string.live_tracking_action_delete_recorded_tracks
+                        },
+                    ),
+                )
             }
             Text(
-                text = "Tracks are automatically deleted from the server every 7 days.",
+                text = stringResource(R.string.live_tracking_tracks_retention_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -436,14 +465,25 @@ internal fun ColumnScope.MainTrackingContent(
         )
         Spacer(modifier = Modifier.size(6.dp))
         Text(
-            text = if (isConnected) "Edit live tracking setup" else "Set up live tracking",
+            text =
+                stringResource(
+                    if (isConnected) {
+                        R.string.live_tracking_action_edit_setup
+                    } else {
+                        R.string.live_tracking_action_set_up
+                    },
+                ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
     if (isConnected) {
         Text(
-            text = "Connected to ${group.trim().ifBlank { "private group" }}",
+            text =
+                stringResource(
+                    R.string.live_tracking_connected_to_group,
+                    group.trim().ifBlank { stringResource(R.string.live_tracking_private_group) },
+                ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -482,7 +522,7 @@ private fun TrackLinkRow(
         ) {
             Icon(
                 imageVector = Icons.Filled.TravelExplore,
-                contentDescription = "View $label track",
+                contentDescription = stringResource(R.string.live_tracking_view_track_content_description, label),
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -494,7 +534,7 @@ private fun TrackLinkRow(
         ) {
             Icon(
                 imageVector = Icons.Filled.Share,
-                contentDescription = "Share $label track",
+                contentDescription = stringResource(R.string.live_tracking_share_track_content_description, label),
                 modifier = Modifier.size(18.dp),
             )
         }

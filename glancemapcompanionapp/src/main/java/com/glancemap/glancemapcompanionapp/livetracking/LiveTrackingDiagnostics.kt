@@ -16,8 +16,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.BuildConfig
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,9 +115,9 @@ internal fun LiveTrackingDiagnosticsPanel() {
     val events by LiveTrackingDiagnostics.events.collectAsState()
     var expanded by remember { mutableStateOf(false) }
 
-    TrackingPanel(title = "Debug diagnostics") {
+    TrackingPanel(title = stringResource(R.string.live_tracking_diagnostics_title)) {
         Text(
-            text = "Local, redacted history. It is cleared when the app process stops.",
+            text = stringResource(R.string.live_tracking_diagnostics_description),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -127,20 +129,29 @@ internal fun LiveTrackingDiagnosticsPanel() {
                 onClick = { expanded = !expanded },
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (expanded) "Hide (${events.size})" else "Show (${events.size})")
+                Text(
+                    stringResource(
+                        if (expanded) {
+                            R.string.live_tracking_diagnostics_hide
+                        } else {
+                            R.string.live_tracking_diagnostics_show
+                        },
+                        events.size,
+                    ),
+                )
             }
             OutlinedButton(
                 onClick = LiveTrackingDiagnostics::clear,
                 enabled = events.isNotEmpty(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Clear")
+                Text(stringResource(R.string.common_action_clear))
             }
         }
         if (expanded) {
             if (events.isEmpty()) {
                 Text(
-                    text = "No Arkluz requests recorded yet.",
+                    text = stringResource(R.string.live_tracking_diagnostics_empty),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

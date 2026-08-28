@@ -47,7 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.resolveUriDisplayName
 import kotlinx.coroutines.delay
@@ -1226,11 +1228,11 @@ fun LiveTrackingScreen(
         if (showUseLastTransferGpxDialog && lastTransferGpxUri != null) {
             AlertDialog(
                 onDismissRequest = { showUseLastTransferGpxDialog = false },
-                title = { Text("Use selected GPX?") },
+                title = { Text(stringResource(R.string.live_tracking_use_selected_gpx_title)) },
                 text = {
                     Text(
                         lastTransferGpxName
-                            .ifBlank { "The last GPX selected in Send to Watch" },
+                            .ifBlank { stringResource(R.string.live_tracking_last_selected_gpx) },
                     )
                 },
                 confirmButton = {
@@ -1243,13 +1245,13 @@ fun LiveTrackingScreen(
                             )
                         },
                     ) {
-                        Text("Use this GPX")
+                        Text(stringResource(R.string.live_tracking_action_use_this_gpx))
                     }
                 },
                 dismissButton = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { showUseLastTransferGpxDialog = false }) {
-                            Text("Cancel")
+                            Text(stringResource(R.string.common_action_cancel))
                         }
                         OutlinedButton(
                             onClick = {
@@ -1257,7 +1259,7 @@ fun LiveTrackingScreen(
                                 gpxPicker.launch(arrayOf("application/gpx+xml", "text/xml", "*/*"))
                             },
                         ) {
-                            Text("Choose another")
+                            Text(stringResource(R.string.live_tracking_action_choose_another))
                         }
                     }
                 },
@@ -1269,12 +1271,10 @@ fun LiveTrackingScreen(
                     showLocationDisclosureDialog = false
                     isStartingSession = false
                 },
-                title = { Text("Location for live tracking") },
+                title = { Text(stringResource(R.string.live_tracking_location_disclosure_title)) },
                 text = {
                     Text(
-                        "GlanceMap collects your location during an active live-tracking session " +
-                            "to show your position and send updates to the selected tracking server " +
-                            "and people with your shared tracking link. It is not used for advertising.",
+                        stringResource(R.string.live_tracking_location_disclosure_message),
                     )
                 },
                 confirmButton = {
@@ -1291,7 +1291,7 @@ fun LiveTrackingScreen(
                             }
                         },
                     ) {
-                        Text("Continue")
+                        Text(stringResource(R.string.common_action_continue))
                     }
                 },
                 dismissButton = {
@@ -1301,7 +1301,7 @@ fun LiveTrackingScreen(
                             isStartingSession = false
                         },
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                 },
             )
@@ -1312,16 +1312,15 @@ fun LiveTrackingScreen(
                     showNotificationPermissionWarningDialog = false
                     isStartingSession = false
                 },
-                title = { Text("Notifications are off") },
+                title = { Text(stringResource(R.string.live_tracking_notifications_off_title)) },
                 text = {
                     Text(
-                        "Live tracking can continue, but its ongoing status notification may not be visible. " +
-                            "You can enable notifications later in Android settings.",
+                        stringResource(R.string.live_tracking_notifications_off_message),
                     )
                 },
                 confirmButton = {
                     Button(onClick = { continueStartWithBackgroundLocationProtection() }) {
-                        Text("Start anyway")
+                        Text(stringResource(R.string.live_tracking_action_start_anyway))
                     }
                 },
                 dismissButton = {
@@ -1331,7 +1330,7 @@ fun LiveTrackingScreen(
                             isStartingSession = false
                         },
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                 },
             )
@@ -1342,14 +1341,10 @@ fun LiveTrackingScreen(
                     showBackgroundLocationDialog = false
                     isStartingSession = false
                 },
-                title = { Text("Keep GPS tracking in the background") },
+                title = { Text(stringResource(R.string.live_tracking_background_location_title)) },
                 text = {
                     Text(
-                        "GlanceMap collects and transmits your location during an active live-tracking " +
-                            "session, even when the app is closed or not in use. This keeps your shared " +
-                            "live position updated on the selected tracking server. It is not used for " +
-                            "advertising. On Android 11 and newer, select Location then Allow all the " +
-                            "time in the system settings.",
+                        stringResource(R.string.live_tracking_background_location_message),
                     )
                 },
                 confirmButton = {
@@ -1374,7 +1369,7 @@ fun LiveTrackingScreen(
                             }
                         },
                     ) {
-                        Text("Open location settings")
+                        Text(stringResource(R.string.live_tracking_action_open_location_settings))
                     }
                 },
                 dismissButton = {
@@ -1384,7 +1379,7 @@ fun LiveTrackingScreen(
                             continueStartWithBatteryProtection()
                         },
                     ) {
-                        Text("Start with foreground service")
+                        Text(stringResource(R.string.live_tracking_action_start_foreground_service))
                     }
                 },
             )
@@ -1395,12 +1390,10 @@ fun LiveTrackingScreen(
                     showBatteryOptimizationDialog = false
                     isStartingSession = false
                 },
-                title = { Text("Protect live tracking from battery saving") },
+                title = { Text(stringResource(R.string.live_tracking_battery_optimization_title)) },
                 text = {
                     Text(
-                        "Battery saving can stop long-running tracking. Allow unrestricted battery " +
-                            "use for GlanceMap. On Samsung, also ensure the app is not in Sleeping " +
-                            "apps or Deep sleeping apps.",
+                        stringResource(R.string.live_tracking_battery_optimization_message),
                     )
                 },
                 confirmButton = {
@@ -1419,7 +1412,7 @@ fun LiveTrackingScreen(
                             }
                         },
                     ) {
-                        Text("Open battery settings")
+                        Text(stringResource(R.string.live_tracking_action_open_battery_settings))
                     }
                 },
                 dismissButton = {
@@ -1429,7 +1422,7 @@ fun LiveTrackingScreen(
                             startTrackingNow()
                         },
                     ) {
-                        Text("Start anyway")
+                        Text(stringResource(R.string.live_tracking_action_start_anyway))
                     }
                 },
             )
@@ -1437,21 +1430,25 @@ fun LiveTrackingScreen(
         if (showChangeGroupDialog) {
             AlertDialog(
                 onDismissRequest = { showChangeGroupDialog = false },
-                title = { Text("Change group?") },
+                title = { Text(stringResource(R.string.live_tracking_change_group_title)) },
                 text = {
                     Text(
-                        "This disconnects from ${group.trim().ifBlank { "the current group" }} " +
-                            "and stops live tracking if it is active. Unsaved setup changes will be discarded.",
+                        stringResource(
+                            R.string.live_tracking_change_group_message,
+                            group.trim().ifBlank {
+                                stringResource(R.string.live_tracking_current_group)
+                            },
+                        ),
                     )
                 },
                 confirmButton = {
                     Button(onClick = { disconnectAndPrepareGroupSetup() }) {
-                        Text("Change group")
+                        Text(stringResource(R.string.live_tracking_action_change_group))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showChangeGroupDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                 },
             )
@@ -1459,8 +1456,8 @@ fun LiveTrackingScreen(
         if (showUnsavedSettingsDialog) {
             AlertDialog(
                 onDismissRequest = { showUnsavedSettingsDialog = false },
-                title = { Text("Save settings?") },
-                text = { Text("You have unsaved changes. Save them before leaving setup?") },
+                title = { Text(stringResource(R.string.live_tracking_save_settings_title)) },
+                text = { Text(stringResource(R.string.live_tracking_save_settings_message)) },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -1469,13 +1466,13 @@ fun LiveTrackingScreen(
                         },
                         enabled = !isSavingSettings,
                     ) {
-                        Text("Save")
+                        Text(stringResource(R.string.common_action_save))
                     }
                 },
                 dismissButton = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { showUnsavedSettingsDialog = false }) {
-                            Text("Cancel")
+                            Text(stringResource(R.string.common_action_cancel))
                         }
                         OutlinedButton(
                             onClick = {
@@ -1484,7 +1481,7 @@ fun LiveTrackingScreen(
                                 page = LiveTrackingPage.MAIN
                             },
                         ) {
-                            Text("Discard")
+                            Text(stringResource(R.string.common_action_discard))
                         }
                     }
                 },
@@ -1493,11 +1490,13 @@ fun LiveTrackingScreen(
         unsupportedSmsRecipientsOnStart?.let { phoneNumbers ->
             AlertDialog(
                 onDismissRequest = { unsupportedSmsRecipientsOnStart = null },
-                title = { Text("SMS alerts need updating") },
+                title = { Text(stringResource(R.string.live_tracking_sms_alerts_title)) },
                 text = {
                     Text(
-                        "SMS alerts are no longer supported for ${phoneNumbers.joinToString()}. " +
-                            "Update or remove these phone numbers before starting live tracking.",
+                        stringResource(
+                            R.string.live_tracking_sms_alerts_message,
+                            phoneNumbers.joinToString(),
+                        ),
                     )
                 },
                 confirmButton = {
@@ -1508,12 +1507,12 @@ fun LiveTrackingScreen(
                             page = LiveTrackingPage.SETUP
                         },
                     ) {
-                        Text("Update alerts")
+                        Text(stringResource(R.string.live_tracking_action_update_alerts))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { unsupportedSmsRecipientsOnStart = null }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                 },
             )

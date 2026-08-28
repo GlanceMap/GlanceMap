@@ -22,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 
 @Composable
 internal fun ColumnScope.LoginJoinContent(
@@ -47,7 +49,7 @@ internal fun ColumnScope.LoginJoinContent(
 
     HeaderRow(onBack = onBack) {
         Text(
-            text = "Live tracking setup",
+            text = stringResource(R.string.live_tracking_setup_title),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.weight(1f),
         )
@@ -57,23 +59,23 @@ internal fun ColumnScope.LoginJoinContent(
         scrollState = scrollState,
         contentSpacing = contentSpacing,
     ) {
-        TrackingPanel(title = "Private group") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_private_group_title)) {
             Text(
-                text = "Connect to an existing group or create a new private group.",
+                text = stringResource(R.string.live_tracking_setup_description),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
                 value = group,
                 onValueChange = onGroupChange,
-                label = { Text("Group") },
+                label = { Text(stringResource(R.string.live_tracking_group_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             PasswordField(
                 value = participantPassword,
                 onValueChange = onParticipantPasswordChange,
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.live_tracking_password_label)) },
                 isVisible = isPasswordVisible,
                 onVisibilityChange = { isPasswordVisible = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -85,8 +87,8 @@ internal fun ColumnScope.LoginJoinContent(
             ) {
                 Text(
                     when {
-                        isLoginJoinLoading -> "Checking"
-                        else -> "Connect"
+                        isLoginJoinLoading -> stringResource(R.string.live_tracking_action_checking)
+                        else -> stringResource(R.string.live_tracking_action_connect)
                     },
                 )
             }
@@ -112,14 +114,16 @@ internal fun ColumnScope.LoginJoinContent(
     if (showCreateGroupDialog) {
         AlertDialog(
             onDismissRequest = onDismissCreateGroupDialog,
-            title = { Text("Create group?") },
+            title = { Text(stringResource(R.string.live_tracking_create_group_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This group does not exist yet. Type the password again to create it.")
+                    Text(stringResource(R.string.live_tracking_create_group_message))
                     PasswordField(
                         value = createGroupPasswordConfirmation,
                         onValueChange = onCreateGroupPasswordConfirmationChange,
-                        label = { Text("Password confirmation") },
+                        label = {
+                            Text(stringResource(R.string.live_tracking_password_confirmation_label))
+                        },
                         isVisible = isPasswordConfirmationVisible,
                         onVisibilityChange = { isPasswordConfirmationVisible = it },
                         modifier = Modifier.fillMaxWidth(),
@@ -131,12 +135,12 @@ internal fun ColumnScope.LoginJoinContent(
                     onClick = onConfirmCreateGroup,
                     enabled = createGroupPasswordConfirmation.isNotBlank(),
                 ) {
-                    Text("Create group")
+                    Text(stringResource(R.string.live_tracking_action_create_group))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = onDismissCreateGroupDialog) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_action_cancel))
                 }
             },
         )

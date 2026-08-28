@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
 import com.glancemap.glancemapcompanionapp.ui.theme.GlanceMapTheme
@@ -62,18 +64,14 @@ class PrivacyPolicyActivity : ComponentActivity() {
             document: LegalDocument,
         ): Intent =
             Intent(context, PrivacyPolicyActivity::class.java).apply {
-                putExtra(EXTRA_DOCUMENT_BUTTON_LABEL, document.buttonLabel)
-                putExtra(EXTRA_DOCUMENT_TITLE, document.documentTitle)
-                putExtra(EXTRA_DOCUMENT_SECONDARY_LABEL, document.secondaryLabel)
                 putExtra(EXTRA_DOCUMENT_ASSET_PATH, document.assetPath)
-                putExtra(EXTRA_SHOW_PRIVACY_CONTACT, document.showPrivacyContact)
             }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val document = intent.toLegalDocumentOrNull()
-        title = document?.documentTitle ?: "Credits & Legal"
+        title = document?.let { getString(it.documentTitleResId) } ?: getString(R.string.settings_credits_legal_title)
 
         setContent {
             GlanceMapTheme {
@@ -125,11 +123,11 @@ private fun CreditsAndLegalScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_content_description_back),
                 )
             }
             Text(
-                text = "Credits & Legal",
+                text = stringResource(R.string.settings_credits_legal_title),
                 style = MaterialTheme.typography.titleLarge,
             )
         }
@@ -149,11 +147,11 @@ private fun CreditsAndLegalScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = document.buttonLabel,
+                            text = stringResource(document.buttonLabelResId),
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            text = document.secondaryLabel,
+                            text = stringResource(document.secondaryLabelResId),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -204,11 +202,11 @@ private fun LegalDocumentScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_content_description_back),
                 )
             }
             Text(
-                text = document.documentTitle,
+                text = stringResource(document.documentTitleResId),
                 style = MaterialTheme.typography.titleLarge,
             )
         }
@@ -221,7 +219,7 @@ private fun LegalDocumentScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = document.secondaryLabel,
+                text = stringResource(document.secondaryLabelResId),
                 style = MaterialTheme.typography.bodyMedium,
             )
             SelectionContainer {
@@ -237,7 +235,7 @@ private fun LegalDocumentScreen(
                     onClick = { openPrivacyContactEmail(context) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Email privacy contact")
+                    Text(stringResource(R.string.settings_privacy_contact_action))
                 }
             }
         }
@@ -262,9 +260,9 @@ private fun buildAppVersionLabel(context: Context): String =
             )
         val versionName = packageInfo.versionName ?: "unknown"
         val versionCode = PackageInfoCompat.getLongVersionCode(packageInfo)
-        "Version $versionName ($versionCode)"
+        context.getString(R.string.settings_version, versionName, versionCode)
     }.getOrElse {
-        "Version unknown"
+        context.getString(R.string.settings_version_unknown)
     }
 
 private fun loadAssetDocumentText(
@@ -277,7 +275,7 @@ private fun loadAssetDocumentText(
             .bufferedReader()
             .use { it.readText() }
     }.getOrElse {
-        "Unable to load this document."
+        context.getString(R.string.settings_legal_document_load_error)
     }
 
 private fun openPrivacyContactEmail(context: Context) {
@@ -286,7 +284,7 @@ private fun openPrivacyContactEmail(context: Context) {
             Intent.ACTION_SENDTO,
             Uri.parse("mailto:${TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL}"),
         ).apply {
-            putExtra(Intent.EXTRA_SUBJECT, "GlanceMap privacy question")
+            putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.settings_privacy_contact_email_subject))
         }
 
     runCatching {
@@ -304,9 +302,9 @@ private fun companionTonalIconButtonColors() =
     )
 
 private data class LegalDocument(
-    val buttonLabel: String,
-    val documentTitle: String,
-    val secondaryLabel: String,
+    @StringRes val buttonLabelResId: Int,
+    @StringRes val documentTitleResId: Int,
+    @StringRes val secondaryLabelResId: Int,
     val assetPath: String,
     val showPrivacyContact: Boolean,
 )
@@ -314,28 +312,12 @@ private data class LegalDocument(
 private fun Intent.toLegalDocumentOrNull(): LegalDocument? {
     val assetPath = getStringExtra(EXTRA_DOCUMENT_ASSET_PATH).orEmpty()
     if (assetPath.isBlank()) return null
-    val buttonLabel = getStringExtra(EXTRA_DOCUMENT_BUTTON_LABEL).orEmpty().ifBlank { "Privacy Policy" }
-    val documentTitle = getStringExtra(EXTRA_DOCUMENT_TITLE).orEmpty().ifBlank { buttonLabel }
-    val secondaryLabel =
-        getStringExtra(EXTRA_DOCUMENT_SECONDARY_LABEL)
-            .orEmpty()
-            .ifBlank { "Data access, sharing and retention" }
-    return LegalDocument(
-        buttonLabel = buttonLabel,
-        documentTitle = documentTitle,
-        secondaryLabel = secondaryLabel,
-        assetPath = assetPath,
-        showPrivacyContact = getBooleanExtra(EXTRA_SHOW_PRIVACY_CONTACT, false),
-    )
+    return COMPANION_CREDITS_AND_LEGAL_DOCUMENTS.firstOrNull { it.assetPath == assetPath }
 }
 
 private const val PRIVACY_POLICY_ASSET_PATH = "PRIVACY_POLICY.md"
 private const val CREDITS_AND_THANKS_ASSET_PATH = "CREDITS_AND_THANKS.md"
-private const val EXTRA_DOCUMENT_BUTTON_LABEL = "document_button_label"
-private const val EXTRA_DOCUMENT_TITLE = "document_title"
-private const val EXTRA_DOCUMENT_SECONDARY_LABEL = "document_secondary_label"
 private const val EXTRA_DOCUMENT_ASSET_PATH = "document_asset_path"
-private const val EXTRA_SHOW_PRIVACY_CONTACT = "show_privacy_contact"
 private const val SAFETY_AND_LIMITATIONS_ASSET_PATH = "SAFETY_AND_LIMITATIONS.md"
 private const val AI_ACKNOWLEDGEMENT_ASSET_PATH = "AI_ACKNOWLEDGEMENT.md"
 private const val COMPANION_EXTERNAL_SOURCES_ASSET_PATH = "COMPANION_EXTERNAL_SOURCES.md"
@@ -352,100 +334,100 @@ private const val SERVICE_TERMS_AND_API_USAGE_ASSET_PATH = "SERVICE_TERMS_AND_AP
 private val COMPANION_CREDITS_AND_LEGAL_DOCUMENTS =
     listOf(
         LegalDocument(
-            buttonLabel = "Privacy Policy",
-            documentTitle = "Privacy Policy",
-            secondaryLabel = "Data access, sharing and retention",
+            buttonLabelResId = R.string.settings_legal_privacy_policy_label,
+            documentTitleResId = R.string.settings_legal_privacy_policy_label,
+            secondaryLabelResId = R.string.settings_legal_privacy_policy_description,
             assetPath = PRIVACY_POLICY_ASSET_PATH,
             showPrivacyContact = true,
         ),
         LegalDocument(
-            buttonLabel = "Safety & Limits",
-            documentTitle = "Safety & Limitations",
-            secondaryLabel = "Map/theme errors and personal responsibility",
+            buttonLabelResId = R.string.settings_legal_safety_limits_label,
+            documentTitleResId = R.string.settings_legal_safety_limitations_title,
+            secondaryLabelResId = R.string.settings_legal_safety_limits_description,
             assetPath = SAFETY_AND_LIMITATIONS_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Credits & Thanks",
-            documentTitle = "Credits & Thanks",
-            secondaryLabel = "Main contributors and projects",
+            buttonLabelResId = R.string.settings_legal_credits_thanks_label,
+            documentTitleResId = R.string.settings_legal_credits_thanks_label,
+            secondaryLabelResId = R.string.settings_legal_credits_thanks_description,
             assetPath = CREDITS_AND_THANKS_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "AI Acknowledgment",
-            documentTitle = "AI & Creator Acknowledgment",
-            secondaryLabel = "Human creators and transparency",
+            buttonLabelResId = R.string.settings_legal_ai_acknowledgment_label,
+            documentTitleResId = R.string.settings_legal_ai_acknowledgment_title,
+            secondaryLabelResId = R.string.settings_legal_ai_acknowledgment_description,
             assetPath = AI_ACKNOWLEDGEMENT_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Companion Sources",
-            documentTitle = "Companion External Sources",
-            secondaryLabel = "Map, GPX and refuge websites",
+            buttonLabelResId = R.string.settings_legal_companion_sources_label,
+            documentTitleResId = R.string.settings_legal_companion_sources_title,
+            secondaryLabelResId = R.string.settings_legal_companion_sources_description,
             assetPath = COMPANION_EXTERNAL_SOURCES_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Compliance Status",
-            documentTitle = "Compliance Status",
-            secondaryLabel = "Release checklist and pending items",
+            buttonLabelResId = R.string.settings_legal_compliance_status_label,
+            documentTitleResId = R.string.settings_legal_compliance_status_label,
+            secondaryLabelResId = R.string.settings_legal_compliance_status_description,
             assetPath = COMPLIANCE_STATUS_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Open Source Notices",
-            documentTitle = "Open Source Notices",
-            secondaryLabel = "Libraries and OSS licenses",
+            buttonLabelResId = R.string.settings_legal_open_source_notices_label,
+            documentTitleResId = R.string.settings_legal_open_source_notices_label,
+            secondaryLabelResId = R.string.settings_legal_open_source_notices_description,
             assetPath = THIRD_PARTY_NOTICES_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "OpenHiking Theme",
-            documentTitle = "OpenHiking Theme",
-            secondaryLabel = "Bundled hiking theme details",
+            buttonLabelResId = R.string.settings_legal_open_hiking_theme_label,
+            documentTitleResId = R.string.settings_legal_open_hiking_theme_label,
+            secondaryLabelResId = R.string.settings_legal_open_hiking_theme_description,
             assetPath = OPENHIKING_THEME_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "French Kiss Theme",
-            documentTitle = "French Kiss Theme",
-            secondaryLabel = "Bundled IGN-style theme details",
+            buttonLabelResId = R.string.settings_legal_french_kiss_theme_label,
+            documentTitleResId = R.string.settings_legal_french_kiss_theme_label,
+            secondaryLabelResId = R.string.settings_legal_french_kiss_theme_description,
             assetPath = FRENCH_KISS_THEME_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Tiramisu Theme",
-            documentTitle = "Tiramisu Theme",
-            secondaryLabel = "Bundled cycle/hike theme details",
+            buttonLabelResId = R.string.settings_legal_tiramisu_theme_label,
+            documentTitleResId = R.string.settings_legal_tiramisu_theme_label,
+            secondaryLabelResId = R.string.settings_legal_tiramisu_theme_description,
             assetPath = TIRAMISU_THEME_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Hike, Ride & Sight",
-            documentTitle = "Hike, Ride & Sight Theme",
-            secondaryLabel = "Bundled overlay-rich theme details",
+            buttonLabelResId = R.string.settings_legal_hike_ride_sight_label,
+            documentTitleResId = R.string.settings_legal_hike_ride_sight_title,
+            secondaryLabelResId = R.string.settings_legal_hike_ride_sight_description,
             assetPath = HIKE_RIDE_SIGHT_THEME_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Voluntary Theme",
-            documentTitle = "Voluntary Theme",
-            secondaryLabel = "Bundled OS-inspired theme details",
+            buttonLabelResId = R.string.settings_legal_voluntary_theme_label,
+            documentTitleResId = R.string.settings_legal_voluntary_theme_label,
+            secondaryLabelResId = R.string.settings_legal_voluntary_theme_description,
             assetPath = VOLUNTARY_THEME_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Data & Asset Attribution",
-            documentTitle = "Data & Asset Attribution",
-            secondaryLabel = "OSM, Elevate, bundled themes, DEM, icons",
+            buttonLabelResId = R.string.settings_legal_data_attribution_label,
+            documentTitleResId = R.string.settings_legal_data_attribution_label,
+            secondaryLabelResId = R.string.settings_legal_data_attribution_description,
             assetPath = DATA_AND_ASSET_ATTRIBUTION_ASSET_PATH,
             showPrivacyContact = false,
         ),
         LegalDocument(
-            buttonLabel = "Service Terms & API Usage",
-            documentTitle = "Service Terms & API Usage",
-            secondaryLabel = "Provider terms and usage limits",
+            buttonLabelResId = R.string.settings_legal_service_terms_label,
+            documentTitleResId = R.string.settings_legal_service_terms_label,
+            secondaryLabelResId = R.string.settings_legal_service_terms_description,
             assetPath = SERVICE_TERMS_AND_API_USAGE_ASSET_PATH,
             showPrivacyContact = false,
         ),
