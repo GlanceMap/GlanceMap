@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PrivacyPolicyActivity
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.RefugesImportDialog
 import com.glancemap.glancemapcompanionapp.RoutingDownloadDialog
 import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardScreen
@@ -190,51 +193,81 @@ fun FilePickerScreen(
         }
     }
 
+    val topographicMapsCategory = stringResource(R.string.map_sources_category_topographic)
+    val nonTopographicMapsCategory = stringResource(R.string.map_sources_category_non_topographic)
+    val openAndroMapsLabel = stringResource(R.string.map_source_open_andro_maps)
+    val openAndroMapsGuidance = stringResource(R.string.map_source_open_andro_maps_guidance)
+    val openHikingLabel = stringResource(R.string.map_source_open_hiking)
+    val bbbikeLabel = stringResource(R.string.map_source_bbbike)
+    val bbbikeGuidance = stringResource(R.string.map_source_bbbike_guidance)
+    val vectorCityLabel = stringResource(R.string.map_source_vector_city)
+    val alternativasLibresLabel = stringResource(R.string.map_source_alternativas_libres)
+    val openLegendPdfLabel = stringResource(R.string.map_legend_action_open_pdf)
+    val openThemeWebsiteLabel = stringResource(R.string.map_legend_action_open_website)
+    val openDayLegendPdfLabel = stringResource(R.string.map_legend_action_open_day_pdf)
+    val openNightLegendPdfLabel = stringResource(R.string.map_legend_action_open_night_pdf)
+    val openThemeDiscussionLabel = stringResource(R.string.map_legend_action_open_discussion)
     val mapDownloadSources =
-        remember {
+        remember(
+            topographicMapsCategory,
+            nonTopographicMapsCategory,
+            openAndroMapsLabel,
+            openAndroMapsGuidance,
+            openHikingLabel,
+            bbbikeLabel,
+            bbbikeGuidance,
+            vectorCityLabel,
+            alternativasLibresLabel,
+        ) {
             listOf(
                 ExternalDownloadSource(
-                    category = "Topographic maps",
-                    label = "OpenAndroMaps (recommended, worldwide)",
+                    category = topographicMapsCategory,
+                    label = openAndroMapsLabel,
                     url = "https://www.openandromaps.org/en/downloads",
-                    guidance = "Map downloads > select your area > Download V5 Map: Karte/Map.",
+                    guidance = openAndroMapsGuidance,
                 ),
                 ExternalDownloadSource(
-                    category = "Topographic maps",
-                    label = "OpenHiking (Europe)",
+                    category = topographicMapsCategory,
+                    label = openHikingLabel,
                     url = "https://www.openhiking.eu/en/downloads/mapsforge-maps",
                 ),
                 ExternalDownloadSource(
-                    category = "Non-topographic maps",
-                    label = "BBBike",
+                    category = nonTopographicMapsCategory,
+                    label = bbbikeLabel,
                     url = "https://extract.bbbike.org/?format=mapsforge-osm.zip",
-                    guidance = "Generate a map for your area, then choose format: Mapsforge OSM.",
+                    guidance = bbbikeGuidance,
                 ),
                 ExternalDownloadSource(
-                    category = "Non-topographic maps",
-                    label = "Vector City",
+                    category = nonTopographicMapsCategory,
+                    label = vectorCityLabel,
                     url = "https://vector.city/",
                 ),
                 ExternalDownloadSource(
-                    category = "Non-topographic maps",
-                    label = "Alternativas Libres",
+                    category = nonTopographicMapsCategory,
+                    label = alternativasLibresLabel,
                     url = "https://alternativaslibres.org/en/downloads-mf.php",
                 ),
             )
         }
     val themeLegendSources =
-        remember {
+        remember(
+            openLegendPdfLabel,
+            openThemeWebsiteLabel,
+            openDayLegendPdfLabel,
+            openNightLegendPdfLabel,
+            openThemeDiscussionLabel,
+        ) {
             listOf(
                 ThemeLegendSource(
                     label = "Elevate",
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open legend PDF",
+                                label = openLegendPdfLabel,
                                 url = "https://www.openandromaps.org/wp-content/users/tobias/Elevate.pdf",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://www.openandromaps.org/en/legend/elevate-mountain-hike-theme",
                             ),
                         ),
@@ -244,11 +277,11 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open legend PDF",
+                                label = openLegendPdfLabel,
                                 url = "https://www.openandromaps.org/wp-content/users/tobias/Elevate.pdf",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://www.senotto.de/Tipps_Tricks/GPS/OAM_Winter/OAM_Elevate_Winter.htm",
                             ),
                         ),
@@ -258,11 +291,11 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open legend PDF",
+                                label = openLegendPdfLabel,
                                 url = "http://j.seydoux.free.fr/locus/Hike,%20Ride%20&%20Sight!.pdf",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "http://j.seydoux.free.fr/locus/hrs.html",
                             ),
                         ),
@@ -272,13 +305,13 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open legend PDF",
+                                label = openLegendPdfLabel,
                                 url =
                                     "https://ftp.gwdg.de/pub/misc/openstreetmap/openandromaps/" +
                                         "themes/voluntary/downloads/Voluntary%20Key.pdf",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://voluntary.nichesite.org/",
                             ),
                         ),
@@ -288,19 +321,19 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open day legend PDF",
+                                label = openDayLegendPdfLabel,
                                 url =
                                     "https://drive.google.com/uc?export=download&" +
                                         "id=1PE0eBzJnGMbDs9a_V_uhQQa0db5RK-Zs",
                             ),
                             ThemeLegendLink(
-                                label = "Open night legend PDF",
+                                label = openNightLegendPdfLabel,
                                 url =
                                     "https://drive.google.com/uc?export=download&" +
                                         "id=1OwAeuBtYN-XxjGkpOs3SrdYAUwYXDets",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme discussion",
+                                label = openThemeDiscussionLabel,
                                 url = "https://forum.locusmap.eu/index.php?topic=7000.msg59948#msg59948",
                             ),
                         ),
@@ -310,7 +343,7 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://www.openhiking.eu/en/downloads/mapsforge-maps",
                             ),
                         ),
@@ -320,7 +353,7 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://xctrack.org/AboutMaps.html",
                             ),
                         ),
@@ -330,13 +363,13 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open legend PDF",
+                                label = openLegendPdfLabel,
                                 url =
                                     "https://raw.githubusercontent.com/IgorMagellan/Tiramisu/main/" +
                                         "Tiramisu_3_Legend.pdf",
                             ),
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url = "https://github.com/IgorMagellan/Tiramisu",
                             ),
                         ),
@@ -346,7 +379,7 @@ fun FilePickerScreen(
                     links =
                         listOf(
                             ThemeLegendLink(
-                                label = "Open theme website",
+                                label = openThemeWebsiteLabel,
                                 url =
                                     "https://github.com/mapsforge/mapsforge/tree/master/" +
                                         "mapsforge-themes/src/main/resources/assets",
@@ -843,12 +876,13 @@ fun FilePickerScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to home",
+                                contentDescription =
+                                    stringResource(R.string.common_back_to_home_content_description),
                                 modifier = Modifier.size(adaptive.helpIconSize),
                             )
                         }
                         Text(
-                            text = "Send to Watch",
+                            text = stringResource(R.string.transfer_title_send_to_watch),
                             style =
                                 if (isCompactScreen) {
                                     MaterialTheme.typography.titleSmall
@@ -870,7 +904,8 @@ fun FilePickerScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription = "Quick Guide",
+                                contentDescription =
+                                    stringResource(R.string.common_quick_guide_content_description),
                                 modifier = Modifier.size(adaptive.helpIconSize),
                             )
                         }
@@ -947,13 +982,13 @@ fun FilePickerScreen(
                             Spacer(modifier = Modifier.height(adaptive.sectionGap))
 
                             SectionCard(
-                                title = "2. Select files (.gpx / .map / .poi / .rd5 / .hgt / .hgt.gz)",
+                                title = stringResource(R.string.transfer_section_select_files_title),
                                 headerAction = {
                                     TextButton(
                                         onClick = { viewModel.clearSelectedFiles() },
                                         enabled = uiState.selectedFileUris.isNotEmpty() && !uiLocked,
                                     ) {
-                                        Text("Clear")
+                                        Text(stringResource(R.string.common_action_clear))
                                     }
                                 },
                                 modifier =
@@ -974,7 +1009,7 @@ fun FilePickerScreen(
                                         enabled = !uiLocked,
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
-                                        Text("Select file(s)")
+                                        Text(stringResource(R.string.transfer_action_select_files))
                                     }
                                     SelectedFilesCompactSummary(
                                         fileNames = uiState.selectedFileDisplayNames,
@@ -986,7 +1021,7 @@ fun FilePickerScreen(
                             Spacer(modifier = Modifier.height(adaptive.sectionGap))
 
                             SectionCard(
-                                title = "3. Select watch",
+                                title = stringResource(R.string.transfer_section_select_watch_title),
                                 headerAction = {
                                     IconButton(
                                         onClick = { viewModel.findWatchNodes() },
@@ -995,7 +1030,10 @@ fun FilePickerScreen(
                                     ) {
                                         Icon(
                                             Icons.Default.Refresh,
-                                            contentDescription = "Refresh Watch List",
+                                            contentDescription =
+                                                stringResource(
+                                                    R.string.common_refresh_watch_list_content_description,
+                                                ),
                                             modifier = Modifier.size(18.dp),
                                         )
                                     }
@@ -1015,7 +1053,10 @@ fun FilePickerScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     if (uiState.availableWatches.isEmpty()) {
-                                        Text("No watches found.", style = MaterialTheme.typography.bodySmall)
+                                        Text(
+                                            stringResource(R.string.transfer_no_watches_found),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
                                     } else {
                                         Column(
                                             modifier = Modifier.fillMaxWidth(),
@@ -1174,7 +1215,7 @@ private fun SelectedFilesCompactSummary(
 
     if (fileNames.isEmpty()) {
         Text(
-            text = "No file selected",
+            text = stringResource(R.string.transfer_no_file_selected),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = modifier,
@@ -1199,7 +1240,13 @@ private fun SelectedFilesCompactSummary(
                 onClick = { showAllFiles = true },
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
             ) {
-                Text("+${fileNames.size - 1} more")
+                Text(
+                    pluralStringResource(
+                        R.plurals.transfer_additional_files,
+                        fileNames.size - 1,
+                        fileNames.size - 1,
+                    ),
+                )
             }
         }
     }
@@ -1208,7 +1255,15 @@ private fun SelectedFilesCompactSummary(
         val scrollState = rememberScrollState()
         AlertDialog(
             onDismissRequest = { showAllFiles = false },
-            title = { Text("${fileNames.size} selected files") },
+            title = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.transfer_selected_files_title,
+                        fileNames.size,
+                        fileNames.size,
+                    ),
+                )
+            },
             text = {
                 Box(
                     modifier =
@@ -1226,7 +1281,12 @@ private fun SelectedFilesCompactSummary(
                     ) {
                         fileNames.forEachIndexed { index, fileName ->
                             Text(
-                                text = "${index + 1}. $fileName",
+                                text =
+                                    stringResource(
+                                        R.string.transfer_selected_file_row,
+                                        index + 1,
+                                        fileName,
+                                    ),
                                 style = MaterialTheme.typography.bodySmall,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1245,7 +1305,7 @@ private fun SelectedFilesCompactSummary(
             },
             confirmButton = {
                 TextButton(onClick = { showAllFiles = false }) {
-                    Text("Close")
+                    Text(stringResource(R.string.common_action_close))
                 }
             },
         )
@@ -1313,16 +1373,18 @@ private fun CompanionHomeScreen(
                 Icon(
                     imageVector = Icons.Filled.BugReport,
                     contentDescription =
-                        if (debugCaptureActive) {
-                            "Stop phone debug capture"
-                        } else {
-                            "Start phone debug capture"
-                        },
+                        stringResource(
+                            if (debugCaptureActive) {
+                                R.string.home_debug_capture_stop_content_description
+                            } else {
+                                R.string.home_debug_capture_start_content_description
+                            },
+                        ),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
             Text(
-                text = "GlanceMap Companion",
+                text = stringResource(R.string.home_title),
                 style =
                     if (adaptive.isCompactScreen) {
                         MaterialTheme.typography.titleLarge
@@ -1341,7 +1403,8 @@ private fun CompanionHomeScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = "Quick Guide",
+                    contentDescription =
+                        stringResource(R.string.common_quick_guide_content_description),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
@@ -1394,11 +1457,11 @@ private fun CompanionHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = "Transfer files",
+                            text = stringResource(R.string.transfer_title_send_to_watch),
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "Maps, GPX, POI and routing files",
+                            text = stringResource(R.string.transfer_send_to_watch_description),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -1441,20 +1504,20 @@ private fun CompanionHomeScreen(
                 )
                 HomeActionButton(
                     icon = Icons.Filled.SpatialTracking,
-                    title = "Live Tracking",
-                    description = "Share your GPS location",
+                    title = stringResource(R.string.live_tracking_title),
+                    description = stringResource(R.string.live_tracking_home_description),
                     onClick = onOpenLiveTracking,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.Map,
-                    title = "Map Legend",
-                    description = "Open theme legends and reference pages",
+                    title = stringResource(R.string.map_legend_title),
+                    description = stringResource(R.string.map_legend_home_description),
                     onClick = onOpenMapLegend,
                 )
                 HomeActionButton(
                     icon = Icons.Filled.Gavel,
-                    title = "Credits & Legal",
-                    description = "Privacy, licences and acknowledgements",
+                    title = stringResource(R.string.settings_credits_legal_title),
+                    description = stringResource(R.string.settings_credits_legal_home_description),
                     onClick = onOpenCreditsLegal,
                 )
             }
@@ -2163,12 +2226,12 @@ private fun CompanionMapLegendScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to home",
+                    contentDescription = stringResource(R.string.common_back_to_home_content_description),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
             Text(
-                text = "Map Legend",
+                text = stringResource(R.string.map_legend_title),
                 style =
                     if (adaptive.isCompactScreen) {
                         MaterialTheme.typography.titleSmall
@@ -2187,7 +2250,7 @@ private fun CompanionMapLegendScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = "Quick Guide",
+                    contentDescription = stringResource(R.string.common_quick_guide_content_description),
                     modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
@@ -2202,7 +2265,7 @@ private fun CompanionMapLegendScreen(
             verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
         ) {
             SectionCard(
-                title = "Theme legend",
+                title = stringResource(R.string.map_legend_theme_label),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -2210,7 +2273,7 @@ private fun CompanionMapLegendScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "Select a bundled theme and open its legend or reference page.",
+                        text = stringResource(R.string.map_legend_intro),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -2226,7 +2289,10 @@ private fun CompanionMapLegendScreen(
                             )
                             Icon(
                                 imageVector = Icons.Default.UnfoldMore,
-                                contentDescription = "Select theme",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.map_legend_select_theme_content_description,
+                                    ),
                             )
                         }
                         DropdownMenu(
@@ -2246,7 +2312,7 @@ private fun CompanionMapLegendScreen(
                     }
                     if (selectedThemeLegend.links.isEmpty()) {
                         Text(
-                            text = "No public legend link found yet for this theme.",
+                            text = stringResource(R.string.map_legend_no_public_link),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

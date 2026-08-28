@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +61,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,8 +73,10 @@ import androidx.compose.ui.unit.em
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
+import com.glancemap.shared.transfer.TransferDataLayerContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -105,23 +110,30 @@ internal fun DebugCaptureDialog(
         title = {
             Text(
                 if (debugCaptureState.active) {
-                    "Phone debug capture"
+                    stringResource(R.string.home_debug_capture_active_title)
                 } else {
-                    "Start phone debug capture?"
+                    stringResource(R.string.home_debug_capture_start_title)
                 },
             )
         },
         text = {
             Text(
                 if (debugCaptureState.active) {
-                    "Recording is active on the phone. Stop when you are done and an email draft will open for Glancemap@protonmail.com.\n\nCaptured lines: ${debugCaptureState.bufferedLines}"
+                    pluralStringResource(
+                        R.plurals.home_debug_capture_active_message,
+                        debugCaptureState.bufferedLines,
+                        debugCaptureState.bufferedLines,
+                        TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL,
+                    )
                 } else {
-                    buildString {
-                        append("This records redacted companion logs for transfers, route import, Mission Plan, weather, and Live Hike on the phone. It excludes GPX text, route names, coordinates, mission notes, dates/times, and live metric values. Start it before reproducing the issue, then stop it to open an email draft to Glancemap@protonmail.com.")
+                    stringResource(
                         if (hasSavedPhoneRecording) {
-                            append("\n\nA saved phone recording is available and can be resent.")
-                        }
-                    }
+                            R.string.home_debug_capture_start_message_saved
+                        } else {
+                            R.string.home_debug_capture_start_message
+                        },
+                        TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL,
+                    )
                 },
             )
         },
@@ -133,7 +145,7 @@ internal fun DebugCaptureDialog(
                         viewModel.stopPhoneDebugCaptureAndSend(context)
                     },
                 ) {
-                    Text("Stop & email")
+                    Text(stringResource(R.string.home_debug_capture_stop_email_action))
                 }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -144,7 +156,7 @@ internal fun DebugCaptureDialog(
                                 viewModel.sendLastPhoneDebugCapture(context)
                             },
                         ) {
-                            Text("Send last recording")
+                            Text(stringResource(R.string.home_debug_capture_send_last_action))
                         }
                     }
                     TextButton(
@@ -153,14 +165,22 @@ internal fun DebugCaptureDialog(
                             viewModel.startPhoneDebugCapture(context)
                         },
                     ) {
-                        Text("Start recording")
+                        Text(stringResource(R.string.home_debug_capture_start_action))
                     }
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(if (debugCaptureState.active) "Keep recording" else "Cancel")
+                Text(
+                    stringResource(
+                        if (debugCaptureState.active) {
+                            R.string.home_debug_capture_keep_recording
+                        } else {
+                            R.string.common_action_cancel
+                        },
+                    ),
+                )
             }
         },
     )
@@ -184,37 +204,37 @@ internal fun ManagePhoneFilesDialog(
         onDismissRequest = {
             if (!isClearingPhoneStoredFiles) onDismiss()
         },
-        title = { Text("Manage downloaded files") },
+        title = { Text(stringResource(R.string.transfer_action_manage_downloads)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    "Generated POI and routing files stay in the companion app until you clear them.",
+                    stringResource(R.string.transfer_manage_downloads_message),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (isLoadingPhoneStoredFiles) {
                     Text(
-                        "Loading phone files...",
+                        stringResource(R.string.transfer_manage_loading_phone_files),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else {
                     PhoneStoredFilesSummaryRow(
-                        label = "Imported POI",
+                        label = stringResource(R.string.transfer_manage_imported_poi_label),
                         group = phoneStoredFilesSummary.poi,
                         context = context,
                     )
                     PhoneStoredFilesSummaryRow(
-                        label = "Routing packs (.rd5)",
+                        label = stringResource(R.string.transfer_manage_routing_packs_label),
                         group = phoneStoredFilesSummary.routing,
                         context = context,
                     )
                 }
                 if (isClearingPhoneStoredFiles) {
                     Text(
-                        "Clearing phone files...",
+                        stringResource(R.string.transfer_manage_clearing_phone_files),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -249,7 +269,7 @@ internal fun ManagePhoneFilesDialog(
                             phoneStoredFilesSummary.poi.fileCount > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear POI")
+                    Text(stringResource(R.string.transfer_manage_clear_poi))
                 }
                 OutlinedButton(
                     onClick = {
@@ -281,7 +301,7 @@ internal fun ManagePhoneFilesDialog(
                             phoneStoredFilesSummary.routing.fileCount > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear routing")
+                    Text(stringResource(R.string.transfer_manage_clear_routing))
                 }
                 Button(
                     onClick = {
@@ -316,7 +336,7 @@ internal fun ManagePhoneFilesDialog(
                             ),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear all")
+                    Text(stringResource(R.string.transfer_manage_clear_all))
                 }
             }
         },
@@ -325,7 +345,7 @@ internal fun ManagePhoneFilesDialog(
                 onClick = onDismiss,
                 enabled = !isClearingPhoneStoredFiles,
             ) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -339,124 +359,14 @@ internal fun FilePickerQuickGuideDialog(
 ) {
     val pages =
         remember(mode) {
-            when (mode) {
-                QuickGuideMode.GENERAL ->
-                    listOf(
-                        QuickGuidePage(
-                            title = "Welcome to GlanceMap Companion",
-                            intro = WELCOME_WATCH_DOWNLOAD_INTRO,
-                            lines =
-                                listOf(
-                                    WELCOME_SEND_TO_WATCH_LINE,
-                                    WELCOME_LIVE_TRACKING_LINE,
-                                    WELCOME_OFFLINE_LINE,
-                                    QUICK_GUIDE_BOOK_ICON_LINE,
-                                ),
-                        ),
-                    )
-
-                QuickGuideMode.TRANSFER ->
-                    listOf(
-                        QuickGuidePage(
-                            title = "Get files ready",
-                            lines =
-                                listOf(
-                                    "Use 1. Download to get Mapsforge OSM .map, POI, GPX, or routing files.",
-                                    "Tap 2. Select file(s) to add files from the phone:",
-                                    ".map = offline map",
-                                    ".poi = points of interest",
-                                    ".gpx = route/track",
-                                    ".rd5 = offline routing tile",
-                                    ".hgt / .hgt.zip / .hgt.gz = elevation data for hill shading / slope",
-                                ),
-                        ),
-                        QuickGuidePage(
-                            title = "Prepare the watch",
-                            lines =
-                                listOf(
-                                    "Open GlanceMap on the watch and keep it near the phone.",
-                                    "For large transfers, charge the watch and use the same Wi-Fi or phone hotspot.",
-                                    STAY_OPEN_GUIDE_LINE,
-                                    "Without Wi-Fi, Bluetooth can send files up to 50 MB.",
-                                ),
-                        ),
-                        QuickGuidePage(
-                            title = "POI & routing areas",
-                            lines =
-                                listOf(
-                                    "For POI and routing downloads, first choose the area you need.",
-                                    "POI downloads OSM points of interest.",
-                                    "Routing downloads data for creating GPX routes offline on the watch.",
-                                    "You can choose an area on the map, pick a region.",
-                                    "Refresh last import repeats the previous area.",
-                                ),
-                        ),
-                        QuickGuidePage(
-                            title = "Send",
-                            lines =
-                                listOf(
-                                    "Tap Send and keep phone and watch close until it finishes.",
-                                    "If it stops, send the same file again; it usually resumes " +
-                                        "from the partial file already on the watch.",
-                                    "History shows each transfer status.",
-                                ),
-                        ),
-                    )
-
-                QuickGuideMode.LIVE_TRACKING ->
-                    listOf(
-                        QuickGuidePage(
-                            title = "Get started",
-                            intro =
-                                "Live Tracking is provided by Arkluz. GlanceMap acts as the phone interface to configure it.",
-                            lines =
-                                listOf(
-                                    "Tap Set up live tracking.",
-                                    "Connect to an existing private group or create one.",
-                                    "Add your name, GPS update frequency, and safety alerts.",
-                                ),
-                        ),
-                        QuickGuidePage(
-                            title = "Share updates",
-                            lines =
-                                listOf(
-                                    "Optionally upload a GPX route or add a comment to send to your contacts.",
-                                    "Start tracking.",
-                                    "While tracking, you can modify GPX and share a new comment by clicking on \"Send update\".",
-                                ),
-                        ),
-                        QuickGuidePage(
-                            title = "Track links",
-                            lines =
-                                listOf(
-                                    "Participant link opens your own live track.",
-                                    "Group link opens the shared group map.",
-                                    "Use View & Share to open or share your live tracking links.",
-                                ),
-                        ),
-                    )
-
-                QuickGuideMode.MAP_LEGEND ->
-                    listOf(
-                        QuickGuidePage(
-                            title = "Map Legend",
-                            intro = "Use this area to open reference material for the map themes used by GlanceMap.",
-                            lines =
-                                listOf(
-                                    "Select the theme you use on the watch.",
-                                    "Open the legend PDF or reference page to understand symbols, colors, and paths.",
-                                    "These links are external references and may open in your browser.",
-                                ),
-                        ),
-                    )
-            }
+            quickGuidePages(mode)
         }
     var pageIndex by rememberSaveable { mutableStateOf(0) }
     var showLiveTrackingPrivacyDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveTrackingContactDialog by rememberSaveable { mutableStateOf(false) }
     val page = pages[pageIndex]
     val isWelcomePage = mode == QuickGuideMode.GENERAL
-    val dialogTitle = quickGuideDialogTitle(mode)
+    val dialogTitle = stringResource(quickGuideDialogTitleResId(mode))
     val showBodyTitle = !isWelcomePage && pages.size > 1
     val titleHeight =
         when {
@@ -522,7 +432,7 @@ internal fun FilePickerQuickGuideDialog(
             ) {
                 if (isWelcomePage) {
                     Text(
-                        text = page.title,
+                        text = stringResource(page.titleResId),
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
@@ -546,20 +456,23 @@ internal fun FilePickerQuickGuideDialog(
                                 IconButton(onClick = { showLiveTrackingPrivacyDialog = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.Gavel,
-                                        contentDescription = "Privacy policy",
+                                        contentDescription = stringResource(R.string.settings_privacy_policy_title),
                                     )
                                 }
                                 IconButton(onClick = { showLiveTrackingContactDialog = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.ContactMail,
-                                        contentDescription = "Contact and contributions",
+                                        contentDescription =
+                                            stringResource(
+                                                R.string.settings_contact_contributions_title,
+                                            ),
                                     )
                                 }
                             }
                         }
                         if (pages.size > 1 && mode != QuickGuideMode.LIVE_TRACKING) {
                             Text(
-                                "Step ${pageIndex + 1} of ${pages.size}",
+                                stringResource(R.string.quick_guide_step, pageIndex + 1, pages.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -593,28 +506,29 @@ internal fun FilePickerQuickGuideDialog(
                     ) {
                         if (showBodyTitle) {
                             Text(
-                                text = page.title,
+                                text = stringResource(page.titleResId),
                                 modifier = Modifier.fillMaxWidth(),
                                 style = MaterialTheme.typography.titleMedium,
                                 textAlign = TextAlign.Start,
                             )
                         }
                         page.intro?.let { intro ->
-                            if (intro == WELCOME_WATCH_DOWNLOAD_INTRO) {
-                                welcomeWatchDownloadIntroText()
-                            } else {
-                                Text(
-                                    text = intro,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign =
-                                        if (isWelcomePage) {
-                                            TextAlign.Center
-                                        } else {
-                                            TextAlign.Start
-                                        },
-                                )
+                            when (intro) {
+                                QuickGuideIntro.WelcomeDownload -> welcomeWatchDownloadIntroText()
+                                is QuickGuideIntro.Text -> {
+                                    Text(
+                                        text = stringResource(intro.textResId),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign =
+                                            if (isWelcomePage) {
+                                                TextAlign.Center
+                                            } else {
+                                                TextAlign.Start
+                                            },
+                                    )
+                                }
                             }
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -641,7 +555,7 @@ internal fun FilePickerQuickGuideDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
         confirmButton = {
@@ -651,7 +565,7 @@ internal fun FilePickerQuickGuideDialog(
                         onClick = { pageIndex -= 1 },
                         enabled = pageIndex > 0,
                     ) {
-                        Text("Back")
+                        Text(stringResource(R.string.common_action_back))
                     }
                 }
                 Button(
@@ -663,7 +577,15 @@ internal fun FilePickerQuickGuideDialog(
                         }
                     },
                 ) {
-                    Text(if (pageIndex == pages.lastIndex) "Done" else "Next")
+                    Text(
+                        stringResource(
+                            if (pageIndex == pages.lastIndex) {
+                                R.string.common_action_done
+                            } else {
+                                R.string.common_action_next
+                            },
+                        ),
+                    )
                 }
             }
         },
@@ -685,18 +607,18 @@ internal fun FilePickerQuickGuideDialog(
 private fun LiveTrackingPrivacyPolicyDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Privacy policy") },
+        title = { Text(stringResource(R.string.settings_privacy_policy_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Live Tracking is optional and uses Arkluz.")
-                Text("When tracking is active, GPS positions, group details, participant name, battery level, and optional GPX/comments are sent to Arkluz.")
-                Text("Notification and alert emails are saved locally for convenience and sent to Arkluz only when you configure them.")
-                Text("If the network is unavailable, GPS points may be stored locally for retry. Arkluz tracks are expected to be deleted after 7 days.")
+                Text(stringResource(R.string.live_tracking_privacy_intro))
+                Text(stringResource(R.string.live_tracking_privacy_tracking_data))
+                Text(stringResource(R.string.live_tracking_privacy_email_data))
+                Text(stringResource(R.string.live_tracking_privacy_offline_data))
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -707,27 +629,27 @@ private fun LiveTrackingContactDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Contact & contributions") },
+        title = { Text(stringResource(R.string.settings_contact_contributions_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Contact",
+                    text = stringResource(R.string.live_tracking_contact_action),
                     modifier = Modifier.clickable { openQuickGuideUrl(context, ARKLUZ_CONTACT_URL) },
                     style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Arkluz Website",
+                    text = stringResource(R.string.live_tracking_arkluz_website_action),
                     modifier = Modifier.clickable { openQuickGuideUrl(context, ARKLUZ_WEBSITE_URL) },
                     style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Text("Contributions: Jérôme Seydoux.")
+                Text(stringResource(R.string.live_tracking_contributions))
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )
@@ -735,66 +657,80 @@ private fun LiveTrackingContactDialog(onDismiss: () -> Unit) {
 
 @Composable
 private fun welcomeWatchDownloadIntroText() {
+    val (text, inlineContent) =
+        quickGuideInlineTextContent(
+            textResId = R.string.quick_guide_welcome_download_intro,
+            inlineIcons =
+                listOf(
+                    QuickGuideInlineIcon(
+                        id = GUIDE_DOWNLOAD_ICON_ID,
+                        imageVector = Icons.Filled.Download,
+                        contentDescriptionResId = R.string.quick_guide_download_icon_content_description,
+                    ),
+                ),
+        )
     Text(
-        text =
-            buildAnnotatedString {
-                append("Start on the watch and use ")
-                appendInlineContent(GUIDE_DOWNLOAD_ICON_ID, "[download]")
-                append(" to download offline maps.")
-            },
+        text = text,
         modifier = Modifier.fillMaxWidth(),
-        inlineContent = welcomeGuideIntroInlineContent(),
+        inlineContent = inlineContent,
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.Center,
     )
 }
 
-private fun welcomeGuideIntroInlineContent(): Map<String, InlineTextContent> =
-    mapOf(
-        GUIDE_DOWNLOAD_ICON_ID to guideInlineIcon(Icons.Filled.Download, "Download"),
-    )
-
-private fun welcomeGuideActionInlineContent(): Map<String, InlineTextContent> =
-    mapOf(
-        GUIDE_SEND_TO_WATCH_ICON_ID to guideInlineIcon(Icons.AutoMirrored.Filled.SendToMobile, "Send to watch"),
-        GUIDE_LIVE_TRACKING_ICON_ID to guideInlineIcon(Icons.Filled.SpatialTracking, "Live Tracking"),
-    )
-
 @Composable
-private fun quickGuideLineText(line: String) {
+private fun quickGuideLineText(line: QuickGuideLine) {
     when (line) {
-        STAY_OPEN_GUIDE_LINE -> stayOpenGuideLineText()
-        WELCOME_SEND_TO_WATCH_LINE -> welcomeSendToWatchLineText()
-        WELCOME_LIVE_TRACKING_LINE -> welcomeLiveTrackingLineText()
-        WELCOME_OFFLINE_LINE -> welcomeOfflineLineText()
-        QUICK_GUIDE_BOOK_ICON_LINE -> quickGuideBookIconLineText()
-        else -> quickGuidePlainLineText(line = line)
+        QuickGuideLine.StayOpen -> stayOpenGuideLineText()
+        QuickGuideLine.WelcomeSendToWatch -> welcomeSendToWatchLineText()
+        QuickGuideLine.WelcomeLiveTracking -> welcomeLiveTrackingLineText()
+        QuickGuideLine.WelcomeOffline -> welcomeOfflineLineText()
+        QuickGuideLine.BookIcon -> quickGuideBookIconLineText()
+        is QuickGuideLine.Text -> quickGuidePlainLineText(line.textResId)
     }
 }
 
 @Composable
 private fun welcomeSendToWatchLineText() {
+    val (text, inlineContent) =
+        quickGuideInlineTextContent(
+            textResId = R.string.quick_guide_welcome_send_to_watch,
+            inlineIcons =
+                listOf(
+                    QuickGuideInlineIcon(
+                        id = GUIDE_SEND_TO_WATCH_ICON_ID,
+                        imageVector = Icons.AutoMirrored.Filled.SendToMobile,
+                        contentDescriptionResId =
+                            R.string.quick_guide_send_to_watch_icon_content_description,
+                    ),
+                ),
+        )
     Text(
-        text =
-            buildAnnotatedString {
-                appendInlineContent(GUIDE_SEND_TO_WATCH_ICON_ID, "[send]")
-                append(" Use the phone companion to send GPX routes to your watch. You can also send maps, POI, routing data and elevation files.")
-            },
-        inlineContent = welcomeGuideActionInlineContent(),
+        text = text,
+        inlineContent = inlineContent,
         style = MaterialTheme.typography.bodyMedium,
     )
 }
 
 @Composable
 private fun welcomeLiveTrackingLineText() {
+    val (text, inlineContent) =
+        quickGuideInlineTextContent(
+            textResId = R.string.quick_guide_welcome_live_tracking,
+            inlineIcons =
+                listOf(
+                    QuickGuideInlineIcon(
+                        id = GUIDE_LIVE_TRACKING_ICON_ID,
+                        imageVector = Icons.Filled.SpatialTracking,
+                        contentDescriptionResId =
+                            R.string.quick_guide_live_tracking_icon_content_description,
+                    ),
+                ),
+        )
     Text(
-        text =
-            buildAnnotatedString {
-                appendInlineContent(GUIDE_LIVE_TRACKING_ICON_ID, "[live]")
-                append(" Start Live Tracking from the phone to share your GPS position to friends & family.")
-            },
-        inlineContent = welcomeGuideActionInlineContent(),
+        text = text,
+        inlineContent = inlineContent,
         style = MaterialTheme.typography.bodyMedium,
     )
 }
@@ -802,7 +738,7 @@ private fun welcomeLiveTrackingLineText() {
 @Composable
 private fun welcomeOfflineLineText() {
     Text(
-        text = "Once files are on the watch, GlanceMap can work offline without the phone.",
+        text = stringResource(R.string.transfer_quick_guide_offline_hint),
         modifier = Modifier.fillMaxWidth(),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -811,48 +747,35 @@ private fun welcomeOfflineLineText() {
 }
 
 @Composable
-private fun quickGuidePlainLineText(line: String) {
-    val context = LocalContext.current
-    val url = QUICK_GUIDE_URL_PATTERN.find(line)?.value
-
+private fun quickGuidePlainLineText(
+    @StringRes textResId: Int,
+) {
     Text(
-        text = "• $line",
-        modifier =
-            if (url == null) {
-                Modifier
-            } else {
-                Modifier.clickable { openQuickGuideUrl(context, url) }
-            },
-        style =
-            if (url == null) {
-                MaterialTheme.typography.bodyMedium
-            } else {
-                MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline)
-            },
-        color =
-            if (url == null) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
+        text = stringResource(R.string.quick_guide_bullet_line, stringResource(textResId)),
+        style = MaterialTheme.typography.bodyMedium,
     )
 }
 
 @Composable
 private fun quickGuideBookIconLineText() {
+    val (text, inlineContent) =
+        quickGuideInlineTextContent(
+            textResId = R.string.quick_guide_welcome_book_icon,
+            inlineIcons =
+                listOf(
+                    QuickGuideInlineIcon(
+                        id = GUIDE_BOOK_ICON_ID,
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescriptionResId = R.string.quick_guide_book_icon_content_description,
+                    ),
+                ),
+        )
     Text(
-        text =
-            buildAnnotatedString {
-                append("Tap the ")
-                appendInlineContent(GUIDE_BOOK_ICON_ID, "[book]")
-                append(" book icon in the top-right corner of each area to open its quick guide again.")
-            },
-        inlineContent = bookGuideInlineContent(),
+        text = text,
+        inlineContent = inlineContent,
         style = MaterialTheme.typography.bodyMedium,
     )
 }
-
-private val QUICK_GUIDE_URL_PATTERN = Regex("""https?://\S+""")
 
 private fun openQuickGuideUrl(
     context: Context,
@@ -865,30 +788,64 @@ private fun openQuickGuideUrl(
 
 @Composable
 private fun stayOpenGuideLineText() {
+    val (text, inlineContent) =
+        quickGuideInlineTextContent(
+            textResId = R.string.quick_guide_stay_open,
+            inlineIcons =
+                listOf(
+                    QuickGuideInlineIcon(
+                        id = GUIDE_TOOLS_ICON_ID,
+                        imageVector = Icons.Filled.ViewComfyAlt,
+                        contentDescriptionResId = R.string.quick_guide_tools_icon_content_description,
+                    ),
+                    QuickGuideInlineIcon(
+                        id = GUIDE_STAY_ICON_ID,
+                        imageVector = Icons.Filled.Visibility,
+                        contentDescriptionResId = R.string.quick_guide_stay_icon_content_description,
+                    ),
+                ),
+        )
     Text(
-        text =
-            buildAnnotatedString {
-                append("• Tap ")
-                appendInlineContent(GUIDE_TOOLS_ICON_ID, "[tools]")
-                append(" tools, then ")
-                appendInlineContent(GUIDE_STAY_ICON_ID, "[stay]")
-                append(" Stay. You can also enable Always-on display.")
-            },
-        inlineContent = stayOpenGuideInlineContent(),
+        text = text,
+        inlineContent = inlineContent,
         style = MaterialTheme.typography.bodyMedium,
     )
 }
 
-private fun stayOpenGuideInlineContent(): Map<String, InlineTextContent> =
-    mapOf(
-        GUIDE_TOOLS_ICON_ID to guideInlineIcon(Icons.Filled.ViewComfyAlt, "Tools"),
-        GUIDE_STAY_ICON_ID to guideInlineIcon(Icons.Filled.Visibility, "Stay"),
-    )
-
-private fun bookGuideInlineContent(): Map<String, InlineTextContent> =
-    mapOf(
-        GUIDE_BOOK_ICON_ID to guideInlineIcon(Icons.AutoMirrored.Filled.MenuBook, "Quick Guide"),
-    )
+@Composable
+private fun quickGuideInlineTextContent(
+    @StringRes textResId: Int,
+    inlineIcons: List<QuickGuideInlineIcon>,
+): Pair<androidx.compose.ui.text.AnnotatedString, Map<String, InlineTextContent>> {
+    val placeholders = inlineIcons.indices.map { "${GUIDE_INLINE_PLACEHOLDER_PREFIX}${it}__" }
+    val text =
+        when (placeholders.size) {
+            1 -> stringResource(textResId, placeholders[0])
+            2 -> stringResource(textResId, placeholders[0], placeholders[1])
+            else -> error("Quick guide inline content requires one or two icons.")
+        }
+    val annotatedText =
+        buildAnnotatedString {
+            var textStart = 0
+            guideInlinePlaceholderOccurrences(text, placeholders).forEach { occurrence ->
+                val inlineIcon = inlineIcons[occurrence.inlineIconIndex]
+                val placeholder = placeholders[occurrence.inlineIconIndex]
+                append(text.substring(textStart, occurrence.startIndex))
+                appendInlineContent(inlineIcon.id, placeholder)
+                textStart = occurrence.startIndex + placeholder.length
+            }
+            append(text.substring(textStart))
+        }
+    val inlineContent =
+        inlineIcons.associate { inlineIcon ->
+            inlineIcon.id to
+                guideInlineIcon(
+                    imageVector = inlineIcon.imageVector,
+                    contentDescription = stringResource(inlineIcon.contentDescriptionResId),
+                )
+        }
+    return annotatedText to inlineContent
+}
 
 private fun guideInlineIcon(
     imageVector: ImageVector,
@@ -939,17 +896,181 @@ private fun quickGuidePageIndicator(
 }
 
 private data class QuickGuidePage(
-    val title: String,
-    val intro: String? = null,
-    val lines: List<String>,
+    @StringRes val titleResId: Int,
+    val intro: QuickGuideIntro? = null,
+    val lines: List<QuickGuideLine>,
 )
 
-private fun quickGuideDialogTitle(mode: QuickGuideMode): String =
+private sealed interface QuickGuideIntro {
+    data class Text(
+        @StringRes val textResId: Int,
+    ) : QuickGuideIntro
+
+    data object WelcomeDownload : QuickGuideIntro
+}
+
+private sealed interface QuickGuideLine {
+    data class Text(
+        @StringRes val textResId: Int,
+    ) : QuickGuideLine
+
+    data object StayOpen : QuickGuideLine
+
+    data object WelcomeSendToWatch : QuickGuideLine
+
+    data object WelcomeLiveTracking : QuickGuideLine
+
+    data object WelcomeOffline : QuickGuideLine
+
+    data object BookIcon : QuickGuideLine
+}
+
+private data class QuickGuideInlineIcon(
+    val id: String,
+    val imageVector: ImageVector,
+    @StringRes val contentDescriptionResId: Int,
+)
+
+internal data class GuideInlinePlaceholderOccurrence(
+    val inlineIconIndex: Int,
+    val startIndex: Int,
+)
+
+internal fun guideInlinePlaceholderOccurrences(
+    text: String,
+    placeholders: List<String>,
+): List<GuideInlinePlaceholderOccurrence> =
+    placeholders
+        .mapIndexedNotNull { index, placeholder ->
+            text
+                .indexOf(placeholder)
+                .takeIf { it >= 0 }
+                ?.let { startIndex ->
+                    GuideInlinePlaceholderOccurrence(
+                        inlineIconIndex = index,
+                        startIndex = startIndex,
+                    )
+                }
+        }.sortedBy(GuideInlinePlaceholderOccurrence::startIndex)
+
+private fun quickGuidePages(mode: QuickGuideMode): List<QuickGuidePage> =
     when (mode) {
-        QuickGuideMode.GENERAL -> "Quick guide"
-        QuickGuideMode.TRANSFER -> "Send to Watch Guide"
-        QuickGuideMode.LIVE_TRACKING -> "Live Tracking"
-        QuickGuideMode.MAP_LEGEND -> "Map Legend Guide"
+        QuickGuideMode.GENERAL ->
+            listOf(
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_general_title,
+                    intro = QuickGuideIntro.WelcomeDownload,
+                    lines =
+                        listOf(
+                            QuickGuideLine.WelcomeSendToWatch,
+                            QuickGuideLine.WelcomeLiveTracking,
+                            QuickGuideLine.WelcomeOffline,
+                            QuickGuideLine.BookIcon,
+                        ),
+                ),
+            )
+
+        QuickGuideMode.TRANSFER ->
+            listOf(
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_transfer_files_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_download),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_select),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_map),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_poi),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_gpx),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_routing),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_files_elevation),
+                        ),
+                ),
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_transfer_watch_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_watch_open),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_watch_large_files),
+                            QuickGuideLine.StayOpen,
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_watch_bluetooth),
+                        ),
+                ),
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_transfer_areas_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_areas_choose),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_areas_poi),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_areas_routing),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_areas_map),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_areas_refresh),
+                        ),
+                ),
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_transfer_send_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_send_close),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_send_resume),
+                            QuickGuideLine.Text(R.string.quick_guide_transfer_send_history),
+                        ),
+                ),
+            )
+
+        QuickGuideMode.LIVE_TRACKING ->
+            listOf(
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_live_tracking_start_title,
+                    intro = QuickGuideIntro.Text(R.string.quick_guide_live_tracking_start_intro),
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_start_setup),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_start_group),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_start_options),
+                        ),
+                ),
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_live_tracking_updates_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_updates_plan),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_updates_start),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_updates_change),
+                        ),
+                ),
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_live_tracking_links_title,
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_links_participant),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_links_group),
+                            QuickGuideLine.Text(R.string.quick_guide_live_tracking_links_share),
+                        ),
+                ),
+            )
+
+        QuickGuideMode.MAP_LEGEND ->
+            listOf(
+                QuickGuidePage(
+                    titleResId = R.string.quick_guide_map_legend_title,
+                    intro = QuickGuideIntro.Text(R.string.quick_guide_map_legend_intro),
+                    lines =
+                        listOf(
+                            QuickGuideLine.Text(R.string.quick_guide_map_legend_select),
+                            QuickGuideLine.Text(R.string.quick_guide_map_legend_reference),
+                            QuickGuideLine.Text(R.string.quick_guide_map_legend_external),
+                        ),
+                ),
+            )
+    }
+
+@StringRes
+private fun quickGuideDialogTitleResId(mode: QuickGuideMode): Int =
+    when (mode) {
+        QuickGuideMode.GENERAL -> R.string.quick_guide_dialog_title_general
+        QuickGuideMode.TRANSFER -> R.string.quick_guide_dialog_title_transfer
+        QuickGuideMode.LIVE_TRACKING -> R.string.quick_guide_dialog_title_live_tracking
+        QuickGuideMode.MAP_LEGEND -> R.string.quick_guide_dialog_title_map_legend
     }
 
 private const val GUIDE_TOOLS_ICON_ID = "guide_tools_icon"
@@ -958,16 +1079,10 @@ private const val GUIDE_BOOK_ICON_ID = "guide_book_icon"
 private const val GUIDE_DOWNLOAD_ICON_ID = "guide_download_icon"
 private const val GUIDE_SEND_TO_WATCH_ICON_ID = "guide_send_to_watch_icon"
 private const val GUIDE_LIVE_TRACKING_ICON_ID = "guide_live_tracking_icon"
+private const val GUIDE_INLINE_PLACEHOLDER_PREFIX = "__guide_inline_placeholder_"
 private const val QUICK_GUIDE_PAGE_SWIPE_THRESHOLD_DP = 64
 private const val ARKLUZ_CONTACT_URL = "https://arkluz.com/trk?contact"
 private const val ARKLUZ_WEBSITE_URL = "https://arkluz.com/trk?api"
-private const val WELCOME_WATCH_DOWNLOAD_INTRO =
-    "Start on the watch and use the download icon to download offline maps."
-private const val STAY_OPEN_GUIDE_LINE = "__stay_open_guide_line__"
-private const val WELCOME_SEND_TO_WATCH_LINE = "__welcome_send_to_watch_line__"
-private const val WELCOME_LIVE_TRACKING_LINE = "__welcome_live_tracking_line__"
-private const val WELCOME_OFFLINE_LINE = "__welcome_offline_line__"
-private const val QUICK_GUIDE_BOOK_ICON_LINE = "__quick_guide_book_icon_line__"
 
 @Composable
 internal fun CancelTransferDialog(
@@ -976,16 +1091,19 @@ internal fun CancelTransferDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cancel Transfer?") },
-        text = { Text("Are you sure you want to stop sending files?") },
+        title = { Text(stringResource(R.string.transfer_action_cancel_transfer)) },
+        text = { Text(stringResource(R.string.transfer_cancel_transfer_message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Yes, Stop", color = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(R.string.transfer_action_confirm_stop),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("No, Continue")
+                Text(stringResource(R.string.transfer_action_continue_sending))
             }
         },
     )

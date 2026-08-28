@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.usesHybridRecordingElevation
@@ -166,6 +167,7 @@ fun RecordingSensorBridge(
     activityProfile: String,
     initialStepCount: Int?,
     onMetrics: (RecordingSensorMetrics) -> Unit,
+    onPressureSample: (RecordingPressureSample) -> Unit,
 ) {
     val context = LocalContext.current
     val externalHeartRateLinked = !externalHeartRateAddress.isNullOrBlank()
@@ -551,6 +553,15 @@ fun RecordingSensorBridge(
                                     ?.toDouble()
                                     ?.takeIf { it > 0.0 }
                                     ?: return
+                            val eventElapsedRealtimeMillis =
+                                (event.timestamp / 1_000_000L).takeIf { it > 0L }
+                                    ?: SystemClock.elapsedRealtime()
+                            onPressureSample(
+                                RecordingPressureSample(
+                                    pressureHpa = pressure,
+                                    elapsedRealtimeMillis = eventElapsedRealtimeMillis,
+                                ),
+                            )
                             val rawEventCount = pressureSensorEventCount.incrementAndGet()
                             val now = System.currentTimeMillis()
                             val nowElapsed = SystemClock.elapsedRealtime()

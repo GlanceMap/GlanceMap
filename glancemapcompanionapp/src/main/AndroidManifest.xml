@@ -264,7 +264,7 @@
         <activity
             android:name=".PrivacyPolicyActivity"
             android:exported="false"
-            android:label="Credits &amp; Legal"
+            android:label="@string/settings_credits_legal_title"
             android:theme="@style/Theme.GlanceMap" />
 
         <service

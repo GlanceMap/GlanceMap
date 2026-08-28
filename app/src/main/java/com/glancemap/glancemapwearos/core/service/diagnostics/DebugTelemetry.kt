@@ -97,6 +97,9 @@ internal object DebugTelemetry {
 
     fun isEnabled(): Boolean = enabled.get()
 
+    /** FULL diagnostics are the only production path that enables this capture buffer. */
+    fun isFullDiagnosticsCaptureEnabled(): Boolean = enabled.get()
+
     fun log(
         tag: String,
         message: String,

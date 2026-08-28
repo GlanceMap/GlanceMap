@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.filepicker.FilePickerScreen
+import com.glancemap.glancemapcompanionapp.layout.companionLayoutProvider
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingOpenIntentContract
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
@@ -73,15 +74,17 @@ class MainActivityMobile : ComponentActivity() {
                         vm.loadFilesFromUris(this@MainActivityMobile, uris)
                     }
 
-                    FilePickerScreen(
-                        viewModel = vm,
-                        routeLibraryViewModel = routeLibraryViewModel,
-                        missionPlanViewModel = missionPlanViewModel,
-                        openSendToWatchToken = incomingIntentToken,
-                        openLiveTrackingToken = openLiveTrackingToken,
-                        watchGpxSaveToken = pendingWatchGpxSaveToken,
-                        watchGpxSaveFiles = pendingWatchGpxSaveFiles,
-                    )
+                    companionLayoutProvider(activity = this@MainActivityMobile) {
+                        FilePickerScreen(
+                            viewModel = vm,
+                            routeLibraryViewModel = routeLibraryViewModel,
+                            missionPlanViewModel = missionPlanViewModel,
+                            openSendToWatchToken = incomingIntentToken,
+                            openLiveTrackingToken = openLiveTrackingToken,
+                            watchGpxSaveToken = pendingWatchGpxSaveToken,
+                            watchGpxSaveFiles = pendingWatchGpxSaveFiles,
+                        )
+                    }
                 }
             }
         }

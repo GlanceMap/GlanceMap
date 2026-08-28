@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.buildRecordingDashboardSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -66,6 +68,46 @@ class TraceGpxEncoderTest {
     }
 
     @Test
+    fun fiveMeterManualPauseIsVisuallyContinuous() {
+        val points = pauseBoundary(displacementMeters = 5.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
+
+        val xml = encodeRecordedTraceAsGpx(title = "Pause", points = points).toString(Charsets.UTF_8)
+
+        assertEquals(listOf(2), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+        assertEquals(1, "<trkseg>".toRegex().findAll(xml).count())
+        assertTrue(xml.contains("<gmap:segmentStartReason>MANUAL_PAUSE</gmap:segmentStartReason>"))
+    }
+
+    @Test
+    fun twentyFiveMeterAutoPauseWithNormalAccuracyIsVisuallyContinuous() {
+        val points = pauseBoundary(displacementMeters = 25.0, reason = RecordingSegmentStartReason.AUTO_PAUSE)
+
+        assertEquals(listOf(2), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+    }
+
+    @Test
+    fun pauseBridgeUsesCombinedEndpointAccuracyAroundThirtyMeters() {
+        val normalAccuracy = pauseBoundary(displacementMeters = 33.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
+        val widerAccuracy =
+            pauseBoundary(
+                displacementMeters = 33.0,
+                reason = RecordingSegmentStartReason.MANUAL_PAUSE,
+                beforeAccuracyMeters = 20f,
+                afterAccuracyMeters = 20f,
+            )
+
+        assertEquals(2, recordedTraceSegments(normalAccuracy).size)
+        assertEquals(1, recordedTraceSegments(widerAccuracy).size)
+    }
+
+    @Test
+    fun largePausedDisplacementRemainsSeparateTrackSegment() {
+        val points = pauseBoundary(displacementMeters = 100.0, reason = RecordingSegmentStartReason.AUTO_PAUSE)
+
+        assertEquals(listOf(1, 1), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
+    }
+
+    @Test
     fun encodeRecordedTraceAsGpxWritesCoreTrackPointAndExtensions() {
         val bytes =
             encodeRecordedTraceAsGpx(
@@ -111,55 +153,88 @@ class TraceGpxEncoderTest {
             encodeRecordedTraceAsGpx(
                 title = "Bike Test",
                 points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
-                summary =
-                    RecordedTraceSummary(
-                        activityProfile = "BIKE",
-                        durationSeconds = 600.0,
-                        totalDurationSeconds = 620.0,
-                        distanceMeters = 4_000.0,
-                        elevationGainMeters = 50.0,
-                        elevationLossMeters = 20.0,
-                        currentElevationMeters = 300.0,
-                        currentSpeedMps = 6.0f,
-                        averageSpeedMps = 6.67,
-                        fastestSpeedMps = 8.4,
-                        gpsAccuracyMeters = 5.0f,
-                        pointCount = 10,
-                        gpsActiveDurationSeconds = 590.0,
-                        recordingGapCount = 0,
-                        recordingMaxGapSeconds = 0.0,
-                        caloriesGrossKcal = 220.0,
-                        caloriesActiveKcal = 210.0,
-                        caloriesRestingKcal = 10.0,
-                        calorieModel = "cycling_physics_fallback_v1",
-                        cyclingMechanicalKj = 202.4,
-                        cyclingPowerSampleSegments = 0,
-                        cyclingPhysicsSegments = 9,
-                        heartRateBpm = 130,
-                        averageHeartRateBpm = 128,
-                        maxHeartRateBpm = 142,
-                        stepCount = null,
-                        cadenceSpm = 82,
-                        averageCadenceSpm = 80,
-                        maxCadenceSpm = 96,
-                        powerWatts = null,
-                        averagePowerWatts = null,
-                        maxPowerWatts = null,
-                        barometricPressureHpa = null,
-                        recordingTrackSmoothingMode = "ADAPTIVE",
-                        recordingTrackFilterVersion = 1,
-                    ),
+                summary = recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_POD),
             )
 
         val xml = bytes.toString(Charsets.UTF_8)
 
         assertTrue(xml.contains("<gmap:activityProfile>BIKE</gmap:activityProfile>"))
         assertTrue(xml.contains("<gmap:recordingTrackSmoothingMode>ADAPTIVE</gmap:recordingTrackSmoothingMode>"))
+        assertTrue(
+            xml.contains(recordingDistanceSourceTag(SettingsRepository.RECORDING_SENSOR_SOURCE_POD)),
+        )
         assertTrue(xml.contains("<gmap:recordingTrackFilterVersion>1</gmap:recordingTrackFilterVersion>"))
+        assertSmartElevationSummaryExtensions(xml)
         assertTrue(xml.contains("<gmap:calorieModel>cycling_physics_fallback_v1</gmap:calorieModel>"))
         assertTrue(xml.contains("<gmap:cyclingMechanicalKj>202.40</gmap:cyclingMechanicalKj>"))
         assertFalse(xml.contains("<gmap:cyclingPowerSampleSegments>"))
         assertTrue(xml.contains("<gmap:cyclingPhysicsSegments>9</gmap:cyclingPhysicsSegments>"))
+    }
+
+    @Test
+    fun saveSummaryMetadataUsesFinalCanonicalElevationInsteadOfFreshRawLiveAltitude() {
+        val canonicalPoint =
+            RecordedTracePoint(
+                latLong = LatLong(45.0, 6.0),
+                elevationMeters = 181.5,
+                timeMillis = 9_000L,
+                accuracyMeters = 8f,
+                speedMps = 1f,
+                elevationSource = RECORDING_ELEVATION_SOURCE_HYBRID,
+            )
+        val snapshot =
+            buildRecordingDashboardSnapshot(
+                state =
+                    TraceRecordingUiState(
+                        active = true,
+                        startedAtMillis = 0L,
+                        points = listOf(canonicalPoint),
+                        latestLivePoint =
+                            canonicalPoint.copy(
+                                elevationMeters = 225.1,
+                                timeMillis = 10_000L,
+                                elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
+                            ),
+                    ),
+                nowMillis = 10_000L,
+            )
+
+        val xml =
+            encodeRecordedTraceAsGpx(
+                title = "Elevation",
+                points = listOf(canonicalPoint),
+                summary =
+                    recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS).copy(
+                        currentElevationMeters = snapshot.currentElevationMeters,
+                    ),
+            ).toString(Charsets.UTF_8)
+
+        assertTrue(xml.contains("<ele>181.5</ele>"))
+        assertTrue(xml.contains("<gmap:currentElevationMeters>181.50</gmap:currentElevationMeters>"))
+        assertFalse(xml.contains("225.10"))
+    }
+
+    @Test
+    fun recordingDistanceSourceUsesTheStoredSummaryValueAndOmitsBlankValues() {
+        val watchGps =
+            encodeRecordedTraceAsGpx(
+                title = "Watch GPS",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS),
+            ).toString(Charsets.UTF_8)
+        val blank =
+            encodeRecordedTraceAsGpx(
+                title = "Blank source",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = recordingSummary(" "),
+            ).toString(Charsets.UTF_8)
+
+        assertTrue(
+            watchGps.contains(
+                recordingDistanceSourceTag(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS),
+            ),
+        )
+        assertFalse(blank.contains("<gmap:recordingDistanceSource>"))
     }
 
     @Test
@@ -213,22 +288,111 @@ class TraceGpxEncoderTest {
         assertFalse(xml.contains("gmap:accuracyMeters"))
     }
 
+    @Suppress("LongParameterList")
     private fun recordedPoint(
         latitude: Double,
         longitude: Double,
         timeMillis: Long,
         startsNewSegment: Boolean = false,
         segmentStartReason: String? = null,
+        accuracyMeters: Float? = 8f,
     ): RecordedTracePoint =
         RecordedTracePoint(
             latLong = LatLong(latitude, longitude),
             elevationMeters = null,
             timeMillis = timeMillis,
-            accuracyMeters = 8f,
+            accuracyMeters = accuracyMeters,
             speedMps = 1f,
             startsNewSegment = startsNewSegment,
             segmentStartReason = segmentStartReason,
         )
+
+    private fun recordingSummary(recordingDistanceSource: String?) =
+        RecordedTraceSummary(
+            activityProfile = "BIKE",
+            durationSeconds = 600.0,
+            totalDurationSeconds = 620.0,
+            distanceMeters = 4_000.0,
+            elevationGainMeters = 50.0,
+            elevationLossMeters = 20.0,
+            currentElevationMeters = 300.0,
+            currentSpeedMps = 6.0f,
+            averageSpeedMps = 6.67,
+            fastestSpeedMps = 8.4,
+            gpsAccuracyMeters = 5.0f,
+            pointCount = 10,
+            gpsActiveDurationSeconds = 590.0,
+            recordingGapCount = 0,
+            recordingMaxGapSeconds = 0.0,
+            caloriesGrossKcal = 220.0,
+            caloriesActiveKcal = 210.0,
+            caloriesRestingKcal = 10.0,
+            calorieModel = "cycling_physics_fallback_v1",
+            cyclingMechanicalKj = 202.4,
+            cyclingPowerSampleSegments = 0,
+            cyclingPhysicsSegments = 9,
+            heartRateBpm = 130,
+            averageHeartRateBpm = 128,
+            maxHeartRateBpm = 142,
+            stepCount = null,
+            cadenceSpm = 82,
+            averageCadenceSpm = 80,
+            maxCadenceSpm = 96,
+            powerWatts = null,
+            averagePowerWatts = null,
+            maxPowerWatts = null,
+            barometricPressureHpa = null,
+            recordingTrackSmoothingMode = "ADAPTIVE",
+            recordingDistanceSource = recordingDistanceSource,
+            recordingTrackFilterVersion = 1,
+            recordingElevationFilterVersion = 2,
+            smartElevationPressurePointCount = 8,
+            smartElevationDemAnchorPointCount = 10,
+            smartElevationGpsFallbackPointCount = 2,
+        )
+
+    private fun recordingDistanceSourceTag(value: String): String {
+        val tagName = "gmap:recordingDistanceSource"
+        return "<$tagName>$value</$tagName>"
+    }
+
+    private fun pauseBoundary(
+        displacementMeters: Double,
+        reason: String,
+        beforeAccuracyMeters: Float? = 8f,
+        afterAccuracyMeters: Float? = 8f,
+    ): List<RecordedTracePoint> =
+        listOf(
+            recordedPoint(
+                latitude = 45.0,
+                longitude = 6.0,
+                timeMillis = 1_000L,
+                accuracyMeters = beforeAccuracyMeters,
+            ),
+            recordedPoint(
+                latitude = 45.0 + displacementMeters / 111_320.0,
+                longitude = 6.0,
+                timeMillis = 2_000L,
+                startsNewSegment = true,
+                segmentStartReason = reason,
+                accuracyMeters = afterAccuracyMeters,
+            ),
+        )
+
+    private fun assertSmartElevationSummaryExtensions(xml: String) {
+        assertSummaryExtension(xml, "recordingElevationFilterVersion", "2")
+        assertSummaryExtension(xml, "smartElevationPressurePointCount", "8")
+        assertSummaryExtension(xml, "smartElevationDemAnchorPointCount", "10")
+        assertSummaryExtension(xml, "smartElevationGpsFallbackPointCount", "2")
+    }
+
+    private fun assertSummaryExtension(
+        xml: String,
+        name: String,
+        value: String,
+    ) {
+        assertTrue(xml.contains("<gmap:$name>$value</gmap:$name>"))
+    }
 
     private fun localTime(value: String): Long =
         LocalDateTime

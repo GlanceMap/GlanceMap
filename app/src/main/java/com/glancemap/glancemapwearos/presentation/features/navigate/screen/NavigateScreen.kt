@@ -36,6 +36,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupReason
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
+import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.WatchActiveHikePublisher
 import com.glancemap.glancemapwearos.presentation.features.navigate.activehike.toActiveHikeSnapshot
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCalibrationEffects
@@ -459,6 +460,7 @@ fun NavigateScreen(
                     minZoom = zoomMin,
                     maxZoom = zoomMax,
                 )
+            MapZoomChangeAttribution.prepare(mapView, "poi_focus")
             mapView.model.mapViewPosition.setZoomLevel(focusZoom.toByte(), false)
             navigateViewModel.onZoomChanged(focusZoom)
             pendingPoiFocusTarget = target
@@ -1011,7 +1013,15 @@ fun NavigateScreen(
             mapZoomButtonsMode = mapZoomButtonsMode,
             northIndicatorMode = northIndicatorMode,
             currentZoomLevel = currentZoomLevel,
-            onZoomLevelChange = { newZoom -> navigateViewModel.onZoomChanged(newZoom) },
+            onZoomLevelChange = { oldZoom, newZoom, inputSource ->
+                navigateViewModel.onZoomChanged(newZoom)
+                mapViewModel.recordCompletedZoomChange(
+                    oldZoom = oldZoom,
+                    newZoom = newZoom,
+                    inputSource = inputSource,
+                )
+            },
+            onMapPanCompleted = { mapViewModel.recordCompletedPan() },
             onViewportChanged = { center, zoomLevel ->
                 mapZoomState.updateReference(center, mapView.width)
                 if (offlineMode) {

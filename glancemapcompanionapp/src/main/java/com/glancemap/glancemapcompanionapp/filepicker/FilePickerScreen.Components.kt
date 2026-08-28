@@ -30,10 +30,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.FileTransferHistoryItem
+import com.glancemap.glancemapcompanionapp.R
 
 @Composable
 internal fun DownloadActionButton(
@@ -123,7 +125,14 @@ internal fun HistoryRow(item: FileTransferHistoryItem) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = if (item.success) "OK" else "Fail",
+                text =
+                    stringResource(
+                        if (item.success) {
+                            R.string.transfer_history_success
+                        } else {
+                            R.string.transfer_history_failure
+                        },
+                    ),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (item.success) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
             )

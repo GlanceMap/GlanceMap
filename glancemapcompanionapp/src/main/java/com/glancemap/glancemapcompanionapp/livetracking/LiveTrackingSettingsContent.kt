@@ -47,6 +47,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 
 @Composable
 internal fun ColumnScope.SettingsContent(
@@ -89,7 +92,7 @@ internal fun ColumnScope.SettingsContent(
 ) {
     HeaderRow(onBack = onBack) {
         Text(
-            text = "Live tracking setup",
+            text = stringResource(R.string.live_tracking_setup_title),
             style = MaterialTheme.typography.headlineSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -101,15 +104,23 @@ internal fun ColumnScope.SettingsContent(
         scrollState = scrollState,
         contentSpacing = contentSpacing,
     ) {
-        TrackingPanel(title = "Private group") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_private_group_title)) {
             Text(
-                text = "Connected to ${group.trim().ifBlank { "private group" }}",
+                text =
+                    stringResource(
+                        R.string.live_tracking_connected_to_group,
+                        if (group.isBlank()) {
+                            stringResource(R.string.live_tracking_private_group)
+                        } else {
+                            group.trim()
+                        },
+                    ),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "Your tracking links and options are linked to this group.",
+                text = stringResource(R.string.live_tracking_setup_group_options_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -118,15 +129,15 @@ internal fun ColumnScope.SettingsContent(
                 enabled = !isSavingSettings,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Change group")
+                Text(stringResource(R.string.live_tracking_action_change_group))
             }
         }
 
-        TrackingPanel(title = "Participant:") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_participant_panel_title)) {
             OutlinedTextField(
                 value = userName,
                 onValueChange = onUserNameChange,
-                label = { Text("Participant name") },
+                label = { Text(stringResource(R.string.live_tracking_participant_name_label)) },
                 singleLine = true,
                 keyboardOptions =
                     KeyboardOptions(
@@ -136,9 +147,13 @@ internal fun ColumnScope.SettingsContent(
             )
         }
 
-        TrackingPanel(title = "Notifications") {
+        TrackingPanel(title = stringResource(R.string.live_tracking_notifications_title)) {
             Text(
-                text = "GPS update frequency: ${formatUpdateInterval(updateIntervalSeconds)}",
+                text =
+                    stringResource(
+                        R.string.live_tracking_gps_update_frequency,
+                        formatUpdateInterval(updateIntervalSeconds),
+                    ),
                 style = MaterialTheme.typography.labelMedium,
             )
             FrequencyPresetGrid(
@@ -146,7 +161,7 @@ internal fun ColumnScope.SettingsContent(
                 onSelected = onUpdateIntervalSecondsChange,
             )
             EmailAddressInput(
-                label = "Send tracking notifications & safety alerts to:",
+                label = stringResource(R.string.live_tracking_notification_recipients_label),
                 input = notificationEmailInput,
                 onInputChange = onNotificationEmailInputChange,
                 addresses = notificationEmailAddresses,
@@ -155,7 +170,7 @@ internal fun ColumnScope.SettingsContent(
                 onPickFromContacts = onPickNotificationEmailFromContacts,
             )
             AlertRecipientInput(
-                label = "Also send safety alerts to:",
+                label = stringResource(R.string.live_tracking_alert_recipients_label),
                 input = alertRecipientInput,
                 onInputChange = onAlertRecipientInputChange,
                 recipients = alertRecipients,
@@ -177,7 +192,15 @@ internal fun ColumnScope.SettingsContent(
             enabled = !isSavingSettings,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (isSavingSettings) "Saving" else "Save and return")
+            Text(
+                stringResource(
+                    if (isSavingSettings) {
+                        R.string.live_tracking_action_saving
+                    } else {
+                        R.string.live_tracking_action_save_return
+                    },
+                ),
+            )
         }
         saveSettingsStatusMessage?.let { message ->
             Text(
@@ -233,7 +256,14 @@ internal fun PasswordField(
                         } else {
                             Icons.Filled.VisibilityOff
                         },
-                    contentDescription = if (isVisible) "Hide password" else "Show password",
+                    contentDescription =
+                        stringResource(
+                            if (isVisible) {
+                                R.string.live_tracking_hide_password_content_description
+                            } else {
+                                R.string.live_tracking_show_password_content_description
+                            },
+                        ),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -283,12 +313,12 @@ private fun NoMovementAlertInput(
                 },
             )
             Text(
-                text = "Enable no-movement alerts",
+                text = stringResource(R.string.live_tracking_enable_no_movement_alerts),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         Text(
-            text = "Send safety alert when no movement for:",
+            text = stringResource(R.string.live_tracking_no_movement_alert_time),
             style = MaterialTheme.typography.labelMedium,
             color =
                 if (isDisabled) {
@@ -318,7 +348,10 @@ private fun NoMovementAlertInput(
                 supportingText =
                     if (!isDisabled) {
                         {
-                            Text(validationMessage ?: "Minimum 10 minutes")
+                            Text(
+                                validationMessage
+                                    ?: stringResource(R.string.live_tracking_no_movement_minimum),
+                            )
                         }
                     } else {
                         null
@@ -326,7 +359,7 @@ private fun NoMovementAlertInput(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "minutes",
+                text = stringResource(R.string.live_tracking_minutes_label),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -344,6 +377,8 @@ private fun EmailAddressInput(
     onPickFromContacts: () -> Unit,
 ) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val invalidEmailError = stringResource(R.string.live_tracking_invalid_email_error)
+    val duplicateEmailError = stringResource(R.string.live_tracking_email_already_added_error)
     val email = input.trim().trimEnd(',', ';').lowercase()
     val isEmailValid = email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()
     val isDuplicate = addresses.any { it.equals(email, ignoreCase = true) }
@@ -352,11 +387,11 @@ private fun EmailAddressInput(
     fun submitEmail(): Boolean {
         if (email.isBlank()) return false
         if (!isEmailValid) {
-            errorMessage = "Enter a valid email address"
+            errorMessage = invalidEmailError
             return true
         }
         if (isDuplicate) {
-            errorMessage = "Email already added"
+            errorMessage = duplicateEmailError
             return true
         }
         onAdd(email)
@@ -381,12 +416,15 @@ private fun EmailAddressInput(
                     onInputChange(it)
                     errorMessage = null
                 },
-                placeholder = { Text("email@example.com") },
+                placeholder = { Text(stringResource(R.string.live_tracking_email_placeholder)) },
                 trailingIcon = {
                     IconButton(onClick = onPickFromContacts) {
                         Icon(
                             imageVector = Icons.Filled.ContactMail,
-                            contentDescription = "Pick email from contacts",
+                            contentDescription =
+                                stringResource(
+                                    R.string.live_tracking_pick_email_content_description,
+                                ),
                         )
                     }
                 },
@@ -407,7 +445,7 @@ private fun EmailAddressInput(
                         },
             )
             Button(onClick = { submitEmail() }, enabled = canAddEmail) {
-                Text("Add")
+                Text(stringResource(R.string.live_tracking_action_add))
             }
         }
         if (addresses.isNotEmpty()) {
@@ -430,7 +468,11 @@ private fun EmailAddressInput(
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "Remove $email",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.live_tracking_remove_email_content_description,
+                                        email,
+                                    ),
                                 modifier = Modifier.size(16.dp),
                             )
                         },
@@ -455,6 +497,8 @@ private fun AlertRecipientInput(
     statusMessage: String?,
 ) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val invalidRecipientError = stringResource(R.string.live_tracking_invalid_recipient_error)
+    val duplicateRecipientError = stringResource(R.string.live_tracking_recipient_already_added_error)
     val recipient = normalizedAlertRecipient(input)
     val isDuplicate =
         recipient != null && recipients.any { it.equals(recipient.value, ignoreCase = true) }
@@ -463,11 +507,11 @@ private fun AlertRecipientInput(
     fun submitRecipient(): Boolean {
         if (input.isBlank()) return false
         if (recipient == null) {
-            errorMessage = "Enter a valid email address or phone number starting with +"
+            errorMessage = invalidRecipientError
             return true
         }
         if (isDuplicate) {
-            errorMessage = "Recipient already added"
+            errorMessage = duplicateRecipientError
             return true
         }
 
@@ -495,7 +539,9 @@ private fun AlertRecipientInput(
                     onInputChange(it)
                     errorMessage = null
                 },
-                placeholder = { Text("email@example.com or +33612345678") },
+                placeholder = {
+                    Text(stringResource(R.string.live_tracking_email_or_phone_placeholder))
+                },
                 trailingIcon = {
                     Row {
                         IconButton(
@@ -504,7 +550,10 @@ private fun AlertRecipientInput(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.ContactMail,
-                                contentDescription = "Pick email from contacts",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.live_tracking_pick_email_content_description,
+                                    ),
                             )
                         }
                         IconButton(
@@ -513,7 +562,10 @@ private fun AlertRecipientInput(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Phone,
-                                contentDescription = "Pick phone number from contacts",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.live_tracking_pick_phone_content_description,
+                                    ),
                             )
                         }
                     }
@@ -545,7 +597,15 @@ private fun AlertRecipientInput(
                 onClick = { submitRecipient() },
                 enabled = canAddRecipient,
             ) {
-                Text(if (isValidating) "Checking" else "Add")
+                Text(
+                    stringResource(
+                        if (isValidating) {
+                            R.string.live_tracking_action_checking
+                        } else {
+                            R.string.live_tracking_action_add
+                        },
+                    ),
+                )
             }
         }
         if (recipients.isNotEmpty()) {
@@ -568,7 +628,11 @@ private fun AlertRecipientInput(
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "Remove $recipientValue",
+                                contentDescription =
+                                    stringResource(
+                                        R.string.live_tracking_remove_email_content_description,
+                                        recipientValue,
+                                    ),
                                 modifier = Modifier.size(16.dp),
                             )
                         },
@@ -586,12 +650,12 @@ private fun FrequencyPresetGrid(
 ) {
     val presets =
         listOf(
-            15 to "15s",
-            30 to "30s",
-            60 to "1 min",
-            120 to "2 min",
-            300 to "5 min",
-            600 to "10 min",
+            15 to formatUpdateIntervalCompact(15),
+            30 to formatUpdateIntervalCompact(30),
+            60 to formatUpdateIntervalCompact(60),
+            120 to formatUpdateIntervalCompact(120),
+            300 to formatUpdateIntervalCompact(300),
+            600 to formatUpdateIntervalCompact(600),
         )
     presets.chunked(3).forEach { row ->
         Row(
@@ -623,13 +687,28 @@ private fun FrequencyPresetGrid(
     }
 }
 
+@Composable
 internal fun formatUpdateInterval(seconds: Int): String {
-    if (seconds < 60) return "$seconds seconds"
+    if (seconds < 60) {
+        return pluralStringResource(
+            R.plurals.live_tracking_duration_seconds,
+            seconds,
+            seconds,
+        )
+    }
     val minutes = seconds / 60
     val remainingSeconds = seconds % 60
     return if (remainingSeconds == 0) {
-        "$minutes min"
+        stringResource(R.string.live_tracking_duration_minutes, minutes)
     } else {
-        "$minutes min $remainingSeconds sec"
+        stringResource(R.string.live_tracking_duration_minutes_seconds, minutes, remainingSeconds)
     }
 }
+
+@Composable
+private fun formatUpdateIntervalCompact(seconds: Int): String =
+    if (seconds < 60) {
+        stringResource(R.string.live_tracking_duration_seconds_compact, seconds)
+    } else {
+        stringResource(R.string.live_tracking_duration_minutes_compact, seconds / 60)
+    }

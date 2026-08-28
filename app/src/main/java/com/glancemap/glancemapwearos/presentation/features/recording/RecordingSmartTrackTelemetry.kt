@@ -5,6 +5,7 @@ internal data class RecordingSmartTrackTelemetrySnapshot(
     val acceptedReportedSpeedCount: Int,
     val acceptedSensorCount: Int,
     val acceptedConfirmedSlowCount: Int,
+    val acceptedDelayedDeliveryRecoveryCount: Int,
     val suppressedStationaryCount: Int,
     val suppressedStepStillnessCount: Int,
     val heldSlowCount: Int,
@@ -37,6 +38,7 @@ internal class RecordingSmartTrackTelemetry {
     private var acceptedReportedSpeedCount = 0
     private var acceptedSensorCount = 0
     private var acceptedConfirmedSlowCount = 0
+    private var acceptedDelayedDeliveryRecoveryCount = 0
     private var suppressedStationaryCount = 0
     private var suppressedStepStillnessCount = 0
     private var heldSlowCount = 0
@@ -64,6 +66,7 @@ internal class RecordingSmartTrackTelemetry {
         acceptedReportedSpeedCount = 0
         acceptedSensorCount = 0
         acceptedConfirmedSlowCount = 0
+        acceptedDelayedDeliveryRecoveryCount = 0
         suppressedStationaryCount = 0
         suppressedStepStillnessCount = 0
         heldSlowCount = 0
@@ -122,6 +125,7 @@ internal class RecordingSmartTrackTelemetry {
             RecordingMotionReason.REPORTED_MOTION -> acceptedReportedSpeedCount += 1
             RecordingMotionReason.SENSOR_MOTION -> acceptedSensorCount += 1
             RecordingMotionReason.CONFIRMED_SLOW_PROGRESS -> acceptedConfirmedSlowCount += 1
+            RecordingMotionReason.DELAYED_DELIVERY_RECOVERY -> acceptedDelayedDeliveryRecoveryCount += 1
             RecordingMotionReason.STATIONARY_JITTER -> suppressedStationaryCount += 1
             RecordingMotionReason.STEP_STILLNESS -> suppressedStepStillnessCount += 1
             RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS -> heldSlowCount += 1
@@ -160,6 +164,7 @@ internal class RecordingSmartTrackTelemetry {
             acceptedReportedSpeedCount = acceptedReportedSpeedCount,
             acceptedSensorCount = acceptedSensorCount,
             acceptedConfirmedSlowCount = acceptedConfirmedSlowCount,
+            acceptedDelayedDeliveryRecoveryCount = acceptedDelayedDeliveryRecoveryCount,
             suppressedStationaryCount = suppressedStationaryCount,
             suppressedStepStillnessCount = suppressedStepStillnessCount,
             heldSlowCount = heldSlowCount,

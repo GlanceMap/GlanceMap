@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.CompanionWindowClass
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
 import com.glancemap.glancemapcompanionapp.transfer.presentation.TransferTextFormatter
 
@@ -93,7 +95,7 @@ internal fun FilePickerDownloadSection(
     }
 
     SectionCard(
-        title = "1. Download",
+        title = stringResource(R.string.transfer_section_download_title),
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -105,7 +107,7 @@ internal fun FilePickerDownloadSection(
         ) {
             if (showNotificationNotice) {
                 Text(
-                    "Notifications are off. Transfers still work, but background progress alerts may be hidden.",
+                    stringResource(R.string.transfer_download_notifications_off),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                 )
@@ -114,7 +116,7 @@ internal fun FilePickerDownloadSection(
                     enabled = !uiLocked,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Enable notifications")
+                    Text(stringResource(R.string.transfer_action_enable_notifications))
                 }
             }
 
@@ -130,14 +132,17 @@ internal fun FilePickerDownloadSection(
                     modifier = Modifier.weight(1f),
                 ) {
                     DownloadActionButton(
-                        label = "POI",
+                        label = stringResource(R.string.transfer_download_poi_label),
                         buttonHeight = downloadButtonHeight,
                         iconSize = 22.dp,
                         onClick = { onShowRefugesMenuChange(true) },
                         enabled = !uiLocked,
                         modifier = Modifier.fillMaxWidth(),
                         icon = {
-                            Icon(Icons.Filled.Place, contentDescription = "Download POI")
+                            Icon(
+                                Icons.Filled.Place,
+                                contentDescription = stringResource(R.string.transfer_download_poi_content_description),
+                            )
                         },
                     )
                     DropdownMenu(
@@ -145,7 +150,7 @@ internal fun FilePickerDownloadSection(
                         onDismissRequest = { onShowRefugesMenuChange(false) },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Import POI (Refuges / OSM)") },
+                            text = { Text(stringResource(R.string.transfer_import_poi_action)) },
                             onClick = {
                                 onShowRefugesMenuChange(false)
                                 onShowRefugesDialog()
@@ -154,7 +159,7 @@ internal fun FilePickerDownloadSection(
                         )
                         if (canRefreshLastRefuges) {
                             DropdownMenuItem(
-                                text = { Text("Refresh last import") },
+                                text = { Text(stringResource(R.string.transfer_refresh_last_import_action)) },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Filled.Update,
@@ -175,14 +180,17 @@ internal fun FilePickerDownloadSection(
                     modifier = Modifier.weight(1f),
                 ) {
                     DownloadActionButton(
-                        label = "GPX",
+                        label = stringResource(R.string.transfer_download_gpx_label),
                         buttonHeight = downloadButtonHeight,
                         iconSize = 22.dp,
                         onClick = { showGpxSourcesMenu = true },
                         enabled = !uiLocked,
                         modifier = Modifier.fillMaxWidth(),
                         icon = {
-                            Icon(Icons.Filled.Timeline, contentDescription = "Download GPX")
+                            Icon(
+                                Icons.Filled.Timeline,
+                                contentDescription = stringResource(R.string.transfer_download_gpx_content_description),
+                            )
                         },
                     )
                     DropdownMenu(
@@ -190,7 +198,7 @@ internal fun FilePickerDownloadSection(
                         onDismissRequest = { showGpxSourcesMenu = false },
                     ) {
                         Text(
-                            "GlanceMap can read and display .gpx tracks.",
+                            stringResource(R.string.transfer_gpx_intro),
                             style = MaterialTheme.typography.bodySmall,
                             modifier =
                                 Modifier
@@ -198,7 +206,7 @@ internal fun FilePickerDownloadSection(
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                         Text(
-                            "Download GPX from your favorite website, or create your own route:",
+                            stringResource(R.string.transfer_gpx_sources_intro),
                             style = MaterialTheme.typography.bodySmall,
                             modifier =
                                 Modifier
@@ -224,7 +232,7 @@ internal fun FilePickerDownloadSection(
                         )
                         HorizontalDivider()
                         Text(
-                            "Send route-planning data to the watch to create GPX routes directly in the watch app.",
+                            stringResource(R.string.transfer_gpx_route_planning_hint),
                             style = MaterialTheme.typography.bodySmall,
                             modifier =
                                 Modifier
@@ -238,14 +246,17 @@ internal fun FilePickerDownloadSection(
                     modifier = Modifier.weight(1f),
                 ) {
                     DownloadActionButton(
-                        label = "Maps",
+                        label = stringResource(R.string.transfer_download_maps_label),
                         buttonHeight = downloadButtonHeight,
                         iconSize = 22.dp,
                         onClick = { onShowMapSourcesMenuChange(true) },
                         enabled = !uiLocked,
                         modifier = Modifier.fillMaxWidth(),
                         icon = {
-                            Icon(Icons.Filled.Map, contentDescription = "Map sources")
+                            Icon(
+                                Icons.Filled.Map,
+                                contentDescription = stringResource(R.string.transfer_map_sources_content_description),
+                            )
                         },
                     )
                     DropdownMenu(
@@ -260,7 +271,7 @@ internal fun FilePickerDownloadSection(
                         )
                         HorizontalDivider()
                         Text(
-                            "Recommended websites to download maps",
+                            stringResource(R.string.transfer_map_sources_title),
                             style = MaterialTheme.typography.labelMedium,
                             modifier =
                                 Modifier
@@ -269,9 +280,9 @@ internal fun FilePickerDownloadSection(
                         )
                         val orderedCategories =
                             listOf(
-                                "Topographic maps",
-                                "Non-topographic maps",
-                                "Other",
+                                stringResource(R.string.map_sources_category_topographic),
+                                stringResource(R.string.map_sources_category_non_topographic),
+                                stringResource(R.string.map_sources_category_other),
                             )
 
                         orderedCategories.forEachIndexed { index, category ->
@@ -322,7 +333,7 @@ internal fun FilePickerDownloadSection(
                     modifier = Modifier.weight(1f),
                 ) {
                     DownloadActionButton(
-                        label = "Routing",
+                        label = stringResource(R.string.transfer_download_routing_label),
                         buttonHeight = downloadButtonHeight,
                         iconSize = 22.dp,
                         onClick = { onShowRoutingMenuChange(true) },
@@ -331,7 +342,7 @@ internal fun FilePickerDownloadSection(
                         icon = {
                             Icon(
                                 Icons.Filled.Route,
-                                contentDescription = "Download routing data",
+                                contentDescription = stringResource(R.string.transfer_routing_content_description),
                             )
                         },
                     )
@@ -340,7 +351,7 @@ internal fun FilePickerDownloadSection(
                         onDismissRequest = { onShowRoutingMenuChange(false) },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Download routing data") },
+                            text = { Text(stringResource(R.string.transfer_download_routing_action)) },
                             onClick = {
                                 onShowRoutingMenuChange(false)
                                 onShowRoutingDialog()
@@ -349,7 +360,7 @@ internal fun FilePickerDownloadSection(
                         )
                         if (canRefreshLastRouting) {
                             DropdownMenuItem(
-                                text = { Text("Refresh last download") },
+                                text = { Text(stringResource(R.string.transfer_refresh_last_download_action)) },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Filled.Update,
@@ -372,7 +383,7 @@ internal fun FilePickerDownloadSection(
                 enabled = !uiLocked,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Manage downloaded files")
+                Text(stringResource(R.string.transfer_action_manage_downloads))
             }
         }
     }
@@ -411,19 +422,26 @@ private fun MapsDropdownIntro(onOpenMapsforge: () -> Unit) {
                     textDecoration = TextDecoration.Underline,
                 ),
         )
+    val mapsforgeName = "Mapsforge"
+    val introTemplate = stringResource(R.string.map_sources_mapsforge_intro, mapsforgeName)
+    val mapsforgeNameIndex = introTemplate.indexOf(mapsforgeName)
     val introText =
         buildAnnotatedString {
-            append("GlanceMap is powered by ")
-            withLink(
-                LinkAnnotation.Url(
-                    url = MAPSFORGE_URL,
-                    styles = linkStyles,
-                    linkInteractionListener = LinkInteractionListener { onOpenMapsforge() },
-                ),
-            ) {
-                append("Mapsforge")
+            if (mapsforgeNameIndex < 0) {
+                append(introTemplate)
+            } else {
+                append(introTemplate.substring(0, mapsforgeNameIndex))
+                withLink(
+                    LinkAnnotation.Url(
+                        url = MAPSFORGE_URL,
+                        styles = linkStyles,
+                        linkInteractionListener = LinkInteractionListener { onOpenMapsforge() },
+                    ),
+                ) {
+                    append(mapsforgeName)
+                }
+                append(introTemplate.substring(mapsforgeNameIndex + mapsforgeName.length))
             }
-            append(". Compatible map files: .map (v3/v4/v5).")
         }
 
     Text(
@@ -452,7 +470,7 @@ internal fun FilePickerTransferSection(
     onCancelRequested: () -> Unit,
 ) {
     SectionCard(
-        title = "4. Transfer",
+        title = stringResource(R.string.transfer_section_transfer_title),
         modifier =
             if (adaptive.useCompactPageLayout) {
                 Modifier
@@ -542,7 +560,7 @@ internal fun FilePickerTransferSection(
                             onClick = onResume,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Resume")
+                            Text(stringResource(R.string.common_action_resume))
                         }
                     } else if (uiState.isPaused) {
                         OutlinedButton(
@@ -550,7 +568,7 @@ internal fun FilePickerTransferSection(
                             enabled = false,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Waiting...")
+                            Text(stringResource(R.string.common_status_waiting))
                         }
                     } else if (waitingForReconnect) {
                         OutlinedButton(
@@ -558,7 +576,7 @@ internal fun FilePickerTransferSection(
                             enabled = false,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Waiting...")
+                            Text(stringResource(R.string.common_status_waiting))
                         }
                     } else if (cancellingTransfer) {
                         OutlinedButton(
@@ -566,14 +584,14 @@ internal fun FilePickerTransferSection(
                             enabled = false,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Stopping...")
+                            Text(stringResource(R.string.transfer_action_stopping))
                         }
                     } else if (uiState.isTransferring) {
                         OutlinedButton(
                             onClick = onPause,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Pause")
+                            Text(stringResource(R.string.common_action_pause))
                         }
                     } else {
                         Spacer(modifier = Modifier.weight(1f))
@@ -584,7 +602,7 @@ internal fun FilePickerTransferSection(
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_action_cancel))
                     }
                 }
             }
@@ -607,7 +625,7 @@ internal fun FilePickerHistorySection(
         }
 
     SectionCard(
-        title = "5. History",
+        title = stringResource(R.string.transfer_section_history_title),
         modifier =
             if (adaptive.useCompactPageLayout) {
                 Modifier
@@ -623,7 +641,7 @@ internal fun FilePickerHistorySection(
                 onClick = onClearHistory,
                 enabled = uiState.history.isNotEmpty(),
             ) {
-                Text("Clear")
+                Text(stringResource(R.string.common_action_clear))
             }
         },
     ) {
@@ -651,7 +669,10 @@ internal fun FilePickerHistorySection(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("No transfer history yet.", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            stringResource(R.string.transfer_history_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 } else {
                     Box(
