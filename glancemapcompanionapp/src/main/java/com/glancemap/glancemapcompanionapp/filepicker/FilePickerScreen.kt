@@ -65,7 +65,7 @@ import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
-import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxTrack
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSource
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
@@ -863,14 +863,13 @@ internal fun FilePickerScreen(
 
                 CompanionHomeArea.MAP -> {
                     CompanionMapScreen(
-                        gpxTrack =
-                            selectedRouteDetails?.let { details ->
-                                PhoneMapGpxTrack(
-                                    id = details.route.id,
-                                    points = details.profile.points,
-                                )
+                        gpxSources =
+                            routeLibraryUiState.routes.map { route ->
+                                PhoneMapGpxSource(id = route.id, displayName = route.title)
                             },
+                        initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
                         pois = phoneMapPoiUiState.pois,
+                        poiSources = phoneMapPoiUiState.sources,
                         onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
                         onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
                         onPoiDataChanged = phoneMapPoiViewModel::refresh,

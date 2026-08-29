@@ -16,6 +16,12 @@ internal data class PhoneMapPoi(
     val details: PoiDetails?,
 )
 
+/** A canonical companion POI database that the current viewport reader can use. */
+internal data class PhoneMapPoiSource(
+    val fileName: String,
+    val isReadable: Boolean,
+)
+
 /** Geographic camera bounds passed from the MapLibre surface to the phone POI controller. */
 internal data class PhoneMapViewport(
     val minLat: Double,

@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 
 internal data class PhoneMapPoiUiState(
     val pois: List<PhoneMapPoi> = emptyList(),
+    val sources: List<PhoneMapPoiSource> = emptyList(),
 )
 
 /** Owns cancellable, debounced phone POI viewport queries outside the MapLibre composable. */
@@ -27,6 +28,10 @@ internal class PhoneMapPoiViewModel(
     private var requestId = 0L
     private var queryJob: Job? = null
 
+    init {
+        refreshSources()
+    }
+
     fun onViewportChanged(viewport: PhoneMapViewport) {
         currentViewport = viewport
         if (poiVisible) query(viewport)
@@ -37,14 +42,21 @@ internal class PhoneMapPoiViewModel(
         poiVisible = visible
         if (!visible) {
             queryJob?.cancel()
-            _uiState.value = PhoneMapPoiUiState()
+            _uiState.value = _uiState.value.copy(pois = emptyList())
         } else {
             currentViewport?.let(::query)
         }
     }
 
     fun refresh() {
+        refreshSources()
         if (poiVisible) currentViewport?.let(::query)
+    }
+
+    private fun refreshSources() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(sources = repository.sources())
+        }
     }
 
     private fun query(viewport: PhoneMapViewport) {
@@ -55,7 +67,7 @@ internal class PhoneMapPoiViewModel(
                 delay(QUERY_DEBOUNCE_MILLIS)
                 val pois = repository.queryViewport(viewport = viewport, limit = MAXIMUM_POI_RESULTS)
                 if (poiVisible && expectedRequestId == requestId) {
-                    _uiState.value = PhoneMapPoiUiState(pois = pois)
+                    _uiState.value = _uiState.value.copy(pois = pois)
                 }
             }
     }

@@ -23,14 +23,7 @@ internal class PhoneMapPoiRepository(
     ): List<PhoneMapPoi> =
         withContext(Dispatchers.IO) {
             if (viewport.zoom < MINIMUM_POI_ZOOM || limit <= 0) return@withContext emptyList()
-            val sources =
-                poiDirectory
-                    .listFiles()
-                    ?.asSequence()
-                    ?.filter { it.isFile && it.name.endsWith(POI_FILE_EXTENSION, ignoreCase = true) }
-                    ?.sortedBy { it.name.lowercase(Locale.ROOT) }
-                    ?.toList()
-                    .orEmpty()
+            val sources = poiSourceFiles()
             if (sources.isEmpty()) return@withContext emptyList()
 
             val pois = mutableListOf<PhoneMapPoi>()
@@ -58,6 +51,22 @@ internal class PhoneMapPoiRepository(
             }
             pois
         }
+
+    suspend fun sources(): List<PhoneMapPoiSource> =
+        withContext(Dispatchers.IO) {
+            poiSourceFiles().map { file ->
+                PhoneMapPoiSource(fileName = file.name, isReadable = isPhoneMapPoiFileValid(file))
+            }
+        }
+
+    private fun poiSourceFiles(): List<File> =
+        poiDirectory
+            .listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.name.endsWith(POI_FILE_EXTENSION, ignoreCase = true) }
+            ?.sortedBy { it.name.lowercase(Locale.ROOT) }
+            ?.toList()
+            .orEmpty()
 
     private companion object {
         private const val MINIMUM_PER_SOURCE_LIMIT = 20

@@ -38,9 +38,38 @@ class PhoneMapGpxTrackTest {
         assertTrue(track(point(11.0), point(12.0, startsNewSegment = true)).toRouteSegments().isEmpty())
     }
 
-    private fun track(vararg points: TrailPoint): PhoneMapGpxTrack =
+    @Test
+    fun itemVisibilityIsIndependentAndTheGlobalToggleDoesNotEraseIt() {
+        val first =
+            PhoneMapGpxItem(
+                "first",
+                "First",
+                trackWithId("first", point(11.0), point(11.1)),
+                enabled = true,
+            )
+        val second =
+            PhoneMapGpxItem(
+                "second",
+                "Second",
+                trackWithId("second", point(12.0), point(12.1)),
+                enabled = false,
+            )
+
+        val withBothEnabled = listOf(first, second).toggleEnabled("second")
+
+        assertEquals(2, withBothEnabled.enabledRouteSegments(globalVisible = true).size)
+        assertTrue(withBothEnabled.enabledRouteSegments(globalVisible = false).isEmpty())
+        assertEquals(2, withBothEnabled.count(PhoneMapGpxItem::enabled))
+    }
+
+    private fun track(vararg points: TrailPoint): PhoneMapGpxTrack = trackWithId("test", *points)
+
+    private fun trackWithId(
+        id: String,
+        vararg points: TrailPoint,
+    ): PhoneMapGpxTrack =
         PhoneMapGpxTrack(
-            id = "test",
+            id = id,
             points = points.toList(),
         )
 

@@ -13,6 +13,56 @@ internal data class PhoneMapGpxTrack(
     }
 }
 
+/** A Route Library GPX item whose map visibility is independent from every other item. */
+internal data class PhoneMapGpxItem(
+    val id: String,
+    val displayName: String,
+    val track: PhoneMapGpxTrack,
+    val enabled: Boolean,
+) {
+    init {
+        require(id.isNotBlank())
+        require(displayName.isNotBlank())
+        require(track.id == id)
+    }
+}
+
+/** Small route metadata passed into the phone map without coupling its panel UI to Route Library. */
+internal data class PhoneMapGpxSource(
+    val id: String,
+    val displayName: String,
+) {
+    init {
+        require(id.isNotBlank())
+        require(displayName.isNotBlank())
+    }
+}
+
+internal fun mergePhoneMapGpxItems(
+    previous: List<PhoneMapGpxItem>,
+    loaded: List<PhoneMapGpxItem>,
+    initiallyEnabledId: String?,
+): List<PhoneMapGpxItem> {
+    val enabledById = previous.associate { item -> item.id to item.enabled }
+    return loaded.map { item ->
+        item.copy(enabled = enabledById[item.id] ?: (item.id == initiallyEnabledId))
+    }
+}
+
+internal fun List<PhoneMapGpxItem>.toggleEnabled(
+    id: String,
+): List<PhoneMapGpxItem> =
+    map { item ->
+        if (item.id == id) item.copy(enabled = !item.enabled) else item
+    }
+
+internal fun List<PhoneMapGpxItem>.enabledRouteSegments(globalVisible: Boolean): List<PhoneMapRouteSegment> =
+    if (globalVisible) {
+        filter(PhoneMapGpxItem::enabled).flatMap { item -> item.track.toRouteSegments() }
+    } else {
+        emptyList()
+    }
+
 /** A renderable contiguous GPX segment, deliberately independent from a map SDK. */
 internal data class PhoneMapRouteSegment(
     val points: List<GeoPoint>,
