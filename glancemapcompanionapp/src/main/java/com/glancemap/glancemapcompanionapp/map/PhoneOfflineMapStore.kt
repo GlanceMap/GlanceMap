@@ -20,6 +20,10 @@ internal data class PhoneOfflineMap(
 ) {
     val displayName: String
         get() = file.name
+
+    /** The Mapsforge renderer owns one concrete file and must be recreated only when it changes. */
+    val rendererIdentity: String
+        get() = file.absolutePath
 }
 
 /** The active phone renderer source; Mapsforge and file details remain in the companion. */

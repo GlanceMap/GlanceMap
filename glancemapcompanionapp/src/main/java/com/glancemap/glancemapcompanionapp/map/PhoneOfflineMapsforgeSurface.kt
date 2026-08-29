@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -64,34 +65,36 @@ internal fun offlineMapSurface(
     callbacks: PhoneOfflineMapsforgeCallbacks,
 ) {
     val currentCallbacks by rememberUpdatedState(callbacks)
-    var view by remember(state.map.file.absolutePath) { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
+    key(state.map.rendererIdentity) {
+        var view by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
 
-    AndroidView(
-        factory = { context ->
-            PhoneOfflineMapsforgeView(
-                context = context,
-                state = state,
-                callbacks =
-                    PhoneOfflineMapsforgeCallbacks(
-                        onCameraChanged = { currentCallbacks.onCameraChanged(it) },
-                        onViewportChanged = { currentCallbacks.onViewportChanged(it) },
-                        onPoiSelected = { currentCallbacks.onPoiSelected(it) },
-                        onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
-                        onMapError = { currentCallbacks.onMapError(it) },
-                    ),
-            ).also { view = it }
-        },
-        update = { activeView ->
-            activeView.applyTheme(state.themeConfig)
-            activeView.applyMapMode(state.mapMode)
-            activeView.applyCameraCommand(state.cameraCommand)
-            activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
+        AndroidView(
+            factory = { context ->
+                PhoneOfflineMapsforgeView(
+                    context = context,
+                    state = state,
+                    callbacks =
+                        PhoneOfflineMapsforgeCallbacks(
+                            onCameraChanged = { currentCallbacks.onCameraChanged(it) },
+                            onViewportChanged = { currentCallbacks.onViewportChanged(it) },
+                            onPoiSelected = { currentCallbacks.onPoiSelected(it) },
+                            onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
+                            onMapError = { currentCallbacks.onMapError(it) },
+                        ),
+                ).also { view = it }
+            },
+            update = { activeView ->
+                activeView.applyTheme(state.themeConfig)
+                activeView.applyMapMode(state.mapMode)
+                activeView.applyCameraCommand(state.cameraCommand)
+                activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
 
-    DisposableEffect(view) {
-        onDispose { view?.dispose() }
+        DisposableEffect(view) {
+            onDispose { view?.dispose() }
+        }
     }
 }
 
