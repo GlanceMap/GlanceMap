@@ -2,6 +2,9 @@ package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.map.MapContentVisibility
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -18,20 +21,96 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun switchingToolsInSplitKeepsThePanelOpenAndTappingTheActiveToolClosesIt() {
+    fun switchingToolsInSplitKeepsThePanelOpenWithoutResettingTheActiveTool() {
         val switched = MapToolPanelState().select(MapTool.POI).select(MapTool.MAPS)
 
         assertEquals(MapTool.MAPS, switched.activeTool)
         assertEquals(MapToolPanelMode.SPLIT, switched.mode)
-        assertEquals(MapToolPanelState(), switched.select(MapTool.MAPS))
         assertEquals(
-            MapToolPanelMode.SPLIT,
+            MapToolPanelMode.EXPANDED,
             MapToolPanelState()
                 .select(MapTool.GPX)
                 .expand()
                 .select(MapTool.GPX)
                 .mode,
         )
+    }
+
+    @Test
+    fun launcherStaysExpandedWhileSwitchingToolsAndCollapsesIndependently() {
+        val selected =
+            PhoneMapUiState()
+                .toggleToolLauncher()
+                .selectTool(MapTool.POI)
+                .selectTool(MapTool.GPX)
+
+        assertTrue(selected.toolLauncherExpanded)
+        assertEquals(MapTool.GPX, selected.toolPanel.activeTool)
+        assertEquals(MapToolPanelMode.SPLIT, selected.toolPanel.mode)
+
+        val collapsed = selected.toggleToolLauncher()
+
+        assertFalse(collapsed.toolLauncherExpanded)
+        assertEquals(selected.toolPanel, collapsed.toolPanel)
+    }
+
+    @Test
+    fun backReturnsFeatureSettingsToItsMainPanelBeforeCollapsingThePanel() {
+        val settings = PhoneMapUiState().selectTool(MapTool.GPX).showFeatureSettings()
+
+        assertEquals(MapToolContentMode.FEATURE_SETTINGS, settings.toolPanel.contentMode)
+        assertEquals(MapToolContentMode.MAIN, settings.onMapBack().toolPanel.contentMode)
+        assertEquals(
+            MapToolPanelMode.CLOSED,
+            settings
+                .onMapBack()
+                .onMapBack()
+                .toolPanel
+                .mode,
+        )
+    }
+
+    @Test
+    fun featureSettingsDoNotChangeMapSourceOrOverlayVisibility() {
+        val initial =
+            PhoneMapUiState(
+                source = PhoneMapSource.Offline(PhoneOfflineMap(File("alps.map"))),
+                contentVisibility = MapContentVisibility(gpxTracks = true, pois = false),
+            )
+
+        val returnedToMain =
+            initial
+                .selectTool(MapTool.MAPS)
+                .showFeatureSettings()
+                .onMapBack()
+
+        assertEquals(initial.source, returnedToMain.source)
+        assertEquals(initial.contentVisibility, returnedToMain.contentVisibility)
+        assertEquals(MapToolContentMode.MAIN, returnedToMain.toolPanel.contentMode)
+    }
+
+    @Test
+    fun mapModeCycleKeepsOrientationAndFollowAsSeparateState() {
+        val northUp = PhoneMapMode()
+        val headingUp = northUp.cycle()
+        val follow = headingUp.cycle()
+
+        assertEquals(PhoneMapOrientation.NORTH_UP, northUp.orientation)
+        assertEquals(PhoneMapOrientation.HEADING_UP, headingUp.orientation)
+        assertEquals(PhoneMapFollowMode.FREE, headingUp.follow)
+        assertEquals(PhoneMapOrientation.NORTH_UP, follow.orientation)
+        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, follow.follow)
+        assertEquals(northUp, follow.cycle())
+    }
+
+    @Test
+    fun zoomCommandsAreRendererNeutralAndConsumedOnce() {
+        val requested = PhoneMapUiState().requestZoom(1)
+        val command = requireNotNull(requested.cameraCommand)
+
+        assertEquals(1L, command.id)
+        assertEquals(1, command.zoomDelta)
+        assertNull(requested.consumeCommand(command.id).cameraCommand)
     }
 
     @Test
@@ -47,7 +126,7 @@ class MapToolPanelStateTest {
                 .selectTool(MapTool.MAPS)
                 .expandTool()
                 .collapseTool()
-                .onToolBack()
+                .onMapBack()
 
         assertEquals(initial.source, changed.source)
         assertEquals(initial.contentVisibility, changed.contentVisibility)

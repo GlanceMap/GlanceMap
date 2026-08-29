@@ -11,13 +11,18 @@ import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalIconButton
@@ -36,6 +41,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -180,7 +186,6 @@ internal fun CompanionMapScreen(
     var mapCamera by remember { mutableStateOf(defaultMapCamera) }
     var showOfflineThemeSelector by remember { mutableStateOf(false) }
     var showOfflineBundleDownload by remember { mutableStateOf(false) }
-    var featureSettingsTool by remember { mutableStateOf<MapTool?>(null) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     var pendingRecenter by remember { mutableStateOf(false) }
@@ -281,6 +286,27 @@ internal fun CompanionMapScreen(
         gpxViewModel.synchronize(gpxSources, initiallyEnabledGpxId)
     }
 
+    val requestRecenter = {
+        if (context.hasLocationPermission()) {
+            hasLocationPermission = true
+            pendingRecenter = true
+        } else {
+            locationPermissionLauncher.launch(locationPermissions)
+        }
+    }
+    val cycleMapMode = {
+        val updated = mapUiState.cycleMapMode()
+        mapUiState = updated
+        if (
+            updated.mapMode.follow == PhoneMapFollowMode.FOLLOW_LOCATION &&
+            updated.source is PhoneMapSource.Online
+        ) {
+            requestRecenter()
+        } else {
+            pendingRecenter = false
+        }
+    }
+
     val toolsState =
         MapToolsPanelState(
             maps =
@@ -301,6 +327,7 @@ internal fun CompanionMapScreen(
                     sources = poiSources,
                     globalVisible = mapUiState.contentVisibility.pois,
                 ),
+            general = MapToolsGeneralState(mapMode = mapUiState.mapMode),
         )
     val mapActions =
         MapToolsMapsActions(
@@ -339,18 +366,24 @@ internal fun CompanionMapScreen(
             onOpenTheme = { showOfflineThemeSelector = true },
         )
 
-    BackHandler(enabled = mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED) {
-        mapUiState = mapUiState.onToolBack()
+    BackHandler(
+        enabled =
+            mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
+                mapUiState.toolLauncherExpanded,
+    ) {
+        mapUiState = mapUiState.onMapBack()
     }
 
     MapToolScaffold(
         state = mapUiState.toolPanel,
+        launcherExpanded = mapUiState.toolLauncherExpanded,
         actions =
             MapToolScaffoldActions(
                 onToolSelected = { tool -> mapUiState = mapUiState.selectTool(tool) },
+                onToggleLauncher = { mapUiState = mapUiState.toggleToolLauncher() },
                 onExpand = { mapUiState = mapUiState.expandTool() },
                 onCollapse = { mapUiState = mapUiState.collapseTool() },
-                onClose = { mapUiState = mapUiState.onToolBack().onToolBack() },
+                onClose = { mapUiState = mapUiState.closeTool() },
             ),
         mapContent = {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -391,6 +424,14 @@ internal fun CompanionMapScreen(
                             onPoiSelected = { selectedPoi = it },
                         )
                         observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { mapCamera = it })
+                        synchronizeOnlineMapControls(
+                            runtime = mapRuntime,
+                            command = mapUiState.cameraCommand,
+                            mapMode = mapUiState.mapMode,
+                            onCameraCommandHandled = { commandId ->
+                                mapUiState = mapUiState.consumeCommand(commandId)
+                            },
+                        )
                         mapSurface(
                             initialCamera = mapCamera,
                             onMapViewCreated = { createdMapView ->
@@ -425,12 +466,17 @@ internal fun CompanionMapScreen(
                                     initialCamera = mapCamera,
                                     gpxOverlays = gpxOverlayState.overlays,
                                     pois = pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty(),
+                                    mapMode = mapUiState.mapMode,
+                                    cameraCommand = mapUiState.cameraCommand,
                                 ),
                             callbacks =
                                 PhoneOfflineMapsforgeCallbacks(
                                     onCameraChanged = { mapCamera = it },
                                     onViewportChanged = onPoiViewportChanged,
                                     onPoiSelected = { selectedPoi = it },
+                                    onCameraCommandHandled = { commandId ->
+                                        mapUiState = mapUiState.consumeCommand(commandId)
+                                    },
                                     onMapError = { error ->
                                         offlineMapError = error
                                         mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
@@ -442,15 +488,10 @@ internal fun CompanionMapScreen(
 
                 mapControls(
                     onBack = onBack,
-                    onRecenter = {
-                        if (context.hasLocationPermission()) {
-                            hasLocationPermission = true
-                            pendingRecenter = true
-                        } else {
-                            locationPermissionLauncher.launch(locationPermissions)
-                        }
-                    },
-                    showOnlineControls = mapUiState.source is PhoneMapSource.Online,
+                    onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
+                    onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
+                    mapMode = mapUiState.mapMode,
+                    onCycleMapMode = cycleMapMode,
                 )
 
                 selectedPoi?.let { poi ->
@@ -478,9 +519,10 @@ internal fun CompanionMapScreen(
                 }
             }
         },
-        panelContent = { tool ->
+        panelContent = { tool, contentMode ->
             MapToolPanelContent(
                 tool = tool,
+                contentMode = contentMode,
                 state = toolsState,
                 actions =
                     MapToolsPanelActions(
@@ -499,7 +541,8 @@ internal fun CompanionMapScreen(
                                     contentVisibility = mapUiState.contentVisibility.copy(pois = visible),
                                 )
                         },
-                        onFeatureSettings = { settingsTool -> featureSettingsTool = settingsTool },
+                        onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
+                        onCycleMapMode = cycleMapMode,
                     ),
             )
         },
@@ -534,9 +577,6 @@ internal fun CompanionMapScreen(
             onStart = bundleViewModel::start,
             onCancel = bundleViewModel::cancel,
         )
-    }
-    featureSettingsTool?.let { tool ->
-        MapToolFeatureSettingsDialog(tool = tool, onDismiss = { featureSettingsTool = null })
     }
 }
 
@@ -594,6 +634,27 @@ private fun observeOnlineCamera(
         activeMap.addOnCameraIdleListener(listener)
         listener.onCameraIdle()
         onDispose { activeMap.removeOnCameraIdleListener(listener) }
+    }
+}
+
+@Composable
+private fun synchronizeOnlineMapControls(
+    runtime: MapRuntime,
+    command: PhoneMapCameraCommand?,
+    mapMode: PhoneMapMode,
+    onCameraCommandHandled: (Long) -> Unit,
+) {
+    val currentOnCameraCommandHandled by rememberUpdatedState(onCameraCommandHandled)
+    LaunchedEffect(runtime.map, command) {
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        val pendingCommand = command ?: return@LaunchedEffect
+        activeMap.animateCamera(CameraUpdateFactory.zoomBy(pendingCommand.zoomDelta.toDouble()))
+        currentOnCameraCommandHandled(pendingCommand.id)
+    }
+    LaunchedEffect(runtime.map, mapMode.orientation) {
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        // Heading data is not available yet, so both orientation states safely keep North up.
+        activeMap.animateCamera(CameraUpdateFactory.bearingTo(0.0))
     }
 }
 
@@ -709,8 +770,10 @@ private fun mapSurface(
 @Composable
 private fun mapControls(
     onBack: () -> Unit,
-    onRecenter: () -> Unit,
-    showOnlineControls: Boolean,
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+    mapMode: PhoneMapMode,
+    onCycleMapMode: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         FilledTonalIconButton(
@@ -725,22 +788,47 @@ private fun mapControls(
                 contentDescription = stringResource(R.string.common_action_back),
             )
         }
-        if (showOnlineControls) {
+        Column(
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             FilledTonalIconButton(
-                onClick = onRecenter,
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp),
+                onClick = onZoomIn,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.MyLocation,
-                    contentDescription = stringResource(R.string.map_recenter_content_description),
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.map_zoom_in_content_description),
+                )
+            }
+            FilledTonalIconButton(onClick = onZoomOut) {
+                Icon(
+                    imageVector = Icons.Filled.Remove,
+                    contentDescription = stringResource(R.string.map_zoom_out_content_description),
+                )
+            }
+            FilledTonalIconButton(onClick = onCycleMapMode) {
+                Icon(
+                    imageVector = mapMode.icon(),
+                    contentDescription =
+                        stringResource(
+                            R.string.map_mode_content_description,
+                            stringResource(mapMode.labelResource()),
+                        ),
                 )
             }
         }
     }
 }
+
+private fun PhoneMapMode.icon(): ImageVector =
+    when {
+        follow == PhoneMapFollowMode.FOLLOW_LOCATION -> Icons.Filled.MyLocation
+        orientation == PhoneMapOrientation.HEADING_UP -> Icons.Filled.Explore
+        else -> Icons.Filled.Navigation
+    }
 
 private fun createMapView(
     context: Context,

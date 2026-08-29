@@ -23,6 +23,7 @@ import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.MapPosition
 import org.mapsforge.core.model.Point
+import org.mapsforge.core.model.Rotation
 import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.util.AndroidUtil
@@ -43,6 +44,7 @@ internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
     val onViewportChanged: (PhoneMapViewport) -> Unit,
     val onPoiSelected: (PhoneMapPoi) -> Unit,
+    val onCameraCommandHandled: (Long) -> Unit,
     val onMapError: (PhoneOfflineMapError) -> Unit,
 )
 
@@ -52,6 +54,8 @@ internal data class PhoneOfflineMapSurfaceState(
     val initialCamera: PhoneMapCameraSnapshot,
     val gpxOverlays: List<PhoneMapGpxOverlay>,
     val pois: List<PhoneMapPoi>,
+    val mapMode: PhoneMapMode,
+    val cameraCommand: PhoneMapCameraCommand?,
 )
 
 @Composable
@@ -72,12 +76,15 @@ internal fun offlineMapSurface(
                         onCameraChanged = { currentCallbacks.onCameraChanged(it) },
                         onViewportChanged = { currentCallbacks.onViewportChanged(it) },
                         onPoiSelected = { currentCallbacks.onPoiSelected(it) },
+                        onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
                         onMapError = { currentCallbacks.onMapError(it) },
                     ),
             ).also { view = it }
         },
         update = { activeView ->
             activeView.applyTheme(state.themeConfig)
+            activeView.applyMapMode(state.mapMode)
+            activeView.applyCameraCommand(state.cameraCommand)
             activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
         },
         modifier = Modifier.fillMaxSize(),
@@ -99,6 +106,8 @@ private class PhoneOfflineMapsforgeView(
     private var mapFile: MapFile? = null
     private var tileLayer: TileRendererLayer? = null
     private var appliedThemeConfig: PhoneOfflineThemeConfig? = null
+    private var appliedMapMode: PhoneMapMode? = null
+    private var lastHandledCameraCommandId: Long? = null
     private var gpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
     private var pois: List<PhoneMapPoi> = emptyList()
     private var overlayLayers: PhoneOfflineMapsforgeOverlayLayers? = null
@@ -147,6 +156,8 @@ private class PhoneOfflineMapsforgeView(
                     )
                 this.tileLayer = tileLayer
                 applyTheme(state.themeConfig)
+                applyMapMode(state.mapMode)
+                applyCameraCommand(state.cameraCommand)
                 mapView.layerManager.layers.add(tileLayer)
                 overlayLayers =
                     PhoneOfflineMapsforgeOverlayLayers(
@@ -216,6 +227,24 @@ private class PhoneOfflineMapsforgeView(
         }
         mapView?.layerManager?.redrawLayers()
         appliedThemeConfig = resolved
+    }
+
+    fun applyMapMode(mapMode: PhoneMapMode) {
+        if (mapMode == appliedMapMode) return
+        // Heading data is not available yet, so both orientation states safely keep North up.
+        mapView?.rotate(Rotation.NULL_ROTATION)
+        appliedMapMode = mapMode
+    }
+
+    fun applyCameraCommand(command: PhoneMapCameraCommand?) {
+        if (command == null || command.id == lastHandledCameraCommandId) return
+        val position = mapView?.model?.mapViewPosition ?: return
+        when (command.zoomDelta) {
+            1 -> position.zoomIn(true)
+            -1 -> position.zoomOut(true)
+        }
+        lastHandledCameraCommandId = command.id
+        post { if (!disposed) callbacks.onCameraCommandHandled(command.id) }
     }
 
     fun updateOverlays(

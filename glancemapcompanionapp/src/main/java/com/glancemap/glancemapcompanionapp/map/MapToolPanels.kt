@@ -11,15 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,10 +41,15 @@ internal data class MapToolsPoiState(
     val globalVisible: Boolean,
 )
 
+internal data class MapToolsGeneralState(
+    val mapMode: PhoneMapMode,
+)
+
 internal data class MapToolsPanelState(
     val maps: MapToolsMapsState,
     val gpx: MapToolsGpxState,
     val poi: MapToolsPoiState,
+    val general: MapToolsGeneralState,
 )
 
 internal data class MapToolsMapsActions(
@@ -68,31 +69,42 @@ internal data class MapToolsPanelActions(
     val onGpxItemToggled: (String) -> Unit,
     val onPoiVisibilityChanged: (Boolean) -> Unit,
     val onFeatureSettings: (MapTool) -> Unit,
+    val onCycleMapMode: () -> Unit,
 )
 
 @Composable
 @Suppress("FunctionNaming") // Public Compose entry points follow the project's screen naming convention.
 internal fun MapToolPanelContent(
     tool: MapTool,
+    contentMode: MapToolContentMode,
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
 ) {
-    when (tool) {
-        MapTool.MAPS -> mapToolsMapsPanel(state.maps, actions.maps)
-        MapTool.GPX ->
-            mapToolsGpxPanel(
-                state = state.gpx,
-                onGlobalVisibilityChanged = actions.onGpxVisibilityChanged,
-                onItemToggled = actions.onGpxItemToggled,
-                onSettings = { actions.onFeatureSettings(MapTool.GPX) },
-            )
-        MapTool.POI ->
-            mapToolsPoiPanel(
-                state = state.poi,
-                onGlobalVisibilityChanged = actions.onPoiVisibilityChanged,
-                onSettings = { actions.onFeatureSettings(MapTool.POI) },
-            )
-        MapTool.SETTINGS -> mapToolsSettingsPanel(onOpenTheme = actions.maps.onOpenTheme)
+    if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
+        MapToolFeatureSettingsContent(tool = tool, state = state, actions = actions)
+    } else {
+        when (tool) {
+            MapTool.MAPS ->
+                mapToolsMapsPanel(
+                    state = state.maps,
+                    actions = actions.maps,
+                    onSettings = { actions.onFeatureSettings(MapTool.MAPS) },
+                )
+            MapTool.GPX ->
+                mapToolsGpxPanel(
+                    state = state.gpx,
+                    onGlobalVisibilityChanged = actions.onGpxVisibilityChanged,
+                    onItemToggled = actions.onGpxItemToggled,
+                    onSettings = { actions.onFeatureSettings(MapTool.GPX) },
+                )
+            MapTool.POI ->
+                mapToolsPoiPanel(
+                    state = state.poi,
+                    onGlobalVisibilityChanged = actions.onPoiVisibilityChanged,
+                    onSettings = { actions.onFeatureSettings(MapTool.POI) },
+                )
+            MapTool.SETTINGS -> mapToolsSettingsPanel(state.general, actions.onCycleMapMode)
+        }
     }
 }
 
@@ -100,15 +112,15 @@ internal fun MapToolPanelContent(
 private fun mapToolsMapsPanel(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
+    onSettings: () -> Unit,
 ) {
     mapToolPanelColumn {
-        Text(stringResource(R.string.map_tools_maps_source_heading))
+        Text(stringResource(R.string.map_tools_maps_active_heading))
         mapSourceRow(
             label = stringResource(R.string.map_source_select_online),
             selected = state.source is PhoneMapSource.Online,
             onClick = actions.onSelectOnline,
         )
-        Text(stringResource(R.string.map_tools_maps_offline_heading))
         if (state.offlineMaps.isEmpty()) {
             Text(stringResource(R.string.map_source_no_offline_maps))
         } else {
@@ -120,34 +132,23 @@ private fun mapToolsMapsPanel(
                 )
             }
         }
-        HorizontalDivider()
-        Button(onClick = actions.onImportMap, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_source_import_local_map))
+        if (state.source is PhoneMapSource.Offline) {
+            Text(
+                stringResource(
+                    R.string.map_tools_maps_theme_value,
+                    stringResource(PhoneOfflineThemeCatalog.themeFor(state.themeConfig.themeId).labelRes),
+                    stringResource(
+                        PhoneOfflineThemeCatalog
+                            .themeFor(state.themeConfig.themeId)
+                            .styles
+                            .first { style -> style.id == state.themeConfig.styleId }
+                            .labelRes,
+                    ),
+                ),
+            )
         }
-        OutlinedButton(onClick = actions.onDownloadBundle, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_source_download_offline_bundle))
-        }
-        if (state.hasSelectedFolder) {
-            Text(stringResource(R.string.map_source_map_folder_selected))
-            OutlinedButton(onClick = actions.onRescanFolder, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.map_source_rescan_map_folder))
-            }
-            OutlinedButton(onClick = actions.onClearFolder, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.map_source_clear_map_folder))
-            }
-        } else {
-            OutlinedButton(onClick = actions.onSelectFolder, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.map_source_select_map_folder))
-            }
-        }
-        Text(
-            stringResource(
-                R.string.map_tools_maps_theme_value,
-                stringResource(PhoneOfflineThemeCatalog.themeFor(state.themeConfig.themeId).labelRes),
-            ),
-        )
-        OutlinedButton(onClick = actions.onOpenTheme, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_tools_feature_settings_action))
+        OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_tools_maps_settings_action))
         }
     }
 }
@@ -191,9 +192,8 @@ private fun mapToolsGpxPanel(
                     )
                 }
         }
-        Text(stringResource(R.string.map_tools_gpx_folder_deferred))
         OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_tools_feature_settings_action))
+            Text(stringResource(R.string.map_tools_gpx_settings_action))
         }
     }
 }
@@ -231,22 +231,28 @@ private fun mapToolsPoiPanel(
                 )
             }
         }
-        Text(stringResource(R.string.map_tools_poi_source_limit))
         OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_tools_feature_settings_action))
+            Text(stringResource(R.string.map_tools_poi_settings_action))
         }
     }
 }
 
 @Composable
-private fun mapToolsSettingsPanel(
-    onOpenTheme: () -> Unit,
+internal fun mapToolsSettingsPanel(
+    state: MapToolsGeneralState,
+    onCycleMapMode: () -> Unit,
 ) {
     mapToolPanelColumn {
         Text(stringResource(R.string.map_tools_settings_heading))
-        Text(stringResource(R.string.map_tools_settings_intro))
-        OutlinedButton(onClick = onOpenTheme, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_theme_selector_title))
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.map_tools_settings_map_mode)) },
+            supportingContent = { Text(stringResource(state.mapMode.labelResource())) },
+        )
+        OutlinedButton(onClick = onCycleMapMode, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_tools_settings_cycle_map_mode))
+        }
+        if (state.mapMode.orientation == PhoneMapOrientation.HEADING_UP) {
+            Text(stringResource(R.string.map_tools_settings_heading_up_unavailable))
         }
         Text(stringResource(R.string.map_tools_settings_future))
     }
@@ -269,7 +275,7 @@ private fun mapToolsVisibilityRow(
 }
 
 @Composable
-private fun mapToolPanelColumn(content: @Composable () -> Unit) {
+internal fun mapToolPanelColumn(content: @Composable () -> Unit) {
     Column(
         modifier =
             Modifier
@@ -281,20 +287,4 @@ private fun mapToolPanelColumn(content: @Composable () -> Unit) {
         content()
         Spacer(modifier = Modifier.height(8.dp))
     }
-}
-
-@Composable
-@Suppress("FunctionNaming") // Public Compose entry points follow the project's screen naming convention.
-internal fun MapToolFeatureSettingsDialog(
-    tool: MapTool,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(tool.titleResource())) },
-        text = { Text(stringResource(R.string.map_tools_feature_settings_unavailable)) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
-        },
-    )
 }
