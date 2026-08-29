@@ -14,9 +14,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -42,6 +44,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -60,16 +63,18 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.gestures.MoveGestureDetector
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 
 private val defaultMapCamera = PhoneMapCameraSnapshot(latitude = 20.0, longitude = 0.0, zoom = 2.0)
-private const val RECENTER_ZOOM = 14.0
 private val locationPermissions =
     arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -141,7 +146,7 @@ internal data class MapRuntime(
 
 private data class MapLocationState(
     val hasPermission: Boolean,
-    val pendingRecenter: Boolean,
+    val location: PhoneMapLocation?,
 )
 
 private data class GpxOverlayState(
@@ -171,11 +176,15 @@ internal fun CompanionMapScreen(
             PhoneOfflineMapFolderSource(context.applicationContext, offlineMapStore)
         }
     val gpxFolderSource = remember(context) { PhoneGpxFolderSource(context.applicationContext) }
+    val compassSensorSource = remember(context) { PhoneCompassSensorSource(context.applicationContext) }
+    val mapLocationSource = remember(context) { PhoneMapLocationSource(context.applicationContext) }
     val offlineThemePreferences = remember(context) { PhoneOfflineThemePreferences(context.applicationContext) }
     val bundleViewModel: PhoneOfflineBundleViewModel = viewModel()
     val bundleUiState by bundleViewModel.uiState.collectAsState()
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val gpxUiState by gpxViewModel.uiState.collectAsState()
+    val compassState by compassSensorSource.state.collectAsState()
+    val mapLocation by mapLocationSource.location.collectAsState()
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var mapUiState by remember { mutableStateOf(PhoneMapUiState()) }
     var offlineMaps by remember { mutableStateOf(emptyList<PhoneOfflineMap>()) }
@@ -194,7 +203,6 @@ internal fun CompanionMapScreen(
     var showOfflineBundleDownload by remember { mutableStateOf(false) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
-    var pendingRecenter by remember { mutableStateOf(false) }
     val completedBundle =
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
     var hasFittedGpxOverlay by remember { mutableStateOf(false) }
@@ -203,10 +211,19 @@ internal fun CompanionMapScreen(
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
         }
+    phoneMapCompassLifecycle(compassSensorSource)
+    phoneMapLocationLifecycle(mapLocationSource, hasLocationPermission)
+    val compassPresentation =
+        remember(mapUiState.mapMode.orientation, compassState.headingDegrees, compassState.isRenderable) {
+            phoneMapCompassPresentation(
+                orientation = mapUiState.mapMode.orientation,
+                headingDegrees = compassState.headingDegrees.takeIf { compassState.isRenderable },
+            )
+        }
     val locationState =
         MapLocationState(
             hasPermission = hasLocationPermission,
-            pendingRecenter = pendingRecenter,
+            location = mapLocation,
         )
     val gpxOverlayState =
         GpxOverlayState(
@@ -288,7 +305,6 @@ internal fun CompanionMapScreen(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
         ) { permissions ->
             hasLocationPermission = permissions.values.any { granted -> granted }
-            pendingRecenter = hasLocationPermission
         }
 
     LaunchedEffect(offlineMapStore, mapFolderSource) {
@@ -323,24 +339,15 @@ internal fun CompanionMapScreen(
         gpxViewModel.synchronize(gpxSources, gpxFolderScan.files, initiallyEnabledGpxId)
     }
 
-    val requestRecenter = {
-        if (context.hasLocationPermission()) {
-            hasLocationPermission = true
-            pendingRecenter = true
+    val onMapModePressed = {
+        if (mapUiState.mapMode.isDetachedFromLocation) {
+            if (mapLocation != null) {
+                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
+            } else if (!hasLocationPermission) {
+                locationPermissionLauncher.launch(locationPermissions)
+            }
         } else {
-            locationPermissionLauncher.launch(locationPermissions)
-        }
-    }
-    val cycleMapMode = {
-        val updated = mapUiState.cycleMapMode()
-        mapUiState = updated
-        if (
-            updated.mapMode.follow == PhoneMapFollowMode.FOLLOW_LOCATION &&
-            updated.source is PhoneMapSource.Online
-        ) {
-            requestRecenter()
-        } else {
-            pendingRecenter = false
+            mapUiState = mapUiState.toggleMapOrientation()
         }
     }
 
@@ -436,11 +443,12 @@ internal fun CompanionMapScreen(
                                 mapRuntime = mapRuntime.invalidate(destroyedMapView)
                             },
                         )
-                        synchronizeMapLocation(
+                        synchronizeOnlineMapPresentation(
                             runtime = mapRuntime,
                             locationState = locationState,
-                            onRecenterHandled = { pendingRecenter = false },
-                            context = context,
+                            mapMode = mapUiState.mapMode,
+                            compassSource = compassSensorSource,
+                            compassPresentation = compassPresentation,
                         )
                         synchronizeGpxOverlay(
                             runtime = mapRuntime,
@@ -465,10 +473,15 @@ internal fun CompanionMapScreen(
                             onPoiSelected = { selectedPoi = it },
                         )
                         observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { mapCamera = it })
+                        observeOnlineUserPan(
+                            runtime = mapRuntime,
+                            onUserPan = {
+                                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation())
+                            },
+                        )
                         synchronizeOnlineMapControls(
                             runtime = mapRuntime,
                             command = mapUiState.cameraCommand,
-                            mapMode = mapUiState.mapMode,
                             onCameraCommandHandled = { commandId ->
                                 mapUiState = mapUiState.consumeCommand(commandId)
                             },
@@ -508,6 +521,8 @@ internal fun CompanionMapScreen(
                                     gpxOverlays = gpxOverlayState.overlays,
                                     pois = pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty(),
                                     mapMode = mapUiState.mapMode,
+                                    compassPresentation = compassPresentation,
+                                    location = locationState.location.takeIf { locationState.hasPermission },
                                     cameraCommand = mapUiState.cameraCommand,
                                 ),
                             callbacks =
@@ -515,6 +530,10 @@ internal fun CompanionMapScreen(
                                     onCameraChanged = { mapCamera = it },
                                     onViewportChanged = onPoiViewportChanged,
                                     onPoiSelected = { selectedPoi = it },
+                                    onUserPan = {
+                                        mapUiState =
+                                            mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation())
+                                    },
                                     onCameraCommandHandled = { commandId ->
                                         mapUiState = mapUiState.consumeCommand(commandId)
                                     },
@@ -532,8 +551,9 @@ internal fun CompanionMapScreen(
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
                     onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
                     mapMode = mapUiState.mapMode,
-                    onCycleMapMode = cycleMapMode,
+                    onCycleMapMode = onMapModePressed,
                 )
+                phoneMapNorthIndicator(compassPresentation)
 
                 selectedPoi?.let { poi ->
                     phoneMapPoiDetailsCard(
@@ -596,7 +616,7 @@ internal fun CompanionMapScreen(
                                 )
                         },
                         onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
-                        onCycleMapMode = cycleMapMode,
+                        onCycleMapMode = onMapModePressed,
                     ),
             )
         },
@@ -671,6 +691,62 @@ private fun offlineThemeSelector(
 }
 
 @Composable
+private fun phoneMapCompassLifecycle(source: PhoneCompassSensorSource) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(source, lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> source.start()
+                    Lifecycle.Event.ON_PAUSE -> source.stop()
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            source.start()
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            source.stop()
+        }
+    }
+}
+
+@Composable
+private fun phoneMapLocationLifecycle(
+    source: PhoneMapLocationSource,
+    hasLocationPermission: Boolean,
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(source, lifecycleOwner, hasLocationPermission) {
+        fun updateRegistration() {
+            if (hasLocationPermission && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                source.start()
+            } else {
+                source.stop()
+            }
+        }
+
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME,
+                    Lifecycle.Event.ON_PAUSE,
+                    -> updateRegistration()
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        updateRegistration()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            source.stop()
+        }
+    }
+}
+
+@Composable
 private fun observeOnlineCamera(
     runtime: MapRuntime,
     onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
@@ -692,10 +768,33 @@ private fun observeOnlineCamera(
 }
 
 @Composable
+private fun observeOnlineUserPan(
+    runtime: MapRuntime,
+    onUserPan: () -> Unit,
+) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentOnUserPan by rememberUpdatedState(onUserPan)
+    DisposableEffect(runtime.map) {
+        val activeMap = runtime.map ?: return@DisposableEffect onDispose {}
+        val listener =
+            object : MapLibreMap.OnMoveListener {
+                override fun onMoveBegin(detector: MoveGestureDetector) = Unit
+
+                override fun onMove(detector: MoveGestureDetector) {
+                    if (runtime.isCurrentIn(currentRuntime)) currentOnUserPan()
+                }
+
+                override fun onMoveEnd(detector: MoveGestureDetector) = Unit
+            }
+        activeMap.addOnMoveListener(listener)
+        onDispose { activeMap.removeOnMoveListener(listener) }
+    }
+}
+
+@Composable
 private fun synchronizeOnlineMapControls(
     runtime: MapRuntime,
     command: PhoneMapCameraCommand?,
-    mapMode: PhoneMapMode,
     onCameraCommandHandled: (Long) -> Unit,
 ) {
     val currentOnCameraCommandHandled by rememberUpdatedState(onCameraCommandHandled)
@@ -704,11 +803,6 @@ private fun synchronizeOnlineMapControls(
         val pendingCommand = command ?: return@LaunchedEffect
         activeMap.animateCamera(CameraUpdateFactory.zoomBy(pendingCommand.zoomDelta.toDouble()))
         currentOnCameraCommandHandled(pendingCommand.id)
-    }
-    LaunchedEffect(runtime.map, mapMode.orientation) {
-        val activeMap = runtime.map ?: return@LaunchedEffect
-        // Heading data is not available yet, so both orientation states safely keep North up.
-        activeMap.animateCamera(CameraUpdateFactory.bearingTo(0.0))
     }
 }
 
@@ -724,38 +818,56 @@ private fun PhoneOfflineMapError.messageResource(): Int =
     }
 
 @Composable
-private fun synchronizeMapLocation(
+private fun synchronizeOnlineMapPresentation(
     runtime: MapRuntime,
     locationState: MapLocationState,
-    onRecenterHandled: () -> Unit,
-    context: Context,
+    mapMode: PhoneMapMode,
+    compassSource: PhoneCompassSensorSource,
+    compassPresentation: PhoneMapCompassPresentation,
 ) {
+    val context = LocalContext.current
     val currentRuntime by rememberUpdatedState(runtime)
     val currentLocationState by rememberUpdatedState(locationState)
-    val currentOnRecenterHandled by rememberUpdatedState(onRecenterHandled)
 
-    LaunchedEffect(runtime.map, runtime.generation.styleRevision, locationState.hasPermission) {
+    LaunchedEffect(
+        runtime.map,
+        runtime.generation.styleRevision,
+        locationState.hasPermission,
+        compassPresentation.markerScreenRotationDegrees != null,
+    ) {
         if (!locationState.hasPermission) return@LaunchedEffect
         runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, _, style ->
             if (currentLocationState.hasPermission) {
-                activeMap.enableLocationPuck(style = style, context = context)
+                activeMap.enableLocationPuck(
+                    style = style,
+                    context = context,
+                    compassSource = compassSource,
+                    compassRenderable = compassPresentation.markerScreenRotationDegrees != null,
+                )
             }
         }
     }
 
     LaunchedEffect(
-        locationState.pendingRecenter,
         runtime.map,
         runtime.generation.styleRevision,
         locationState.hasPermission,
+        locationState.location,
+        mapMode,
+        compassPresentation,
     ) {
-        if (!locationState.pendingRecenter || !locationState.hasPermission) return@LaunchedEffect
-        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, _, style ->
-            if (currentLocationState.pendingRecenter && currentLocationState.hasPermission) {
-                activeMap.recenterOnLocation(style = style, context = context)
-                currentOnRecenterHandled()
-            }
+        val activeMap = runtime.map ?: return@LaunchedEffect
+        if (!locationState.hasPermission || !activeMap.locationComponent.isLocationComponentActivated) {
+            return@LaunchedEffect
         }
+        locationState.location?.let { location ->
+            activeMap.locationComponent.forceLocationUpdate(location.toAndroidLocation())
+        }
+        activeMap.applyCompassCamera(
+            location = locationState.location,
+            follow = mapMode.follow,
+            compassPresentation = compassPresentation,
+        )
     }
 }
 
@@ -879,10 +991,33 @@ private fun mapControls(
 
 private fun PhoneMapMode.icon(): ImageVector =
     when {
-        follow == PhoneMapFollowMode.FOLLOW_LOCATION -> Icons.Filled.MyLocation
+        isDetachedFromLocation -> Icons.Filled.MyLocation
         orientation == PhoneMapOrientation.HEADING_UP -> Icons.Filled.Explore
         else -> Icons.Filled.Navigation
     }
+
+@Composable
+private fun BoxScope.phoneMapNorthIndicator(compassPresentation: PhoneMapCompassPresentation) {
+    Card(
+        modifier =
+            Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 16.dp, top = 72.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(text = stringResource(R.string.map_north_indicator_label))
+            Icon(
+                imageVector = Icons.Filled.Navigation,
+                contentDescription = stringResource(R.string.map_north_indicator_content_description),
+                modifier = Modifier.rotate(compassPresentation.northIndicatorScreenRotationDegrees),
+            )
+        }
+    }
+}
 
 private fun createMapView(
     context: Context,
@@ -1019,6 +1154,8 @@ private fun mapViewLifecycle(
 private fun MapLibreMap.enableLocationPuck(
     style: Style,
     context: Context,
+    compassSource: PhoneCompassSensorSource,
+    compassRenderable: Boolean,
 ) {
     val locationComponent = locationComponent
     if (!locationComponent.isLocationComponentActivated) {
@@ -1028,23 +1165,33 @@ private fun MapLibreMap.enableLocationPuck(
     }
     locationComponent.isLocationComponentEnabled = true
     locationComponent.cameraMode = CameraMode.NONE
+    locationComponent.compassEngine = compassSource
+    locationComponent.renderMode = if (compassRenderable) RenderMode.COMPASS else RenderMode.NORMAL
 }
 
-@SuppressLint("MissingPermission")
-private fun MapLibreMap.recenterOnLocation(
-    style: Style,
-    context: Context,
+private fun MapLibreMap.applyCompassCamera(
+    location: PhoneMapLocation?,
+    follow: PhoneMapFollowMode,
+    compassPresentation: PhoneMapCompassPresentation,
 ) {
-    enableLocationPuck(style = style, context = context)
-    locationComponent.lastKnownLocation?.let { location ->
-        animateCamera(
-            CameraUpdateFactory.newLatLngZoom(
-                LatLng(location.latitude, location.longitude),
-                RECENTER_ZOOM,
-            ),
-        )
-    }
+    val current = cameraPosition
+    val next =
+        CameraPosition
+            .Builder(current)
+            .bearing(compassPresentation.mapBearingDegrees.toDouble())
+            .apply {
+                if (follow == PhoneMapFollowMode.FOLLOW_LOCATION && location != null) {
+                    target(LatLng(location.latitude, location.longitude))
+                }
+            }.build()
+    if (next != current) moveCamera(CameraUpdateFactory.newCameraPosition(next))
 }
+
+private fun PhoneMapLocation.toAndroidLocation(): android.location.Location =
+    android.location.Location("phone-map").apply {
+        latitude = this@toAndroidLocation.latitude
+        longitude = this@toAndroidLocation.longitude
+    }
 
 private fun Context.hasLocationPermission(): Boolean =
     locationPermissions.any { permission ->

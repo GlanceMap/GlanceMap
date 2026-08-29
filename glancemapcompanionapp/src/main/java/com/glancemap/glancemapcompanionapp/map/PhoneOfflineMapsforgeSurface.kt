@@ -36,6 +36,7 @@ import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.common.Observer
 import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
+import org.mapsforge.map.view.InputListener
 
 private const val PHONE_OFFLINE_TILE_CACHE_CAPACITY = 64
 private const val PHONE_OFFLINE_TILE_CACHE_ID = "phone-offline"
@@ -45,6 +46,7 @@ internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
     val onViewportChanged: (PhoneMapViewport) -> Unit,
     val onPoiSelected: (PhoneMapPoi) -> Unit,
+    val onUserPan: () -> Unit,
     val onCameraCommandHandled: (Long) -> Unit,
     val onMapError: (PhoneOfflineMapError) -> Unit,
 )
@@ -57,6 +59,8 @@ internal data class PhoneOfflineMapSurfaceState(
     val pois: List<PhoneMapPoi>,
     val mapMode: PhoneMapMode,
     val cameraCommand: PhoneMapCameraCommand?,
+    val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode.orientation, null),
+    val location: PhoneMapLocation? = null,
 )
 
 @Composable
@@ -78,6 +82,7 @@ internal fun offlineMapSurface(
                             onCameraChanged = { currentCallbacks.onCameraChanged(it) },
                             onViewportChanged = { currentCallbacks.onViewportChanged(it) },
                             onPoiSelected = { currentCallbacks.onPoiSelected(it) },
+                            onUserPan = { currentCallbacks.onUserPan() },
                             onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
                             onMapError = { currentCallbacks.onMapError(it) },
                         ),
@@ -85,7 +90,8 @@ internal fun offlineMapSurface(
             },
             update = { activeView ->
                 activeView.applyTheme(state.themeConfig)
-                activeView.applyMapMode(state.mapMode)
+                activeView.applyCompassPresentation(state.compassPresentation)
+                activeView.updateLocation(location = state.location, follow = state.mapMode.follow)
                 activeView.applyCameraCommand(state.cameraCommand)
                 activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
             },
@@ -110,13 +116,22 @@ private class PhoneOfflineMapsforgeView(
     private var mapFile: MapFile? = null
     private var tileLayer: TileRendererLayer? = null
     private var appliedThemeConfig: PhoneOfflineThemeConfig? = null
-    private var appliedMapMode: PhoneMapMode? = null
+    private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
     private var lastHandledCameraCommandId: Long? = null
     private var gpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
     private var pois: List<PhoneMapPoi> = emptyList()
     private var overlayLayers: PhoneOfflineMapsforgeOverlayLayers? = null
+    private var locationMarker: PhoneOfflineLocationMarker? = null
     private var disposed = false
     private val cameraObserver = Observer { publishCamera() }
+    private val inputListener =
+        object : InputListener {
+            override fun onMoveEvent() {
+                post { if (!disposed) callbacks.onUserPan() }
+            }
+
+            override fun onZoomEvent() = Unit
+        }
 
     init {
         rendererTrace.complete(PhoneOfflineMapRendererStage.MAP_SELECTED)
@@ -185,7 +200,7 @@ private class PhoneOfflineMapsforgeView(
                 this.tileLayer = tileLayer
                 rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
                 applyTheme(state.themeConfig)
-                applyMapMode(state.mapMode)
+                applyCompassPresentation(state.compassPresentation)
                 applyCameraCommand(state.cameraCommand)
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.LAYER_ATTACH)
@@ -202,6 +217,7 @@ private class PhoneOfflineMapsforgeView(
                         },
                     )
                 mapView.model.mapViewPosition.addObserver(cameraObserver)
+                mapView.addInputListener(inputListener)
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.VIEW_ATTACH)
                 addView(
@@ -216,6 +232,13 @@ private class PhoneOfflineMapsforgeView(
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
                 updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
+                updateLocation(location = state.location, follow = state.mapMode.follow)
+                post {
+                    if (!disposed) {
+                        appliedCompassPresentation = null
+                        applyCompassPresentation(state.compassPresentation)
+                    }
+                }
                 rendererTrace.complete(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.FIRST_CAMERA)
@@ -238,8 +261,14 @@ private class PhoneOfflineMapsforgeView(
         disposed = true
         val activeMapView = mapView
         activeMapView?.model?.mapViewPosition?.removeObserver(cameraObserver)
+        activeMapView?.removeInputListener(inputListener)
         overlayLayers?.dispose()
         overlayLayers = null
+        locationMarker?.let { marker ->
+            activeMapView?.layerManager?.layers?.remove(marker)
+            marker.onDestroy()
+        }
+        locationMarker = null
         tileLayer?.let { layer ->
             activeMapView?.layerManager?.layers?.remove(layer)
             runCatching { layer.onDestroy() }
@@ -286,11 +315,54 @@ private class PhoneOfflineMapsforgeView(
         appliedThemeConfig = resolved
     }
 
-    fun applyMapMode(mapMode: PhoneMapMode) {
-        if (mapMode == appliedMapMode) return
-        // Heading data is not available yet, so both orientation states safely keep North up.
-        mapView?.rotate(Rotation.NULL_ROTATION)
-        appliedMapMode = mapMode
+    fun applyCompassPresentation(presentation: PhoneMapCompassPresentation) {
+        if (presentation == appliedCompassPresentation) return
+        val activeMapView = mapView ?: return
+        val rotationDegrees = mapsforgeRotationDegreesFor(presentation.mapBearingDegrees)
+        val rotation =
+            if (rotationDegrees == 0f) {
+                Rotation.NULL_ROTATION
+            } else {
+                Rotation(rotationDegrees, activeMapView.mapViewCenterX, activeMapView.mapViewCenterY)
+            }
+        activeMapView.rotate(rotation)
+        locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
+        activeMapView.layerManager.redrawLayers()
+        appliedCompassPresentation = presentation
+    }
+
+    fun updateLocation(
+        location: PhoneMapLocation?,
+        follow: PhoneMapFollowMode,
+    ) {
+        val activeMapView = mapView ?: return
+        val currentLocation =
+            location ?: run {
+                locationMarker?.let { marker ->
+                    activeMapView.layerManager.layers.remove(marker)
+                    marker.onDestroy()
+                    activeMapView.layerManager.redrawLayers()
+                }
+                locationMarker = null
+                return
+            }
+        val latLong = LatLong(currentLocation.latitude, currentLocation.longitude)
+        var markerChanged = false
+        val marker =
+            locationMarker ?: PhoneOfflineLocationMarker(latLong).also { created ->
+                locationMarker = created
+                activeMapView.layerManager.layers.add(created)
+                markerChanged = true
+            }
+        if (marker.latLong != latLong) {
+            marker.latLong = latLong
+            markerChanged = true
+        }
+        marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
+        if (follow == PhoneMapFollowMode.FOLLOW_LOCATION && activeMapView.model.mapViewPosition.center != latLong) {
+            activeMapView.setCenter(latLong)
+        }
+        if (markerChanged) activeMapView.layerManager.redrawLayers()
     }
 
     fun applyCameraCommand(command: PhoneMapCameraCommand?) {

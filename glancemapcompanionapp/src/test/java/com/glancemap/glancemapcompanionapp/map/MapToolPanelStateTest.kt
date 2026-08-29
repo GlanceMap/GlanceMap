@@ -96,17 +96,25 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun mapModeCycleKeepsOrientationAndFollowAsSeparateState() {
+    fun mapModeToggleAndRecenterKeepOrientationAndFollowAsSeparateState() {
         val northUp = PhoneMapMode()
-        val headingUp = northUp.cycle()
-        val follow = headingUp.cycle()
+        val headingUp = northUp.toggleOrientation()
+        val northUpAgain = headingUp.toggleOrientation()
+        val detachedNorthUp = northUp.detachFromLocation()
+        val detachedHeadingUp = headingUp.detachFromLocation()
 
         assertEquals(PhoneMapOrientation.NORTH_UP, northUp.orientation)
+        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, northUp.follow)
         assertEquals(PhoneMapOrientation.HEADING_UP, headingUp.orientation)
-        assertEquals(PhoneMapFollowMode.FREE, headingUp.follow)
-        assertEquals(PhoneMapOrientation.NORTH_UP, follow.orientation)
-        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, follow.follow)
-        assertEquals(northUp, follow.cycle())
+        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, headingUp.follow)
+        assertEquals(PhoneMapOrientation.NORTH_UP, northUpAgain.orientation)
+        assertTrue(detachedNorthUp.isDetachedFromLocation)
+        assertEquals(PhoneMapOrientation.NORTH_UP, detachedNorthUp.orientation)
+        assertTrue(detachedHeadingUp.isDetachedFromLocation)
+        assertEquals(PhoneMapOrientation.HEADING_UP, detachedHeadingUp.orientation)
+        assertEquals(northUp, detachedNorthUp.recenterOnLocation())
+        assertEquals(headingUp, detachedHeadingUp.recenterOnLocation())
+        assertFalse(detachedHeadingUp.recenterOnLocation().isDetachedFromLocation)
     }
 
     @Test

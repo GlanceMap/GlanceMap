@@ -1,6 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
-/** Orientation and location follow stay separate even though one map control cycles their UX. */
+/** Orientation and location follow remain independent map-control state. */
 internal enum class PhoneMapOrientation {
     NORTH_UP,
     HEADING_UP,
@@ -13,16 +13,23 @@ internal enum class PhoneMapFollowMode {
 
 internal data class PhoneMapMode(
     val orientation: PhoneMapOrientation = PhoneMapOrientation.NORTH_UP,
-    val follow: PhoneMapFollowMode = PhoneMapFollowMode.FREE,
+    val follow: PhoneMapFollowMode = PhoneMapFollowMode.FOLLOW_LOCATION,
 ) {
-    fun cycle(): PhoneMapMode =
-        when (this) {
-            PhoneMapMode(PhoneMapOrientation.NORTH_UP, PhoneMapFollowMode.FREE) ->
-                PhoneMapMode(PhoneMapOrientation.HEADING_UP, PhoneMapFollowMode.FREE)
-            PhoneMapMode(PhoneMapOrientation.HEADING_UP, PhoneMapFollowMode.FREE) ->
-                PhoneMapMode(PhoneMapOrientation.NORTH_UP, PhoneMapFollowMode.FOLLOW_LOCATION)
-            else -> PhoneMapMode()
-        }
+    val isDetachedFromLocation: Boolean
+        get() = follow == PhoneMapFollowMode.FREE
+
+    fun toggleOrientation(): PhoneMapMode =
+        copy(
+            orientation =
+                when (orientation) {
+                    PhoneMapOrientation.NORTH_UP -> PhoneMapOrientation.HEADING_UP
+                    PhoneMapOrientation.HEADING_UP -> PhoneMapOrientation.NORTH_UP
+                },
+        )
+
+    fun detachFromLocation(): PhoneMapMode = copy(follow = PhoneMapFollowMode.FREE)
+
+    fun recenterOnLocation(): PhoneMapMode = copy(follow = PhoneMapFollowMode.FOLLOW_LOCATION)
 }
 
 /** One renderer-neutral request from the map controls; the active renderer consumes it once. */

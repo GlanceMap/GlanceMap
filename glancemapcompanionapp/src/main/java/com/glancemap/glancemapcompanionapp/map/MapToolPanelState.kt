@@ -107,7 +107,7 @@ internal data class PhoneMapUiState(
 
     fun consumeCommand(id: Long): PhoneMapUiState = if (cameraCommand?.id == id) copy(cameraCommand = null) else this
 
-    fun cycleMapMode(): PhoneMapUiState = copy(mapMode = mapMode.cycle())
+    fun toggleMapOrientation(): PhoneMapUiState = copy(mapMode = mapMode.toggleOrientation())
 
     fun onMapBack(): PhoneMapUiState {
         val panelAfterBack = toolPanel.back()

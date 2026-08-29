@@ -258,9 +258,6 @@ internal fun mapToolsSettingsPanel(
         OutlinedButton(onClick = onCycleMapMode, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.map_tools_settings_cycle_map_mode))
         }
-        if (state.mapMode.orientation == PhoneMapOrientation.HEADING_UP) {
-            Text(stringResource(R.string.map_tools_settings_heading_up_unavailable))
-        }
         Text(stringResource(R.string.map_tools_settings_future))
     }
 }

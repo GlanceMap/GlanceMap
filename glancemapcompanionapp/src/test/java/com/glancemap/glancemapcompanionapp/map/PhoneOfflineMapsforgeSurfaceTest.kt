@@ -67,7 +67,8 @@ class PhoneOfflineMapsforgeSurfaceTest {
                                 ),
                         ),
                     ),
-                mapMode = PhoneMapMode().cycle(),
+                mapMode = PhoneMapMode().toggleOrientation(),
+                compassPresentation = phoneMapCompassPresentation(PhoneMapOrientation.HEADING_UP, 90f),
             )
         val panelChanged =
             PhoneMapUiState(source = PhoneMapSource.Offline(state.map))
