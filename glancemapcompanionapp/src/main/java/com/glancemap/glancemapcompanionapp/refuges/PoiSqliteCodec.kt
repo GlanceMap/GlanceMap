@@ -294,6 +294,32 @@ internal fun readPoiSqliteViewport(
     )
 }
 
+/** Checks the Mapsforge POI tables used by the phone viewport reader before installation. */
+internal fun isReadablePoiSqliteFile(file: File): Boolean {
+    if (!file.isReadablePoiFile()) return false
+    return runCatching {
+        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        try {
+            database
+                .rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN " +
+                        "('poi_categories', 'poi_data', 'poi_category_map', 'poi_index')",
+                    null,
+                ).use { cursor ->
+                    val names =
+                        buildSet {
+                            while (cursor.moveToNext()) {
+                                add(cursor.getString(0))
+                            }
+                        }
+                    REQUIRED_POI_TABLES.all(names::contains)
+                }
+        } finally {
+            database.close()
+        }
+    }.getOrDefault(false)
+}
+
 private fun readPoiSqlitePoints(
     file: File,
     sql: String,
@@ -351,6 +377,14 @@ private data class PoiSqliteColumnIndices(
 private fun PoiSqliteViewport.hasOrderedBounds(): Boolean = minLat <= maxLat && minLon <= maxLon
 
 private fun File.isReadablePoiFile(): Boolean = exists() && isFile
+
+private val REQUIRED_POI_TABLES =
+    setOf(
+        "poi_categories",
+        "poi_data",
+        "poi_category_map",
+        "poi_index",
+    )
 
 private fun Cursor.stringOrDefault(index: Int): String =
     if (index >= 0 && !isNull(index)) {

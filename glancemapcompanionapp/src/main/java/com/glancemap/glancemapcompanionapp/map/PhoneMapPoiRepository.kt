@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import com.glancemap.glancemapcompanionapp.refuges.PoiSqliteViewport
+import com.glancemap.glancemapcompanionapp.refuges.isReadablePoiSqliteFile
 import com.glancemap.glancemapcompanionapp.refuges.readPoiSqliteViewport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,7 +15,7 @@ import kotlin.math.min
 internal class PhoneMapPoiRepository(
     private val poiDirectory: File,
 ) {
-    constructor(context: Context) : this(File(context.filesDir, STORED_POI_DIRECTORY))
+    constructor(context: Context) : this(phoneMapPoiStorageDirectory(context))
 
     suspend fun queryViewport(
         viewport: PhoneMapViewport,
@@ -62,6 +63,9 @@ internal class PhoneMapPoiRepository(
         private const val MINIMUM_PER_SOURCE_LIMIT = 20
         private const val MINIMUM_POI_ZOOM = 10.0
         private const val POI_FILE_EXTENSION = ".poi"
-        private const val STORED_POI_DIRECTORY = "refuges-poi"
     }
 }
+
+internal fun phoneMapPoiStorageDirectory(context: Context): File = File(context.filesDir, "refuges-poi")
+
+internal fun isPhoneMapPoiFileValid(file: File): Boolean = isReadablePoiSqliteFile(file)

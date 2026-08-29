@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.map.MapMode
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -110,6 +111,51 @@ class PhoneOfflineMapStoreTest {
             assertEquals("example (1).map", (second as PhoneOfflineMapImportResult.Success).map.displayName)
             assertEquals("example.map", store.findSynchronizedMap("example.map", 5L)?.displayName)
             assertEquals("example (1).map", store.findSynchronizedMap("example.map", 6L)?.displayName)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun bundleInstallReusesAnExistingValidMapWithoutOverwritingIt() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val target = File(directory, "alps.map").apply { writeText("valid existing") }
+            val store =
+                PhoneOfflineMapStore(directory) { candidate ->
+                    if (candidate.readText().startsWith("valid")) null else PhoneOfflineMapError.INVALID
+                }
+
+            val result =
+                runBlocking {
+                    store.installBundleMap("alps.map", "valid replacement".byteInputStream()) {}
+                }
+
+            assertTrue((result as PhoneOfflineMapBundleInstallResult.Success).reusedExisting)
+            assertEquals("valid existing", target.readText())
+            assertFalse(File(directory, ".alps.map.bundle.part").exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun bundleInstallReplacesAnInvalidMapOnlyAfterItsReplacementValidates() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val target = File(directory, "alps.map").apply { writeText("invalid") }
+            val store =
+                PhoneOfflineMapStore(directory) { candidate ->
+                    if (candidate.readText().startsWith("valid")) null else PhoneOfflineMapError.INVALID
+                }
+
+            val result =
+                runBlocking {
+                    store.installBundleMap("alps.map", "valid replacement".byteInputStream()) {}
+                }
+
+            assertFalse((result as PhoneOfflineMapBundleInstallResult.Success).reusedExisting)
+            assertEquals("valid replacement", target.readText())
         } finally {
             directory.deleteRecursively()
         }

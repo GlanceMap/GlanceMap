@@ -7,6 +7,9 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import com.glancemap.trailcore.map.MapMode
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.mapsforge.map.reader.MapFile
 import java.io.File
 import java.io.InputStream
@@ -65,6 +68,18 @@ internal sealed interface PhoneOfflineMapImportResult {
     data class Failure(
         val error: PhoneOfflineMapError,
     ) : PhoneOfflineMapImportResult
+}
+
+/** Result of a bundle-owned map installation into the canonical phone map directory. */
+internal sealed interface PhoneOfflineMapBundleInstallResult {
+    data class Success(
+        val map: PhoneOfflineMap,
+        val reusedExisting: Boolean,
+    ) : PhoneOfflineMapBundleInstallResult
+
+    data class Failure(
+        val error: PhoneOfflineMapError,
+    ) : PhoneOfflineMapBundleInstallResult
 }
 
 internal data class PhoneOfflineMapFolderSyncResult(
@@ -129,6 +144,54 @@ internal class PhoneOfflineMapStore(
             else -> installMap(fileName, input)
         }
 
+    /**
+     * Installs an extracted OAM map only after the temporary file validates. Existing valid files
+     * are reused; an invalid target is replaced only after its replacement is ready.
+     */
+    @Suppress("CyclomaticComplexMethod", "ReturnCount") // Atomic promotion needs explicit safety branches.
+    suspend fun installBundleMap(
+        fileName: String,
+        input: InputStream,
+        onBytesCopied: (Long) -> Unit,
+    ): PhoneOfflineMapBundleInstallResult {
+        if (!isPhoneOfflineMapFileName(fileName)) {
+            return PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.FILE_NOT_MAP)
+        }
+        if (!directory.exists() && !directory.mkdirs()) {
+            return PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
+        }
+
+        val destination = File(directory, File(fileName).name)
+        val temporary = File(directory, ".${destination.name}.bundle.part")
+        return try {
+            temporary.outputStream().use { output ->
+                input.copyCancellableTo(output, onBytesCopied)
+            }
+            structuralValidator(temporary)?.let(PhoneOfflineMapBundleInstallResult::Failure)
+                ?: when {
+                    destination.exists() && structuralValidator(destination) == null ->
+                        PhoneOfflineMapBundleInstallResult.Success(
+                            map = PhoneOfflineMap(destination),
+                            reusedExisting = true,
+                        )
+                    destination.exists() && !destination.delete() ->
+                        PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
+                    temporary.renameTo(destination) ->
+                        PhoneOfflineMapBundleInstallResult.Success(
+                            map = PhoneOfflineMap(destination),
+                            reusedExisting = false,
+                        )
+                    else -> PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
+                }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Exception) {
+            PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
+    }
+
     private fun installMap(
         fileName: String,
         input: InputStream,
@@ -159,6 +222,11 @@ internal class PhoneOfflineMapStore(
         return discover().firstOrNull { map ->
             map.file.length() == sourceSize && map.file.name.isImportedNameFor(sourceFileName)
         }
+    }
+
+    fun findValidBundleMap(fileName: String): PhoneOfflineMap? {
+        val map = PhoneOfflineMap(File(directory, File(fileName).name))
+        return map.takeIf { validate(it) == null }
     }
 
     private fun resolveFileName(
@@ -226,6 +294,22 @@ private fun String.isImportedNameFor(sourceFileName: String): Boolean {
     if (equals(sourceFileName, ignoreCase = true)) return true
     val sourceBaseName = sourceFileName.substringBeforeLast('.', sourceFileName)
     return startsWith("$sourceBaseName (") && endsWith(".map", ignoreCase = true)
+}
+
+private suspend fun InputStream.copyCancellableTo(
+    output: java.io.OutputStream,
+    onBytesCopied: (Long) -> Unit,
+) {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var copied = 0L
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val count = read(buffer)
+        if (count < 0) return
+        output.write(buffer, 0, count)
+        copied += count
+        onBytesCopied(copied)
+    }
 }
 
 /**

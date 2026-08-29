@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
 import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
@@ -104,18 +106,20 @@ private data class MapSourceSelectorActions(
     val onSelectOnline: () -> Unit,
     val onSelectOffline: (PhoneOfflineMap) -> Unit,
     val onImportMap: () -> Unit,
+    val onDownloadOfflineBundle: () -> Unit,
     val onConfigureOfflineTheme: () -> Unit,
     val folder: MapFolderActions,
 )
 
 /** Keeps Compose-owned MapLibre, permission, and GPX overlay sequencing in one visible flow. */
-@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod")
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun CompanionMapScreen(
     gpxTrack: PhoneMapGpxTrack?,
     pois: List<PhoneMapPoi>,
     onPoiViewportChanged: (PhoneMapViewport) -> Unit,
     onPoiVisibilityChanged: (Boolean) -> Unit,
+    onPoiDataChanged: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -126,6 +130,8 @@ internal fun CompanionMapScreen(
             PhoneOfflineMapFolderSource(context.applicationContext, offlineMapStore)
         }
     val offlineThemePreferences = remember(context) { PhoneOfflineThemePreferences(context.applicationContext) }
+    val bundleViewModel: PhoneOfflineBundleViewModel = viewModel()
+    val bundleUiState by bundleViewModel.uiState.collectAsState()
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -140,9 +146,12 @@ internal fun CompanionMapScreen(
     var mapCamera by remember { mutableStateOf(defaultMapCamera) }
     var showMapSourceSelector by remember { mutableStateOf(false) }
     var showOfflineThemeSelector by remember { mutableStateOf(false) }
+    var showOfflineBundleDownload by remember { mutableStateOf(false) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     var pendingRecenter by remember { mutableStateOf(false) }
+    val completedBundle =
+        (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
     var contentVisibility by remember { mutableStateOf(MapContentVisibility()) }
     var fittedGpxTrackId by remember { mutableStateOf<String?>(null) }
     var selectedPoi by remember { mutableStateOf<PhoneMapPoi?>(null) }
@@ -230,6 +239,12 @@ internal fun CompanionMapScreen(
     }
     LaunchedEffect(pois) {
         if (selectedPoi?.id !in pois.map(PhoneMapPoi::id).toSet()) selectedPoi = null
+    }
+    LaunchedEffect(completedBundle) {
+        if (completedBundle != null) {
+            offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+            onPoiDataChanged()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -392,6 +407,10 @@ internal fun CompanionMapScreen(
                     onImportMap = {
                         selectLocalMapLauncher.launch(arrayOf("application/octet-stream"))
                     },
+                    onDownloadOfflineBundle = {
+                        showMapSourceSelector = false
+                        showOfflineBundleDownload = true
+                    },
                     onConfigureOfflineTheme = {
                         showMapSourceSelector = false
                         showOfflineThemeSelector = true
@@ -441,6 +460,15 @@ internal fun CompanionMapScreen(
             },
         )
     }
+
+    if (showOfflineBundleDownload) {
+        PhoneOfflineBundleDialog(
+            uiState = bundleUiState,
+            onDismiss = { showOfflineBundleDownload = false },
+            onStart = bundleViewModel::start,
+            onCancel = bundleViewModel::cancel,
+        )
+    }
 }
 
 @Composable
@@ -470,6 +498,9 @@ private fun mapSourceSelector(
                 }
                 TextButton(onClick = actions.onImportMap) {
                     Text(stringResource(R.string.map_source_import_local_map))
+                }
+                TextButton(onClick = actions.onDownloadOfflineBundle) {
+                    Text(stringResource(R.string.map_source_download_offline_bundle))
                 }
                 TextButton(onClick = actions.onConfigureOfflineTheme) {
                     Text(stringResource(R.string.map_source_configure_offline_theme))
