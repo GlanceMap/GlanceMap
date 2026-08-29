@@ -56,10 +56,43 @@ class PhoneMapGpxTrackTest {
             )
 
         val withBothEnabled = listOf(first, second).toggleEnabled("second")
+        val renderedSegments =
+            withBothEnabled.enabledOverlays(globalVisible = true).flatMap(PhoneMapGpxOverlay::segments)
 
-        assertEquals(2, withBothEnabled.enabledRouteSegments(globalVisible = true).size)
-        assertTrue(withBothEnabled.enabledRouteSegments(globalVisible = false).isEmpty())
+        assertEquals(2, renderedSegments.size)
+        assertTrue(withBothEnabled.enabledOverlays(globalVisible = false).isEmpty())
         assertEquals(2, withBothEnabled.count(PhoneMapGpxItem::enabled))
+    }
+
+    @Test
+    fun enabledOverlaysKeepTrackIdsAndSeparateSegmentsForEachTrack() {
+        val first =
+            PhoneMapGpxItem(
+                "first",
+                "First",
+                trackWithId(
+                    "first",
+                    point(11.0),
+                    point(11.05),
+                    point(11.1, startsNewSegment = true),
+                    point(11.2),
+                ),
+                enabled = true,
+            )
+        val second =
+            PhoneMapGpxItem(
+                "second",
+                "Second",
+                trackWithId("second", point(12.0), point(12.1)),
+                enabled = true,
+            )
+
+        val overlays = listOf(first, second).enabledOverlays(globalVisible = true)
+
+        assertEquals(listOf("first", "second"), overlays.map(PhoneMapGpxOverlay::id))
+        assertEquals(listOf(2, 2), overlays.first().segments.map { it.points.size })
+        assertEquals(3, overlays.flatMap(PhoneMapGpxOverlay::segments).size)
+        assertTrue(listOf(first, second).enabledOverlays(globalVisible = false).isEmpty())
     }
 
     private fun track(vararg points: TrailPoint): PhoneMapGpxTrack = trackWithId("test", *points)

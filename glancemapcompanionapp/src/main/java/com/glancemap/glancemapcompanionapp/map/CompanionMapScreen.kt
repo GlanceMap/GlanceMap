@@ -50,7 +50,6 @@ import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
 import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
-import com.glancemap.trailcore.map.MapMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -82,7 +81,7 @@ private data class MapLocationState(
 )
 
 private data class GpxOverlayState(
-    val trackId: String?,
+    val overlays: List<PhoneMapGpxOverlay>,
     val segments: List<PhoneMapRouteSegment>,
     val isVisible: Boolean,
 )
@@ -132,15 +131,11 @@ internal fun CompanionMapScreen(
     var pendingRecenter by remember { mutableStateOf(false) }
     val completedBundle =
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
-    var fittedGpxTrackId by remember { mutableStateOf<String?>(null) }
+    var hasFittedGpxOverlay by remember { mutableStateOf(false) }
     var selectedPoi by remember { mutableStateOf<PhoneMapPoi?>(null) }
-    val gpxSegments =
+    val gpxOverlays =
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
-            gpxUiState.items.enabledRouteSegments(mapUiState.contentVisibility.gpxTracks)
-        }
-    val enabledGpxTrackId =
-        remember(gpxUiState.items) {
-            gpxUiState.items.filter(PhoneMapGpxItem::enabled).joinToString(",") { item -> item.id }
+            gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
         }
     val mapRuntime = MapRuntime(map = map, mapView = mapView, style = style)
     val locationState =
@@ -150,8 +145,8 @@ internal fun CompanionMapScreen(
         )
     val gpxOverlayState =
         GpxOverlayState(
-            trackId = enabledGpxTrackId.takeIf { it.isNotBlank() },
-            segments = gpxSegments,
+            overlays = gpxOverlays,
+            segments = gpxOverlays.flatMap(PhoneMapGpxOverlay::segments),
             isVisible = mapUiState.contentVisibility.gpxTracks,
         )
     val selectLocalMapLauncher =
@@ -217,8 +212,8 @@ internal fun CompanionMapScreen(
             offlineMapError = PhoneOfflineMapError.MISSING
         }
     }
-    LaunchedEffect(mapUiState.contentVisibility.pois, mapUiState.source.mode) {
-        onPoiVisibilityChanged(mapUiState.contentVisibility.pois && mapUiState.source.mode == MapMode.ONLINE)
+    LaunchedEffect(mapUiState.contentVisibility.pois) {
+        onPoiVisibilityChanged(mapUiState.contentVisibility.pois)
         if (!mapUiState.contentVisibility.pois) selectedPoi = null
     }
     LaunchedEffect(pois) {
@@ -321,8 +316,8 @@ internal fun CompanionMapScreen(
                         synchronizeGpxOverlay(
                             runtime = mapRuntime,
                             overlayState = gpxOverlayState,
-                            fittedGpxTrackId = fittedGpxTrackId,
-                            onTrackFitted = { fittedGpxTrackId = it },
+                            hasFittedGpxOverlay = hasFittedGpxOverlay,
+                            onOverlayFitted = { hasFittedGpxOverlay = true },
                         )
                         synchronizePoiOverlay(
                             style = style,
@@ -351,26 +346,25 @@ internal fun CompanionMapScreen(
 
                     is PhoneMapSource.Offline -> {
                         offlineMapSurface(
-                            map = source.map,
-                            themeConfig = offlineThemeConfig,
-                            initialCamera = mapCamera,
-                            onCameraChanged = { mapCamera = it },
-                            onMapError = { error ->
-                                offlineMapError = error
-                                mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
-                            },
+                            state =
+                                PhoneOfflineMapSurfaceState(
+                                    map = source.map,
+                                    themeConfig = offlineThemeConfig,
+                                    initialCamera = mapCamera,
+                                    gpxOverlays = gpxOverlayState.overlays,
+                                    pois = pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty(),
+                                ),
+                            callbacks =
+                                PhoneOfflineMapsforgeCallbacks(
+                                    onCameraChanged = { mapCamera = it },
+                                    onViewportChanged = onPoiViewportChanged,
+                                    onPoiSelected = { selectedPoi = it },
+                                    onMapError = { error ->
+                                        offlineMapError = error
+                                        mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
+                                    },
+                                ),
                         )
-                        Card(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(16.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.map_offline_overlays_unavailable),
-                                modifier = Modifier.padding(16.dp),
-                            )
-                        }
                     }
                 }
 
@@ -387,17 +381,15 @@ internal fun CompanionMapScreen(
                     showOnlineControls = mapUiState.source is PhoneMapSource.Online,
                 )
 
-                if (mapUiState.source is PhoneMapSource.Online) {
-                    selectedPoi?.let { poi ->
-                        phoneMapPoiDetailsCard(
-                            poi = poi,
-                            onDismiss = { selectedPoi = null },
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(16.dp),
-                        )
-                    }
+                selectedPoi?.let { poi ->
+                    phoneMapPoiDetailsCard(
+                        poi = poi,
+                        onDismiss = { selectedPoi = null },
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(16.dp),
+                    )
                 }
                 offlineMapError?.let { error ->
                     Card(
@@ -573,14 +565,13 @@ private fun synchronizeMapLocation(
 private fun synchronizeGpxOverlay(
     runtime: MapRuntime,
     overlayState: GpxOverlayState,
-    fittedGpxTrackId: String?,
-    onTrackFitted: (String) -> Unit,
+    hasFittedGpxOverlay: Boolean,
+    onOverlayFitted: () -> Unit,
 ) {
     LaunchedEffect(
         runtime.map,
         runtime.mapView,
         runtime.style,
-        overlayState.trackId,
         overlayState.segments,
         overlayState.isVisible,
     ) {
@@ -591,12 +582,11 @@ private fun synchronizeGpxOverlay(
         )
         val activeMap = runtime.map ?: return@LaunchedEffect
         val activeMapView = runtime.mapView ?: return@LaunchedEffect
-        val trackId = overlayState.trackId ?: return@LaunchedEffect
-        if (overlayState.isVisible && overlayState.segments.isNotEmpty() && fittedGpxTrackId != trackId) {
+        if (overlayState.isVisible && overlayState.segments.isNotEmpty() && !hasFittedGpxOverlay) {
             activeMap.fitGpxTrackBounds(
                 mapView = activeMapView,
                 segments = overlayState.segments,
-                onFitted = { onTrackFitted(trackId) },
+                onFitted = onOverlayFitted,
             )
         }
     }

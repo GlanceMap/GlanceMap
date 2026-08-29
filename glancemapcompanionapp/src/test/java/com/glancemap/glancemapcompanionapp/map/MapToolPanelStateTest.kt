@@ -53,4 +53,16 @@ class MapToolPanelStateTest {
         assertEquals(initial.contentVisibility, changed.contentVisibility)
         assertEquals(MapToolPanelMode.CLOSED, changed.toolPanel.mode)
     }
+
+    @Test
+    fun rendererSwitchingRetainsGlobalOverlayVisibility() {
+        val visibility = MapContentVisibility(gpxTracks = true, pois = true)
+        val offlineMap = PhoneOfflineMap(File("alps.map"))
+        val onlineAgain =
+            PhoneMapUiState(contentVisibility = visibility)
+                .copy(source = PhoneMapSource.Offline(offlineMap))
+                .copy(source = PhoneMapSource.Online)
+
+        assertEquals(visibility, onlineAgain.contentVisibility)
+    }
 }

@@ -27,6 +27,13 @@ internal data class PhoneMapGpxItem(
     }
 }
 
+/** One independently enabled track prepared for any phone-map renderer. */
+internal data class PhoneMapGpxOverlay(
+    val id: String,
+    val displayName: String,
+    val segments: List<PhoneMapRouteSegment>,
+)
+
 /** Small route metadata passed into the phone map without coupling its panel UI to Route Library. */
 internal data class PhoneMapGpxSource(
     val id: String,
@@ -56,11 +63,17 @@ internal fun List<PhoneMapGpxItem>.toggleEnabled(
         if (item.id == id) item.copy(enabled = !item.enabled) else item
     }
 
-internal fun List<PhoneMapGpxItem>.enabledRouteSegments(globalVisible: Boolean): List<PhoneMapRouteSegment> =
-    if (globalVisible) {
-        filter(PhoneMapGpxItem::enabled).flatMap { item -> item.track.toRouteSegments() }
-    } else {
+internal fun List<PhoneMapGpxItem>.enabledOverlays(globalVisible: Boolean): List<PhoneMapGpxOverlay> =
+    if (!globalVisible) {
         emptyList()
+    } else {
+        filter(PhoneMapGpxItem::enabled).map { item ->
+            PhoneMapGpxOverlay(
+                id = item.id,
+                displayName = item.displayName,
+                segments = item.track.toRouteSegments(),
+            )
+        }
     }
 
 /** A renderable contiguous GPX segment, deliberately independent from a map SDK. */

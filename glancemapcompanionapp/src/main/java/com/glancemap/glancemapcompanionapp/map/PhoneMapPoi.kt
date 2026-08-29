@@ -22,7 +22,7 @@ internal data class PhoneMapPoiSource(
     val isReadable: Boolean,
 )
 
-/** Geographic camera bounds passed from the MapLibre surface to the phone POI controller. */
+/** Geographic camera bounds passed from either phone map renderer to the shared POI controller. */
 internal data class PhoneMapViewport(
     val minLat: Double,
     val maxLat: Double,
