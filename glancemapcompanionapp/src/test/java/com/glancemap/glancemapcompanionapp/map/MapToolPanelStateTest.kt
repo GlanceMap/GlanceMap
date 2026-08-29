@@ -140,6 +140,27 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun panelTransitionsAndToolSwitchesLeaveRendererInputsUnchanged() {
+        val initial =
+            PhoneMapUiState(
+                source = PhoneMapSource.Offline(PhoneOfflineMap(File("alps.map"))),
+                contentVisibility = MapContentVisibility(gpxTracks = true, pois = false),
+            ).requestZoom(1)
+
+        val changed =
+            initial
+                .selectTool(MapTool.MAPS)
+                .selectTool(MapTool.GPX)
+                .expandTool()
+                .collapseTool()
+                .closeTool()
+
+        assertEquals(initial.source, changed.source)
+        assertEquals(initial.contentVisibility, changed.contentVisibility)
+        assertEquals(initial.cameraCommand, changed.cameraCommand)
+    }
+
+    @Test
     fun rendererSwitchingRetainsGlobalOverlayVisibility() {
         val visibility = MapContentVisibility(gpxTracks = true, pois = true)
         val offlineMap = PhoneOfflineMap(File("alps.map"))

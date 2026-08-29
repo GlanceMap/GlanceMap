@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapImportDiagnostics
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapRendererDiagnostics
 import com.glancemap.shared.transfer.TransferDataLayerContract
 import java.io.File
 import java.time.Instant
@@ -25,7 +26,7 @@ object CompanionDiagnosticsEmailComposer {
         val diagnosticsText =
             PhoneDebugCapture.buildReport(
                 context = appContext,
-                additionalSections = listOfNotNull(PhoneOfflineMapImportDiagnostics.latestReportSection()),
+                additionalSections = phoneDiagnosticsAdditionalSections(),
             )
         val file = saveLatestPhoneDiagnosticsFile(appContext, diagnosticsText)
         composeEmailWithFile(context, file)
@@ -136,3 +137,9 @@ object CompanionDiagnosticsEmailComposer {
         return normalized.take(40)
     }
 }
+
+internal fun phoneDiagnosticsAdditionalSections(): List<String> =
+    listOfNotNull(
+        PhoneOfflineMapImportDiagnostics.latestReportSection(),
+        PhoneOfflineMapRendererDiagnostics.latestReportSection(),
+    )

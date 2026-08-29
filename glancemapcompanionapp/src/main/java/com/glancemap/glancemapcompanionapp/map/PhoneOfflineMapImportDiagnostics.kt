@@ -85,7 +85,7 @@ internal data class PhoneOfflineMapImportException(
 internal fun Throwable.toPhoneOfflineMapImportException(): PhoneOfflineMapImportException =
     PhoneOfflineMapImportException(
         className = javaClass.simpleName.ifBlank { javaClass.name },
-        message = message?.redactOfflineMapImportMessage(),
+        message = message?.redactPhoneOfflineMapDiagnosticMessage(),
     )
 
 /** Uses the existing local phone debug capture and retains only one safe latest-attempt summary. */
@@ -108,7 +108,7 @@ internal object PhoneOfflineMapImportDiagnostics {
     }
 }
 
-private fun String.redactOfflineMapImportMessage(): String =
+internal fun String.redactPhoneOfflineMapDiagnosticMessage(): String =
     replace(Regex("content://\\S+", RegexOption.IGNORE_CASE), "[content-uri]")
         .replace(Regex("file://\\S+", RegexOption.IGNORE_CASE), "[file-uri]")
         .replace(Regex("(?<![A-Za-z0-9_])/(?:[^\\s/]+/)+[^\\s]*"), "[path]")

@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.layout.CompanionWidthClass
@@ -42,7 +44,11 @@ internal data class MapToolScaffoldActions(
 )
 
 @Composable
-@Suppress("FunctionNaming") // Public Compose entry points follow the project's screen naming convention.
+@Suppress(
+    "LongMethod",
+    "CyclomaticComplexMethod",
+    "FunctionNaming", // Public Compose entry points follow the project's screen naming convention.
+) // One fixed layout pass keeps the Android map host in one composition slot.
 internal fun MapToolScaffold(
     state: MapToolPanelState,
     launcherExpanded: Boolean,
@@ -50,87 +56,70 @@ internal fun MapToolScaffold(
     mapContent: @Composable () -> Unit,
     panelContent: @Composable (MapTool, MapToolContentMode) -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        when (state.mode) {
-            MapToolPanelMode.CLOSED ->
-                mapToolMapSurface(
-                    launcherExpanded = launcherExpanded,
-                    activeTool = state.activeTool,
-                    actions = actions,
-                    modifier = Modifier.fillMaxSize(),
-                    mapContent = mapContent,
-                )
-            MapToolPanelMode.SPLIT ->
-                mapToolSplitContent(
-                    state = state,
-                    launcherExpanded = launcherExpanded,
-                    actions = actions,
-                    mapContent = mapContent,
-                    panelContent = panelContent,
-                )
-            MapToolPanelMode.EXPANDED -> {
-                if (state.activeTool == null) return@Box
-                Box(modifier = Modifier.fillMaxSize()) {
-                    mapContent()
+    val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
+    Layout(
+        modifier = Modifier.fillMaxSize(),
+        content = {
+            // Keep this slot unconditional: Android map views retain their composition identity as panels resize.
+            mapToolMapSurface(
+                launcherExpanded = launcherExpanded,
+                activeTool = state.activeTool,
+                actions = actions,
+                modifier = Modifier,
+                mapContent = mapContent,
+            )
+            Box {
+                if (state.activeTool != null && state.mode != MapToolPanelMode.CLOSED) {
                     mapToolPanelSurface(
                         state = state,
-                        isExpanded = true,
+                        isExpanded = state.mode == MapToolPanelMode.EXPANDED,
                         actions = actions,
                         modifier = Modifier.fillMaxSize(),
                         content = panelContent,
                     )
                 }
             }
+        },
+    ) { measurables, constraints ->
+        val map = measurables[0]
+        val panel = measurables[1]
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val panelOpen = state.activeTool != null && state.mode != MapToolPanelMode.CLOSED
+        val mapWidth =
+            if (panelOpen && state.mode == MapToolPanelMode.SPLIT && isWide) {
+                (width * MAP_SPLIT_FRACTION).toInt()
+            } else {
+                width
+            }
+        val mapHeight =
+            if (panelOpen && state.mode == MapToolPanelMode.SPLIT && !isWide) {
+                (height * MAP_SPLIT_FRACTION).toInt()
+            } else {
+                height
+            }
+        val mapPlaceable = map.measure(Constraints.fixed(mapWidth, mapHeight))
+        val panelPlaceable =
+            panel.measure(
+                Constraints.fixed(
+                    if (panelOpen && state.mode == MapToolPanelMode.SPLIT && isWide) width - mapWidth else width,
+                    if (panelOpen && state.mode == MapToolPanelMode.SPLIT && !isWide) height - mapHeight else height,
+                ),
+            )
+
+        layout(width, height) {
+            mapPlaceable.placeRelative(0, 0)
+            if (panelOpen) {
+                panelPlaceable.placeRelative(
+                    if (state.mode == MapToolPanelMode.SPLIT && isWide) mapWidth else 0,
+                    if (state.mode == MapToolPanelMode.SPLIT && !isWide) mapHeight else 0,
+                )
+            }
         }
     }
 }
 
-@Composable
-private fun mapToolSplitContent(
-    state: MapToolPanelState,
-    launcherExpanded: Boolean,
-    actions: MapToolScaffoldActions,
-    mapContent: @Composable () -> Unit,
-    panelContent: @Composable (MapTool, MapToolContentMode) -> Unit,
-) {
-    if (state.activeTool == null) return
-    val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
-    if (isWide) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            mapToolMapSurface(
-                launcherExpanded = launcherExpanded,
-                activeTool = state.activeTool,
-                actions = actions,
-                modifier = Modifier.weight(1.2f).fillMaxHeight(),
-                mapContent = mapContent,
-            )
-            mapToolPanelSurface(
-                state = state,
-                isExpanded = false,
-                actions = actions,
-                modifier = Modifier.weight(0.8f).fillMaxHeight(),
-                content = panelContent,
-            )
-        }
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            mapToolMapSurface(
-                launcherExpanded = launcherExpanded,
-                activeTool = state.activeTool,
-                actions = actions,
-                modifier = Modifier.weight(1.1f).fillMaxWidth(),
-                mapContent = mapContent,
-            )
-            mapToolPanelSurface(
-                state = state,
-                isExpanded = false,
-                actions = actions,
-                modifier = Modifier.weight(0.9f).fillMaxWidth(),
-                content = panelContent,
-            )
-        }
-    }
-}
+private const val MAP_SPLIT_FRACTION = 0.6f
 
 @Composable
 private fun mapToolMapSurface(

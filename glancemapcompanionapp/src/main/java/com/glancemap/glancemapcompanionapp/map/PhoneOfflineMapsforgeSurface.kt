@@ -101,6 +101,7 @@ private class PhoneOfflineMapsforgeView(
     state: PhoneOfflineMapSurfaceState,
     private val callbacks: PhoneOfflineMapsforgeCallbacks,
 ) : FrameLayout(context) {
+    private val rendererTrace = PhoneOfflineMapRendererTrace(state.map.file.name, state.themeConfig)
     private var mapView: MapView? = null
     private var tileCache: TileCache? = null
     private var mapFile: MapFile? = null
@@ -115,13 +116,30 @@ private class PhoneOfflineMapsforgeView(
     private val cameraObserver = Observer { publishCamera() }
 
     init {
+        rendererTrace.complete(PhoneOfflineMapRendererStage.MAP_SELECTED)
         if (!isPhoneOfflineMapCandidate(state.map.file)) {
+            reportRendererFailure(IllegalStateException("Selected map is unavailable."))
             postMapError(PhoneOfflineMapError.MISSING)
         } else {
+            rendererTrace.begin(PhoneOfflineMapRendererStage.VIEW_CREATE)
             runCatching {
+                rendererTrace.complete(PhoneOfflineMapRendererStage.VIEW_CREATE)
+                rendererTrace.begin(PhoneOfflineMapRendererStage.GRAPHICS_FACTORY)
                 AndroidGraphicFactory.createInstance(context.applicationContext)
+                rendererTrace.complete(PhoneOfflineMapRendererStage.GRAPHICS_FACTORY)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
                 val openedMapFile = MapFile(state.map.file)
                 mapFile = openedMapFile
+                val bounds = openedMapFile.boundingBox()
+                val cameraInsideBounds = bounds.contains(state.initialCamera.latitude, state.initialCamera.longitude)
+                rendererTrace.mapFileOpened(
+                    boundsAvailable = true,
+                    cameraInsideBounds = cameraInsideBounds,
+                )
+                rendererTrace.complete(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
                 val mapView =
                     MapView(context).apply {
                         isClickable = true
@@ -137,6 +155,9 @@ private class PhoneOfflineMapsforgeView(
                         )
                     }
                 this.mapView = mapView
+                rendererTrace.complete(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
                 val tileCache =
                     AndroidUtil.createTileCache(
                         context.applicationContext,
@@ -147,6 +168,10 @@ private class PhoneOfflineMapsforgeView(
                         false,
                     )
                 this.tileCache = tileCache
+                rendererTrace.tileCacheCreated()
+                rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
                 val tileLayer =
                     TileRendererLayer(
                         tileCache,
@@ -155,10 +180,16 @@ private class PhoneOfflineMapsforgeView(
                         AndroidGraphicFactory.INSTANCE,
                     )
                 this.tileLayer = tileLayer
+                rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
                 applyTheme(state.themeConfig)
                 applyMapMode(state.mapMode)
                 applyCameraCommand(state.cameraCommand)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.LAYER_ATTACH)
                 mapView.layerManager.layers.add(tileLayer)
+                rendererTrace.tileLayerAttached()
+                rendererTrace.complete(PhoneOfflineMapRendererStage.LAYER_ATTACH)
+
                 overlayLayers =
                     PhoneOfflineMapsforgeOverlayLayers(
                         mapView = mapView,
@@ -168,6 +199,8 @@ private class PhoneOfflineMapsforgeView(
                         },
                     )
                 mapView.model.mapViewPosition.addObserver(cameraObserver)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.VIEW_ATTACH)
                 addView(
                     mapView,
                     FrameLayout.LayoutParams(
@@ -175,15 +208,22 @@ private class PhoneOfflineMapsforgeView(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     ),
                 )
+                rendererTrace.viewAttached()
+                rendererTrace.complete(PhoneOfflineMapRendererStage.VIEW_ATTACH)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
                 updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
-                publishCamera()
+                rendererTrace.complete(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
+
+                rendererTrace.begin(PhoneOfflineMapRendererStage.FIRST_CAMERA)
+                rendererTrace.firstCameraPublished(publishCamera())
+                rendererTrace.complete(PhoneOfflineMapRendererStage.FIRST_CAMERA)
                 post { publishCamera() }
+                val attempt = rendererTrace.ready()
+                PhoneOfflineMapRendererDiagnostics.record(attempt)
+                Log.i(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
             }.onFailure { error ->
-                Log.e(
-                    PHONE_OFFLINE_MAP_TAG,
-                    "Unable to initialize Mapsforge renderer for ${state.map.file.name}.",
-                    error,
-                )
+                reportRendererFailure(error)
                 dispose()
                 postMapError(PhoneOfflineMapError.INVALID)
             }
@@ -215,8 +255,18 @@ private class PhoneOfflineMapsforgeView(
         if (resolved == appliedThemeConfig) return
         val layer = tileLayer ?: return
         tileCache?.purge()
+        rendererTrace.begin(PhoneOfflineMapRendererStage.THEME_CREATE)
+        val renderTheme =
+            PhoneOfflineThemeCatalog.renderTheme(
+                config = resolved,
+                context = context,
+                onResourceProviderFailure = rendererTrace::resourceProviderFailed,
+            )
+        rendererTrace.themeCreated(resolved, renderTheme.fallbackUsed)
+        rendererTrace.complete(PhoneOfflineMapRendererStage.THEME_CREATE)
+        rendererTrace.begin(PhoneOfflineMapRendererStage.THEME_APPLY)
         runCatching {
-            layer.setXmlRenderTheme(PhoneOfflineThemeCatalog.renderTheme(resolved, context))
+            layer.setXmlRenderTheme(renderTheme.theme)
         }.onFailure { error ->
             Log.e(
                 PHONE_OFFLINE_MAP_TAG,
@@ -224,7 +274,11 @@ private class PhoneOfflineMapsforgeView(
                 error,
             )
             layer.setXmlRenderTheme(MapsforgeThemes.DEFAULT)
+            rendererTrace.themeApplied(fallbackUsed = true)
+        }.onSuccess {
+            rendererTrace.themeApplied(fallbackUsed = renderTheme.fallbackUsed)
         }
+        rendererTrace.complete(PhoneOfflineMapRendererStage.THEME_APPLY)
         mapView?.layerManager?.redrawLayers()
         appliedThemeConfig = resolved
     }
@@ -257,7 +311,8 @@ private class PhoneOfflineMapsforgeView(
         overlayLayers?.update(gpxOverlays = gpxOverlays, pois = pois)
     }
 
-    private fun publishCamera() {
+    private fun publishCamera(): Boolean {
+        var published = false
         if (!disposed) {
             mapView?.model?.mapViewPosition?.mapPosition?.let { position ->
                 runCatching {
@@ -267,6 +322,7 @@ private class PhoneOfflineMapsforgeView(
                         zoom = position.zoomLevel.toDouble(),
                     )
                 }.getOrNull()?.let { snapshot ->
+                    published = true
                     post { if (!disposed) callbacks.onCameraChanged(snapshot) }
                 }
                 mapView?.phoneMapViewportOrNull()?.let { viewport ->
@@ -274,10 +330,17 @@ private class PhoneOfflineMapsforgeView(
                 }
             }
         }
+        return published
     }
 
     private fun postMapError(error: PhoneOfflineMapError) {
         post { callbacks.onMapError(error) }
+    }
+
+    private fun reportRendererFailure(error: Throwable) {
+        val attempt = rendererTrace.failed(error)
+        PhoneOfflineMapRendererDiagnostics.record(attempt)
+        Log.e(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
     }
 }
 

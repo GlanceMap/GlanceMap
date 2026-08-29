@@ -36,6 +36,11 @@ internal data class PhoneOfflineTheme(
     val defaultStyleId: String,
 )
 
+internal data class PhoneOfflineRenderTheme(
+    val theme: XmlRenderTheme,
+    val fallbackUsed: Boolean,
+)
+
 /**
  * The small phone catalog intentionally mirrors only stable IDs needed by the first offline UI.
  * Elevate style IDs are the existing Mapsforge XML stylemenu layer IDs used on Wear.
@@ -94,29 +99,39 @@ internal object PhoneOfflineThemeCatalog {
     fun renderTheme(
         config: PhoneOfflineThemeConfig,
         context: Context,
-    ): XmlRenderTheme {
+        onResourceProviderFailure: () -> Unit = {},
+    ): PhoneOfflineRenderTheme {
         val resolved = resolve(config.themeId, config.styleId)
         return runCatching {
-            when (resolved.themeId) {
-                ELEVATE_THEME_ID ->
-                    AssetsRenderTheme(
-                        context.assets,
-                        ELEVATE_THEME_ASSET_ROOT,
-                        "Elevate.xml",
-                        styleMenuCallback(resolved.styleId),
-                    ).apply {
-                        setResourceProvider(PhoneOfflineThemeAssetResourceProvider(context.assets))
-                    }
-                MAPSFORGE_THEME_ID -> mapsforgeTheme(resolved.styleId)
-                else -> MapsforgeThemes.DEFAULT
-            }
+            PhoneOfflineRenderTheme(
+                theme =
+                    when (resolved.themeId) {
+                        ELEVATE_THEME_ID ->
+                            AssetsRenderTheme(
+                                context.assets,
+                                ELEVATE_THEME_ASSET_ROOT,
+                                "Elevate.xml",
+                                styleMenuCallback(resolved.styleId),
+                            ).apply {
+                                setResourceProvider(
+                                    PhoneOfflineThemeAssetResourceProvider(
+                                        assets = context.assets,
+                                        onOpenFailure = onResourceProviderFailure,
+                                    ),
+                                )
+                            }
+                        MAPSFORGE_THEME_ID -> mapsforgeTheme(resolved.styleId)
+                        else -> MapsforgeThemes.DEFAULT
+                    },
+                fallbackUsed = false,
+            )
         }.onFailure { error ->
             Log.e(
                 PHONE_OFFLINE_THEME_TAG,
                 "Unable to construct offline theme ${resolved.themeId}/${resolved.styleId}.",
                 error,
             )
-        }.getOrDefault(MapsforgeThemes.DEFAULT)
+        }.getOrElse { PhoneOfflineRenderTheme(MapsforgeThemes.DEFAULT, fallbackUsed = true) }
     }
 
     private fun mapsforgeTheme(styleId: String): MapsforgeThemes =
@@ -150,6 +165,7 @@ internal object PhoneOfflineThemeCatalog {
 /** Mapsforge resolves `file:` resources from disk unless this provider opens bundled assets. */
 private class PhoneOfflineThemeAssetResourceProvider(
     private val assets: AssetManager,
+    private val onOpenFailure: () -> Unit,
 ) : XmlThemeResourceProvider {
     private val loggedOpenFailure = AtomicBoolean(false)
 
@@ -161,6 +177,7 @@ private class PhoneOfflineThemeAssetResourceProvider(
         return runCatching { assets.open(assetPath) }
             .onFailure {
                 if (loggedOpenFailure.compareAndSet(false, true)) {
+                    onOpenFailure()
                     Log.w(
                         PHONE_OFFLINE_THEME_TAG,
                         "Unable to load bundled Elevate resource '$source' from '$assetPath'.",
