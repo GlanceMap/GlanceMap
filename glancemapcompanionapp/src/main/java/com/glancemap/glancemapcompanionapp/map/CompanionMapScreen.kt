@@ -69,11 +69,68 @@ private val locationPermissions =
         Manifest.permission.ACCESS_COARSE_LOCATION,
     )
 
-private data class MapRuntime(
-    val map: MapLibreMap?,
-    val mapView: MapView?,
-    val style: Style?,
-)
+internal data class MapRuntime(
+    val generation: PhoneMapLibreGeneration = PhoneMapLibreGeneration(),
+    val mapView: MapView? = null,
+    val map: MapLibreMap? = null,
+) {
+    fun beginMapView(createdMapView: MapView): MapRuntime =
+        MapRuntime(
+            generation = generation.nextRenderer(),
+            mapView = createdMapView,
+        )
+
+    fun acceptMapReady(
+        callbackGeneration: Long,
+        callbackMapView: MapView,
+        callbackMap: MapLibreMap,
+    ): MapRuntime =
+        if (generation.accepts(callbackGeneration) && mapView === callbackMapView) {
+            copy(map = callbackMap)
+        } else {
+            this
+        }
+
+    fun acceptStyleReady(
+        callbackGeneration: Long,
+        callbackMapView: MapView,
+        callbackMap: MapLibreMap,
+    ): MapRuntime =
+        if (
+            generation.accepts(callbackGeneration) &&
+            mapView === callbackMapView &&
+            map === callbackMap
+        ) {
+            copy(generation = generation.onStyleReady(callbackGeneration))
+        } else {
+            this
+        }
+
+    fun invalidate(disposedMapView: MapView? = null): MapRuntime =
+        if (disposedMapView == null || mapView === disposedMapView) {
+            MapRuntime(generation = generation.nextRenderer())
+        } else {
+            this
+        }
+
+    fun isCurrentIn(latestRuntime: MapRuntime): Boolean =
+        generation == latestRuntime.generation &&
+            mapView === latestRuntime.mapView &&
+            map === latestRuntime.map
+
+    fun withCurrentLoadedStyle(
+        latestRuntime: () -> MapRuntime,
+        action: (MapLibreMap, MapView, Style) -> Unit,
+    ) {
+        val activeMap = map ?: return
+        val activeMapView = mapView ?: return
+        activeMap.getStyle { currentStyle ->
+            if (!activeMapView.isDestroyed && isCurrentIn(latestRuntime())) {
+                action(activeMap, activeMapView, currentStyle)
+            }
+        }
+    }
+}
 
 private data class MapLocationState(
     val hasPermission: Boolean,
@@ -111,9 +168,7 @@ internal fun CompanionMapScreen(
     val bundleUiState by bundleViewModel.uiState.collectAsState()
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val gpxUiState by gpxViewModel.uiState.collectAsState()
-    var mapView by remember { mutableStateOf<MapView?>(null) }
-    var map by remember { mutableStateOf<MapLibreMap?>(null) }
-    var style by remember { mutableStateOf<Style?>(null) }
+    var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var mapUiState by remember { mutableStateOf(PhoneMapUiState()) }
     var offlineMaps by remember { mutableStateOf(emptyList<PhoneOfflineMap>()) }
     var hasSelectedMapFolder by remember(mapFolderSource) {
@@ -137,7 +192,6 @@ internal fun CompanionMapScreen(
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
         }
-    val mapRuntime = MapRuntime(map = map, mapView = mapView, style = style)
     val locationState =
         MapLocationState(
             hasPermission = hasLocationPermission,
@@ -163,10 +217,8 @@ internal fun CompanionMapScreen(
                     is PhoneOfflineMapImportResult.Success -> {
                         val importedMap = imported.map
                         offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-                        map?.cameraSnapshotOrNull()?.let { mapCamera = it }
-                        mapView = null
-                        map = null
-                        style = null
+                        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+                        mapRuntime = mapRuntime.invalidate()
                         mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(importedMap))
                         offlineMapError = null
                     }
@@ -260,10 +312,8 @@ internal fun CompanionMapScreen(
                 coroutineScope.launch {
                     val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
                     if (error == null) {
-                        map?.cameraSnapshotOrNull()?.let { mapCamera = it }
-                        mapView = null
-                        map = null
-                        style = null
+                        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+                        mapRuntime = mapRuntime.invalidate()
                         mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(selectedMap))
                         offlineMapError = null
                     } else {
@@ -306,7 +356,12 @@ internal fun CompanionMapScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 when (val source = mapUiState.source) {
                     PhoneMapSource.Online -> {
-                        mapViewLifecycle(mapView)
+                        mapViewLifecycle(
+                            mapView = mapRuntime.mapView,
+                            onMapViewDestroyed = { destroyedMapView ->
+                                mapRuntime = mapRuntime.invalidate(destroyedMapView)
+                            },
+                        )
                         synchronizeMapLocation(
                             runtime = mapRuntime,
                             locationState = locationState,
@@ -320,27 +375,44 @@ internal fun CompanionMapScreen(
                             onOverlayFitted = { hasFittedGpxOverlay = true },
                         )
                         synchronizePoiOverlay(
-                            style = style,
+                            runtime = mapRuntime,
                             pois = pois,
                             isVisible = mapUiState.contentVisibility.pois,
                         )
                         observePoiViewport(
-                            map = map,
+                            runtime = mapRuntime,
                             isVisible = mapUiState.contentVisibility.pois,
                             onViewportChanged = onPoiViewportChanged,
                         )
                         observePoiSelection(
-                            map = map,
+                            runtime = mapRuntime,
                             pois = pois,
                             isVisible = mapUiState.contentVisibility.pois,
                             onPoiSelected = { selectedPoi = it },
                         )
-                        observeOnlineCamera(map = map, onCameraChanged = { mapCamera = it })
+                        observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { mapCamera = it })
                         mapSurface(
                             initialCamera = mapCamera,
-                            onMapViewCreated = { mapView = it },
-                            onMapReady = { map = it },
-                            onStyleReady = { style = it },
+                            onMapViewCreated = { createdMapView ->
+                                mapRuntime = mapRuntime.beginMapView(createdMapView)
+                                mapRuntime.generation.renderer
+                            },
+                            onMapReady = { callbackGeneration, callbackMapView, callbackMap ->
+                                mapRuntime =
+                                    mapRuntime.acceptMapReady(
+                                        callbackGeneration = callbackGeneration,
+                                        callbackMapView = callbackMapView,
+                                        callbackMap = callbackMap,
+                                    )
+                            },
+                            onStyleReady = { callbackGeneration, callbackMapView, callbackMap ->
+                                mapRuntime =
+                                    mapRuntime.acceptStyleReady(
+                                        callbackGeneration = callbackGeneration,
+                                        callbackMapView = callbackMapView,
+                                        callbackMap = callbackMap,
+                                    )
+                            },
                         )
                     }
 
@@ -506,15 +578,18 @@ private fun offlineThemeSelector(
 
 @Composable
 private fun observeOnlineCamera(
-    map: MapLibreMap?,
+    runtime: MapRuntime,
     onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
 ) {
+    val currentRuntime by rememberUpdatedState(runtime)
     val currentOnCameraChanged by rememberUpdatedState(onCameraChanged)
-    DisposableEffect(map) {
-        val activeMap = map ?: return@DisposableEffect onDispose {}
+    DisposableEffect(runtime.map) {
+        val activeMap = runtime.map ?: return@DisposableEffect onDispose {}
         val listener =
             MapLibreMap.OnCameraIdleListener {
-                activeMap.cameraSnapshotOrNull()?.let(currentOnCameraChanged)
+                if (runtime.isCurrentIn(currentRuntime)) {
+                    activeMap.cameraSnapshotOrNull()?.let(currentOnCameraChanged)
+                }
             }
         activeMap.addOnCameraIdleListener(listener)
         listener.onCameraIdle()
@@ -540,24 +615,32 @@ private fun synchronizeMapLocation(
     onRecenterHandled: () -> Unit,
     context: Context,
 ) {
-    LaunchedEffect(runtime.map, runtime.style, locationState.hasPermission) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentLocationState by rememberUpdatedState(locationState)
+    val currentOnRecenterHandled by rememberUpdatedState(onRecenterHandled)
+
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, locationState.hasPermission) {
         if (!locationState.hasPermission) return@LaunchedEffect
-        val activeMap = runtime.map ?: return@LaunchedEffect
-        val activeStyle = runtime.style ?: return@LaunchedEffect
-        activeMap.enableLocationPuck(style = activeStyle, context = context)
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, _, style ->
+            if (currentLocationState.hasPermission) {
+                activeMap.enableLocationPuck(style = style, context = context)
+            }
+        }
     }
 
     LaunchedEffect(
         locationState.pendingRecenter,
         runtime.map,
-        runtime.style,
+        runtime.generation.styleRevision,
         locationState.hasPermission,
     ) {
         if (!locationState.pendingRecenter || !locationState.hasPermission) return@LaunchedEffect
-        val activeMap = runtime.map ?: return@LaunchedEffect
-        val activeStyle = runtime.style ?: return@LaunchedEffect
-        activeMap.recenterOnLocation(style = activeStyle, context = context)
-        onRecenterHandled()
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, _, style ->
+            if (currentLocationState.pendingRecenter && currentLocationState.hasPermission) {
+                activeMap.recenterOnLocation(style = style, context = context)
+                currentOnRecenterHandled()
+            }
+        }
     }
 }
 
@@ -568,26 +651,36 @@ private fun synchronizeGpxOverlay(
     hasFittedGpxOverlay: Boolean,
     onOverlayFitted: () -> Unit,
 ) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentOverlayState by rememberUpdatedState(overlayState)
+    val currentHasFittedGpxOverlay by rememberUpdatedState(hasFittedGpxOverlay)
+    val currentOnOverlayFitted by rememberUpdatedState(onOverlayFitted)
+
     LaunchedEffect(
         runtime.map,
         runtime.mapView,
-        runtime.style,
+        runtime.generation.styleRevision,
         overlayState.segments,
         overlayState.isVisible,
     ) {
-        val activeStyle = runtime.style ?: return@LaunchedEffect
-        activeStyle.renderGpxTrack(
-            segments = overlayState.segments,
-            isVisible = overlayState.isVisible,
-        )
-        val activeMap = runtime.map ?: return@LaunchedEffect
-        val activeMapView = runtime.mapView ?: return@LaunchedEffect
-        if (overlayState.isVisible && overlayState.segments.isNotEmpty() && !hasFittedGpxOverlay) {
-            activeMap.fitGpxTrackBounds(
-                mapView = activeMapView,
-                segments = overlayState.segments,
-                onFitted = onOverlayFitted,
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, activeMapView, style ->
+            val latestOverlayState = currentOverlayState
+            style.renderGpxTrack(
+                segments = latestOverlayState.segments,
+                isVisible = latestOverlayState.isVisible,
             )
+            if (
+                latestOverlayState.isVisible &&
+                latestOverlayState.segments.isNotEmpty() &&
+                !currentHasFittedGpxOverlay
+            ) {
+                activeMap.fitGpxTrackBounds(
+                    mapView = activeMapView,
+                    segments = latestOverlayState.segments,
+                    isCurrent = { runtime.isCurrentIn(currentRuntime) },
+                    onFitted = currentOnOverlayFitted,
+                )
+            }
         }
     }
 }
@@ -595,9 +688,9 @@ private fun synchronizeGpxOverlay(
 @Composable
 private fun mapSurface(
     initialCamera: PhoneMapCameraSnapshot,
-    onMapViewCreated: (MapView) -> Unit,
-    onMapReady: (MapLibreMap) -> Unit,
-    onStyleReady: (Style) -> Unit,
+    onMapViewCreated: (MapView) -> Long,
+    onMapReady: (Long, MapView, MapLibreMap) -> Unit,
+    onStyleReady: (Long, MapView, MapLibreMap) -> Unit,
 ) {
     AndroidView(
         factory = { viewContext ->
@@ -652,25 +745,25 @@ private fun mapControls(
 private fun createMapView(
     context: Context,
     initialCamera: PhoneMapCameraSnapshot,
-    onCreated: (MapView) -> Unit,
-    onMapReady: (MapLibreMap) -> Unit,
-    onStyleReady: (Style) -> Unit,
+    onCreated: (MapView) -> Long,
+    onMapReady: (Long, MapView, MapLibreMap) -> Unit,
+    onStyleReady: (Long, MapView, MapLibreMap) -> Unit,
 ): MapView {
     ensureMapLibreConfigured(context)
     return MapView(context).also { mapView ->
-        onCreated(mapView)
+        val generation = onCreated(mapView)
         mapView.onCreate(null)
         mapView.getMapAsync { map ->
             if (mapView.isDestroyed) return@getMapAsync
-            onMapReady(map)
+            onMapReady(generation, mapView, map)
             map.setStyle(
                 Style.Builder().fromJson(
                     PhoneMapRendererCatalog.mainOnlineRasterProvider.mapLibreRasterStyleJson(),
                 ),
-            ) { style ->
+            ) {
                 if (!mapView.isDestroyed) {
                     map.moveCamera(initialCamera.toMapLibreCameraUpdate())
-                    onStyleReady(style)
+                    onStyleReady(generation, mapView, map)
                 }
             }
         }
@@ -680,9 +773,13 @@ private fun createMapView(
 /** Keeps MapLibre's ordered lifecycle callbacks together rather than splitting the state machine. */
 @Suppress("CyclomaticComplexMethod", "DEPRECATION", "OVERRIDE_DEPRECATION")
 @Composable
-private fun mapViewLifecycle(mapView: MapView?) {
+private fun mapViewLifecycle(
+    mapView: MapView?,
+    onMapViewDestroyed: (MapView) -> Unit,
+) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val applicationContext = LocalContext.current.applicationContext
+    val currentOnMapViewDestroyed by rememberUpdatedState(onMapViewDestroyed)
 
     DisposableEffect(mapView, lifecycleOwner, applicationContext) {
         if (mapView == null) {
@@ -723,6 +820,7 @@ private fun mapViewLifecycle(mapView: MapView?) {
 
         fun destroy() {
             if (!destroyed) {
+                currentOnMapViewDestroyed(mapView)
                 pause()
                 stop()
                 mapView.onDestroy()

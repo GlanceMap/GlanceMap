@@ -26,33 +26,40 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.poiIdAt
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPois
 import com.glancemap.trailcore.poi.PoiType
 import org.maplibre.android.maps.MapLibreMap
-import org.maplibre.android.maps.Style
 
 @Composable
 internal fun synchronizePoiOverlay(
-    style: Style?,
+    runtime: MapRuntime,
     pois: List<PhoneMapPoi>,
     isVisible: Boolean,
 ) {
-    LaunchedEffect(style, pois, isVisible) {
-        style?.renderPois(pois = pois, isVisible = isVisible)
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentPois by rememberUpdatedState(pois)
+    val currentIsVisible by rememberUpdatedState(isVisible)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, pois, isVisible) {
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
+            style.renderPois(pois = currentPois, isVisible = currentIsVisible)
+        }
     }
 }
 
 @Composable
 internal fun observePoiViewport(
-    map: MapLibreMap?,
+    runtime: MapRuntime,
     isVisible: Boolean,
     onViewportChanged: (PhoneMapViewport) -> Unit,
 ) {
+    val currentRuntime by rememberUpdatedState(runtime)
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
-    DisposableEffect(map, isVisible) {
-        val activeMap = map
+    DisposableEffect(runtime.map, isVisible) {
+        val activeMap = runtime.map
         if (activeMap == null || !isVisible) return@DisposableEffect onDispose {}
 
         val listener =
             MapLibreMap.OnCameraIdleListener {
-                activeMap.phoneMapViewportOrNull()?.let(currentOnViewportChanged)
+                if (runtime.isCurrentIn(currentRuntime)) {
+                    activeMap.phoneMapViewportOrNull()?.let(currentOnViewportChanged)
+                }
             }
         activeMap.addOnCameraIdleListener(listener)
         listener.onCameraIdle()
@@ -62,26 +69,34 @@ internal fun observePoiViewport(
 
 @Composable
 internal fun observePoiSelection(
-    map: MapLibreMap?,
+    runtime: MapRuntime,
     pois: List<PhoneMapPoi>,
     isVisible: Boolean,
     onPoiSelected: (PhoneMapPoi) -> Unit,
 ) {
     val poiById = remember(pois) { pois.associateBy(PhoneMapPoi::id) }
+    val currentRuntime by rememberUpdatedState(runtime)
     val currentPois by rememberUpdatedState(poiById)
     val currentOnPoiSelected by rememberUpdatedState(onPoiSelected)
-    DisposableEffect(map, isVisible) {
-        val activeMap = map
+    DisposableEffect(runtime.map, isVisible) {
+        val activeMap = runtime.map
         if (activeMap == null || !isVisible) return@DisposableEffect onDispose {}
 
         val listener =
             MapLibreMap.OnMapClickListener { point ->
-                val poi = activeMap.poiIdAt(activeMap.projection.toScreenLocation(point))?.let(currentPois::get)
-                if (poi == null) {
+                if (!runtime.isCurrentIn(currentRuntime)) {
                     false
                 } else {
-                    currentOnPoiSelected(poi)
-                    true
+                    val poi =
+                        activeMap
+                            .poiIdAt(activeMap.projection.toScreenLocation(point))
+                            ?.let(currentPois::get)
+                    if (poi == null) {
+                        false
+                    } else {
+                        currentOnPoiSelected(poi)
+                        true
+                    }
                 }
             }
         activeMap.addOnMapClickListener(listener)

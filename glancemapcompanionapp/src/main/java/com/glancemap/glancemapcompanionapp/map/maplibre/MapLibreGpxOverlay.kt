@@ -57,10 +57,11 @@ internal fun Style.renderGpxTrack(
 internal fun MapLibreMap.fitGpxTrackBounds(
     mapView: MapView,
     segments: List<PhoneMapRouteSegment>,
+    isCurrent: () -> Boolean,
     onFitted: () -> Unit,
 ) {
     val bounds = segments.boundsOrNull()?.toMapLibreBounds() ?: return
-    mapView.fitBoundsWhenLaidOut(this, bounds, onFitted)
+    mapView.fitBoundsWhenLaidOut(this, bounds, isCurrent, onFitted)
 }
 
 private fun PhoneMapRouteSegment.toGeoJsonFeature(): Feature =
@@ -91,12 +92,13 @@ private fun PhoneMapRouteBounds.toMapLibreBounds(): LatLngBounds {
 private fun MapView.fitBoundsWhenLaidOut(
     map: MapLibreMap,
     bounds: LatLngBounds,
+    isCurrent: () -> Boolean,
     onFitted: () -> Unit,
 ) {
     post {
-        if (isDestroyed) return@post
+        if (isDestroyed || !isCurrent()) return@post
         if (width == 0 || height == 0) {
-            fitBoundsWhenLaidOut(map, bounds, onFitted)
+            fitBoundsWhenLaidOut(map, bounds, isCurrent, onFitted)
             return@post
         }
         map.moveCamera(
