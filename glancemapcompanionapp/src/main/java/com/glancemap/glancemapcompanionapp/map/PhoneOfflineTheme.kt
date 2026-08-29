@@ -1,13 +1,22 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import android.content.res.AssetManager
+import android.util.Log
 import androidx.annotation.StringRes
 import com.glancemap.glancemapcompanionapp.R
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderThemeMenuCallback
 import org.mapsforge.map.rendertheme.XmlRenderThemeStyleLayer
+import org.mapsforge.map.rendertheme.XmlThemeResourceProvider
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
+import java.io.InputStream
+import java.util.concurrent.atomic.AtomicBoolean
+
+private const val PHONE_OFFLINE_THEME_TAG = "PhoneOfflineTheme"
+private const val ELEVATE_THEME_ASSET_ROOT = "theme/elevate/"
+private const val FILE_RESOURCE_PREFIX = "file:"
 
 /** Stable phone-side selection; renderer SDK objects stay outside this semantic state. */
 internal data class PhoneOfflineThemeConfig(
@@ -92,13 +101,21 @@ internal object PhoneOfflineThemeCatalog {
                 ELEVATE_THEME_ID ->
                     AssetsRenderTheme(
                         context.assets,
-                        "theme/elevate/",
+                        ELEVATE_THEME_ASSET_ROOT,
                         "Elevate.xml",
                         styleMenuCallback(resolved.styleId),
-                    )
+                    ).apply {
+                        setResourceProvider(PhoneOfflineThemeAssetResourceProvider(context.assets))
+                    }
                 MAPSFORGE_THEME_ID -> mapsforgeTheme(resolved.styleId)
                 else -> MapsforgeThemes.DEFAULT
             }
+        }.onFailure { error ->
+            Log.e(
+                PHONE_OFFLINE_THEME_TAG,
+                "Unable to construct offline theme ${resolved.themeId}/${resolved.styleId}.",
+                error,
+            )
         }.getOrDefault(MapsforgeThemes.DEFAULT)
     }
 
@@ -129,6 +146,40 @@ internal object PhoneOfflineThemeCatalog {
         }
     }
 }
+
+/** Mapsforge resolves `file:` resources from disk unless this provider opens bundled assets. */
+private class PhoneOfflineThemeAssetResourceProvider(
+    private val assets: AssetManager,
+) : XmlThemeResourceProvider {
+    private val loggedOpenFailure = AtomicBoolean(false)
+
+    override fun createInputStream(
+        relativePathPrefix: String,
+        source: String,
+    ): InputStream? {
+        val assetPath = resolvePhoneOfflineThemeAssetPath(relativePathPrefix, source) ?: return null
+        return runCatching { assets.open(assetPath) }
+            .onFailure {
+                if (loggedOpenFailure.compareAndSet(false, true)) {
+                    Log.w(
+                        PHONE_OFFLINE_THEME_TAG,
+                        "Unable to load bundled Elevate resource '$source' from '$assetPath'.",
+                    )
+                }
+            }.getOrNull()
+    }
+}
+
+internal fun resolvePhoneOfflineThemeAssetPath(
+    relativePathPrefix: String,
+    source: String,
+): String? =
+    source
+        .takeIf { it.startsWith(FILE_RESOURCE_PREFIX) }
+        ?.removePrefix(FILE_RESOURCE_PREFIX)
+        ?.trimStart('/')
+        ?.takeIf { it.isNotBlank() }
+        ?.let { resourcePath -> "${relativePathPrefix.trimEnd('/')}/$resourcePath" }
 
 /** Companion-only persistence for the temporary theme controls and future Maps panel. */
 internal class PhoneOfflineThemePreferences(

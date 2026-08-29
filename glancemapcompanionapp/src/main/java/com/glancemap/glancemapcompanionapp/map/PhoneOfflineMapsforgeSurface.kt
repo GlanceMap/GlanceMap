@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
 
 private const val PHONE_OFFLINE_TILE_CACHE_CAPACITY = 64
 private const val PHONE_OFFLINE_TILE_CACHE_ID = "phone-offline"
+private const val PHONE_OFFLINE_MAP_TAG = "PhoneOfflineMap"
 
 internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
@@ -165,7 +167,12 @@ private class PhoneOfflineMapsforgeView(
                 updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
                 publishCamera()
                 post { publishCamera() }
-            }.onFailure {
+            }.onFailure { error ->
+                Log.e(
+                    PHONE_OFFLINE_MAP_TAG,
+                    "Unable to initialize Mapsforge renderer for ${state.map.file.name}.",
+                    error,
+                )
                 dispose()
                 postMapError(PhoneOfflineMapError.INVALID)
             }
@@ -199,7 +206,12 @@ private class PhoneOfflineMapsforgeView(
         tileCache?.purge()
         runCatching {
             layer.setXmlRenderTheme(PhoneOfflineThemeCatalog.renderTheme(resolved, context))
-        }.onFailure {
+        }.onFailure { error ->
+            Log.e(
+                PHONE_OFFLINE_MAP_TAG,
+                "Unable to apply offline theme ${resolved.themeId}/${resolved.styleId}; using Mapsforge default.",
+                error,
+            )
             layer.setXmlRenderTheme(MapsforgeThemes.DEFAULT)
         }
         mapView?.layerManager?.redrawLayers()

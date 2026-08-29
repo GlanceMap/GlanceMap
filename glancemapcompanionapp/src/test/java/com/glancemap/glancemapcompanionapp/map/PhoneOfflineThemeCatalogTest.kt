@@ -57,4 +57,24 @@ class PhoneOfflineThemeCatalogTest {
         assertEquals(PhoneOfflineThemeCatalog.MAPSFORGE_DARK_STYLE_ID, config.styleId)
         assertTrue(config != PhoneOfflineThemeCatalog.defaultConfig)
     }
+
+    @Test
+    fun elevateFileResourcesResolveInsideBundledThemeDirectory() {
+        assertEquals(
+            "theme/elevate/ele-res/s_peak.svg",
+            resolvePhoneOfflineThemeAssetPath("theme/elevate/", "file:ele-res/s_peak.svg"),
+        )
+        assertEquals(
+            "theme/elevate/ele-res/s_city.svg",
+            resolvePhoneOfflineThemeAssetPath("theme/elevate/", "file:ele-res/s_city.svg"),
+        )
+    }
+
+    @Test
+    fun nonFileResourcesRemainWithMapsforgeDefaultResolution() {
+        assertEquals(
+            null,
+            resolvePhoneOfflineThemeAssetPath("theme/elevate/", "jar:ele-res/s_peak.svg"),
+        )
+    }
 }
