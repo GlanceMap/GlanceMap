@@ -10,6 +10,10 @@ internal enum class MapTool {
     SETTINGS,
 }
 
+/** Primary content stays directly reachable; the smaller secondary launcher can grow later. */
+internal val primaryMapTools = listOf(MapTool.MAPS, MapTool.GPX, MapTool.POI)
+internal val secondaryMapTools = listOf(MapTool.SETTINGS)
+
 internal enum class MapToolPanelMode {
     CLOSED,
     SPLIT,

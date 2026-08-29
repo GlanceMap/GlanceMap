@@ -7,6 +7,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.nio.file.Files
 
 class PhoneOfflineMapStoreTest {
@@ -63,7 +65,7 @@ class PhoneOfflineMapStoreTest {
             val store =
                 PhoneOfflineMapStore(directory) { candidate ->
                     validatedName = candidate.name
-                    null
+                    PhoneOfflineMapValidation()
                 }
 
             val result = store.import("example.map", "valid Mapsforge data".byteInputStream())
@@ -84,7 +86,10 @@ class PhoneOfflineMapStoreTest {
     fun failedImportValidationLeavesNoPartialOrFinalMap() {
         val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
         try {
-            val store = PhoneOfflineMapStore(directory) { PhoneOfflineMapError.INVALID }
+            val store =
+                PhoneOfflineMapStore(directory) {
+                    PhoneOfflineMapValidation(error = PhoneOfflineMapError.INVALID)
+                }
 
             val result = store.import("example.map", "corrupt".byteInputStream())
 
@@ -99,10 +104,72 @@ class PhoneOfflineMapStoreTest {
     }
 
     @Test
+    fun copyAndMapfileFailuresKeepTheirActualDiagnosticStages() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val copyFailure =
+                PhoneOfflineMapStore(directory).import(
+                    "copy.map",
+                    object : InputStream() {
+                        private var copiedChunk = false
+
+                        override fun read(): Int = -1
+
+                        override fun read(
+                            buffer: ByteArray,
+                            offset: Int,
+                            length: Int,
+                        ): Int =
+                            if (!copiedChunk) {
+                                buffer[offset] = 1
+                                buffer[offset + 1] = 2
+                                copiedChunk = true
+                                2
+                            } else {
+                                throw IOException("copy interrupted")
+                            }
+                    },
+                )
+
+            assertEquals(
+                PhoneOfflineMapError.COPY_FAILED,
+                (copyFailure as PhoneOfflineMapImportResult.Failure).error,
+            )
+            assertEquals(
+                PhoneOfflineMapImportStage.COPY,
+                PhoneOfflineMapImportDiagnostics.latestAttempt()?.failureStage,
+            )
+            assertEquals(2L, PhoneOfflineMapImportDiagnostics.latestAttempt()?.bytesCopied)
+
+            val mapFileFailureStore =
+                PhoneOfflineMapStore(directory) {
+                    PhoneOfflineMapValidation(
+                        error = PhoneOfflineMapError.INVALID,
+                        mapFileOpened = false,
+                        exception = IllegalArgumentException("invalid header"),
+                    )
+                }
+            val mapFileFailure = mapFileFailureStore.import("invalid.map", "map".byteInputStream())
+
+            assertEquals(
+                PhoneOfflineMapError.INVALID,
+                (mapFileFailure as PhoneOfflineMapImportResult.Failure).error,
+            )
+            assertEquals(
+                PhoneOfflineMapImportStage.MAPFILE_OPEN,
+                PhoneOfflineMapImportDiagnostics.latestAttempt()?.failureStage,
+            )
+        } finally {
+            PhoneOfflineMapImportDiagnostics.clear()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun duplicateImportsUseSafeNameCollisionsAndAreFoundByFolderSyncMatching() {
         val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
         try {
-            val store = PhoneOfflineMapStore(directory) { null }
+            val store = PhoneOfflineMapStore(directory) { PhoneOfflineMapValidation() }
 
             val first = store.import("example.map", "first".byteInputStream())
             val second = store.import("example.map", "second".byteInputStream())
@@ -123,7 +190,14 @@ class PhoneOfflineMapStoreTest {
             val target = File(directory, "alps.map").apply { writeText("valid existing") }
             val store =
                 PhoneOfflineMapStore(directory) { candidate ->
-                    if (candidate.readText().startsWith("valid")) null else PhoneOfflineMapError.INVALID
+                    PhoneOfflineMapValidation(
+                        error =
+                            if (candidate.readText().startsWith("valid")) {
+                                null
+                            } else {
+                                PhoneOfflineMapError.INVALID
+                            },
+                    )
                 }
 
             val result =
@@ -146,7 +220,14 @@ class PhoneOfflineMapStoreTest {
             val target = File(directory, "alps.map").apply { writeText("invalid") }
             val store =
                 PhoneOfflineMapStore(directory) { candidate ->
-                    if (candidate.readText().startsWith("valid")) null else PhoneOfflineMapError.INVALID
+                    PhoneOfflineMapValidation(
+                        error =
+                            if (candidate.readText().startsWith("valid")) {
+                                null
+                            } else {
+                                PhoneOfflineMapError.INVALID
+                            },
+                    )
                 }
 
             val result =

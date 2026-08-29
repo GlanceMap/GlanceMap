@@ -18,6 +18,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -147,8 +149,8 @@ private fun mapToolMapSurface(
             onToggle = actions.onToggleLauncher,
             modifier =
                 Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
         )
     }
 }
@@ -206,47 +208,54 @@ private fun mapToolLauncher(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Box(modifier = modifier) {
         if (expanded) {
-            MapTool.entries.reversed().forEach { tool ->
-                ExtendedFloatingActionButton(
-                    onClick = { onToolSelected(tool) },
-                    icon = {
-                        Icon(
-                            imageVector = tool.icon(),
-                            contentDescription = stringResource(tool.titleResource()),
-                        )
-                    },
-                    text = { Text(stringResource(tool.titleResource())) },
-                    containerColor =
-                        if (activeTool == tool) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
+            Column(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 88.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                secondaryMapTools.reversed().forEach { tool ->
+                    ExtendedFloatingActionButton(
+                        onClick = { onToolSelected(tool) },
+                        icon = {
+                            Icon(
+                                imageVector = tool.icon(),
+                                contentDescription = stringResource(tool.titleResource()),
+                            )
                         },
-                )
+                        text = { Text(stringResource(tool.titleResource())) },
+                        containerColor =
+                            if (activeTool == tool) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                    )
+                }
             }
         }
-        ExtendedFloatingActionButton(
-            onClick = onToggle,
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Build,
-                    contentDescription = stringResource(R.string.map_tool_launcher_content_description),
+        NavigationBar(modifier = Modifier.align(Alignment.BottomCenter)) {
+            primaryMapTools.forEach { tool ->
+                NavigationBarItem(
+                    selected = activeTool == tool,
+                    onClick = { onToolSelected(tool) },
+                    icon = { Icon(imageVector = tool.icon(), contentDescription = null) },
+                    label = { Text(stringResource(tool.titleResource())) },
+                    alwaysShowLabel = true,
                 )
-            },
-            text = { Text(stringResource(R.string.map_tool_launcher_label)) },
-            containerColor =
-                if (expanded) {
-                    MaterialTheme.colorScheme.secondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                },
-        )
+            }
+            NavigationBarItem(
+                selected = expanded || activeTool == MapTool.SETTINGS,
+                onClick = onToggle,
+                icon = { Icon(imageVector = Icons.Filled.Build, contentDescription = null) },
+                label = { Text(stringResource(R.string.map_tool_launcher_label)) },
+                alwaysShowLabel = true,
+            )
+        }
     }
 }
 

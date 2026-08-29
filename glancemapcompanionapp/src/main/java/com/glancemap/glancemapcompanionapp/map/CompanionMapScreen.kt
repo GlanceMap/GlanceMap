@@ -8,6 +8,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -220,6 +221,11 @@ internal fun CompanionMapScreen(
                     }
                 when (imported) {
                     is PhoneOfflineMapImportResult.Success -> {
+                        Log.i(
+                            PhoneOfflineMapImportDiagnostics.TAG,
+                            PhoneOfflineMapImportDiagnostics.latestAttempt()?.toCaptureLine()
+                                ?: "event=offline_map_import outcome=SUCCESS",
+                        )
                         val importedMap = imported.map
                         offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
                         mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
@@ -228,7 +234,14 @@ internal fun CompanionMapScreen(
                         offlineMapError = null
                     }
 
-                    is PhoneOfflineMapImportResult.Failure -> offlineMapError = imported.error
+                    is PhoneOfflineMapImportResult.Failure -> {
+                        Log.w(
+                            PhoneOfflineMapImportDiagnostics.TAG,
+                            PhoneOfflineMapImportDiagnostics.latestAttempt()?.toCaptureLine()
+                                ?: "event=offline_map_import outcome=FAILED error=${imported.error}",
+                        )
+                        offlineMapError = imported.error
+                    }
                 }
             }
         }
@@ -501,7 +514,7 @@ internal fun CompanionMapScreen(
                         modifier =
                             Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(16.dp),
+                                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
                     )
                 }
                 offlineMapError?.let { error ->

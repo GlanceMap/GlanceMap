@@ -96,7 +96,10 @@ object PhoneDebugCapture {
         }
     }
 
-    fun buildReport(context: Context): String {
+    fun buildReport(
+        context: Context,
+        additionalSections: List<String> = emptyList(),
+    ): String {
         val state = state.value
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         val generatedAt = Instant.now()
@@ -127,6 +130,10 @@ object PhoneDebugCapture {
             appendLine("BufferedLines: ${state.bufferedLines}")
             appendLine("DroppedLines: ${state.droppedLines}")
             appendLine("TotalLoggedLines: ${state.totalLoggedLines}")
+            additionalSections.filter(String::isNotBlank).forEach { section ->
+                appendLine()
+                appendLine(section.trimEnd())
+            }
             appendLine()
             appendLine("Logs")
             val snapshot = snapshot()

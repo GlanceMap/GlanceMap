@@ -60,6 +60,13 @@ internal enum class PhoneOfflineMapError {
     COPY_FAILED,
 }
 
+internal data class PhoneOfflineMapValidation(
+    val error: PhoneOfflineMapError? = null,
+    val mapFileOpened: Boolean? = null,
+    val metadata: PhoneOfflineMapsforgeMetadata? = null,
+    val exception: Throwable? = null,
+)
+
 internal sealed interface PhoneOfflineMapImportResult {
     data class Success(
         val map: PhoneOfflineMap,
@@ -94,9 +101,10 @@ internal data class PhoneOfflineMapFolderSyncResult(
  * The transfer flow deliberately remains URI-based and watch-only; importing here is solely for
  * the phone map surface.
  */
+@Suppress("TooManyFunctions") // Import, bundle install, discovery, and folder matching share one storage boundary.
 internal class PhoneOfflineMapStore(
     private val directory: File,
-    private val structuralValidator: (File) -> PhoneOfflineMapError? = ::validateMapsforgeMapFile,
+    private val mapInspector: (File) -> PhoneOfflineMapValidation = ::inspectMapsforgeMapFile,
 ) {
     constructor(context: Context) : this(File(context.filesDir, DIRECTORY_NAME))
 
@@ -113,42 +121,80 @@ internal class PhoneOfflineMapStore(
     /** Opens only the Mapsforge header; callers run it away from the Compose UI thread. */
     fun validate(map: PhoneOfflineMap): PhoneOfflineMapError? {
         if (!isPhoneOfflineMapCandidate(map.file)) return PhoneOfflineMapError.MISSING
-        return structuralValidator(map.file)
+        return mapInspector(map.file).error
     }
 
+    @Suppress("ReturnCount", "TooGenericExceptionCaught") // Content providers may throw framework-specific exceptions.
     fun import(
         contentResolver: ContentResolver,
         uri: Uri,
     ): PhoneOfflineMapImportResult {
-        val fileName = resolveFileName(contentResolver, uri)
-        return when {
-            !isPhoneOfflineMapFileName(fileName) ->
-                PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_MAP)
-            else ->
-                runCatching {
-                    contentResolver.openInputStream(uri)?.use { input -> import(fileName, input) }
-                }.getOrNull() ?: PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_READABLE)
+        val trace = PhoneOfflineMapImportTrace()
+        trace.stage = PhoneOfflineMapImportStage.METADATA_READ
+        val document = readDocumentMetadata(contentResolver, uri)
+        trace.displayName = document.displayName
+        trace.mimeType = document.mimeType
+        trace.sourceSizeBytes = document.sourceSizeBytes
+        trace.stage = PhoneOfflineMapImportStage.DOCUMENT_SELECTED
+        val fileName = document.displayName.orEmpty()
+        if (!isPhoneOfflineMapFileName(fileName)) {
+            return trace.record(PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_MAP))
         }
+
+        trace.stage = PhoneOfflineMapImportStage.STREAM_OPEN
+        trace.streamOpened = false
+        val input =
+            try {
+                contentResolver.openInputStream(uri)
+            } catch (error: Exception) {
+                trace.exception = error
+                null
+            }
+        if (input == null) {
+            return trace.record(PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_READABLE))
+        }
+        trace.streamOpened = true
+        val result =
+            try {
+                input.use { importFromInput(fileName, it, trace) }
+            } catch (error: Exception) {
+                trace.exception = error
+                PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_READABLE)
+            }
+        return trace.record(result)
     }
 
     /** Copies a map source into companion-owned storage after validating its Mapsforge structure. */
     internal fun import(
         fileName: String,
         input: InputStream,
+    ): PhoneOfflineMapImportResult {
+        val trace = PhoneOfflineMapImportTrace(displayName = safeMapDisplayName(fileName))
+        trace.streamOpened = true
+        return importFromInput(fileName, input, trace).let(trace::record)
+    }
+
+    private fun importFromInput(
+        fileName: String,
+        input: InputStream,
+        trace: PhoneOfflineMapImportTrace,
     ): PhoneOfflineMapImportResult =
         when {
             !isPhoneOfflineMapFileName(fileName) ->
                 PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_MAP)
-            !directory.exists() && !directory.mkdirs() ->
+            !directory.exists() && !directory.mkdirs() -> {
+                trace.stage = PhoneOfflineMapImportStage.COPY
                 PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.COPY_FAILED)
-            else -> installMap(fileName, input)
+            }
+            else -> installMap(fileName, input, trace)
         }
 
     /**
      * Installs an extracted OAM map only after the temporary file validates. Existing valid files
-     * are reused; an invalid target is replaced only after its replacement is ready.
+     * are reused; an invalid target is replaced only after its replacement is ready. Atomic
+     * promotion needs explicit safety branches, including generic I/O exceptions.
      */
-    @Suppress("CyclomaticComplexMethod", "ReturnCount") // Atomic promotion needs explicit safety branches.
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "TooGenericExceptionCaught")
     suspend fun installBundleMap(
         fileName: String,
         input: InputStream,
@@ -167,9 +213,9 @@ internal class PhoneOfflineMapStore(
             temporary.outputStream().use { output ->
                 input.copyCancellableTo(output, onBytesCopied)
             }
-            structuralValidator(temporary)?.let(PhoneOfflineMapBundleInstallResult::Failure)
+            mapInspector(temporary).error?.let(PhoneOfflineMapBundleInstallResult::Failure)
                 ?: when {
-                    destination.exists() && structuralValidator(destination) == null ->
+                    destination.exists() && mapInspector(destination).error == null ->
                         PhoneOfflineMapBundleInstallResult.Success(
                             map = PhoneOfflineMap(destination),
                             reusedExisting = true,
@@ -192,21 +238,47 @@ internal class PhoneOfflineMapStore(
         }
     }
 
+    // File I/O has one cleanup path and preserves the exact stage.
+    @Suppress("ReturnCount", "TooGenericExceptionCaught")
     private fun installMap(
         fileName: String,
         input: InputStream,
+        trace: PhoneOfflineMapImportTrace,
     ): PhoneOfflineMapImportResult {
         val destination = nextAvailableMapFile(fileName)
         val temporary = File(directory, "${destination.name}.part")
         return try {
-            temporary.outputStream().use(input::copyTo)
-            structuralValidator(temporary)?.let(PhoneOfflineMapImportResult::Failure)
-                ?: if (temporary.renameTo(destination)) {
-                    PhoneOfflineMapImportResult.Success(PhoneOfflineMap(destination))
-                } else {
-                    PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.COPY_FAILED)
-                }
-        } catch (_: Exception) {
+            trace.stage = PhoneOfflineMapImportStage.COPY
+            temporary.outputStream().use { output -> trace.copyFrom(input, output) }
+            trace.destinationSizeBytes = temporary.length()
+            trace.stage = PhoneOfflineMapImportStage.VALIDATION
+            trace.candidateValid = temporary.isNonEmptyFile()
+            if (trace.candidateValid != true) {
+                return PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.FILE_NOT_READABLE)
+            }
+
+            trace.stage = PhoneOfflineMapImportStage.MAPFILE_OPEN
+            val validation = mapInspector(temporary)
+            trace.mapFileOpened = validation.mapFileOpened
+            trace.metadata = validation.metadata
+            trace.exception = validation.exception
+            validation.error?.let { error ->
+                return PhoneOfflineMapImportResult.Failure(error)
+            }
+            if (validation.mapFileOpened == true && validation.metadata == null) {
+                trace.stage = PhoneOfflineMapImportStage.MAP_METADATA
+            }
+
+            trace.stage = PhoneOfflineMapImportStage.PROMOTION
+            if (temporary.renameTo(destination)) {
+                trace.destinationSizeBytes = destination.length()
+                trace.stage = PhoneOfflineMapImportStage.COMPLETE
+                PhoneOfflineMapImportResult.Success(PhoneOfflineMap(destination))
+            } else {
+                PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.COPY_FAILED)
+            }
+        } catch (error: Exception) {
+            trace.exception = error
             PhoneOfflineMapImportResult.Failure(PhoneOfflineMapError.COPY_FAILED)
         } finally {
             if (temporary.exists()) temporary.delete()
@@ -229,25 +301,42 @@ internal class PhoneOfflineMapStore(
         return map.takeIf { validate(it) == null }
     }
 
-    private fun resolveFileName(
+    private fun readDocumentMetadata(
         contentResolver: ContentResolver,
         uri: Uri,
-    ): String =
-        runCatching {
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (!cursor.moveToFirst()) return@use null
-                cursor
-                    .getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    .takeIf { it >= 0 }
-                    ?.let(cursor::getString)
-            }
-        }.getOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: uri.lastPathSegment
-                ?.substringAfterLast('/')
+    ): PhoneOfflineMapDocumentMetadata {
+        val document =
+            runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    PhoneOfflineMapDocumentMetadata(
+                        displayName =
+                            cursor
+                                .getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                .takeIf { it >= 0 }
+                                ?.let(cursor::getString),
+                        sourceSizeBytes =
+                            cursor
+                                .getColumnIndex(OpenableColumns.SIZE)
+                                .takeIf { it >= 0 && !cursor.isNull(it) }
+                                ?.let(cursor::getLong),
+                    )
+                }
+            }.getOrNull()
+        val base = document ?: PhoneOfflineMapDocumentMetadata()
+        val displayName =
+            base.displayName
                 ?.trim()
-                .orEmpty()
+                ?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment
+                    ?.substringAfterLast('/')
+                    ?.trim()
+                    .orEmpty()
+        return base.copy(
+            displayName = safeMapDisplayName(displayName),
+            mimeType = runCatching { contentResolver.getType(uri) }.getOrNull(),
+        )
+    }
 
     private fun nextAvailableMapFile(fileName: String): File {
         val safeFileName = File(fileName).name
@@ -267,6 +356,73 @@ internal class PhoneOfflineMapStore(
     }
 }
 
+private data class PhoneOfflineMapDocumentMetadata(
+    val displayName: String? = null,
+    val mimeType: String? = null,
+    val sourceSizeBytes: Long? = null,
+)
+
+/** Mutable only while a single import is running; the persisted report receives an immutable copy. */
+private class PhoneOfflineMapImportTrace(
+    var displayName: String? = null,
+) {
+    var stage: PhoneOfflineMapImportStage = PhoneOfflineMapImportStage.DOCUMENT_SELECTED
+    var mimeType: String? = null
+    var sourceSizeBytes: Long? = null
+    var streamOpened: Boolean? = null
+    var bytesCopied: Long? = null
+    var destinationSizeBytes: Long? = null
+    var candidateValid: Boolean? = null
+    var mapFileOpened: Boolean? = null
+    var metadata: PhoneOfflineMapsforgeMetadata? = null
+    var exception: Throwable? = null
+
+    fun record(result: PhoneOfflineMapImportResult): PhoneOfflineMapImportResult {
+        val failure = result as? PhoneOfflineMapImportResult.Failure
+        val safeException = exception?.toPhoneOfflineMapImportException()
+        PhoneOfflineMapImportDiagnostics.record(
+            PhoneOfflineMapImportAttempt(
+                outcome =
+                    if (failure == null) {
+                        PhoneOfflineMapImportOutcome.SUCCESS
+                    } else {
+                        PhoneOfflineMapImportOutcome.FAILED
+                    },
+                failureStage = stage.takeIf { failure != null },
+                displayName = displayName,
+                mimeType = mimeType,
+                sourceSizeBytes = sourceSizeBytes,
+                streamOpened = streamOpened,
+                bytesCopied = bytesCopied,
+                destinationSizeBytes = destinationSizeBytes,
+                candidateValid = candidateValid,
+                mapFileOpened = mapFileOpened,
+                metadata = metadata,
+                finalError = failure?.error,
+                exceptionClass = safeException?.className,
+                exceptionMessage = safeException?.message,
+            ),
+        )
+        return result
+    }
+
+    fun copyFrom(
+        input: InputStream,
+        output: java.io.OutputStream,
+    ) {
+        var copied = 0L
+        bytesCopied = copied
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) return
+            output.write(buffer, 0, count)
+            copied += count
+            bytesCopied = copied
+        }
+    }
+}
+
 internal fun isPhoneOfflineMapCandidate(file: File): Boolean = file.isReadableMapFile()
 
 internal fun isPhoneOfflineMapDocumentCandidate(
@@ -282,13 +438,42 @@ private fun File.isNonEmptyFile(): Boolean = isFile && canRead() && length() > 0
 
 private fun String?.isMapFileName(): Boolean = this?.endsWith(".map", ignoreCase = true) == true
 
-private fun validateMapsforgeMapFile(file: File): PhoneOfflineMapError? {
-    if (!file.isNonEmptyFile()) return PhoneOfflineMapError.FILE_NOT_READABLE
-    return runCatching { MapFile(file).close() }.fold(
-        onSuccess = { null },
-        onFailure = { PhoneOfflineMapError.INVALID },
-    )
+@Suppress("ReturnCount", "TooGenericExceptionCaught") // MapFile distinguishes open from metadata failures.
+private fun inspectMapsforgeMapFile(file: File): PhoneOfflineMapValidation {
+    if (!file.isNonEmptyFile()) return PhoneOfflineMapValidation(error = PhoneOfflineMapError.FILE_NOT_READABLE)
+    val mapFile =
+        try {
+            MapFile(file)
+        } catch (error: Exception) {
+            return PhoneOfflineMapValidation(
+                error = PhoneOfflineMapError.INVALID,
+                mapFileOpened = false,
+                exception = error,
+            )
+        }
+    return try {
+        val info = mapFile.mapFileInfo
+        PhoneOfflineMapValidation(
+            mapFileOpened = true,
+            metadata =
+                PhoneOfflineMapsforgeMetadata(
+                    boundingBoxAvailable = runCatching(mapFile::boundingBox).isSuccess,
+                    minZoom = info.zoomLevelMin.toInt(),
+                    maxZoom = info.zoomLevelMax.toInt(),
+                    startPositionAvailable = runCatching(mapFile::startPosition).getOrNull() != null,
+                ),
+        )
+    } catch (error: Exception) {
+        PhoneOfflineMapValidation(
+            mapFileOpened = true,
+            exception = error,
+        )
+    } finally {
+        runCatching(mapFile::close)
+    }
 }
+
+private fun safeMapDisplayName(value: String): String = File(value).name.takeIf(String::isNotBlank).orEmpty()
 
 private fun String.isImportedNameFor(sourceFileName: String): Boolean {
     if (equals(sourceFileName, ignoreCase = true)) return true
@@ -355,7 +540,7 @@ internal class PhoneOfflineMapFolderSource(
         forgetSelectedFolder()
     }
 
-    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "TooGenericExceptionCaught")
     fun syncSelectedFolder(): PhoneOfflineMapFolderSyncResult {
         val treeUri = selectedFolderUri() ?: return PhoneOfflineMapFolderSyncResult()
         val folder = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull()

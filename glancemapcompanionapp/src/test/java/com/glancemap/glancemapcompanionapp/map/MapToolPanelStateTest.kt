@@ -37,16 +37,22 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun launcherStaysExpandedWhileSwitchingToolsAndCollapsesIndependently() {
+    fun primaryMapControlsStayOutsideTheSecondaryToolsLauncher() {
+        assertEquals(listOf(MapTool.MAPS, MapTool.GPX, MapTool.POI), primaryMapTools)
+        assertEquals(listOf(MapTool.SETTINGS), secondaryMapTools)
+    }
+
+    @Test
+    fun toolsLauncherCollapsesIndependentlyFromTheSelectedSettingsPanel() {
         val selected =
             PhoneMapUiState()
                 .toggleToolLauncher()
-                .selectTool(MapTool.POI)
-                .selectTool(MapTool.GPX)
+                .selectTool(MapTool.SETTINGS)
 
         assertTrue(selected.toolLauncherExpanded)
-        assertEquals(MapTool.GPX, selected.toolPanel.activeTool)
+        assertEquals(MapTool.SETTINGS, selected.toolPanel.activeTool)
         assertEquals(MapToolPanelMode.SPLIT, selected.toolPanel.mode)
+        assertFalse(primaryMapTools.contains(selected.toolPanel.activeTool))
 
         val collapsed = selected.toggleToolLauncher()
 
