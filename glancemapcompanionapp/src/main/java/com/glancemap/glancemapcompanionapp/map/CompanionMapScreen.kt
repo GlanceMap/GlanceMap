@@ -170,6 +170,7 @@ internal fun CompanionMapScreen(
         remember(context, offlineMapStore) {
             PhoneOfflineMapFolderSource(context.applicationContext, offlineMapStore)
         }
+    val gpxFolderSource = remember(context) { PhoneGpxFolderSource(context.applicationContext) }
     val offlineThemePreferences = remember(context) { PhoneOfflineThemePreferences(context.applicationContext) }
     val bundleViewModel: PhoneOfflineBundleViewModel = viewModel()
     val bundleUiState by bundleViewModel.uiState.collectAsState()
@@ -181,6 +182,10 @@ internal fun CompanionMapScreen(
     var hasSelectedMapFolder by remember(mapFolderSource) {
         mutableStateOf(mapFolderSource.hasSelectedFolder())
     }
+    var hasSelectedGpxFolder by remember(gpxFolderSource) {
+        mutableStateOf(gpxFolderSource.hasSelectedFolder())
+    }
+    var gpxFolderScan by remember { mutableStateOf(PhoneGpxFolderScanResult()) }
     var offlineThemeConfig by remember(offlineThemePreferences) {
         mutableStateOf(offlineThemePreferences.load())
     }
@@ -263,6 +268,21 @@ internal fun CompanionMapScreen(
                 offlineMapError = syncResult.error
             }
         }
+    val selectGpxFolderLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocumentTree(),
+        ) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                val selectionError = withContext(Dispatchers.IO) { gpxFolderSource.selectFolder(treeUri) }
+                if (selectionError != null) {
+                    gpxFolderScan = PhoneGpxFolderScanResult(error = selectionError)
+                    return@launch
+                }
+                gpxFolderScan = withContext(Dispatchers.IO) { gpxFolderSource.scanSelectedFolder() }
+                hasSelectedGpxFolder = gpxFolderSource.hasSelectedFolder()
+            }
+        }
     val locationPermissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -282,6 +302,10 @@ internal fun CompanionMapScreen(
             offlineMapError = PhoneOfflineMapError.MISSING
         }
     }
+    LaunchedEffect(gpxFolderSource) {
+        gpxFolderScan = withContext(Dispatchers.IO) { gpxFolderSource.scanSelectedFolder() }
+        hasSelectedGpxFolder = gpxFolderSource.hasSelectedFolder()
+    }
     LaunchedEffect(mapUiState.contentVisibility.pois) {
         onPoiVisibilityChanged(mapUiState.contentVisibility.pois)
         if (!mapUiState.contentVisibility.pois) selectedPoi = null
@@ -295,8 +319,8 @@ internal fun CompanionMapScreen(
             onPoiDataChanged()
         }
     }
-    LaunchedEffect(gpxSources, initiallyEnabledGpxId) {
-        gpxViewModel.synchronize(gpxSources, initiallyEnabledGpxId)
+    LaunchedEffect(gpxSources, gpxFolderScan.files, initiallyEnabledGpxId) {
+        gpxViewModel.synchronize(gpxSources, gpxFolderScan.files, initiallyEnabledGpxId)
     }
 
     val requestRecenter = {
@@ -334,6 +358,10 @@ internal fun CompanionMapScreen(
                     items = gpxUiState.items,
                     isLoading = gpxUiState.isLoading,
                     globalVisible = mapUiState.contentVisibility.gpxTracks,
+                    routeLibrarySourceCount = gpxSources.size,
+                    hasSelectedFolder = hasSelectedGpxFolder,
+                    selectedFolderName = gpxFolderScan.folderName,
+                    folderError = gpxFolderScan.error,
                 ),
             poi =
                 MapToolsPoiState(
@@ -548,6 +576,19 @@ internal fun CompanionMapScreen(
                                 )
                         },
                         onGpxItemToggled = gpxViewModel::toggle,
+                        onSelectGpxFolder = { selectGpxFolderLauncher.launch(null) },
+                        onRescanGpxFolder = {
+                            coroutineScope.launch {
+                                gpxFolderScan =
+                                    withContext(Dispatchers.IO) { gpxFolderSource.scanSelectedFolder() }
+                                hasSelectedGpxFolder = gpxFolderSource.hasSelectedFolder()
+                            }
+                        },
+                        onClearGpxFolder = {
+                            gpxFolderSource.clearSelectedFolder()
+                            hasSelectedGpxFolder = false
+                            gpxFolderScan = PhoneGpxFolderScanResult()
+                        },
                         onPoiVisibilityChanged = { visible ->
                             mapUiState =
                                 mapUiState.copy(

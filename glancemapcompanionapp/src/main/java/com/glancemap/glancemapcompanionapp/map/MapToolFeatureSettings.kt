@@ -21,7 +21,7 @@ internal fun MapToolFeatureSettingsContent(
 ) {
     when (tool) {
         MapTool.POI -> mapToolsPoiSettingsPanel(state.poi)
-        MapTool.GPX -> mapToolsGpxSettingsPanel(state.gpx)
+        MapTool.GPX -> mapToolsGpxSettingsPanel(state.gpx, actions)
         MapTool.MAPS -> mapToolsMapsSettingsPanel(state.maps, actions.maps)
         MapTool.SETTINGS -> mapToolsSettingsPanel(state.general, actions.onCycleMapMode)
     }
@@ -79,6 +79,7 @@ private fun mapToolsMapsSettingsPanel(
 @Composable
 private fun mapToolsGpxSettingsPanel(
     state: MapToolsGpxState,
+    actions: MapToolsPanelActions,
 ) {
     mapToolPanelColumn {
         Text(stringResource(R.string.map_tools_gpx_settings_sources_heading))
@@ -87,7 +88,7 @@ private fun mapToolsGpxSettingsPanel(
             supportingContent = {
                 Text(
                     stringResource(
-                        if (state.items.isEmpty()) {
+                        if (state.routeLibrarySourceCount == 0) {
                             R.string.map_tools_gpx_empty
                         } else {
                             R.string.map_tools_gpx_settings_route_library_available
@@ -97,9 +98,39 @@ private fun mapToolsGpxSettingsPanel(
             },
         )
         HorizontalDivider()
-        Text(stringResource(R.string.map_tools_gpx_settings_folder_deferred))
+        Text(stringResource(R.string.map_tools_gpx_settings_folder_heading))
+        if (state.hasSelectedFolder) {
+            Text(
+                text =
+                    state.selectedFolderName?.let { name ->
+                        stringResource(R.string.map_tools_gpx_settings_folder_selected_name, name)
+                    } ?: stringResource(R.string.map_tools_gpx_settings_folder_selected),
+            )
+            state.folderError?.let { error ->
+                Text(stringResource(error.messageResource()))
+            }
+            OutlinedButton(onClick = actions.onRescanGpxFolder, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.map_tools_gpx_settings_rescan_folder))
+            }
+            OutlinedButton(onClick = actions.onSelectGpxFolder, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.map_tools_gpx_settings_change_folder))
+            }
+            OutlinedButton(onClick = actions.onClearGpxFolder, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.map_tools_gpx_settings_clear_folder))
+            }
+        } else {
+            OutlinedButton(onClick = actions.onSelectGpxFolder, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.map_tools_gpx_settings_select_folder))
+            }
+        }
     }
 }
+
+private fun PhoneGpxFolderError.messageResource(): Int =
+    when (this) {
+        PhoneGpxFolderError.PERMISSION_LOST -> R.string.map_tools_gpx_settings_folder_permission_lost
+        PhoneGpxFolderError.SCAN_FAILED -> R.string.map_tools_gpx_settings_folder_scan_failed
+    }
 
 @Composable
 private fun mapToolsPoiSettingsPanel(

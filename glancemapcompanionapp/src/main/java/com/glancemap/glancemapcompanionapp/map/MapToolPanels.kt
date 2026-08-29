@@ -34,6 +34,10 @@ internal data class MapToolsGpxState(
     val items: List<PhoneMapGpxItem>,
     val isLoading: Boolean,
     val globalVisible: Boolean,
+    val routeLibrarySourceCount: Int,
+    val hasSelectedFolder: Boolean,
+    val selectedFolderName: String?,
+    val folderError: PhoneGpxFolderError?,
 )
 
 internal data class MapToolsPoiState(
@@ -67,6 +71,9 @@ internal data class MapToolsPanelActions(
     val maps: MapToolsMapsActions,
     val onGpxVisibilityChanged: (Boolean) -> Unit,
     val onGpxItemToggled: (String) -> Unit,
+    val onSelectGpxFolder: () -> Unit,
+    val onRescanGpxFolder: () -> Unit,
+    val onClearGpxFolder: () -> Unit,
     val onPoiVisibilityChanged: (Boolean) -> Unit,
     val onFeatureSettings: (MapTool) -> Unit,
     val onCycleMapMode: () -> Unit,

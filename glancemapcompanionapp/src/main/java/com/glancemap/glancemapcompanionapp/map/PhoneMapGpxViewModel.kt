@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.routes.CompanionGpxRouteParser
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,24 +18,28 @@ internal data class PhoneMapGpxUiState(
     val isLoading: Boolean = false,
 )
 
-/** Loads canonical Route Library geometry once, while retaining per-item map visibility choices. */
+/** Loads Route Library and direct SAF-folder GPXs into one independently visible map list. */
 internal class PhoneMapGpxViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val repository = RouteLibraryRepository(application)
+    private val folderSource = PhoneGpxFolderSource(application)
     private val _uiState = MutableStateFlow(PhoneMapGpxUiState())
     val uiState: StateFlow<PhoneMapGpxUiState> = _uiState.asStateFlow()
-    private var sources: List<PhoneMapGpxSource> = emptyList()
+    private var routeSources: List<PhoneMapGpxSource> = emptyList()
+    private var folderSources: List<PhoneGpxFolderFile> = emptyList()
     private var loadJob: Job? = null
 
     fun synchronize(
-        nextSources: List<PhoneMapGpxSource>,
+        nextRouteSources: List<PhoneMapGpxSource>,
+        nextFolderSources: List<PhoneGpxFolderFile>,
         initiallyEnabledId: String?,
     ) {
-        if (nextSources == sources) return
-        sources = nextSources
+        if (nextRouteSources == routeSources && nextFolderSources == folderSources) return
+        routeSources = nextRouteSources
+        folderSources = nextFolderSources
         loadJob?.cancel()
-        if (nextSources.isEmpty()) {
+        if (nextRouteSources.isEmpty() && nextFolderSources.isEmpty()) {
             _uiState.value = PhoneMapGpxUiState()
             return
         }
@@ -43,18 +48,14 @@ internal class PhoneMapGpxViewModel(
             viewModelScope.launch {
                 val loaded =
                     withContext(Dispatchers.IO) {
-                        nextSources.mapNotNull { source ->
-                            repository.routeDetails(source.id)?.let { details ->
-                                PhoneMapGpxItem(
-                                    id = source.id,
-                                    displayName = source.displayName,
-                                    track = PhoneMapGpxTrack(source.id, details.profile.points),
-                                    enabled = false,
-                                )
+                        buildList {
+                            nextRouteSources.forEach { source ->
+                                routeLibraryGpxItem(source)?.let(::add)
                             }
+                            nextFolderSources.mapNotNull(::folderGpxItem).forEach(::add)
                         }
                     }
-                if (sources != nextSources) return@launch
+                if (routeSources != nextRouteSources || folderSources != nextFolderSources) return@launch
                 _uiState.value =
                     PhoneMapGpxUiState(
                         items = mergePhoneMapGpxItems(_uiState.value.items, loaded, initiallyEnabledId),
@@ -65,4 +66,35 @@ internal class PhoneMapGpxViewModel(
     fun toggle(id: String) {
         _uiState.value = _uiState.value.copy(items = _uiState.value.items.toggleEnabled(id))
     }
+
+    private suspend fun routeLibraryGpxItem(source: PhoneMapGpxSource): PhoneMapGpxItem? =
+        repository.routeDetails(source.id)?.let { details ->
+            PhoneMapGpxItem(
+                id = source.id,
+                displayName = source.displayName,
+                track = PhoneMapGpxTrack(source.id, details.profile.points),
+                enabled = false,
+            )
+        }
+
+    private fun folderGpxItem(source: PhoneGpxFolderFile): PhoneMapGpxItem? {
+        val inputStream = folderSource::openInputStream
+        return phoneGpxFolderTrackItem(source, inputStream)
+    }
 }
+
+/** A malformed or unavailable folder document is omitted without interrupting other GPX sources. */
+internal fun phoneGpxFolderTrackItem(
+    source: PhoneGpxFolderFile,
+    openInputStream: (PhoneGpxFolderFile) -> java.io.InputStream?,
+): PhoneMapGpxItem? =
+    runCatching {
+        val input = openInputStream(source) ?: return null
+        val parsed = input.use(CompanionGpxRouteParser::parse)
+        PhoneMapGpxItem(
+            id = source.id,
+            displayName = parsed.title?.takeIf(String::isNotBlank) ?: source.displayName,
+            track = PhoneMapGpxTrack(source.id, parsed.points),
+            enabled = false,
+        )
+    }.getOrNull()
