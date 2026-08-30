@@ -188,7 +188,12 @@ private fun mapToolPanelHeader(
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
     Row(
-        modifier = Modifier.fillMaxWidth().then(headerSwipeModifier).padding(start = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(headerSwipeModifier)
+                .heightIn(min = 64.dp)
+                .padding(start = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (state.hasFeatureSettingsBack) {

@@ -88,6 +88,15 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun headerExpandButtonActionsToggleSplitAndExpandedModes() {
+        val split = MapToolPanelState().select(MapTool.MAPS)
+        val expanded = split.expand()
+
+        assertEquals(MapToolPanelMode.EXPANDED, expanded.mode)
+        assertEquals(MapToolPanelMode.SPLIT, expanded.collapse().mode)
+    }
+
+    @Test
     fun onlyFeatureSettingsExposeTheVisibleSubpageBackAction() {
         val featureSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
         val main = featureSettings.back()

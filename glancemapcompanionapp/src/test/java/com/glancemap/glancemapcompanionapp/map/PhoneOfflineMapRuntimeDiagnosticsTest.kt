@@ -72,26 +72,44 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
 
     @Test
     fun runtimeReportDistinguishesDrawAndVisibleTilesWithoutCoordinates() {
-        val notDrawn = runtime(drawObserved = false, firstVisibleTile = false, location = null).toReportSection()
-        val drawnWithoutTile =
+        val notDrawn =
             runtime(
-                drawObserved = true,
+                androidDrawObserved = false,
+                tileLayerDrawObserved = false,
+                firstVisibleTile = false,
+                location = null,
+            ).toReportSection()
+        val androidDrawnWithoutTileLayer =
+            runtime(
+                androidDrawObserved = true,
+                tileLayerDrawObserved = false,
+                firstVisibleTile = false,
+                location = outsideLocation,
+            ).toReportSection()
+        val tileLayerDrawnWithoutVisibleTile =
+            runtime(
+                androidDrawObserved = true,
+                tileLayerDrawObserved = true,
                 firstVisibleTile = false,
                 location = outsideLocation,
             ).toReportSection()
         val visibleTile =
             runtime(
-                drawObserved = true,
+                androidDrawObserved = true,
+                tileLayerDrawObserved = true,
                 firstVisibleTile = true,
                 location = insideLocation,
             ).toReportSection()
 
-        assertTrue(notDrawn.contains("Draw observed: false"))
+        assertTrue(notDrawn.contains("Android MapView draw observed: false"))
+        assertTrue(notDrawn.contains("Tile layer draw observed: false"))
         assertTrue(notDrawn.contains("First visible base tile: false"))
         assertTrue(notDrawn.contains("Location available: false"))
-        assertTrue(drawnWithoutTile.contains("Draw observed: true"))
-        assertTrue(drawnWithoutTile.contains("First visible base tile: false"))
-        assertTrue(drawnWithoutTile.contains("Location inside map bounds: false"))
+        assertTrue(androidDrawnWithoutTileLayer.contains("Android MapView draw observed: true"))
+        assertTrue(androidDrawnWithoutTileLayer.contains("Tile layer draw observed: false"))
+        assertTrue(tileLayerDrawnWithoutVisibleTile.contains("Tile layer draw observed: true"))
+        assertTrue(tileLayerDrawnWithoutVisibleTile.contains("First visible base tile: false"))
+        assertTrue(tileLayerDrawnWithoutVisibleTile.contains("Location inside map bounds: false"))
         assertTrue(visibleTile.contains("First visible base tile: true"))
         assertTrue(visibleTile.contains("Location inside map bounds: true"))
         assertFalse(visibleTile.contains("47.5"))
@@ -99,7 +117,8 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
     }
 
     private fun runtime(
-        drawObserved: Boolean,
+        androidDrawObserved: Boolean,
+        tileLayerDrawObserved: Boolean,
         firstVisibleTile: Boolean,
         location: PhoneMapLocation?,
     ): PhoneOfflineMapRuntimeDiagnostics =
@@ -108,8 +127,18 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
             mapViewAttached = true,
             mapViewWidth = 1080,
             mapViewHeight = 1800,
-            drawObserved = drawObserved,
+            firstPostLayoutRedrawRequested = true,
+            redrawRequestCount = 1,
+            androidMapViewDrawObserved = androidDrawObserved,
+            tileLayerDrawObserved = tileLayerDrawObserved,
             firstVisibleBaseTileObserved = firstVisibleTile,
+            layerCount = 2,
+            tileLayerPresent = true,
+            tileLayerVisible = true,
+            frameBufferDimensionAvailable = true,
+            frameBufferWidth = 1080,
+            frameBufferHeight = 1800,
+            frameBufferDrawingBitmapReady = true,
             zoom = 14,
             cameraInsideMapBounds = true,
             locationPermissionGranted = true,

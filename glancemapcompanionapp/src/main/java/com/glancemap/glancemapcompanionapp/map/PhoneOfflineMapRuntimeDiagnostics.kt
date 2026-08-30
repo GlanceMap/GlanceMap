@@ -9,8 +9,18 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
     val mapViewAttached: Boolean,
     val mapViewWidth: Int,
     val mapViewHeight: Int,
-    val drawObserved: Boolean,
+    val firstPostLayoutRedrawRequested: Boolean,
+    val redrawRequestCount: Int,
+    val androidMapViewDrawObserved: Boolean,
+    val tileLayerDrawObserved: Boolean,
     val firstVisibleBaseTileObserved: Boolean,
+    val layerCount: Int,
+    val tileLayerPresent: Boolean,
+    val tileLayerVisible: Boolean?,
+    val frameBufferDimensionAvailable: Boolean,
+    val frameBufferWidth: Int?,
+    val frameBufferHeight: Int?,
+    val frameBufferDrawingBitmapReady: Boolean?,
     val zoom: Int?,
     val cameraInsideMapBounds: Boolean?,
     val locationPermissionGranted: Boolean,
@@ -27,8 +37,17 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
             appendLine("Offline map runtime")
             appendLine("MapView attached: $mapViewAttached")
             appendLine("MapView size: ${mapViewWidth}x$mapViewHeight")
-            appendLine("Draw observed: $drawObserved")
+            appendLine("First post-layout redraw requested: $firstPostLayoutRedrawRequested")
+            appendLine("Redraw request count: $redrawRequestCount")
+            appendLine("Android MapView draw observed: $androidMapViewDrawObserved")
+            appendLine("Tile layer draw observed: $tileLayerDrawObserved")
             appendLine("First visible base tile: $firstVisibleBaseTileObserved")
+            appendLine("Layer count: $layerCount")
+            appendLine("Tile layer present: $tileLayerPresent")
+            appendLine("Tile layer visible: ${tileLayerVisible ?: "unknown"}")
+            appendLine("Framebuffer dimension available: $frameBufferDimensionAvailable")
+            appendLine("Framebuffer size: ${frameBufferWidth ?: "unknown"}x${frameBufferHeight ?: "unknown"}")
+            appendLine("Framebuffer drawing bitmap ready: ${frameBufferDrawingBitmapReady ?: "unknown"}")
             appendLine("Zoom: ${zoom ?: "unknown"}")
             appendLine("Camera inside map bounds: ${cameraInsideMapBounds ?: "unknown"}")
             appendLine("Location permission: $locationPermissionGranted")

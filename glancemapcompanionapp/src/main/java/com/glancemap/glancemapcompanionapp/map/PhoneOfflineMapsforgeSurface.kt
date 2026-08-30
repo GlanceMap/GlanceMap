@@ -68,6 +68,39 @@ internal data class PhoneOfflineMapSurfaceState(
     val hasLocationPermission: Boolean = false,
 )
 
+/** Tracks the one bootstrap redraw and later real-size redraws for a stable Mapsforge view. */
+internal data class PhoneOfflineMapRedrawState(
+    val bootstrapRedrawRequested: Boolean = false,
+    val redrawRequestCount: Int = 0,
+    private val lastRedrawnWidth: Int? = null,
+    private val lastRedrawnHeight: Int? = null,
+) {
+    fun requestForLayout(
+        rendererAlive: Boolean,
+        attached: Boolean,
+        width: Int,
+        height: Int,
+    ): PhoneOfflineMapRedrawState =
+        if (!rendererAlive || !hasUsableLayout(attached, width, height)) {
+            this
+        } else if (lastRedrawnWidth == width && lastRedrawnHeight == height) {
+            this
+        } else {
+            copy(
+                bootstrapRedrawRequested = true,
+                redrawRequestCount = redrawRequestCount + 1,
+                lastRedrawnWidth = width,
+                lastRedrawnHeight = height,
+            )
+        }
+
+    private fun hasUsableLayout(
+        attached: Boolean,
+        width: Int,
+        height: Int,
+    ): Boolean = attached && width > 0 && height > 0
+}
+
 @Composable
 internal fun offlineMapSurface(
     state: PhoneOfflineMapSurfaceState,
@@ -122,7 +155,7 @@ private class PhoneOfflineMapsforgeView(
     private val callbacks: PhoneOfflineMapsforgeCallbacks,
 ) : FrameLayout(context) {
     private val rendererTrace = PhoneOfflineMapRendererTrace(state.map.file.name, state.themeConfig)
-    private var mapView: MapView? = null
+    private var mapView: PhoneOfflineMapsforgeMapView? = null
     private var tileCache: TileCache? = null
     private var mapFile: MapFile? = null
     private var mapBounds: BoundingBox? = null
@@ -139,9 +172,23 @@ private class PhoneOfflineMapsforgeView(
     private var hasLocationPermission = state.hasLocationPermission
     private var locationFollowUnavailableReported = false
     private var disposed = false
+    private var redrawState = PhoneOfflineMapRedrawState()
     private val runtimeLayoutChangeListener =
-        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            if (!disposed) publishRuntimeDiagnostics()
+        View.OnLayoutChangeListener { changedView, _, _, _, _, _, _, _, _ ->
+            val activeMapView = mapView
+            if (!disposed && changedView === activeMapView) {
+                requestRedrawAfterLayout(activeMapView)
+                publishRuntimeDiagnostics()
+            }
+        }
+    private val runtimeAttachStateChangeListener =
+        object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                val activeMapView = mapView
+                if (!disposed && view === activeMapView) requestRedrawAfterLayout(activeMapView)
+            }
+
+            override fun onViewDetachedFromWindow(view: View) = Unit
         }
     private val cameraObserver = Observer { publishCamera() }
     private val inputListener =
@@ -180,7 +227,10 @@ private class PhoneOfflineMapsforgeView(
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
                 val mapView =
-                    MapView(context).apply {
+                    PhoneOfflineMapsforgeMapView(
+                        context = context,
+                        onAndroidDrawObserved = { post { if (!disposed) publishRuntimeDiagnostics() } },
+                    ).apply {
                         isClickable = true
                         isFocusable = true
                         isFocusableInTouchMode = true
@@ -195,6 +245,7 @@ private class PhoneOfflineMapsforgeView(
                     }
                 this.mapView = mapView
                 mapView.addOnLayoutChangeListener(runtimeLayoutChangeListener)
+                mapView.addOnAttachStateChangeListener(runtimeAttachStateChangeListener)
                 rendererTrace.complete(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
@@ -292,6 +343,7 @@ private class PhoneOfflineMapsforgeView(
         activeMapView?.model?.mapViewPosition?.removeObserver(cameraObserver)
         activeMapView?.removeInputListener(inputListener)
         activeMapView?.removeOnLayoutChangeListener(runtimeLayoutChangeListener)
+        activeMapView?.removeOnAttachStateChangeListener(runtimeAttachStateChangeListener)
         overlayLayers?.dispose()
         overlayLayers = null
         locationMarker?.let { marker ->
@@ -464,17 +516,49 @@ private class PhoneOfflineMapsforgeView(
         post { if (!disposed) callbacks.onLocationFollowUnavailable() }
     }
 
+    private fun requestRedrawAfterLayout(activeMapView: PhoneOfflineMapsforgeMapView) {
+        activeMapView.post {
+            if (disposed || mapView !== activeMapView) return@post
+            val nextRedrawState =
+                redrawState.requestForLayout(
+                    rendererAlive = true,
+                    attached = activeMapView.isAttachedToWindow,
+                    width = activeMapView.width,
+                    height = activeMapView.height,
+                )
+            if (nextRedrawState == redrawState) return@post
+            redrawState = nextRedrawState
+            activeMapView.layerManager.redrawLayers()
+            publishRuntimeDiagnostics()
+        }
+    }
+
     private fun publishRuntimeDiagnostics() {
         val activeMapView = mapView ?: return
         val location = currentLocation
+        val layers = activeMapView.layerManager.layers
+        val activeTileLayer = tileLayer
+        val frameBuffer = runCatching { activeMapView.frameBuffer }.getOrNull()
+        val frameBufferDimension = runCatching { frameBuffer?.dimension }.getOrNull()
         PhoneOfflineMapRendererDiagnostics.recordRuntime(
             PhoneOfflineMapRuntimeDiagnostics(
                 displayName = rendererTrace.mapDisplayName,
                 mapViewAttached = activeMapView.isAttachedToWindow,
                 mapViewWidth = activeMapView.width,
                 mapViewHeight = activeMapView.height,
-                drawObserved = tileLayer?.hasDrawObserved == true,
-                firstVisibleBaseTileObserved = tileLayer?.hasFirstVisibleBaseTileObserved == true,
+                firstPostLayoutRedrawRequested = redrawState.bootstrapRedrawRequested,
+                redrawRequestCount = redrawState.redrawRequestCount,
+                androidMapViewDrawObserved = activeMapView.hasAndroidDrawObserved,
+                tileLayerDrawObserved = activeTileLayer?.hasDrawObserved == true,
+                firstVisibleBaseTileObserved = activeTileLayer?.hasFirstVisibleBaseTileObserved == true,
+                layerCount = layers.size(),
+                tileLayerPresent = activeTileLayer?.let(layers::contains) == true,
+                tileLayerVisible = activeTileLayer?.isVisible,
+                frameBufferDimensionAvailable = frameBufferDimension != null,
+                frameBufferWidth = frameBufferDimension?.width,
+                frameBufferHeight = frameBufferDimension?.height,
+                frameBufferDrawingBitmapReady =
+                    runCatching { frameBuffer?.drawingBitmap != null }.getOrNull(),
                 zoom =
                     activeMapView.model.mapViewPosition.zoomLevel
                         .toInt(),
@@ -501,6 +585,22 @@ private class PhoneOfflineMapsforgeView(
         val attempt = rendererTrace.failed(error)
         PhoneOfflineMapRendererDiagnostics.record(attempt)
         Log.e(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
+    }
+}
+
+/** Captures Android View traversal separately from Mapsforge layer rendering. */
+private class PhoneOfflineMapsforgeMapView(
+    context: Context,
+    private val onAndroidDrawObserved: () -> Unit,
+) : MapView(context) {
+    private val androidDrawObserved = AtomicBoolean(false)
+
+    val hasAndroidDrawObserved: Boolean
+        get() = androidDrawObserved.get()
+
+    override fun onDraw(canvas: Canvas) {
+        if (androidDrawObserved.compareAndSet(false, true)) onAndroidDrawObserved()
+        super.onDraw(canvas)
     }
 }
 

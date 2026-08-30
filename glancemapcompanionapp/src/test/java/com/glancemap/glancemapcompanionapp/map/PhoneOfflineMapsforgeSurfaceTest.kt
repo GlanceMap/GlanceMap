@@ -10,6 +10,74 @@ import java.io.File
 
 class PhoneOfflineMapsforgeSurfaceTest {
     @Test
+    fun firstUsableLayoutRequestsOneBootstrapRedraw() {
+        val initial = PhoneOfflineMapRedrawState()
+        val redrawn =
+            initial.requestForLayout(
+                rendererAlive = true,
+                attached = true,
+                width = 720,
+                height = 801,
+            )
+
+        assertEquals(true, redrawn.bootstrapRedrawRequested)
+        assertEquals(1, redrawn.redrawRequestCount)
+        assertEquals(
+            redrawn,
+            redrawn.requestForLayout(
+                rendererAlive = true,
+                attached = true,
+                width = 720,
+                height = 801,
+            ),
+        )
+    }
+
+    @Test
+    fun unusableOrDisposedLayoutDoesNotRequestRedraw() {
+        val initial = PhoneOfflineMapRedrawState()
+
+        assertEquals(
+            initial,
+            initial.requestForLayout(
+                rendererAlive = true,
+                attached = true,
+                width = 0,
+                height = 801,
+            ),
+        )
+        assertEquals(
+            initial,
+            initial.requestForLayout(
+                rendererAlive = false,
+                attached = true,
+                width = 720,
+                height = 801,
+            ),
+        )
+    }
+
+    @Test
+    fun realSizeChangeRequestsAnotherRedraw() {
+        val first =
+            PhoneOfflineMapRedrawState().requestForLayout(
+                rendererAlive = true,
+                attached = true,
+                width = 720,
+                height = 801,
+            )
+        val resized =
+            first.requestForLayout(
+                rendererAlive = true,
+                attached = true,
+                width = 720,
+                height = 480,
+            )
+
+        assertEquals(2, resized.redrawRequestCount)
+    }
+
+    @Test
     fun mapsforgeSegmentsKeepEachRouteSegmentSeparate() {
         val segments =
             listOf(
