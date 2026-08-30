@@ -202,6 +202,7 @@ internal fun CompanionMapScreen(
     var showOfflineThemeSelector by remember { mutableStateOf(false) }
     var showOfflineBundleDownload by remember { mutableStateOf(false) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
+    var mapLocationMessage by remember { mutableStateOf<Int?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasLocationPermission()) }
     val completedBundle =
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
@@ -254,6 +255,7 @@ internal fun CompanionMapScreen(
                         mapRuntime = mapRuntime.invalidate()
                         mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(importedMap))
                         offlineMapError = null
+                        mapLocationMessage = null
                     }
 
                     is PhoneOfflineMapImportResult.Failure -> {
@@ -341,10 +343,13 @@ internal fun CompanionMapScreen(
 
     val onMapModePressed = {
         if (mapUiState.mapMode.isDetachedFromLocation) {
-            if (mapLocation != null) {
-                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
-            } else if (!hasLocationPermission) {
+            if (!hasLocationPermission) {
                 locationPermissionLauncher.launch(locationPermissions)
+            } else if (mapLocation == null) {
+                mapLocationMessage = R.string.map_location_waiting
+            } else {
+                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
+                mapLocationMessage = null
             }
         } else {
             mapUiState = mapUiState.toggleMapOrientation()
@@ -382,6 +387,7 @@ internal fun CompanionMapScreen(
             onSelectOnline = {
                 mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
                 offlineMapError = null
+                mapLocationMessage = null
             },
             onSelectOffline = { selectedMap ->
                 coroutineScope.launch {
@@ -391,6 +397,7 @@ internal fun CompanionMapScreen(
                         mapRuntime = mapRuntime.invalidate()
                         mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(selectedMap))
                         offlineMapError = null
+                        mapLocationMessage = null
                     } else {
                         offlineMapError = error
                     }
@@ -523,6 +530,7 @@ internal fun CompanionMapScreen(
                                     mapMode = mapUiState.mapMode,
                                     compassPresentation = compassPresentation,
                                     location = locationState.location.takeIf { locationState.hasPermission },
+                                    hasLocationPermission = locationState.hasPermission,
                                     cameraCommand = mapUiState.cameraCommand,
                                 ),
                             callbacks =
@@ -540,6 +548,13 @@ internal fun CompanionMapScreen(
                                     onMapError = { error ->
                                         offlineMapError = error
                                         mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
+                                    },
+                                    onLocationFollowUnavailable = {
+                                        mapUiState =
+                                            mapUiState.copy(
+                                                mapMode = mapUiState.mapMode.detachFromLocation(),
+                                            )
+                                        mapLocationMessage = R.string.map_location_outside_offline_map
                                     },
                                 ),
                         )
@@ -574,6 +589,19 @@ internal fun CompanionMapScreen(
                     ) {
                         Text(
                             text = stringResource(error.messageResource()),
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+                mapLocationMessage?.takeIf { offlineMapError == null }?.let { messageResource ->
+                    Card(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(16.dp),
+                    ) {
+                        Text(
+                            text = stringResource(messageResource),
                             modifier = Modifier.padding(16.dp),
                         )
                     }

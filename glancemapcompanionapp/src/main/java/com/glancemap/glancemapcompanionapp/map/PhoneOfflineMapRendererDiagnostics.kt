@@ -86,9 +86,11 @@ internal object PhoneOfflineMapRendererDiagnostics {
     const val TAG = "PhoneOfflineMapRenderer"
 
     private val latestAttempt = AtomicReference<PhoneOfflineMapRendererAttempt?>(null)
+    private val latestRuntime = AtomicReference<PhoneOfflineMapRuntimeDiagnostics?>(null)
 
     fun record(attempt: PhoneOfflineMapRendererAttempt) {
         latestAttempt.set(attempt)
+        latestRuntime.set(null)
         PhoneDebugCapture.log(TAG, attempt.toCaptureLine())
     }
 
@@ -96,12 +98,20 @@ internal object PhoneOfflineMapRendererDiagnostics {
         latestAttempt.set(attempt)
     }
 
-    fun latestReportSection(): String? = latestAttempt.get()?.toReportSection()
+    fun recordRuntime(runtime: PhoneOfflineMapRuntimeDiagnostics) {
+        if (latestAttempt.get()?.displayName == runtime.displayName) latestRuntime.set(runtime)
+    }
+
+    fun latestReportSection(): String? =
+        latestAttempt.get()?.toReportSection()?.let { renderer ->
+            latestRuntime.get()?.toReportSection()?.let { runtime -> "$renderer\n\n$runtime" } ?: renderer
+        }
 
     internal fun latestAttempt(): PhoneOfflineMapRendererAttempt? = latestAttempt.get()
 
     internal fun clear() {
         latestAttempt.set(null)
+        latestRuntime.set(null)
     }
 }
 
@@ -111,6 +121,7 @@ internal class PhoneOfflineMapRendererTrace(
     displayName: String,
     config: PhoneOfflineThemeConfig,
 ) {
+    internal val mapDisplayName = displayName
     private val fileName = displayName
     private var themeId = config.themeId
     private var styleId = config.styleId

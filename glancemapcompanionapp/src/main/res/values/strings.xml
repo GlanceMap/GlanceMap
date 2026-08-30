@@ -87,6 +87,8 @@
     <string name="map_offline_map_folder_permission_lost">Map folder access is no longer available. Choose it again.</string>
     <string name="map_offline_map_folder_scan_failed">The map folder could not be scanned.</string>
     <string name="map_offline_map_copy_failed">The local map could not be added.</string>
+    <string name="map_location_outside_offline_map">Current location is outside this offline map.</string>
+    <string name="map_location_waiting">Waiting for location</string>
     <string name="map_theme_selector_title">Offline map theme</string>
     <string name="map_theme_selector_theme_label">Theme</string>
     <string name="map_theme_selector_style_label">Style</string>

@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.Log
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +37,9 @@ import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.common.Observer
 import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
+import org.mapsforge.map.util.LayerUtil
 import org.mapsforge.map.view.InputListener
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val PHONE_OFFLINE_TILE_CACHE_CAPACITY = 64
 private const val PHONE_OFFLINE_TILE_CACHE_ID = "phone-offline"
@@ -49,6 +52,7 @@ internal data class PhoneOfflineMapsforgeCallbacks(
     val onUserPan: () -> Unit,
     val onCameraCommandHandled: (Long) -> Unit,
     val onMapError: (PhoneOfflineMapError) -> Unit,
+    val onLocationFollowUnavailable: () -> Unit,
 )
 
 internal data class PhoneOfflineMapSurfaceState(
@@ -61,6 +65,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val cameraCommand: PhoneMapCameraCommand?,
     val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode.orientation, null),
     val location: PhoneMapLocation? = null,
+    val hasLocationPermission: Boolean = false,
 )
 
 @Composable
@@ -85,13 +90,18 @@ internal fun offlineMapSurface(
                             onUserPan = { currentCallbacks.onUserPan() },
                             onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
                             onMapError = { currentCallbacks.onMapError(it) },
+                            onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
                         ),
                 ).also { view = it }
             },
             update = { activeView ->
                 activeView.applyTheme(state.themeConfig)
                 activeView.applyCompassPresentation(state.compassPresentation)
-                activeView.updateLocation(location = state.location, follow = state.mapMode.follow)
+                activeView.updateLocation(
+                    location = state.location,
+                    mapMode = state.mapMode,
+                    hasLocationPermission = state.hasLocationPermission,
+                )
                 activeView.applyCameraCommand(state.cameraCommand)
                 activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
             },
@@ -105,6 +115,7 @@ internal fun offlineMapSurface(
 }
 
 /** Phone-only Mapsforge holder for one base map plus renderer-adapted semantic overlays. */
+@Suppress("TooManyFunctions") // Explicit lifecycle methods keep validated Mapsforge resources together.
 private class PhoneOfflineMapsforgeView(
     context: Context,
     state: PhoneOfflineMapSurfaceState,
@@ -114,7 +125,8 @@ private class PhoneOfflineMapsforgeView(
     private var mapView: MapView? = null
     private var tileCache: TileCache? = null
     private var mapFile: MapFile? = null
-    private var tileLayer: TileRendererLayer? = null
+    private var mapBounds: BoundingBox? = null
+    private var tileLayer: PhoneOfflineTileRendererLayer? = null
     private var appliedThemeConfig: PhoneOfflineThemeConfig? = null
     private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
     private var lastHandledCameraCommandId: Long? = null
@@ -122,7 +134,15 @@ private class PhoneOfflineMapsforgeView(
     private var pois: List<PhoneMapPoi> = emptyList()
     private var overlayLayers: PhoneOfflineMapsforgeOverlayLayers? = null
     private var locationMarker: PhoneOfflineLocationMarker? = null
+    private var currentLocation: PhoneMapLocation? = null
+    private var currentMapMode = state.mapMode
+    private var hasLocationPermission = state.hasLocationPermission
+    private var locationFollowUnavailableReported = false
     private var disposed = false
+    private val runtimeLayoutChangeListener =
+        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (!disposed) publishRuntimeDiagnostics()
+        }
     private val cameraObserver = Observer { publishCamera() }
     private val inputListener =
         object : InputListener {
@@ -150,6 +170,7 @@ private class PhoneOfflineMapsforgeView(
                 val openedMapFile = MapFile(state.map.file)
                 mapFile = openedMapFile
                 val bounds = openedMapFile.boundingBox()
+                mapBounds = bounds
                 val cameraInsideBounds = bounds.contains(state.initialCamera.latitude, state.initialCamera.longitude)
                 rendererTrace.mapFileOpened(
                     boundsAvailable = true,
@@ -173,6 +194,7 @@ private class PhoneOfflineMapsforgeView(
                         )
                     }
                 this.mapView = mapView
+                mapView.addOnLayoutChangeListener(runtimeLayoutChangeListener)
                 rendererTrace.complete(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
@@ -191,11 +213,13 @@ private class PhoneOfflineMapsforgeView(
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
                 val tileLayer =
-                    TileRendererLayer(
+                    PhoneOfflineTileRendererLayer(
                         tileCache,
                         openedMapFile,
                         mapView.model.mapViewPosition,
                         AndroidGraphicFactory.INSTANCE,
+                        onDrawObserved = { post { if (!disposed) publishRuntimeDiagnostics() } },
+                        onFirstVisibleBaseTile = { post { if (!disposed) publishRuntimeDiagnostics() } },
                     )
                 this.tileLayer = tileLayer
                 rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
@@ -232,7 +256,11 @@ private class PhoneOfflineMapsforgeView(
 
                 rendererTrace.begin(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
                 updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
-                updateLocation(location = state.location, follow = state.mapMode.follow)
+                updateLocation(
+                    location = state.location,
+                    mapMode = state.mapMode,
+                    hasLocationPermission = state.hasLocationPermission,
+                )
                 post {
                     if (!disposed) {
                         appliedCompassPresentation = null
@@ -247,6 +275,7 @@ private class PhoneOfflineMapsforgeView(
                 post { publishCamera() }
                 val attempt = rendererTrace.ready()
                 PhoneOfflineMapRendererDiagnostics.record(attempt)
+                publishRuntimeDiagnostics()
                 Log.i(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
             }.onFailure { error ->
                 reportRendererFailure(error)
@@ -262,6 +291,7 @@ private class PhoneOfflineMapsforgeView(
         val activeMapView = mapView
         activeMapView?.model?.mapViewPosition?.removeObserver(cameraObserver)
         activeMapView?.removeInputListener(inputListener)
+        activeMapView?.removeOnLayoutChangeListener(runtimeLayoutChangeListener)
         overlayLayers?.dispose()
         overlayLayers = null
         locationMarker?.let { marker ->
@@ -275,6 +305,7 @@ private class PhoneOfflineMapsforgeView(
         } ?: runCatching { mapFile?.close() }
         tileLayer = null
         mapFile = null
+        mapBounds = null
         runCatching { tileCache?.destroy() }
         tileCache = null
         runCatching { activeMapView?.destroyAll() }
@@ -333,9 +364,13 @@ private class PhoneOfflineMapsforgeView(
 
     fun updateLocation(
         location: PhoneMapLocation?,
-        follow: PhoneMapFollowMode,
+        mapMode: PhoneMapMode,
+        hasLocationPermission: Boolean,
     ) {
         val activeMapView = mapView ?: return
+        currentLocation = location
+        currentMapMode = mapMode
+        this.hasLocationPermission = hasLocationPermission
         val currentLocation =
             location ?: run {
                 locationMarker?.let { marker ->
@@ -344,6 +379,8 @@ private class PhoneOfflineMapsforgeView(
                     activeMapView.layerManager.redrawLayers()
                 }
                 locationMarker = null
+                locationFollowUnavailableReported = false
+                publishRuntimeDiagnostics()
                 return
             }
         val latLong = LatLong(currentLocation.latitude, currentLocation.longitude)
@@ -359,10 +396,22 @@ private class PhoneOfflineMapsforgeView(
             markerChanged = true
         }
         marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
-        if (follow == PhoneMapFollowMode.FOLLOW_LOCATION && activeMapView.model.mapViewPosition.center != latLong) {
+        val followDecision =
+            phoneOfflineLocationFollowDecision(
+                location = currentLocation,
+                mapBounds = mapBounds,
+                followMode = mapMode.follow,
+            )
+        if (followDecision.shouldCenterOnLocation && activeMapView.model.mapViewPosition.center != latLong) {
             activeMapView.setCenter(latLong)
         }
+        if (followDecision.locationInsideMapBounds == false && mapMode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
+            reportLocationFollowUnavailableOnce()
+        } else {
+            locationFollowUnavailableReported = false
+        }
         if (markerChanged) activeMapView.layerManager.redrawLayers()
+        publishRuntimeDiagnostics()
     }
 
     fun applyCameraCommand(command: PhoneMapCameraCommand?) {
@@ -405,7 +454,43 @@ private class PhoneOfflineMapsforgeView(
                 }
             }
         }
+        publishRuntimeDiagnostics()
         return published
+    }
+
+    private fun reportLocationFollowUnavailableOnce() {
+        if (locationFollowUnavailableReported) return
+        locationFollowUnavailableReported = true
+        post { if (!disposed) callbacks.onLocationFollowUnavailable() }
+    }
+
+    private fun publishRuntimeDiagnostics() {
+        val activeMapView = mapView ?: return
+        val location = currentLocation
+        PhoneOfflineMapRendererDiagnostics.recordRuntime(
+            PhoneOfflineMapRuntimeDiagnostics(
+                displayName = rendererTrace.mapDisplayName,
+                mapViewAttached = activeMapView.isAttachedToWindow,
+                mapViewWidth = activeMapView.width,
+                mapViewHeight = activeMapView.height,
+                drawObserved = tileLayer?.hasDrawObserved == true,
+                firstVisibleBaseTileObserved = tileLayer?.hasFirstVisibleBaseTileObserved == true,
+                zoom =
+                    activeMapView.model.mapViewPosition.zoomLevel
+                        .toInt(),
+                cameraInsideMapBounds = activeMapView.currentCameraInside(mapBounds),
+                locationPermissionGranted = hasLocationPermission,
+                locationAvailable = location != null,
+                locationAgeMillis = location?.ageMillis(android.os.SystemClock.elapsedRealtime()),
+                locationAccuracyMeters = location?.accuracyMeters,
+                locationInsideMapBounds =
+                    location?.let { fix -> mapBounds?.contains(fix.latitude, fix.longitude) },
+                followMode = currentMapMode.follow,
+                orientation = currentMapMode.orientation,
+                locationMarkerAttached =
+                    locationMarker?.let { marker -> activeMapView.layerManager.layers.contains(marker) } == true,
+            ),
+        )
     }
 
     private fun postMapError(error: PhoneOfflineMapError) {
@@ -418,6 +503,65 @@ private class PhoneOfflineMapsforgeView(
         Log.e(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
     }
 }
+
+/** Minimal phone adaptation of the Wear first-visible-tile seam, without its telemetry framework. */
+private class PhoneOfflineTileRendererLayer(
+    tileCache: TileCache,
+    mapFile: MapFile,
+    mapViewPosition: org.mapsforge.map.model.MapViewPosition,
+    graphicFactory: org.mapsforge.core.graphics.GraphicFactory,
+    private val onDrawObserved: () -> Unit,
+    private val onFirstVisibleBaseTile: () -> Unit,
+) : TileRendererLayer(
+        tileCache,
+        mapFile,
+        mapViewPosition,
+        false,
+        true,
+        false,
+        graphicFactory,
+        null,
+    ) {
+    private val drawObserved = AtomicBoolean(false)
+    private val firstVisibleBaseTileObserved = AtomicBoolean(false)
+
+    val hasDrawObserved: Boolean
+        get() = drawObserved.get()
+
+    val hasFirstVisibleBaseTileObserved: Boolean
+        get() = firstVisibleBaseTileObserved.get()
+
+    override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: org.mapsforge.core.graphics.Canvas,
+        topLeftPoint: Point,
+        rotation: Rotation,
+    ) {
+        if (drawObserved.compareAndSet(false, true)) onDrawObserved()
+        super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
+        if (
+            hasCachedVisibleBaseTile(boundingBox, zoomLevel) &&
+            firstVisibleBaseTileObserved.compareAndSet(false, true)
+        ) {
+            onFirstVisibleBaseTile()
+        }
+    }
+
+    private fun hasCachedVisibleBaseTile(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+    ): Boolean =
+        runCatching {
+            val tileSize = displayModel?.tileSize ?: return@runCatching false
+            if (renderThemeFuture == null) return@runCatching false
+            LayerUtil.getTiles(boundingBox, zoomLevel, tileSize).any { tile ->
+                tileCache.containsKey(createJob(tile))
+            }
+        }.getOrDefault(false)
+}
+
+private fun MapView.currentCameraInside(bounds: BoundingBox?): Boolean? = bounds?.contains(model.mapViewPosition.center)
 
 /** Keeps Mapsforge overlay layers independent from the base tile renderer and theme lifecycle. */
 private class PhoneOfflineMapsforgeOverlayLayers(
