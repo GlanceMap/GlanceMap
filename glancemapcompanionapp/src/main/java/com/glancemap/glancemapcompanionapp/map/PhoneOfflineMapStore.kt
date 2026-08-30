@@ -46,11 +46,13 @@ internal data class PhoneMapCameraSnapshot(
     val latitude: Double,
     val longitude: Double,
     val zoom: Double,
+    val bearingDegrees: Float = 0f,
 ) {
     init {
         require(latitude.isFinite() && latitude in -90.0..90.0)
         require(longitude.isFinite() && longitude in -180.0..180.0)
         require(zoom.isFinite() && zoom >= 0.0)
+        require(bearingDegrees.isFinite())
     }
 }
 

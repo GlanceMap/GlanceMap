@@ -33,6 +33,29 @@ class PhoneMapCompassPresentationTest {
     }
 
     @Test
+    fun manualBearingDetachesFollowAndRemainsAuthoritativeUntilRecenter() {
+        val manual = PhoneMapMode(orientation = PhoneMapOrientation.HEADING_UP).detachAfterManualRotation(90f)
+        val presentation = phoneMapCompassPresentation(manual, 10f)
+
+        assertEquals(90f, presentation.mapBearingDegrees, 0.001f)
+        assertEquals(280f, requireNotNull(presentation.markerScreenRotationDegrees), 0.001f)
+        assertEquals(270f, presentation.northIndicatorScreenRotationDegrees, 0.001f)
+
+        val recentered = manual.recenterOnLocation()
+        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, recentered.follow)
+        assertNull(recentered.manualBearingDegrees)
+        assertEquals(10f, phoneMapCompassPresentation(recentered, 10f).mapBearingDegrees, 0.001f)
+    }
+
+    @Test
+    fun manualBearingNormalizesAcrossZero() {
+        val presentation = phoneMapCompassPresentation(PhoneMapMode().detachAfterManualRotation(359f), 1f)
+
+        assertEquals(2f, requireNotNull(presentation.markerScreenRotationDegrees), 0.001f)
+        assertEquals(1f, presentation.northIndicatorScreenRotationDegrees, 0.001f)
+    }
+
+    @Test
     fun headingWrapUsesTheShortestSmoothingPath() {
         assertEquals(1f, shortestPhoneHeadingDelta(targetDegrees = 0f, currentDegrees = 359f), 0.001f)
         assertEquals(359.24f, smoothPhoneHeading(currentDegrees = 359f, targetDegrees = 0f), 0.001f)

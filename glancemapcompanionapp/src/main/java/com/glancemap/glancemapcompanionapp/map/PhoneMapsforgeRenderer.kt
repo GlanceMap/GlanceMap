@@ -88,12 +88,14 @@ private fun phoneMapsforgeIdentityHash(value: String): String = value.hashCode()
 
 internal enum class PhoneOfflineInitialCameraReason {
     CURRENT_VIEWPORT,
-    MAP_START,
+    MAP_METADATA,
+    DEFAULT,
 }
 
 internal data class PhoneOfflineInitialCameraSelection(
     val camera: PhoneMapCameraSnapshot,
     val reason: PhoneOfflineInitialCameraReason,
+    val zoomClamped: Boolean,
 )
 
 internal data class PhoneOfflineMapCameraContext(
@@ -111,20 +113,31 @@ internal fun phoneOfflineInitialCameraSelection(
     val rangeMin = minOf(context.zoomMin.toInt(), context.zoomMax.toInt())
     val rangeMax = maxOf(context.zoomMin.toInt(), context.zoomMax.toInt())
     if (context.bounds.contains(requested.latitude, requested.longitude)) {
+        val zoom = requested.zoom.coerceIn(rangeMin.toDouble(), rangeMax.toDouble())
         return PhoneOfflineInitialCameraSelection(
-            camera = requested.copy(zoom = requested.zoom.coerceIn(rangeMin.toDouble(), rangeMax.toDouble())),
+            camera = requested.copy(zoom = zoom),
             reason = PhoneOfflineInitialCameraReason.CURRENT_VIEWPORT,
+            zoomClamped = zoom != requested.zoom,
         )
     }
+    val hasMapStart = context.mapStart != null
     val start = context.mapStart ?: context.bounds.centerPoint
+    val requestedZoom = context.mapStartZoom?.toInt() ?: PHONE_MAP_DEFAULT_ZOOM.toInt()
+    val zoom = requestedZoom.coerceIn(rangeMin, rangeMax)
     return PhoneOfflineInitialCameraSelection(
         camera =
             PhoneMapCameraSnapshot(
                 latitude = start.latitude,
                 longitude = start.longitude,
-                zoom = (context.mapStartZoom?.toInt() ?: rangeMin).coerceIn(rangeMin, rangeMax).toDouble(),
+                zoom = zoom.toDouble(),
             ),
-        reason = PhoneOfflineInitialCameraReason.MAP_START,
+        reason =
+            if (hasMapStart) {
+                PhoneOfflineInitialCameraReason.MAP_METADATA
+            } else {
+                PhoneOfflineInitialCameraReason.DEFAULT
+            },
+        zoomClamped = zoom != requestedZoom,
     )
 }
 
@@ -333,11 +346,16 @@ internal class PhoneMapsforgeRenderer(
         trace.mapFileOpened(
             boundsAvailable = true,
             cameraInsideBounds = camera.reason == PhoneOfflineInitialCameraReason.CURRENT_VIEWPORT,
+            initialZoom = camera.camera.zoom.toInt(),
+            initialZoomSource = camera.reason,
+            zoomClamped = camera.zoomClamped,
         )
         trace.complete(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
         PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
             event = "mapfile_opened",
-            detail = "file=${map.displayName} initialZoom=${camera.camera.zoom.toInt()} reason=${camera.reason}",
+            detail =
+                "file=${map.displayName} initialZoom=${camera.camera.zoom.toInt()} " +
+                    "reason=${camera.reason} clamped=${camera.zoomClamped}",
         )
         if (change == PhoneMapsforgeBaseLayerChange.MAP_SWAP) {
             mapView.setZoomLevelMin(mapFile.mapFileInfo.zoomLevelMin)

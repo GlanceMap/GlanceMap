@@ -357,6 +357,9 @@
     <string name="home_debug_capture_start_title">Start phone debug capture?</string>
     <string name="home_debug_capture_stop_email_action">Stop &amp; email</string>
     <string name="home_debug_capture_send_last_action">Send last recording</string>
+    <string name="home_debug_capture_send_current_action">Share current capture</string>
+    <string name="home_debug_capture_send_recovered_action">Share recovered capture</string>
+    <string name="home_debug_capture_send_previous_action">Share previous capture</string>
     <string name="home_debug_capture_start_action">Start recording</string>
     <string name="home_debug_capture_keep_recording">Keep recording</string>
     <string name="live_tracking_no_movement_minimum">Minimum 10 minutes</string>

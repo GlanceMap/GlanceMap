@@ -67,6 +67,7 @@ import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.gestures.MoveGestureDetector
+import org.maplibre.android.gestures.RotateGestureDetector
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
@@ -74,7 +75,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 
-private val defaultMapCamera = PhoneMapCameraSnapshot(latitude = 20.0, longitude = 0.0, zoom = 2.0)
+private val defaultMapCamera = PhoneMapCameraSnapshot(latitude = 20.0, longitude = 0.0, zoom = PHONE_MAP_DEFAULT_ZOOM)
 private val locationPermissions =
     arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -215,9 +216,9 @@ internal fun CompanionMapScreen(
     phoneMapCompassLifecycle(compassSensorSource)
     phoneMapLocationLifecycle(mapLocationSource, hasLocationPermission)
     val compassPresentation =
-        remember(mapUiState.mapMode.orientation, compassState.headingDegrees, compassState.isRenderable) {
+        remember(mapUiState.mapMode, compassState.headingDegrees, compassState.isRenderable) {
             phoneMapCompassPresentation(
-                orientation = mapUiState.mapMode.orientation,
+                mapMode = mapUiState.mapMode,
                 headingDegrees = compassState.headingDegrees.takeIf { compassState.isRenderable },
             )
         }
@@ -488,8 +489,17 @@ internal fun CompanionMapScreen(
                         observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { mapCamera = it })
                         observeOnlineUserPan(
                             runtime = mapRuntime,
-                            onUserPan = {
-                                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation())
+                            onUserPan = { bearing ->
+                                mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation(bearing))
+                            },
+                        )
+                        observeOnlineUserRotation(
+                            runtime = mapRuntime,
+                            onUserRotation = { bearing ->
+                                mapUiState =
+                                    mapUiState.copy(
+                                        mapMode = mapUiState.mapMode.detachAfterManualRotation(bearing),
+                                    )
                             },
                         )
                         synchronizeOnlineMapControls(
@@ -544,9 +554,15 @@ internal fun CompanionMapScreen(
                                     onCameraChanged = { mapCamera = it },
                                     onViewportChanged = onPoiViewportChanged,
                                     onPoiSelected = { selectedPoi = it },
-                                    onUserPan = {
+                                    onUserPan = { bearing ->
                                         mapUiState =
-                                            mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation())
+                                            mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation(bearing))
+                                    },
+                                    onUserRotation = { bearing ->
+                                        mapUiState =
+                                            mapUiState.copy(
+                                                mapMode = mapUiState.mapMode.detachAfterManualRotation(bearing),
+                                            )
                                     },
                                     onCameraCommandHandled = { commandId ->
                                         mapUiState = mapUiState.consumeCommand(commandId)
@@ -571,6 +587,7 @@ internal fun CompanionMapScreen(
                     onBack = onBack,
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
                     onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
+                    zoom = mapCamera.zoom,
                     mapMode = mapUiState.mapMode,
                     onCycleMapMode = onMapModePressed,
                 )
@@ -804,7 +821,7 @@ private fun observeOnlineCamera(
 @Composable
 private fun observeOnlineUserPan(
     runtime: MapRuntime,
-    onUserPan: () -> Unit,
+    onUserPan: (Float) -> Unit,
 ) {
     val currentRuntime by rememberUpdatedState(runtime)
     val currentOnUserPan by rememberUpdatedState(onUserPan)
@@ -815,13 +832,42 @@ private fun observeOnlineUserPan(
                 override fun onMoveBegin(detector: MoveGestureDetector) = Unit
 
                 override fun onMove(detector: MoveGestureDetector) {
-                    if (runtime.isCurrentIn(currentRuntime)) currentOnUserPan()
+                    if (runtime.isCurrentIn(currentRuntime)) {
+                        currentOnUserPan(activeMap.cameraPosition.bearing.toFloat())
+                    }
                 }
 
                 override fun onMoveEnd(detector: MoveGestureDetector) = Unit
             }
         activeMap.addOnMoveListener(listener)
         onDispose { activeMap.removeOnMoveListener(listener) }
+    }
+}
+
+@Composable
+private fun observeOnlineUserRotation(
+    runtime: MapRuntime,
+    onUserRotation: (Float) -> Unit,
+) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentOnUserRotation by rememberUpdatedState(onUserRotation)
+    DisposableEffect(runtime.map) {
+        val activeMap = runtime.map ?: return@DisposableEffect onDispose {}
+        activeMap.uiSettings.setRotateGesturesEnabled(true)
+        val listener =
+            object : MapLibreMap.OnRotateListener {
+                override fun onRotateBegin(detector: RotateGestureDetector) = Unit
+
+                override fun onRotate(detector: RotateGestureDetector) {
+                    if (runtime.isCurrentIn(currentRuntime)) {
+                        currentOnUserRotation(activeMap.cameraPosition.bearing.toFloat())
+                    }
+                }
+
+                override fun onRotateEnd(detector: RotateGestureDetector) = Unit
+            }
+        activeMap.addOnRotateListener(listener)
+        onDispose { activeMap.removeOnRotateListener(listener) }
     }
 }
 
@@ -968,10 +1014,12 @@ private fun mapSurface(
 }
 
 @Composable
+@Suppress("LongParameterList") // Controls are one compact UI cluster; a wrapper would add no state boundary.
 private fun mapControls(
     onBack: () -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
+    zoom: Double,
     mapMode: PhoneMapMode,
     onCycleMapMode: () -> Unit,
 ) {
@@ -1007,6 +1055,12 @@ private fun mapControls(
                 Icon(
                     imageVector = Icons.Filled.Remove,
                     contentDescription = stringResource(R.string.map_zoom_out_content_description),
+                )
+            }
+            Card {
+                Text(
+                    text = zoom.toInt().toString(),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
             FilledTonalIconButton(onClick = onCycleMapMode) {
@@ -1233,9 +1287,13 @@ private fun Context.hasLocationPermission(): Boolean =
     }
 
 private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate() =
-    CameraUpdateFactory.newLatLngZoom(
-        LatLng(latitude, longitude),
-        zoom,
+    CameraUpdateFactory.newCameraPosition(
+        CameraPosition
+            .Builder()
+            .target(LatLng(latitude, longitude))
+            .zoom(zoom)
+            .bearing(bearingDegrees.toDouble())
+            .build(),
     )
 
 private fun MapLibreMap.cameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
@@ -1246,5 +1304,6 @@ private fun MapLibreMap.cameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
             latitude = target.latitude,
             longitude = target.longitude,
             zoom = camera.zoom,
+            bearingDegrees = camera.bearing.toFloat(),
         )
     }.getOrNull()

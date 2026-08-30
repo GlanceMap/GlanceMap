@@ -1174,6 +1174,7 @@ class FileTransferViewModel : ViewModel() {
     }
 
     fun startPhoneDebugCapture(context: Context) {
+        PhoneDebugCapture.initialize(context.applicationContext)
         PhoneDebugCapture.start()
         Toast
             .makeText(
@@ -1208,6 +1209,36 @@ class FileTransferViewModel : ViewModel() {
                     .makeText(
                         context.applicationContext,
                         error.localizedMessage ?: "No saved phone recording available",
+                        Toast.LENGTH_LONG,
+                    ).show()
+            }
+        }
+    }
+
+    fun sendCurrentPhoneDebugCapture(context: Context) {
+        viewModelScope.launch {
+            runCatching {
+                CompanionDiagnosticsEmailComposer.composePhoneDiagnosticsEmail(context)
+            }.onFailure { error ->
+                Toast
+                    .makeText(
+                        context.applicationContext,
+                        error.localizedMessage ?: "No phone recording available",
+                        Toast.LENGTH_LONG,
+                    ).show()
+            }
+        }
+    }
+
+    fun sendPreviousPhoneDebugCapture(context: Context) {
+        viewModelScope.launch {
+            runCatching {
+                CompanionDiagnosticsEmailComposer.composePreviousPhoneDiagnosticsEmail(context)
+            }.onFailure { error ->
+                Toast
+                    .makeText(
+                        context.applicationContext,
+                        error.localizedMessage ?: "No previous phone recording available",
                         Toast.LENGTH_LONG,
                     ).show()
             }

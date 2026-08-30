@@ -44,6 +44,9 @@ internal data class PhoneOfflineMapRendererAttempt(
     val boundingBoxAvailable: Boolean? = null,
     val initialCameraInsideBounds: Boolean? = null,
     val initialCameraFallbackUsed: Boolean? = null,
+    val initialZoom: Int? = null,
+    val initialZoomSource: PhoneOfflineInitialCameraReason? = null,
+    val initialZoomClamped: Boolean? = null,
     val exceptionClass: String? = null,
     val exceptionMessage: String? = null,
 ) {
@@ -68,6 +71,9 @@ internal data class PhoneOfflineMapRendererAttempt(
             boundingBoxAvailable?.let { appendLine("Bounding box available: $it") }
             initialCameraInsideBounds?.let { appendLine("Initial camera inside bounds: $it") }
             initialCameraFallbackUsed?.let { appendLine("Initial camera fallback used: $it") }
+            initialZoom?.let { appendLine("Initial zoom: $it") }
+            initialZoomSource?.let { appendLine("Initial zoom source: $it") }
+            initialZoomClamped?.let { appendLine("Zoom clamped: $it") }
             exceptionClass?.let { appendLine("Exception: $it") }
             exceptionMessage?.let { appendLine("Exception message: $it") }
             append("Map storage: companion private maps")
@@ -92,14 +98,19 @@ internal object PhoneOfflineMapRendererDiagnostics {
         latestAttempt.set(attempt)
         latestRuntime.set(null)
         PhoneDebugCapture.log(TAG, attempt.toCaptureLine())
+        PhoneDebugCapture.updateSection("offline_map_renderer", attempt.toReportSection())
     }
 
     fun update(attempt: PhoneOfflineMapRendererAttempt) {
         latestAttempt.set(attempt)
+        PhoneDebugCapture.updateSection("offline_map_renderer", attempt.toReportSection())
     }
 
     fun recordRuntime(runtime: PhoneOfflineMapRuntimeDiagnostics) {
-        if (latestAttempt.get()?.displayName == runtime.displayName) latestRuntime.set(runtime)
+        if (latestAttempt.get()?.displayName == runtime.displayName) {
+            latestRuntime.set(runtime)
+            PhoneDebugCapture.updateSection("offline_map_runtime", runtime.toReportSection())
+        }
     }
 
     fun recordLifecycleEvent(
@@ -146,6 +157,9 @@ internal class PhoneOfflineMapRendererTrace(
     private var boundingBoxAvailable: Boolean? = null
     private var initialCameraInsideBounds: Boolean? = null
     private var initialCameraFallbackUsed: Boolean? = null
+    private var initialZoom: Int? = null
+    private var initialZoomSource: PhoneOfflineInitialCameraReason? = null
+    private var initialZoomClamped: Boolean? = null
     private var readyAttempt: PhoneOfflineMapRendererAttempt? = null
 
     @Synchronized
@@ -163,11 +177,17 @@ internal class PhoneOfflineMapRendererTrace(
     fun mapFileOpened(
         boundsAvailable: Boolean,
         cameraInsideBounds: Boolean,
+        initialZoom: Int,
+        initialZoomSource: PhoneOfflineInitialCameraReason,
+        zoomClamped: Boolean,
     ) {
         mapFileOpened = true
         boundingBoxAvailable = boundsAvailable
         initialCameraInsideBounds = cameraInsideBounds
         initialCameraFallbackUsed = !cameraInsideBounds
+        this.initialZoom = initialZoom
+        this.initialZoomSource = initialZoomSource
+        initialZoomClamped = zoomClamped
     }
 
     @Synchronized
@@ -252,6 +272,9 @@ internal class PhoneOfflineMapRendererTrace(
             boundingBoxAvailable = boundingBoxAvailable,
             initialCameraInsideBounds = initialCameraInsideBounds,
             initialCameraFallbackUsed = initialCameraFallbackUsed,
+            initialZoom = initialZoom,
+            initialZoomSource = initialZoomSource,
+            initialZoomClamped = initialZoomClamped,
             exceptionClass = error?.className,
             exceptionMessage = error?.message,
         )

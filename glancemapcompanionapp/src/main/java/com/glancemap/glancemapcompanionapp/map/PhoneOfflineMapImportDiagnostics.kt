@@ -97,6 +97,7 @@ internal object PhoneOfflineMapImportDiagnostics {
     fun record(attempt: PhoneOfflineMapImportAttempt) {
         latestAttempt.set(attempt)
         PhoneDebugCapture.log(TAG, attempt.toCaptureLine())
+        PhoneDebugCapture.updateSection("offline_map_import", attempt.toReportSection())
     }
 
     fun latestReportSection(): String? = latestAttempt.get()?.toReportSection()

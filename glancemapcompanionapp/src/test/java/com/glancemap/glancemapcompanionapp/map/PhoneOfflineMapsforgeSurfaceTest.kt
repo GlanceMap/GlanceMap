@@ -135,9 +135,36 @@ class PhoneOfflineMapsforgeSurfaceTest {
             phoneOfflineInitialCameraSelection(inside, cameraContext(bounds, null)).reason,
         )
         assertEquals(
-            PhoneOfflineInitialCameraReason.MAP_START,
+            PhoneOfflineInitialCameraReason.MAP_METADATA,
             phoneOfflineInitialCameraSelection(outside, cameraContext(bounds, bounds.centerPoint)).reason,
         )
+    }
+
+    @Test
+    fun defaultPhoneZoomIsAUsefulHikingScaleAndOfflineCameraClampsIt() {
+        assertEquals(14.0, PHONE_MAP_DEFAULT_ZOOM, 0.0)
+        val selection =
+            phoneOfflineInitialCameraSelection(
+                requested = PhoneMapCameraSnapshot(47.5, 11.5, 30.0),
+                context = cameraContext(BoundingBox(47.0, 11.0, 48.0, 12.0), null),
+            )
+
+        assertEquals(18.0, selection.camera.zoom, 0.0)
+
+        val fallback =
+            phoneOfflineInitialCameraSelection(
+                requested = PhoneMapCameraSnapshot(20.0, 0.0, PHONE_MAP_DEFAULT_ZOOM),
+                context = cameraContext(BoundingBox(47.0, 11.0, 48.0, 12.0), null).copy(mapStartZoom = null),
+            )
+        assertEquals(PHONE_MAP_DEFAULT_ZOOM, fallback.camera.zoom, 0.0)
+        assertEquals(PhoneOfflineInitialCameraReason.DEFAULT, fallback.reason)
+    }
+
+    @Test
+    fun twoFingerRotationProducesIncrementalNormalizedDeltas() {
+        assertEquals(90f, phoneTwoFingerRotationDelta(0f, 90f), 0.001f)
+        assertEquals(2f, phoneTwoFingerRotationDelta(359f, 1f), 0.001f)
+        assertEquals(90f, mapsforgeMapBearingDegrees(-90f), 0.001f)
     }
 
     @Test

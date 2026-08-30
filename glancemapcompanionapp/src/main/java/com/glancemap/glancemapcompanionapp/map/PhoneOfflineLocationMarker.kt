@@ -56,7 +56,7 @@ internal class PhoneOfflineLocationMarker(
                 val pivotX = drawX + markerBitmap.width / 2f
                 val pivotY = drawY + markerBitmap.height / 2f
                 canvas.save()
-                canvas.rotate(normalizePhoneHeadingDegrees(heading - mapViewRotation.degrees), pivotX, pivotY)
+                canvas.rotate(heading, pivotX, pivotY)
                 canvas.drawBitmap(markerBitmap, drawX, drawY)
                 canvas.restore()
             }

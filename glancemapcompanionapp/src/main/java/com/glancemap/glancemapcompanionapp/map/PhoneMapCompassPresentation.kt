@@ -8,25 +8,32 @@ internal data class PhoneMapCompassPresentation(
 )
 
 internal fun phoneMapCompassPresentation(
-    orientation: PhoneMapOrientation,
+    mapMode: PhoneMapMode,
     headingDegrees: Float?,
 ): PhoneMapCompassPresentation {
     val heading = headingDegrees?.takeIf(Float::isFinite)?.let(::normalizePhoneHeadingDegrees)
-    return when (orientation) {
-        PhoneMapOrientation.NORTH_UP ->
-            PhoneMapCompassPresentation(
-                mapBearingDegrees = 0f,
-                markerScreenRotationDegrees = heading,
-                northIndicatorScreenRotationDegrees = 0f,
-            )
-        PhoneMapOrientation.HEADING_UP ->
-            PhoneMapCompassPresentation(
-                mapBearingDegrees = heading ?: 0f,
-                markerScreenRotationDegrees = heading?.let { 0f },
-                northIndicatorScreenRotationDegrees = heading?.let { normalizePhoneHeadingDegrees(-it) } ?: 0f,
-            )
-    }
+    val automaticBearing =
+        when (mapMode.orientation) {
+            PhoneMapOrientation.NORTH_UP -> 0f
+            PhoneMapOrientation.HEADING_UP -> heading ?: 0f
+        }
+    val bearing =
+        if (mapMode.follow == PhoneMapFollowMode.FREE) {
+            mapMode.manualBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: automaticBearing
+        } else {
+            automaticBearing
+        }
+    return PhoneMapCompassPresentation(
+        mapBearingDegrees = bearing,
+        markerScreenRotationDegrees = heading?.let { normalizePhoneHeadingDegrees(it - bearing) },
+        northIndicatorScreenRotationDegrees = normalizePhoneHeadingDegrees(-bearing),
+    )
 }
+
+internal fun phoneMapCompassPresentation(
+    orientation: PhoneMapOrientation,
+    headingDegrees: Float?,
+): PhoneMapCompassPresentation = phoneMapCompassPresentation(PhoneMapMode(orientation = orientation), headingDegrees)
 
 internal fun normalizePhoneHeadingDegrees(degrees: Float): Float = (degrees % 360f + 360f) % 360f
 

@@ -104,6 +104,7 @@ internal fun DebugCaptureDialog(
                 CompanionDiagnosticsEmailComposer.hasSavedPhoneDiagnostics(context)
             }
         }
+    val hasCurrentCapture = !debugCaptureState.active && debugCaptureState.sessionId > 0L
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -157,6 +158,34 @@ internal fun DebugCaptureDialog(
                             },
                         ) {
                             Text(stringResource(R.string.home_debug_capture_send_last_action))
+                        }
+                    }
+                    if (hasCurrentCapture) {
+                        TextButton(
+                            onClick = {
+                                onDismiss()
+                                viewModel.sendCurrentPhoneDebugCapture(context)
+                            },
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (debugCaptureState.interrupted) {
+                                        R.string.home_debug_capture_send_recovered_action
+                                    } else {
+                                        R.string.home_debug_capture_send_current_action
+                                    },
+                                ),
+                            )
+                        }
+                    }
+                    if (debugCaptureState.hasPreviousCapture) {
+                        TextButton(
+                            onClick = {
+                                onDismiss()
+                                viewModel.sendPreviousPhoneDebugCapture(context)
+                            },
+                        ) {
+                            Text(stringResource(R.string.home_debug_capture_send_previous_action))
                         }
                     }
                     TextButton(

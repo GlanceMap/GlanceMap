@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.filepicker.FilePickerScreen
 import com.glancemap.glancemapcompanionapp.layout.companionLayoutProvider
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingOpenIntentContract
@@ -35,6 +36,7 @@ class MainActivityMobile : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PhoneDebugCapture.initialize(applicationContext)
 
         handleLaunchIntent(intent)
 

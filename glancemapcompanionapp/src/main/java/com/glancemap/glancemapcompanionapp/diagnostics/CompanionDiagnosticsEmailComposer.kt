@@ -21,15 +21,24 @@ object CompanionDiagnosticsEmailComposer {
     private val filenameFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(ZoneId.systemDefault())
 
-    fun composePhoneDiagnosticsEmail(context: Context) {
+    fun composePhoneDiagnosticsEmail(
+        context: Context,
+        slot: PhoneDebugCaptureSlot = PhoneDebugCaptureSlot.CURRENT,
+    ) {
         val appContext = context.applicationContext
         val diagnosticsText =
             PhoneDebugCapture.buildReport(
                 context = appContext,
                 additionalSections = phoneDiagnosticsAdditionalSections(),
+                slot = slot,
             )
         val file = saveLatestPhoneDiagnosticsFile(appContext, diagnosticsText)
         composeEmailWithFile(context, file)
+    }
+
+    fun composePreviousPhoneDiagnosticsEmail(context: Context) {
+        require(PhoneDebugCapture.hasCapture(PhoneDebugCaptureSlot.PREVIOUS))
+        composePhoneDiagnosticsEmail(context, PhoneDebugCaptureSlot.PREVIOUS)
     }
 
     fun composeLatestPhoneDiagnosticsEmail(context: Context) {

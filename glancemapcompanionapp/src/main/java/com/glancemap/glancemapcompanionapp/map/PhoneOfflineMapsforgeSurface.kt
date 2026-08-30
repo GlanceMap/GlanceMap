@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions") // Mapsforge touch helpers share the stable map surface lifecycle.
+
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
@@ -42,7 +44,8 @@ internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
     val onViewportChanged: (PhoneMapViewport) -> Unit,
     val onPoiSelected: (PhoneMapPoi) -> Unit,
-    val onUserPan: () -> Unit,
+    val onUserPan: (Float) -> Unit,
+    val onUserRotation: (Float) -> Unit,
     val onCameraCommandHandled: (Long) -> Unit,
     val onMapError: (PhoneOfflineMapError) -> Unit,
     val onLocationFollowUnavailable: () -> Unit,
@@ -56,7 +59,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val pois: List<PhoneMapPoi>,
     val mapMode: PhoneMapMode,
     val cameraCommand: PhoneMapCameraCommand?,
-    val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode.orientation, null),
+    val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode, null),
     val location: PhoneMapLocation? = null,
     val hasLocationPermission: Boolean = false,
 )
@@ -78,7 +81,8 @@ internal fun offlineMapSurface(
                         onCameraChanged = { currentCallbacks.onCameraChanged(it) },
                         onViewportChanged = { currentCallbacks.onViewportChanged(it) },
                         onPoiSelected = { currentCallbacks.onPoiSelected(it) },
-                        onUserPan = { currentCallbacks.onUserPan() },
+                        onUserPan = { currentCallbacks.onUserPan(it) },
+                        onUserRotation = { currentCallbacks.onUserRotation(it) },
                         onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
                         onMapError = { currentCallbacks.onMapError(it) },
                         onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
@@ -136,10 +140,16 @@ private class PhoneOfflineMapsforgeView(
     private val inputListener =
         object : InputListener {
             override fun onMoveEvent() {
-                post { if (!disposed) callbacks.onUserPan() }
+                post { if (!disposed) callbacks.onUserPan(currentMapBearing()) }
             }
 
             override fun onZoomEvent() = Unit
+        }
+    private val rotationDetector =
+        PhoneTwoFingerRotationDetector { deltaDegrees ->
+            val nextBearing = normalizePhoneHeadingDegrees(currentMapBearing() + deltaDegrees)
+            applyMapBearing(nextBearing)
+            post { if (!disposed) callbacks.onUserRotation(nextBearing) }
         }
     private val mapViewLayoutListener =
         View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onMapViewLifecycleChanged() }
@@ -187,6 +197,7 @@ private class PhoneOfflineMapsforgeView(
                 MotionEvent.ACTION_CANCEL,
                 -> PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
             }
+            rotationDetector.onTouchEvent(event)
             false
         }
         mapView.model.mapViewPosition.addObserver(cameraObserver)
@@ -267,7 +278,14 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyCompassPresentation(presentation: PhoneMapCompassPresentation) {
         if (presentation == appliedCompassPresentation) return
-        val degrees = mapsforgeRotationDegreesFor(presentation.mapBearingDegrees)
+        applyMapBearing(presentation.mapBearingDegrees)
+        locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
+        PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
+        appliedCompassPresentation = presentation
+    }
+
+    private fun applyMapBearing(mapBearingDegrees: Float) {
+        val degrees = mapsforgeRotationDegreesFor(mapBearingDegrees)
         val rotation =
             if (degrees == 0f) {
                 Rotation.NULL_ROTATION
@@ -275,9 +293,6 @@ private class PhoneOfflineMapsforgeView(
                 Rotation(degrees, mapView.mapViewCenterX, mapView.mapViewCenterY)
             }
         mapView.rotate(rotation)
-        locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
-        PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
-        appliedCompassPresentation = presentation
     }
 
     private fun updateLocation(
@@ -444,6 +459,8 @@ private class PhoneOfflineMapsforgeView(
             ),
         )
     }
+
+    private fun currentMapBearing(): Float = mapsforgeMapBearingDegrees(mapView.mapRotation.degrees)
 
     private fun currentReadiness(): PhoneMapViewRenderReadiness =
         PhoneMapViewRenderReadiness(
@@ -676,6 +693,7 @@ private fun MapPosition.toPhoneMapCameraSnapshotOrNull(): PhoneMapCameraSnapshot
             latitude = latLong.latitude,
             longitude = latLong.longitude,
             zoom = zoomLevel.toDouble(),
+            bearingDegrees = mapsforgeMapBearingDegrees(rotation.degrees),
         )
     }.getOrNull()
 
@@ -684,3 +702,53 @@ private const val MINIMUM_RENDERABLE_SEGMENT_POINTS = 2
 private const val POI_MARKER_RADIUS_PX = 8f
 private const val POI_MARKER_SIZE_PX = 20
 private const val POI_MARKER_STROKE_WIDTH_PX = 2f
+
+internal fun mapsforgeMapBearingDegrees(rotationDegrees: Float): Float = normalizePhoneHeadingDegrees(-rotationDegrees)
+
+internal fun phoneTwoFingerRotationDelta(
+    previousAngleDegrees: Float,
+    nextAngleDegrees: Float,
+): Float = shortestPhoneHeadingDelta(nextAngleDegrees, previousAngleDegrees)
+
+/** Adds native-feeling twist detection without owning or consuming Mapsforge pan and pinch events. */
+internal class PhoneTwoFingerRotationDetector(
+    private val onRotationDelta: (Float) -> Unit,
+) {
+    private var lastAngleDegrees: Float? = null
+
+    fun onTouchEvent(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_DOWN,
+            -> lastAngleDegrees = event.twoPointerAngleOrNull()
+
+            MotionEvent.ACTION_MOVE -> {
+                val next = event.twoPointerAngleOrNull() ?: return
+                val previous = lastAngleDegrees
+                if (previous == null) {
+                    lastAngleDegrees = next
+                    return
+                }
+                val delta = phoneTwoFingerRotationDelta(previous, next)
+                if (kotlin.math.abs(delta) >= 0.5f) onRotationDelta(delta)
+                lastAngleDegrees = next
+            }
+
+            MotionEvent.ACTION_POINTER_UP,
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL,
+            -> lastAngleDegrees = null
+        }
+    }
+}
+
+private fun MotionEvent.twoPointerAngleOrNull(): Float? {
+    if (pointerCount < 2) return null
+    return Math
+        .toDegrees(
+            kotlin.math.atan2(
+                (getY(1) - getY(0)).toDouble(),
+                (getX(1) - getX(0)).toDouble(),
+            ),
+        ).toFloat()
+}
