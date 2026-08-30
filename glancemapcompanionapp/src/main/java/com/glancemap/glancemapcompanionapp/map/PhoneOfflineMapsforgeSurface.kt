@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -28,22 +27,16 @@ import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
 import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
-import org.mapsforge.map.android.util.AndroidUtil
 import org.mapsforge.map.android.view.MapView
-import org.mapsforge.map.layer.cache.TileCache
+import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.overlay.Marker
 import org.mapsforge.map.layer.overlay.Polyline
 import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.common.Observer
-import org.mapsforge.map.reader.MapFile
-import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
-import org.mapsforge.map.util.LayerUtil
 import org.mapsforge.map.view.InputListener
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val PHONE_OFFLINE_TILE_CACHE_CAPACITY = 64
-private const val PHONE_OFFLINE_TILE_CACHE_ID = "phone-offline"
-private const val PHONE_OFFLINE_MAP_TAG = "PhoneOfflineMap"
+private const val PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS = 16L
 
 internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
@@ -68,128 +61,77 @@ internal data class PhoneOfflineMapSurfaceState(
     val hasLocationPermission: Boolean = false,
 )
 
-/** Tracks the one bootstrap redraw and later real-size redraws for a stable Mapsforge view. */
-internal data class PhoneOfflineMapRedrawState(
-    val bootstrapRedrawRequested: Boolean = false,
-    val redrawRequestCount: Int = 0,
-    private val lastRedrawnWidth: Int? = null,
-    private val lastRedrawnHeight: Int? = null,
-) {
-    fun requestForLayout(
-        rendererAlive: Boolean,
-        attached: Boolean,
-        width: Int,
-        height: Int,
-    ): PhoneOfflineMapRedrawState =
-        if (!rendererAlive || !hasUsableLayout(attached, width, height)) {
-            this
-        } else if (lastRedrawnWidth == width && lastRedrawnHeight == height) {
-            this
-        } else {
-            copy(
-                bootstrapRedrawRequested = true,
-                redrawRequestCount = redrawRequestCount + 1,
-                lastRedrawnWidth = width,
-                lastRedrawnHeight = height,
-            )
-        }
-
-    private fun hasUsableLayout(
-        attached: Boolean,
-        width: Int,
-        height: Int,
-    ): Boolean = attached && width > 0 && height > 0
-}
-
 @Composable
 internal fun offlineMapSurface(
     state: PhoneOfflineMapSurfaceState,
     callbacks: PhoneOfflineMapsforgeCallbacks,
 ) {
     val currentCallbacks by rememberUpdatedState(callbacks)
-    key(state.map.rendererIdentity) {
-        var view by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
+    var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
 
-        AndroidView(
-            factory = { context ->
-                PhoneOfflineMapsforgeView(
-                    context = context,
-                    state = state,
-                    callbacks =
-                        PhoneOfflineMapsforgeCallbacks(
-                            onCameraChanged = { currentCallbacks.onCameraChanged(it) },
-                            onViewportChanged = { currentCallbacks.onViewportChanged(it) },
-                            onPoiSelected = { currentCallbacks.onPoiSelected(it) },
-                            onUserPan = { currentCallbacks.onUserPan() },
-                            onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
-                            onMapError = { currentCallbacks.onMapError(it) },
-                            onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
-                        ),
-                ).also { view = it }
-            },
-            update = { activeView ->
-                activeView.applyTheme(state.themeConfig)
-                activeView.applyCompassPresentation(state.compassPresentation)
-                activeView.updateLocation(
-                    location = state.location,
-                    mapMode = state.mapMode,
-                    hasLocationPermission = state.hasLocationPermission,
-                )
-                activeView.applyCameraCommand(state.cameraCommand)
-                activeView.updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+    AndroidView(
+        factory = { context ->
+            PhoneOfflineMapsforgeView(
+                context = context,
+                callbacks =
+                    PhoneOfflineMapsforgeCallbacks(
+                        onCameraChanged = { currentCallbacks.onCameraChanged(it) },
+                        onViewportChanged = { currentCallbacks.onViewportChanged(it) },
+                        onPoiSelected = { currentCallbacks.onPoiSelected(it) },
+                        onUserPan = { currentCallbacks.onUserPan() },
+                        onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
+                        onMapError = { currentCallbacks.onMapError(it) },
+                        onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
+                    ),
+            ).also { created ->
+                holder = created
+                created.render(state)
+            }
+        },
+        update = { activeHolder -> activeHolder.render(state) },
+        modifier = Modifier.fillMaxSize(),
+    )
 
-        DisposableEffect(view) {
-            onDispose { view?.dispose() }
-        }
+    DisposableEffect(holder) {
+        onDispose { holder?.dispose() }
     }
 }
 
-/** Phone-only Mapsforge holder for one base map plus renderer-adapted semantic overlays. */
-@Suppress("TooManyFunctions") // Explicit lifecycle methods keep validated Mapsforge resources together.
+/** Persistent Android host for one Mapsforge MapView and its delayed renderer lifecycle. */
+@Suppress("TooManyFunctions") // Explicit callbacks make Mapsforge ownership easy to audit.
 private class PhoneOfflineMapsforgeView(
     context: Context,
-    state: PhoneOfflineMapSurfaceState,
     private val callbacks: PhoneOfflineMapsforgeCallbacks,
 ) : FrameLayout(context) {
-    private val rendererTrace = PhoneOfflineMapRendererTrace(state.map.file.name, state.themeConfig)
-    private var mapView: PhoneOfflineMapsforgeMapView? = null
-    private var tileCache: TileCache? = null
-    private var mapFile: MapFile? = null
-    private var mapBounds: BoundingBox? = null
-    private var tileLayer: PhoneOfflineTileRendererLayer? = null
-    private var appliedThemeConfig: PhoneOfflineThemeConfig? = null
-    private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
-    private var lastHandledCameraCommandId: Long? = null
-    private var gpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
-    private var pois: List<PhoneMapPoi> = emptyList()
-    private var overlayLayers: PhoneOfflineMapsforgeOverlayLayers? = null
-    private var locationMarker: PhoneOfflineLocationMarker? = null
-    private var currentLocation: PhoneMapLocation? = null
-    private var currentMapMode = state.mapMode
-    private var hasLocationPermission = state.hasLocationPermission
-    private var locationFollowUnavailableReported = false
-    private var disposed = false
-    private var redrawState = PhoneOfflineMapRedrawState()
-    private val runtimeLayoutChangeListener =
-        View.OnLayoutChangeListener { changedView, _, _, _, _, _, _, _, _ ->
-            val activeMapView = mapView
-            if (!disposed && changedView === activeMapView) {
-                requestRedrawAfterLayout(activeMapView)
-                publishRuntimeDiagnostics()
-            }
+    private val mapView =
+        PhoneOfflineMapsforgeMapView(
+            context = context,
+            onAndroidDrawObserved = ::publishRuntimeDiagnostics,
+        ).apply {
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setBuiltInZoomControls(false)
+            mapScaleBar.isVisible = false
         }
-    private val runtimeAttachStateChangeListener =
-        object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(view: View) {
-                val activeMapView = mapView
-                if (!disposed && view === activeMapView) requestRedrawAfterLayout(activeMapView)
-            }
-
-            override fun onViewDetachedFromWindow(view: View) = Unit
-        }
+    private val workGate = PhoneMapsforgeRenderWorkGate()
+    private val renderer =
+        PhoneMapsforgeRenderer(
+            context = context.applicationContext,
+            mapView = mapView,
+            onMapBoundsChanged = { bounds ->
+                mapBounds = bounds
+                post { if (!disposed) applyLocationFromLatestState() }
+            },
+            onRendererFailure = { error -> post { if (!disposed) callbacks.onMapError(error) } },
+            onRuntimeChanged = ::publishRuntimeDiagnostics,
+        )
+    private val overlayLayers =
+        PhoneOfflineMapsforgeOverlayLayers(
+            mapView = mapView,
+            baseLayer = renderer::currentBaseLayer,
+            onPoiSelected = { selected -> post { if (!disposed) callbacks.onPoiSelected(selected) } },
+        )
     private val cameraObserver = Observer { publishCamera() }
     private val inputListener =
         object : InputListener {
@@ -199,396 +141,324 @@ private class PhoneOfflineMapsforgeView(
 
             override fun onZoomEvent() = Unit
         }
+    private val mapViewLayoutListener =
+        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onMapViewLifecycleChanged() }
+    private val mapViewAttachListener =
+        object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "mapview_attached",
+                    detail = "mapView=${System.identityHashCode(mapView)}",
+                )
+                onMapViewLifecycleChanged()
+            }
+
+            override fun onViewDetachedFromWindow(view: View) = Unit
+        }
+
+    private var latestState: PhoneOfflineMapSurfaceState? = null
+    private var mapBounds: BoundingBox? = null
+    private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
+    private var lastHandledCameraCommandId: Long? = null
+    private var locationMarker: PhoneOfflineLocationMarker? = null
+    private var pendingLocationMarkerRemoval: PhoneOfflineLocationMarker? = null
+    private var currentLocation: PhoneMapLocation? = null
+    private var currentMapMode = PhoneMapMode()
+    private var hasLocationPermission = false
+    private var locationFollowUnavailableReported = false
+    private var renderReadyReported = false
+    private var disposed = false
 
     init {
-        rendererTrace.complete(PhoneOfflineMapRendererStage.MAP_SELECTED)
-        if (!isPhoneOfflineMapCandidate(state.map.file)) {
-            reportRendererFailure(IllegalStateException("Selected map is unavailable."))
-            postMapError(PhoneOfflineMapError.MISSING)
-        } else {
-            rendererTrace.begin(PhoneOfflineMapRendererStage.VIEW_CREATE)
-            runCatching {
-                rendererTrace.complete(PhoneOfflineMapRendererStage.VIEW_CREATE)
-                rendererTrace.begin(PhoneOfflineMapRendererStage.GRAPHICS_FACTORY)
-                AndroidGraphicFactory.createInstance(context.applicationContext)
-                rendererTrace.complete(PhoneOfflineMapRendererStage.GRAPHICS_FACTORY)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
-                val openedMapFile = MapFile(state.map.file)
-                mapFile = openedMapFile
-                val bounds = openedMapFile.boundingBox()
-                mapBounds = bounds
-                val cameraInsideBounds = bounds.contains(state.initialCamera.latitude, state.initialCamera.longitude)
-                rendererTrace.mapFileOpened(
-                    boundsAvailable = true,
-                    cameraInsideBounds = cameraInsideBounds,
-                )
-                rendererTrace.complete(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
-                val mapView =
-                    PhoneOfflineMapsforgeMapView(
-                        context = context,
-                        onAndroidDrawObserved = { post { if (!disposed) publishRuntimeDiagnostics() } },
-                    ).apply {
-                        isClickable = true
-                        isFocusable = true
-                        isFocusableInTouchMode = true
-                        setBuiltInZoomControls(false)
-                        mapScaleBar.isVisible = false
-                        setZoomLevelMin(openedMapFile.mapFileInfo.zoomLevelMin)
-                        setZoomLevelMax(openedMapFile.mapFileInfo.zoomLevelMax)
-                        model.mapViewPosition.setMapPosition(
-                            state.initialCamera.forMap(openedMapFile).toMapsforgeMapPosition(),
-                            false,
-                        )
-                    }
-                this.mapView = mapView
-                mapView.addOnLayoutChangeListener(runtimeLayoutChangeListener)
-                mapView.addOnAttachStateChangeListener(runtimeAttachStateChangeListener)
-                rendererTrace.complete(PhoneOfflineMapRendererStage.MAPVIEW_CREATE)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
-                val tileCache =
-                    AndroidUtil.createTileCache(
-                        context.applicationContext,
-                        PHONE_OFFLINE_TILE_CACHE_ID,
-                        PHONE_OFFLINE_TILE_CACHE_CAPACITY,
-                        1f,
-                        mapView.model.frameBufferModel.overdrawFactor,
-                        false,
-                    )
-                this.tileCache = tileCache
-                rendererTrace.tileCacheCreated()
-                rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
-                val tileLayer =
-                    PhoneOfflineTileRendererLayer(
-                        tileCache,
-                        openedMapFile,
-                        mapView.model.mapViewPosition,
-                        AndroidGraphicFactory.INSTANCE,
-                        onDrawObserved = { post { if (!disposed) publishRuntimeDiagnostics() } },
-                        onFirstVisibleBaseTile = { post { if (!disposed) publishRuntimeDiagnostics() } },
-                    )
-                this.tileLayer = tileLayer
-                rendererTrace.complete(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
-                applyTheme(state.themeConfig)
-                applyCompassPresentation(state.compassPresentation)
-                applyCameraCommand(state.cameraCommand)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.LAYER_ATTACH)
-                mapView.layerManager.layers.add(tileLayer)
-                rendererTrace.tileLayerAttached()
-                rendererTrace.complete(PhoneOfflineMapRendererStage.LAYER_ATTACH)
-
-                overlayLayers =
-                    PhoneOfflineMapsforgeOverlayLayers(
-                        mapView = mapView,
-                        tileLayer = tileLayer,
-                        onPoiSelected = { selected ->
-                            post { if (!disposed) callbacks.onPoiSelected(selected) }
-                        },
-                    )
-                mapView.model.mapViewPosition.addObserver(cameraObserver)
-                mapView.addInputListener(inputListener)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.VIEW_ATTACH)
-                addView(
-                    mapView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ),
-                )
-                rendererTrace.viewAttached()
-                rendererTrace.complete(PhoneOfflineMapRendererStage.VIEW_ATTACH)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
-                updateOverlays(gpxOverlays = state.gpxOverlays, pois = state.pois)
-                updateLocation(
-                    location = state.location,
-                    mapMode = state.mapMode,
-                    hasLocationPermission = state.hasLocationPermission,
-                )
-                post {
-                    if (!disposed) {
-                        appliedCompassPresentation = null
-                        applyCompassPresentation(state.compassPresentation)
-                    }
-                }
-                rendererTrace.complete(PhoneOfflineMapRendererStage.OVERLAYS_ATTACH)
-
-                rendererTrace.begin(PhoneOfflineMapRendererStage.FIRST_CAMERA)
-                rendererTrace.firstCameraPublished(publishCamera())
-                rendererTrace.complete(PhoneOfflineMapRendererStage.FIRST_CAMERA)
-                post { publishCamera() }
-                val attempt = rendererTrace.ready()
-                PhoneOfflineMapRendererDiagnostics.record(attempt)
-                publishRuntimeDiagnostics()
-                Log.i(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
-            }.onFailure { error ->
-                reportRendererFailure(error)
-                dispose()
-                postMapError(PhoneOfflineMapError.INVALID)
+        PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+            event = "mapview_created",
+            detail = "mapView=${System.identityHashCode(mapView)}",
+        )
+        mapView.addOnLayoutChangeListener(mapViewLayoutListener)
+        mapView.addOnAttachStateChangeListener(mapViewAttachListener)
+        mapView.onFocusChangeListener = View.OnFocusChangeListener { _, _ -> onMapViewLifecycleChanged() }
+        mapView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_POINTER_DOWN,
+                MotionEvent.ACTION_MOVE,
+                -> PhoneMapLayerMutationCoordinator.setGestureActive(mapView, true)
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
             }
+            false
         }
+        mapView.model.mapViewPosition.addObserver(cameraObserver)
+        mapView.addInputListener(inputListener)
+        addView(
+            mapView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
+
+    fun render(state: PhoneOfflineMapSurfaceState) {
+        if (disposed) return
+        latestState = state
+        workGate.requestWork()
+        schedulePendingRendererWorkIfReady()
     }
 
     fun dispose() {
         if (disposed) return
         disposed = true
-        val activeMapView = mapView
-        activeMapView?.model?.mapViewPosition?.removeObserver(cameraObserver)
-        activeMapView?.removeInputListener(inputListener)
-        activeMapView?.removeOnLayoutChangeListener(runtimeLayoutChangeListener)
-        activeMapView?.removeOnAttachStateChangeListener(runtimeAttachStateChangeListener)
-        overlayLayers?.dispose()
-        overlayLayers = null
-        locationMarker?.let { marker ->
-            activeMapView?.layerManager?.layers?.remove(marker)
-            marker.onDestroy()
-        }
-        locationMarker = null
-        tileLayer?.let { layer ->
-            activeMapView?.layerManager?.layers?.remove(layer)
-            runCatching { layer.onDestroy() }
-        } ?: runCatching { mapFile?.close() }
-        tileLayer = null
-        mapFile = null
-        mapBounds = null
-        runCatching { tileCache?.destroy() }
-        tileCache = null
-        runCatching { activeMapView?.destroyAll() }
-        mapView = null
+        mapView.model.mapViewPosition.removeObserver(cameraObserver)
+        mapView.removeInputListener(inputListener)
+        mapView.removeOnLayoutChangeListener(mapViewLayoutListener)
+        mapView.removeOnAttachStateChangeListener(mapViewAttachListener)
+        mapView.onFocusChangeListener = null
+        overlayLayers.dispose()
+        disposeLocationMarkers()
+        renderer.destroy()
+        runCatching { mapView.destroyAll() }
         removeAllViews()
     }
 
-    fun applyTheme(config: PhoneOfflineThemeConfig) {
-        val resolved = PhoneOfflineThemeCatalog.resolve(config.themeId, config.styleId)
-        if (resolved == appliedThemeConfig) return
-        val layer = tileLayer ?: return
-        tileCache?.purge()
-        rendererTrace.begin(PhoneOfflineMapRendererStage.THEME_CREATE)
-        val renderTheme =
-            PhoneOfflineThemeCatalog.renderTheme(
-                config = resolved,
-                context = context,
-                onResourceProviderFailure = rendererTrace::resourceProviderFailed,
+    private fun onMapViewLifecycleChanged() {
+        if (disposed) return
+        val readiness = currentReadiness()
+        if (readiness.isReady && !renderReadyReported) {
+            renderReadyReported = true
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "mapview_render_ready",
+                detail =
+                    "mapView=${System.identityHashCode(mapView)} " +
+                        "size=${mapView.width}x${mapView.height}",
             )
-        rendererTrace.themeCreated(resolved, renderTheme.fallbackUsed)
-        rendererTrace.complete(PhoneOfflineMapRendererStage.THEME_CREATE)
-        rendererTrace.begin(PhoneOfflineMapRendererStage.THEME_APPLY)
-        runCatching {
-            layer.setXmlRenderTheme(renderTheme.theme)
-        }.onFailure { error ->
-            Log.e(
-                PHONE_OFFLINE_MAP_TAG,
-                "Unable to apply offline theme ${resolved.themeId}/${resolved.styleId}; using Mapsforge default.",
-                error,
-            )
-            layer.setXmlRenderTheme(MapsforgeThemes.DEFAULT)
-            rendererTrace.themeApplied(fallbackUsed = true)
-        }.onSuccess {
-            rendererTrace.themeApplied(fallbackUsed = renderTheme.fallbackUsed)
         }
-        rendererTrace.complete(PhoneOfflineMapRendererStage.THEME_APPLY)
-        mapView?.layerManager?.redrawLayers()
-        appliedThemeConfig = resolved
+        schedulePendingRendererWorkIfReady()
+        publishRuntimeDiagnostics()
     }
 
-    fun applyCompassPresentation(presentation: PhoneMapCompassPresentation) {
+    private fun schedulePendingRendererWorkIfReady() {
+        val generation = workGate.scheduleIfReady(currentReadiness()) ?: return
+        PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+            event = "renderer_work_scheduled",
+            detail =
+                "mapView=${System.identityHashCode(mapView)} generation=$generation " +
+                    "delayMs=$PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS",
+        )
+        mapView.postDelayed(
+            {
+                if (disposed || !workGate.consumeIfCurrent(generation, currentReadiness())) return@postDelayed
+                latestState?.let(::applyRendererState)
+            },
+            PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS,
+        )
+    }
+
+    private fun applyRendererState(state: PhoneOfflineMapSurfaceState) {
+        renderer.updateBaseLayer(state.map, state.themeConfig, state.initialCamera)
+        applyCompassPresentation(state.compassPresentation)
+        updateOverlays(state.gpxOverlays, state.pois)
+        updateLocation(state.location, state.mapMode, state.hasLocationPermission)
+        applyCameraCommand(state.cameraCommand)
+        publishCamera()
+        publishRuntimeDiagnostics()
+    }
+
+    private fun applyCompassPresentation(presentation: PhoneMapCompassPresentation) {
         if (presentation == appliedCompassPresentation) return
-        val activeMapView = mapView ?: return
-        val rotationDegrees = mapsforgeRotationDegreesFor(presentation.mapBearingDegrees)
+        val degrees = mapsforgeRotationDegreesFor(presentation.mapBearingDegrees)
         val rotation =
-            if (rotationDegrees == 0f) {
+            if (degrees == 0f) {
                 Rotation.NULL_ROTATION
             } else {
-                Rotation(rotationDegrees, activeMapView.mapViewCenterX, activeMapView.mapViewCenterY)
+                Rotation(degrees, mapView.mapViewCenterX, mapView.mapViewCenterY)
             }
-        activeMapView.rotate(rotation)
+        mapView.rotate(rotation)
         locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
-        activeMapView.layerManager.redrawLayers()
+        PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
         appliedCompassPresentation = presentation
     }
 
-    fun updateLocation(
+    private fun updateLocation(
         location: PhoneMapLocation?,
         mapMode: PhoneMapMode,
         hasLocationPermission: Boolean,
     ) {
-        val activeMapView = mapView ?: return
         currentLocation = location
         currentMapMode = mapMode
         this.hasLocationPermission = hasLocationPermission
-        val currentLocation =
-            location ?: run {
-                locationMarker?.let { marker ->
-                    activeMapView.layerManager.layers.remove(marker)
-                    marker.onDestroy()
-                    activeMapView.layerManager.redrawLayers()
-                }
-                locationMarker = null
-                locationFollowUnavailableReported = false
-                publishRuntimeDiagnostics()
-                return
-            }
-        val latLong = LatLong(currentLocation.latitude, currentLocation.longitude)
-        var markerChanged = false
-        val marker =
-            locationMarker ?: PhoneOfflineLocationMarker(latLong).also { created ->
-                locationMarker = created
-                activeMapView.layerManager.layers.add(created)
-                markerChanged = true
-            }
-        if (marker.latLong != latLong) {
-            marker.latLong = latLong
-            markerChanged = true
+        val current = location
+        if (current == null) {
+            removeLocationMarker()
+            locationFollowUnavailableReported = false
+            publishRuntimeDiagnostics()
+            return
         }
-        marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
-        val followDecision =
-            phoneOfflineLocationFollowDecision(
-                location = currentLocation,
-                mapBounds = mapBounds,
-                followMode = mapMode.follow,
-            )
-        if (followDecision.shouldCenterOnLocation && activeMapView.model.mapViewPosition.center != latLong) {
-            activeMapView.setCenter(latLong)
+        val latLong = LatLong(current.latitude, current.longitude)
+        val followDecision = phoneOfflineLocationFollowDecision(current, mapBounds, mapMode.follow)
+        PhoneMapLayerMutationCoordinator.mutateLayers(mapView, LOCATION_MUTATION_KEY) { layers ->
+            pendingLocationMarkerRemoval?.let { previous ->
+                layers.remove(previous)
+                previous.onDestroy()
+                pendingLocationMarkerRemoval = null
+            }
+            val marker =
+                locationMarker ?: PhoneOfflineLocationMarker(latLong).also { created ->
+                    locationMarker = created
+                    layers.add(created)
+                }
+            if (marker.latLong != latLong) marker.latLong = latLong
+            marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
+        }
+        if (followDecision.shouldCenterOnLocation && mapView.model.mapViewPosition.center != latLong) {
+            mapView.setCenter(latLong)
         }
         if (followDecision.locationInsideMapBounds == false && mapMode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
             reportLocationFollowUnavailableOnce()
         } else {
             locationFollowUnavailableReported = false
         }
-        if (markerChanged) activeMapView.layerManager.redrawLayers()
         publishRuntimeDiagnostics()
     }
 
-    fun applyCameraCommand(command: PhoneMapCameraCommand?) {
+    private fun applyLocationFromLatestState() {
+        latestState?.let { state ->
+            updateLocation(state.location, state.mapMode, state.hasLocationPermission)
+        }
+    }
+
+    private fun removeLocationMarker() {
+        val marker = locationMarker ?: return
+        locationMarker = null
+        pendingLocationMarkerRemoval = marker
+        val remove = { layers: Layers ->
+            if (pendingLocationMarkerRemoval === marker) {
+                layers.remove(marker)
+                marker.onDestroy()
+                pendingLocationMarkerRemoval = null
+            }
+        }
+        PhoneMapLayerMutationCoordinator.mutateLayers(mapView, LOCATION_MUTATION_KEY, remove)
+    }
+
+    private fun disposeLocationMarkers() {
+        val markers = listOfNotNull(locationMarker, pendingLocationMarkerRemoval).distinct()
+        if (markers.isEmpty()) return
+        locationMarker = null
+        pendingLocationMarkerRemoval = null
+        PhoneMapLayerMutationCoordinator.mutateLayersImmediately(mapView) { layers ->
+            markers.forEach { marker ->
+                layers.remove(marker)
+                marker.onDestroy()
+            }
+        }
+    }
+
+    private fun applyCameraCommand(command: PhoneMapCameraCommand?) {
         if (command == null || command.id == lastHandledCameraCommandId) return
-        val position = mapView?.model?.mapViewPosition ?: return
         when (command.zoomDelta) {
-            1 -> position.zoomIn(true)
-            -1 -> position.zoomOut(true)
+            1 -> mapView.model.mapViewPosition.zoomIn(true)
+            -1 -> mapView.model.mapViewPosition.zoomOut(true)
         }
         lastHandledCameraCommandId = command.id
         post { if (!disposed) callbacks.onCameraCommandHandled(command.id) }
     }
 
-    fun updateOverlays(
+    private fun updateOverlays(
         gpxOverlays: List<PhoneMapGpxOverlay>,
         pois: List<PhoneMapPoi>,
     ) {
-        if (disposed || (this.gpxOverlays == gpxOverlays && this.pois == pois)) return
-        this.gpxOverlays = gpxOverlays
-        this.pois = pois
-        overlayLayers?.update(gpxOverlays = gpxOverlays, pois = pois)
+        overlayLayers.update(gpxOverlays, pois)
     }
 
     private fun publishCamera(): Boolean {
-        var published = false
-        if (!disposed) {
-            mapView?.model?.mapViewPosition?.mapPosition?.let { position ->
-                runCatching {
-                    PhoneMapCameraSnapshot(
-                        latitude = position.latLong.latitude,
-                        longitude = position.latLong.longitude,
-                        zoom = position.zoomLevel.toDouble(),
-                    )
-                }.getOrNull()?.let { snapshot ->
-                    published = true
-                    post { if (!disposed) callbacks.onCameraChanged(snapshot) }
-                }
-                mapView?.phoneMapViewportOrNull()?.let { viewport ->
-                    post { if (!disposed) callbacks.onViewportChanged(viewport) }
-                }
+        val snapshot =
+            if (disposed) {
+                null
+            } else {
+                mapView.model.mapViewPosition.mapPosition
+                    .toPhoneMapCameraSnapshotOrNull()
+            }
+        snapshot?.let { camera ->
+            post { if (!disposed) callbacks.onCameraChanged(camera) }
+            mapView.phoneMapViewportOrNull()?.let { viewport ->
+                post { if (!disposed) callbacks.onViewportChanged(viewport) }
             }
         }
-        publishRuntimeDiagnostics()
-        return published
+        return snapshot != null
     }
 
     private fun reportLocationFollowUnavailableOnce() {
         if (locationFollowUnavailableReported) return
         locationFollowUnavailableReported = true
-        post { if (!disposed) callbacks.onLocationFollowUnavailable() }
-    }
-
-    private fun requestRedrawAfterLayout(activeMapView: PhoneOfflineMapsforgeMapView) {
-        activeMapView.post {
-            if (disposed || mapView !== activeMapView) return@post
-            val nextRedrawState =
-                redrawState.requestForLayout(
-                    rendererAlive = true,
-                    attached = activeMapView.isAttachedToWindow,
-                    width = activeMapView.width,
-                    height = activeMapView.height,
-                )
-            if (nextRedrawState == redrawState) return@post
-            redrawState = nextRedrawState
-            activeMapView.layerManager.redrawLayers()
-            publishRuntimeDiagnostics()
-        }
+        post { callbacks.onLocationFollowUnavailable() }
     }
 
     private fun publishRuntimeDiagnostics() {
-        val activeMapView = mapView ?: return
-        val location = currentLocation
-        val layers = activeMapView.layerManager.layers
-        val activeTileLayer = tileLayer
-        val frameBuffer = runCatching { activeMapView.frameBuffer }.getOrNull()
-        val frameBufferDimension = runCatching { frameBuffer?.dimension }.getOrNull()
+        if (disposed) return
+        val rendererSnapshot = renderer.runtimeSnapshot()
+        val frameBuffer = runCatching { mapView.frameBuffer }.getOrNull()
+        val dimensions = runCatching { frameBuffer?.dimension }.getOrNull()
+        val zoom =
+            mapView.model.mapViewPosition.zoomLevel
+                .toInt()
         PhoneOfflineMapRendererDiagnostics.recordRuntime(
             PhoneOfflineMapRuntimeDiagnostics(
-                displayName = rendererTrace.mapDisplayName,
-                mapViewAttached = activeMapView.isAttachedToWindow,
-                mapViewWidth = activeMapView.width,
-                mapViewHeight = activeMapView.height,
-                firstPostLayoutRedrawRequested = redrawState.bootstrapRedrawRequested,
-                redrawRequestCount = redrawState.redrawRequestCount,
-                androidMapViewDrawObserved = activeMapView.hasAndroidDrawObserved,
-                tileLayerDrawObserved = activeTileLayer?.hasDrawObserved == true,
-                firstVisibleBaseTileObserved = activeTileLayer?.hasFirstVisibleBaseTileObserved == true,
-                layerCount = layers.size(),
-                tileLayerPresent = activeTileLayer?.let(layers::contains) == true,
-                tileLayerVisible = activeTileLayer?.isVisible,
-                frameBufferDimensionAvailable = frameBufferDimension != null,
-                frameBufferWidth = frameBufferDimension?.width,
-                frameBufferHeight = frameBufferDimension?.height,
+                displayName = rendererSnapshot.displayName ?: latestState?.map?.displayName ?: "unknown",
+                rendererId = rendererSnapshot.rendererId,
+                mapViewId = System.identityHashCode(mapView),
+                layerId = rendererSnapshot.layerId,
+                cacheId = rendererSnapshot.cacheId,
+                mapViewAttached = mapView.isAttachedToWindow,
+                mapViewHasWindowFocus = mapView.hasWindowFocus(),
+                mapViewWidth = mapView.width,
+                mapViewHeight = mapView.height,
+                mapViewRenderReady = currentReadiness().isReady,
+                androidMapViewDrawObserved = mapView.hasAndroidDrawObserved,
+                tileLayerDrawObserved = rendererSnapshot.tileLayerDrawObserved,
+                firstVisibleBaseTileObserved = rendererSnapshot.firstVisibleBaseTileObserved,
+                layerCount = mapView.layerManager.layers.size(),
+                tileLayerPresent = rendererSnapshot.layerPresentIn(mapView.layerManager.layers),
+                tileLayerVisible = renderer.currentBaseLayer?.isVisible,
+                frameBufferDimensionAvailable = dimensions != null,
+                frameBufferWidth = dimensions?.width,
+                frameBufferHeight = dimensions?.height,
                 frameBufferDrawingBitmapReady =
-                    runCatching { frameBuffer?.drawingBitmap != null }.getOrNull(),
-                zoom =
-                    activeMapView.model.mapViewPosition.zoomLevel
-                        .toInt(),
-                cameraInsideMapBounds = activeMapView.currentCameraInside(mapBounds),
+                    runCatching { frameBuffer?.drawingBitmap != null }
+                        .getOrNull(),
+                zoom = zoom,
+                cameraInsideMapBounds = mapView.currentCameraInside(mapBounds),
+                visibleTileCount = rendererSnapshot.coverage.visibleTileCount,
+                drawableVisibleTileCount = rendererSnapshot.coverage.drawableVisibleTiles,
+                parentFallbackTileCount = rendererSnapshot.coverage.parentFallbackTiles,
+                pendingTileJobCount = rendererSnapshot.coverage.pendingJobCount,
                 locationPermissionGranted = hasLocationPermission,
-                locationAvailable = location != null,
-                locationAgeMillis = location?.ageMillis(android.os.SystemClock.elapsedRealtime()),
-                locationAccuracyMeters = location?.accuracyMeters,
-                locationInsideMapBounds =
-                    location?.let { fix -> mapBounds?.contains(fix.latitude, fix.longitude) },
+                locationAvailable = currentLocation != null,
+                locationAgeMillis = currentLocation?.ageMillis(android.os.SystemClock.elapsedRealtime()),
+                locationAccuracyMeters = currentLocation?.accuracyMeters,
+                locationInsideMapBounds = currentLocation?.let { mapBounds?.contains(it.latitude, it.longitude) },
                 followMode = currentMapMode.follow,
                 orientation = currentMapMode.orientation,
-                locationMarkerAttached =
-                    locationMarker?.let { marker -> activeMapView.layerManager.layers.contains(marker) } == true,
+                locationMarkerAttached = locationMarker?.let(mapView.layerManager.layers::contains) == true,
             ),
         )
     }
 
-    private fun postMapError(error: PhoneOfflineMapError) {
-        post { callbacks.onMapError(error) }
-    }
+    private fun currentReadiness(): PhoneMapViewRenderReadiness =
+        PhoneMapViewRenderReadiness(
+            attachedToWindow = mapView.isAttachedToWindow,
+            width = mapView.width,
+            height = mapView.height,
+            hasWindowFocus = mapView.hasWindowFocus(),
+        )
 
-    private fun reportRendererFailure(error: Throwable) {
-        val attempt = rendererTrace.failed(error)
-        PhoneOfflineMapRendererDiagnostics.record(attempt)
-        Log.e(PhoneOfflineMapRendererDiagnostics.TAG, attempt.toCaptureLine())
+    private companion object {
+        const val LOCATION_MUTATION_KEY = "phone_mapsforge_location"
     }
 }
 
-/** Captures Android View traversal separately from Mapsforge layer rendering. */
+/** Captures Android traversal separately from Mapsforge base-layer drawing. */
 private class PhoneOfflineMapsforgeMapView(
     context: Context,
     private val onAndroidDrawObserved: () -> Unit,
@@ -604,97 +474,46 @@ private class PhoneOfflineMapsforgeMapView(
     }
 }
 
-/** Minimal phone adaptation of the Wear first-visible-tile seam, without its telemetry framework. */
-private class PhoneOfflineTileRendererLayer(
-    tileCache: TileCache,
-    mapFile: MapFile,
-    mapViewPosition: org.mapsforge.map.model.MapViewPosition,
-    graphicFactory: org.mapsforge.core.graphics.GraphicFactory,
-    private val onDrawObserved: () -> Unit,
-    private val onFirstVisibleBaseTile: () -> Unit,
-) : TileRendererLayer(
-        tileCache,
-        mapFile,
-        mapViewPosition,
-        false,
-        true,
-        false,
-        graphicFactory,
-        null,
-    ) {
-    private val drawObserved = AtomicBoolean(false)
-    private val firstVisibleBaseTileObserved = AtomicBoolean(false)
-
-    val hasDrawObserved: Boolean
-        get() = drawObserved.get()
-
-    val hasFirstVisibleBaseTileObserved: Boolean
-        get() = firstVisibleBaseTileObserved.get()
-
-    override fun draw(
-        boundingBox: BoundingBox,
-        zoomLevel: Byte,
-        canvas: org.mapsforge.core.graphics.Canvas,
-        topLeftPoint: Point,
-        rotation: Rotation,
-    ) {
-        if (drawObserved.compareAndSet(false, true)) onDrawObserved()
-        super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
-        if (
-            hasCachedVisibleBaseTile(boundingBox, zoomLevel) &&
-            firstVisibleBaseTileObserved.compareAndSet(false, true)
-        ) {
-            onFirstVisibleBaseTile()
-        }
-    }
-
-    private fun hasCachedVisibleBaseTile(
-        boundingBox: BoundingBox,
-        zoomLevel: Byte,
-    ): Boolean =
-        runCatching {
-            val tileSize = displayModel?.tileSize ?: return@runCatching false
-            if (renderThemeFuture == null) return@runCatching false
-            LayerUtil.getTiles(boundingBox, zoomLevel, tileSize).any { tile ->
-                tileCache.containsKey(createJob(tile))
-            }
-        }.getOrDefault(false)
-}
-
 private fun MapView.currentCameraInside(bounds: BoundingBox?): Boolean? = bounds?.contains(model.mapViewPosition.center)
 
-/** Keeps Mapsforge overlay layers independent from the base tile renderer and theme lifecycle. */
+/** Keeps semantic GPX and POI overlays above the persistent base renderer layer. */
 private class PhoneOfflineMapsforgeOverlayLayers(
     private val mapView: MapView,
-    private val tileLayer: TileRendererLayer,
+    private val baseLayer: () -> TileRendererLayer?,
     private val onPoiSelected: (PhoneMapPoi) -> Unit,
 ) {
     private val gpxLayersById = mutableMapOf<String, MutableList<Polyline>>()
     private val poiMarkersById = mutableMapOf<String, PhoneOfflinePoiMarker>()
+    private var appliedGpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
+    private var appliedPois: List<PhoneMapPoi> = emptyList()
 
     fun update(
         gpxOverlays: List<PhoneMapGpxOverlay>,
         pois: List<PhoneMapPoi>,
     ) {
-        val layers = mapView.layerManager.layers
-        syncGpxLayers(layers, gpxOverlays)
-        syncPoiMarkers(layers, pois)
-        mapView.layerManager.redrawLayers()
+        if (appliedGpxOverlays == gpxOverlays && appliedPois == pois) return
+        appliedGpxOverlays = gpxOverlays
+        appliedPois = pois
+        PhoneMapLayerMutationCoordinator.mutateLayers(mapView, OVERLAY_MUTATION_KEY) { layers ->
+            syncGpxLayers(layers, gpxOverlays)
+            syncPoiMarkers(layers, pois)
+        }
     }
 
     fun dispose() {
-        val layers = mapView.layerManager.layers
-        gpxLayersById.values.flatten().forEach { layer ->
-            layers.remove(layer)
-            layer.latLongs.clear()
+        PhoneMapLayerMutationCoordinator.mutateLayersImmediately(mapView) { layers ->
+            gpxLayersById.values.flatten().forEach { layer ->
+                layers.remove(layer)
+                layer.latLongs.clear()
+            }
+            gpxLayersById.clear()
+            poiMarkersById.values.forEach { marker -> removePoiMarker(layers, marker) }
+            poiMarkersById.clear()
         }
-        gpxLayersById.clear()
-        poiMarkersById.values.forEach { marker -> removePoiMarker(layers, marker) }
-        poiMarkersById.clear()
     }
 
     private fun syncGpxLayers(
-        layers: org.mapsforge.map.layer.Layers,
+        layers: Layers,
         gpxOverlays: List<PhoneMapGpxOverlay>,
     ) {
         val overlaysById = gpxOverlays.associateBy(PhoneMapGpxOverlay::id)
@@ -712,13 +531,9 @@ private class PhoneOfflineMapsforgeOverlayLayers(
                 layers.remove(layer)
                 layer.latLongs.clear()
             }
-            while (current.size < segments.size) {
-                current += Polyline(createTrackPaint(), AndroidGraphicFactory.INSTANCE)
-            }
+            while (current.size < segments.size) current += Polyline(createTrackPaint(), AndroidGraphicFactory.INSTANCE)
             current.forEachIndexed { index, layer ->
-                if (!layers.contains(layer)) {
-                    layers.add(gpxLayerInsertionIndex(layers), layer)
-                }
+                if (!layers.contains(layer)) layers.add(gpxLayerInsertionIndex(layers), layer)
                 val points = segments[index]
                 if (layer.latLongs != points) {
                     layer.latLongs.clear()
@@ -729,7 +544,7 @@ private class PhoneOfflineMapsforgeOverlayLayers(
     }
 
     private fun syncPoiMarkers(
-        layers: org.mapsforge.map.layer.Layers,
+        layers: Layers,
         pois: List<PhoneMapPoi>,
     ) {
         val poisById = pois.associateBy(PhoneMapPoi::id)
@@ -750,16 +565,20 @@ private class PhoneOfflineMapsforgeOverlayLayers(
     }
 
     private fun removePoiMarker(
-        layers: org.mapsforge.map.layer.Layers,
+        layers: Layers,
         marker: PhoneOfflinePoiMarker,
     ) {
         layers.remove(marker)
         marker.onDestroy()
     }
 
-    private fun gpxLayerInsertionIndex(layers: org.mapsforge.map.layer.Layers): Int {
-        val tileIndex = layers.indexOf(tileLayer)
-        return if (tileIndex >= 0) tileIndex + 1 else layers.size()
+    private fun gpxLayerInsertionIndex(layers: Layers): Int {
+        val baseIndex = baseLayer()?.let(layers::indexOf) ?: -1
+        return if (baseIndex >= 0) baseIndex + 1 else layers.size()
+    }
+
+    private companion object {
+        const val OVERLAY_MUTATION_KEY = "phone_mapsforge_overlays"
     }
 }
 
@@ -804,7 +623,8 @@ private class PhoneOfflinePoiMarker(
 }
 
 private fun PhoneMapPoi.toMapsforgeMarkerBitmap(): AndroidBitmap {
-    val bitmap = Bitmap.createBitmap(POI_MARKER_SIZE_PX, POI_MARKER_SIZE_PX, Bitmap.Config.ARGB_8888)
+    val bitmap =
+        Bitmap.createBitmap(POI_MARKER_SIZE_PX, POI_MARKER_SIZE_PX, Bitmap.Config.ARGB_8888)
     val center = POI_MARKER_SIZE_PX / 2f
     Canvas(bitmap).apply {
         drawCircle(
@@ -829,24 +649,12 @@ private fun PhoneMapPoi.toMapsforgeMarkerBitmap(): AndroidBitmap {
 
 internal fun PoiType.mapsforgeMarkerColor(): Int =
     when (this) {
-        PoiType.PEAK,
-        PoiType.VIEWPOINT,
-        -> Color.rgb(121, 85, 72)
+        PoiType.PEAK, PoiType.VIEWPOINT -> Color.rgb(121, 85, 72)
         PoiType.WATER -> Color.rgb(25, 118, 210)
-        PoiType.HUT,
-        PoiType.CAMP,
-        -> Color.rgb(46, 125, 50)
-        PoiType.FOOD,
-        PoiType.SHOP,
-        -> Color.rgb(239, 108, 0)
-        PoiType.TOILET,
-        PoiType.TRANSPORT,
-        PoiType.PARKING,
-        -> Color.rgb(97, 97, 97)
-        PoiType.BIKE,
-        PoiType.GENERIC,
-        PoiType.CUSTOM,
-        -> Color.rgb(123, 31, 162)
+        PoiType.HUT, PoiType.CAMP -> Color.rgb(46, 125, 50)
+        PoiType.FOOD, PoiType.SHOP -> Color.rgb(239, 108, 0)
+        PoiType.TOILET, PoiType.TRANSPORT, PoiType.PARKING -> Color.rgb(97, 97, 97)
+        PoiType.BIKE, PoiType.GENERIC, PoiType.CUSTOM -> Color.rgb(123, 31, 162)
     }
 
 private fun MapView.phoneMapViewportOrNull(): PhoneMapViewport? =
@@ -856,33 +664,23 @@ private fun MapView.phoneMapViewportOrNull(): PhoneMapViewport? =
     )
 
 private fun createTrackPaint(): org.mapsforge.core.graphics.Paint =
-    AndroidGraphicFactory.INSTANCE
-        .createPaint()
-        .apply {
-            setColor(Color.rgb(0, 102, 204))
-            setStrokeWidth(GPX_TRACK_STROKE_WIDTH_PX)
-            setStyle(org.mapsforge.core.graphics.Style.STROKE)
-        }
+    AndroidGraphicFactory.INSTANCE.createPaint().apply {
+        setColor(Color.rgb(0, 102, 204))
+        setStrokeWidth(GPX_TRACK_STROKE_WIDTH_PX)
+        setStyle(org.mapsforge.core.graphics.Style.STROKE)
+    }
+
+private fun MapPosition.toPhoneMapCameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
+    runCatching {
+        PhoneMapCameraSnapshot(
+            latitude = latLong.latitude,
+            longitude = latLong.longitude,
+            zoom = zoomLevel.toDouble(),
+        )
+    }.getOrNull()
 
 private const val GPX_TRACK_STROKE_WIDTH_PX = 5f
 private const val MINIMUM_RENDERABLE_SEGMENT_POINTS = 2
 private const val POI_MARKER_RADIUS_PX = 8f
 private const val POI_MARKER_SIZE_PX = 20
 private const val POI_MARKER_STROKE_WIDTH_PX = 2f
-
-private fun PhoneMapCameraSnapshot.toMapsforgeMapPosition(): MapPosition =
-    MapPosition(
-        LatLong(latitude, longitude),
-        zoom.toInt().coerceIn(0, Byte.MAX_VALUE.toInt()).toByte(),
-    )
-
-private fun PhoneMapCameraSnapshot.forMap(mapFile: MapFile): PhoneMapCameraSnapshot {
-    val bounds = mapFile.boundingBox()
-    if (bounds.contains(latitude, longitude)) return this
-    val start = mapFile.startPosition() ?: bounds.centerPoint
-    return PhoneMapCameraSnapshot(
-        latitude = start.latitude,
-        longitude = start.longitude,
-        zoom = mapFile.startZoomLevel()?.toDouble() ?: mapFile.mapFileInfo.zoomLevelMin.toDouble(),
-    )
-}

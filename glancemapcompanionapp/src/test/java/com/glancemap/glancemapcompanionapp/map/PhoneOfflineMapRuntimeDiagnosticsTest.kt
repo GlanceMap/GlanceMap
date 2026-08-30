@@ -102,6 +102,7 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
             ).toReportSection()
 
         assertTrue(notDrawn.contains("Android MapView draw observed: false"))
+        assertTrue(notDrawn.contains("MapView render ready: true"))
         assertTrue(notDrawn.contains("Tile layer draw observed: false"))
         assertTrue(notDrawn.contains("First visible base tile: false"))
         assertTrue(notDrawn.contains("Location available: false"))
@@ -111,6 +112,7 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
         assertTrue(tileLayerDrawnWithoutVisibleTile.contains("First visible base tile: false"))
         assertTrue(tileLayerDrawnWithoutVisibleTile.contains("Location inside map bounds: false"))
         assertTrue(visibleTile.contains("First visible base tile: true"))
+        assertTrue(visibleTile.contains("Drawable visible tiles: 2"))
         assertTrue(visibleTile.contains("Location inside map bounds: true"))
         assertFalse(visibleTile.contains("47.5"))
         assertFalse(visibleTile.contains("11.5"))
@@ -124,11 +126,15 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
     ): PhoneOfflineMapRuntimeDiagnostics =
         PhoneOfflineMapRuntimeDiagnostics(
             displayName = "alps.map",
+            rendererId = 11,
+            mapViewId = 22,
+            layerId = 33,
+            cacheId = "phone-offline-test",
             mapViewAttached = true,
+            mapViewHasWindowFocus = true,
             mapViewWidth = 1080,
             mapViewHeight = 1800,
-            firstPostLayoutRedrawRequested = true,
-            redrawRequestCount = 1,
+            mapViewRenderReady = true,
             androidMapViewDrawObserved = androidDrawObserved,
             tileLayerDrawObserved = tileLayerDrawObserved,
             firstVisibleBaseTileObserved = firstVisibleTile,
@@ -141,6 +147,10 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
             frameBufferDrawingBitmapReady = true,
             zoom = 14,
             cameraInsideMapBounds = true,
+            visibleTileCount = 6,
+            drawableVisibleTileCount = 2,
+            parentFallbackTileCount = 1,
+            pendingTileJobCount = 3,
             locationPermissionGranted = true,
             locationAvailable = location != null,
             locationAgeMillis = location?.ageMillis(nowMs = 50_000L),

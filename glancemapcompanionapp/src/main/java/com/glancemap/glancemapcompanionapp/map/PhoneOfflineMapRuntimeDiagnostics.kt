@@ -6,11 +6,15 @@ import kotlin.math.roundToInt
 /** Runtime-only facts for explicit debug capture; this deliberately contains no coordinates or paths. */
 internal data class PhoneOfflineMapRuntimeDiagnostics(
     val displayName: String,
+    val rendererId: Int,
+    val mapViewId: Int,
+    val layerId: Int?,
+    val cacheId: String?,
     val mapViewAttached: Boolean,
+    val mapViewHasWindowFocus: Boolean,
     val mapViewWidth: Int,
     val mapViewHeight: Int,
-    val firstPostLayoutRedrawRequested: Boolean,
-    val redrawRequestCount: Int,
+    val mapViewRenderReady: Boolean,
     val androidMapViewDrawObserved: Boolean,
     val tileLayerDrawObserved: Boolean,
     val firstVisibleBaseTileObserved: Boolean,
@@ -23,6 +27,10 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
     val frameBufferDrawingBitmapReady: Boolean?,
     val zoom: Int?,
     val cameraInsideMapBounds: Boolean?,
+    val visibleTileCount: Int,
+    val drawableVisibleTileCount: Int,
+    val parentFallbackTileCount: Int,
+    val pendingTileJobCount: Int,
     val locationPermissionGranted: Boolean,
     val locationAvailable: Boolean,
     val locationAgeMillis: Long?,
@@ -35,10 +43,14 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
     fun toReportSection(): String =
         buildString {
             appendLine("Offline map runtime")
+            appendLine("Renderer id: $rendererId")
+            appendLine("MapView id: $mapViewId")
+            appendLine("Base layer id: ${layerId ?: "none"}")
+            appendLine("Tile cache id: ${cacheId ?: "none"}")
             appendLine("MapView attached: $mapViewAttached")
+            appendLine("MapView window focus: $mapViewHasWindowFocus")
             appendLine("MapView size: ${mapViewWidth}x$mapViewHeight")
-            appendLine("First post-layout redraw requested: $firstPostLayoutRedrawRequested")
-            appendLine("Redraw request count: $redrawRequestCount")
+            appendLine("MapView render ready: $mapViewRenderReady")
             appendLine("Android MapView draw observed: $androidMapViewDrawObserved")
             appendLine("Tile layer draw observed: $tileLayerDrawObserved")
             appendLine("First visible base tile: $firstVisibleBaseTileObserved")
@@ -50,6 +62,10 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
             appendLine("Framebuffer drawing bitmap ready: ${frameBufferDrawingBitmapReady ?: "unknown"}")
             appendLine("Zoom: ${zoom ?: "unknown"}")
             appendLine("Camera inside map bounds: ${cameraInsideMapBounds ?: "unknown"}")
+            appendLine("Visible tiles: $visibleTileCount")
+            appendLine("Drawable visible tiles: $drawableVisibleTileCount")
+            appendLine("Parent fallback tiles: $parentFallbackTileCount")
+            appendLine("Pending tile jobs: $pendingTileJobCount")
             appendLine("Location permission: $locationPermissionGranted")
             appendLine("Location available: $locationAvailable")
             appendLine("Location age: ${locationAgeMillis.toPhoneMapLocationAgeLabel()}")
@@ -72,10 +88,7 @@ internal fun phoneOfflineLocationFollowDecision(
     mapBounds: BoundingBox?,
     followMode: PhoneMapFollowMode,
 ): PhoneOfflineLocationFollowDecision {
-    val insideBounds =
-        location?.let { fix ->
-            mapBounds?.contains(fix.latitude, fix.longitude)
-        }
+    val insideBounds = location?.let { fix -> mapBounds?.contains(fix.latitude, fix.longitude) }
     return PhoneOfflineLocationFollowDecision(
         locationInsideMapBounds = insideBounds,
         shouldCenterOnLocation = followMode == PhoneMapFollowMode.FOLLOW_LOCATION && insideBounds == true,

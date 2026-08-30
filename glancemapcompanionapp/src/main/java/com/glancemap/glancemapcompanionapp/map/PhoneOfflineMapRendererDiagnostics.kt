@@ -102,6 +102,13 @@ internal object PhoneOfflineMapRendererDiagnostics {
         if (latestAttempt.get()?.displayName == runtime.displayName) latestRuntime.set(runtime)
     }
 
+    fun recordLifecycleEvent(
+        event: String,
+        detail: String,
+    ) {
+        PhoneDebugCapture.log(TAG, "event=$event $detail")
+    }
+
     fun latestReportSection(): String? =
         latestAttempt.get()?.toReportSection()?.let { renderer ->
             latestRuntime.get()?.toReportSection()?.let { runtime -> "$renderer\n\n$runtime" } ?: renderer

@@ -2,97 +2,150 @@ package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.BoundingBox
+import org.mapsforge.core.model.Tile
 import java.io.File
 
 class PhoneOfflineMapsforgeSurfaceTest {
     @Test
-    fun firstUsableLayoutRequestsOneBootstrapRedraw() {
-        val initial = PhoneOfflineMapRedrawState()
-        val redrawn =
-            initial.requestForLayout(
-                rendererAlive = true,
-                attached = true,
-                width = 720,
-                height = 801,
-            )
+    fun rendererWorkDoesNotApplyBeforeEveryReadinessConditionIsTrue() {
+        val gate = PhoneMapsforgeRenderWorkGate()
+        gate.requestWork()
 
-        assertEquals(true, redrawn.bootstrapRedrawRequested)
-        assertEquals(1, redrawn.redrawRequestCount)
+        listOf(
+            PhoneMapViewRenderReadiness(false, 720, 801, true),
+            PhoneMapViewRenderReadiness(true, 0, 801, true),
+            PhoneMapViewRenderReadiness(true, 720, 0, true),
+            PhoneMapViewRenderReadiness(true, 720, 801, false),
+        ).forEach { readiness ->
+            assertFalse(readiness.isReady)
+            assertNull(gate.scheduleIfReady(readiness))
+        }
+        assertTrue(gate.hasPendingWork())
+    }
+
+    @Test
+    fun pendingRendererWorkAppliesOnceTheMapViewIsReady() {
+        val gate = PhoneMapsforgeRenderWorkGate()
+        gate.requestWork()
+        val scheduled = requireNotNull(gate.scheduleIfReady(ready()))
+
+        assertTrue(gate.consumeIfCurrent(scheduled, ready()))
+        assertFalse(gate.hasPendingWork())
+    }
+
+    @Test
+    fun staleDelayedRendererWorkIsIgnored() {
+        val gate = PhoneMapsforgeRenderWorkGate()
+        gate.requestWork()
+        val stale = requireNotNull(gate.scheduleIfReady(ready()))
+        gate.requestWork()
+        val current = requireNotNull(gate.scheduleIfReady(ready()))
+
+        assertFalse(gate.consumeIfCurrent(stale, ready()))
+        assertTrue(gate.consumeIfCurrent(current, ready()))
+    }
+
+    @Test
+    fun sameMapAndThemeDoNotRebuildTheBaseLayer() {
+        val identity = identity("Bayern_oam.osm.map", "elv-hiking")
+
+        assertEquals(PhoneMapsforgeBaseLayerChange.NONE, phoneMapsforgeBaseLayerChange(identity, identity))
+    }
+
+    @Test
+    fun changingMapSwapsBaseLayerWhileChangingThemeReloadsIt() {
+        val bayernHiking = identity("Bayern_oam.osm.map", "elv-hiking")
+        val wurzburgHiking = identity("Wurzburg.map", "elv-hiking")
+        val bayernCycling = identity("Bayern_oam.osm.map", "elv-cycling")
+
         assertEquals(
-            redrawn,
-            redrawn.requestForLayout(
-                rendererAlive = true,
-                attached = true,
-                width = 720,
-                height = 801,
-            ),
+            PhoneMapsforgeBaseLayerChange.MAP_SWAP,
+            phoneMapsforgeBaseLayerChange(bayernHiking, wurzburgHiking),
+        )
+        assertEquals(
+            PhoneMapsforgeBaseLayerChange.THEME_RELOAD,
+            phoneMapsforgeBaseLayerChange(bayernHiking, bayernCycling),
         )
     }
 
     @Test
-    fun unusableOrDisposedLayoutDoesNotRequestRedraw() {
-        val initial = PhoneOfflineMapRedrawState()
+    fun panelResizeCompassOverlayAndLocationUpdatesKeepBaseIdentity() {
+        val active = identity("Bayern_oam.osm.map", "elv-hiking")
+        val panelResize = active
+        val compassUpdate = active
+        val overlayUpdate = active
+        val locationUpdate = active
 
-        assertEquals(
-            initial,
-            initial.requestForLayout(
-                rendererAlive = true,
-                attached = true,
-                width = 0,
-                height = 801,
-            ),
-        )
-        assertEquals(
-            initial,
-            initial.requestForLayout(
-                rendererAlive = false,
-                attached = true,
-                width = 720,
-                height = 801,
-            ),
-        )
+        listOf(panelResize, compassUpdate, overlayUpdate, locationUpdate).forEach { update ->
+            assertEquals(PhoneMapsforgeBaseLayerChange.NONE, phoneMapsforgeBaseLayerChange(active, update))
+        }
     }
 
     @Test
-    fun realSizeChangeRequestsAnotherRedraw() {
-        val first =
-            PhoneOfflineMapRedrawState().requestForLayout(
-                rendererAlive = true,
-                attached = true,
-                width = 720,
-                height = 801,
-            )
-        val resized =
-            first.requestForLayout(
-                rendererAlive = true,
-                attached = true,
-                width = 720,
-                height = 480,
-            )
+    fun layerMutationQueueDefersDuringGestureAndFlushesAfterIdle() {
+        val queue = PhoneMapLayerMutationQueue()
+        val executed = mutableListOf<String>()
+        queue.setGestureActive(true)
 
-        assertEquals(2, resized.redrawRequestCount)
+        assertFalse(queue.submit("base") { executed += "stale" })
+        assertFalse(queue.submit("base") { executed += "latest" })
+        assertTrue(executed.isEmpty())
+
+        queue.setGestureActive(false)
+        queue.drainAfterGestureIdle().forEach { it.invoke() }
+
+        assertEquals(listOf("latest"), executed)
+    }
+
+    @Test
+    fun rendererCleanupReleasesEachOwnedBundleOnlyOnce() {
+        val releaseOnce = PhoneMapsforgeReleaseOnce()
+        var releaseCount = 0
+
+        assertTrue(releaseOnce.release { releaseCount += 1 })
+        assertFalse(releaseOnce.release { releaseCount += 1 })
+
+        assertEquals(1, releaseCount)
+    }
+
+    @Test
+    fun firstVisibleDetectorRequiresDrawableTileRatherThanCacheKeyPresence() {
+        val tile = Tile(0, 0, 10.toByte(), 256)
+        val coverageWithoutDrawable = phoneFirstVisibleTileCoverage(listOf(tile)) { false }
+        val coverageWithDrawable = phoneFirstVisibleTileCoverage(listOf(tile)) { candidate -> candidate == tile }
+
+        assertEquals(0, coverageWithoutDrawable.drawableVisibleTiles)
+        assertEquals(1, coverageWithDrawable.drawableVisibleTiles)
+    }
+
+    @Test
+    fun initialCameraUsesCurrentViewportOnlyWhenItIsInsideTheSelectedMap() {
+        val bounds = BoundingBox(47.0, 11.0, 48.0, 12.0)
+        val inside = PhoneMapCameraSnapshot(47.5, 11.5, 14.0)
+        val outside = PhoneMapCameraSnapshot(20.0, 0.0, 2.0)
+
+        assertEquals(
+            PhoneOfflineInitialCameraReason.CURRENT_VIEWPORT,
+            phoneOfflineInitialCameraSelection(inside, cameraContext(bounds, null)).reason,
+        )
+        assertEquals(
+            PhoneOfflineInitialCameraReason.MAP_START,
+            phoneOfflineInitialCameraSelection(outside, cameraContext(bounds, bounds.centerPoint)).reason,
+        )
     }
 
     @Test
     fun mapsforgeSegmentsKeepEachRouteSegmentSeparate() {
         val segments =
             listOf(
-                PhoneMapRouteSegment(
-                    listOf(
-                        GeoPoint(45.0, 6.0),
-                        GeoPoint(45.1, 6.1),
-                    ),
-                ),
-                PhoneMapRouteSegment(
-                    listOf(
-                        GeoPoint(45.2, 6.2),
-                        GeoPoint(45.3, 6.3),
-                    ),
-                ),
+                PhoneMapRouteSegment(listOf(GeoPoint(45.0, 6.0), GeoPoint(45.1, 6.1))),
+                PhoneMapRouteSegment(listOf(GeoPoint(45.2, 6.2), GeoPoint(45.3, 6.3))),
             )
 
         val mapsforgeSegments = segments.toMapsforgeSegments()
@@ -103,11 +156,7 @@ class PhoneOfflineMapsforgeSurfaceTest {
 
     @Test
     fun mapsforgeViewportUsesVisibleBoundsAndZoom() {
-        val viewport =
-            mapsforgeViewportOrNull(
-                bounds = BoundingBox(45.0, 6.0, 46.0, 7.0),
-                zoom = 14,
-            )
+        val viewport = mapsforgeViewportOrNull(BoundingBox(45.0, 6.0, 46.0, 7.0), 14)
 
         requireNotNull(viewport)
         assertEquals(45.0, viewport.minLat, 0.0)
@@ -117,65 +166,34 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
-    fun rendererIdentityIgnoresThemeOverlayAndPanelPresentationChanges() {
-        val state = offlineSurfaceState(PhoneOfflineMap(File("/maps/Bayern_oam.osm.map")))
-        val presentationChanged =
-            state.copy(
-                themeConfig = PhoneOfflineThemeConfig("mapsforge", "mapsforge:DARK"),
-                gpxOverlays =
-                    listOf(
-                        PhoneMapGpxOverlay(
-                            id = "route",
-                            displayName = "Route",
-                            segments =
-                                listOf(
-                                    PhoneMapRouteSegment(
-                                        listOf(GeoPoint(45.0, 6.0), GeoPoint(45.1, 6.1)),
-                                    ),
-                                ),
-                        ),
-                    ),
-                mapMode = PhoneMapMode().toggleOrientation(),
-                compassPresentation = phoneMapCompassPresentation(PhoneMapOrientation.HEADING_UP, 90f),
-            )
-        val panelChanged =
-            PhoneMapUiState(source = PhoneMapSource.Offline(state.map))
-                .selectTool(MapTool.MAPS)
-                .expandTool()
-                .collapseTool()
-                .closeTool()
-
-        assertEquals(state.map.rendererIdentity, presentationChanged.map.rendererIdentity)
-        assertEquals(
-            state.map.rendererIdentity,
-            (panelChanged.source as PhoneMapSource.Offline).map.rendererIdentity,
-        )
-    }
-
-    @Test
-    fun selectingDifferentMapChangesRendererIdentity() {
-        val wurzburg = PhoneOfflineMap(File("/maps/WurzburgOSMMapsforge.map"))
+    fun mapIdentityChangesOnlyForDifferentSelectedFiles() {
+        val wurzburg = PhoneOfflineMap(File("/maps/Wurzburg.map"))
         val bayern = PhoneOfflineMap(File("/maps/Bayern_oam.osm.map"))
 
         assertNotEquals(wurzburg.rendererIdentity, bayern.rendererIdentity)
+        assertEquals(bayern.rendererIdentity, PhoneOfflineMap(File("/maps/Bayern_oam.osm.map")).rendererIdentity)
     }
 
-    @Test
-    fun selectingActiveMapAgainKeepsRendererIdentity() {
-        val active = PhoneOfflineMap(File("/maps/Bayern_oam.osm.map"))
-        val selectedAgain = PhoneOfflineMap(File("/maps/Bayern_oam.osm.map"))
+    private fun ready() = PhoneMapViewRenderReadiness(true, 720, 801, true)
 
-        assertEquals(active.rendererIdentity, selectedAgain.rendererIdentity)
-    }
+    private fun cameraContext(
+        bounds: BoundingBox,
+        start: org.mapsforge.core.model.LatLong?,
+    ): PhoneOfflineMapCameraContext =
+        PhoneOfflineMapCameraContext(
+            bounds = bounds,
+            mapStart = start,
+            mapStartZoom = 12,
+            zoomMin = 8,
+            zoomMax = 18,
+        )
 
-    private fun offlineSurfaceState(map: PhoneOfflineMap) =
-        PhoneOfflineMapSurfaceState(
-            map = map,
-            themeConfig = PhoneOfflineThemeConfig("elevate", "elv-hiking"),
-            initialCamera = PhoneMapCameraSnapshot(latitude = 45.0, longitude = 6.0, zoom = 12.0),
-            gpxOverlays = emptyList(),
-            pois = emptyList(),
-            mapMode = PhoneMapMode(),
-            cameraCommand = null,
+    private fun identity(
+        mapName: String,
+        styleId: String,
+    ): PhoneMapsforgeBaseLayerIdentity =
+        PhoneMapsforgeBaseLayerIdentity(
+            mapIdentity = "/maps/$mapName",
+            themeConfig = PhoneOfflineThemeConfig("elevate", styleId),
         )
 }
