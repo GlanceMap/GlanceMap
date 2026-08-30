@@ -62,18 +62,40 @@ class MapToolPanelStateTest {
 
     @Test
     fun backReturnsFeatureSettingsToItsMainPanelBeforeCollapsingThePanel() {
-        val settings = PhoneMapUiState().selectTool(MapTool.GPX).showFeatureSettings()
+        val settings = PhoneMapUiState().selectTool(MapTool.GPX).expandTool().showFeatureSettings()
 
         assertEquals(MapToolContentMode.FEATURE_SETTINGS, settings.toolPanel.contentMode)
-        assertEquals(MapToolContentMode.MAIN, settings.onMapBack().toolPanel.contentMode)
+        val main = settings.onMapBack()
+        assertEquals(MapToolContentMode.MAIN, main.toolPanel.contentMode)
+        assertEquals(MapToolPanelMode.EXPANDED, main.toolPanel.mode)
+        val split = main.onMapBack()
+        assertEquals(MapToolPanelMode.SPLIT, split.toolPanel.mode)
         assertEquals(
             MapToolPanelMode.CLOSED,
-            settings
-                .onMapBack()
-                .onMapBack()
-                .toolPanel
-                .mode,
+            split.onMapBack().toolPanel.mode,
         )
+    }
+
+    @Test
+    fun headerSwipeOnlyExpandsAndCollapsesAtTheApplicablePanelBoundary() {
+        val split = MapToolPanelState().select(MapTool.MAPS)
+        val expanded = split.onHeaderSwipe(MapToolHeaderSwipe.UP)
+
+        assertEquals(MapToolPanelMode.EXPANDED, expanded.mode)
+        assertEquals(MapToolPanelMode.SPLIT, expanded.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
+        assertEquals(split, split.onHeaderSwipe(MapToolHeaderSwipe.DOWN))
+        assertEquals(expanded, expanded.onHeaderSwipe(MapToolHeaderSwipe.UP))
+    }
+
+    @Test
+    fun onlyFeatureSettingsExposeTheVisibleSubpageBackAction() {
+        val featureSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
+        val main = featureSettings.back()
+
+        assertTrue(featureSettings.hasFeatureSettingsBack)
+        assertEquals(MapToolContentMode.MAIN, main.contentMode)
+        assertFalse(main.hasFeatureSettingsBack)
+        assertFalse(MapToolPanelState().select(MapTool.POI).hasFeatureSettingsBack)
     }
 
     @Test

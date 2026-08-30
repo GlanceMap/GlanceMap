@@ -421,12 +421,14 @@ internal fun CompanionMapScreen(
             onOpenTheme = { showOfflineThemeSelector = true },
         )
 
+    val onToolPanelBack = { mapUiState = mapUiState.onMapBack() }
+
     BackHandler(
         enabled =
             mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
                 mapUiState.toolLauncherExpanded,
     ) {
-        mapUiState = mapUiState.onMapBack()
+        onToolPanelBack()
     }
 
     MapToolScaffold(
@@ -438,6 +440,10 @@ internal fun CompanionMapScreen(
                 onToggleLauncher = { mapUiState = mapUiState.toggleToolLauncher() },
                 onExpand = { mapUiState = mapUiState.expandTool() },
                 onCollapse = { mapUiState = mapUiState.collapseTool() },
+                onHeaderSwipe = { swipe ->
+                    mapUiState = mapUiState.copy(toolPanel = mapUiState.toolPanel.onHeaderSwipe(swipe))
+                },
+                onBack = onToolPanelBack,
                 onClose = { mapUiState = mapUiState.closeTool() },
             ),
         mapContent = {

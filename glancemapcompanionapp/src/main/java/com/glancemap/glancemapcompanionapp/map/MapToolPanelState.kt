@@ -20,6 +20,11 @@ internal enum class MapToolPanelMode {
     EXPANDED,
 }
 
+internal enum class MapToolHeaderSwipe {
+    UP,
+    DOWN,
+}
+
 internal enum class MapToolContentMode {
     MAIN,
     FEATURE_SETTINGS,
@@ -31,6 +36,9 @@ internal data class MapToolPanelState(
     val mode: MapToolPanelMode = MapToolPanelMode.CLOSED,
     val contentMode: MapToolContentMode = MapToolContentMode.MAIN,
 ) {
+    val hasFeatureSettingsBack: Boolean
+        get() = contentMode == MapToolContentMode.FEATURE_SETTINGS
+
     fun select(tool: MapTool): MapToolPanelState =
         when (mode) {
             MapToolPanelMode.CLOSED ->
@@ -56,6 +64,12 @@ internal data class MapToolPanelState(
         takeIf { mode == MapToolPanelMode.EXPANDED }
             ?.copy(mode = MapToolPanelMode.SPLIT)
             ?: this
+
+    fun onHeaderSwipe(swipe: MapToolHeaderSwipe): MapToolPanelState =
+        when (swipe) {
+            MapToolHeaderSwipe.UP -> expand()
+            MapToolHeaderSwipe.DOWN -> collapse()
+        }
 
     fun back(): MapToolPanelState =
         when {

@@ -3,8 +3,10 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Map
@@ -26,7 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -40,6 +44,8 @@ internal data class MapToolScaffoldActions(
     val onToggleLauncher: () -> Unit,
     val onExpand: () -> Unit,
     val onCollapse: () -> Unit,
+    val onHeaderSwipe: (MapToolHeaderSwipe) -> Unit,
+    val onBack: () -> Unit,
     val onClose: () -> Unit,
 )
 
@@ -72,7 +78,7 @@ internal fun MapToolScaffold(
                 if (state.activeTool != null && state.mode != MapToolPanelMode.CLOSED) {
                     mapToolPanelSurface(
                         state = state,
-                        isExpanded = state.mode == MapToolPanelMode.EXPANDED,
+                        headerSwipeEnabled = !isWide,
                         actions = actions,
                         modifier = Modifier.fillMaxSize(),
                         content = panelContent,
@@ -120,6 +126,7 @@ internal fun MapToolScaffold(
 }
 
 private const val MAP_SPLIT_FRACTION = 0.6f
+private val MAP_TOOL_HEADER_SWIPE_MIN_DISTANCE = 48.dp
 
 @Composable
 private fun mapToolMapSurface(
@@ -147,7 +154,7 @@ private fun mapToolMapSurface(
 @Composable
 private fun mapToolPanelSurface(
     state: MapToolPanelState,
-    isExpanded: Boolean,
+    headerSwipeEnabled: Boolean,
     actions: MapToolScaffoldActions,
     modifier: Modifier,
     content: @Composable (MapTool, MapToolContentMode) -> Unit,
@@ -155,37 +162,94 @@ private fun mapToolPanelSurface(
     val tool = state.activeTool ?: return
     Surface(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(tool.titleResource(state.contentMode)),
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = if (isExpanded) actions.onCollapse else actions.onExpand) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
-                        contentDescription =
-                            stringResource(
-                                if (isExpanded) {
-                                    R.string.map_tool_action_collapse_content_description
-                                } else {
-                                    R.string.map_tool_action_expand_content_description
-                                },
-                            ),
-                    )
-                }
-                IconButton(onClick = actions.onClose) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.common_action_close),
-                    )
-                }
-            }
+            mapToolPanelHeader(
+                state = state,
+                headerSwipeEnabled = headerSwipeEnabled,
+                actions = actions,
+            )
             HorizontalDivider()
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content(tool, state.contentMode) }
         }
+    }
+}
+
+@Composable
+private fun mapToolPanelHeader(
+    state: MapToolPanelState,
+    headerSwipeEnabled: Boolean,
+    actions: MapToolScaffoldActions,
+) {
+    val headerSwipeModifier =
+        mapToolHeaderSwipeModifier(
+            mode = state.mode,
+            enabled = headerSwipeEnabled,
+            onHeaderSwipe = actions.onHeaderSwipe,
+        )
+    val isExpanded = state.mode == MapToolPanelMode.EXPANDED
+    val tool = state.activeTool ?: return
+    Row(
+        modifier = Modifier.fillMaxWidth().then(headerSwipeModifier).padding(start = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (state.hasFeatureSettingsBack) {
+            IconButton(onClick = actions.onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.common_action_back),
+                )
+            }
+        }
+        Text(
+            text = stringResource(tool.titleResource(state.contentMode)),
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = if (isExpanded) actions.onCollapse else actions.onExpand) {
+            Icon(
+                imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
+                contentDescription =
+                    stringResource(
+                        if (isExpanded) {
+                            R.string.map_tool_action_collapse_content_description
+                        } else {
+                            R.string.map_tool_action_expand_content_description
+                        },
+                    ),
+            )
+        }
+        IconButton(onClick = actions.onClose) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.common_action_close),
+            )
+        }
+    }
+}
+
+@Composable
+private fun mapToolHeaderSwipeModifier(
+    mode: MapToolPanelMode,
+    enabled: Boolean,
+    onHeaderSwipe: (MapToolHeaderSwipe) -> Unit,
+): Modifier {
+    if (!enabled) return Modifier
+
+    val swipeThresholdPx = with(LocalDensity.current) { MAP_TOOL_HEADER_SWIPE_MIN_DISTANCE.toPx() }
+    return Modifier.pointerInput(mode, swipeThresholdPx) {
+        var totalVerticalDrag = 0f
+        detectVerticalDragGestures(
+            onDragStart = { totalVerticalDrag = 0f },
+            onDragEnd = {
+                val swipe =
+                    when {
+                        totalVerticalDrag <= -swipeThresholdPx -> MapToolHeaderSwipe.UP
+                        totalVerticalDrag >= swipeThresholdPx -> MapToolHeaderSwipe.DOWN
+                        else -> null
+                    }
+                swipe?.let(onHeaderSwipe)
+            },
+            onDragCancel = { totalVerticalDrag = 0f },
+            onVerticalDrag = { _, dragAmount -> totalVerticalDrag += dragAmount },
+        )
     }
 }
 
