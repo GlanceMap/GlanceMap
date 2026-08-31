@@ -79,24 +79,34 @@ internal fun List<PhoneMapGpxItem>.enabledOverlays(globalVisible: Boolean): List
 /** A renderable contiguous GPX segment, deliberately independent from a map SDK. */
 internal data class PhoneMapRouteSegment(
     val points: List<GeoPoint>,
-)
+    val elevationMeters: List<Double?> = emptyList(),
+) {
+    init {
+        require(elevationMeters.isEmpty() || elevationMeters.size == points.size)
+    }
+}
 
 internal fun PhoneMapGpxTrack.toRouteSegments(): List<PhoneMapRouteSegment> {
-    val segments = mutableListOf<List<GeoPoint>>()
-    var currentSegment = mutableListOf<GeoPoint>()
+    val segments = mutableListOf<List<TrailPoint>>()
+    var currentSegment = mutableListOf<TrailPoint>()
     points.forEach { point ->
         if (point.startsNewSegment && currentSegment.isNotEmpty()) {
             segments += currentSegment
             currentSegment = mutableListOf()
         }
-        currentSegment += point.location
+        currentSegment += point
     }
     if (currentSegment.isNotEmpty()) {
         segments += currentSegment
     }
     return segments
         .filter { segment -> segment.size >= MINIMUM_RENDERABLE_SEGMENT_POINTS }
-        .map(::PhoneMapRouteSegment)
+        .map { segment ->
+            PhoneMapRouteSegment(
+                points = segment.map(TrailPoint::location),
+                elevationMeters = segment.map(TrailPoint::elevationMeters),
+            )
+        }
 }
 
 internal data class PhoneMapRouteBounds(

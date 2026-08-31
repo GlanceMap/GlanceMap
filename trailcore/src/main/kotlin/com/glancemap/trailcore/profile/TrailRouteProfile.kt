@@ -22,6 +22,7 @@ data class TrailPoint(
 data class TrailPacingConfig(
     val flatSpeedMetersPerSecond: Double = 1.2,
     val uphillVerticalMetersPerHour: Double = 500.0,
+    val downhillVerticalMetersPerHour: Double = 0.0,
 ) {
     init {
         require(flatSpeedMetersPerSecond.isFinite() && flatSpeedMetersPerSecond > 0.0) {
@@ -29,6 +30,9 @@ data class TrailPacingConfig(
         }
         require(uphillVerticalMetersPerHour.isFinite() && uphillVerticalMetersPerHour >= 0.0) {
             "Uphill rate must be a non-negative, finite value."
+        }
+        require(downhillVerticalMetersPerHour.isFinite() && downhillVerticalMetersPerHour >= 0.0) {
+            "Downhill rate must be a non-negative, finite value."
         }
     }
 }
@@ -109,6 +113,7 @@ fun buildTrailRouteProfile(
             estimateSegmentDurationSeconds(
                 distanceMeters = distanceMeters,
                 ascentMeters = ascentMeters,
+                descentMeters = descentMeters,
                 pacing = pacing,
             )
     }
@@ -178,6 +183,7 @@ fun TrailRouteProfile.windowBetweenDistances(
 private fun estimateSegmentDurationSeconds(
     distanceMeters: Double,
     ascentMeters: Double,
+    descentMeters: Double,
     pacing: TrailPacingConfig,
 ): Double {
     val horizontalSeconds = distanceMeters.coerceAtLeast(0.0) / pacing.flatSpeedMetersPerSecond
@@ -187,7 +193,14 @@ private fun estimateSegmentDurationSeconds(
         } else {
             ascentMeters.coerceAtLeast(0.0) / pacing.uphillVerticalMetersPerHour * 3600.0
         }
-    return horizontalSeconds + uphillSeconds
+    val downhillSeconds =
+        if (pacing.downhillVerticalMetersPerHour <= 0.0) {
+            0.0
+        } else {
+            // Downhill pacing is opt-in; the default remains the original flat + uphill model.
+            descentMeters.coerceAtLeast(0.0) / pacing.downhillVerticalMetersPerHour * 3600.0
+        }
+    return horizontalSeconds + uphillSeconds + downhillSeconds
 }
 
 private fun TrailRouteProfile.interpolateAtDistance(

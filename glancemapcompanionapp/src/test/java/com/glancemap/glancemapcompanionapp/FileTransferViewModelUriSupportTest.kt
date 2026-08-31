@@ -213,6 +213,15 @@ class FileTransferViewModelUriSupportTest {
     }
 
     @Test
+    fun `gpx waypoint extraction follows link preference`() {
+        val gpxText = "<gpx><wpt lat=\"45.0\" lon=\"6.0\" /></gpx>"
+
+        assertTrue(shouldImportGpxWaypoints(linkGpxWaypointPoiFolders = true, gpxText = gpxText))
+        assertFalse(shouldImportGpxWaypoints(linkGpxWaypointPoiFolders = false, gpxText = gpxText))
+        assertFalse(shouldImportGpxWaypoints(linkGpxWaypointPoiFolders = true, gpxText = null))
+    }
+
+    @Test
     fun `recognizes gpx document prefix with xml declaration`() {
         assertTrue(
             isLikelyGpxTextPrefix(

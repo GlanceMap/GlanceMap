@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.glancemapcompanionapp.refuges.sanitizeRemoteHttpDetail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,8 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
+
+internal const val ROUTING_SEGMENTS_DIRECTORY_NAME = "routing-segments"
 
 internal data class RoutingBBox(
     val minLon: Double,
@@ -139,6 +142,8 @@ internal fun isUsableRoutingPackCache(file: File): Boolean =
 internal class BRouterTileDownloader(
     private val context: Context,
 ) {
+    private val storage = PhoneOfflineStorage(context)
+
     @Volatile
     private var activeConnection: HttpURLConnection? = null
 
@@ -176,7 +181,7 @@ internal class BRouterTileDownloader(
                 "Start bbox=$normalizedBbox tileCount=${tileNames.size} forceRefresh=$forceRefresh",
             )
 
-            val outputDir = File(context.filesDir, ROUTING_SEGMENTS_DIR_NAME).apply { mkdirs() }
+            val outputDir = storage.routingDirectory().apply { mkdirs() }
 
             var downloaded = 0
             var skipped = 0
@@ -595,7 +600,6 @@ internal class BRouterTileDownloader(
     private companion object {
         const val PREFS_NAME = "routing_download"
         const val KEY_LAST_BBOX = "last_bbox"
-        const val ROUTING_SEGMENTS_DIR_NAME = "routing-segments"
         const val SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
         const val USER_AGENT = "GlanceMap-Routing/1.0"
         const val CONNECT_TIMEOUT_MS = 30_000

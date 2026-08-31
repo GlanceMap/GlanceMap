@@ -114,8 +114,28 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
         assertTrue(visibleTile.contains("First visible base tile: true"))
         assertTrue(visibleTile.contains("Drawable visible tiles: 2"))
         assertTrue(visibleTile.contains("Location inside map bounds: true"))
+        assertTrue(visibleTile.contains("Location marker attached: true"))
+        assertTrue(visibleTile.contains("Location marker bitmap draw observed: true"))
         assertFalse(visibleTile.contains("47.5"))
         assertFalse(visibleTile.contains("11.5"))
+    }
+
+    @Test
+    fun runtimeReportDistinguishesMarkerCallFromBitmapDraw() {
+        val report =
+            runtime(
+                androidDrawObserved = true,
+                tileLayerDrawObserved = true,
+                firstVisibleTile = false,
+                location = insideLocation,
+            ).copy(
+                locationMarkerBitmapDrawObserved = false,
+                locationMarkerLastDrawResult = "outside_viewport",
+            ).toReportSection()
+
+        assertTrue(report.contains("Location marker draw calls: 1"))
+        assertTrue(report.contains("Location marker bitmap draw observed: false"))
+        assertTrue(report.contains("Location marker last draw result: outside_viewport"))
     }
 
     private fun runtime(
@@ -159,6 +179,10 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
             followMode = PhoneMapFollowMode.FOLLOW_LOCATION,
             orientation = PhoneMapOrientation.NORTH_UP,
             locationMarkerAttached = location != null,
+            locationMarkerVisible = location != null,
+            locationMarkerDrawCalls = if (location == null) 0 else 1,
+            locationMarkerBitmapDrawObserved = location != null,
+            locationMarkerLastDrawResult = if (location == null) null else "bitmap_drawn",
         )
 
     private fun phoneMapLocation(

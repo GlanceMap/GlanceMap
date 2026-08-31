@@ -16,6 +16,7 @@ import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.glancemapcompanionapp.refuges.GpxWaypointPoiImporter
 import com.glancemap.glancemapcompanionapp.refuges.MapsforgeMapBoundsParser
 import com.glancemap.glancemapcompanionapp.refuges.OsmOverpassPoiImporter
@@ -685,7 +686,7 @@ class FileTransferViewModel : ViewModel() {
                                 bboxQuery = refugesResult.bbox,
                             )
                         runCatching {
-                            File(appContext.filesDir, "refuges-poi/${osmResult.fileName}").delete()
+                            File(PhoneOfflineStorage(appContext).poiDirectory(), osmResult.fileName).delete()
                         }
                         reportProgress(90, "Finalizing merged POI…")
                         merged

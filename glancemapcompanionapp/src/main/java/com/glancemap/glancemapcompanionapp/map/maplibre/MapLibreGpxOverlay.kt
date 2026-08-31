@@ -1,19 +1,24 @@
 package com.glancemap.glancemapcompanionapp.map.maplibre
 
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxRenderSegment
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettings
 import com.glancemap.glancemapcompanionapp.map.PhoneMapRouteBounds
 import com.glancemap.glancemapcompanionapp.map.PhoneMapRouteSegment
 import com.glancemap.glancemapcompanionapp.map.boundsOrNull
+import com.glancemap.glancemapcompanionapp.map.toPhoneMapGpxRenderSegments
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
+import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -25,10 +30,12 @@ import org.maplibre.geojson.Point
 internal fun Style.renderGpxTrack(
     segments: List<PhoneMapRouteSegment>,
     isVisible: Boolean,
+    settings: PhoneMapGpxSettings,
 ) {
+    val renderSegments = segments.toPhoneMapGpxRenderSegments(settings)
     val featureCollection =
         FeatureCollection.fromFeatures(
-            segments.map(PhoneMapRouteSegment::toGeoJsonFeature),
+            renderSegments.map { segment -> segment.toGeoJsonFeature() },
         )
     val source = getSourceAs<GeoJsonSource>(GPX_TRACK_SOURCE_ID)
     if (source == null) {
@@ -37,20 +44,26 @@ internal fun Style.renderGpxTrack(
         source.setGeoJson(featureCollection)
     }
 
-    val visibility = if (isVisible && segments.isNotEmpty()) Property.VISIBLE else Property.NONE
+    val visibility = if (isVisible && renderSegments.isNotEmpty()) Property.VISIBLE else Property.NONE
     val layer = getLayerAs<LineLayer>(GPX_TRACK_LAYER_ID)
     if (layer == null) {
         addLayer(
             LineLayer(GPX_TRACK_LAYER_ID, GPX_TRACK_SOURCE_ID).withProperties(
                 lineCap(Property.LINE_CAP_ROUND),
-                lineColor(GPX_TRACK_COLOR),
+                lineColor(Expression.get(GPX_TRACK_COLOR_PROPERTY)),
                 lineJoin(Property.LINE_JOIN_ROUND),
-                lineWidth(GPX_TRACK_LINE_WIDTH),
+                lineOpacity(settings.trackOpacityPercent / 100f),
+                lineWidth(settings.trackWidth),
                 visibility(visibility),
             ),
         )
     } else {
-        layer.setProperties(visibility(visibility))
+        layer.setProperties(
+            lineColor(Expression.get(GPX_TRACK_COLOR_PROPERTY)),
+            lineOpacity(settings.trackOpacityPercent / 100f),
+            lineWidth(settings.trackWidth),
+            visibility(visibility),
+        )
     }
 }
 
@@ -64,12 +77,15 @@ internal fun MapLibreMap.fitGpxTrackBounds(
     mapView.fitBoundsWhenLaidOut(this, bounds, isCurrent, onFitted)
 }
 
-private fun PhoneMapRouteSegment.toGeoJsonFeature(): Feature =
-    Feature.fromGeometry(
-        LineString.fromLngLats(
-            points.map { point -> Point.fromLngLat(point.longitude, point.latitude) },
-        ),
-    )
+private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(): Feature =
+    Feature
+        .fromGeometry(
+            LineString.fromLngLats(
+                points.map { point -> Point.fromLngLat(point.longitude, point.latitude) },
+            ),
+        ).also { feature ->
+            feature.addStringProperty(GPX_TRACK_COLOR_PROPERTY, colorToMapLibre(colorArgb))
+        }
 
 private fun PhoneMapRouteBounds.toMapLibreBounds(): LatLngBounds {
     val latitudePadding = ((north - south) / 20.0).coerceAtLeast(MINIMUM_ROUTE_BOUND_PADDING_DEGREES)
@@ -113,11 +129,17 @@ private fun MapView.fitBoundsWhenLaidOut(
 
 private const val GPX_TRACK_LAYER_ID = "companion-gpx-track-line"
 private const val GPX_TRACK_SOURCE_ID = "companion-gpx-track"
-private const val GPX_TRACK_COLOR = "#0066CC"
-private const val GPX_TRACK_LINE_WIDTH = 5f
+private const val GPX_TRACK_COLOR_PROPERTY = "gpx_color"
 private const val MAP_LATITUDE_LIMIT_MAX = 85.0
 private const val MAP_LATITUDE_LIMIT_MIN = -85.0
 private const val MAP_LONGITUDE_LIMIT_MAX = 180.0
 private const val MAP_LONGITUDE_LIMIT_MIN = -180.0
 private const val MINIMUM_ROUTE_BOUND_PADDING_DEGREES = 0.005
 private const val ROUTE_FIT_PADDING_DP = 48
+
+private fun colorToMapLibre(colorArgb: Int): String =
+    "#%02X%02X%02X".format(
+        android.graphics.Color.red(colorArgb),
+        android.graphics.Color.green(colorArgb),
+        android.graphics.Color.blue(colorArgb),
+    )

@@ -19,6 +19,7 @@ internal data class PhoneMapLocation(
     val longitude: Double,
     val accuracyMeters: Float?,
     val fixElapsedRealtimeMillis: Long,
+    val altitudeMeters: Double? = null,
 )
 
 /** Keeps the latest foreground-map fix while location updates are temporarily unsubscribed. */
@@ -81,6 +82,7 @@ internal class PhoneMapLocationSource(
                     (location.elapsedRealtimeNanos / NANOSECONDS_PER_MILLISECOND)
                         .takeIf { it > 0L }
                         ?: SystemClock.elapsedRealtime(),
+                altitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() },
             )
         subscription = subscription.update(fix)
         _location.value = subscription.latestLocation

@@ -45,10 +45,14 @@ class PhoneDebugCapturePersistenceTest {
     fun startingAnotherCaptureRotatesTheOldCaptureAndSharingDoesNotDeleteIt() {
         PhoneDebugCapture.start()
         PhoneDebugCapture.log("Map", "first")
+        val firstSessionId = PhoneDebugCapture.state.value.sessionId
         PhoneDebugCapture.stop()
 
         PhoneDebugCapture.start()
 
+        assertTrue(PhoneDebugCapture.state.value.active)
+        assertTrue(PhoneDebugCapture.state.value.sessionId > firstSessionId)
+        assertTrue(PhoneDebugCapture.snapshot().isEmpty())
         assertTrue(PhoneDebugCapture.state.value.hasPreviousCapture)
         assertTrue(PhoneDebugCapture.hasCapture(PhoneDebugCaptureSlot.PREVIOUS))
         assertTrue(PhoneDebugCapture.snapshot(PhoneDebugCaptureSlot.PREVIOUS).single().contains("first"))

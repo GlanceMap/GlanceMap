@@ -109,10 +109,16 @@ internal data class PhoneOfflineMapFolderSyncResult(
  */
 @Suppress("TooManyFunctions") // Import, bundle install, discovery, and folder matching share one storage boundary.
 internal class PhoneOfflineMapStore(
-    private val directory: File,
+    private val directoryProvider: () -> File,
     private val mapInspector: (File) -> PhoneOfflineMapValidation = ::inspectMapsforgeMapFile,
 ) {
-    constructor(context: Context) : this(File(context.filesDir, DIRECTORY_NAME))
+    constructor(directory: File, mapInspector: (File) -> PhoneOfflineMapValidation = ::inspectMapsforgeMapFile) :
+        this({ directory }, mapInspector)
+
+    constructor(context: Context) : this({ PhoneOfflineStorage(context).mapsDirectory() })
+
+    private val directory: File
+        get() = directoryProvider()
 
     fun discover(): List<PhoneOfflineMap> =
         directory

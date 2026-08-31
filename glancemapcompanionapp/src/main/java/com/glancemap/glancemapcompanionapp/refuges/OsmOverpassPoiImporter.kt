@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -69,7 +70,7 @@ class OsmOverpassPoiImporter(
         withContext(Dispatchers.IO) {
             cancelRequested = false
             val safeFileName = normalizeFileName(fileNameInput)
-            val outputDir = File(context.filesDir, "refuges-poi").apply { mkdirs() }
+            val outputDir = PhoneOfflineStorage(context).poiDirectory().apply { mkdirs() }
             val outputFile = File(outputDir, safeFileName)
             val startedAtMs = SystemClock.elapsedRealtime()
             try {

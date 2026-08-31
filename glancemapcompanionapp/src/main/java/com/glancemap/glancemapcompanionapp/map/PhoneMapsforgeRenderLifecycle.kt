@@ -57,6 +57,83 @@ internal class PhoneMapsforgeReleaseOnce {
     }
 }
 
+internal enum class PhoneMapsforgeTouchAction {
+    DOWN,
+    POINTER_DOWN,
+    MOVE,
+    POINTER_UP,
+    UP,
+    CANCEL,
+}
+
+/** Identifies rotation changes produced by Mapsforge's native two-finger handler. */
+internal class PhoneMapsforgeRotationGestureTracker {
+    private var twoFingerActive = false
+    private var lastObservedBearing: Float? = null
+    private var lastReportedBearing: Float? = null
+
+    fun onTouch(
+        action: PhoneMapsforgeTouchAction,
+        pointerCount: Int,
+    ) {
+        when (action) {
+            PhoneMapsforgeTouchAction.DOWN -> reset()
+            PhoneMapsforgeTouchAction.POINTER_DOWN -> {
+                if (pointerCount >= 2) {
+                    twoFingerActive = true
+                    clearBearingHistory()
+                }
+            }
+            PhoneMapsforgeTouchAction.MOVE -> {
+                if (pointerCount < 2) twoFingerActive = false
+            }
+            PhoneMapsforgeTouchAction.POINTER_UP -> {
+                twoFingerActive = pointerCount - 1 >= 2
+                clearBearingHistory()
+            }
+            PhoneMapsforgeTouchAction.UP,
+            PhoneMapsforgeTouchAction.CANCEL,
+            -> reset()
+        }
+    }
+
+    fun observeBearing(
+        bearingDegrees: Float,
+        reportUserRotation: Boolean,
+    ): Float? {
+        val bearing = normalizePhoneHeadingDegrees(bearingDegrees)
+        val previous = lastObservedBearing
+        lastObservedBearing = bearing
+        if (!shouldReportBearing(previous, bearing, reportUserRotation)) return null
+        lastReportedBearing = bearing
+        return bearing
+    }
+
+    fun reset() {
+        twoFingerActive = false
+        clearBearingHistory()
+    }
+
+    private fun clearBearingHistory() {
+        lastObservedBearing = null
+        lastReportedBearing = null
+    }
+
+    private fun shouldReportBearing(
+        previousBearing: Float?,
+        bearing: Float,
+        reportUserRotation: Boolean,
+    ): Boolean =
+        when {
+            !reportUserRotation -> false
+            !twoFingerActive -> false
+            previousBearing == null -> false
+            !phoneMapBearingNeedsSync(previousBearing, bearing) -> false
+            lastReportedBearing == null -> true
+            else -> phoneMapBearingNeedsSync(lastReportedBearing!!, bearing)
+        }
+}
+
 internal enum class PhoneMapsforgeBaseLayerChange {
     NONE,
     MAP_SWAP,

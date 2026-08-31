@@ -56,6 +56,18 @@ class PhoneMapCompassPresentationTest {
     }
 
     @Test
+    fun bearingToleranceHandlesWrapAroundWithoutExactEquality() {
+        assertFalse(phoneMapBearingNeedsSync(currentDegrees = 359.8f, targetDegrees = 0.2f))
+        assertTrue(phoneMapBearingNeedsSync(currentDegrees = 359f, targetDegrees = 1f))
+    }
+
+    @Test
+    fun offlineMarkerRotationCompensatesForMapsforgeMapRotation() {
+        assertEquals(0f, phoneOfflineMarkerScreenRotationDegrees(90f, 90f), 0.001f)
+        assertEquals(350f, phoneOfflineMarkerScreenRotationDegrees(10f, 20f), 0.001f)
+    }
+
+    @Test
     fun headingWrapUsesTheShortestSmoothingPath() {
         assertEquals(1f, shortestPhoneHeadingDelta(targetDegrees = 0f, currentDegrees = 359f), 0.001f)
         assertEquals(359.24f, smoothPhoneHeading(currentDegrees = 359f, targetDegrees = 0f), 0.001f)

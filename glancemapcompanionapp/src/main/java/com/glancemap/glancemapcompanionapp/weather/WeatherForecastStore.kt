@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.weather
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.google.gson.Gson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,8 +21,11 @@ internal class FileWeatherForecastStore(
 ) : WeatherForecastStore {
     private val appContext = context.applicationContext
     private val gson = Gson()
-    private val directory = File(appContext.filesDir, DIRECTORY_NAME)
-    private val storeFile = File(directory, STORE_FILE_NAME)
+    private val storage = PhoneOfflineStorage(appContext)
+    private val directory: File
+        get() = storage.weatherDirectory()
+    private val storeFile: File
+        get() = File(directory, STORE_FILE_NAME)
 
     override suspend fun latest(location: WeatherForecastLocation): WeatherForecast? = history(location).firstOrNull()
 
@@ -90,7 +94,6 @@ internal class FileWeatherForecastStore(
 
     private companion object {
         val sharedMutex = Mutex()
-        const val DIRECTORY_NAME = "weather-forecasts"
 
         // v1 was written by a release that did not preserve Gson's generic type metadata.
         // Starting a new local cache avoids repeatedly reading an incompatible historical snapshot.

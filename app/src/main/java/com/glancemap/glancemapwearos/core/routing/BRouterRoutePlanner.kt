@@ -1,12 +1,17 @@
 package com.glancemap.glancemapwearos.core.routing
 
 import android.content.Context
-import btools.router.FormatGpx
 import btools.router.OsmNodeNamed
 import btools.router.RoutingContext
 import btools.router.RoutingEngine
 import btools.util.CheapRuler
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.routing.BRouterEngine
+import com.glancemap.trailcore.routing.BRouterFileLayout
+import com.glancemap.trailcore.routing.BRouterHikeProfileParams
+import com.glancemap.trailcore.routing.BRouterRoutePreset
+import com.glancemap.trailcore.routing.BRouterRouteRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,6 +25,7 @@ import kotlin.math.floor
 import kotlin.math.max
 
 private const val ROUTING_TILE_DEGREES = 5
+private const val B_ROUTER_COORDINATE_SCALE = 1_000_000.0
 private const val METERS_PER_LATITUDE_DEGREE = 111_320.0
 private const val METERS_PER_LONGITUDE_DEGREE_FLOOR = 10_000.0
 private const val LOOP_TILE_COVERAGE_MIN_RADIUS_METERS = 500.0
@@ -281,6 +287,15 @@ private fun normalizeLookupVersionMismatch(message: String): String {
 class BRouterRoutePlanner(
     private val context: Context,
 ) : RoutePlanner {
+    private val sharedBRouterEngine by lazy {
+        BRouterEngine(
+            BRouterFileLayout(
+                segmentsDirectory = routingSegmentsDir(context),
+                profilesDirectory = routingProfilesDir(context),
+            ),
+        )
+    }
+
     override suspend fun createRoute(request: RoutePlannerRequest): RoutePlannerOutput =
         withContext(Dispatchers.IO) {
             try {
@@ -542,50 +557,12 @@ class BRouterRoutePlanner(
         loopSpec: LoopAttemptSpec? = null,
         timeoutMs: Long = ROUTE_TIMEOUT_MS,
     ): RoutedAttemptResult {
-        val missingSegments =
-            findMissingSegments(
-                listOf(request.origin) + request.viaPoints + request.destination,
-            )
-        require(missingSegments.isEmpty()) {
-            buildMissingSegmentsMessage(missingSegments)
-        }
-
-        val routingContext =
-            RoutingContext().apply {
-                localFunction = routingProfileFileFor(request.preset).absolutePath
-                outputFormat = "gpx"
-                keyValues =
-                    buildProfileParams(
-                        preset = request.preset,
-                        useElevation = request.useElevation,
-                        allowFerries = request.allowFerries,
-                        customHikeParams = request.customHikeParams,
-                    )
-            }
-
-        val engine =
-            RoutingEngine(
-                null,
-                null,
-                routingSegmentsDir(context),
-                buildRouteWaypoints(request),
-                routingContext,
-                RoutingEngine.BROUTER_ENGINEMODE_ROUTING,
-            ).apply {
-                quite = true
-            }
-
-        engine.doRun(timeoutMs)
-
-        val errorMessage = engine.errorMessage
-        require(errorMessage.isNullOrBlank()) {
-            normalizeRoutingErrorMessage(errorMessage)
-        }
+        val attempt = sharedBRouterEngine.route(request.toSharedRequest(), timeoutMs)
 
         return RoutedAttemptResult(
             spec = loopSpec,
-            routingContext = routingContext,
-            engine = engine,
+            routingContext = attempt.routingContext,
+            engine = attempt.engine,
         )
     }
 
@@ -1145,63 +1122,60 @@ class BRouterRoutePlanner(
             else -> "Missing routing data: ${missingSegments.first()} +${missingSegments.size - 1}"
         }
 
-    private fun buildRouteWaypoints(request: RoutePlannerRequest): List<OsmNodeNamed> {
-        val viaWaypoints =
-            request.viaPoints.mapIndexed { index, point ->
-                point.toWaypoint("via${index + 1}")
-            }
-        return buildList {
-            add(request.origin.toWaypoint("from"))
-            addAll(viaWaypoints)
-            add(request.destination.toWaypoint("to"))
-        }
-    }
-
     private fun buildRoutePlannerOutput(
         routingContext: RoutingContext,
         engine: RoutingEngine,
         title: String,
         fileName: String,
     ): RoutePlannerOutput {
-        val track =
-            requireNotNull(engine.foundTrack) {
-                "No route found."
-            }
-        require(track.nodes.isNotEmpty()) {
-            "No route found."
-        }
-        val messageSummary = track.message?.takeIf { it.isNotBlank() } ?: title
-        when {
-            track.messageList == null -> track.messageList = mutableListOf(messageSummary)
-            track.messageList.isEmpty() -> track.messageList.add(messageSummary)
-        }
-        val gpx =
-            FormatGpx(routingContext)
-                .format(track)
-                .rewriteTrackName(title)
-                .toByteArray(Charsets.UTF_8)
+        val output =
+            sharedBRouterEngine.output(
+                attempt =
+                    com.glancemap.trailcore.routing.BRouterRoutingAttempt(
+                        routingContext = routingContext,
+                        engine = engine,
+                    ),
+                title = title,
+                fileName = fileName,
+            )
 
         return RoutePlannerOutput(
-            fileName = fileName,
-            title = title,
-            gpxBytes = gpx,
+            fileName = output.fileName,
+            title = output.title,
+            gpxBytes = output.gpxBytes,
             points =
-                track.nodes.map { node ->
+                output.points.map { point ->
                     RouteGeometryPoint(
-                        latLong =
-                            LatLong(
-                                (node.getILat() - B_ROUTER_LATITUDE_OFFSET) / B_ROUTER_COORDINATE_SCALE,
-                                (node.getILon() - B_ROUTER_LONGITUDE_OFFSET) / B_ROUTER_COORDINATE_SCALE,
-                            ),
-                        elevation =
-                            node
-                                .getSElev()
-                                .takeUnless { it == Short.MIN_VALUE }
-                                ?.let { it / B_ROUTER_ELEVATION_SCALE },
+                        latLong = LatLong(point.location.latitude, point.location.longitude),
+                        elevation = point.elevationMeters,
                     )
                 },
         )
     }
+
+    private fun RoutePlannerRequest.toSharedRequest(): BRouterRouteRequest =
+        BRouterRouteRequest(
+            origin = origin.toGeoPoint(),
+            destination = destination.toGeoPoint(),
+            viaPoints = viaPoints.map { it.toGeoPoint() },
+            preset = preset.toSharedPreset(),
+            useElevation = useElevation,
+            allowFerries = allowFerries,
+            customHikeParams = customHikeParams?.toSharedParams(),
+        )
+
+    private fun LatLong.toGeoPoint(): GeoPoint = GeoPoint(latitude = latitude, longitude = longitude)
+
+    private fun RoutePlannerPreset.toSharedPreset(): BRouterRoutePreset = BRouterRoutePreset.valueOf(name)
+
+    private fun HikeRouteProfileParams.toSharedParams(): BRouterHikeProfileParams =
+        BRouterHikeProfileParams(
+            hikingRoutesPreference = hikingRoutesPreference,
+            pathPreference = pathPreference,
+            sacScaleLimit = sacScaleLimit,
+            sacScalePreferred = sacScalePreferred,
+            considerForest = considerForest,
+        )
 
     private fun LatLong.toWaypoint(name: String): OsmNodeNamed =
         OsmNodeNamed().apply {
@@ -1215,33 +1189,9 @@ class BRouterRoutePlanner(
     private fun Float.toProfileNumber(): String = toString()
 
     private companion object {
-        const val B_ROUTER_COORDINATE_SCALE = 1_000_000.0
-        const val B_ROUTER_LATITUDE_OFFSET = 90_000_000
-        const val B_ROUTER_LONGITUDE_OFFSET = 180_000_000
-        const val B_ROUTER_ELEVATION_SCALE = 4.0
         const val ROUTE_TIMEOUT_MS = 60_000L
         const val LOOP_ROUND_TRIP_TIMEOUT_MS = 15_000L
         const val LOOP_FALLBACK_TIMEOUT_MS = 20_000L
-    }
-}
-
-private fun String.rewriteTrackName(title: String): String {
-    val escapedTitle =
-        title
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-
-    val trackNameRegex =
-        Regex(
-            pattern = "(<trk>\\s*<name>)(.*?)(</name>)",
-            options = setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-        )
-
-    return if (trackNameRegex.containsMatchIn(this)) {
-        replaceFirst(trackNameRegex, "$1$escapedTitle$3")
-    } else {
-        replaceFirst("<trk>", "<trk><name>$escapedTitle</name>")
     }
 }
 

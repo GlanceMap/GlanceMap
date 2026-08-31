@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSettingsPreferences
 import com.glancemap.glancemapcompanionapp.refuges.GpxWaypointPoiImporter
 import com.glancemap.glancemapcompanionapp.refuges.RefugesGeoJsonPoiImporter
 import java.io.ByteArrayOutputStream
@@ -43,6 +44,7 @@ internal suspend fun prepareSelectedUrisForTransfer(
     var convertedGeoJsonCount = 0
     var extractedPoiFromGpxCount = 0
     var extractedPoiFromMixedGpxCount = 0
+    val linkGpxWaypointPoiFolders = PhoneMapPoiSettingsPreferences(context).load().linkGpxWaypointPoiFolders
 
     uris.forEach { uri ->
         if (isGeoJsonUri(context, uri)) {
@@ -81,19 +83,21 @@ internal suspend fun prepareSelectedUrisForTransfer(
                     preferFallbackName = uri.authority.orEmpty().contains("whatsapp", ignoreCase = true),
                 )
             val gpxOutcome =
-                gpxTextForName?.let { gpxText ->
-                    runCatching {
-                        gpxWaypointPoiImporter.importWaypointsFromGpxText(
-                            gpxText = gpxText,
-                            fileNameInput = suggestPoiFileNameForGpxWaypoints(gpxTransferFileName),
-                            categoryNameInput = suggestPoiCategoryNameForGpx(gpxTransferFileName),
-                            linkedGpxFileName = gpxTransferFileName,
-                        )
-                    }.getOrElse {
-                        Log.w("FileTransferVM", "Failed GPX waypoint extraction for $uri", it)
-                        null
+                gpxTextForName
+                    ?.takeIf { shouldImportGpxWaypoints(linkGpxWaypointPoiFolders, it) }
+                    ?.let { gpxText ->
+                        runCatching {
+                            gpxWaypointPoiImporter.importWaypointsFromGpxText(
+                                gpxText = gpxText,
+                                fileNameInput = suggestPoiFileNameForGpxWaypoints(gpxTransferFileName),
+                                categoryNameInput = suggestPoiCategoryNameForGpx(gpxTransferFileName),
+                                linkedGpxFileName = gpxTransferFileName,
+                            )
+                        }.getOrElse {
+                            Log.w("FileTransferVM", "Failed GPX waypoint extraction for $uri", it)
+                            null
+                        }
                     }
-                }
             val gpxTransferUri =
                 prepareGpxUriForTransferName(
                     context = context,
@@ -123,6 +127,11 @@ internal suspend fun prepareSelectedUrisForTransfer(
         extractedPoiFromMixedGpxCount = extractedPoiFromMixedGpxCount,
     )
 }
+
+internal fun shouldImportGpxWaypoints(
+    linkGpxWaypointPoiFolders: Boolean,
+    gpxText: String?,
+): Boolean = linkGpxWaypointPoiFolders && !gpxText.isNullOrBlank()
 
 internal fun buildOsmEnrichTempFileName(basePoiFileName: String): String {
     val base =

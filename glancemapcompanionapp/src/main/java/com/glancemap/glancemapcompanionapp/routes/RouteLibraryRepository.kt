@@ -4,10 +4,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
+import com.glancemap.glancemapcompanionapp.map.PhoneGeneralSettingsPreferences
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettingsPreferences
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
+import com.glancemap.glancemapcompanionapp.map.toTrailPacingConfig
 import com.glancemap.trailcore.geo.haversineDistanceMeters
 import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
 import com.glancemap.trailcore.profile.windowFromDistance
+import com.glancemap.trailcore.routing.BRouterRouteOutput
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.sync.Mutex
@@ -93,8 +98,13 @@ class RouteLibraryRepository(
     private val appContext = context.applicationContext
     private val gson = Gson()
     private val mutex = Mutex()
-    private val routesDirectory = File(appContext.filesDir, ROUTES_DIRECTORY_NAME)
-    private val indexFile = File(routesDirectory, INDEX_FILE_NAME)
+    private val storage = PhoneOfflineStorage(appContext)
+    private val routesDirectory: File
+        get() = storage.routesDirectory()
+    private val indexFile: File
+        get() = File(routesDirectory, INDEX_FILE_NAME)
+    private val gpxSettingsPreferences = PhoneMapGpxSettingsPreferences(appContext)
+    private val generalSettingsPreferences = PhoneGeneralSettingsPreferences(appContext)
 
     suspend fun load(): RouteLibraryUiState =
         mutex.withLock {
@@ -108,6 +118,7 @@ class RouteLibraryRepository(
             )
         }
 
+    @Suppress("LongMethod") // Import, parse, profile, and index updates are one atomic repository operation.
     suspend fun importRoute(uri: Uri): RouteLibraryUiState =
         mutex.withLock {
             routesDirectory.mkdirs()
@@ -125,45 +136,30 @@ class RouteLibraryRepository(
                     destination.delete()
                     throw IllegalArgumentException(error.message ?: "Could not read the GPX route.", error)
                 }
-            val profile = buildTrailRouteProfile(parsed.points)
-            val firstThirtyMinutes =
-                profile.windowFromDistance(
-                    startDistanceMeters = 0.0,
-                    maximumDurationSeconds = NEXT_WINDOW_SECONDS,
-                )
-            val route =
-                RouteLibraryRoute(
-                    id = id,
-                    title = importedRouteTitle(parsed.title, displayNameFor(uri)),
-                    storedFileName = storedFileName,
-                    importedAtMillis = System.currentTimeMillis(),
-                    summary =
-                        RouteLibrarySummary(
-                            distanceMeters = profile.totalDistanceMeters,
-                            elevationGainMeters = profile.totalAscentMeters,
-                            elevationLossMeters = profile.totalDescentMeters,
-                            estimatedDurationSeconds = profile.estimatedDurationSeconds,
-                            waypointCount = parsed.waypoints.size,
-                            firstThirtyMinutesDistanceMeters = firstThirtyMinutes.distanceMeters,
-                            firstThirtyMinutesAscentMeters = firstThirtyMinutes.ascentMeters,
-                        ),
-                )
-            val previous = readIndex()
-            val next =
-                RouteLibraryIndex(
-                    routes = listOf(route) + previous.routes.filterNot { it.id == route.id },
-                    selectedRouteId = route.id,
-                )
-            writeIndex(next)
-            CompanionJourneyDiagnostics.routeImportSucceeded(
-                pointCount = parsed.points.size,
-                waypointCount = parsed.waypoints.size,
-                elevationCount = parsed.points.count { point -> point.elevationMeters != null },
+            saveParsedRouteLocked(
+                destination = destination,
+                parsed = parsed,
+                fallbackTitle = displayNameFor(uri),
             )
-            RouteLibraryUiState(
-                routes = next.routes,
-                selectedRouteId = route.id,
-                isLoading = false,
+        }
+
+    suspend fun saveGeneratedRoute(output: BRouterRouteOutput): RouteLibraryUiState =
+        mutex.withLock {
+            routesDirectory.mkdirs()
+            val id = UUID.randomUUID().toString()
+            val destination = File(routesDirectory, "$id.gpx")
+            destination.writeBytes(output.gpxBytes)
+            val parsed =
+                runCatching {
+                    destination.inputStream().use(CompanionGpxRouteParser::parse)
+                }.getOrElse { error ->
+                    destination.delete()
+                    throw IllegalArgumentException(error.message ?: "Could not read the generated GPX route.", error)
+                }
+            saveParsedRouteLocked(
+                destination = destination,
+                parsed = parsed,
+                fallbackTitle = output.title,
             )
         }
 
@@ -193,7 +189,14 @@ class RouteLibraryRepository(
             val sourceFile = File(routesDirectory, route.storedFileName)
             if (!sourceFile.isFile) return@withLock null
             val parsedRoute = sourceFile.inputStream().use(CompanionGpxRouteParser::parse)
-            val profile = buildTrailRouteProfile(parsedRoute.points)
+            val profile =
+                buildTrailRouteProfile(
+                    parsedRoute.points,
+                    gpxSettingsPreferences.load().toTrailPacingConfig(
+                        parsedRoute.points,
+                        generalSettingsPreferences.load(),
+                    ),
+                )
             if (day.isWholeRoute(profile.totalDistanceMeters)) {
                 return@withLock contentUriForFile(sourceFile)
             }
@@ -217,7 +220,14 @@ class RouteLibraryRepository(
             val file = File(routesDirectory, route.storedFileName)
             if (!file.isFile) return@withLock null
             val parsed = file.inputStream().use(CompanionGpxRouteParser::parse)
-            val profile = buildTrailRouteProfile(parsed.points)
+            val profile =
+                buildTrailRouteProfile(
+                    parsed.points,
+                    gpxSettingsPreferences.load().toTrailPacingConfig(
+                        parsed.points,
+                        generalSettingsPreferences.load(),
+                    ),
+                )
             RouteLibraryRouteDetails(
                 route = route,
                 profile = profile,
@@ -253,6 +263,61 @@ class RouteLibraryRepository(
         }
     }
 
+    private fun saveParsedRouteLocked(
+        destination: File,
+        parsed: ParsedCompanionRoute,
+        fallbackTitle: String,
+    ): RouteLibraryUiState {
+        val id = destination.nameWithoutExtension
+        val profile =
+            buildTrailRouteProfile(
+                parsed.points,
+                gpxSettingsPreferences.load().toTrailPacingConfig(
+                    parsed.points,
+                    generalSettingsPreferences.load(),
+                ),
+            )
+        val firstThirtyMinutes =
+            profile.windowFromDistance(
+                startDistanceMeters = 0.0,
+                maximumDurationSeconds = NEXT_WINDOW_SECONDS,
+            )
+        val route =
+            RouteLibraryRoute(
+                id = id,
+                title = importedRouteTitle(parsed.title, fallbackTitle),
+                storedFileName = destination.name,
+                importedAtMillis = System.currentTimeMillis(),
+                summary =
+                    RouteLibrarySummary(
+                        distanceMeters = profile.totalDistanceMeters,
+                        elevationGainMeters = profile.totalAscentMeters,
+                        elevationLossMeters = profile.totalDescentMeters,
+                        estimatedDurationSeconds = profile.estimatedDurationSeconds,
+                        waypointCount = parsed.waypoints.size,
+                        firstThirtyMinutesDistanceMeters = firstThirtyMinutes.distanceMeters,
+                        firstThirtyMinutesAscentMeters = firstThirtyMinutes.ascentMeters,
+                    ),
+            )
+        val previous = readIndex()
+        val next =
+            RouteLibraryIndex(
+                routes = listOf(route) + previous.routes.filterNot { existing -> existing.id == route.id },
+                selectedRouteId = route.id,
+            )
+        writeIndex(next)
+        CompanionJourneyDiagnostics.routeImportSucceeded(
+            pointCount = parsed.points.size,
+            waypointCount = parsed.waypoints.size,
+            elevationCount = parsed.points.count { point -> point.elevationMeters != null },
+        )
+        return RouteLibraryUiState(
+            routes = next.routes,
+            selectedRouteId = route.id,
+            isLoading = false,
+        )
+    }
+
     private fun displayNameFor(uri: Uri): String =
         uri.lastPathSegment
             ?.substringAfterLast('/')
@@ -284,7 +349,6 @@ class RouteLibraryRepository(
     )
 
     private companion object {
-        const val ROUTES_DIRECTORY_NAME = "route-library"
         const val INDEX_FILE_NAME = "routes.json"
         const val MISSION_PLAN_EXPORT_DIRECTORY = "mission-plan-exports"
         const val NEXT_WINDOW_SECONDS = 30.0 * 60.0

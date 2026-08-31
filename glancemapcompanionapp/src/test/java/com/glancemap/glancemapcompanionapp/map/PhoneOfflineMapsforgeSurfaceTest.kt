@@ -125,6 +125,31 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
+    fun firstVisibleCoverageSamplingIsThrottledAfterTheInitialSample() {
+        assertTrue(
+            isPhoneFirstVisibleTileCoverageSampleDue(
+                lastSampleAtElapsedMs = null,
+                nowElapsedMs = 0L,
+                sampleIntervalMs = 250L,
+            ),
+        )
+        assertFalse(
+            isPhoneFirstVisibleTileCoverageSampleDue(
+                lastSampleAtElapsedMs = 1_000L,
+                nowElapsedMs = 1_249L,
+                sampleIntervalMs = 250L,
+            ),
+        )
+        assertTrue(
+            isPhoneFirstVisibleTileCoverageSampleDue(
+                lastSampleAtElapsedMs = 1_000L,
+                nowElapsedMs = 1_250L,
+                sampleIntervalMs = 250L,
+            ),
+        )
+    }
+
+    @Test
     fun initialCameraUsesCurrentViewportOnlyWhenItIsInsideTheSelectedMap() {
         val bounds = BoundingBox(47.0, 11.0, 48.0, 12.0)
         val inside = PhoneMapCameraSnapshot(47.5, 11.5, 14.0)
@@ -161,10 +186,53 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
-    fun twoFingerRotationProducesIncrementalNormalizedDeltas() {
-        assertEquals(90f, phoneTwoFingerRotationDelta(0f, 90f), 0.001f)
-        assertEquals(2f, phoneTwoFingerRotationDelta(359f, 1f), 0.001f)
+    fun mapsforgeRotationUsesTheInverseSemanticBearing() {
+        assertEquals(-90f, mapsforgeRotationDegreesFor(90f), 0.001f)
         assertEquals(90f, mapsforgeMapBearingDegrees(-90f), 0.001f)
+    }
+
+    @Test
+    fun nativeRotationTrackerReportsOnlyMeaningfulTwoFingerBearingChanges() {
+        val tracker = PhoneMapsforgeRotationGestureTracker()
+        tracker.onTouch(PhoneMapsforgeTouchAction.DOWN, pointerCount = 1)
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+
+        assertNull(tracker.observeBearing(0f, reportUserRotation = true))
+        assertEquals(90f, requireNotNull(tracker.observeBearing(90f, reportUserRotation = true)), 0.001f)
+        assertNull(tracker.observeBearing(90.2f, reportUserRotation = true))
+        assertEquals(91f, requireNotNull(tracker.observeBearing(91f, reportUserRotation = true)), 0.001f)
+    }
+
+    @Test
+    fun panPinchAndPointerLiftDoNotCreateRotationCallbacks() {
+        val tracker = PhoneMapsforgeRotationGestureTracker()
+        tracker.onTouch(PhoneMapsforgeTouchAction.DOWN, pointerCount = 1)
+        tracker.onTouch(PhoneMapsforgeTouchAction.MOVE, pointerCount = 1)
+        assertNull(tracker.observeBearing(45f, reportUserRotation = true))
+
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+        assertNull(tracker.observeBearing(45f, reportUserRotation = true))
+        tracker.onTouch(PhoneMapsforgeTouchAction.MOVE, pointerCount = 2)
+        assertNull(tracker.observeBearing(45f, reportUserRotation = true))
+
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_UP, pointerCount = 2)
+        assertNull(tracker.observeBearing(90f, reportUserRotation = true))
+
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+        assertNull(tracker.observeBearing(90f, reportUserRotation = true))
+        tracker.onTouch(PhoneMapsforgeTouchAction.MOVE, pointerCount = 2)
+        assertEquals(120f, requireNotNull(tracker.observeBearing(120f, reportUserRotation = true)), 0.001f)
+    }
+
+    @Test
+    fun programmaticRotationIsObservedButNeverReportedAsUserRotation() {
+        val tracker = PhoneMapsforgeRotationGestureTracker()
+        tracker.onTouch(PhoneMapsforgeTouchAction.DOWN, pointerCount = 1)
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+
+        assertNull(tracker.observeBearing(0f, reportUserRotation = false))
+        assertNull(tracker.observeBearing(45f, reportUserRotation = false))
+        assertEquals(90f, requireNotNull(tracker.observeBearing(90f, reportUserRotation = true)), 0.001f)
     }
 
     @Test

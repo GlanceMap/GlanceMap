@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.routes
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.google.gson.Gson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,8 +15,11 @@ internal class MissionPlanRepository(
     private val appContext = context.applicationContext
     private val gson = Gson()
     private val mutex = Mutex()
-    private val directory = File(appContext.filesDir, DIRECTORY_NAME)
-    private val indexFile = File(directory, INDEX_FILE_NAME)
+    private val storage = PhoneOfflineStorage(appContext)
+    private val directory: File
+        get() = storage.missionPlanDirectory()
+    private val indexFile: File
+        get() = File(directory, INDEX_FILE_NAME)
 
     suspend fun load(): MissionPlanIndex = mutex.withLock { readIndex() }
 
@@ -136,7 +140,6 @@ internal class MissionPlanRepository(
     )
 
     private companion object {
-        const val DIRECTORY_NAME = "mission-plan"
         const val INDEX_FILE_NAME = "mission-plan.json"
     }
 }

@@ -11,7 +11,7 @@ internal enum class MapTool {
 }
 
 /** Primary content stays directly reachable; the smaller secondary launcher can grow later. */
-internal val primaryMapTools = listOf(MapTool.MAPS, MapTool.GPX, MapTool.POI)
+internal val primaryMapTools = listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)
 internal val secondaryMapTools = listOf(MapTool.SETTINGS)
 
 internal enum class MapToolPanelMode {
@@ -45,7 +45,7 @@ internal data class MapToolPanelState(
                 MapToolPanelState(activeTool = tool, mode = MapToolPanelMode.SPLIT)
             MapToolPanelMode.SPLIT,
             MapToolPanelMode.EXPANDED,
-            -> copy(activeTool = tool, contentMode = MapToolContentMode.MAIN)
+            -> if (activeTool == tool) close() else copy(activeTool = tool, contentMode = MapToolContentMode.MAIN)
         }
 
     fun showFeatureSettings(): MapToolPanelState =
@@ -68,7 +68,7 @@ internal data class MapToolPanelState(
     fun onHeaderSwipe(swipe: MapToolHeaderSwipe): MapToolPanelState =
         when (swipe) {
             MapToolHeaderSwipe.UP -> expand()
-            MapToolHeaderSwipe.DOWN -> collapse()
+            MapToolHeaderSwipe.DOWN -> close()
         }
 
     fun back(): MapToolPanelState =

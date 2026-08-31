@@ -39,6 +39,10 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
     val followMode: PhoneMapFollowMode,
     val orientation: PhoneMapOrientation,
     val locationMarkerAttached: Boolean,
+    val locationMarkerVisible: Boolean?,
+    val locationMarkerDrawCalls: Int,
+    val locationMarkerBitmapDrawObserved: Boolean,
+    val locationMarkerLastDrawResult: String?,
 ) {
     fun toReportSection(): String =
         buildString {
@@ -74,6 +78,11 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
             appendLine("Follow mode: $followMode")
             appendLine("Orientation: $orientation")
             append("Location marker attached: $locationMarkerAttached")
+            appendLine()
+            appendLine("Location marker visible: ${locationMarkerVisible ?: "unknown"}")
+            appendLine("Location marker draw calls: $locationMarkerDrawCalls")
+            appendLine("Location marker bitmap draw observed: $locationMarkerBitmapDrawObserved")
+            append("Location marker last draw result: ${locationMarkerLastDrawResult ?: "unknown"}")
         }
 }
 

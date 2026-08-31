@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.refuges
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -21,7 +22,7 @@ class PoiFileMerger(
                 throw IllegalArgumentException("No source POI files provided for merge.")
             }
 
-            val outputDir = File(context.filesDir, "refuges-poi").apply { mkdirs() }
+            val outputDir = PhoneOfflineStorage(context).poiDirectory().apply { mkdirs() }
             val sources =
                 sourceFileNamesInPriorityOrder
                     .map { File(outputDir, File(it).name) }

@@ -12,6 +12,7 @@ import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PoiImportSource
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import java.io.File
 
 internal data class ExternalDownloadSource(
@@ -262,18 +263,20 @@ internal fun emptyPhoneStoredFilesSummary(): PhoneStoredFilesSummary =
     )
 
 internal fun loadPhoneStoredFilesSummary(context: Context): PhoneStoredFilesSummary =
-    PhoneStoredFilesSummary(
-        poi =
-            summarizeGeneratedFiles(
-                directory = File(context.filesDir, "refuges-poi"),
-                extension = ".poi",
-            ),
-        routing =
-            summarizeGeneratedFiles(
-                directory = File(context.filesDir, "routing-segments"),
-                extension = ".rd5",
-            ),
-    )
+    PhoneOfflineStorage(context).let { storage ->
+        PhoneStoredFilesSummary(
+            poi =
+                summarizeGeneratedFiles(
+                    directory = storage.poiDirectory(),
+                    extension = ".poi",
+                ),
+            routing =
+                summarizeGeneratedFiles(
+                    directory = storage.routingDirectory(),
+                    extension = ".rd5",
+                ),
+        )
+    }
 
 internal fun summarizeGeneratedFiles(
     directory: File,
@@ -299,8 +302,9 @@ internal fun clearPhoneStoredFiles(
     val removedFileNames = linkedSetOf<String>()
     var removedCount = 0
 
+    val storage = PhoneOfflineStorage(context)
     if (clearPoi) {
-        val dir = File(context.filesDir, "refuges-poi")
+        val dir = storage.poiDirectory()
         dir
             .listFiles()
             ?.filter { it.isFile && it.name.endsWith(".poi", ignoreCase = true) }
@@ -314,7 +318,7 @@ internal fun clearPhoneStoredFiles(
     }
 
     if (clearRouting) {
-        val dir = File(context.filesDir, "routing-segments")
+        val dir = storage.routingDirectory()
         dir
             .listFiles()
             ?.filter { it.isFile && it.name.endsWith(".rd5", ignoreCase = true) }

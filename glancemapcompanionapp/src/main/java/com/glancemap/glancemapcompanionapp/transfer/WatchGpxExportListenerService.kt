@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
@@ -100,7 +101,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
         val request =
             parseChannelPath(channel.path)
                 ?: throw IllegalArgumentException("Invalid GPX export request.")
-        val exportDir = File(filesDir, EXPORT_DIR_NAME).apply { mkdirs() }
+        val exportDir = PhoneOfflineStorage(applicationContext).watchGpxExportsDirectory().apply { mkdirs() }
         val tempFile = File(exportDir, ".${request.transferId}.part")
         val finalFile = uniqueFile(exportDir, request.fileName)
 
@@ -302,7 +303,6 @@ class WatchGpxExportListenerService : WearableListenerService() {
     private companion object {
         const val TAG = "WatchGpxExport"
         const val CHANNEL_ID = "watch_gpx_exports"
-        const val EXPORT_DIR_NAME = "watch-gpx-exports"
         const val ERROR_NOTIFICATION_ID = 57_230
         const val SHARE_REQUEST_OFFSET = 10_000
         const val SAVE_REQUEST_OFFSET = 20_000

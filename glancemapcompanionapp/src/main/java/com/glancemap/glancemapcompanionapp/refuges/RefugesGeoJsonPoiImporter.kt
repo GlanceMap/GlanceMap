@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -38,6 +39,9 @@ data class RefugesImportResult(
 class RefugesGeoJsonPoiImporter(
     private val context: Context,
 ) {
+    @Volatile
+    private var activeConnection: HttpURLConnection? = null
+
     companion object {
         private const val PREFS_NAME = "refuges_import"
         private const val KEY_LAST_BBOX = "last_bbox"
@@ -81,6 +85,10 @@ class RefugesGeoJsonPoiImporter(
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
+    fun cancelActiveDownload() {
+        activeConnection?.disconnect()
+    }
+
     suspend fun importFromBbox(
         bboxInput: String,
         fileNameInput: String,
@@ -94,7 +102,7 @@ class RefugesGeoJsonPoiImporter(
             val normalizedTypePointIds = normalizeTypePointIds(typePointIds)
             val typePointQuery = toTypePointQueryValue(normalizedTypePointIds)
             val safeFileName = normalizeFileName(fileNameInput)
-            val outputDir = File(context.filesDir, "refuges-poi").apply { mkdirs() }
+            val outputDir = PhoneOfflineStorage(context).poiDirectory().apply { mkdirs() }
             val outputFile = File(outputDir, safeFileName)
             val startedAtMs = SystemClock.elapsedRealtime()
             PhoneDownloadDiagnostics.log(
@@ -152,20 +160,27 @@ class RefugesGeoJsonPoiImporter(
                     throw IllegalStateException("No Refuges.info points found in this area.")
                 }
 
-                if (outputFile.exists()) {
-                    outputFile.delete()
-                }
-
                 reportProgress?.invoke(78, "Saving Refuges.info POI…")
                 val writeStartedAtMs = SystemClock.elapsedRealtime()
+                val temporary = File(outputDir, ".${outputFile.name}.refuges.part")
+                temporary.delete()
                 val categoryCount =
-                    writePoiFile(
-                        file = outputFile,
-                        bbox = bbox,
-                        points = points,
-                        requestedBboxQuery = bboxQuery,
-                        requestedTypePoints = typePointQuery,
-                    )
+                    try {
+                        val categories =
+                            writePoiFile(
+                                file = temporary,
+                                bbox = bbox,
+                                points = points,
+                                requestedBboxQuery = bboxQuery,
+                                requestedTypePoints = typePointQuery,
+                            )
+                        check(isReadablePoiSqliteFile(temporary)) { "Generated Refuges.info POI is invalid." }
+                        check(!outputFile.exists() || outputFile.delete()) { "Could not replace Refuges.info POI." }
+                        check(temporary.renameTo(outputFile)) { "Could not install Refuges.info POI." }
+                        categories
+                    } finally {
+                        temporary.delete()
+                    }
                 val writeDurationMs = SystemClock.elapsedRealtime() - writeStartedAtMs
                 persistLastRequest(
                     bbox = bboxQuery,
@@ -246,7 +261,7 @@ class RefugesGeoJsonPoiImporter(
                 throw IllegalStateException("No point features found in GeoJSON.")
             }
 
-            val outputDir = File(context.filesDir, "refuges-poi").apply { mkdirs() }
+            val outputDir = PhoneOfflineStorage(context).poiDirectory().apply { mkdirs() }
             val outputFile = File(outputDir, safeFileName)
             if (outputFile.exists()) {
                 outputFile.delete()
@@ -340,6 +355,7 @@ class RefugesGeoJsonPoiImporter(
                 setRequestProperty("Accept", "application/geo+json,application/json")
                 setRequestProperty("User-Agent", "GlanceMap-Companion")
             }
+        activeConnection = connection
 
         try {
             val code = connection.responseCode
@@ -368,6 +384,7 @@ class RefugesGeoJsonPoiImporter(
             )
             return JSONObject(body)
         } finally {
+            if (activeConnection === connection) activeConnection = null
             connection.disconnect()
         }
     }

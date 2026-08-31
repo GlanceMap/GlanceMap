@@ -13,9 +13,11 @@ import kotlin.math.min
 
 /** Reads the companion's canonical locally-imported POI files without involving the watch. */
 internal class PhoneMapPoiRepository(
-    private val poiDirectory: File,
+    private val poiDirectoryProvider: () -> File,
 ) {
-    constructor(context: Context) : this(phoneMapPoiStorageDirectory(context))
+    constructor(directory: File) : this({ directory })
+
+    constructor(context: Context) : this({ PhoneOfflineStorage(context).poiDirectory() })
 
     suspend fun queryViewport(
         viewport: PhoneMapViewport,
@@ -60,7 +62,7 @@ internal class PhoneMapPoiRepository(
         }
 
     private fun poiSourceFiles(): List<File> =
-        poiDirectory
+        poiDirectoryProvider()
             .listFiles()
             ?.asSequence()
             ?.filter { it.isFile && it.name.endsWith(POI_FILE_EXTENSION, ignoreCase = true) }
@@ -75,6 +77,6 @@ internal class PhoneMapPoiRepository(
     }
 }
 
-internal fun phoneMapPoiStorageDirectory(context: Context): File = File(context.filesDir, "refuges-poi")
+internal fun phoneMapPoiStorageDirectory(context: Context): File = PhoneOfflineStorage(context).poiDirectory()
 
 internal fun isPhoneMapPoiFileValid(file: File): Boolean = isReadablePoiSqliteFile(file)

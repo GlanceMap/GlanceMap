@@ -1,5 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import kotlin.math.abs
+
 /** Renderer-neutral compass values; renderer adapters own their SDK-specific bearing conventions. */
 internal data class PhoneMapCompassPresentation(
     val mapBearingDegrees: Float,
@@ -41,6 +43,14 @@ internal fun shortestPhoneHeadingDelta(
     targetDegrees: Float,
     currentDegrees: Float,
 ): Float = ((targetDegrees - currentDegrees + 540f) % 360f) - 180f
+
+internal const val PHONE_MAP_BEARING_TOLERANCE_DEGREES = 0.5f
+
+internal fun phoneMapBearingNeedsSync(
+    currentDegrees: Float,
+    targetDegrees: Float,
+    toleranceDegrees: Float = PHONE_MAP_BEARING_TOLERANCE_DEGREES,
+): Boolean = abs(shortestPhoneHeadingDelta(targetDegrees, currentDegrees)) > toleranceDegrees
 
 internal fun smoothPhoneHeading(
     currentDegrees: Float?,

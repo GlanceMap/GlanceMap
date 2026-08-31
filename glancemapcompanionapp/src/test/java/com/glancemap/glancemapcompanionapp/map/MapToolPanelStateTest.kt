@@ -26,19 +26,20 @@ class MapToolPanelStateTest {
 
         assertEquals(MapTool.MAPS, switched.activeTool)
         assertEquals(MapToolPanelMode.SPLIT, switched.mode)
-        assertEquals(
-            MapToolPanelMode.EXPANDED,
-            MapToolPanelState()
-                .select(MapTool.GPX)
-                .expand()
-                .select(MapTool.GPX)
-                .mode,
-        )
+    }
+
+    @Test
+    fun selectingTheActiveToolClosesThePanelFromEitherOpenMode() {
+        val split = MapToolPanelState().select(MapTool.GPX)
+        val expanded = split.expand()
+
+        assertEquals(MapToolPanelState(), split.select(MapTool.GPX))
+        assertEquals(MapToolPanelState(), expanded.select(MapTool.GPX))
     }
 
     @Test
     fun primaryMapControlsStayOutsideTheSecondaryToolsLauncher() {
-        assertEquals(listOf(MapTool.MAPS, MapTool.GPX, MapTool.POI), primaryMapTools)
+        assertEquals(listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS), primaryMapTools)
         assertEquals(listOf(MapTool.SETTINGS), secondaryMapTools)
     }
 
@@ -77,13 +78,13 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun headerSwipeOnlyExpandsAndCollapsesAtTheApplicablePanelBoundary() {
+    fun headerSwipeUpExpandsAndSwipeDownClosesThePanel() {
         val split = MapToolPanelState().select(MapTool.MAPS)
         val expanded = split.onHeaderSwipe(MapToolHeaderSwipe.UP)
 
         assertEquals(MapToolPanelMode.EXPANDED, expanded.mode)
-        assertEquals(MapToolPanelMode.SPLIT, expanded.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
-        assertEquals(split, split.onHeaderSwipe(MapToolHeaderSwipe.DOWN))
+        assertEquals(MapToolPanelMode.CLOSED, expanded.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
+        assertEquals(MapToolPanelMode.CLOSED, split.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
         assertEquals(expanded, expanded.onHeaderSwipe(MapToolHeaderSwipe.UP))
     }
 

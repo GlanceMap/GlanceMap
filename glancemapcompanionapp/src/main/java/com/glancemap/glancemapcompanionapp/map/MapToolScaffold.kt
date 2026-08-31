@@ -32,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -42,11 +43,14 @@ import com.glancemap.glancemapcompanionapp.layout.LocalCompanionLayoutContext
 internal data class MapToolScaffoldActions(
     val onToolSelected: (MapTool) -> Unit,
     val onToggleLauncher: () -> Unit,
+    val onAddPoi: () -> Unit,
+    val onOpenGpxTools: () -> Unit,
     val onExpand: () -> Unit,
     val onCollapse: () -> Unit,
     val onHeaderSwipe: (MapToolHeaderSwipe) -> Unit,
     val onBack: () -> Unit,
     val onClose: () -> Unit,
+    val onFeatureSettings: () -> Unit,
 )
 
 @Composable
@@ -143,6 +147,8 @@ private fun mapToolMapSurface(
             activeTool = activeTool,
             onToolSelected = actions.onToolSelected,
             onToggle = actions.onToggleLauncher,
+            onAddPoi = actions.onAddPoi,
+            onOpenGpxTools = actions.onOpenGpxTools,
             modifier =
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -204,9 +210,10 @@ private fun mapToolPanelHeader(
                 )
             }
         }
-        Text(
-            text = stringResource(tool.titleResource(state.contentMode)),
-            modifier = Modifier.weight(1f),
+        mapToolHeaderTitle(
+            state = state,
+            tool = tool,
+            onFeatureSettings = actions.onFeatureSettings,
         )
         IconButton(onClick = if (isExpanded) actions.onCollapse else actions.onExpand) {
             Icon(
@@ -226,6 +233,33 @@ private fun mapToolPanelHeader(
                 imageVector = Icons.Filled.Close,
                 contentDescription = stringResource(R.string.common_action_close),
             )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.mapToolHeaderTitle(
+    state: MapToolPanelState,
+    tool: MapTool,
+    onFeatureSettings: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(tool.titleResource(state.contentMode)),
+            modifier = Modifier.weight(1f, fill = false),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!state.hasFeatureSettingsBack && tool != MapTool.SETTINGS) {
+            IconButton(onClick = onFeatureSettings) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.map_tool_action_settings_content_description),
+                )
+            }
         }
     }
 }
@@ -259,11 +293,14 @@ private fun mapToolHeaderSwipeModifier(
 }
 
 @Composable
+@Suppress("LongMethod", "LongParameterList") // The launcher keeps its fixed bottom-navigation layout in one slot.
 private fun mapToolLauncher(
     expanded: Boolean,
     activeTool: MapTool?,
     onToolSelected: (MapTool) -> Unit,
     onToggle: () -> Unit,
+    onAddPoi: () -> Unit,
+    onOpenGpxTools: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
@@ -294,6 +331,28 @@ private fun mapToolLauncher(
                             },
                     )
                 }
+                ExtendedFloatingActionButton(
+                    onClick = onAddPoi,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Place,
+                            contentDescription = stringResource(R.string.map_tool_shortcut_add_poi),
+                        )
+                    },
+                    text = { Text(stringResource(R.string.map_tool_shortcut_add_poi)) },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                )
+                ExtendedFloatingActionButton(
+                    onClick = onOpenGpxTools,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Route,
+                            contentDescription = stringResource(R.string.map_tool_shortcut_gpx),
+                        )
+                    },
+                    text = { Text(stringResource(R.string.map_tool_shortcut_gpx)) },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                )
             }
         }
         NavigationBar(modifier = Modifier.align(Alignment.BottomCenter)) {

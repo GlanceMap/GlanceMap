@@ -873,6 +873,7 @@ internal fun FilePickerScreen(
                         onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
                         onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
                         onPoiDataChanged = phoneMapPoiViewModel::refresh,
+                        onRouteSaved = routeLibraryViewModel::refresh,
                         onBack = { activeHomeArea = CompanionHomeArea.HOME },
                     )
                 }

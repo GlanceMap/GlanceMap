@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
 import org.mapsforge.core.model.BoundingBox
@@ -16,10 +17,16 @@ import org.mapsforge.map.android.util.AndroidUtil
 import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.cache.TileCache
+import org.mapsforge.map.layer.hills.AClasyHillShading
+import org.mapsforge.map.layer.hills.AdaptiveClasyHillShading
+import org.mapsforge.map.layer.hills.HillsRenderConfig
+import org.mapsforge.map.layer.hills.MemoryCachingHgtReaderTileSource
 import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.MapViewPosition
 import org.mapsforge.map.reader.MapFile
+import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
 import org.mapsforge.map.util.LayerUtil
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
@@ -35,6 +42,7 @@ private const val PHONE_MAP_CONSTRAINED_MEMORY_BUDGET_CAP_BYTES = 8L * 1024L * 1
 private const val PHONE_MAP_CONSTRAINED_MEMORY_CLASS_MB = 128
 private const val PHONE_MAP_CONSTRAINED_MAX_HEAP_BYTES = 160L * 1024L * 1024L
 private const val PHONE_MAP_MAX_PARENT_TILE_DEPTH = 4
+private const val PHONE_FIRST_VISIBLE_TILE_COVERAGE_SAMPLE_INTERVAL_MS = 250L
 
 internal data class PhoneMapsforgeTileCacheConfig(
     val firstLevelTiles: Int,
@@ -174,6 +182,14 @@ internal fun phoneFirstVisibleTileCoverage(
     )
 }
 
+internal fun isPhoneFirstVisibleTileCoverageSampleDue(
+    lastSampleAtElapsedMs: Long?,
+    nowElapsedMs: Long,
+    sampleIntervalMs: Long = PHONE_FIRST_VISIBLE_TILE_COVERAGE_SAMPLE_INTERVAL_MS,
+): Boolean =
+    lastSampleAtElapsedMs == null ||
+        nowElapsedMs - lastSampleAtElapsedMs >= sampleIntervalMs.coerceAtLeast(1L)
+
 internal enum class PhoneFirstVisibleTileSource {
     WARM_CACHE,
     COLD_RENDER,
@@ -200,6 +216,16 @@ internal class PhoneMapsforgeRenderer(
     private var cacheReuseEventFor: PhoneMapsforgeBaseLayerIdentity? = null
     private var currentBase: PhoneMapsforgePreparedBaseLayer? = null
     private var currentTrace: PhoneOfflineMapRendererTrace? = null
+    private var requestedTerrainSettings = PhoneMapSettings()
+    private var requestedTerrainDataVersion: Long = 0L
+    private var requestedTerrainDataAvailable = false
+    private var activeTerrainKey: String? = null
+    private var hillshadeLayer: TileRendererLayer? = null
+    private var hillshadeTileCache: TileCache? = null
+    private var hillshadeMapFile: MapFile? = null
+    private var hillsRenderConfig: HillsRenderConfig? = null
+    private var reliefOverlayLayer: PhoneReliefOverlayLayer? = null
+    private val elevationRepository = PhoneElevationRepository(context)
     private var destroyed = false
 
     val mapBounds: BoundingBox?
@@ -207,6 +233,12 @@ internal class PhoneMapsforgeRenderer(
 
     val currentBaseLayer: TileRendererLayer?
         get() = currentBase?.layer
+
+    val mapZoomLevelMin: Byte?
+        get() = currentBase?.mapFile?.mapFileInfo?.zoomLevelMin
+
+    val mapZoomLevelMax: Byte?
+        get() = currentBase?.mapFile?.mapFileInfo?.zoomLevelMax
 
     fun updateBaseLayer(
         map: PhoneOfflineMap,
@@ -240,6 +272,27 @@ internal class PhoneMapsforgeRenderer(
                 initialCamera = initialCamera,
                 change = appliedChange,
             )
+        }
+    }
+
+    /** Terrain is independent from the base layer and can be toggled without reopening the map. */
+    @Suppress("ReturnCount") // Renderer state updates intentionally exit when no base layer is attached.
+    fun updateTerrain(
+        settings: PhoneMapSettings,
+        dataVersion: Long,
+        dataAvailable: Boolean,
+    ) {
+        if (destroyed) return
+        requestedTerrainSettings = settings
+        requestedTerrainDataAvailable = dataAvailable
+        if (requestedTerrainDataVersion != dataVersion) {
+            requestedTerrainDataVersion = dataVersion
+            elevationRepository.invalidate()
+        }
+        val base = currentBase ?: return
+        if (activeTerrainKey == terrainKey(base.sourceFile, settings, dataVersion, dataAvailable)) return
+        PhoneMapLayerMutationCoordinator.mutateLayers(mapView, TERRAIN_LAYER_MUTATION_KEY) { layers ->
+            if (!destroyed && currentBase === base) applyTerrainLayers(layers)
         }
     }
 
@@ -306,7 +359,6 @@ internal class PhoneMapsforgeRenderer(
         trace: PhoneOfflineMapRendererTrace,
     ): PhoneMapsforgePreparedBaseLayer {
         check(isPhoneOfflineMapCandidate(map.file)) { "Selected map is unavailable." }
-        AndroidGraphicFactory.createInstance(context.applicationContext)
         val mapFile = MapFile(map.file)
         var cache: TileCache? = null
         var layer: PhoneFirstVisibleTileRendererLayer? = null
@@ -317,7 +369,7 @@ internal class PhoneMapsforgeRenderer(
             trace.tileCacheCreated()
             trace.complete(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
             layer = createTileLayer(cache, mapFile, identity.themeConfig, trace)
-            return PhoneMapsforgePreparedBaseLayer(mapFile, cache, cacheId, layer, camera.bounds)
+            return PhoneMapsforgePreparedBaseLayer(map.file, mapFile, cache, cacheId, layer, camera.bounds)
         } catch (error: Exception) {
             layer?.let { runCatching { it.onDestroy() } } ?: runCatching { mapFile.close() }
             runCatching { cache?.destroy() }
@@ -447,6 +499,7 @@ internal class PhoneMapsforgeRenderer(
                 event = "renderer_ready",
                 detail = "renderer=$rendererId mapView=${System.identityHashCode(mapView)}",
             )
+            applyTerrainLayers(layers)
             onRuntimeChanged()
         } catch (error: Exception) {
             layers.remove(prepared.layer)
@@ -498,6 +551,7 @@ internal class PhoneMapsforgeRenderer(
         layers: Layers,
         reason: String,
     ) {
+        clearTerrainLayers(layers, reason)
         val previousBase = currentBase
         if (previousBase != null) {
             layers.remove(previousBase.layer)
@@ -520,8 +574,167 @@ internal class PhoneMapsforgeRenderer(
         )
     }
 
+    private fun terrainKey(
+        sourceFile: File,
+        settings: PhoneMapSettings,
+        dataVersion: Long,
+        dataAvailable: Boolean,
+    ): String =
+        "${sourceFile.absolutePath}|$dataVersion|$dataAvailable|" +
+            "${settings.hillShadingEnabled}|${settings.reliefOverlayEnabled}"
+
+    @Suppress("LongMethod", "ReturnCount", "TooGenericExceptionCaught")
+    private fun applyTerrainLayers(layers: Layers) {
+        val base = currentBase ?: return
+        val desiredKey =
+            terrainKey(
+                base.sourceFile,
+                requestedTerrainSettings,
+                requestedTerrainDataVersion,
+                requestedTerrainDataAvailable,
+            )
+        if (activeTerrainKey == desiredKey) return
+        clearTerrainLayers(layers, reason = "replace")
+        activeTerrainKey = desiredKey
+        if (!requestedTerrainSettings.hillShadingEnabled && !requestedTerrainSettings.reliefOverlayEnabled) return
+        if (!requestedTerrainDataAvailable) {
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "terrain_unavailable",
+                detail = "renderer=$rendererId reason=missing_dem",
+            )
+            return
+        }
+
+        if (requestedTerrainSettings.hillShadingEnabled) {
+            var terrainMapFile: MapFile? = null
+            var terrainCache: TileCache? = null
+            var terrainConfig: HillsRenderConfig? = null
+            try {
+                val demFolder = PhoneMapsforgeDemFolder(PhoneElevationStore(context).readDirectories())
+                val algorithm =
+                    AdaptiveClasyHillShading(
+                        AClasyHillShading
+                            .ClasyParams()
+                            .setReadingThreadsCount(1)
+                            .setComputingThreadsCount(1)
+                            .setPreprocess(false),
+                        false,
+                    ).setAdaptiveZoomEnabled(true)
+                        .setCustomQualityScale(0.5)
+                        .setZoomMinOverride(10)
+                terrainConfig =
+                    HillsRenderConfig(
+                        MemoryCachingHgtReaderTileSource(
+                            demFolder,
+                            algorithm,
+                            AndroidGraphicFactory.INSTANCE,
+                        ),
+                    ).setMagnitudeScaleFactor(1f).setExternal(true).indexOnThread()
+                terrainMapFile = MapFile(base.sourceFile)
+                val cacheId = "phone-hillshade-${phoneMapsforgeIdentityHash(base.sourceFile.absolutePath)}"
+                terrainCache =
+                    AndroidUtil.createExternalStorageTileCache(
+                        context,
+                        cacheId,
+                        16,
+                        mapView.model.displayModel.tileSize,
+                        true,
+                    )
+                val layer =
+                    TileRendererLayer(
+                        terrainCache,
+                        terrainMapFile,
+                        mapView.model.mapViewPosition,
+                        true,
+                        false,
+                        false,
+                        AndroidGraphicFactory.INSTANCE,
+                        terrainConfig,
+                    ).apply {
+                        setXmlRenderTheme(MapsforgeThemes.HILLSHADING)
+                        setCacheZoomPlus(0)
+                        setCacheZoomMinus(0)
+                        setCacheTileMargin(0)
+                    }
+                layers.add(1.coerceAtMost(layers.size()), layer)
+                hillshadeLayer = layer
+                hillshadeTileCache = terrainCache
+                hillshadeMapFile = terrainMapFile
+                hillsRenderConfig = terrainConfig
+                terrainCache = null
+                terrainMapFile = null
+                terrainConfig = null
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "hillshade_layer_attached",
+                    detail = "renderer=$rendererId",
+                )
+            } catch (error: Exception) {
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "hillshade_layer_failed",
+                    detail = "renderer=$rendererId error=${error.javaClass.simpleName}",
+                )
+                runCatching { terrainMapFile?.close() }
+                runCatching { terrainCache?.destroy() }
+                runCatching { terrainConfig?.interruptAndDestroy() }
+            }
+        }
+        if (requestedTerrainSettings.reliefOverlayEnabled) {
+            runCatching {
+                PhoneReliefOverlayLayer(elevationRepository).also { layer ->
+                    val terrainIndex =
+                        hillshadeLayer?.let(layers::indexOf)
+                            ?: currentBase?.layer?.let(layers::indexOf)
+                            ?: -1
+                    val belowOverlays = terrainIndex + 1
+                    layers.add(belowOverlays.coerceIn(0, layers.size()), layer)
+                    reliefOverlayLayer = layer
+                }
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "relief_overlay_attached",
+                    detail = "renderer=$rendererId",
+                )
+            }.onFailure { error ->
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "relief_overlay_failed",
+                    detail = "renderer=$rendererId error=${error.javaClass.simpleName}",
+                )
+            }
+        }
+        PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
+    }
+
+    private fun clearTerrainLayers(
+        layers: Layers,
+        reason: String,
+    ) {
+        reliefOverlayLayer?.let { layer ->
+            layers.remove(layer)
+            runCatching { layer.onDestroy() }
+        }
+        reliefOverlayLayer = null
+        hillshadeLayer?.let { layer ->
+            layers.remove(layer)
+            runCatching { layer.onDestroy() }
+        }
+        hillshadeLayer = null
+        hillshadeTileCache?.let { cache -> runCatching { cache.destroy() } }
+        hillshadeTileCache = null
+        hillshadeMapFile?.let { mapFile -> runCatching { mapFile.close() } }
+        hillshadeMapFile = null
+        hillsRenderConfig?.let { config -> runCatching { config.interruptAndDestroy() } }
+        hillsRenderConfig = null
+        if (activeTerrainKey != null) {
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "terrain_layers_removed",
+                detail = "renderer=$rendererId reason=$reason",
+            )
+        }
+        activeTerrainKey = null
+    }
+
     private companion object {
         const val BASE_LAYER_MUTATION_KEY = "phone_mapsforge_base_layer"
+        const val TERRAIN_LAYER_MUTATION_KEY = "phone_mapsforge_terrain"
     }
 }
 
@@ -542,6 +755,7 @@ internal data class PhoneMapsforgeRendererRuntimeSnapshot(
 }
 
 private data class PhoneMapsforgePreparedBaseLayer(
+    val sourceFile: File,
     val mapFile: MapFile,
     val cache: TileCache,
     val cacheId: String,
@@ -578,6 +792,7 @@ private class PhoneFirstVisibleTileRendererLayer(
     ) {
     private val drawObserved = AtomicBoolean(false)
     private val firstVisibleTileObserved = AtomicBoolean(false)
+    private var lastCoverageSampleAtElapsedMs: Long? = null
 
     @Volatile
     var latestCoverage: PhoneFirstVisibleTileCoverage = PhoneFirstVisibleTileCoverage()
@@ -597,10 +812,23 @@ private class PhoneFirstVisibleTileRendererLayer(
         rotation: Rotation,
     ) {
         val firstDraw = drawObserved.compareAndSet(false, true)
-        val coverageBefore = visibleTileCoverage(boundingBox, zoomLevel)
+        val coverageBefore = if (firstDraw) visibleTileCoverage(boundingBox, zoomLevel) else latestCoverage
         if (firstDraw) callbacks.onFirstDraw(this)
         super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
-        val coverageAfter = visibleTileCoverage(boundingBox, zoomLevel)
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val shouldSampleCoverage =
+            firstDraw ||
+                isPhoneFirstVisibleTileCoverageSampleDue(
+                    lastSampleAtElapsedMs = lastCoverageSampleAtElapsedMs,
+                    nowElapsedMs = nowElapsedMs,
+                )
+        val coverageAfter =
+            if (shouldSampleCoverage) {
+                lastCoverageSampleAtElapsedMs = nowElapsedMs
+                visibleTileCoverage(boundingBox, zoomLevel)
+            } else {
+                latestCoverage
+            }
         latestCoverage = coverageAfter
         if (coverageAfter != coverageBefore) callbacks.onCoverageChanged()
         if (

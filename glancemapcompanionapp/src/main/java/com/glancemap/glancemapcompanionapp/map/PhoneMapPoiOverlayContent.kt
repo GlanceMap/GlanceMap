@@ -1,14 +1,5 @@
 package com.glancemap.glancemapcompanionapp.map
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,29 +7,35 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.maplibre.poiIdAt
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPois
 import com.glancemap.trailcore.poi.PoiType
 import org.maplibre.android.maps.MapLibreMap
+import kotlin.math.roundToInt
 
 @Composable
 internal fun synchronizePoiOverlay(
     runtime: MapRuntime,
     pois: List<PhoneMapPoi>,
     isVisible: Boolean,
+    settings: PhoneMapPoiSettings,
 ) {
     val currentRuntime by rememberUpdatedState(runtime)
     val currentPois by rememberUpdatedState(pois)
     val currentIsVisible by rememberUpdatedState(isVisible)
-    LaunchedEffect(runtime.map, runtime.generation.styleRevision, pois, isVisible) {
-        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
-            style.renderPois(pois = currentPois, isVisible = currentIsVisible)
+    val currentSettings by rememberUpdatedState(settings)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, pois, isVisible, settings) {
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, mapView, style ->
+            style.renderPois(
+                pois = currentPois,
+                isVisible = currentIsVisible,
+                settings = currentSettings,
+                context = mapView.context,
+            )
         }
     }
 }
@@ -107,48 +104,49 @@ internal fun observePoiSelection(
 @Composable
 internal fun phoneMapPoiDetailsCard(
     poi: PhoneMapPoi,
+    isMetric: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val details = poi.details
-    Card(
+    PhoneMapPopupCard(
         modifier = modifier,
-        colors = CardDefaults.cardColors(),
+        title = poi.label ?: stringResource(poi.type.labelResource()),
+        onDismiss = onDismiss,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = poi.label ?: stringResource(poi.type.labelResource()))
-                    Text(text = stringResource(poi.type.labelResource()))
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.map_poi_close_content_description),
-                    )
-                }
-            }
-            details?.typeLabel?.let { typeLabel -> Text(text = typeLabel) }
-            details?.elevationMeters?.let { elevationMeters ->
-                Text(text = stringResource(R.string.map_poi_elevation_value, elevationMeters))
-            }
-            details?.sleepingPlaces?.let { sleepingPlaces ->
-                Text(
-                    text =
-                        pluralStringResource(
-                            R.plurals.map_poi_sleeping_places,
-                            sleepingPlaces,
-                            sleepingPlaces,
-                        ),
-                )
-            }
-            details?.state?.let { state ->
-                Text(text = stringResource(R.string.map_poi_state_value, state))
-            }
-            details?.shortDescription?.let { description -> Text(text = description) }
+        Text(text = stringResource(poi.type.labelResource()))
+        details?.typeLabel?.let { typeLabel -> Text(text = typeLabel) }
+        details?.elevationMeters?.let { elevationMeters ->
+            Text(
+                text =
+                    stringResource(
+                        if (isMetric) {
+                            R.string.map_poi_elevation_value
+                        } else {
+                            R.string.map_poi_elevation_imperial_value
+                        },
+                        if (isMetric) elevationMeters else (elevationMeters * METERS_TO_FEET).roundToInt(),
+                    ),
+            )
         }
+        details?.sleepingPlaces?.let { sleepingPlaces ->
+            Text(
+                text =
+                    pluralStringResource(
+                        R.plurals.map_poi_sleeping_places,
+                        sleepingPlaces,
+                        sleepingPlaces,
+                    ),
+            )
+        }
+        details?.state?.let { state ->
+            Text(text = stringResource(R.string.map_poi_state_value, state))
+        }
+        details?.shortDescription?.let { description -> Text(text = description) }
     }
 }
+
+private const val METERS_TO_FEET = 3.28084
 
 private fun PoiType.labelResource(): Int =
     when (this) {

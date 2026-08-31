@@ -176,6 +176,11 @@ android {
             assets {
                 directories.add(rootProject.file("licenses").absolutePath)
                 directories.add(rootProject.file("shared-theme-assets").absolutePath)
+                // Reuse the watch app's bundled Mapsforge theme families and resources.
+                directories.add(rootProject.file("app/src/main/assets/theme").absolutePath)
+                directories.add(rootProject.file("app/src/main/assets/poi").absolutePath)
+                // Reuse the watch app's BRouter profiles without maintaining a second copy.
+                directories.add(rootProject.file("app/src/main/assets/brouter").absolutePath)
             }
         }
     }
@@ -225,7 +230,9 @@ dependencies {
     implementation(libs.mapsforge.map)
     implementation(libs.mapsforge.map.android)
     implementation(libs.mapsforge.themes)
+    implementation(libs.androidsvg)
 
     implementation(project(":transfercontract"))
     implementation(project(":trailcore"))
+    implementation(project(":brouter-util"))
 }

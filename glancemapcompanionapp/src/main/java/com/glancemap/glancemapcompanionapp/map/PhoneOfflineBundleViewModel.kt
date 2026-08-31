@@ -34,6 +34,7 @@ internal sealed interface PhoneOfflineBundleDownloadState {
 
 internal data class PhoneOfflineBundleUiState(
     val installedAreaIds: Set<String> = emptySet(),
+    val statusByAreaId: Map<String, PhoneOfflineBundleHealth> = emptyMap(),
     val download: PhoneOfflineBundleDownloadState = PhoneOfflineBundleDownloadState.Idle,
 )
 
@@ -42,6 +43,7 @@ internal class PhoneOfflineBundleViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val bundleStore = PhoneOfflineBundleStore(application)
+    private val mapStore = PhoneOfflineMapStore(application)
     private val downloader = PhoneOfflineBundleDownloader(application, bundleStore = bundleStore)
     private val _uiState = MutableStateFlow(PhoneOfflineBundleUiState())
     val uiState: StateFlow<PhoneOfflineBundleUiState> = _uiState.asStateFlow()
@@ -51,14 +53,14 @@ internal class PhoneOfflineBundleViewModel(
         refreshInstalledBundles()
     }
 
-    fun start(areaId: String) {
-        val area = OamDownloadCatalog.areas.firstOrNull { it.id == areaId } ?: return
+    fun start(selection: PhoneOfflineBundleSelection) {
+        val area = OamDownloadCatalog.areas.firstOrNull { it.id == selection.area.id } ?: return
         if (downloadJob?.isActive == true) return
         downloadJob =
             viewModelScope.launch {
                 val outcome =
                     try {
-                        downloader.download(PhoneOfflineBundleSelection(area)) { progress ->
+                        downloader.download(selection.copy(area = area)) { progress ->
                             _uiState.value =
                                 _uiState.value.copy(
                                     download =
@@ -75,13 +77,14 @@ internal class PhoneOfflineBundleViewModel(
                     }
                 when (outcome) {
                     is PhoneOfflineBundleOutcome.Success -> {
-                        val installedAreaIds =
+                        val statuses =
                             withContext(Dispatchers.IO) {
-                                bundleStore.list().mapTo(linkedSetOf()) { it.areaId }
+                                bundleStatuses()
                             }
                         _uiState.value =
                             PhoneOfflineBundleUiState(
-                                installedAreaIds = installedAreaIds,
+                                installedAreaIds = statuses.completeAreaIds(),
+                                statusByAreaId = statuses,
                                 download = PhoneOfflineBundleDownloadState.Completed(outcome.bundle),
                             )
                     }
@@ -102,11 +105,15 @@ internal class PhoneOfflineBundleViewModel(
 
     fun refreshInstalledBundles() {
         viewModelScope.launch {
-            val installedAreaIds =
+            val statuses =
                 withContext(Dispatchers.IO) {
-                    bundleStore.list().mapTo(linkedSetOf()) { it.areaId }
+                    bundleStatuses()
                 }
-            _uiState.value = _uiState.value.copy(installedAreaIds = installedAreaIds)
+            _uiState.value =
+                _uiState.value.copy(
+                    installedAreaIds = statuses.completeAreaIds(),
+                    statusByAreaId = statuses,
+                )
         }
     }
 
@@ -114,4 +121,39 @@ internal class PhoneOfflineBundleViewModel(
         downloader.cancelActiveDownloads()
         super.onCleared()
     }
+
+    private fun bundleStatuses(): Map<String, PhoneOfflineBundleHealth> {
+        val statuses =
+            bundleStore
+                .list()
+                .associate { bundle ->
+                    bundle.areaId to
+                        phoneOfflineBundleHealth(
+                            context = getApplication(),
+                            mapStore = mapStore,
+                            bundle = bundle,
+                            recovery = bundleStore.findRecovery(bundle.areaId),
+                        )
+                }
+        return bundleStore.recoveries().fold(statuses) { result, recovery ->
+            if (recovery.areaId in result) {
+                result
+            } else {
+                result +
+                    (
+                        recovery.areaId to
+                            PhoneOfflineBundleHealth(
+                                status = PhoneOfflineBundleStatus.RECOVERY_NEEDED,
+                                missingFileNames = recovery.routingFileNames + recovery.demTileIds,
+                                hasRecovery = true,
+                            )
+                    )
+            }
+        }
+    }
+}
+
+private fun Map<String, PhoneOfflineBundleHealth>.completeAreaIds(): Set<String> {
+    val complete = filterValues { health -> health.isComplete }
+    return complete.keys
 }

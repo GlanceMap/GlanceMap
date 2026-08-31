@@ -149,7 +149,30 @@ internal fun DebugCaptureDialog(
                     Text(stringResource(R.string.home_debug_capture_stop_email_action))
                 }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier =
+                        Modifier
+                            .heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            viewModel.startPhoneDebugCapture(context)
+                        },
+                    ) {
+                        Text(
+                            stringResource(
+                                if (hasCurrentCapture) {
+                                    R.string.home_debug_capture_start_new_action
+                                } else {
+                                    R.string.home_debug_capture_start_action
+                                },
+                            ),
+                        )
+                    }
                     if (hasSavedPhoneRecording) {
                         TextButton(
                             onClick = {
@@ -187,14 +210,6 @@ internal fun DebugCaptureDialog(
                         ) {
                             Text(stringResource(R.string.home_debug_capture_send_previous_action))
                         }
-                    }
-                    TextButton(
-                        onClick = {
-                            onDismiss()
-                            viewModel.startPhoneDebugCapture(context)
-                        },
-                    ) {
-                        Text(stringResource(R.string.home_debug_capture_start_action))
                     }
                 }
             }

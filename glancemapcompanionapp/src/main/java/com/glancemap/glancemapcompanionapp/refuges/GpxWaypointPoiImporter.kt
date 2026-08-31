@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.refuges
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
@@ -127,7 +128,7 @@ class GpxWaypointPoiImporter(
                 )
             }
 
-            val outputDir = File(context.filesDir, "refuges-poi").apply { mkdirs() }
+            val outputDir = PhoneOfflineStorage(context).poiDirectory().apply { mkdirs() }
             val outputFile = File(outputDir, normalizeFileName(fileNameInput))
             val categoryCount =
                 PoiSqliteCodec.write(

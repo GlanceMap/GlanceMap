@@ -26,6 +26,7 @@ import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.transfer.WatchGpxSaveIntentContract
 import com.glancemap.glancemapcompanionapp.ui.theme.GlanceMapTheme
+import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 
 class MainActivityMobile : ComponentActivity() {
     private var incomingUris by mutableStateOf<List<Uri>>(emptyList())
@@ -36,6 +37,7 @@ class MainActivityMobile : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AndroidGraphicFactory.createInstance(application)
         PhoneDebugCapture.initialize(applicationContext)
 
         handleLaunchIntent(intent)

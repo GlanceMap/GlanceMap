@@ -15,5 +15,6 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":brouter-core"))
     testImplementation(libs.junit)
 }
