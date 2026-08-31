@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -146,6 +147,7 @@ internal fun MapOverlays(
     val requestMapRedraw =
         remember(redrawSignals) {
             {
+                ScreenOffActivityDiagnostics.recordMapRedrawRequest()
                 redrawSignals.tryEmit(Unit)
                 Unit
             }

@@ -532,11 +532,16 @@ fun NavigateScreen(
                 )
             }
         var visiblePoiMarkers by remember { mutableStateOf<List<PoiOverlayMarker>>(emptyList()) }
-        val markerMotionDebugOverlayLabel =
-            rememberMarkerMotionDebugOverlayLabel(
+        val markerMotionDebugOverlayRefreshEnabled =
+            shouldRefreshMarkerMotionDebugOverlay(
                 gpsDebugTelemetry = gpsDebugTelemetry,
                 gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
                 offlineMode = offlineMode,
+                screenState = screenState,
+            )
+        val markerMotionDebugOverlayLabel =
+            rememberMarkerMotionDebugOverlayLabel(
+                refreshEnabled = markerMotionDebugOverlayRefreshEnabled,
                 renderState = compassRenderState,
                 renderedHeadingDeg = renderedCompassHeadingDeg,
             )
@@ -995,6 +1000,7 @@ fun NavigateScreen(
                 }
             },
             isMetric = isMetric,
+            screenState = screenState,
             navMode = effectiveNavMode,
             locationMarker = locationMarker,
             lastKnownLocation = recenterTarget,

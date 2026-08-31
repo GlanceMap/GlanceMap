@@ -712,6 +712,7 @@ internal fun BoxScope.NavModeButtonOverlay(
     onRecenterRequested: () -> Unit,
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
+    isScreenInteractive: Boolean,
 ) {
     val navIcon =
         when {
@@ -733,9 +734,11 @@ internal fun BoxScope.NavModeButtonOverlay(
             watchGpsDegradedWarning = watchGpsDegradedWarning,
         )
     var pulseOn by remember(trustState) { mutableStateOf(true) }
-    LaunchedEffect(trustState) {
-        if (trustState != NavButtonTrustState.SEARCHING) {
-            pulseOn = true
+    LaunchedEffect(trustState, isScreenInteractive) {
+        if (!shouldRunSearchingNavButtonPulse(isScreenInteractive, trustState == NavButtonTrustState.SEARCHING)) {
+            if (trustState != NavButtonTrustState.SEARCHING) {
+                pulseOn = true
+            }
             return@LaunchedEffect
         }
         pulseOn = true
@@ -847,6 +850,11 @@ internal fun BoxScope.NavModeButtonOverlay(
         }
     }
 }
+
+internal fun shouldRunSearchingNavButtonPulse(
+    isScreenInteractive: Boolean,
+    isSearching: Boolean,
+): Boolean = isScreenInteractive && isSearching
 
 private fun resolveNavButtonTrustState(
     isOfflineMode: Boolean,

@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 
@@ -133,6 +134,7 @@ internal object EnergyDiagnostics {
     private val recordingSensorDurations = linkedMapOf<String, MutableDurationStats>()
     private val activePartialWakeLocks = mutableMapOf<Int, ActivePartialWakeLock>()
     private val activeRecordingSensors = mutableMapOf<String, Long>()
+    private val previousProcessCpuMs = AtomicLong(-1L)
     private var droppedLines: Int = 0
 
     fun clear() {
@@ -141,6 +143,7 @@ internal object EnergyDiagnostics {
             batteryBenchmarkInvalidReasons.clear()
             droppedLines = 0
         }
+        previousProcessCpuMs.set(-1L)
         synchronized(runtimeAttributionLock) {
             partialWakeLockDurations.clear()
             recordingSensorDurations.clear()
@@ -320,6 +323,11 @@ internal object EnergyDiagnostics {
         val capacityPct = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val chargeCounterUah = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
         val processCpuMs = Process.getElapsedCpuTime()
+        val previousCpuMs = previousProcessCpuMs.getAndSet(processCpuMs)
+        val processCpuDeltaMs =
+            previousCpuMs
+                .takeIf { it >= 0L }
+                ?.let { (processCpuMs - it).coerceAtLeast(0L) }
 
         val powerSave = powerManager?.isPowerSaveMode ?: false
         val interactive = powerManager?.isInteractive ?: false
@@ -347,13 +355,14 @@ internal object EnergyDiagnostics {
                 append(" capPropPct=").append(propertyOrNa(capacityPct))
                 append(" chargeCounterUah=").append(propertyOrNa(chargeCounterUah))
                 append(" procCpuMs=").append(processCpuMs)
+                append(" procCpuDeltaMs=").append(processCpuDeltaMs ?: "na")
                 append(" saver=").append(powerSave)
                 append(" interactive=").append(interactive)
                 append(" thermal=").append(thermal)
             }
 
         push(line)
-        DebugTelemetry.log(TAG, line)
+        if (DebugTelemetry.isEnabled()) DebugTelemetry.log(TAG, line)
     }
 
     fun recordEvent(

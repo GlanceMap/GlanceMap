@@ -14,6 +14,7 @@ import android.os.SystemClock
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.adapters.FusedLocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationSettingsPreflight
@@ -582,6 +583,7 @@ class LocationService : Service() {
                 }
 
                 override fun onLocations(event: LocationUpdateEvent) {
+                    ScreenOffActivityDiagnostics.recordLocationCallback()
                     callbackProcessor.processLocationEvent(
                         event = event,
                         nowElapsedMsProvider = { SystemClock.elapsedRealtime() },
@@ -1335,6 +1337,7 @@ class LocationService : Service() {
         if (energySampleJob?.isActive == true) return
         energySampleJob =
             serviceScope.launch {
+                ScreenOffActivityDiagnostics.snapshotAndReset()
                 EnergyDiagnostics.recordSample(
                     context = this@LocationService,
                     reason = "capture_enabled",
@@ -1355,6 +1358,7 @@ class LocationService : Service() {
     }
 
     private fun energyRuntimeDetail(): String {
+        val activity = ScreenOffActivityDiagnostics.snapshotAndReset()
         val gpsRequestActive = engine.hasAppliedRequest()
         val gpsBackend = engine.currentSourceModeOrNull()?.telemetryValue ?: "none"
         val gpsRequestIntervalMs =
@@ -1367,8 +1371,22 @@ class LocationService : Service() {
             "burst=${engine.isBurstActive()} tracking=$latestTrackingEnabled " +
             "bound=${isBound.value} keepOpen=${keepAppOpen.value} " +
             "screenState=${latestScreenState.name} runtimeReason=$latestRuntimeReason " +
+            "recordingActive=${
+                latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING ||
+                    latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING_AUTO_PAUSED ||
+                    latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
+            } guidanceActive=${latestRuntimeReason.isGuidanceRuntimeReason()} " +
             "gpsRequestActive=$gpsRequestActive gpsBackend=$gpsBackend " +
-            "gpsRequestIntervalMs=$gpsRequestIntervalMs"
+            "gpsRequestIntervalMs=$gpsRequestIntervalMs activityWindow=delta " +
+            "orientationFrameCount=${activity.orientationFrameCount} " +
+            "orientationFrameNonInteractiveCount=${activity.orientationFrameNonInteractiveCount} " +
+            "liveHudTickCount=${activity.liveHudTickCount} " +
+            "debugOverlayTickCount=${activity.debugOverlayTickCount} " +
+            "mapRedrawRequestCount=${activity.mapRedrawRequestCount} " +
+            "mapViewportCallbackCount=${activity.mapViewportCallbackCount} " +
+            "locationCallbackCount=${activity.locationCallbackCount} " +
+            "compassCallbackCount=${activity.compassCallbackCount} " +
+            "dataLayerCallbackCount=${activity.dataLayerCallbackCount}"
     }
 
     private fun applyDiagnosticsCaptureState(
@@ -1387,6 +1405,7 @@ class LocationService : Service() {
         latestDiagnosticsCaptureActive = captureActive
         latestGpsDebugTelemetry = fullDiagnostics
         telemetry.setDebugEnabled(fullDiagnostics)
+        ScreenOffActivityDiagnostics.configure(enabled = captureActive)
         EnergyDiagnostics.configure(
             captureActive = captureActive,
             fullDiagnostics = fullDiagnostics,

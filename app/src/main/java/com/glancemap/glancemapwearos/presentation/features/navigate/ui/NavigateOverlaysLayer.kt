@@ -76,6 +76,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     slopeOverlayProcessing: Boolean,
     slopeOverlayProgressPercent: Int?,
     navMode: NavMode,
+    isScreenInteractive: Boolean,
     screenSize: WearScreenSize,
     isMetric: Boolean,
     liveElevationEnabled: Boolean,
@@ -243,8 +244,16 @@ internal fun BoxScope.NavigateOverlaysLayer(
         mapRotationDeg,
         navigationMarkerAnchorMode,
         suppressLiveMetricsForPoi,
+        isScreenInteractive,
     ) {
-        if (navMode != NavMode.PANNING || !liveDistanceEnabled || suppressLiveMetricsForPoi) {
+        if (
+            !shouldRunPanningDistanceGuideProjection(
+                isScreenInteractive = isScreenInteractive,
+                navMode = navMode,
+                liveDistanceEnabled = liveDistanceEnabled,
+                suppressLiveMetricsForPoi = suppressLiveMetricsForPoi,
+            )
+        ) {
             liveDistanceLineStart = null
             return@LaunchedEffect
         }
@@ -499,6 +508,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         onRecenterRequested = onRecenterRequested,
         onToggleOrientation = onToggleOrientation,
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
+        isScreenInteractive = isScreenInteractive,
     )
 
     TurnByTurnGuidanceOverlay(
@@ -599,3 +609,14 @@ internal fun BoxScope.NavigateOverlaysLayer(
         },
     )
 }
+
+internal fun shouldRunPanningDistanceGuideProjection(
+    isScreenInteractive: Boolean,
+    navMode: NavMode,
+    liveDistanceEnabled: Boolean,
+    suppressLiveMetricsForPoi: Boolean,
+): Boolean =
+    isScreenInteractive &&
+        navMode == NavMode.PANNING &&
+        liveDistanceEnabled &&
+        !suppressLiveMetricsForPoi

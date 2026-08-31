@@ -14,6 +14,7 @@ import android.view.Surface
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceProviderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -517,6 +518,7 @@ internal class SensorManagerOrientationProvider(
 
     override fun onSensorChanged(event: SensorEvent) {
         if (!started) return
+        ScreenOffActivityDiagnostics.recordCompassCallback()
         maybeRefreshDisplayRotation()
         if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             updateMagneticInterference(values = event.values)

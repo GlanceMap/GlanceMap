@@ -52,7 +52,10 @@ import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
+import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
@@ -106,6 +109,7 @@ internal fun NavigateContent(
     onMapPanCompleted: () -> Unit,
     onViewportChanged: (LatLong, Int) -> Unit,
     isMetric: Boolean,
+    screenState: LocationScreenState,
     navMode: NavMode,
     locationMarker: RotatableMarker?,
     lastKnownLocation: LatLong?,
@@ -513,6 +517,7 @@ internal fun NavigateContent(
     val liveHudState =
         rememberNavigateLiveHudState(
             enabled = hasLocationPermission && mapView != null,
+            screenState = screenState,
             mapHolder = mapHolder,
             mapView = mapView,
             currentZoomLevel = currentZoomLevel,
@@ -690,6 +695,7 @@ internal fun NavigateContent(
                 var lastCenter = mapView.model.mapViewPosition.center
                 val observer =
                     Observer {
+                        ScreenOffActivityDiagnostics.recordMapViewportCallback()
                         val newCenter = mapView.model.mapViewPosition.center
                         val newZoom =
                             mapView.model.mapViewPosition.zoomLevel
@@ -931,6 +937,7 @@ internal fun NavigateContent(
                     slopeOverlayProcessing = slopeOverlayProcessing,
                     slopeOverlayProgressPercent = slopeOverlayProgressPercent,
                     navMode = navMode,
+                    isScreenInteractive = screenState.isInteractive,
                     screenSize = screenSize,
                     isMetric = isMetric,
                     liveElevationEnabled = liveElevationEnabled,

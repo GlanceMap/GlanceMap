@@ -9,8 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -23,22 +25,21 @@ import java.util.Locale
 
 @Composable
 internal fun rememberMarkerMotionDebugOverlayLabel(
-    gpsDebugTelemetry: Boolean,
-    gpsDebugTelemetryPopupEnabled: Boolean,
-    offlineMode: Boolean,
+    refreshEnabled: Boolean,
     renderState: CompassRenderState,
     renderedHeadingDeg: Float,
 ): String? {
     var markerMotionDebugOverlayLabel by remember { mutableStateOf<String?>(null) }
     val latestRenderState by rememberUpdatedState(renderState)
     val latestRenderedHeadingDeg by rememberUpdatedState(renderedHeadingDeg)
-    LaunchedEffect(gpsDebugTelemetry, gpsDebugTelemetryPopupEnabled, offlineMode) {
-        if (!gpsDebugTelemetry || !gpsDebugTelemetryPopupEnabled || offlineMode) {
+    LaunchedEffect(refreshEnabled) {
+        if (!refreshEnabled) {
             markerMotionDebugOverlayLabel = null
             return@LaunchedEffect
         }
 
         while (isActive) {
+            ScreenOffActivityDiagnostics.recordDebugOverlayTick()
             markerMotionDebugOverlayLabel =
                 MarkerMotionTelemetry.latestSnapshot().overlayLabel() +
                 "\n" +
@@ -51,6 +52,17 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
     }
     return markerMotionDebugOverlayLabel
 }
+
+internal fun shouldRefreshMarkerMotionDebugOverlay(
+    gpsDebugTelemetry: Boolean,
+    gpsDebugTelemetryPopupEnabled: Boolean,
+    offlineMode: Boolean,
+    screenState: LocationScreenState,
+): Boolean =
+    gpsDebugTelemetry &&
+        gpsDebugTelemetryPopupEnabled &&
+        !offlineMode &&
+        screenState.isInteractive
 
 internal fun compassIntegrityDebugOverlayLabel(
     renderState: CompassRenderState,

@@ -5,6 +5,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelClientStrategy
 import com.glancemap.glancemapwearos.core.service.transfer.datalayer.DataLayerHandlers
@@ -61,11 +62,13 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
+        ScreenOffActivityDiagnostics.recordDataLayerCallback()
         handlers.handleMessage(messageEvent)
     }
 
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         super.onChannelOpened(channel)
+        ScreenOffActivityDiagnostics.recordDataLayerCallback()
         app.applicationScope.launch(Dispatchers.IO) {
             runCatching { handlers.handleChannelOpened(channel) }
                 .onFailure { Log.e(TAG, "Channel handler failed: ${it.message}", it) }
@@ -166,6 +169,7 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onPeerConnected(peer: Node) {
         super.onPeerConnected(peer)
+        ScreenOffActivityDiagnostics.recordDataLayerCallback()
         Log.d(TAG, "📡 Peer connected: ${peer.displayName}")
         TransferDiagnostics.log("Peer", "Connected name=${peer.displayName} id=${peer.id}")
         EnergyDiagnostics.recordEvent(
@@ -176,6 +180,7 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onPeerDisconnected(peer: Node) {
         super.onPeerDisconnected(peer)
+        ScreenOffActivityDiagnostics.recordDataLayerCallback()
         Log.d(TAG, "📡 Peer disconnected: ${peer.displayName}")
         TransferDiagnostics.warn("Peer", "Disconnected name=${peer.displayName} id=${peer.id}")
         EnergyDiagnostics.recordEvent(

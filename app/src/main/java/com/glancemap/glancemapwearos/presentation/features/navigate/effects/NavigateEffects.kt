@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDi
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceRenderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
@@ -358,7 +359,10 @@ fun NavigationOrientationEffect(
         showRealMarkerInCompassMode,
         forceNorthUpInPanning,
         navigationMarkerAnchorMode,
+        compassInteractive,
     ) {
+        if (!shouldRunOrientationVisualLoop(compassInteractive, navMode)) return@LaunchedEffect
+
         // Local var: safe because both coroutines run on Main (single-threaded).
         var liveTarget = displayedHeading.floatValue
         var latestRenderState = renderStateFlow.value
@@ -410,6 +414,9 @@ fun NavigationOrientationEffect(
         // Animate toward liveTarget on every display frame.
         while (true) {
             withFrameNanos { frameTimeNanos ->
+                ScreenOffActivityDiagnostics.recordOrientationFrame(
+                    isInteractive = latestCompassInteractive.value,
+                )
                 val frameDeltaMs =
                     resolveHeadingAnimationFrameDeltaMs(
                         frameTimeNanos = frameTimeNanos,
@@ -971,6 +978,11 @@ internal fun shouldDriveCompassFollowMap(renderState: CompassRenderState): Boole
         renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
     }
 }
+
+internal fun shouldRunOrientationVisualLoop(
+    compassInteractive: Boolean,
+    navMode: NavMode,
+): Boolean = compassInteractive && navMode != NavMode.PANNING
 
 internal fun shouldHoldCompassFollowStartupForMagneticInterference(
     renderState: CompassRenderState,
