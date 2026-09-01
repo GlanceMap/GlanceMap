@@ -2,8 +2,11 @@ package com.glancemap.glancemapwearos.core.service
 
 import android.net.wifi.WifiManager
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.core.service.diagnostics.DataLayerEventContext
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
@@ -20,15 +23,21 @@ import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicLong
 
 class DataLayerListenerService : WearableListenerService() {
     private val app by lazy { application as GlanceMapWearApp }
     private val lockManager by lazy { TransferLockManager(this) }
     private val transferSessionState by lazy { app.transferSessionState }
     private val serviceInstanceId = Integer.toHexString(System.identityHashCode(this))
+    private val createdAtElapsedMs = SystemClock.elapsedRealtime()
+    private val messageCallbackCount = AtomicLong()
+    private val channelOpenedCallbackCount = AtomicLong()
+    private val peerConnectedCallbackCount = AtomicLong()
+    private val peerDisconnectedCallbackCount = AtomicLong()
 
-    private lateinit var notificationHelper: NotificationHelper
-    private lateinit var dataLayerRepository: WatchDataLayerRepository
+    private val notificationHelper by lazy { NotificationHelper(this) }
+    private val dataLayerRepository by lazy { WatchDataLayerRepository(this) }
 
     private val channelReceiver = ChannelClientStrategy()
 
@@ -36,39 +45,44 @@ class DataLayerListenerService : WearableListenerService() {
 
     private val fileOps by lazy { WatchFileOps(app) }
 
-    private lateinit var handlers: DataLayerHandlers
+    private val handlers by lazy {
+        DataLayerHandlers(
+            service = this,
+            notificationHelper = notificationHelper,
+            fileOps = fileOps,
+            transferMutex = transferMutex,
+            channelReceiver = channelReceiver,
+            sessionState = transferSessionState,
+            sendStatus = dataLayerRepository::sendStatus,
+            sendAck = dataLayerRepository::sendAck,
+            sendMessage = dataLayerRepository::sendMessage,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
-        TransferDiagnostics.log("Service", "Created instance=$serviceInstanceId")
-
-        dataLayerRepository = WatchDataLayerRepository(this)
-        notificationHelper = NotificationHelper(this)
-        notificationHelper.createNotificationChannel()
-
-        handlers =
-            DataLayerHandlers(
-                service = this,
-                notificationHelper = notificationHelper,
-                fileOps = fileOps,
-                transferMutex = transferMutex,
-                channelReceiver = channelReceiver,
-                sessionState = transferSessionState,
-                sendStatus = dataLayerRepository::sendStatus,
-                sendAck = dataLayerRepository::sendAck,
-                sendMessage = dataLayerRepository::sendMessage,
-            )
+        if (DebugTelemetry.isEnabled()) {
+            TransferDiagnostics.log("Service", "Created instance=$serviceInstanceId")
+        }
     }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
-        ScreenOffActivityDiagnostics.recordDataLayerCallback()
+        if (DebugTelemetry.isEnabled()) {
+            messageCallbackCount.incrementAndGet()
+            recordFullDataLayerEvent(type = "Message", path = messageEvent.path)
+        }
+        ScreenOffActivityDiagnostics.dataLayer.recordMessage()
         handlers.handleMessage(messageEvent)
     }
 
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         super.onChannelOpened(channel)
-        ScreenOffActivityDiagnostics.recordDataLayerCallback()
+        if (DebugTelemetry.isEnabled()) {
+            channelOpenedCallbackCount.incrementAndGet()
+            recordFullDataLayerEvent(type = "ChannelOpened", path = channel.path)
+        }
+        ScreenOffActivityDiagnostics.dataLayer.recordChannelOpened()
         app.applicationScope.launch(Dispatchers.IO) {
             runCatching { handlers.handleChannelOpened(channel) }
                 .onFailure { Log.e(TAG, "Channel handler failed: ${it.message}", it) }
@@ -76,11 +90,18 @@ class DataLayerListenerService : WearableListenerService() {
     }
 
     override fun onDestroy() {
-        val activeTransferId = transferSessionState.activeTransferId().orEmpty()
-        TransferDiagnostics.warn(
-            "Service",
-            "Destroy instance=$serviceInstanceId activeTransferId=$activeTransferId",
-        )
+        if (DebugTelemetry.isEnabled()) {
+            val activeTransferId = transferSessionState.activeTransferId().orEmpty()
+            val lifetimeMs = SystemClock.elapsedRealtime() - createdAtElapsedMs
+            TransferDiagnostics.warn(
+                "Service",
+                "Destroy instance=$serviceInstanceId lifetimeMs=$lifetimeMs " +
+                    "messages=${messageCallbackCount.get()} channels=${channelOpenedCallbackCount.get()} " +
+                    "peerConnect=${peerConnectedCallbackCount.get()} " +
+                    "peerDisconnect=${peerDisconnectedCallbackCount.get()} " +
+                    "activeTransferId=$activeTransferId",
+            )
+        }
         super.onDestroy()
     }
 
@@ -169,23 +190,53 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onPeerConnected(peer: Node) {
         super.onPeerConnected(peer)
-        ScreenOffActivityDiagnostics.recordDataLayerCallback()
-        Log.d(TAG, "📡 Peer connected: ${peer.displayName}")
-        TransferDiagnostics.log("Peer", "Connected name=${peer.displayName} id=${peer.id}")
-        EnergyDiagnostics.recordEvent(
-            reason = "peer_connected",
-            detail = "name=${peer.displayName} id=${peer.id}",
-        )
+        if (DebugTelemetry.isEnabled()) {
+            peerConnectedCallbackCount.incrementAndGet()
+            recordFullDataLayerEvent(type = "Connected")
+            Log.d(TAG, "📡 Peer connected: ${peer.displayName}")
+            EnergyDiagnostics.recordEvent(
+                reason = "peer_connected",
+                detail = "name=${peer.displayName} id=${peer.id}",
+            )
+        }
+        ScreenOffActivityDiagnostics.dataLayer.recordPeerConnected()
     }
 
     override fun onPeerDisconnected(peer: Node) {
         super.onPeerDisconnected(peer)
-        ScreenOffActivityDiagnostics.recordDataLayerCallback()
-        Log.d(TAG, "📡 Peer disconnected: ${peer.displayName}")
-        TransferDiagnostics.warn("Peer", "Disconnected name=${peer.displayName} id=${peer.id}")
-        EnergyDiagnostics.recordEvent(
-            reason = "peer_disconnected",
-            detail = "name=${peer.displayName} id=${peer.id}",
+        if (DebugTelemetry.isEnabled()) {
+            peerDisconnectedCallbackCount.incrementAndGet()
+            recordFullDataLayerEvent(type = "Disconnected")
+            Log.d(TAG, "📡 Peer disconnected: ${peer.displayName}")
+            EnergyDiagnostics.recordEvent(
+                reason = "peer_disconnected",
+                detail = "name=${peer.displayName} id=${peer.id}",
+            )
+        }
+        ScreenOffActivityDiagnostics.dataLayer.recordPeerDisconnected()
+    }
+
+    private fun recordFullDataLayerEvent(
+        type: String,
+        path: String? = null,
+    ) {
+        if (!DebugTelemetry.isEnabled()) return
+
+        val activeTransferId = transferSessionState.activeTransferId()
+        val displayInteractive = getSystemService(PowerManager::class.java)?.isInteractive
+        ScreenOffActivityDiagnostics.dataLayer.recordLastEvent(
+            DataLayerEventContext(
+                type = type,
+                path = path,
+                displayInteractive = displayInteractive,
+                transferActive = activeTransferId != null,
+                activeTransferId = activeTransferId,
+            ),
+        )
+        TransferDiagnostics.log(
+            if (type == "Connected" || type == "Disconnected") "Peer" else "Service",
+            "$type${path?.let { " path=$it" }.orEmpty()} interactive=${displayInteractive ?: "na"} " +
+                "transferActive=${activeTransferId != null} activeTransferId=${activeTransferId.orEmpty()}",
         )
     }
 

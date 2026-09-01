@@ -6,7 +6,6 @@ import com.glancemap.glancemapcompanionapp.WatchInstalledCoverageKind
 import com.glancemap.glancemapcompanionapp.WatchInstalledMap
 import com.glancemap.glancemapcompanionapp.transfer.datalayer.DataLayerPaths
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,6 +15,8 @@ import java.util.concurrent.TimeoutException
 
 private typealias WatchInstalledSnapshot =
     Pair<List<WatchInstalledMap>, List<WatchInstalledCoverageArea>>
+
+internal fun installedMapQueryPath(): String = DataLayerPaths.PATH_LIST_MAPS
 
 /**
  * Phone-side helper: asks the watch for installed map files and their bbox.
@@ -65,13 +66,7 @@ class WatchInstalledMapsRequester(
                 .toByteArray(Charsets.UTF_8)
 
         return try {
-            runCatching {
-                sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, ByteArray(0))
-                delay(PREWARM_SETTLE_MS)
-            }.onFailure {
-                Log.w(TAG, "Map-list prewarm failed for node=$nodeId", it)
-            }
-            sendMessage(nodeId, DataLayerPaths.PATH_LIST_MAPS, payload)
+            sendMessage(nodeId, installedMapQueryPath(), payload)
             val snapshot = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
             if (snapshot != null) {
                 Result.Success(
@@ -170,6 +165,5 @@ class WatchInstalledMapsRequester(
     private companion object {
         private const val TAG = "WatchMapListRequester"
         private const val REQUEST_TIMEOUT_MS = 8_000L
-        private const val PREWARM_SETTLE_MS = 300L
     }
 }

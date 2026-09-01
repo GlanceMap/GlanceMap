@@ -187,6 +187,7 @@ class LocationDeliveryPoliciesTest {
     fun screenOffRecordingBatchesOnlyFusedDelivery() {
         val state = requestState(runtimeReason = NavigationRuntimeDemandReason.RECORDING)
         assertEquals(15_000L, resolveMaxUpdateDelayMs(state, requestSpec(intervalMs = 3_000L)))
+        assertEquals(15_000L, resolveMaxUpdateDelayMs(state, requestSpec(intervalMs = 5_000L)))
         assertEquals(
             0L,
             resolveMaxUpdateDelayMs(

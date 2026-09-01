@@ -26,6 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
@@ -460,6 +462,8 @@ fun RecordingSensorBridge(
                 override fun onSensorChanged(event: SensorEvent) {
                     when (event.sensor.type) {
                         Sensor.TYPE_HEART_RATE -> {
+                            val callbackStartedAtElapsedMs =
+                                RecordingScreenOffDiagnostics.start()
                             val bpm =
                                 event.values
                                     .firstOrNull()
@@ -476,6 +480,10 @@ fun RecordingSensorBridge(
                                     lastPublishedBpm = lastHeartRatePublishedBpm,
                                 )
                             ) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.HEART_RATE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
                                 return
                             }
                             lastHeartRatePublishedAtElapsedMs = nowElapsed
@@ -489,6 +497,10 @@ fun RecordingSensorBridge(
                                     heartRateFromBluetooth = false,
                                 )
                             }
+                            RecordingScreenOffDiagnostics.stop(
+                                activity = RecordingScreenOffActivity.HEART_RATE_CALLBACK,
+                                startedAtElapsedMs = callbackStartedAtElapsedMs,
+                            )
                         }
                         Sensor.TYPE_STEP_COUNTER -> {
                             val value = event.values.firstOrNull() ?: return
@@ -547,12 +559,20 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_PRESSURE -> {
+                            val callbackStartedAtElapsedMs =
+                                RecordingScreenOffDiagnostics.start()
                             val pressure =
                                 event.values
                                     .firstOrNull()
                                     ?.toDouble()
                                     ?.takeIf { it > 0.0 }
-                                    ?: return
+                            if (pressure == null) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
+                                return
+                            }
                             val eventElapsedRealtimeMillis =
                                 (event.timestamp / 1_000_000L).takeIf { it > 0L }
                                     ?: SystemClock.elapsedRealtime()
@@ -577,7 +597,13 @@ fun RecordingSensorBridge(
                                         meaningfullyChanged &&
                                             elapsedSincePublish >= PRESSURE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS
                                     )
-                            if (!shouldPublish) return
+                            if (!shouldPublish) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
+                                return
+                            }
                             lastPressurePublishedAtElapsedMs = nowElapsed
                             lastPressurePublishedHpa = pressure
                             publishSensorUpdate { current ->
@@ -587,6 +613,10 @@ fun RecordingSensorBridge(
                                     barometricPressureSensorEventCount = rawEventCount,
                                 )
                             }
+                            RecordingScreenOffDiagnostics.stop(
+                                activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                startedAtElapsedMs = callbackStartedAtElapsedMs,
+                            )
                         }
                     }
                 }

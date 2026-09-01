@@ -138,4 +138,10 @@ class NavigateVisualWorkPolicyTest {
         assertTrue(shouldRunSearchingNavButtonPulse(isScreenInteractive = true, isSearching = true))
         assertFalse(shouldRunSearchingNavButtonPulse(isScreenInteractive = false, isSearching = true))
     }
+
+    @Test
+    fun compassConeLayerDoesNotUpdateWhileNoninteractive() {
+        assertTrue(shouldUpdateCompassConeLayer(compassInteractive = true))
+        assertFalse(shouldUpdateCompassConeLayer(compassInteractive = false))
+    }
 }

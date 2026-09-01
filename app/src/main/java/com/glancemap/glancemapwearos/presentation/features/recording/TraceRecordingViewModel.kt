@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
@@ -580,6 +582,8 @@ class TraceRecordingViewModel(
                 knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
             )
         val sensorMetricsAtFix = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+        val smartTrackStartedAtElapsedMs =
+            RecordingScreenOffDiagnostics.start()
         val motionResult =
             recordingMovementConfidenceGate.evaluate(
                 previous = previousRecordedPoint,
@@ -609,6 +613,10 @@ class TraceRecordingViewModel(
                 activityProfile = state.activityProfile,
                 previousFilterAccuracyMeters = previousFilterAccuracyMeters,
             )
+        RecordingScreenOffDiagnostics.stop(
+            activity = RecordingScreenOffActivity.SMART_TRACK,
+            startedAtElapsedMs = smartTrackStartedAtElapsedMs,
+        )
         recordingPointDensityTelemetry.observeSmartTrackDecision(motionResult)
         if (DebugTelemetry.isEnabled()) {
             smartTrackTelemetry.observeMotion(
@@ -669,6 +677,8 @@ class TraceRecordingViewModel(
         if (!motionResult.accepted) {
             recordingMovementConfidenceGate.reset()
         }
+        val fixQualityStartedAtElapsedMs =
+            RecordingScreenOffDiagnostics.start()
         val fixQualityResult =
             recordingFixQualityGate.evaluate(
                 candidate =
@@ -688,6 +698,10 @@ class TraceRecordingViewModel(
                     ),
                 activityProfile = state.activityProfile,
             )
+        RecordingScreenOffDiagnostics.stop(
+            activity = RecordingScreenOffActivity.SMART_TRACK,
+            startedAtElapsedMs = fixQualityStartedAtElapsedMs,
+        )
         if (DebugTelemetry.isEnabled()) {
             smartTrackTelemetry.observeQuality(
                 result = fixQualityResult,
@@ -805,6 +819,10 @@ class TraceRecordingViewModel(
         val selectedElevationSource = recordingElevationSource
         return viewModelScope.launch {
             locationPointMutex.withLock {
+                val recordingPointStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
+                val demLookupStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
                 val elevation =
                     elevationProvider.resolveElevation(
                         latitude = latitude,
@@ -813,6 +831,10 @@ class TraceRecordingViewModel(
                         source = selectedElevationSource,
                         demSource = selectedDemSource,
                     )
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.DEM_LOOKUP,
+                    startedAtElapsedMs = demLookupStartedAtElapsedMs,
+                )
                 if (elevation.demAttempted) {
                     if (elevation.demHit) {
                         demElevationHitCount += 1
@@ -828,6 +850,8 @@ class TraceRecordingViewModel(
                 }
                 val sensorMetrics = sensorMetricsAtFix
                 val startsNewSegment = startsNewSegmentForPoint
+                val hybridElevationStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
                 val fusedElevation =
                     hybridElevationFilter.update(
                         RecordingHybridElevationInput(
@@ -845,6 +869,10 @@ class TraceRecordingViewModel(
                             activityProfile = _uiState.value.activityProfile,
                         ),
                     )
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.HYBRID_ELEVATION,
+                    startedAtElapsedMs = hybridElevationStartedAtElapsedMs,
+                )
                 if (fusedElevation.pressureUsed) {
                     hybridElevationPointCount += 1
                     hybridPressureDeltaMeters += kotlin.math.abs(fusedElevation.pressureDeltaMeters)
@@ -867,7 +895,13 @@ class TraceRecordingViewModel(
                         segmentStartReason = segmentStartReason,
                     )
                 val currentState = _uiState.value
-                if (!currentState.active || currentState.saving) return@withLock
+                if (!currentState.active || currentState.saving) {
+                    RecordingScreenOffDiagnostics.stop(
+                        activity = RecordingScreenOffActivity.RECORDING_POINT,
+                        startedAtElapsedMs = recordingPointStartedAtElapsedMs,
+                    )
+                    return@withLock
+                }
                 if (pendingSegmentStartReason == pendingSegmentStartReasonForPoint) {
                     pendingSegmentStartReason = null
                 }
@@ -1017,6 +1051,10 @@ class TraceRecordingViewModel(
                     )
                 }
                 schedulePointDraftPersist()
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.RECORDING_POINT,
+                    startedAtElapsedMs = recordingPointStartedAtElapsedMs,
+                )
             }
         }
     }
@@ -1172,7 +1210,13 @@ class TraceRecordingViewModel(
     fun onPressureSample(sample: RecordingPressureSample) {
         val state = _uiState.value
         if (shouldObserveSmartPressure(state)) {
+            val pressureProcessingStartedAtElapsedMs =
+                RecordingScreenOffDiagnostics.start()
             hybridElevationFilter.observePressure(sample)
+            RecordingScreenOffDiagnostics.stop(
+                activity = RecordingScreenOffActivity.HYBRID_ELEVATION,
+                startedAtElapsedMs = pressureProcessingStartedAtElapsedMs,
+            )
         }
     }
 
@@ -1563,11 +1607,17 @@ class TraceRecordingViewModel(
                                         smartElevationDiagnostics = smartElevationDiagnostics,
                                     ),
                             )
+                        val gpxPersistStartedAtElapsedMs =
+                            RecordingScreenOffDiagnostics.start()
                         gpxRepository.saveGpxFileAtomic(
                             fileName = fileName,
                             inputStream = ByteArrayInputStream(bytes),
                             onProgress = {},
                             expectedSize = bytes.size.toLong(),
+                        )
+                        RecordingScreenOffDiagnostics.stop(
+                            activity = RecordingScreenOffActivity.GPX_PERSIST,
+                            startedAtElapsedMs = gpxPersistStartedAtElapsedMs,
                         )
                         val savedPath = gpxRepository.absolutePathForFileName(fileName)
                         runCatching { parseGpxData(File(savedPath)) }
@@ -1753,6 +1803,8 @@ class TraceRecordingViewModel(
     ) {
         if (!state.active || state.saving) return
         draftPersistMutex.withLock {
+            val draftPersistStartedAtElapsedMs =
+                RecordingScreenOffDiagnostics.start()
             runCatching {
                 draftStore.save(
                     state = state,
@@ -1764,6 +1816,10 @@ class TraceRecordingViewModel(
                     "event=draft_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
                 )
             }
+            RecordingScreenOffDiagnostics.stop(
+                activity = RecordingScreenOffActivity.DRAFT_PERSIST,
+                startedAtElapsedMs = draftPersistStartedAtElapsedMs,
+            )
         }
     }
 

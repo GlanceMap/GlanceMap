@@ -22,14 +22,18 @@ class NotificationHelper(
         private const val MIN_UPDATE_PROGRESS_STEP = 4 // percent
     }
 
-    private val notificationManager =
+    private val notificationManager by lazy {
         service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
 
     private var lastUpdateTimeMs: Long = 0L
     private var lastProgress: Int = -999
     private var lastStatus: String = ""
+    private var notificationChannelCreated = false
 
+    @Synchronized
     fun createNotificationChannel() {
+        if (notificationChannelCreated) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel =
                 NotificationChannel(
@@ -39,6 +43,7 @@ class NotificationHelper(
                 )
             notificationManager.createNotificationChannel(channel)
         }
+        notificationChannelCreated = true
     }
 
     /** Foreground (non-swipeable) */
@@ -47,6 +52,7 @@ class NotificationHelper(
         fileName: String,
         status: String,
     ) {
+        createNotificationChannel()
         val foregroundServiceType =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
@@ -109,6 +115,7 @@ class NotificationHelper(
         fileName: String,
         status: String = "Saved ✓",
     ) {
+        createNotificationChannel()
         notificationManager.notify(notificationId, buildCompletionNotification(fileName, status).build())
     }
 
@@ -118,6 +125,7 @@ class NotificationHelper(
         fileName: String,
         status: String,
     ) {
+        createNotificationChannel()
         notificationManager.notify(notificationId, buildErrorNotification(fileName, status).build())
     }
 

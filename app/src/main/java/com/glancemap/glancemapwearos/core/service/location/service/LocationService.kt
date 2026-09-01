@@ -14,6 +14,8 @@ import android.os.SystemClock
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.adapters.FusedLocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationGateway
@@ -584,10 +586,23 @@ class LocationService : Service() {
 
                 override fun onLocations(event: LocationUpdateEvent) {
                     ScreenOffActivityDiagnostics.recordLocationCallback()
-                    callbackProcessor.processLocationEvent(
-                        event = event,
-                        nowElapsedMsProvider = { SystemClock.elapsedRealtime() },
-                    )
+                    val callbackStartedAtElapsedMs =
+                        if (latestGpsDebugTelemetry) {
+                            RecordingScreenOffDiagnostics.start()
+                        } else {
+                            Long.MIN_VALUE
+                        }
+                    try {
+                        callbackProcessor.processLocationEvent(
+                            event = event,
+                            nowElapsedMsProvider = { SystemClock.elapsedRealtime() },
+                        )
+                    } finally {
+                        RecordingScreenOffDiagnostics.stop(
+                            activity = RecordingScreenOffActivity.LOCATION_CALLBACK,
+                            startedAtElapsedMs = callbackStartedAtElapsedMs,
+                        )
+                    }
                 }
             }
     }
@@ -672,6 +687,7 @@ class LocationService : Service() {
         latestRuntimeBackgroundGps = backgroundGpsEnabled
         latestRuntimeReason = runtimeReason.ifBlank { "idle" }
         lastRuntimeStateChangedAtElapsedMs = SystemClock.elapsedRealtime()
+        updateScreenOffAttributionWindow(screenStateChanged, screenState)
         cancelPendingImmediateWorkForRuntimeState(screenState, trackingEnabled)
         val effectiveBackgroundGpsEnabled = effectiveBackgroundGpsEnabled()
         updateTelemetryFixContext(effectiveBackgroundGpsEnabled = effectiveBackgroundGpsEnabled)
@@ -737,6 +753,17 @@ class LocationService : Service() {
                     requestLocationUpdateIfNeeded()
                 }
             }
+    }
+
+    private fun updateScreenOffAttributionWindow(
+        screenStateChanged: Boolean,
+        screenState: LocationScreenState,
+    ) {
+        if (screenStateChanged) ScreenOffActivityDiagnostics.snapshotAndReset()
+        RecordingScreenOffDiagnostics.updateRuntimeState(
+            isInteractive = screenState.isInteractive,
+            isRecordingActive = isRecordingRuntimeReason(latestRuntimeReason),
+        )
     }
 
     private fun cancelPendingImmediateWorkForRuntimeState(
@@ -1359,6 +1386,21 @@ class LocationService : Service() {
 
     private fun energyRuntimeDetail(): String {
         val activity = ScreenOffActivityDiagnostics.snapshotAndReset()
+        val recordingActivityDetail =
+            if (DebugTelemetry.isEnabled()) recordingScreenOffActivityDetail() else ""
+        val lastDataLayerEventDetail =
+            if (DebugTelemetry.isEnabled()) {
+                activity.lastDataLayerEvent
+                    ?.let { event ->
+                        " dataLayerLastEventType=${event.type} " +
+                            "dataLayerLastPath=${event.path.orEmpty()} " +
+                            "dataLayerLastInteractive=${event.displayInteractive ?: "na"} " +
+                            "dataLayerLastTransferActive=${event.transferActive} " +
+                            "dataLayerLastTransferId=${event.activeTransferId.orEmpty()}"
+                    }.orEmpty()
+            } else {
+                ""
+            }
         val gpsRequestActive = engine.hasAppliedRequest()
         val gpsBackend = engine.currentSourceModeOrNull()?.telemetryValue ?: "none"
         val gpsRequestIntervalMs =
@@ -1371,11 +1413,8 @@ class LocationService : Service() {
             "burst=${engine.isBurstActive()} tracking=$latestTrackingEnabled " +
             "bound=${isBound.value} keepOpen=${keepAppOpen.value} " +
             "screenState=${latestScreenState.name} runtimeReason=$latestRuntimeReason " +
-            "recordingActive=${
-                latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING ||
-                    latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING_AUTO_PAUSED ||
-                    latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
-            } guidanceActive=${latestRuntimeReason.isGuidanceRuntimeReason()} " +
+            "recordingActive=${isRecordingRuntimeReason(latestRuntimeReason)} " +
+            "guidanceActive=${latestRuntimeReason.isGuidanceRuntimeReason()} " +
             "gpsRequestActive=$gpsRequestActive gpsBackend=$gpsBackend " +
             "gpsRequestIntervalMs=$gpsRequestIntervalMs activityWindow=delta " +
             "orientationFrameCount=${activity.orientationFrameCount} " +
@@ -1386,7 +1425,41 @@ class LocationService : Service() {
             "mapViewportCallbackCount=${activity.mapViewportCallbackCount} " +
             "locationCallbackCount=${activity.locationCallbackCount} " +
             "compassCallbackCount=${activity.compassCallbackCount} " +
-            "dataLayerCallbackCount=${activity.dataLayerCallbackCount}"
+            "dataLayerCallbackCount=${activity.dataLayerCallbackCount} " +
+            "dataLayerMessageCount=${activity.dataLayerMessageCount} " +
+            "dataLayerChannelOpenedCount=${activity.dataLayerChannelOpenedCount} " +
+            "dataLayerPeerConnectedCount=${activity.dataLayerPeerConnectedCount} " +
+            "dataLayerPeerDisconnectedCount=${activity.dataLayerPeerDisconnectedCount}" +
+            recordingActivityDetail +
+            lastDataLayerEventDetail
+    }
+
+    private fun recordingScreenOffActivityDetail(): String {
+        val counters = RecordingScreenOffDiagnostics.snapshotAndReset()
+        return buildString {
+            append(" recLocationCallbackCount=").append(counters.locationCallback.count)
+            append(" recLocationCallbackMs=").append(counters.locationCallback.elapsedMs)
+            append(" recPointCount=").append(counters.recordingPoint.count)
+            append(" recPointMs=").append(counters.recordingPoint.elapsedMs)
+            append(" recSmartTrackCount=").append(counters.smartTrack.count)
+            append(" recSmartTrackMs=").append(counters.smartTrack.elapsedMs)
+            append(" recDemLookupCount=").append(counters.demLookup.count)
+            append(" recDemLookupMs=").append(counters.demLookup.elapsedMs)
+            append(" recHybridElevationCount=").append(counters.hybridElevation.count)
+            append(" recHybridElevationMs=").append(counters.hybridElevation.elapsedMs)
+            append(" recDraftPersistCount=").append(counters.draftPersist.count)
+            append(" recDraftPersistMs=").append(counters.draftPersist.elapsedMs)
+            append(" recGpxPersistCount=").append(counters.gpxPersist.count)
+            append(" recGpxPersistMs=").append(counters.gpxPersist.elapsedMs)
+            append(" recHeartRateCallbackCount=").append(counters.heartRateCallback.count)
+            append(" recHeartRateCallbackMs=").append(counters.heartRateCallback.elapsedMs)
+            append(" recPressureCallbackCount=").append(counters.pressureCallback.count)
+            append(" recPressureCallbackMs=").append(counters.pressureCallback.elapsedMs)
+            append(" recMarkerMotionCount=").append(counters.markerMotion.count)
+            append(" recMarkerMotionMs=").append(counters.markerMotion.elapsedMs)
+            append(" recCompassConeCount=").append(counters.compassCone.count)
+            append(" recCompassConeMs=").append(counters.compassCone.elapsedMs)
+        }
     }
 
     private fun applyDiagnosticsCaptureState(
@@ -1406,6 +1479,11 @@ class LocationService : Service() {
         latestGpsDebugTelemetry = fullDiagnostics
         telemetry.setDebugEnabled(fullDiagnostics)
         ScreenOffActivityDiagnostics.configure(enabled = captureActive)
+        RecordingScreenOffDiagnostics.configure(fullDiagnostics = fullDiagnostics)
+        RecordingScreenOffDiagnostics.updateRuntimeState(
+            isInteractive = latestScreenState.isInteractive,
+            isRecordingActive = isRecordingRuntimeReason(latestRuntimeReason),
+        )
         EnergyDiagnostics.configure(
             captureActive = captureActive,
             fullDiagnostics = fullDiagnostics,
@@ -1483,6 +1561,11 @@ class LocationService : Service() {
         reason == NavigationRuntimeDemandReason.GUIDANCE_VISIBLE ||
             reason == NavigationRuntimeDemandReason.GUIDANCE_AMBIENT ||
             reason == NavigationRuntimeDemandReason.GUIDANCE_BACKGROUND
+
+    private fun isRecordingRuntimeReason(reason: String): Boolean =
+        reason == NavigationRuntimeDemandReason.RECORDING ||
+            reason == NavigationRuntimeDemandReason.RECORDING_AUTO_PAUSED ||
+            reason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
 
     private fun publishAcceptedLocation(location: Location) {
         _currentLocation.value = location

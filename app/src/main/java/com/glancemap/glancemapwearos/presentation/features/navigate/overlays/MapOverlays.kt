@@ -197,6 +197,7 @@ internal fun MapOverlays(
 
     CompassConeLayerEffect(
         mapView = mapView,
+        compassInteractive = compassInteractive,
         navMode = navMode,
         showCompassConeOverlay = showCompassConeOverlay,
         compassConeBaseSizePx = compassConeBaseSizePx,
@@ -333,6 +334,7 @@ private fun GpsAccuracyCircleLayerEffect(
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 private fun CompassConeLayerEffect(
     mapView: MapView,
+    compassInteractive: Boolean,
     navMode: NavMode,
     showCompassConeOverlay: Boolean,
     compassConeBaseSizePx: Int,
@@ -361,37 +363,40 @@ private fun CompassConeLayerEffect(
             NavMode.PANNING -> 0f
         }
 
-    SideEffect {
-        coneTelemetryLogger.log(
-            ConeTelemetryDecision(
-                navMode = navMode,
-                overlayEnabled = showCompassConeOverlay,
-                shouldShow = shouldShow,
-                compass =
-                    ConeTelemetryCompass(
-                        quality = compassQuality,
-                        headingErrorDeg = compassHeadingErrorDeg,
-                        renderState = compassRenderStateFlow.value,
-                        renderedHeadingDeg = renderedHeadingDeg,
-                    ),
-                gps =
-                    ConeTelemetryGps(
-                        accuracyM = gpsFixAccuracyM,
-                        fresh = gpsFixFresh,
-                        speedMps = gpsFixSpeedMps,
-                        bearingDeg = gpsFixBearingDeg,
-                    ),
-                marker =
-                    ConeTelemetryMarker(
-                        present = locationMarker != null,
-                        headingDeg = locationMarker?.heading,
-                    ),
-            ),
-        )
+    if (shouldUpdateCompassConeLayer(compassInteractive)) {
+        SideEffect {
+            coneTelemetryLogger.log(
+                ConeTelemetryDecision(
+                    navMode = navMode,
+                    overlayEnabled = showCompassConeOverlay,
+                    shouldShow = shouldShow,
+                    compass =
+                        ConeTelemetryCompass(
+                            quality = compassQuality,
+                            headingErrorDeg = compassHeadingErrorDeg,
+                            renderState = compassRenderStateFlow.value,
+                            renderedHeadingDeg = renderedHeadingDeg,
+                        ),
+                    gps =
+                        ConeTelemetryGps(
+                            accuracyM = gpsFixAccuracyM,
+                            fresh = gpsFixFresh,
+                            speedMps = gpsFixSpeedMps,
+                            bearingDeg = gpsFixBearingDeg,
+                        ),
+                    marker =
+                        ConeTelemetryMarker(
+                            present = locationMarker != null,
+                            headingDeg = locationMarker?.heading,
+                        ),
+                ),
+            )
+        }
     }
 
     LaunchedEffect(
         mapView,
+        compassInteractive,
         shouldShow,
         compassConeBaseSizePx,
         compassQuality,
@@ -399,6 +404,7 @@ private fun CompassConeLayerEffect(
         coneHeadingDeg,
         locationMarker,
     ) {
+        if (!shouldUpdateCompassConeLayer(compassInteractive)) return@LaunchedEffect
         mapView.mutateLayers { layers ->
             val hasLayer = layers.contains(coneLayer)
             if (!hasLayer) {
