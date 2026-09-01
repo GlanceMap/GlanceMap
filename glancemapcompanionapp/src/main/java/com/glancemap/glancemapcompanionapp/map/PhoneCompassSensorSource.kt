@@ -418,18 +418,27 @@ internal class PhoneCompassSensorSource(
             )
         hasGravity = false
         hasGeomagnetic = false
-        when (activePipeline) {
-            PhoneCompassPipeline.ROTATION_VECTOR ->
-                registerPhoneCompassSensor(sensorManager, this, rotationVector)
-            PhoneCompassPipeline.HEADING_SENSOR ->
-                registerPhoneCompassSensor(sensorManager, this, headingSensor)
-            PhoneCompassPipeline.MAG_ACCEL_FALLBACK -> {
-                registerPhoneCompassSensor(sensorManager, this, accelerometer)
-                registerPhoneCompassSensor(sensorManager, this, magnetometer)
+        val registered =
+            when (activePipeline) {
+                PhoneCompassPipeline.ROTATION_VECTOR ->
+                    registerPhoneCompassSensor(sensorManager, this, rotationVector)
+                PhoneCompassPipeline.HEADING_SENSOR ->
+                    registerPhoneCompassSensor(sensorManager, this, headingSensor)
+                PhoneCompassPipeline.MAG_ACCEL_FALLBACK -> {
+                    registerPhoneCompassSensor(sensorManager, this, accelerometer) &&
+                        registerPhoneCompassSensor(sensorManager, this, magnetometer)
+                }
+                PhoneCompassPipeline.NONE,
+                PhoneCompassPipeline.GOOGLE_FUSED,
+                -> true
             }
-            PhoneCompassPipeline.NONE,
-            PhoneCompassPipeline.GOOGLE_FUSED,
-            -> Unit
+        if (!registered) {
+            PhoneDebugCapture.log(
+                PHONE_COMPASS_DIAGNOSTICS_TAG,
+                "event=phone_compass_sensor_unavailable reason=registration_failed pipeline=$activePipeline",
+            )
+            sensorManager.unregisterListener(this)
+            activePipeline = PhoneCompassPipeline.NONE
         }
         publish(rawHeading)
     }
@@ -540,9 +549,20 @@ private fun registerPhoneCompassSensor(
     sensorManager: SensorManager,
     listener: SensorEventListener,
     sensor: Sensor?,
-) {
-    sensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-}
+): Boolean =
+    sensor?.let {
+        phoneCompassRegistrationSucceeded {
+            sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+        ?: false
+
+internal inline fun phoneCompassRegistrationSucceeded(register: () -> Boolean): Boolean =
+    try {
+        register()
+    } catch (_: RuntimeException) {
+        false
+    }
 
 private fun headingFromPhoneRotationMatrix(
     matrix: FloatArray,

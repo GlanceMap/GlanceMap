@@ -136,4 +136,15 @@ class PhoneMapCompassPresentationTest {
             ),
         )
     }
+
+    @Test
+    fun sensorRegistrationTreatsFrameworkFailuresAsUnavailable() {
+        assertTrue(phoneCompassRegistrationSucceeded { true })
+        assertFalse(phoneCompassRegistrationSucceeded { false })
+        assertFalse(
+            phoneCompassRegistrationSucceeded {
+                throw IllegalStateException("native sensor queue unavailable")
+            },
+        )
+    }
 }

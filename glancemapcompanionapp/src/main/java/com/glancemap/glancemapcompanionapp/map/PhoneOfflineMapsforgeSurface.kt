@@ -584,9 +584,8 @@ private class PhoneOfflineMapsforgeView(
                 frameBufferDimensionAvailable = dimensions != null,
                 frameBufferWidth = dimensions?.width,
                 frameBufferHeight = dimensions?.height,
-                frameBufferDrawingBitmapReady =
-                    runCatching { frameBuffer?.drawingBitmap != null }
-                        .getOrNull(),
+                // Mapsforge waits for its renderer here; never query it from the UI thread.
+                frameBufferDrawingBitmapReady = null,
                 zoom = zoom,
                 cameraInsideMapBounds = mapView.currentCameraInside(mapBounds),
                 visibleTileCount = rendererSnapshot.coverage.visibleTileCount,
@@ -682,7 +681,7 @@ private class PhoneOfflineMapsforgeMapView(
         get() = androidDrawObserved.get()
 
     override fun onDraw(canvas: Canvas) {
-        if (androidDrawObserved.compareAndSet(false, true)) onAndroidDrawObserved()
+        if (androidDrawObserved.compareAndSet(false, true)) post(onAndroidDrawObserved)
         super.onDraw(canvas)
     }
 }

@@ -257,7 +257,7 @@ internal const val MIN_PHONE_MAP_AUTO_RECENTER_DELAY_SECONDS = 1
 internal const val MAX_PHONE_MAP_AUTO_RECENTER_DELAY_SECONDS = 30
 internal const val DEFAULT_PHONE_MAP_ZOOM_DEFAULT_SCALE_METERS = 200
 internal const val DEFAULT_PHONE_MAP_ZOOM_MIN_SCALE_METERS = 200_000
-internal const val DEFAULT_PHONE_MAP_ZOOM_MAX_SCALE_METERS = 20
+internal const val DEFAULT_PHONE_MAP_ZOOM_MAX_SCALE_METERS = 5_000
 
 internal fun PhoneMapNorthIndicatorMode.isVisibleFor(
     mapMode: PhoneMapMode,

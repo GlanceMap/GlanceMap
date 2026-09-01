@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -276,6 +277,7 @@ internal fun CompanionMapScreen(
     val mapLocation by mapLocationSource.location.collectAsState()
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var mapUiState by remember { mutableStateOf(PhoneMapUiState()) }
+    var pendingOfflineMap by remember { mutableStateOf<PhoneOfflineMap?>(null) }
     var onlineGestureState by remember { mutableStateOf(PhoneOnlineGestureState()) }
     var generalSettings by remember(generalSettingsPreferences) {
         mutableStateOf(generalSettingsPreferences.load())
@@ -338,8 +340,22 @@ internal fun CompanionMapScreen(
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
         }
+    val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
+        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+        mapRuntime = mapRuntime.invalidate()
+        pendingOfflineMap = selectedMap
+        offlineMapError = null
+        mapLocationMessage = null
+    }
     phoneMapCompassLifecycle(compassSensorSource)
     phoneMapLocationLifecycle(mapLocationSource, hasLocationPermission)
+    LaunchedEffect(pendingOfflineMap) {
+        val selectedMap = pendingOfflineMap ?: return@LaunchedEffect
+        withFrameNanos { }
+        if (pendingOfflineMap != selectedMap) return@LaunchedEffect
+        mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(selectedMap))
+        pendingOfflineMap = null
+    }
     LaunchedEffect(compassSettings) {
         compassSensorSource.configure(compassSettings)
     }
@@ -414,11 +430,7 @@ internal fun CompanionMapScreen(
                         )
                         val importedMap = imported.map
                         offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-                        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
-                        mapRuntime = mapRuntime.invalidate()
-                        mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(importedMap))
-                        offlineMapError = null
-                        mapLocationMessage = null
+                        switchToOfflineMap(importedMap)
                     }
 
                     is PhoneOfflineMapImportResult.Failure -> {
@@ -635,7 +647,7 @@ internal fun CompanionMapScreen(
                     selectedOfflineMapName
                         ?.let { name -> offlineMaps.firstOrNull { map -> map.displayName == name } }
                         ?.let { migratedMap ->
-                            mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(migratedMap))
+                            switchToOfflineMap(migratedMap)
                         }
                 }
 
@@ -696,6 +708,7 @@ internal fun CompanionMapScreen(
     val mapActions =
         MapToolsMapsActions(
             onSelectOnline = {
+                pendingOfflineMap = null
                 mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
                 offlineMapError = null
                 mapLocationMessage = null
@@ -704,11 +717,7 @@ internal fun CompanionMapScreen(
                 coroutineScope.launch {
                     val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
                     if (error == null) {
-                        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
-                        mapRuntime = mapRuntime.invalidate()
-                        mapUiState = mapUiState.copy(source = PhoneMapSource.Offline(selectedMap))
-                        offlineMapError = null
-                        mapLocationMessage = null
+                        switchToOfflineMap(selectedMap)
                     } else {
                         offlineMapError = error
                     }
@@ -848,7 +857,7 @@ internal fun CompanionMapScreen(
             ),
         mapContent = {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (storageMigrationState.phase.isPhoneStorageMigrationActive()) {
+                if (storageMigrationState.phase.isPhoneStorageMigrationActive() || pendingOfflineMap != null) {
                     Box(modifier = Modifier.fillMaxSize())
                 } else {
                     when (val source = mapUiState.source) {
@@ -1013,6 +1022,7 @@ internal fun CompanionMapScreen(
                                         },
                                         onMapError = { error ->
                                             offlineMapError = error
+                                            pendingOfflineMap = null
                                             mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
                                         },
                                         onLocationFollowUnavailable = {

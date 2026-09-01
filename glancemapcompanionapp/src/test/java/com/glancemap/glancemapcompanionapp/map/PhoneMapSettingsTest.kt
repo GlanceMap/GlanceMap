@@ -18,7 +18,7 @@ class PhoneMapSettingsTest {
         assertFalse(settings.gpsAccuracyCircleEnabled)
         assertEquals(200, settings.zoomDefaultScaleMeters)
         assertEquals(200_000, settings.zoomMinScaleMeters)
-        assertEquals(20, settings.zoomMaxScaleMeters)
+        assertEquals(5_000, settings.zoomMaxScaleMeters)
         assertFalse(settings.liveElevationEnabled)
         assertFalse(settings.liveDistanceEnabled)
         assertFalse(settings.hillShadingEnabled)
