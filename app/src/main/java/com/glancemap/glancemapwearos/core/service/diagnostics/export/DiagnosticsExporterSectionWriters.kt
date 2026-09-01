@@ -62,11 +62,17 @@ internal fun Appendable.writeScreenStateSummarySection(summary: ScreenStateDiagn
 private fun Appendable.writeBatteryConsumptionSummary(batteryUse: EnergyDiagnostics.BatteryUseStats?) {
     appendLine("Battery Consumption Summary")
     batteryUse?.let {
-        appendLine("batteryUsedMah=${TelemetryFormatters.decimal(batteryUse.consumedMah, 2)}")
-        appendLine("averageDrawMa=${TelemetryFormatters.decimal(batteryUse.averageDrawMa, 1)}")
+        appendLine("batteryUsedMah=${TelemetryFormatters.decimalOrNa(batteryUse.consumedMah, 2)}")
+        appendLine("averageDrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.averageDrawMa, 1)}")
+        appendLine("captureDurationMs=${batteryUse.captureDurationMs}")
+        appendLine("measuredDurationMs=${batteryUse.measuredDurationMs}")
         appendLine("durationMs=${batteryUse.durationMs}")
         appendLine("measurement=${batteryUse.measurement}")
         appendLine("confidence=${batteryUse.confidence}")
+        appendLine(
+            "measurementCoveragePct=${TelemetryFormatters.decimal(batteryUse.measurementCoveragePct, 1)}",
+        )
+        appendLine("reason=${batteryUse.reason}")
         appendLine("medianDrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.medianDrawMa, 1)}")
         appendLine("p90DrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.p90DrawMa, 1)}")
         appendLine("integratedCurrentMah=${TelemetryFormatters.decimalOrNa(batteryUse.integratedCurrentMah, 2)}")

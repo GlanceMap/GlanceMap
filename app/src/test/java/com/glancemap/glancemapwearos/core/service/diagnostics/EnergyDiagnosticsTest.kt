@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -99,10 +100,14 @@ class EnergyDiagnosticsTest {
             )
 
         val batteryUse = checkNotNull(summary.batteryUse)
-        assertEquals(150.0, batteryUse.consumedMah, 0.001)
-        assertEquals(150.0, batteryUse.averageDrawMa, 0.001)
+        assertEquals(150.0, checkNotNull(batteryUse.consumedMah), 0.001)
+        assertEquals(150.0, checkNotNull(batteryUse.averageDrawMa), 0.001)
+        assertEquals(3_600_000L, batteryUse.captureDurationMs)
+        assertEquals(3_600_000L, batteryUse.measuredDurationMs)
+        assertEquals(100.0, batteryUse.measurementCoveragePct, 0.001)
         assertEquals("charge_counter", batteryUse.measurement)
         assertEquals("high", batteryUse.confidence)
+        assertEquals("charge_counter", batteryUse.reason)
         assertNull(batteryUse.integratedCurrentMah)
     }
 
@@ -117,10 +122,44 @@ class EnergyDiagnosticsTest {
             )
 
         val batteryUse = checkNotNull(summary.batteryUse)
-        assertEquals(2.5, batteryUse.consumedMah, 0.001)
-        assertEquals(150.0, batteryUse.averageDrawMa, 0.001)
+        assertEquals(2.5, checkNotNull(batteryUse.consumedMah), 0.001)
+        assertEquals(150.0, checkNotNull(batteryUse.averageDrawMa), 0.001)
+        assertEquals(60_000L, batteryUse.captureDurationMs)
+        assertEquals(60_000L, batteryUse.measuredDurationMs)
+        assertEquals(100.0, batteryUse.measurementCoveragePct, 0.001)
         assertEquals("integrated_current", batteryUse.measurement)
         assertEquals("medium", batteryUse.confidence)
+        assertEquals("integrated_current", batteryUse.reason)
+    }
+
+    @Test
+    fun tinyIntegratedCurrentCoverageIsInsufficientForLongCapture() {
+        val summary =
+            EnergyDiagnostics.summarizeLines(
+                listOf(
+                    batteryLine(atMs = 0L, currentUa = -100_000),
+                    batteryLine(atMs = 600_000L, currentUa = -100_000),
+                    batteryLine(atMs = 600_001L, currentUa = -200_000),
+                    batteryLine(atMs = 601_735L, currentUa = -200_000),
+                ),
+            )
+
+        val batteryUse = checkNotNull(summary.batteryUse)
+        assertEquals("insufficient_data", batteryUse.measurement)
+        assertEquals("integrated_current_coverage_too_low", batteryUse.reason)
+        assertEquals("low", batteryUse.confidence)
+        assertEquals(601_735L, batteryUse.captureDurationMs)
+        assertEquals(1_735L, batteryUse.measuredDurationMs)
+        assertEquals(1_735.0 * 100.0 / 601_735.0, batteryUse.measurementCoveragePct, 0.001)
+        assertNull(batteryUse.consumedMah)
+        assertNull(batteryUse.averageDrawMa)
+
+        val report = buildString { writeEnergyByModeSummarySection(summary) }
+        assertTrue(report.contains("batteryUsedMah=na"))
+        assertTrue(report.contains("averageDrawMa=na"))
+        assertTrue(report.contains("measurement=insufficient_data"))
+        assertTrue(report.contains("confidence=low"))
+        assertTrue(report.contains("reason=integrated_current_coverage_too_low"))
     }
 
     @Test

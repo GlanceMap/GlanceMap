@@ -17,6 +17,7 @@ internal object EnergyDiagnostics {
     private const val TAG = "EnergyTelemetry"
     private const val MAX_LINES = 2_000
     private const val MAX_CURRENT_INTEGRATION_GAP_MS = 150_000L
+    private const val MIN_INTEGRATED_CURRENT_COVERAGE_PCT = 50.0
     private const val UA_MS_PER_MAH = 3_600_000_000.0
 
     data class ModeStats(
@@ -102,13 +103,17 @@ internal object EnergyDiagnostics {
 
     data class BatteryUseStats(
         val durationMs: Long,
-        val consumedMah: Double,
-        val averageDrawMa: Double,
+        val captureDurationMs: Long,
+        val measuredDurationMs: Long,
+        val consumedMah: Double?,
+        val averageDrawMa: Double?,
         val integratedCurrentMah: Double?,
         val medianDrawMa: Double?,
         val p90DrawMa: Double?,
         val measurement: String,
         val confidence: String,
+        val measurementCoveragePct: Double,
+        val reason: String,
         val chargeCounterStartUah: Int?,
         val chargeCounterEndUah: Int?,
     )
@@ -594,25 +599,53 @@ internal object EnergyDiagnostics {
         val startCharge = chargeObservations.firstOrNull()
         val endCharge = chargeObservations.lastOrNull()
         val chargeCounterUse = resolveChargeCounterUse(startCharge, endCharge)
-        val consumedMah = chargeCounterUse?.consumedMah ?: integratedUse?.consumedMah
-        val durationMs = chargeCounterUse?.durationMs ?: integratedUse?.durationMs
-        return if (consumedMah != null && durationMs != null) {
-            val currentSamples = observations.mapNotNull { it.dischargeCurrentUa }.sorted()
-            BatteryUseStats(
-                durationMs = durationMs,
-                consumedMah = consumedMah,
-                averageDrawMa = consumedMah * 3_600_000.0 / durationMs,
-                integratedCurrentMah = integratedUse?.consumedMah,
-                medianDrawMa = percentile(currentSamples, 0.5)?.div(1_000.0),
-                p90DrawMa = percentile(currentSamples, 0.9)?.div(1_000.0),
-                measurement = if (chargeCounterUse != null) "charge_counter" else "integrated_current",
-                confidence = if (chargeCounterUse != null) "high" else "medium",
-                chargeCounterStartUah = startCharge?.chargeCounterUah,
-                chargeCounterEndUah = endCharge?.chargeCounterUah,
-            )
-        } else {
-            null
-        }
+        val captureDurationMs = captureDurationMs(observations) ?: return null
+        val currentSamples = observations.mapNotNull { it.dischargeCurrentUa }.sorted()
+        val measuredDurationMs = chargeCounterUse?.durationMs ?: integratedUse?.durationMs ?: return null
+        val measurementCoveragePct = measurementCoveragePct(measuredDurationMs, captureDurationMs)
+        val measurementIsInsufficient =
+            chargeCounterUse == null &&
+                integratedUse != null &&
+                measurementCoveragePct < MIN_INTEGRATED_CURRENT_COVERAGE_PCT
+        val consumedMah =
+            when {
+                measurementIsInsufficient -> null
+                chargeCounterUse != null -> chargeCounterUse.consumedMah
+                else -> integratedUse?.consumedMah
+            }
+        val measurement =
+            when {
+                measurementIsInsufficient -> "insufficient_data"
+                chargeCounterUse != null -> "charge_counter"
+                else -> "integrated_current"
+            }
+        val confidence =
+            when {
+                measurementIsInsufficient -> "low"
+                chargeCounterUse != null -> "high"
+                else -> "medium"
+            }
+        return BatteryUseStats(
+            durationMs = measuredDurationMs,
+            captureDurationMs = captureDurationMs,
+            measuredDurationMs = measuredDurationMs,
+            consumedMah = consumedMah,
+            averageDrawMa = consumedMah?.let { it * 3_600_000.0 / measuredDurationMs },
+            integratedCurrentMah = integratedUse?.consumedMah,
+            medianDrawMa = percentile(currentSamples, 0.5)?.div(1_000.0),
+            p90DrawMa = percentile(currentSamples, 0.9)?.div(1_000.0),
+            measurement = measurement,
+            confidence = confidence,
+            measurementCoveragePct = measurementCoveragePct,
+            reason =
+                when {
+                    measurementIsInsufficient -> "integrated_current_coverage_too_low"
+                    chargeCounterUse != null -> "charge_counter"
+                    else -> "integrated_current"
+                },
+            chargeCounterStartUah = startCharge?.chargeCounterUah,
+            chargeCounterEndUah = endCharge?.chargeCounterUah,
+        )
     }
 
     private fun batteryObservationOrNull(line: String): BatteryObservation? {
@@ -660,7 +693,7 @@ internal object EnergyDiagnostics {
         val screenOnUse = screenOn.toUseOrNull()
         val screenOffUse = screenOff.toUseOrNull()
         val attributedMah = (screenOnUse?.consumedMah ?: 0.0) + (screenOffUse?.consumedMah ?: 0.0)
-        val totalMeasuredMah = batteryUse.consumedMah
+        val totalMeasuredMah = batteryUse.consumedMah ?: return null
         val coveragePct =
             if (totalMeasuredMah > 0.0) {
                 (attributedMah * 100.0 / totalMeasuredMah).coerceIn(0.0, 100.0)
@@ -741,6 +774,22 @@ internal object EnergyDiagnostics {
             durationMs = durationMs,
         )
     }
+
+    private fun captureDurationMs(observations: List<BatteryObservation>): Long? {
+        val firstAtMs = observations.firstOrNull()?.atMs ?: return null
+        val lastAtMs = observations.lastOrNull()?.atMs ?: return null
+        return (lastAtMs - firstAtMs).takeIf { it > 0L }
+    }
+
+    private fun measurementCoveragePct(
+        measuredDurationMs: Long,
+        captureDurationMs: Long,
+    ): Double =
+        if (captureDurationMs > 0L) {
+            (measuredDurationMs * 100.0 / captureDurationMs).coerceIn(0.0, 100.0)
+        } else {
+            0.0
+        }
 
     private fun integrateCurrentUse(observations: List<BatteryObservation>): IntegratedCurrentUse? {
         var integratedUaMs = 0.0

@@ -397,7 +397,9 @@ fun DebuggingSettingsScreen(
                         diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY &&
                         lastBatteryUse != null
                     ) {
-                        "Last run · ${TelemetryFormatters.decimal(lastBatteryUse.consumedMah, 2)} mAh"
+                        lastBatteryUse.consumedMah?.let {
+                            "Last run · ${TelemetryFormatters.decimal(it, 2)} mAh"
+                        } ?: "Last run · insufficient data"
                     } else {
                         "Off - tap to start"
                     },
