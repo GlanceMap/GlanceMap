@@ -14,6 +14,7 @@ class PhoneOfflineMapRendererDiagnosticsTest {
     fun clearDiagnostics() {
         PhoneOfflineMapImportDiagnostics.clear()
         PhoneOfflineMapRendererDiagnostics.clear()
+        PhoneCompassDiagnostics.clear()
         PhoneDebugCapture.stop()
     }
 

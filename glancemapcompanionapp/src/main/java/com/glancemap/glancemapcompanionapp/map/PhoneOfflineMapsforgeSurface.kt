@@ -3,8 +3,11 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -38,16 +41,20 @@ import org.mapsforge.map.model.common.Observer
 import org.mapsforge.map.view.InputListener
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 private const val PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS = 16L
 
 internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
+    val onLiveMapPositionChanged: (PhoneMapLiveMetricsPosition) -> Unit,
     val onViewportChanged: (PhoneMapViewport) -> Unit,
     val onPoiSelected: (PhoneMapPoi) -> Unit,
     val onMapTap: (PhoneMapCoordinate) -> Unit,
+    val onMapLongPress: (PhoneMapCoordinate) -> Unit,
     val onTwoFingerTap: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit,
     val onUserPan: (Float) -> Unit,
     val onUserRotation: (Float) -> Unit,
@@ -60,11 +67,14 @@ internal data class PhoneOfflineMapSurfaceState(
     val map: PhoneOfflineMap,
     val themeConfig: PhoneOfflineThemeConfig,
     val initialCamera: PhoneMapCameraSnapshot,
+    val cameraOverride: PhoneMapCameraSnapshot? = null,
     val mapSettings: PhoneMapSettings = PhoneMapSettings(),
     val terrainDataVersion: Long = 0L,
     val hasTerrainData: Boolean = false,
     val gpxOverlays: List<PhoneMapGpxOverlay>,
     val gpxSettings: PhoneMapGpxSettings = PhoneMapGpxSettings(),
+    val routeAnalysis: PhoneMapRouteAnalysis? = null,
+    val pointSelectionMarkers: List<PhoneMapPointSelectionMarker> = emptyList(),
     val pois: List<PhoneMapPoi>,
     val poiSettings: PhoneMapPoiSettings = PhoneMapPoiSettings(),
     val mapMode: PhoneMapMode,
@@ -78,6 +88,7 @@ internal data class PhoneOfflineMapSurfaceState(
 internal fun offlineMapSurface(
     state: PhoneOfflineMapSurfaceState,
     callbacks: PhoneOfflineMapsforgeCallbacks,
+    modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     val currentCallbacks by rememberUpdatedState(callbacks)
     var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
@@ -89,9 +100,11 @@ internal fun offlineMapSurface(
                 callbacks =
                     PhoneOfflineMapsforgeCallbacks(
                         onCameraChanged = { currentCallbacks.onCameraChanged(it) },
+                        onLiveMapPositionChanged = { currentCallbacks.onLiveMapPositionChanged(it) },
                         onViewportChanged = { currentCallbacks.onViewportChanged(it) },
                         onPoiSelected = { currentCallbacks.onPoiSelected(it) },
                         onMapTap = { currentCallbacks.onMapTap(it) },
+                        onMapLongPress = { currentCallbacks.onMapLongPress(it) },
                         onTwoFingerTap = { first, second -> currentCallbacks.onTwoFingerTap(first, second) },
                         onUserPan = { currentCallbacks.onUserPan(it) },
                         onUserRotation = { currentCallbacks.onUserRotation(it) },
@@ -105,7 +118,7 @@ internal fun offlineMapSurface(
             }
         },
         update = { activeHolder -> activeHolder.render(state) },
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
     )
 
     DisposableEffect(Unit) {
@@ -144,6 +157,13 @@ private class PhoneOfflineMapsforgeView(
                         )
                     }
                 }
+            }
+        }
+    private val longPressDetector =
+        phoneMapLongPressDetector(context) { x, y ->
+            runCatching {
+                val point = mapView.mapViewProjection.fromPixels(x.toDouble(), y.toDouble())
+                callbacks.onMapLongPress(PhoneMapCoordinate(point.latitude, point.longitude))
             }
         }
     private val workGate = PhoneMapsforgeRenderWorkGate()
@@ -238,6 +258,7 @@ private class PhoneOfflineMapsforgeView(
                 rotationGestureTracker.onTouch(action, event.pointerCount)
             }
             twoFingerTapDetector.onTouchEvent(event)
+            longPressDetector.onTouchEvent(event)
             false
         }
         mapView.model.mapViewPosition.addObserver(cameraObserver)
@@ -294,12 +315,6 @@ private class PhoneOfflineMapsforgeView(
 
     private fun schedulePendingRendererWorkIfReady() {
         val generation = workGate.scheduleIfReady(currentReadiness()) ?: return
-        PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
-            event = "renderer_work_scheduled",
-            detail =
-                "mapView=${System.identityHashCode(mapView)} generation=$generation " +
-                    "delayMs=$PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS",
-        )
         mapView.postDelayed(
             {
                 if (disposed || !workGate.consumeIfCurrent(generation, currentReadiness())) return@postDelayed
@@ -317,6 +332,7 @@ private class PhoneOfflineMapsforgeView(
         overlayLayers.update(state)
         updateLocation(state.location, state.mapMode, state.hasLocationPermission, state.mapSettings)
         applyCameraCommand(state.cameraCommand)
+        applyCameraOverride(state.cameraOverride)
         publishCamera()
         publishRuntimeDiagnostics()
     }
@@ -398,6 +414,18 @@ private class PhoneOfflineMapsforgeView(
         locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
         requestMapRedraw()
         appliedCompassPresentation = presentation
+    }
+
+    private fun applyCameraOverride(camera: PhoneMapCameraSnapshot?) {
+        val target = camera ?: return
+        val current =
+            mapView.model.mapViewPosition.mapPosition
+                .toPhoneMapCameraSnapshotOrNull()
+        if (current != null && !phoneMapComparisonCameraNeedsSync(current, target)) return
+        mapView.model.mapViewPosition.setMapPosition(target.toRendererMapPosition(), false)
+        applyMapBearing(target.bearingDegrees)
+        appliedMapBearingDegrees = normalizePhoneHeadingDegrees(target.bearingDegrees)
+        requestMapRedraw()
     }
 
     private fun requestMapRedraw() {
@@ -522,11 +550,57 @@ private class PhoneOfflineMapsforgeView(
         }
     }
 
+    private fun liveMapPositionOrNull(): PhoneMapLiveMetricsPosition? =
+        if (mapView.width <= 0 || mapView.height <= 0) {
+            null
+        } else {
+            val rotationDegrees = mapView.mapRotation.degrees.toDouble()
+            val pivot =
+                Point(
+                    mapView.mapViewCenterX.toDouble(),
+                    mapView.mapViewCenterY.toDouble(),
+                )
+            val screenCenter = Point(mapView.width / 2.0, mapView.height / 2.0)
+            val mapSpaceCenter = unrotatePhoneMapPoint(screenCenter, pivot, rotationDegrees)
+            val target =
+                runCatching {
+                    mapView.mapViewProjection.fromPixels(mapSpaceCenter.x, mapSpaceCenter.y)
+                }.getOrNull()
+            target?.let { resolvedTarget ->
+                val userScreenPoint =
+                    currentLocation?.let { location ->
+                        runCatching {
+                            val mapPoint =
+                                mapView.mapViewProjection.toPixels(
+                                    LatLong(location.latitude, location.longitude),
+                                )
+                            rotatePhoneMapPoint(mapPoint, pivot, rotationDegrees)
+                        }.getOrNull()
+                    }
+                PhoneMapLiveMetricsPosition(
+                    target = PhoneMapCoordinate(resolvedTarget.latitude, resolvedTarget.longitude),
+                    userScreenPoint = userScreenPoint,
+                )
+            }
+        }
+
     private fun applyCameraCommand(command: PhoneMapCameraCommand?) {
         if (command == null || command.id == lastHandledCameraCommandId) return
         when (command.zoomDelta) {
-            1 -> mapView.model.mapViewPosition.zoomIn(true)
-            -1 -> mapView.model.mapViewPosition.zoomOut(true)
+            1,
+            -1,
+            -> {
+                val position = mapView.model.mapViewPosition
+                val currentZoom = position.zoomLevel.toInt()
+                val targetZoom =
+                    (currentZoom + command.zoomDelta).coerceIn(
+                        position.zoomLevelMin.toInt(),
+                        position.zoomLevelMax.toInt(),
+                    )
+                if (targetZoom != currentZoom) {
+                    position.setZoomLevel(targetZoom.toByte(), false)
+                }
+            }
         }
         lastHandledCameraCommandId = command.id
         post { if (!disposed) callbacks.onCameraCommandHandled(command.id) }
@@ -541,7 +615,13 @@ private class PhoneOfflineMapsforgeView(
                     .toPhoneMapCameraSnapshotOrNull()
             }
         snapshot?.let { camera ->
-            post { if (!disposed) callbacks.onCameraChanged(camera) }
+            val liveMapPosition = liveMapPositionOrNull()
+            post {
+                if (!disposed) {
+                    callbacks.onCameraChanged(camera)
+                    liveMapPosition?.let(callbacks.onLiveMapPositionChanged)
+                }
+            }
             mapView.phoneMapViewportOrNull()?.let { viewport ->
                 post { if (!disposed) callbacks.onViewportChanged(viewport) }
             }
@@ -698,9 +778,22 @@ private class PhoneOfflineMapsforgeOverlayLayers(
     private val poiMarkersById = mutableMapOf<String, PhoneOfflinePoiMarker>()
     private val poiMarkerBitmapCache =
         mutableMapOf<PhoneMapPoiMarkerAppearanceKey, Map<PoiType, AndroidBitmap>>()
+    private val routeAnalysisMarkerBitmaps =
+        mapOf(
+            "A" to AndroidBitmap(createRouteAnalysisMarkerBitmap("A", Color.rgb(250, 204, 21))),
+            "B" to AndroidBitmap(createRouteAnalysisMarkerBitmap("B", Color.rgb(251, 146, 60))),
+        )
+    private val routeAnalysisMarkers = mutableMapOf<String, Marker>()
+    private val pointSelectionMarkerBitmaps =
+        PhoneMapPointSelectionMarkerKind.entries.associateWith { kind ->
+            AndroidBitmap(createPhoneMapPointSelectionMarkerBitmap(kind))
+        }
+    private val pointSelectionMarkers = mutableListOf<Marker>()
     private var locationAccuracyCircle: Circle? = null
     private var appliedGpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
     private var appliedGpxSettings = PhoneMapGpxSettings()
+    private var appliedRouteAnalysis: PhoneMapRouteAnalysis? = null
+    private var appliedPointSelectionMarkers: List<PhoneMapPointSelectionMarker> = emptyList()
     private var appliedPois: List<PhoneMapPoi> = emptyList()
     private var appliedPoiSettings = PhoneMapPoiSettings()
     private var appliedMapSettings = PhoneMapSettings()
@@ -717,6 +810,8 @@ private class PhoneOfflineMapsforgeOverlayLayers(
             listOf(
                 appliedGpxOverlays == gpxOverlays,
                 appliedGpxSettings == gpxSettings,
+                appliedRouteAnalysis == state.routeAnalysis,
+                appliedPointSelectionMarkers == state.pointSelectionMarkers,
                 appliedPois == pois,
                 appliedPoiSettings == poiSettings,
                 appliedMapSettings == mapSettings,
@@ -727,13 +822,17 @@ private class PhoneOfflineMapsforgeOverlayLayers(
         }
         appliedGpxOverlays = gpxOverlays
         appliedGpxSettings = gpxSettings
+        appliedRouteAnalysis = state.routeAnalysis
+        appliedPointSelectionMarkers = state.pointSelectionMarkers
         appliedPois = pois
         appliedPoiSettings = poiSettings
         appliedMapSettings = mapSettings
         appliedLocation = location
         PhoneMapLayerMutationCoordinator.mutateLayers(mapView, OVERLAY_MUTATION_KEY) { layers ->
             syncGpxLayers(layers, gpxOverlays, gpxSettings)
+            syncRouteAnalysisMarkers(layers, state.routeAnalysis)
             syncPoiMarkers(layers, pois, poiSettings)
+            syncPointSelectionMarkers(layers, state.pointSelectionMarkers)
             syncLocationAccuracyCircle(layers, mapSettings, location)
         }
     }
@@ -745,6 +844,10 @@ private class PhoneOfflineMapsforgeOverlayLayers(
                 layer.latLongs.clear()
             }
             gpxLayersById.clear()
+            routeAnalysisMarkers.values.forEach(layers::remove)
+            routeAnalysisMarkers.clear()
+            pointSelectionMarkers.forEach(layers::remove)
+            pointSelectionMarkers.clear()
             poiMarkersById.values.forEach { marker -> removePoiMarker(layers, marker) }
             poiMarkersById.clear()
             locationAccuracyCircle?.let { circle -> layers.remove(circle) }
@@ -785,6 +888,47 @@ private class PhoneOfflineMapsforgeOverlayLayers(
                     layer.latLongs.addAll(points)
                 }
             }
+        }
+    }
+
+    private fun syncRouteAnalysisMarkers(
+        layers: Layers,
+        analysis: PhoneMapRouteAnalysis?,
+    ) {
+        routeAnalysisMarkers.values.forEach(layers::remove)
+        routeAnalysisMarkers.clear()
+        analysis ?: return
+
+        fun addMarker(
+            label: String,
+            point: PhoneMapCoordinate,
+        ) {
+            routeAnalysisMarkers[label] =
+                Marker(
+                    LatLong(point.latitude, point.longitude),
+                    requireNotNull(routeAnalysisMarkerBitmaps[label]),
+                    0,
+                    0,
+                ).also(layers::add)
+        }
+        addMarker("A", analysis.pointA)
+        analysis.pointB?.let { point -> addMarker("B", point) }
+    }
+
+    private fun syncPointSelectionMarkers(
+        layers: Layers,
+        markers: List<PhoneMapPointSelectionMarker>,
+    ) {
+        pointSelectionMarkers.forEach(layers::remove)
+        pointSelectionMarkers.clear()
+        markers.forEach { marker ->
+            pointSelectionMarkers +=
+                Marker(
+                    LatLong(marker.point.latitude, marker.point.longitude),
+                    requireNotNull(pointSelectionMarkerBitmaps[marker.kind]),
+                    0,
+                    0,
+                ).also(layers::add)
         }
     }
 
@@ -913,6 +1057,38 @@ private class PhoneOfflinePoiMarker(
     }
 }
 
+private fun rotatePhoneMapPoint(
+    point: Point,
+    pivot: Point,
+    rotationDegrees: Double,
+): PhoneMapScreenPoint {
+    val radians = Math.toRadians(rotationDegrees)
+    val cosine = cos(radians)
+    val sine = sin(radians)
+    val deltaX = point.x - pivot.x
+    val deltaY = point.y - pivot.y
+    return PhoneMapScreenPoint(
+        x = (pivot.x + deltaX * cosine - deltaY * sine).toFloat(),
+        y = (pivot.y + deltaX * sine + deltaY * cosine).toFloat(),
+    )
+}
+
+private fun unrotatePhoneMapPoint(
+    point: Point,
+    pivot: Point,
+    rotationDegrees: Double,
+): Point {
+    val radians = Math.toRadians(rotationDegrees)
+    val cosine = cos(radians)
+    val sine = sin(radians)
+    val deltaX = point.x - pivot.x
+    val deltaY = point.y - pivot.y
+    return Point(
+        pivot.x + deltaX * cosine + deltaY * sine,
+        pivot.y - deltaX * sine + deltaY * cosine,
+    )
+}
+
 private fun MotionEvent.toPhoneMapsforgeTouchAction(): PhoneMapsforgeTouchAction? =
     when (actionMasked) {
         MotionEvent.ACTION_DOWN -> PhoneMapsforgeTouchAction.DOWN
@@ -947,6 +1123,47 @@ private fun Int.withAlphaPercent(percent: Int): Int =
         Color.green(this),
         Color.blue(this),
     )
+
+private fun createRouteAnalysisMarkerBitmap(
+    label: String,
+    fillColor: Int,
+): Bitmap {
+    val size = 64
+    val center = size / 2f
+    val textPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textAlign = Paint.Align.CENTER
+            textSize = 26f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    Canvas(bitmap).apply {
+        drawCircle(
+            center,
+            center,
+            24f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fillColor },
+        )
+        drawCircle(
+            center,
+            center,
+            24f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.STROKE
+                strokeWidth = 4f
+            },
+        )
+        drawText(
+            label,
+            center,
+            center - (textPaint.fontMetrics.ascent + textPaint.fontMetrics.descent) / 2f,
+            textPaint,
+        )
+    }
+    return bitmap
+}
 
 private fun MapPosition.toPhoneMapCameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
     runCatching {

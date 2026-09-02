@@ -176,6 +176,51 @@ class RouteLibraryRepository(
             )
         }
 
+    suspend fun renameRoute(
+        routeId: String,
+        newTitle: String,
+    ): RouteLibraryUiState =
+        mutex.withLock {
+            val index = readIndex()
+            val normalizedTitle = newTitle.trim().replace(Regex("\\s+"), " ")
+            require(normalizedTitle.isNotBlank()) { "Enter a GPX name first." }
+            require(index.routes.any { route -> route.id == routeId }) { "The GPX route could not be found." }
+            val next =
+                index.copy(
+                    routes =
+                        index.routes.map { route ->
+                            if (route.id == routeId) route.copy(title = normalizedTitle) else route
+                        },
+                )
+            writeIndex(next)
+            RouteLibraryUiState(
+                routes = next.routes.sortedByDescending(RouteLibraryRoute::importedAtMillis),
+                selectedRouteId = next.selectedRouteId,
+                isLoading = false,
+            )
+        }
+
+    suspend fun deleteRoute(routeId: String): RouteLibraryUiState =
+        mutex.withLock {
+            val index = readIndex()
+            val route =
+                index.routes.firstOrNull { item -> item.id == routeId }
+                    ?: error("The GPX route could not be found.")
+            val file = File(routesDirectory, route.storedFileName)
+            require(!file.exists() || file.delete()) { "The GPX route could not be deleted." }
+            val next =
+                index.copy(
+                    routes = index.routes.filterNot { item -> item.id == routeId },
+                    selectedRouteId = index.selectedRouteId.takeUnless { it == routeId },
+                )
+            writeIndex(next)
+            RouteLibraryUiState(
+                routes = next.routes.sortedByDescending(RouteLibraryRoute::importedAtMillis),
+                selectedRouteId = next.selectedRouteId,
+                isLoading = false,
+            )
+        }
+
     fun contentUriFor(routeId: String): Uri? {
         val route = readIndex().routes.firstOrNull { it.id == routeId } ?: return null
         val file = File(routesDirectory, route.storedFileName)

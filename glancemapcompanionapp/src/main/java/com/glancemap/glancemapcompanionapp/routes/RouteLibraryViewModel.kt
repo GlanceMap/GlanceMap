@@ -95,6 +95,17 @@ class RouteLibraryViewModel(
         }
     }
 
+    suspend fun renameRoute(
+        routeId: String,
+        newTitle: String,
+    ) {
+        publishRouteState(withContext(Dispatchers.IO) { repository.renameRoute(routeId, newTitle) })
+    }
+
+    suspend fun deleteRoute(routeId: String) {
+        publishRouteState(withContext(Dispatchers.IO) { repository.deleteRoute(routeId) })
+    }
+
     fun selectedRouteContentUri(): android.net.Uri? {
         val selectedRoute = _uiState.value.selectedRoute
         return selectedRoute?.let { route -> repository.contentUriFor(route.id) }

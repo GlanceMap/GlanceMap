@@ -290,6 +290,27 @@ internal fun phoneDemTileId(
     "${if (latitudeTile >= 0) "N" else "S"}${kotlin.math.abs(latitudeTile).toString().padStart(2, '0')}" +
         "${if (longitudeTile >= 0) "E" else "W"}${kotlin.math.abs(longitudeTile).toString().padStart(3, '0')}"
 
+internal fun phoneDemTileIdsForBounds(bounds: BoundingBox): List<String> =
+    buildList {
+        for (latitude in phoneDemTileRange(bounds.minLatitude, bounds.maxLatitude, -90, 89)) {
+            for (longitude in phoneDemTileRange(bounds.minLongitude, bounds.maxLongitude, -180, 179)) {
+                add(phoneDemTileId(latitude, longitude))
+            }
+        }
+    }
+
+private fun phoneDemTileRange(
+    minimum: Double,
+    maximum: Double,
+    minimumTile: Int,
+    maximumTile: Int,
+): IntRange {
+    val adjustedMaximum = if (maximum <= minimum) minimum + 1e-9 else maximum
+    val firstTile = floor(minimum).toInt().coerceIn(minimumTile, maximumTile)
+    val lastTile = floor(Math.nextDown(adjustedMaximum)).toInt().coerceIn(minimumTile, maximumTile)
+    return firstTile..lastTile
+}
+
 private fun phoneDemTileCandidates(
     root: File,
     tileId: String,
@@ -515,6 +536,7 @@ private class PhoneDownsamplingInputStream(
 /** Watch-compatible slope-band relief, rendered asynchronously and only from cached bitmaps. */
 internal class PhoneReliefOverlayLayer(
     private val elevation: PhoneElevationRepository,
+    private val opacityPercent: Int,
 ) : Layer() {
     private val worker =
         Executors.newSingleThreadExecutor { runnable ->
@@ -617,7 +639,7 @@ internal class PhoneReliefOverlayLayer(
                         worldY.coerceIn(0.0, mapSize.toDouble()),
                         mapSize,
                     )
-                val color = phoneReliefColor(elevation, latitude, longitude)
+                val color = phoneReliefColor(elevation, latitude, longitude, opacityPercent)
                 if (color != 0) colored = true
                 for (row in y until y + height) {
                     pixels.fill(color, row * key.tileSize + x, row * key.tileSize + x + width)
@@ -691,6 +713,7 @@ internal fun phoneReliefColor(
     elevation: PhoneElevationRepository,
     latitude: Double,
     longitude: Double,
+    opacityPercent: Int = DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT,
 ): Int {
     val base =
         elevation.loadTile(
@@ -747,7 +770,8 @@ internal fun phoneReliefColor(
             slopeDegrees < 43.0 -> 164
             else -> 180
         }
-    return (alpha shl 24) or
+    val adjustedAlpha = (alpha * opacityPercent.coerceIn(0, 100) / 100f).toInt()
+    return (adjustedAlpha shl 24) or
         (246 shl 16) or
         ((max(0.0, 239.0 - (slopeDegrees - 15.0) * 7.0).toInt().coerceIn(61, 239)) shl 8)
 }

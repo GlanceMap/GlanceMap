@@ -581,7 +581,8 @@ internal class PhoneMapsforgeRenderer(
         dataAvailable: Boolean,
     ): String =
         "${sourceFile.absolutePath}|$dataVersion|$dataAvailable|" +
-            "${settings.hillShadingEnabled}|${settings.reliefOverlayEnabled}"
+            "${settings.hillShadingEnabled}|${settings.reliefOverlayEnabled}|" +
+            settings.reliefOverlayOpacityPercent
 
     @Suppress("LongMethod", "ReturnCount", "TooGenericExceptionCaught")
     private fun applyTerrainLayers(layers: Layers) {
@@ -610,7 +611,23 @@ internal class PhoneMapsforgeRenderer(
             var terrainCache: TileCache? = null
             var terrainConfig: HillsRenderConfig? = null
             try {
-                val demFolder = PhoneMapsforgeDemFolder(PhoneElevationStore(context).readDirectories())
+                val demRoots = PhoneElevationStore(context).readDirectories()
+                val requiredDemTileIds = phoneDemTileIdsForBounds(base.bounds).toSet()
+                val demFolder = PhoneMapsforgeDemFolder(demRoots, requiredDemTileIds)
+                val availableDemFiles = demFolder.files().toList()
+                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                    event = "hillshade_dem_indexed",
+                    detail =
+                        "renderer=$rendererId required=${requiredDemTileIds.size} " +
+                            "available=${availableDemFiles.size}",
+                )
+                if (availableDemFiles.isEmpty()) {
+                    PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                        event = "hillshade_unavailable",
+                        detail = "renderer=$rendererId reason=no_dem_for_map",
+                    )
+                    return
+                }
                 val algorithm =
                     AdaptiveClasyHillShading(
                         AClasyHillShading
@@ -631,7 +648,11 @@ internal class PhoneMapsforgeRenderer(
                         ),
                     ).setMagnitudeScaleFactor(1f).setExternal(true).indexOnThread()
                 terrainMapFile = MapFile(base.sourceFile)
-                val cacheId = "phone-hillshade-${phoneMapsforgeIdentityHash(base.sourceFile.absolutePath)}"
+                val cacheId =
+                    "phone-hillshade-${phoneMapsforgeIdentityHash(
+                        "${base.sourceFile.absolutePath}|${requestedTerrainSettings.demSource.id}|" +
+                            "$requestedTerrainDataVersion|${availableDemFiles.joinToString { it.name }}",
+                    )}"
                 terrainCache =
                     AndroidUtil.createExternalStorageTileCache(
                         context,
@@ -680,7 +701,10 @@ internal class PhoneMapsforgeRenderer(
         }
         if (requestedTerrainSettings.reliefOverlayEnabled) {
             runCatching {
-                PhoneReliefOverlayLayer(elevationRepository).also { layer ->
+                PhoneReliefOverlayLayer(
+                    elevation = elevationRepository,
+                    opacityPercent = requestedTerrainSettings.reliefOverlayOpacityPercent,
+                ).also { layer ->
                     val terrainIndex =
                         hillshadeLayer?.let(layers::indexOf)
                             ?: currentBase?.layer?.let(layers::indexOf)
@@ -866,7 +890,7 @@ private class PhoneFirstVisibleTileRendererLayer(
         } ?: false
 }
 
-private fun PhoneMapCameraSnapshot.toRendererMapPosition(): MapPosition =
+internal fun PhoneMapCameraSnapshot.toRendererMapPosition(): MapPosition =
     MapPosition(
         LatLong(latitude, longitude),
         zoom.toInt().coerceIn(0, Byte.MAX_VALUE.toInt()).toByte(),

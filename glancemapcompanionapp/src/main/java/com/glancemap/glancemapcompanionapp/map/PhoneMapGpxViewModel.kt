@@ -96,5 +96,6 @@ internal fun phoneGpxFolderTrackItem(
             displayName = parsed.title?.takeIf(String::isNotBlank) ?: source.displayName,
             track = PhoneMapGpxTrack(source.id, parsed.points),
             enabled = false,
+            isEditable = source.isWritable,
         )
     }.getOrNull()

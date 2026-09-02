@@ -19,6 +19,7 @@ internal data class PhoneMapGpxItem(
     val displayName: String,
     val track: PhoneMapGpxTrack,
     val enabled: Boolean,
+    val isEditable: Boolean = true,
 ) {
     init {
         require(id.isNotBlank())
