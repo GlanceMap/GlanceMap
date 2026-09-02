@@ -1810,6 +1810,12 @@ class TraceRecordingViewModel(
                     state = state,
                     lastUiAction = lastUiAction,
                 )
+            }.onSuccess { stats ->
+                RecordingScreenOffDiagnostics.recordDraftPersist(
+                    jsonBytesWritten = stats.jsonBytesWritten.toLong(),
+                    gpxBytesWritten = stats.gpxBytesWritten.toLong(),
+                    pointCount = stats.pointCount,
+                )
             }.onFailure { error ->
                 DebugTelemetry.log(
                     "TraceRecording",

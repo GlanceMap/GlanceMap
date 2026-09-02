@@ -307,6 +307,7 @@ internal object EnergyDiagnostics {
         context: Context,
         reason: String,
         detail: String = "",
+        reportedScreenInteractive: Boolean? = null,
     ) {
         if (!shouldRecordSample(reason)) return
 
@@ -335,7 +336,9 @@ internal object EnergyDiagnostics {
                 ?.let { (processCpuMs - it).coerceAtLeast(0L) }
 
         val powerSave = powerManager?.isPowerSaveMode ?: false
-        val interactive = powerManager?.isInteractive ?: false
+        val actualInteractive = powerManager?.isInteractive
+        val interactive = actualInteractive ?: false
+        reconcileScreenStateIfAvailable(reportedScreenInteractive, actualInteractive)
         val thermal =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && powerManager != null) {
                 powerManager.currentThermalStatus.toString()
@@ -593,6 +596,7 @@ internal object EnergyDiagnostics {
             .mapNotNull(::batteryObservationOrNull)
             .sortedBy { it.atMs }
 
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     private fun buildBatteryUse(observations: List<BatteryObservation>): BatteryUseStats? {
         val integratedUse = integrateCurrentUse(observations)
         val chargeObservations = observations.filter { it.chargeCounterUah != null }
@@ -671,6 +675,7 @@ internal object EnergyDiagnostics {
         }
     }
 
+    @Suppress("ReturnCount")
     private fun summarizeScreenStateEnergy(
         observations: List<BatteryObservation>,
         batteryUse: BatteryUseStats?,
@@ -775,10 +780,24 @@ internal object EnergyDiagnostics {
         )
     }
 
-    private fun captureDurationMs(observations: List<BatteryObservation>): Long? {
-        val firstAtMs = observations.firstOrNull()?.atMs ?: return null
-        val lastAtMs = observations.lastOrNull()?.atMs ?: return null
-        return (lastAtMs - firstAtMs).takeIf { it > 0L }
+    private fun captureDurationMs(observations: List<BatteryObservation>): Long? =
+        observations.firstOrNull()?.atMs?.let { firstAtMs ->
+            observations.lastOrNull()?.atMs?.let { lastAtMs ->
+                (lastAtMs - firstAtMs).takeIf { it > 0L }
+            }
+        }
+
+    internal fun reconcileScreenStateIfAvailable(
+        reportedScreenInteractive: Boolean?,
+        actualInteractive: Boolean?,
+    ) {
+        if (captureMode.get() != CaptureMode.FULL) return
+        if (reportedScreenInteractive != null && actualInteractive != null) {
+            ScreenStateDiagnostics.reconcileScreenState(
+                reportedIsInteractive = reportedScreenInteractive,
+                actualIsInteractive = actualInteractive,
+            )
+        }
     }
 
     private fun measurementCoveragePct(

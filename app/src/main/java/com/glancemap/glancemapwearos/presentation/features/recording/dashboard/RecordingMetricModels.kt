@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.isRecordingDashboardMetricAllowedForProfile
 import com.glancemap.glancemapwearos.presentation.features.gpx.FileSig
@@ -185,6 +186,7 @@ internal fun buildRecordingDashboardSnapshot(
     bikeWeightKg: Float = SettingsRepository.DEFAULT_BIKE_WEIGHT_KG,
     activityProfile: String = state.activityProfile,
 ): RecordingDashboardSnapshot {
+    RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild(state.points.size)
     val startedAt = state.startedAtMillis ?: nowMillis
     val currentPausedMillis =
         if (state.paused) {

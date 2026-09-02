@@ -9,6 +9,12 @@ import org.json.JSONObject
 import org.mapsforge.core.model.LatLong
 import java.io.File
 
+data class TraceRecordingDraftPersistStats(
+    val jsonBytesWritten: Int,
+    val gpxBytesWritten: Int,
+    val pointCount: Int,
+)
+
 class TraceRecordingDraftStore(
     context: Context,
 ) {
@@ -69,7 +75,8 @@ class TraceRecordingDraftStore(
                         }
                     },
                 )
-        metadataTempFile.writeText(json.toString())
+        val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+        metadataTempFile.writeBytes(jsonBytes)
         metadataTempFile.renameAtomicallyTo(metadataFile)
 
         val nowMillis = System.currentTimeMillis()
@@ -78,8 +85,14 @@ class TraceRecordingDraftStore(
                 startedAtMillis = state.startedAtMillis ?: nowMillis,
                 endedAtMillis = state.points.lastOrNull()?.timeMillis ?: nowMillis,
             )
-        gpxTempFile.writeBytes(encodeRecordedTraceAsGpx(title = title, points = state.points))
+        val gpxBytes = encodeRecordedTraceAsGpx(title = title, points = state.points)
+        gpxTempFile.writeBytes(gpxBytes)
         gpxTempFile.renameAtomicallyTo(gpxFile)
+        TraceRecordingDraftPersistStats(
+            jsonBytesWritten = jsonBytes.size,
+            gpxBytesWritten = gpxBytes.size,
+            pointCount = state.points.size,
+        )
     }
 
     suspend fun clear() =

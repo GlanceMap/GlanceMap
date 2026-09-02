@@ -15,6 +15,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeDemDow
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeLineDumpSection
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeRecordingInstrumentationSummarySection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeScreenStateSummarySection
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
@@ -647,6 +648,7 @@ object DiagnosticsExporter {
                 ?: compassDeepTraceHeadingTelemetrySummary
         val telemetryDumpLines = telemetryLines.filterNot { "[CompassTelemetry]" in it }
         val screenStateSummary = ScreenStateDiagnostics.summary()
+        val recordingInstrumentationCounters = RecordingScreenOffDiagnostics.snapshotInstrumentation()
         val demDownloadSummary = DemDownloadDiagnostics.summary()
         val demDownloadLines = DemDownloadDiagnostics.snapshotLines()
         val demDownloadDroppedLines = DemDownloadDiagnostics.droppedLineCount()
@@ -1875,6 +1877,7 @@ object DiagnosticsExporter {
                 headingSummary = compassDeepTraceHeadingTelemetrySummary,
             )
             writer.writeScreenStateSummarySection(screenStateSummary)
+            writer.writeRecordingInstrumentationSummarySection(recordingInstrumentationCounters)
             writer.writeLineDumpSection(
                 title = "Energy Diagnostics",
                 emptyMessage = "No energy diagnostics samples yet.",

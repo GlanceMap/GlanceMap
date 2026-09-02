@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.SwipeToDismissBox
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.defaultRecordingDashboardMetricSlotsForProfile
@@ -76,6 +77,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
 
     LaunchedEffect(state.active, state.paused, state.saving) {
         while (isActive && (state.active || state.saving)) {
+            RecordingScreenOffDiagnostics.recordDashboardTick()
             nowMillis = System.currentTimeMillis()
             delay(1_000L)
         }

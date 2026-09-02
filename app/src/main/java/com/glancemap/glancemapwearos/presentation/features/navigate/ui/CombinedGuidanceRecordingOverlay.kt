@@ -67,6 +67,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.TURN_BY_TURN_DASHBOARD_PAGE_SLOT_COUNT
@@ -154,6 +155,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
 
     LaunchedEffect(recordingState.active, recordingState.paused, recordingState.saving) {
         while (isActive && (recordingState.active || recordingState.saving)) {
+            RecordingScreenOffDiagnostics.recordDashboardTick()
             nowMillis = System.currentTimeMillis()
             delay(1_000L)
         }

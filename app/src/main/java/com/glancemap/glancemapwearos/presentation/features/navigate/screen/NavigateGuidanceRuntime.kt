@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxEtaModelConfig
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxViewModel
@@ -98,6 +99,9 @@ internal fun rememberNavigateGuidanceRuntime(
             tuning = tuning,
             previousDistanceFromStartMeters = previousGuidanceProgressMeters,
         )
+    rawState.projectionSegmentsScanned?.let { segmentsScanned ->
+        RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned)
+    }
     LaunchedEffect(activeSession?.trackId, activeSession?.reversed, rawState.distanceFromStartMeters) {
         rawState.distanceFromStartMeters?.let { previousGuidanceProgressMeters = it }
     }
@@ -306,6 +310,7 @@ internal fun rememberNavigateGuidanceRuntime(
             startHereStableSampleCount = 0
             return@LaunchedEffect
         }
+        RecordingScreenOffDiagnostics.recordTbtProjection(points.lastIndex)
 
         val distanceToStart = haversineMeters(location, start)
         val distanceToEnd = haversineMeters(location, end)

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
@@ -90,6 +91,7 @@ internal fun nearestGuidanceRoutePoint(
             cumulativeDistancesMeters = session.cumulativeDistancesMeters,
             location = currentLocation,
         ) ?: return null
+    RecordingScreenOffDiagnostics.recordTbtProjection(points.lastIndex)
     return projectedLatLongOnRoute(points = points, projectionSegmentIndex = projection.segmentIndex, t = projection.t)
 }
 
@@ -107,6 +109,7 @@ internal fun buildBrouterGuideBackState(
             cumulativeDistancesMeters = cumulative,
             location = currentLocation,
         ) ?: return baseState
+    RecordingScreenOffDiagnostics.recordTbtProjection(route.lastIndex)
     val targetDistance =
         (projection.distanceFromStartMeters + GUIDE_BACK_ROUTE_BEARING_LOOKAHEAD_METERS)
             .coerceAtMost(cumulative.lastOrNull() ?: projection.distanceFromStartMeters)

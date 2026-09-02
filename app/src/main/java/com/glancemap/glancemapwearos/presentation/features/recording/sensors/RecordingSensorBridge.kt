@@ -28,6 +28,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingSensorDiagnosticKind
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
@@ -448,12 +449,16 @@ fun RecordingSensorBridge(
         var lastPressurePublishedAtElapsedMs = 0L
         var lastPressurePublishedHpa: Double? = null
 
-        fun publishSensorUpdate(update: (RecordingSensorMetrics) -> RecordingSensorMetrics) {
+        fun publishSensorUpdate(
+            kind: RecordingSensorDiagnosticKind,
+            update: (RecordingSensorMetrics) -> RecordingSensorMetrics,
+        ) {
             mainHandler.post {
                 if (disposed.get()) return@post
                 val updatedMetrics = update(metrics)
                 metrics = updatedMetrics
                 onMetrics(updatedMetrics)
+                RecordingScreenOffDiagnostics.recordSensorUiPublish(kind)
             }
         }
 
@@ -462,6 +467,7 @@ fun RecordingSensorBridge(
                 override fun onSensorChanged(event: SensorEvent) {
                     when (event.sensor.type) {
                         Sensor.TYPE_HEART_RATE -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.HEART_RATE)
                             val callbackStartedAtElapsedMs =
                                 RecordingScreenOffDiagnostics.start()
                             val bpm =
@@ -488,7 +494,7 @@ fun RecordingSensorBridge(
                             }
                             lastHeartRatePublishedAtElapsedMs = nowElapsed
                             lastHeartRatePublishedBpm = bpm
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.HEART_RATE) { current ->
                                 current.copy(
                                     heartRateBpm = bpm,
                                     heartRateUpdatedAtMillis =
@@ -503,10 +509,11 @@ fun RecordingSensorBridge(
                             )
                         }
                         Sensor.TYPE_STEP_COUNTER -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.STEP)
                             val value = event.values.firstOrNull() ?: return
                             val now = System.currentTimeMillis()
                             val reading = sensorRuntimeState.updateStepCounter(value = value, nowMillis = now)
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.STEP) { current ->
                                 current.copy(
                                     stepCount = reading.steps,
                                     stepCountUpdatedAtMillis = now,
@@ -533,9 +540,10 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_STEP_DETECTOR -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.CADENCE)
                             val now = System.currentTimeMillis()
                             val cadence = sensorRuntimeState.updateStepDetector(nowMillis = now)
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.CADENCE) { current ->
                                 current.copy(
                                     cadenceSpm =
                                         if (useInternalCadence) {
@@ -559,6 +567,7 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_PRESSURE -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.PRESSURE)
                             val callbackStartedAtElapsedMs =
                                 RecordingScreenOffDiagnostics.start()
                             val pressure =
@@ -606,7 +615,7 @@ fun RecordingSensorBridge(
                             }
                             lastPressurePublishedAtElapsedMs = nowElapsed
                             lastPressurePublishedHpa = pressure
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.PRESSURE) { current ->
                                 current.copy(
                                     barometricPressureHpa = pressure,
                                     barometricPressureUpdatedAtMillis = now,

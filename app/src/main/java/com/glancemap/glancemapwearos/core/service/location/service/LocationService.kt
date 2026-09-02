@@ -460,6 +460,7 @@ class LocationService : Service() {
                         context = this,
                         reason = reason,
                         detail = detail,
+                        reportedScreenInteractive = latestScreenState.isInteractive,
                     )
                 },
             )
@@ -1369,6 +1370,7 @@ class LocationService : Service() {
                     context = this@LocationService,
                     reason = "capture_enabled",
                     detail = "source=location_service",
+                    reportedScreenInteractive = latestScreenState.isInteractive,
                 )
                 while (serviceJob.isActive && latestDiagnosticsCaptureActive) {
                     // The first fixed-cadence sample lands after a one-minute warm-up. This
@@ -1379,6 +1381,7 @@ class LocationService : Service() {
                         context = this@LocationService,
                         reason = "periodic",
                         detail = energyRuntimeDetail(),
+                        reportedScreenInteractive = latestScreenState.isInteractive,
                     )
                 }
             }
@@ -1471,6 +1474,7 @@ class LocationService : Service() {
                 context = this,
                 reason = "capture_toggle_off",
                 detail = "source=location_service",
+                reportedScreenInteractive = latestScreenState.isInteractive,
             )
         }
         val fullDiagnostics =

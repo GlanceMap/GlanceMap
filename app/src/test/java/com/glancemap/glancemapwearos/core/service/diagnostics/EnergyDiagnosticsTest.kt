@@ -16,6 +16,8 @@ class EnergyDiagnosticsTest {
         DebugTelemetry.clear()
         EnergyDiagnostics.clear()
         EnergyDiagnostics.setEnabled(false)
+        ScreenStateDiagnostics.clear(nowElapsedMs = 0L)
+        ScreenStateDiagnostics.configure(captureActive = false, nowElapsedMs = 0L)
     }
 
     @After
@@ -24,6 +26,8 @@ class EnergyDiagnosticsTest {
         DebugTelemetry.clear()
         EnergyDiagnostics.clear()
         EnergyDiagnostics.setEnabled(false)
+        ScreenStateDiagnostics.clear(nowElapsedMs = 0L)
+        ScreenStateDiagnostics.configure(captureActive = false, nowElapsedMs = 0L)
     }
 
     @Test
@@ -72,6 +76,29 @@ class EnergyDiagnosticsTest {
         assertTrue(EnergyDiagnostics.shouldRecordSample("capture_toggle_off"))
         assertFalse(EnergyDiagnostics.shouldRecordSample("gps_burst_start"))
         assertFalse(EnergyDiagnostics.shouldRecordSample("http_transfer_start"))
+    }
+
+    @Test
+    fun batteryBenchmarkDoesNotPopulateScreenStateReconciliationMetrics() {
+        ScreenStateDiagnostics.configure(captureActive = true, nowElapsedMs = 1_000L)
+        EnergyDiagnostics.configure(captureActive = true, fullDiagnostics = false)
+
+        EnergyDiagnostics.reconcileScreenStateIfAvailable(
+            reportedScreenInteractive = true,
+            actualInteractive = false,
+        )
+        ScreenStateDiagnostics.updateDisplayState(
+            displayState = ScreenStateDiagnostics.DisplayState.OFF,
+            nowElapsedMs = 1_100L,
+        )
+        ScreenStateDiagnostics.configure(captureActive = false, nowElapsedMs = 1_200L)
+
+        val summary = ScreenStateDiagnostics.summary(nowElapsedMs = 1_200L)
+
+        assertEquals(100L, summary.offDurationMs)
+        assertEquals(0L, summary.screenStateReconciliationSampleCount)
+        assertEquals(0L, summary.screenStateMismatchSampleCount)
+        assertEquals(0L, summary.screenStateObservedMismatchDurationMs)
     }
 
     @Test
