@@ -53,13 +53,17 @@ internal data class VisibleTileViewportReadinessEvent(
     val viewportKey: VisibleTileViewportKey,
 )
 
-internal fun visibleTileViewportReadinessMatches(
+/**
+ * Initial-map readiness follows the displayed viewport. The viewport captured while arming is
+ * diagnostic context, not a permanent requirement: layout, pan, or zoom can change it before a
+ * usable tile arrives.
+ */
+internal fun initialVisibleTileViewportReadinessMatches(
     request: VisibleTileViewportReadinessRequest,
     event: VisibleTileViewportReadinessEvent,
 ): Boolean =
     request.layerId == event.layerId &&
-        request.requestId == event.requestId &&
-        request.viewportKey == event.viewportKey
+        request.requestId == event.requestId
 
 /** Reports when an exact tile from the visible viewport is first available to draw. */
 internal class FirstVisibleTileRendererLayer(
@@ -126,7 +130,7 @@ internal class FirstVisibleTileRendererLayer(
         completeArmedViewportReadiness(boundingBox, zoomLevel)
     }
 
-    /** Arms one readiness signal for the map's current visible tile set. */
+    /** Arms one initial-map readiness signal for the current visible tile set. */
     fun armCurrentViewportReadiness(): VisibleTileViewportReadinessRequest {
         val mapView = diagnostics.mapView
         val viewportKey =
@@ -156,12 +160,12 @@ internal class FirstVisibleTileRendererLayer(
         timeoutMs: Long,
     ): VisibleTileViewportReadinessEvent? {
         viewportReadinessEvent.value?.let { event ->
-            if (visibleTileViewportReadinessMatches(request, event)) return event
+            if (initialVisibleTileViewportReadinessMatches(request, event)) return event
         }
         return withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
             viewportReadinessEvent
                 .filterNotNull()
-                .first { event -> visibleTileViewportReadinessMatches(request, event) }
+                .first { event -> initialVisibleTileViewportReadinessMatches(request, event) }
         }
     }
 
@@ -296,11 +300,11 @@ internal class FirstVisibleTileRendererLayer(
                 zoomLevel = zoomLevel,
                 tileSize = tileSize,
             )
-        if (request.viewportKey == viewportKey && hasDrawableTile(viewportKey)) {
+        if (hasDrawableTile(viewportKey)) {
             synchronized(viewportReadinessLock) {
                 if (armedViewportReadiness == request) {
                     armedViewportReadiness = null
-                    viewportReadinessEvent.value = request.toReadinessEvent()
+                    viewportReadinessEvent.value = request.toReadinessEvent(viewportKey)
                 }
             }
         }
@@ -336,11 +340,13 @@ internal class FirstVisibleTileRendererLayer(
     }
 }
 
-private fun VisibleTileViewportReadinessRequest.toReadinessEvent(): VisibleTileViewportReadinessEvent =
+private fun VisibleTileViewportReadinessRequest.toReadinessEvent(
+    observedViewportKey: VisibleTileViewportKey = viewportKey,
+): VisibleTileViewportReadinessEvent =
     VisibleTileViewportReadinessEvent(
         layerId = layerId,
         requestId = requestId,
-        viewportKey = viewportKey,
+        viewportKey = observedViewportKey,
     )
 
 internal fun visibleTileViewportKey(
