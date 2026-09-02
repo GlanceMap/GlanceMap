@@ -21,6 +21,16 @@ internal data class PhoneMapDistanceMeasurement(
         get() = phoneMapDistanceMeters(first, second)
 }
 
+internal data class PhoneMapScreenPoint(
+    val x: Float,
+    val y: Float,
+)
+
+internal data class PhoneMapLiveMetricsPosition(
+    val target: PhoneMapCoordinate,
+    val userScreenPoint: PhoneMapScreenPoint?,
+)
+
 internal fun phoneMapDistanceMeters(
     first: PhoneMapCoordinate,
     second: PhoneMapCoordinate,

@@ -19,7 +19,7 @@ class PhoneMapGpxSettingsTest {
         assertEquals(70, settings.trackOpacityPercent)
         assertFalse(settings.directionArrowsEnabled)
         assertTrue(settings.inspectionEnabled)
-        assertEquals(DEFAULT_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND, settings.flatSpeedMetersPerSecond, 0f)
+        assertEquals(3.5f / 3.6f, settings.flatSpeedMetersPerSecond, 0f)
         assertFalse(settings.advancedEtaEnabled)
         assertFalse(settings.staminaAdjustmentEnabled)
     }

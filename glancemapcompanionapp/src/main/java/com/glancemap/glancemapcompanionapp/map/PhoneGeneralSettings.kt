@@ -18,7 +18,6 @@ internal enum class PhoneActivityProfile(
 /** Phone-side general settings shared by map, routing, and future activity calculations. */
 internal data class PhoneGeneralSettings(
     val isMetric: Boolean = true,
-    val distanceMeasurementEnabled: Boolean = false,
     val activityProfile: PhoneActivityProfile = PhoneActivityProfile.HIKE,
     val userWeightKg: Float = DEFAULT_PHONE_USER_WEIGHT_KG,
     val backpackWeightKg: Float = DEFAULT_PHONE_BACKPACK_WEIGHT_KG,
@@ -41,7 +40,6 @@ internal class PhoneGeneralSettingsPreferences(
     fun load(): PhoneGeneralSettings =
         PhoneGeneralSettings(
             isMetric = preferences.getBoolean(KEY_IS_METRIC, true),
-            distanceMeasurementEnabled = preferences.getBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, false),
             activityProfile =
                 PhoneActivityProfile.fromStorageValue(
                     preferences.getString(KEY_ACTIVITY_PROFILE, PhoneActivityProfile.HIKE.storageValue),
@@ -56,7 +54,6 @@ internal class PhoneGeneralSettingsPreferences(
         preferences
             .edit()
             .putBoolean(KEY_IS_METRIC, normalized.isMetric)
-            .putBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, normalized.distanceMeasurementEnabled)
             .putString(KEY_ACTIVITY_PROFILE, normalized.activityProfile.storageValue)
             .putFloat(KEY_USER_WEIGHT_KG, normalized.userWeightKg)
             .putFloat(KEY_BACKPACK_WEIGHT_KG, normalized.backpackWeightKg)
@@ -68,7 +65,6 @@ internal class PhoneGeneralSettingsPreferences(
     private companion object {
         const val PREFERENCES_NAME = "phone_general_settings"
         const val KEY_IS_METRIC = "is_metric"
-        const val KEY_DISTANCE_MEASUREMENT_ENABLED = "distance_measurement_enabled"
         const val KEY_ACTIVITY_PROFILE = "activity_profile"
         const val KEY_USER_WEIGHT_KG = "user_weight_kg"
         const val KEY_BACKPACK_WEIGHT_KG = "backpack_weight_kg"

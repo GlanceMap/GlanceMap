@@ -64,6 +64,7 @@ internal fun PhoneMapPopupDialog(
     title: String,
     onDismiss: () -> Unit,
     dismissEnabled: Boolean = true,
+    titleAction: (@Composable () -> Unit)? = null,
     text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit,
     dismissButton: (@Composable () -> Unit)? = null,
@@ -76,6 +77,7 @@ internal fun PhoneMapPopupDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(text = title, modifier = Modifier.weight(1f))
+                titleAction?.invoke()
                 IconButton(onClick = onDismiss, enabled = dismissEnabled) {
                     Icon(
                         imageVector = Icons.Filled.Close,

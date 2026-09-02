@@ -11,6 +11,29 @@ import java.nio.file.Files
 
 class PhoneMapPoiTest {
     @Test
+    fun managedPoiSourceCanBeRenamedAndDeleted() {
+        val directory = Files.createTempDirectory("glancemap-phone-pois").toFile()
+        try {
+            val original = directory.resolve("alps.poi").apply { writeText("poi") }
+            val repository = PhoneMapPoiRepository(directory)
+
+            val renamed = runBlocking { repository.renameSource(original.name, "Alps 2026") }
+            runBlocking { repository.deleteSource(renamed) }
+
+            assertEquals("Alps 2026.poi", renamed)
+            assertTrue(!original.exists())
+            assertTrue(!directory.resolve(renamed).exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun poiRenameRejectsFolderPaths() {
+        phoneMapPoiFileName("folder/alps")
+    }
+
+    @Test
     fun storedPointBecomesStableSemanticMapPoi() {
         val poi =
             PoiSqlitePoint(
@@ -79,5 +102,17 @@ class PhoneMapPoiTest {
         } finally {
             directory.delete()
         }
+    }
+
+    @Test
+    fun onlyEnabledReadablePoiFoldersAreIncludedInViewportQueries() {
+        val enabled =
+            listOf(
+                PhoneMapPoiSource(fileName = "alps.poi", isReadable = true, isEnabled = true),
+                PhoneMapPoiSource(fileName = "coast.poi", isReadable = true, isEnabled = false),
+                PhoneMapPoiSource(fileName = "broken.poi", isReadable = false, isEnabled = true),
+            ).enabledFileNames()
+
+        assertEquals(setOf("alps.poi"), enabled)
     }
 }

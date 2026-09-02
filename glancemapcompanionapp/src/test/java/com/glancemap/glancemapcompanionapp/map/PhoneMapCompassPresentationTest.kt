@@ -147,4 +147,26 @@ class PhoneMapCompassPresentationTest {
             },
         )
     }
+
+    @Test
+    fun unusableFusedSampleDoesNotPreventSensorFallback() {
+        assertFalse(
+            phoneCompassFusedSampleIsUsable(
+                headingDegrees = 90f,
+                accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+            ),
+        )
+        assertTrue(
+            phoneCompassFusedSampleIsUsable(
+                headingDegrees = 90f,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_LOW,
+            ),
+        )
+        assertFalse(
+            phoneCompassFusedSampleIsUsable(
+                headingDegrees = Float.NaN,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+            ),
+        )
+    }
 }

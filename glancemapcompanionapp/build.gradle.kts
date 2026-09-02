@@ -10,6 +10,7 @@ apply(from = rootProject.file("gradle/android-app-testing.gradle.kts"))
 val glanceMapVersionName = providers.gradleProperty("glanceMapVersionName").get()
 val glanceMapPhoneVersionCode = providers.gradleProperty("glanceMapPhoneVersionCode").get().toInt()
 val arkluzSmsApiKeyProperty = "ARKLUZ_SMS_API_KEY"
+val mapTilerApiKeyProperty = "MAPTILER_API_KEY"
 val projectGradlePropertiesDefinesArkluzSmsApiKey =
     rootProject.file("gradle.properties").useLines { lines ->
         lines.any { line ->
@@ -19,9 +20,24 @@ val projectGradlePropertiesDefinesArkluzSmsApiKey =
                 trimmedLine.substringBefore('=').trim() == arkluzSmsApiKeyProperty
         }
     }
+val projectGradlePropertiesDefinesMapTilerApiKey =
+    rootProject.file("gradle.properties").useLines { lines ->
+        lines.any { line ->
+            val trimmedLine = line.trimStart()
+            !trimmedLine.startsWith("#") &&
+                '=' in trimmedLine &&
+                trimmedLine.substringBefore('=').trim() == mapTilerApiKeyProperty
+        }
+    }
 if (projectGradlePropertiesDefinesArkluzSmsApiKey) {
     throw GradleException(
         "$arkluzSmsApiKeyProperty must not be defined in the repository gradle.properties. " +
+            "Use ~/.gradle/gradle.properties or an environment variable.",
+    )
+}
+if (projectGradlePropertiesDefinesMapTilerApiKey) {
+    throw GradleException(
+        "$mapTilerApiKeyProperty must not be defined in the repository gradle.properties. " +
             "Use ~/.gradle/gradle.properties or an environment variable.",
     )
 }
@@ -29,6 +45,12 @@ val arkluzSmsApiKey =
     providers
         .gradleProperty(arkluzSmsApiKeyProperty)
         .orElse(providers.environmentVariable(arkluzSmsApiKeyProperty))
+        .orNull
+        .orEmpty()
+val mapTilerApiKey =
+    providers
+        .gradleProperty(mapTilerApiKeyProperty)
+        .orElse(providers.environmentVariable(mapTilerApiKeyProperty))
         .orNull
         .orEmpty()
 val hasArkluzSmsApiKey = arkluzSmsApiKey.isNotEmpty()
@@ -109,6 +131,7 @@ android {
         manifestPlaceholders["channelBufferSize"] = "8388608" // 8MB buffer
         buildConfigField("String", "ARKLUZ_TRACKING_URL", "\"https://arkluz.com/trk\"")
         buildConfigField("String", "ARKLUZ_SMS_API_KEY", "\"$arkluzSmsApiKey\"")
+        buildConfigField("String", "MAPTILER_API_KEY", "\"$mapTilerApiKey\"")
     }
 
     signingConfigs {

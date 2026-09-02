@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
@@ -64,7 +65,7 @@ internal fun MapToolScaffold(
     launcherExpanded: Boolean,
     actions: MapToolScaffoldActions,
     mapContent: @Composable () -> Unit,
-    panelContent: @Composable (MapTool, MapToolContentMode) -> Unit,
+    panelContent: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
 ) {
     val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
     Layout(
@@ -163,7 +164,7 @@ private fun mapToolPanelSurface(
     headerSwipeEnabled: Boolean,
     actions: MapToolScaffoldActions,
     modifier: Modifier,
-    content: @Composable (MapTool, MapToolContentMode) -> Unit,
+    content: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
 ) {
     val tool = state.activeTool ?: return
     Surface(modifier = modifier) {
@@ -174,7 +175,9 @@ private fun mapToolPanelSurface(
                 actions = actions,
             )
             HorizontalDivider()
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content(tool, state.contentMode) }
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                content(tool, state.contentMode, state.featureSettingsSection)
+            }
         }
     }
 }
@@ -198,7 +201,7 @@ private fun mapToolPanelHeader(
             Modifier
                 .fillMaxWidth()
                 .then(headerSwipeModifier)
-                .heightIn(min = 64.dp)
+                .heightIn(min = 44.dp)
                 .padding(start = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -248,12 +251,19 @@ private fun RowScope.mapToolHeaderTitle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(tool.titleResource(state.contentMode)),
+            text =
+                stringResource(
+                    if (state.contentMode == MapToolContentMode.FEATURE_SETTINGS) {
+                        state.featureSettingsSection.titleResource(tool)
+                    } else {
+                        tool.titleResource(state.contentMode)
+                    },
+                ),
             modifier = Modifier.weight(1f, fill = false),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (!state.hasFeatureSettingsBack && tool != MapTool.SETTINGS) {
+        if (!state.hasFeatureSettingsBack && tool in setOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)) {
             IconButton(onClick = onFeatureSettings) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
@@ -355,7 +365,9 @@ private fun mapToolLauncher(
                 )
             }
         }
-        NavigationBar(modifier = Modifier.align(Alignment.BottomCenter)) {
+        NavigationBar(
+            modifier = Modifier.align(Alignment.BottomCenter).height(64.dp),
+        ) {
             primaryMapTools.forEach { tool ->
                 NavigationBarItem(
                     selected = activeTool == tool,
@@ -366,7 +378,7 @@ private fun mapToolLauncher(
                 )
             }
             NavigationBarItem(
-                selected = expanded || activeTool == MapTool.SETTINGS,
+                selected = expanded || activeTool in secondaryMapTools,
                 onClick = onToggle,
                 icon = { Icon(imageVector = Icons.Filled.Build, contentDescription = null) },
                 label = { Text(stringResource(R.string.map_tool_launcher_label)) },
@@ -381,6 +393,7 @@ private fun MapTool.icon(): ImageVector =
         MapTool.POI -> Icons.Filled.Place
         MapTool.GPX -> Icons.Filled.Route
         MapTool.MAPS -> Icons.Filled.Map
+        MapTool.LAYER -> Icons.Filled.Layers
         MapTool.SETTINGS -> Icons.Filled.Settings
     }
 
@@ -390,6 +403,7 @@ internal fun MapTool.titleResource(): Int =
         MapTool.POI -> R.string.map_tool_poi_title
         MapTool.GPX -> R.string.map_tool_gpx_title
         MapTool.MAPS -> R.string.map_tool_maps_title
+        MapTool.LAYER -> R.string.map_tool_layer_title
         MapTool.SETTINGS -> R.string.map_tool_settings_title
     }
 
@@ -400,7 +414,9 @@ internal fun MapTool.titleResource(contentMode: MapToolContentMode): Int =
             MapTool.POI -> R.string.map_tool_poi_settings_title
             MapTool.GPX -> R.string.map_tool_gpx_settings_title
             MapTool.MAPS -> R.string.map_tool_maps_settings_title
-            MapTool.SETTINGS -> titleResource()
+            MapTool.LAYER,
+            MapTool.SETTINGS,
+            -> titleResource()
         }
     } else {
         titleResource()

@@ -103,8 +103,10 @@ internal data class PhoneMapSettings(
     val zoomMaxScaleMeters: Int = DEFAULT_PHONE_MAP_ZOOM_MAX_SCALE_METERS,
     val liveElevationEnabled: Boolean = false,
     val liveDistanceEnabled: Boolean = false,
+    val distanceMeasurementEnabled: Boolean = false,
     val hillShadingEnabled: Boolean = false,
     val reliefOverlayEnabled: Boolean = false,
+    val reliefOverlayOpacityPercent: Int = DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT,
     val nightModeEnabled: Boolean = false,
     val northReferenceMode: PhoneMapNorthReferenceMode = PhoneMapNorthReferenceMode.TRUE,
     val demSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
@@ -125,6 +127,7 @@ internal data class PhoneMapSettings(
                     .coerceIn(orderedClosestIn, orderedFarthestOut),
             zoomMinScaleMeters = orderedFarthestOut,
             zoomMaxScaleMeters = orderedClosestIn,
+            reliefOverlayOpacityPercent = reliefOverlayOpacityPercent.coerceIn(0, 100),
         )
     }
 }
@@ -182,8 +185,14 @@ internal class PhoneMapSettingsPreferences(
                     ),
                 liveElevationEnabled = preferences.getBoolean(KEY_LIVE_ELEVATION_ENABLED, false),
                 liveDistanceEnabled = preferences.getBoolean(KEY_LIVE_DISTANCE_ENABLED, false),
+                distanceMeasurementEnabled = preferences.getBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, false),
                 hillShadingEnabled = preferences.getBoolean(KEY_HILL_SHADING_ENABLED, false),
                 reliefOverlayEnabled = preferences.getBoolean(KEY_RELIEF_OVERLAY_ENABLED, false),
+                reliefOverlayOpacityPercent =
+                    preferences.getInt(
+                        KEY_RELIEF_OVERLAY_OPACITY_PERCENT,
+                        DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT,
+                    ),
                 nightModeEnabled = preferences.getBoolean(KEY_NIGHT_MODE_ENABLED, false),
                 northReferenceMode =
                     PhoneMapNorthReferenceMode.fromStorageValue(
@@ -217,8 +226,10 @@ internal class PhoneMapSettingsPreferences(
             .putInt(KEY_ZOOM_MAX_SCALE_METERS, normalized.zoomMaxScaleMeters)
             .putBoolean(KEY_LIVE_ELEVATION_ENABLED, normalized.liveElevationEnabled)
             .putBoolean(KEY_LIVE_DISTANCE_ENABLED, normalized.liveDistanceEnabled)
+            .putBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, normalized.distanceMeasurementEnabled)
             .putBoolean(KEY_HILL_SHADING_ENABLED, normalized.hillShadingEnabled)
             .putBoolean(KEY_RELIEF_OVERLAY_ENABLED, normalized.reliefOverlayEnabled)
+            .putInt(KEY_RELIEF_OVERLAY_OPACITY_PERCENT, normalized.reliefOverlayOpacityPercent)
             .putBoolean(KEY_NIGHT_MODE_ENABLED, normalized.nightModeEnabled)
             .putString(KEY_NORTH_REFERENCE_MODE, normalized.northReferenceMode.storageValue)
             .putString(KEY_DEM_SOURCE, normalized.demSource.id)
@@ -240,8 +251,10 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_ZOOM_MAX_SCALE_METERS = "zoom_max_scale_meters"
         const val KEY_LIVE_ELEVATION_ENABLED = "live_elevation_enabled"
         const val KEY_LIVE_DISTANCE_ENABLED = "live_distance_enabled"
+        const val KEY_DISTANCE_MEASUREMENT_ENABLED = "distance_measurement_enabled"
         const val KEY_HILL_SHADING_ENABLED = "hill_shading_enabled"
         const val KEY_RELIEF_OVERLAY_ENABLED = "relief_overlay_enabled"
+        const val KEY_RELIEF_OVERLAY_OPACITY_PERCENT = "relief_overlay_opacity_percent"
         const val KEY_NIGHT_MODE_ENABLED = "night_mode_enabled"
         const val KEY_NORTH_REFERENCE_MODE = "north_reference_mode"
         const val KEY_DEM_SOURCE = "dem_source"
@@ -253,11 +266,12 @@ private fun nearestPhoneMapScaleStep(value: Int): Int =
         ?: DEFAULT_PHONE_MAP_ZOOM_DEFAULT_SCALE_METERS
 
 internal const val DEFAULT_PHONE_MAP_AUTO_RECENTER_DELAY_SECONDS = 5
+internal const val DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT = 100
 internal const val MIN_PHONE_MAP_AUTO_RECENTER_DELAY_SECONDS = 1
 internal const val MAX_PHONE_MAP_AUTO_RECENTER_DELAY_SECONDS = 30
-internal const val DEFAULT_PHONE_MAP_ZOOM_DEFAULT_SCALE_METERS = 200
-internal const val DEFAULT_PHONE_MAP_ZOOM_MIN_SCALE_METERS = 200_000
-internal const val DEFAULT_PHONE_MAP_ZOOM_MAX_SCALE_METERS = 5_000
+internal const val DEFAULT_PHONE_MAP_ZOOM_DEFAULT_SCALE_METERS = 250
+internal const val DEFAULT_PHONE_MAP_ZOOM_MIN_SCALE_METERS = 5_000_000
+internal const val DEFAULT_PHONE_MAP_ZOOM_MAX_SCALE_METERS = 1
 
 internal fun PhoneMapNorthIndicatorMode.isVisibleFor(
     mapMode: PhoneMapMode,

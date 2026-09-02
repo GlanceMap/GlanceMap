@@ -16,6 +16,7 @@ internal data class PhoneGpxFolderFile(
     val id: String,
     val displayName: String,
     val documentUri: String,
+    val isWritable: Boolean = false,
 )
 
 internal data class PhoneGpxFolderScanResult(
@@ -24,7 +25,8 @@ internal data class PhoneGpxFolderScanResult(
     val error: PhoneGpxFolderError? = null,
 )
 
-/** Persists one read-only SAF tree and exposes only its direct GPX children. */
+/** Persists one SAF tree and exposes only its direct GPX children. */
+@Suppress("TooManyFunctions") // Selection, permission, scan, and file operations share one SAF boundary.
 internal class PhoneGpxFolderSource(
     private val context: Context,
 ) {
@@ -33,14 +35,11 @@ internal class PhoneGpxFolderSource(
     fun selectFolder(uri: Uri): PhoneGpxFolderError? =
         runCatching {
             val previousUri = selectedFolderUri()
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            takePersistedFolderPermission(uri)
             preferences().edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
             if (previousUri != null && previousUri != uri) {
                 runCatching {
-                    context.contentResolver.releasePersistableUriPermission(
-                        previousUri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
+                    releasePersistedFolderPermission(previousUri)
                 }
             }
         }.fold(
@@ -51,7 +50,7 @@ internal class PhoneGpxFolderSource(
     fun clearSelectedFolder() {
         selectedFolderUri()?.let { uri ->
             runCatching {
-                context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                releasePersistedFolderPermission(uri)
             }
         }
         preferences().edit().remove(KEY_FOLDER_URI).apply()
@@ -78,6 +77,7 @@ internal class PhoneGpxFolderSource(
                                 name = document.name,
                                 isFile = document.isFile,
                                 documentUri = document.uri.toString(),
+                                isWritable = document.canWrite(),
                             )
                         }.normalizedPhoneGpxFolderFiles(),
                 folderName = folder.name?.takeIf(String::isNotBlank),
@@ -91,6 +91,42 @@ internal class PhoneGpxFolderSource(
     fun openInputStream(file: PhoneGpxFolderFile): InputStream? {
         val documentUri = Uri.parse(file.documentUri)
         return context.contentResolver.openInputStream(documentUri)
+    }
+
+    fun rename(
+        file: PhoneGpxFolderFile,
+        newName: String,
+    ) {
+        val document = mutableDocument(file)
+        require(document.renameTo(phoneGpxFolderFileName(newName))) { "The GPX file could not be renamed." }
+    }
+
+    fun delete(file: PhoneGpxFolderFile) {
+        val document = mutableDocument(file)
+        require(document.delete()) { "The GPX file could not be deleted." }
+    }
+
+    private fun mutableDocument(file: PhoneGpxFolderFile): DocumentFile {
+        require(file.isWritable) { "Android did not grant write access to this GPX folder." }
+        val document = DocumentFile.fromSingleUri(context, Uri.parse(file.documentUri))
+        require(document != null && document.canWrite()) { "Android did not grant write access to this GPX file." }
+        return document
+    }
+
+    private fun takePersistedFolderPermission(uri: Uri) {
+        val resolver = context.contentResolver
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.takePersistableUriPermission(uri, readWrite) }
+            .recoverCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            .getOrThrow()
+    }
+
+    private fun releasePersistedFolderPermission(uri: Uri) {
+        val resolver = context.contentResolver
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.releasePersistableUriPermission(uri, readWrite) }
+            .recoverCatching { resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            .getOrThrow()
     }
 
     private fun selectedFolderUri(): Uri? = preferences().getString(KEY_FOLDER_URI, null)?.let(Uri::parse)
@@ -107,6 +143,7 @@ internal fun phoneGpxFolderFile(
     name: String?,
     isFile: Boolean,
     documentUri: String,
+    isWritable: Boolean = false,
 ): PhoneGpxFolderFile? =
     name
         ?.takeIf { isFile && isPhoneGpxFolderFileName(it) }
@@ -115,6 +152,7 @@ internal fun phoneGpxFolderFile(
                 id = phoneGpxFolderSourceId(documentUri),
                 displayName = displayName,
                 documentUri = documentUri,
+                isWritable = isWritable,
             )
         }
 
@@ -128,7 +166,22 @@ internal fun isPhoneGpxFolderFileName(name: String): Boolean {
         !stem.endsWith(".tmp", ignoreCase = true)
 }
 
+internal fun phoneGpxFolderFileName(value: String): String {
+    val trimmed = value.trim().replace(Regex("\\s+"), " ")
+    require(trimmed.isNotBlank()) { "Enter a GPX name first." }
+    val safeName = java.io.File(trimmed).name
+    require(safeName == trimmed) { "Enter a GPX name without a folder path." }
+    val baseName = safeName.removePhoneGpxFileExtension(".gpx").trim()
+    require(baseName.isNotBlank()) { "Enter a GPX name first." }
+    return "$baseName.gpx"
+}
+
 internal fun phoneGpxFolderSourceId(documentUri: String): String = "folder:$documentUri"
+
+private fun String.removePhoneGpxFileExtension(extension: String): String =
+    takeIf { endsWith(extension, ignoreCase = true) }
+        ?.dropLast(extension.length)
+        ?: this
 
 internal fun List<PhoneGpxFolderFile>.normalizedPhoneGpxFolderFiles(): List<PhoneGpxFolderFile> {
     val distinctFiles = distinctBy(PhoneGpxFolderFile::id)

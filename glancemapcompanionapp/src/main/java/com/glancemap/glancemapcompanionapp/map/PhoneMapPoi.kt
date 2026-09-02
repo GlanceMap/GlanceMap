@@ -20,7 +20,15 @@ internal data class PhoneMapPoi(
 internal data class PhoneMapPoiSource(
     val fileName: String,
     val isReadable: Boolean,
+    val isEnabled: Boolean = true,
+    val poiCount: Int? = null,
 )
+
+internal fun List<PhoneMapPoiSource>.enabledFileNames(): Set<String> =
+    asSequence()
+        .filter { source -> source.isReadable && source.isEnabled }
+        .map(PhoneMapPoiSource::fileName)
+        .toSet()
 
 /** Geographic camera bounds passed from either phone map renderer to the shared POI controller. */
 internal data class PhoneMapViewport(

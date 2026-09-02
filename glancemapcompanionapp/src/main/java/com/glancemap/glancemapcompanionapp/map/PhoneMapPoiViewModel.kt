@@ -20,6 +20,7 @@ internal class PhoneMapPoiViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val repository = PhoneMapPoiRepository(application)
+    private val sourceVisibility = PhoneMapPoiSourceVisibilityPreferences(application)
     private val _uiState = MutableStateFlow(PhoneMapPoiUiState())
     val uiState: StateFlow<PhoneMapPoiUiState> = _uiState.asStateFlow()
 
@@ -50,22 +51,74 @@ internal class PhoneMapPoiViewModel(
 
     fun refresh() {
         refreshSources()
+    }
+
+    fun setSourceVisible(
+        fileName: String,
+        visible: Boolean,
+    ) {
+        sourceVisibility.setEnabled(fileName, visible)
+        _uiState.value =
+            _uiState.value.copy(
+                pois = emptyList(),
+                sources =
+                    _uiState.value.sources.map { source ->
+                        if (source.fileName == fileName) source.copy(isEnabled = visible) else source
+                    },
+            )
         if (poiVisible) currentViewport?.let(::query)
+    }
+
+    suspend fun renameSource(
+        fileName: String,
+        newName: String,
+    ): String {
+        val renamedFileName = repository.renameSource(fileName, newName)
+        sourceVisibility.rename(fileName, renamedFileName)
+        refreshSourcesNow()
+        return renamedFileName
+    }
+
+    suspend fun deleteSource(fileName: String) {
+        repository.deleteSource(fileName)
+        sourceVisibility.remove(fileName)
+        refreshSourcesNow()
     }
 
     private fun refreshSources() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(sources = repository.sources())
+            refreshSourcesNow()
         }
+    }
+
+    private suspend fun refreshSourcesNow() {
+        queryJob?.cancel()
+        requestId += 1L
+        _uiState.value =
+            _uiState.value.copy(
+                pois = emptyList(),
+                sources = repository.sources(sourceVisibility.disabledFileNames()),
+            )
+        if (poiVisible) currentViewport?.let(::query)
     }
 
     private fun query(viewport: PhoneMapViewport) {
         queryJob?.cancel()
         val expectedRequestId = ++requestId
+        val enabledSourceFileNames = _uiState.value.sources.enabledFileNames()
+        if (enabledSourceFileNames.isEmpty()) {
+            _uiState.value = _uiState.value.copy(pois = emptyList())
+            return
+        }
         queryJob =
             viewModelScope.launch {
                 delay(QUERY_DEBOUNCE_MILLIS)
-                val pois = repository.queryViewport(viewport = viewport, limit = MAXIMUM_POI_RESULTS)
+                val pois =
+                    repository.queryViewport(
+                        viewport = viewport,
+                        limit = MAXIMUM_POI_RESULTS,
+                        enabledSourceFileNames = enabledSourceFileNames,
+                    )
                 if (poiVisible && expectedRequestId == requestId) {
                     _uiState.value = _uiState.value.copy(pois = pois)
                 }

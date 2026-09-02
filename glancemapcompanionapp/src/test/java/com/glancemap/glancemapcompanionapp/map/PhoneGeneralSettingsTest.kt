@@ -17,12 +17,6 @@ class PhoneGeneralSettingsTest {
     }
 
     @Test
-    fun distanceMeasurementIsOptIn() {
-        assertFalse(PhoneGeneralSettings().distanceMeasurementEnabled)
-        assertTrue(PhoneGeneralSettings().copy(distanceMeasurementEnabled = true).distanceMeasurementEnabled)
-    }
-
-    @Test
     fun profileAndWeightsUseWatchCompatibleDefaultsAndBounds() {
         val defaults = PhoneGeneralSettings()
         assertEquals(PhoneActivityProfile.HIKE, defaults.activityProfile)

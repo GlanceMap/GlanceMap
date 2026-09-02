@@ -23,6 +23,13 @@ class PhoneGpxFolderSourceTest {
     }
 
     @Test
+    fun gpxRenameNameKeepsExtensionAndRejectsFolderPaths() {
+        assertEquals("Alps.gpx", phoneGpxFolderFileName("Alps"))
+        assertEquals("Alps.gpx", phoneGpxFolderFileName("Alps.GPX"))
+        assertFalse(runCatching { phoneGpxFolderFileName("folder/Alps") }.isSuccess)
+    }
+
+    @Test
     fun documentIdentityKeepsSameNamedFilesDistinctAndCannotCollideWithRouteLibrary() {
         val first = folderFile("content://provider/document/one", "route.gpx")
         val second = folderFile("content://provider/document/two", "route.gpx")
@@ -68,6 +75,7 @@ class PhoneGpxFolderSourceTest {
 
         assertEquals(listOf(good.id), loaded.map(PhoneMapGpxItem::id))
         assertEquals("GPX title", loaded.single().displayName)
+        assertFalse(loaded.single().isEditable)
     }
 
     private fun folderFile(

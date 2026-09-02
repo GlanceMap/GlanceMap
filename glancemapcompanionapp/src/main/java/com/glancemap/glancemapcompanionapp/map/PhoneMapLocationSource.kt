@@ -2,9 +2,11 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Looper
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -21,6 +23,17 @@ internal data class PhoneMapLocation(
     val fixElapsedRealtimeMillis: Long,
     val altitudeMeters: Double? = null,
 )
+
+internal val phoneMapLocationPermissions =
+    arrayOf(
+        android.Manifest.permission.ACCESS_FINE_LOCATION,
+        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+    )
+
+internal fun Context.hasPhoneMapLocationPermission(): Boolean =
+    phoneMapLocationPermissions.any { permission ->
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    }
 
 /** Keeps the latest foreground-map fix while location updates are temporarily unsubscribed. */
 internal data class PhoneMapLocationSubscription(

@@ -7,21 +7,27 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.filepicker.FilePickerScreen
 import com.glancemap.glancemapcompanionapp.layout.companionLayoutProvider
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingOpenIntentContract
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
+import com.glancemap.glancemapcompanionapp.map.hasPhoneMapLocationPermission
+import com.glancemap.glancemapcompanionapp.map.phoneMapLocationPermissions
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.transfer.WatchGpxSaveIntentContract
@@ -43,6 +49,7 @@ class MainActivityMobile : ComponentActivity() {
         handleLaunchIntent(intent)
 
         setContent {
+            requestPhoneMapLocationPermission()
             GlanceMapTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -183,5 +190,20 @@ class MainActivityMobile : ComponentActivity() {
                 "scheme=${data?.scheme ?: "none"} host=${data?.host ?: "none"} " +
                 "path=${data?.path ?: "none"} flags=${intent.flags}",
         )
+    }
+}
+
+@Composable
+private fun requestPhoneMapLocationPermission() {
+    val context = LocalContext.current
+    val locationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+            onResult = {},
+        )
+    LaunchedEffect(Unit) {
+        if (!context.hasPhoneMapLocationPermission()) {
+            locationPermissionLauncher.launch(phoneMapLocationPermissions)
+        }
     }
 }

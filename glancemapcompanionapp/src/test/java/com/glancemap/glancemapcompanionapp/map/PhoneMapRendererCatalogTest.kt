@@ -30,4 +30,48 @@ class PhoneMapRendererCatalogTest {
         assertTrue(!renderer.capabilities.contoursToggle)
         assertTrue(renderer.capabilities.themes)
     }
+
+    @Test
+    fun standardOsmIsAvailableAsAnOnlineComparisonSource() {
+        val sources = PhoneMapRendererCatalog.comparisonOnlineSources()
+
+        assertTrue(sources.contains(PhoneOnlineMapSource.OPEN_TOPO))
+        assertTrue(sources.contains(PhoneOnlineMapSource.OPEN_STREET_MAP))
+        assertEquals(
+            "open_street_map",
+            PhoneMapRendererCatalog
+                .providerForComparisonOnlineSource(PhoneOnlineMapSource.OPEN_STREET_MAP)
+                ?.id,
+        )
+    }
+
+    @Test
+    fun planIgnV2IsAFreeRasterComparisonSource() {
+        val sources = PhoneMapRendererCatalog.comparisonOnlineSources()
+        val provider =
+            requireNotNull(
+                PhoneMapRendererCatalog.providerForComparisonOnlineSource(PhoneOnlineMapSource.PLAN_IGN_V2),
+            )
+
+        assertTrue(sources.contains(PhoneOnlineMapSource.PLAN_IGN_V2))
+        assertEquals("plan_ign_v2", provider.id)
+        assertEquals("Plan IGN V2", provider.displayName)
+        assertEquals(19, provider.maximumZoom)
+        assertEquals(
+            "https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&" +
+                "LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM_0_19&" +
+                "TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png",
+            provider.rasterTileUrlTemplate,
+        )
+    }
+
+    @Test
+    fun storedOnlineSourceDefaultsToOpenTopoWhenItIsMissingOrUnknown() {
+        assertEquals(PhoneOnlineMapSource.OPEN_TOPO, PhoneOnlineMapSource.fromStorageValue(null))
+        assertEquals(PhoneOnlineMapSource.OPEN_TOPO, PhoneOnlineMapSource.fromStorageValue("removed_source"))
+        assertEquals(
+            PhoneOnlineMapSource.PLAN_IGN_V2,
+            PhoneOnlineMapSource.fromStorageValue(PhoneOnlineMapSource.PLAN_IGN_V2.name),
+        )
+    }
 }

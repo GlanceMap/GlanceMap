@@ -872,7 +872,12 @@ internal fun FilePickerScreen(
                         poiSources = phoneMapPoiUiState.sources,
                         onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
                         onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
+                        onPoiSourceVisibilityChanged = phoneMapPoiViewModel::setSourceVisible,
+                        onRenamePoiSource = phoneMapPoiViewModel::renameSource,
+                        onDeletePoiSource = phoneMapPoiViewModel::deleteSource,
                         onPoiDataChanged = phoneMapPoiViewModel::refresh,
+                        onRenameRoute = routeLibraryViewModel::renameRoute,
+                        onDeleteRoute = routeLibraryViewModel::deleteRoute,
                         onRouteSaved = routeLibraryViewModel::refresh,
                         onBack = { activeHomeArea = CompanionHomeArea.HOME },
                     )

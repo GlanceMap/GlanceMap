@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -38,18 +39,47 @@ import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import kotlin.math.roundToInt
 
+private const val KMPH_TO_MPS = 1f / 3.6f
+private const val MPS_TO_KMPH = 3.6f
+private const val MPS_TO_MPH = 2.2369363f
+private const val MPH_TO_MPS = 1f / MPS_TO_MPH
+
+internal fun MapToolFeatureSettingsSection.titleResource(tool: MapTool): Int =
+    when (this) {
+        MapToolFeatureSettingsSection.MAP_DATA -> R.string.map_tools_maps_settings_data_title
+        MapToolFeatureSettingsSection.MAP_THEME -> R.string.map_tools_maps_settings_theme_heading
+        MapToolFeatureSettingsSection.MAP_DISPLAY -> R.string.map_tools_maps_settings_display_title
+        MapToolFeatureSettingsSection.MAP_TERRAIN -> R.string.map_tools_maps_settings_terrain_title
+        MapToolFeatureSettingsSection.MAP_COMPASS -> R.string.map_tools_maps_compass_heading
+        MapToolFeatureSettingsSection.MAP_ZOOM -> R.string.map_tools_maps_settings_zoom_heading
+        MapToolFeatureSettingsSection.GPX_SOURCES -> R.string.map_tools_gpx_settings_sources_heading
+        MapToolFeatureSettingsSection.GPX_APPEARANCE -> R.string.map_tools_gpx_settings_appearance_heading
+        MapToolFeatureSettingsSection.GPX_ANALYSIS -> R.string.map_tools_gpx_settings_analysis_heading
+        MapToolFeatureSettingsSection.POI_SOURCES -> R.string.map_tools_poi_settings_sources_heading
+        MapToolFeatureSettingsSection.POI_APPEARANCE -> R.string.map_tools_poi_settings_appearance_heading
+        MapToolFeatureSettingsSection.ROOT -> tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)
+    }
+
 /** Settings remain panel content so returning to a live tool is a normal Back transition. */
 @Composable
 @Suppress("FunctionNaming") // Public Compose entry points follow the project's screen naming convention.
 internal fun MapToolFeatureSettingsContent(
     tool: MapTool,
+    section: MapToolFeatureSettingsSection,
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
 ) {
     when (tool) {
-        MapTool.POI -> mapToolsPoiSettingsPanel(state.poi, actions.onPoiSettingsChanged)
-        MapTool.GPX -> mapToolsGpxSettingsPanel(state.gpx, actions)
-        MapTool.MAPS -> mapToolsMapsSettingsPanel(state.maps, actions.maps)
+        MapTool.POI -> mapToolsPoiSettingsPanel(section, state.poi, actions)
+        MapTool.GPX ->
+            mapToolsGpxSettingsPanel(
+                section = section,
+                state = state.gpx,
+                isMetric = state.general.settings.isMetric,
+                actions = actions,
+            )
+        MapTool.MAPS -> mapToolsMapsSettingsPanel(section, state.maps, actions.maps)
+        MapTool.LAYER -> Unit
         MapTool.SETTINGS ->
             mapToolsSettingsPanel(
                 state = state.general,
@@ -64,6 +94,77 @@ internal fun MapToolFeatureSettingsContent(
 @Composable
 @Suppress("LongMethod") // Settings panels keep the related controls in one navigation surface.
 private fun mapToolsMapsSettingsPanel(
+    section: MapToolFeatureSettingsSection,
+    state: MapToolsMapsState,
+    actions: MapToolsMapsActions,
+) {
+    when (section) {
+        MapToolFeatureSettingsSection.ROOT ->
+            mapToolPanelColumn {
+                Text(stringResource(R.string.map_tools_maps_settings_sections_heading))
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_data_title),
+                    summary = stringResource(R.string.map_tools_maps_settings_data_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_DATA)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_theme_heading),
+                    summary = stringResource(R.string.map_tools_maps_settings_theme_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_THEME)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_display_title),
+                    summary = stringResource(R.string.map_tools_maps_settings_display_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_DISPLAY)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_terrain_title),
+                    summary = stringResource(R.string.map_tools_maps_settings_terrain_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_TERRAIN)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_compass_heading),
+                    summary = stringResource(R.string.map_tools_maps_compass_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_COMPASS)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_zoom_heading),
+                    summary = stringResource(R.string.map_tools_maps_settings_zoom_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_ZOOM)
+                    },
+                )
+            }
+
+        MapToolFeatureSettingsSection.MAP_DATA -> mapToolsMapsDataSettings(state, actions)
+        MapToolFeatureSettingsSection.MAP_THEME -> mapToolsMapsThemeSettings(state, actions)
+        MapToolFeatureSettingsSection.MAP_DISPLAY ->
+            mapToolPanelColumn {
+                mapToolsMapDisplaySettings(state.settings, actions.onSettingsChanged)
+            }
+        MapToolFeatureSettingsSection.MAP_TERRAIN -> mapToolsMapsTerrainSettings(state, actions)
+        MapToolFeatureSettingsSection.MAP_COMPASS ->
+            mapToolPanelColumn { mapToolsCompassSettings(state, actions) }
+        MapToolFeatureSettingsSection.MAP_ZOOM ->
+            mapToolPanelColumn {
+                mapToolsMapZoomSettings(state.settings, actions.onSettingsChanged)
+            }
+        else -> Unit
+    }
+}
+
+@Composable
+private fun mapToolsMapsDataSettings(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
 ) {
@@ -84,8 +185,15 @@ private fun mapToolsMapsSettingsPanel(
                 Text(stringResource(R.string.map_source_select_map_folder))
             }
         }
-        HorizontalDivider()
-        Text(stringResource(R.string.map_tools_maps_settings_theme_heading))
+    }
+}
+
+@Composable
+private fun mapToolsMapsThemeSettings(
+    state: MapToolsMapsState,
+    actions: MapToolsMapsActions,
+) {
+    mapToolPanelColumn {
         Text(
             stringResource(
                 R.string.map_tools_maps_theme_value,
@@ -101,7 +209,15 @@ private fun mapToolsMapsSettingsPanel(
         OutlinedButton(onClick = actions.onOpenTheme, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.map_theme_selector_title))
         }
-        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun mapToolsMapsTerrainSettings(
+    state: MapToolsMapsState,
+    actions: MapToolsMapsActions,
+) {
+    mapToolPanelColumn {
         Text(stringResource(R.string.map_tools_maps_elevation_heading))
         Text(
             stringResource(
@@ -116,12 +232,7 @@ private fun mapToolsMapsSettingsPanel(
             Text(stringResource(R.string.map_tools_maps_import_elevation))
         }
         HorizontalDivider()
-        mapToolsMapBehaviorSettings(
-            settings = state.settings,
-            onSettingsChanged = actions.onSettingsChanged,
-        )
-        HorizontalDivider()
-        mapToolsCompassSettings(state, actions)
+        mapToolsMapTerrainSettings(state.settings, actions.onSettingsChanged)
     }
 }
 
@@ -244,24 +355,12 @@ private fun mapToolsCompassSettings(
 }
 
 @Composable
-private fun mapToolsMapBehaviorSettings(
-    settings: PhoneMapSettings,
-    onSettingsChanged: (PhoneMapSettings) -> Unit,
-) {
-    Text(stringResource(R.string.map_tools_maps_settings_behavior_heading))
-    mapToolsMapDisplaySettings(settings, onSettingsChanged)
-    HorizontalDivider()
-    mapToolsMapZoomSettings(settings, onSettingsChanged)
-}
-
-@Composable
 private fun mapToolsMapDisplaySettings(
     settings: PhoneMapSettings,
     onSettingsChanged: (PhoneMapSettings) -> Unit,
 ) {
     mapToolsMapLocationSettings(settings, onSettingsChanged)
     mapToolsMapDisplayOptions(settings, onSettingsChanged)
-    mapToolsMapTerrainSettings(settings, onSettingsChanged)
 }
 
 @Composable
@@ -349,7 +448,6 @@ private fun mapToolsMapTerrainSettings(
     settings: PhoneMapSettings,
     onSettingsChanged: (PhoneMapSettings) -> Unit,
 ) {
-    HorizontalDivider()
     Text(stringResource(R.string.map_tools_maps_terrain_heading))
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_maps_dem_source),
@@ -422,6 +520,25 @@ private fun mapToolsMapScaleDelaySetting(
 }
 
 @Composable
+private fun mapToolsSettingsSection(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(summary) },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+            )
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    )
+}
+
+@Composable
 private fun <T> mapToolsMapSettingPicker(
     label: String,
     selectedLabel: String,
@@ -480,6 +597,11 @@ internal fun mapToolsMapsQuickDisplaySettings(
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(liveDistanceEnabled = enabled)) },
     )
     mapToolsMapsToggle(
+        label = stringResource(R.string.map_tools_maps_distance_measurement),
+        checked = settings.distanceMeasurementEnabled,
+        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(distanceMeasurementEnabled = enabled)) },
+    )
+    mapToolsMapsToggle(
         label = stringResource(R.string.map_tools_maps_hill_shading),
         checked = settings.hillShadingEnabled,
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
@@ -521,6 +643,60 @@ private fun mapToolsMapScaleSetting(
 
 @Composable
 private fun mapToolsGpxSettingsPanel(
+    section: MapToolFeatureSettingsSection,
+    state: MapToolsGpxState,
+    isMetric: Boolean,
+    actions: MapToolsPanelActions,
+) {
+    when (section) {
+        MapToolFeatureSettingsSection.ROOT ->
+            mapToolPanelColumn {
+                Text(stringResource(R.string.map_tools_gpx_settings_sections_heading))
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_gpx_settings_sources_heading),
+                    summary = stringResource(R.string.map_tools_gpx_settings_sources_summary),
+                    onClick = {
+                        actions.onFeatureSettingsSection(MapToolFeatureSettingsSection.GPX_SOURCES)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_gpx_settings_appearance_heading),
+                    summary = stringResource(R.string.map_tools_gpx_settings_appearance_summary),
+                    onClick = {
+                        actions.onFeatureSettingsSection(MapToolFeatureSettingsSection.GPX_APPEARANCE)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_gpx_settings_analysis_heading),
+                    summary = stringResource(R.string.map_tools_gpx_settings_analysis_summary),
+                    onClick = {
+                        actions.onFeatureSettingsSection(MapToolFeatureSettingsSection.GPX_ANALYSIS)
+                    },
+                )
+            }
+
+        MapToolFeatureSettingsSection.GPX_SOURCES -> mapToolsGpxSourceSettings(state, actions)
+        MapToolFeatureSettingsSection.GPX_APPEARANCE ->
+            mapToolPanelColumn {
+                mapToolsGpxAppearanceSettings(
+                    settings = state.settings,
+                    onSettingsChanged = actions.onGpxSettingsChanged,
+                )
+            }
+        MapToolFeatureSettingsSection.GPX_ANALYSIS ->
+            mapToolPanelColumn {
+                mapToolsGpxAnalysisSettings(
+                    settings = state.settings,
+                    isMetric = isMetric,
+                    onSettingsChanged = actions.onGpxSettingsChanged,
+                )
+            }
+        else -> Unit
+    }
+}
+
+@Composable
+private fun mapToolsGpxSourceSettings(
     state: MapToolsGpxState,
     actions: MapToolsPanelActions,
 ) {
@@ -566,11 +742,6 @@ private fun mapToolsGpxSettingsPanel(
                 Text(stringResource(R.string.map_tools_gpx_settings_select_folder))
             }
         }
-        HorizontalDivider()
-        mapToolsGpxAppearanceSettings(
-            settings = state.settings,
-            onSettingsChanged = actions.onGpxSettingsChanged,
-        )
     }
 }
 
@@ -582,8 +753,6 @@ private fun mapToolsGpxAppearanceSettings(
     var colorModeMenuExpanded by remember { mutableStateOf(false) }
 
     Text(stringResource(R.string.map_tools_gpx_settings_appearance_heading))
-    mapToolsGpxAnalysisSettings(settings, onSettingsChanged)
-    HorizontalDivider()
     gpxColorModeSetting(
         settings = settings,
         expanded = colorModeMenuExpanded,
@@ -603,6 +772,7 @@ private fun mapToolsGpxAppearanceSettings(
 @Suppress("LongMethod") // GPX analysis controls must stay together so dependencies are visible.
 private fun mapToolsGpxAnalysisSettings(
     settings: PhoneMapGpxSettings,
+    isMetric: Boolean,
     onSettingsChanged: (PhoneMapGpxSettings) -> Unit,
 ) {
     Text(stringResource(R.string.map_tools_gpx_settings_analysis_heading))
@@ -611,18 +781,37 @@ private fun mapToolsGpxAnalysisSettings(
         checked = settings.inspectionEnabled,
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(inspectionEnabled = enabled)) },
     )
-    Text(
-        stringResource(
-            R.string.map_tools_gpx_flat_speed,
-            settings.flatSpeedMetersPerSecond,
-        ),
-    )
+    val minDisplaySpeed =
+        if (isMetric) {
+            MIN_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND * MPS_TO_KMPH
+        } else {
+            MIN_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND * MPS_TO_MPH
+        }
+    val maxDisplaySpeed =
+        if (isMetric) {
+            MAX_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND * MPS_TO_KMPH
+        } else {
+            MAX_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND * MPS_TO_MPH
+        }
+    val displaySpeed =
+        if (isMetric) {
+            settings.flatSpeedMetersPerSecond * MPS_TO_KMPH
+        } else {
+            settings.flatSpeedMetersPerSecond * MPS_TO_MPH
+        }.coerceIn(minDisplaySpeed, maxDisplaySpeed)
+    val displayUnit = if (isMetric) "km/h" else "mph"
+    Text(stringResource(R.string.map_tools_gpx_flat_speed, displaySpeed, displayUnit))
     Slider(
-        value = settings.flatSpeedMetersPerSecond,
-        onValueChange = { value ->
-            onSettingsChanged(settings.copy(flatSpeedMetersPerSecond = value))
+        value = displaySpeed,
+        onValueChange = { rawValue ->
+            val displayValue =
+                (rawValue / 0.1f).roundToInt() *
+                    0.1f
+                        .coerceIn(minDisplaySpeed, maxDisplaySpeed)
+            val speedMps = if (isMetric) displayValue * KMPH_TO_MPS else displayValue * MPH_TO_MPS
+            onSettingsChanged(settings.copy(flatSpeedMetersPerSecond = speedMps))
         },
-        valueRange = MIN_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND..MAX_PHONE_GPX_FLAT_SPEED_METERS_PER_SECOND,
+        valueRange = minDisplaySpeed..maxDisplaySpeed,
         modifier = Modifier.fillMaxWidth(),
     )
     mapToolsMapsToggle(
@@ -845,8 +1034,46 @@ private fun PhoneGpxFolderError.messageResource(): Int =
 
 @Composable
 private fun mapToolsPoiSettingsPanel(
+    section: MapToolFeatureSettingsSection,
     state: MapToolsPoiState,
-    onSettingsChanged: (PhoneMapPoiSettings) -> Unit,
+    actions: MapToolsPanelActions,
+) {
+    when (section) {
+        MapToolFeatureSettingsSection.ROOT ->
+            mapToolPanelColumn {
+                Text(stringResource(R.string.map_tools_poi_settings_sections_heading))
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_poi_settings_sources_heading),
+                    summary = stringResource(R.string.map_tools_poi_settings_sources_summary),
+                    onClick = {
+                        actions.onFeatureSettingsSection(MapToolFeatureSettingsSection.POI_SOURCES)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_poi_settings_appearance_heading),
+                    summary = stringResource(R.string.map_tools_poi_settings_appearance_summary),
+                    onClick = {
+                        actions.onFeatureSettingsSection(MapToolFeatureSettingsSection.POI_APPEARANCE)
+                    },
+                )
+            }
+
+        MapToolFeatureSettingsSection.POI_SOURCES -> mapToolsPoiSourceSettings(state, actions)
+        MapToolFeatureSettingsSection.POI_APPEARANCE ->
+            mapToolPanelColumn {
+                mapToolsPoiAppearanceSettings(
+                    settings = state.settings,
+                    onSettingsChanged = actions.onPoiSettingsChanged,
+                )
+            }
+        else -> Unit
+    }
+}
+
+@Composable
+private fun mapToolsPoiSourceSettings(
+    state: MapToolsPoiState,
+    actions: MapToolsPanelActions,
 ) {
     mapToolPanelColumn {
         Text(stringResource(R.string.map_tools_poi_settings_sources_heading))
@@ -875,11 +1102,9 @@ private fun mapToolsPoiSettingsPanel(
             label = stringResource(R.string.map_tools_poi_link_gpx_waypoint_folders),
             checked = state.settings.linkGpxWaypointPoiFolders,
             onCheckedChange = { enabled ->
-                onSettingsChanged(state.settings.copy(linkGpxWaypointPoiFolders = enabled))
+                actions.onPoiSettingsChanged(state.settings.copy(linkGpxWaypointPoiFolders = enabled))
             },
         )
-        HorizontalDivider()
-        mapToolsPoiAppearanceSettings(state.settings, onSettingsChanged)
         HorizontalDivider()
         Text(stringResource(R.string.map_tools_poi_settings_limit))
     }

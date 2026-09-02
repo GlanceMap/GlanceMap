@@ -40,7 +40,7 @@ class MapToolPanelStateTest {
     @Test
     fun primaryMapControlsStayOutsideTheSecondaryToolsLauncher() {
         assertEquals(listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS), primaryMapTools)
-        assertEquals(listOf(MapTool.SETTINGS), secondaryMapTools)
+        assertEquals(listOf(MapTool.LAYER, MapTool.SETTINGS), secondaryMapTools)
     }
 
     @Test
@@ -106,6 +106,26 @@ class MapToolPanelStateTest {
         assertEquals(MapToolContentMode.MAIN, main.contentMode)
         assertFalse(main.hasFeatureSettingsBack)
         assertFalse(MapToolPanelState().select(MapTool.POI).hasFeatureSettingsBack)
+    }
+
+    @Test
+    fun featureSettingsSectionsReturnToRootBeforeTheToolPanel() {
+        val root = MapToolPanelState().select(MapTool.MAPS).showFeatureSettings()
+        val display = root.showFeatureSettingsSection(MapToolFeatureSettingsSection.MAP_DISPLAY)
+
+        assertEquals(MapToolFeatureSettingsSection.MAP_DISPLAY, display.featureSettingsSection)
+        assertEquals(MapToolFeatureSettingsSection.ROOT, display.back().featureSettingsSection)
+        assertEquals(MapToolContentMode.MAIN, display.back().back().contentMode)
+    }
+
+    @Test
+    fun featureSettingsRejectSectionsBelongingToAnotherTool() {
+        val poiSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
+
+        assertEquals(
+            poiSettings,
+            poiSettings.showFeatureSettingsSection(MapToolFeatureSettingsSection.MAP_ZOOM),
+        )
     }
 
     @Test
@@ -210,5 +230,38 @@ class MapToolPanelStateTest {
                 .copy(source = PhoneMapSource.Online)
 
         assertEquals(visibility, onlineAgain.contentVisibility)
+    }
+
+    @Test
+    fun comparisonLayerOnlyAcceptsTheOtherRendererAndInstalledOfflineMap() {
+        val offlineMap = PhoneOfflineMap(File("alps.map"))
+        val onlineWithOfflineLayer =
+            PhoneMapUiState()
+                .selectComparisonLayer(PhoneMapComparisonLayer.Offline(offlineMap))
+
+        assertTrue(onlineWithOfflineLayer.comparison.isAvailableFor(PhoneMapSource.Online, listOf(offlineMap)))
+        assertFalse(
+            onlineWithOfflineLayer.comparison.isAvailableFor(
+                PhoneMapSource.Offline(offlineMap),
+                listOf(offlineMap),
+            ),
+        )
+        assertEquals(
+            null,
+            onlineWithOfflineLayer
+                .copy(source = PhoneMapSource.Offline(offlineMap))
+                .clearUnavailableComparison(listOf(offlineMap))
+                .comparison.layer,
+        )
+    }
+
+    @Test
+    fun onlineComparisonSourceCanRemainSelectedAcrossRendererModes() {
+        val offlineMap = PhoneOfflineMap(File("alps.map"))
+        val onlineLayer = PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP)
+        val state = PhoneMapUiState().selectComparisonLayer(onlineLayer)
+
+        assertTrue(state.comparison.isAvailableFor(PhoneMapSource.Online, listOf(offlineMap)))
+        assertTrue(state.comparison.isAvailableFor(PhoneMapSource.Offline(offlineMap), listOf(offlineMap)))
     }
 }

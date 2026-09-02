@@ -167,7 +167,9 @@ internal class PhoneCompassSensorSource(
     private var fusedListener: DeviceOrientationListener? = null
     private var fusedRequestGeneration = 0L
     private var fusedFirstSampleReceived = false
+    private var fusedSampleReceived = false
     private var fusedReadyTimeoutRunnable: Runnable? = null
+    private var sensorRegistrationSucceeded: Boolean? = null
     private var hasSample = false
     private var calibrationRecommended = false
     private var magneticInterference = false
@@ -234,10 +236,18 @@ internal class PhoneCompassSensorSource(
         accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         smoothedHeading = null
         rawHeading = null
+        fusedFirstSampleReceived = false
+        fusedSampleReceived = false
+        sensorRegistrationSucceeded = null
         hasSample = false
         calibrationRecommended = false
         magneticInterference = false
         if (providerMode == PhoneCompassProviderMode.GOOGLE_FUSED) requestFusedOrientation() else startSensorPipeline()
+        PhoneDebugCapture.log(
+            PHONE_COMPASS_DIAGNOSTICS_TAG,
+            "event=phone_compass_started provider=$providerMode requestedSource=$headingSourceMode",
+        )
+        recordDiagnostics()
     }
 
     fun stop() {
@@ -248,6 +258,8 @@ internal class PhoneCompassSensorSource(
         fusedListener?.let { listener -> fusedOrientationClient.removeOrientationUpdates(listener) }
         fusedListener = null
         fusedFirstSampleReceived = false
+        fusedSampleReceived = false
+        sensorRegistrationSucceeded = null
         sensorManager.unregisterListener(this)
         activePipeline = PhoneCompassPipeline.NONE
         accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
@@ -257,6 +269,7 @@ internal class PhoneCompassSensorSource(
         calibrationRecommended = false
         magneticInterference = false
         publish(headingDegrees = null)
+        PhoneDebugCapture.log(PHONE_COMPASS_DIAGNOSTICS_TAG, "event=phone_compass_stopped")
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod") // Sensor-source dispatch mirrors the Android callback contract.
@@ -375,8 +388,12 @@ internal class PhoneCompassSensorSource(
                 calibrationRecommended = calibrationRecommended,
                 magneticInterference = magneticInterference,
             )
-        if (next == _state.value) return
+        if (next == _state.value) {
+            recordDiagnostics(next)
+            return
+        }
         _state.value = next
+        recordDiagnostics(next)
         listeners.forEach { listener ->
             listener.onCompassAccuracyChange(next.accuracy)
             next.headingDegrees?.takeIf { next.isRenderable }?.let(listener::onCompassChanged)
@@ -430,9 +447,10 @@ internal class PhoneCompassSensorSource(
                 }
                 PhoneCompassPipeline.NONE,
                 PhoneCompassPipeline.GOOGLE_FUSED,
-                -> true
+                -> null
             }
-        if (!registered) {
+        sensorRegistrationSucceeded = registered
+        if (registered == false) {
             PhoneDebugCapture.log(
                 PHONE_COMPASS_DIAGNOSTICS_TAG,
                 "event=phone_compass_sensor_unavailable reason=registration_failed pipeline=$activePipeline",
@@ -440,6 +458,11 @@ internal class PhoneCompassSensorSource(
             sensorManager.unregisterListener(this)
             activePipeline = PhoneCompassPipeline.NONE
         }
+        PhoneDebugCapture.log(
+            PHONE_COMPASS_DIAGNOSTICS_TAG,
+            "event=phone_compass_sensor_pipeline pipeline=$activePipeline " +
+                "registration=${registered ?: "not_applicable"}",
+        )
         publish(rawHeading)
     }
 
@@ -449,6 +472,8 @@ internal class PhoneCompassSensorSource(
         activePipeline = PhoneCompassPipeline.GOOGLE_FUSED
         val generation = ++fusedRequestGeneration
         fusedFirstSampleReceived = false
+        fusedSampleReceived = false
+        sensorRegistrationSucceeded = null
         fusedListener?.let { listener -> fusedOrientationClient.removeOrientationUpdates(listener) }
         val listener =
             DeviceOrientationListener { orientation ->
@@ -458,6 +483,10 @@ internal class PhoneCompassSensorSource(
             }
         fusedListener = listener
         publish(rawHeading)
+        PhoneDebugCapture.log(
+            PHONE_COMPASS_DIAGNOSTICS_TAG,
+            "event=phone_compass_fused_requested generation=$generation",
+        )
         scheduleFusedReadyTimeout(generation)
         val request = DeviceOrientationRequest.Builder(DeviceOrientationRequest.OUTPUT_PERIOD_DEFAULT).build()
         fusedOrientationClient
@@ -479,11 +508,18 @@ internal class PhoneCompassSensorSource(
     private fun handleFusedOrientation(orientation: DeviceOrientation) {
         val heading = orientation.headingDegrees
         if (!heading.isFinite()) return
-        fusedFirstSampleReceived = true
-        cancelFusedReadyTimeout()
+        fusedSampleReceived = true
         val error = orientation.headingErrorDegrees
         accuracy = phoneCompassAccuracyFromError(error)
         calibrationRecommended = accuracy <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
+        if (!fusedFirstSampleReceived && phoneCompassFusedSampleIsUsable(heading, accuracy)) {
+            fusedFirstSampleReceived = true
+            cancelFusedReadyTimeout()
+            PhoneDebugCapture.log(
+                PHONE_COMPASS_DIAGNOSTICS_TAG,
+                "event=phone_compass_fused_ready accuracy=${phoneCompassAccuracyLabel(accuracy)}",
+            )
+        }
         hasSample = true
         publish(heading)
     }
@@ -514,6 +550,29 @@ internal class PhoneCompassSensorSource(
             activePipeline == PhoneCompassPipeline.GOOGLE_FUSED &&
             generation == fusedRequestGeneration &&
             !fusedFirstSampleReceived
+
+    private fun recordDiagnostics(state: PhoneCompassState = _state.value) {
+        PhoneCompassDiagnostics.record(
+            PhoneCompassDiagnosticsSnapshot(
+                started = started,
+                providerMode = providerMode,
+                headingSourceMode = headingSourceMode,
+                activePipeline = activePipeline,
+                rotationVectorAvailable = hasRotationVector,
+                headingSensorAvailable = hasHeadingSensor,
+                magAccelerometerFallbackAvailable = hasMagAccelerometerFallback,
+                sensorRegistrationSucceeded = sensorRegistrationSucceeded,
+                fusedSampleReceived = fusedSampleReceived,
+                fusedUsableSampleReceived = fusedFirstSampleReceived,
+                hasSample = state.hasSample,
+                isRenderable = state.isRenderable,
+                accuracyLabel = phoneCompassAccuracyLabel(state.accuracy),
+                calibrationRecommended = state.calibrationRecommended,
+                magneticInterference = state.magneticInterference,
+                northReferenceMode = northReferenceMode,
+            ),
+        )
+    }
 }
 
 internal fun phoneCompassEffectiveAccuracy(
@@ -563,6 +622,11 @@ internal inline fun phoneCompassRegistrationSucceeded(register: () -> Boolean): 
     } catch (_: RuntimeException) {
         false
     }
+
+internal fun phoneCompassFusedSampleIsUsable(
+    headingDegrees: Float,
+    accuracy: Int,
+): Boolean = headingDegrees.isFinite() && accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
 
 private fun headingFromPhoneRotationMatrix(
     matrix: FloatArray,

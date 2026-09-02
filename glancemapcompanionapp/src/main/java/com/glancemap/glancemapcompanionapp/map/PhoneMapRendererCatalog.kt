@@ -1,7 +1,23 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.trailcore.map.MapMode
 import com.glancemap.trailcore.map.MapRendererCapabilities
+
+/** The supported internet map datasets, separate from the online/offline renderer choice. */
+internal enum class PhoneOnlineMapSource {
+    OPEN_TOPO,
+    PLAN_IGN_V2,
+    OPEN_STREET_MAP,
+    SATELLITE,
+
+    ;
+
+    companion object {
+        @Suppress("MaxLineLength") // The fallback parser is a small, self-contained preference lookup.
+        fun fromStorageValue(value: String?): PhoneOnlineMapSource = entries.firstOrNull { source -> source.name == value } ?: OPEN_TOPO
+    }
+}
 
 /** Configuration for a raster-tile online provider; renderer adapters own how it is consumed. */
 internal data class RasterOnlineMapProvider(
@@ -63,6 +79,32 @@ internal object PhoneMapRendererCatalog {
             maximumZoom = 17,
         )
 
+    private val planIgnV2Provider =
+        RasterOnlineMapProvider(
+            id = "plan_ign_v2",
+            displayName = "Plan IGN V2",
+            attribution = "© IGN - Géoplateforme",
+            rasterTileUrlTemplate =
+                "https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&" +
+                    "LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM_0_19&" +
+                    "TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png",
+            maximumZoom = 19,
+        )
+
+    private val mapTilerSatelliteProvider: RasterOnlineMapProvider? =
+        BuildConfig.MAPTILER_API_KEY
+            .takeIf(String::isNotBlank)
+            ?.let { apiKey ->
+                RasterOnlineMapProvider(
+                    id = "maptiler_satellite",
+                    displayName = "Satellite",
+                    attribution = "© MapTiler © OpenStreetMap contributors",
+                    rasterTileUrlTemplate =
+                        "https://api.maptiler.com/tiles/satellite-v4/{z}/{x}/{y}.jpg?key=$apiKey",
+                    maximumZoom = 22,
+                )
+            }
+
     val online =
         PhoneMapRenderer(
             mode = MapMode.ONLINE,
@@ -70,6 +112,28 @@ internal object PhoneMapRendererCatalog {
             capabilities = MapRendererCapabilities(),
             rasterOnlineProvider = mainOnlineRasterProvider,
         )
+
+    @Suppress("MaxLineLength") // The catalog exposes its available sources as one pure query.
+    fun comparisonOnlineSources(): List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries.filter(::isComparisonOnlineSourceAvailable)
+
+    @Suppress("MaxLineLength") // Availability delegates directly to the provider lookup.
+    fun isComparisonOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForComparisonOnlineSource(source) != null
+
+    fun providerForComparisonOnlineSource(source: PhoneOnlineMapSource): RasterOnlineMapProvider? =
+        when (source) {
+            PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider
+            PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider
+            PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider
+            PhoneOnlineMapSource.SATELLITE -> mapTilerSatelliteProvider
+        }
+
+    fun comparisonOnlineSourceLabel(source: PhoneOnlineMapSource): String =
+        when (source) {
+            PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider.displayName
+            PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider.displayName
+            PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider.displayName
+            PhoneOnlineMapSource.SATELLITE -> "Satellite"
+        }
 
     val offline =
         PhoneMapRenderer(

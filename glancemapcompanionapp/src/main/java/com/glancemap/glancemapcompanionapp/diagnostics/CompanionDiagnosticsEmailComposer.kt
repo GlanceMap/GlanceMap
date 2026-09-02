@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.map.PhoneCompassDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapImportDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapRendererDiagnostics
 import com.glancemap.shared.transfer.TransferDataLayerContract
@@ -151,4 +152,5 @@ internal fun phoneDiagnosticsAdditionalSections(): List<String> =
     listOfNotNull(
         PhoneOfflineMapImportDiagnostics.latestReportSection(),
         PhoneOfflineMapRendererDiagnostics.latestReportSection(),
+        PhoneCompassDiagnostics.latestReportSection(),
     )
