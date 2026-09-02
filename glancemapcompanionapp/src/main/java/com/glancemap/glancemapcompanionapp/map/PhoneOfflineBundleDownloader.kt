@@ -1,9 +1,11 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
 import com.glancemap.glancemapcompanionapp.refuges.RefugesGeoJsonPoiImporter
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloader
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileMath
+import com.glancemap.trailcore.oam.OamDownloadArea
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,7 +25,38 @@ import java.net.URI
 import java.util.Collections
 import java.util.Locale
 import java.util.zip.ZipInputStream
-import kotlin.math.floor
+
+private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
+
+internal data class PhoneOfflineRemoteFileRequest(
+    val url: String,
+    val fileName: String,
+)
+
+internal fun buildPhoneOfflineRemoteFileRequestsForBundle(
+    area: OamDownloadArea,
+    bundle: PhoneInstalledBundle,
+): List<PhoneOfflineRemoteFileRequest> =
+    buildList {
+        if (bundle.mapFileName.isNotBlank()) {
+            add(PhoneOfflineRemoteFileRequest(area.mapZipUrl, phoneOfflineRemoteFileName(area.mapZipUrl)))
+        }
+        if (bundle.poiFileName.isNotBlank()) {
+            add(PhoneOfflineRemoteFileRequest(area.poiZipUrl, phoneOfflineRemoteFileName(area.poiZipUrl)))
+        }
+        bundle.routingFileNames.forEach { fileName ->
+            val safeName = File(fileName).name
+            add(PhoneOfflineRemoteFileRequest("$BROUTER_SEGMENTS_BASE_URL/$safeName", safeName))
+        }
+        bundle.demTileIds.forEach { tileId ->
+            add(
+                PhoneOfflineRemoteFileRequest(
+                    url = bundle.demSource.remoteUrl(tileId),
+                    fileName = bundle.demSource.remoteFileName(tileId),
+                ),
+            )
+        }
+    }
 
 /** Phone OAM bundle downloader using the same map, routing, and DEM file conventions as the watch. */
 @Suppress(
@@ -46,11 +79,12 @@ internal class PhoneOfflineBundleDownloader(
 
     suspend fun download(
         selection: PhoneOfflineBundleSelection,
+        forces: PhoneOfflineBundleRefreshForces = PhoneOfflineBundleRefreshForces(),
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): PhoneOfflineBundleOutcome =
         withContext(Dispatchers.IO) {
             try {
-                downloadSelection(selection, onProgress)
+                downloadSelection(selection, onProgress, forces)
             } catch (exception: CancellationException) {
                 saveRecoveryFailure(PhoneOfflineBundleFailure.CANCELLED)
                 throw exception
@@ -82,15 +116,109 @@ internal class PhoneOfflineBundleDownloader(
     @Suppress(
         "LongMethod",
         "CyclomaticComplexMethod",
+    ) // The check intentionally combines local integrity and remote metadata results.
+    suspend fun checkBundleUpdates(bundle: PhoneInstalledBundle): PhoneOfflineBundleUpdateCheck =
+        withContext(Dispatchers.IO) {
+            val area =
+                com.glancemap.trailcore.oam.OamDownloadCatalog.areas
+                    .firstOrNull { it.id == bundle.areaId }
+                    ?: return@withContext PhoneOfflineBundleUpdateCheck(
+                        bundle = bundle,
+                        status = PhoneOfflineBundleUpdateStatus.UNKNOWN,
+                        checkedFileCount = 0,
+                        unknownFileNames = listOf(bundle.areaLabel),
+                    )
+            val localHealth =
+                phoneOfflineBundleHealth(
+                    context = applicationContext,
+                    mapStore = mapStore,
+                    bundle = bundle,
+                    recovery = bundleStore.findRecovery(bundle.areaId),
+                )
+            val repairFileNames =
+                (localHealth.invalidFileNames + localHealth.missingFileNames)
+                    .map { fileName ->
+                        when {
+                            fileName == "map" || fileName.startsWith("map/") ->
+                                phoneOfflineRemoteFileName(area.mapZipUrl)
+                            fileName == "poi" || fileName.startsWith("poi/") ->
+                                phoneOfflineRemoteFileName(area.poiZipUrl)
+                            fileName == "refuges.info" ->
+                                bundle.refugesInfoFileName?.let { File(it).name } ?: fileName
+                            fileName.uppercase(Locale.ROOT) in bundle.demTileIds.map { it.uppercase(Locale.ROOT) } ->
+                                bundle.demSource.remoteFileName(fileName)
+                            else -> File(fileName).name
+                        }
+                    }.distinct()
+            val requests = buildPhoneOfflineRemoteFileRequestsForBundle(area, bundle)
+            val previousByUrl = bundle.remoteFiles.associateBy { it.url }
+            val changedFileNames = mutableListOf<String>()
+            val unknownFileNames = mutableListOf<String>()
+            var checkedFileCount = 0
+            requests.forEach { request ->
+                currentCoroutineContext().ensureActive()
+                val previous = previousByUrl[request.url]
+                if (previous == null || !previous.isComparable()) {
+                    unknownFileNames += request.fileName
+                    return@forEach
+                }
+                val current = fetchRemoteMetadataOrNull(request)
+                if (current == null || !current.isComparable()) {
+                    unknownFileNames += request.fileName
+                    return@forEach
+                }
+                checkedFileCount += 1
+                when (previous.compareWith(current)) {
+                    PhoneOfflineRemoteMetadataComparison.CHANGED -> changedFileNames += request.fileName
+                    PhoneOfflineRemoteMetadataComparison.UNKNOWN -> unknownFileNames += request.fileName
+                    PhoneOfflineRemoteMetadataComparison.SAME -> Unit
+                }
+            }
+            val distinctChanged = changedFileNames.distinct()
+            val distinctUnknown = unknownFileNames.distinct()
+            val status =
+                when {
+                    repairFileNames.isNotEmpty() -> PhoneOfflineBundleUpdateStatus.REPAIR_NEEDED
+                    distinctChanged.isNotEmpty() -> PhoneOfflineBundleUpdateStatus.UPDATE_AVAILABLE
+                    requests.isEmpty() -> PhoneOfflineBundleUpdateStatus.UP_TO_DATE
+                    distinctUnknown.isNotEmpty() || checkedFileCount == 0 -> PhoneOfflineBundleUpdateStatus.UNKNOWN
+                    else -> PhoneOfflineBundleUpdateStatus.UP_TO_DATE
+                }
+            PhoneDownloadDiagnostics.log(
+                "Bundle",
+                "Update check area=${bundle.areaId} status=$status checked=$checkedFileCount " +
+                    "changed=${distinctChanged.size} repair=${repairFileNames.size} unknown=${distinctUnknown.size}",
+            )
+            PhoneOfflineBundleUpdateCheck(
+                bundle = bundle,
+                status = status,
+                checkedFileCount = checkedFileCount,
+                changedFileNames = distinctChanged,
+                repairFileNames = repairFileNames,
+                unknownFileNames = distinctUnknown,
+            )
+        }
+
+    @Suppress(
+        "LongMethod",
+        "CyclomaticComplexMethod",
         "ThrowsCount",
         "TooGenericExceptionCaught",
+        "NestedBlockDepth",
     ) // Coordinates optional map, routing, DEM, and Refuges stages.
     private suspend fun downloadSelection(
         selection: PhoneOfflineBundleSelection,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
+        forces: PhoneOfflineBundleRefreshForces,
     ): PhoneOfflineBundleOutcome.Success {
         val area = selection.area
         val existing = bundleStore.find(area.id)
+        val remoteFilesByUrl =
+            existing
+                ?.remoteFiles
+                .orEmpty()
+                .associateBy { it.url }
+                .toMutableMap()
         var recoveryState =
             PhoneOfflineBundleRecovery(
                 areaId = area.id,
@@ -111,17 +239,39 @@ internal class PhoneOfflineBundleDownloader(
         }
         checkpoint(recoveryState)
 
-        val existingMap = existing?.mapFileName?.let(mapStore::findValidBundleMap)
+        val existingMap =
+            existing
+                ?.mapFileName
+                ?.takeUnless { forces.forceMap }
+                ?.let(mapStore::findValidBundleMap)
         val existingPoi =
             existing
                 ?.poiFileName
+                ?.takeUnless { forces.forcePoi }
                 ?.let { fileName -> File(phoneMapPoiStorageDirectory(applicationContext), File(fileName).name) }
                 ?.takeIf(::isPhoneMapPoiFileValid)
+
+        if (existingMap != null) {
+            fetchRemoteMetadataOrNull(
+                PhoneOfflineRemoteFileRequest(area.mapZipUrl, phoneOfflineRemoteFileName(area.mapZipUrl)),
+            )?.let { remoteFilesByUrl[it.url] = it }
+        }
+        if (existingPoi != null) {
+            fetchRemoteMetadataOrNull(
+                PhoneOfflineRemoteFileRequest(area.poiZipUrl, phoneOfflineRemoteFileName(area.poiZipUrl)),
+            )?.let { remoteFilesByUrl[it.url] = it }
+        }
 
         val mapResult =
             existingMap?.let { InstalledMap(it.displayName, reusedExisting = true) }
                 ?: if (selection.includeMap) {
-                    downloadAndInstallMap(area.mapZipUrl, area.id, onProgress)
+                    downloadAndInstallMap(
+                        url = area.mapZipUrl,
+                        areaId = area.id,
+                        replaceExisting = forces.forceMap,
+                        onResponseMetadata = { metadata -> remoteFilesByUrl[metadata.url] = metadata },
+                        onProgress = onProgress,
+                    )
                 } else {
                     null
                 }
@@ -138,7 +288,13 @@ internal class PhoneOfflineBundleDownloader(
         val poiResult =
             existingPoi?.let { InstalledPoi(it.name, reusedExisting = true) }
                 ?: if (selection.includePoi) {
-                    downloadAndInstallPoi(area.poiZipUrl, area.id, onProgress)
+                    downloadAndInstallPoi(
+                        url = area.poiZipUrl,
+                        areaId = area.id,
+                        replaceExisting = forces.forcePoi,
+                        onResponseMetadata = { metadata -> remoteFilesByUrl[metadata.url] = metadata },
+                        onProgress = onProgress,
+                    )
                 } else {
                     null
                 }
@@ -170,7 +326,7 @@ internal class PhoneOfflineBundleDownloader(
         val demExpected =
             if (selection.includeDem) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
-                demTileIdsForBounds(bounds)
+                phoneDemTileIdsForBounds(bounds)
             } else {
                 existing?.demTileIds.orEmpty()
             }
@@ -195,7 +351,16 @@ internal class PhoneOfflineBundleDownloader(
             if (selection.includeRouting) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for routing." }
                 try {
-                    downloadRouting(bounds, onProgress).also { downloaded ->
+                    downloadRouting(bounds, forces.forceRouting, onProgress).also { downloaded ->
+                        routingExpected.forEach { fileName ->
+                            val safeName = File(fileName).name
+                            fetchRemoteMetadataOrNull(
+                                PhoneOfflineRemoteFileRequest(
+                                    url = "$BROUTER_SEGMENTS_BASE_URL/$safeName",
+                                    fileName = safeName,
+                                ),
+                            )?.let { remoteFilesByUrl[it.url] = it }
+                        }
                         check(downloaded.containsAll(routingExpected)) { "Routing bundle is incomplete." }
                         checkpoint(
                             recoveryState.copy(
@@ -223,7 +388,15 @@ internal class PhoneOfflineBundleDownloader(
             if (selection.includeDem) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
                 try {
-                    downloadDem(bounds, demSource, onProgress).also { downloaded ->
+                    downloadDem(bounds, demSource, forces.forceDemTileIds, onProgress).also { downloaded ->
+                        demExpected.forEach { tileId ->
+                            fetchRemoteMetadataOrNull(
+                                PhoneOfflineRemoteFileRequest(
+                                    url = demSource.remoteUrl(tileId),
+                                    fileName = demSource.remoteFileName(tileId),
+                                ),
+                            )?.let { remoteFilesByUrl[it.url] = it }
+                        }
                         checkpoint(
                             recoveryState.copy(
                                 phase = PhoneOfflineBundlePhase.DOWNLOADING_REFUGES,
@@ -265,11 +438,14 @@ internal class PhoneOfflineBundleDownloader(
                     ),
                 )
                 try {
-                    existingRefugesInfo?.name
+                    existingRefugesInfo
+                        ?.takeUnless { forces.forceRefugesInfo }
+                        ?.name
                         ?: refugesImporter
                             .importFromBbox(
                                 bboxInput = bounds.asPhoneBbox(),
                                 fileNameInput = "${area.id}.refuges-info.poi",
+                                forceRefresh = forces.forceRefugesInfo,
                                 reportProgress = { percent, detail ->
                                     onProgress(
                                         PhoneOfflineBundleProgress(
@@ -308,6 +484,7 @@ internal class PhoneOfflineBundleDownloader(
                 demTileIds = demTileIds,
                 downloadedDemTileIds = downloadedDemTileIds,
                 installedAtMillis = System.currentTimeMillis(),
+                remoteFiles = remoteFilesByUrl.values.sortedBy { it.url },
             )
         val completedBundle = bundle.copy(integrity = phoneOfflineBundleIntegrity(applicationContext, bundle))
         bundleStore.upsert(completedBundle)
@@ -336,15 +513,6 @@ internal class PhoneOfflineBundleDownloader(
         return BRouterTileMath.tileFileNamesForBbox(bbox)
     }
 
-    private fun demTileIdsForBounds(bounds: BoundingBox): List<String> =
-        buildList {
-            for (latitude in demTileRange(bounds.minLatitude, bounds.maxLatitude, -90, 89)) {
-                for (longitude in demTileRange(bounds.minLongitude, bounds.maxLongitude, -180, 179)) {
-                    add(phoneDemTileId(latitude, longitude))
-                }
-            }
-        }
-
     private fun availableRoutingFiles(expected: List<String>): List<String> =
         expected.filter { fileName ->
             isUsablePhoneRoutingFile(File(storage.routingDirectory(), File(fileName).name))
@@ -361,9 +529,18 @@ internal class PhoneOfflineBundleDownloader(
     private suspend fun downloadAndInstallMap(
         url: String,
         areaId: String,
+        replaceExisting: Boolean,
+        onResponseMetadata: (PhoneOfflineRemoteFileMetadata) -> Unit,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): InstalledMap {
-        val archive = downloadArchive(url, "$areaId-map.zip", PhoneOfflineBundlePhase.DOWNLOADING_MAP, onProgress)
+        val archive =
+            downloadArchive(
+                url = url,
+                fileName = "$areaId-map.zip",
+                phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
+                onResponseMetadata = onResponseMetadata,
+                onProgress = onProgress,
+            )
         return try {
             extractExpectedEntry(
                 archive = archive,
@@ -371,7 +548,7 @@ internal class PhoneOfflineBundleDownloader(
                 phase = PhoneOfflineBundlePhase.INSTALLING_MAP,
                 onProgress = onProgress,
             ) { fileName, input, entryProgress ->
-                when (val result = mapStore.installBundleMap(fileName, input, entryProgress)) {
+                when (val result = mapStore.installBundleMap(fileName, input, replaceExisting, entryProgress)) {
                     is PhoneOfflineMapBundleInstallResult.Success ->
                         InstalledMap(result.map.displayName, result.reusedExisting)
                     is PhoneOfflineMapBundleInstallResult.Failure ->
@@ -386,9 +563,18 @@ internal class PhoneOfflineBundleDownloader(
     private suspend fun downloadAndInstallPoi(
         url: String,
         areaId: String,
+        replaceExisting: Boolean,
+        onResponseMetadata: (PhoneOfflineRemoteFileMetadata) -> Unit,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): InstalledPoi {
-        val archive = downloadArchive(url, "$areaId-poi.zip", PhoneOfflineBundlePhase.DOWNLOADING_POI, onProgress)
+        val archive =
+            downloadArchive(
+                url = url,
+                fileName = "$areaId-poi.zip",
+                phase = PhoneOfflineBundlePhase.DOWNLOADING_POI,
+                onResponseMetadata = onResponseMetadata,
+                onProgress = onProgress,
+            )
         return try {
             extractExpectedEntry(
                 archive = archive,
@@ -396,7 +582,7 @@ internal class PhoneOfflineBundleDownloader(
                 phase = PhoneOfflineBundlePhase.INSTALLING_POI,
                 onProgress = onProgress,
             ) { fileName, input, entryProgress ->
-                installPoi(fileName, input, entryProgress)
+                installPoi(fileName, input, entryProgress, replaceExisting)
             }
         } finally {
             archive.delete()
@@ -407,6 +593,7 @@ internal class PhoneOfflineBundleDownloader(
         url: String,
         fileName: String,
         phase: PhoneOfflineBundlePhase,
+        onResponseMetadata: (PhoneOfflineRemoteFileMetadata) -> Unit,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): File {
         val archive = File(applicationContext.cacheDir, File(fileName).name)
@@ -422,6 +609,7 @@ internal class PhoneOfflineBundleDownloader(
             if (responseCode !in HttpURLConnection.HTTP_OK..HttpURLConnection.HTTP_PARTIAL) {
                 downloadFailure(PhoneOfflineBundleFailure.HTTP)
             }
+            onResponseMetadata(connection.remoteMetadata(url, phoneOfflineRemoteFileName(url)))
             val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
             onProgress(PhoneOfflineBundleProgress(phase = phase, totalBytes = totalBytes))
             connection.inputStream.use { input ->
@@ -501,6 +689,7 @@ internal class PhoneOfflineBundleDownloader(
         fileName: String,
         input: InputStream,
         onBytesCopied: (Long) -> Unit,
+        replaceExisting: Boolean,
     ): InstalledPoi {
         val directory = phoneMapPoiStorageDirectory(applicationContext)
         if (!directory.exists() && !directory.mkdirs()) {
@@ -516,7 +705,8 @@ internal class PhoneOfflineBundleDownloader(
                 downloadFailure(PhoneOfflineBundleFailure.INVALID_POI)
             }
             when {
-                isPhoneMapPoiFileValid(destination) -> InstalledPoi(destination.name, reusedExisting = true)
+                isPhoneMapPoiFileValid(destination) && !replaceExisting ->
+                    InstalledPoi(destination.name, reusedExisting = true)
                 destination.exists() && !destination.delete() ->
                     downloadFailure(PhoneOfflineBundleFailure.STORAGE)
                 !temporary.renameTo(destination) ->
@@ -540,19 +730,21 @@ internal class PhoneOfflineBundleDownloader(
 
     private suspend fun downloadRouting(
         bounds: BoundingBox,
+        forceRefresh: Boolean,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): List<String> {
         val bbox = bounds.asPhoneBbox()
         val expectedFileNames = routingFileNamesForBounds(bounds)
-        val forceRefresh =
-            expectedFileNames.any { fileName ->
-                val target = File(storage.routingDirectory(), File(fileName).name)
-                target.isFile && !isUsablePhoneRoutingFile(target)
-            }
+        val effectiveForceRefresh =
+            forceRefresh ||
+                expectedFileNames.any { fileName ->
+                    val target = File(storage.routingDirectory(), File(fileName).name)
+                    target.isFile && !isUsablePhoneRoutingFile(target)
+                }
         val result =
             routingDownloader.downloadForBbox(
                 bboxInput = bbox,
-                forceRefresh = forceRefresh,
+                forceRefresh = effectiveForceRefresh,
                 reportProgress = { percent, status, detail ->
                     onProgress(
                         PhoneOfflineBundleProgress(
@@ -574,9 +766,10 @@ internal class PhoneOfflineBundleDownloader(
     private suspend fun downloadDem(
         bounds: BoundingBox,
         source: PhoneOfflineDemSource,
+        forceTileIds: Set<String>,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): List<String> {
-        val tileIds = demTileIdsForBounds(bounds)
+        val tileIds = phoneDemTileIdsForBounds(bounds)
         tileIds.forEachIndexed { index, tileId ->
             val target = phoneOfflineDemFile(storage.elevationDirectory(), source, tileId)
             onProgress(
@@ -585,7 +778,7 @@ internal class PhoneOfflineBundleDownloader(
                     detail = "$tileId (${index + 1}/${tileIds.size})",
                 ),
             )
-            if (!isUsablePhoneDemFile(target)) {
+            if (tileId.uppercase(Locale.ROOT) in forceTileIds || !isUsablePhoneDemFile(target)) {
                 downloadFileToTarget(
                     url = source.remoteUrl(tileId),
                     target = target,
@@ -597,18 +790,6 @@ internal class PhoneOfflineBundleDownloader(
         return tileIds.filter { tileId ->
             isUsablePhoneDemFile(phoneOfflineDemFile(storage.elevationDirectory(), source, tileId))
         }
-    }
-
-    private fun demTileRange(
-        minimum: Double,
-        maximum: Double,
-        minimumTile: Int,
-        maximumTile: Int,
-    ): IntRange {
-        val adjustedMaximum = if (maximum <= minimum) minimum + 1e-9 else maximum
-        val firstTile = floor(minimum).toInt().coerceIn(minimumTile, maximumTile)
-        val lastTile = floor(Math.nextDown(adjustedMaximum)).toInt().coerceIn(minimumTile, maximumTile)
-        return firstTile..lastTile
     }
 
     private suspend fun downloadFileToTarget(
@@ -653,6 +834,45 @@ internal class PhoneOfflineBundleDownloader(
             if (temporary.exists()) temporary.delete()
         }
     }
+
+    private suspend fun fetchRemoteMetadataOrNull(
+        request: PhoneOfflineRemoteFileRequest,
+    ): PhoneOfflineRemoteFileMetadata? =
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val connection =
+                    (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = CONNECT_TIMEOUT_MILLIS
+                        readTimeout = READ_TIMEOUT_MILLIS
+                        instanceFollowRedirects = true
+                        useCaches = false
+                        setRequestProperty("Accept-Encoding", "identity")
+                        setRequestProperty("User-Agent", USER_AGENT)
+                    }
+                activeConnections += connection
+                try {
+                    val responseCode = connection.responseCode
+                    if (responseCode !in 200..399) throw IOException("HTTP $responseCode for ${request.url}")
+                    connection.remoteMetadata(request.url, request.fileName)
+                } finally {
+                    activeConnections -= connection
+                    connection.disconnect()
+                }
+            }
+        }.getOrNull()
+
+    private fun HttpURLConnection.remoteMetadata(
+        url: String,
+        fileName: String,
+    ): PhoneOfflineRemoteFileMetadata =
+        PhoneOfflineRemoteFileMetadata(
+            url = url,
+            fileName = fileName,
+            entityTag = getHeaderField("ETag")?.takeIf(String::isNotBlank),
+            lastModifiedMillis = getHeaderFieldDate("Last-Modified", -1L).takeIf { it >= 0L },
+            contentLengthBytes = contentLengthLong.takeIf { it > 0L },
+        )
 
     private fun openConnection(url: String): HttpURLConnection =
         (URI(url).toURL().openConnection() as HttpURLConnection).apply {

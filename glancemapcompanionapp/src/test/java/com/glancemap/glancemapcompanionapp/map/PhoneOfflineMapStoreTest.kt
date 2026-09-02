@@ -13,6 +13,32 @@ import java.nio.file.Files
 
 class PhoneOfflineMapStoreTest {
     @Test
+    fun managedMapCanBeRenamedAndDeletedWithoutLeavingItsPartialFile() {
+        val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
+        try {
+            val original = File(directory, "alps.map").apply { writeText("map") }
+            File(directory, ".alps.map.part").writeText("partial")
+            val store = PhoneOfflineMapStore(directory)
+
+            val renamed = store.rename(PhoneOfflineMap(original), "Alps 2026")
+            store.delete(renamed)
+
+            assertEquals("Alps 2026.map", renamed.displayName)
+            assertFalse(original.exists())
+            assertFalse(File(directory, "Alps 2026.map").exists())
+            assertFalse(File(directory, ".alps.map.part").exists())
+            assertFalse(File(directory, ".Alps 2026.map.part").exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun mapRenameRejectsFolderPaths() {
+        phoneOfflineMapFileName("folder/alps")
+    }
+
+    @Test
     fun discoveryOnlyReturnsReadableNonEmptyMapsforgeMapFiles() {
         val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
         try {

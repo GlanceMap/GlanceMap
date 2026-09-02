@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions") // Import, bundle install, discovery, and folder matching share one storage boundary.
+
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.ContentResolver
@@ -210,6 +212,7 @@ internal class PhoneOfflineMapStore(
     suspend fun installBundleMap(
         fileName: String,
         input: InputStream,
+        replaceExisting: Boolean = false,
         onBytesCopied: (Long) -> Unit,
     ): PhoneOfflineMapBundleInstallResult {
         if (!isPhoneOfflineMapFileName(fileName)) {
@@ -227,7 +230,7 @@ internal class PhoneOfflineMapStore(
             }
             mapInspector(temporary).error?.let(PhoneOfflineMapBundleInstallResult::Failure)
                 ?: when {
-                    destination.exists() && mapInspector(destination).error == null ->
+                    destination.exists() && mapInspector(destination).error == null && !replaceExisting ->
                         PhoneOfflineMapBundleInstallResult.Success(
                             map = PhoneOfflineMap(destination),
                             reusedExisting = true,
@@ -313,6 +316,37 @@ internal class PhoneOfflineMapStore(
         return map.takeIf { validate(it) == null }
     }
 
+    /** Renames one app-owned map while retaining the Mapsforge file extension. */
+    fun rename(
+        map: PhoneOfflineMap,
+        newName: String,
+    ): PhoneOfflineMap {
+        val source = map.file
+        require(isManagedMapFile(source)) { "The map is outside the app storage." }
+        require(source.isFile) { "The map could not be found." }
+        val target = File(directory, phoneOfflineMapFileName(newName))
+        if (source == target) return map
+        require(!target.exists()) { "A map with that name already exists." }
+        require(source.renameTo(target)) { "The map could not be renamed." }
+        val sourcePartial = File(directory, ".${source.name}.part")
+        if (sourcePartial.exists()) {
+            val targetPartial = File(directory, ".${target.name}.part")
+            if (!sourcePartial.renameTo(targetPartial)) {
+                sourcePartial.copyTo(targetPartial, overwrite = true)
+                sourcePartial.delete()
+            }
+        }
+        return PhoneOfflineMap(target)
+    }
+
+    /** Deletes one app-owned map. Callers confirm the destructive action before invoking this. */
+    fun delete(map: PhoneOfflineMap) {
+        val file = map.file
+        require(isManagedMapFile(file)) { "The map is outside the app storage." }
+        require(!file.exists() || file.delete()) { "The map could not be deleted." }
+        File(directory, ".${file.name}.part").delete()
+    }
+
     private fun readDocumentMetadata(
         contentResolver: ContentResolver,
         uri: Uri,
@@ -361,6 +395,11 @@ internal class PhoneOfflineMapStore(
             index += 1
         }
     }
+
+    private fun isManagedMapFile(file: File): Boolean =
+        runCatching {
+            file.canonicalFile.parentFile?.canonicalFile == directory.canonicalFile
+        }.getOrDefault(false)
 
     private companion object {
         const val DIRECTORY_NAME = "maps"
@@ -487,11 +526,26 @@ private fun inspectMapsforgeMapFile(file: File): PhoneOfflineMapValidation {
 
 private fun safeMapDisplayName(value: String): String = File(value).name.takeIf(String::isNotBlank).orEmpty()
 
+internal fun phoneOfflineMapFileName(value: String): String {
+    val trimmed = value.trim().replace(Regex("\\s+"), " ")
+    require(trimmed.isNotBlank()) { "Enter a map name first." }
+    val safeName = File(trimmed).name
+    require(safeName == trimmed) { "Enter a map name without a folder path." }
+    val baseName = safeName.removePhoneFileExtension(".map").trim()
+    require(baseName.isNotBlank()) { "Enter a map name first." }
+    return "$baseName.map"
+}
+
 private fun String.isImportedNameFor(sourceFileName: String): Boolean {
     if (equals(sourceFileName, ignoreCase = true)) return true
     val sourceBaseName = sourceFileName.substringBeforeLast('.', sourceFileName)
     return startsWith("$sourceBaseName (") && endsWith(".map", ignoreCase = true)
 }
+
+private fun String.removePhoneFileExtension(extension: String): String =
+    takeIf { endsWith(extension, ignoreCase = true) }
+        ?.dropLast(extension.length)
+        ?: this
 
 private suspend fun InputStream.copyCancellableTo(
     output: java.io.OutputStream,

@@ -1,7 +1,11 @@
+@file:Suppress("TooManyFunctions") // Bundle persistence and refresh metadata live with the bundle model.
+
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import com.glancemap.trailcore.oam.OamDownloadArea
+import java.io.File
+import java.net.URI
 import java.util.Locale
 
 internal enum class PhoneOfflineDemSource(
@@ -74,7 +78,15 @@ internal data class PhoneOfflineFileIntegrity(
     val lastModifiedMillis: Long,
 )
 
-/** Metadata for files installed by the phone bundle flow; it contains no remote update state. */
+internal data class PhoneOfflineRemoteFileMetadata(
+    val url: String,
+    val fileName: String,
+    val entityTag: String?,
+    val lastModifiedMillis: Long?,
+    val contentLengthBytes: Long?,
+)
+
+/** Metadata for files installed by the phone bundle flow, including remote update state. */
 internal data class PhoneInstalledBundle(
     val areaId: String,
     val areaLabel: String,
@@ -88,7 +100,95 @@ internal data class PhoneInstalledBundle(
     val installedAtMillis: Long,
     val downloadedDemTileIds: List<String> = emptyList(),
     val integrity: List<PhoneOfflineFileIntegrity> = emptyList(),
+    val remoteFiles: List<PhoneOfflineRemoteFileMetadata> = emptyList(),
 )
+
+internal enum class PhoneOfflineBundleUpdateStatus {
+    REPAIR_NEEDED,
+    UPDATE_AVAILABLE,
+    UP_TO_DATE,
+    UNKNOWN,
+}
+
+internal data class PhoneOfflineBundleUpdateCheck(
+    val bundle: PhoneInstalledBundle,
+    val status: PhoneOfflineBundleUpdateStatus,
+    val checkedFileCount: Int,
+    val changedFileNames: List<String> = emptyList(),
+    val repairFileNames: List<String> = emptyList(),
+    val unknownFileNames: List<String> = emptyList(),
+)
+
+internal data class PhoneOfflineBundleRefreshForces(
+    val forceMap: Boolean = false,
+    val forcePoi: Boolean = false,
+    val forceRefugesInfo: Boolean = false,
+    val forceRouting: Boolean = false,
+    val forceDemTileIds: Set<String> = emptySet(),
+)
+
+internal fun PhoneOfflineBundleUpdateCheck.refreshForces(
+    area: OamDownloadArea,
+): PhoneOfflineBundleRefreshForces {
+    val changedNames = (changedFileNames + repairFileNames).map { File(it).name }.toSet()
+    val forceUnknown = status == PhoneOfflineBundleUpdateStatus.UNKNOWN
+    return PhoneOfflineBundleRefreshForces(
+        forceMap = forceUnknown || phoneOfflineRemoteFileName(area.mapZipUrl) in changedNames,
+        forcePoi = forceUnknown || phoneOfflineRemoteFileName(area.poiZipUrl) in changedNames,
+        forceRefugesInfo =
+            forceUnknown || bundle.refugesInfoFileName?.let { File(it).name in changedNames } == true,
+        forceRouting = forceUnknown || bundle.routingFileNames.any { File(it).name in changedNames },
+        forceDemTileIds =
+            if (forceUnknown) {
+                bundle.demTileIds.map { it.uppercase(Locale.ROOT) }.toSet()
+            } else {
+                bundle.demTileIds
+                    .map { it.uppercase(Locale.ROOT) }
+                    .filter { bundle.demSource.remoteFileName(it) in changedNames }
+                    .toSet()
+            },
+    )
+}
+
+internal fun phoneOfflineRemoteFileName(url: String): String =
+    runCatching { File(URI(url).path).name }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
+        ?: url.substringAfterLast('/').ifBlank { "download" }
+
+internal enum class PhoneOfflineRemoteMetadataComparison {
+    SAME,
+    CHANGED,
+    UNKNOWN,
+}
+
+@Suppress("CyclomaticComplexMethod") // Compares the three optional HTTP validators in priority order.
+internal fun PhoneOfflineRemoteFileMetadata.compareWith(
+    other: PhoneOfflineRemoteFileMetadata,
+): PhoneOfflineRemoteMetadataComparison =
+    when {
+        url != other.url -> PhoneOfflineRemoteMetadataComparison.CHANGED
+        contentLengthBytes != null &&
+            other.contentLengthBytes != null &&
+            contentLengthBytes == other.contentLengthBytes -> PhoneOfflineRemoteMetadataComparison.SAME
+        contentLengthBytes != null && other.contentLengthBytes != null ->
+            PhoneOfflineRemoteMetadataComparison.CHANGED
+        lastModifiedMillis != null && other.lastModifiedMillis != null ->
+            if (lastModifiedMillis == other.lastModifiedMillis) {
+                PhoneOfflineRemoteMetadataComparison.SAME
+            } else {
+                PhoneOfflineRemoteMetadataComparison.CHANGED
+            }
+        entityTag != null && other.entityTag != null && entityTag == other.entityTag ->
+            PhoneOfflineRemoteMetadataComparison.SAME
+        entityTag != null && other.entityTag != null -> PhoneOfflineRemoteMetadataComparison.CHANGED
+        else -> PhoneOfflineRemoteMetadataComparison.UNKNOWN
+    }
+
+internal fun PhoneOfflineRemoteFileMetadata.isComparable(): Boolean =
+    entityTag != null ||
+        lastModifiedMillis != null ||
+        contentLengthBytes != null
 
 /** State kept while a bundle is incomplete so the next download can repair it. */
 internal data class PhoneOfflineBundleRecovery(
@@ -225,8 +325,9 @@ internal sealed interface PhoneOfflineBundleOutcome {
 internal class PhoneOfflineBundleStore(
     context: Context,
 ) {
+    private val appContext = context.applicationContext
     private val preferences =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun list(): List<PhoneInstalledBundle> =
         preferences
@@ -261,7 +362,33 @@ internal class PhoneOfflineBundleStore(
             bundle.integrity.joinToString("\n", transform = ::encodeIntegrity),
         )
         editor.putLong(key(bundle.areaId, "installed_at"), bundle.installedAtMillis)
+        editor.putString(key(bundle.areaId, "remote_files"), bundle.remoteFiles.toJson())
         editor.apply()
+    }
+
+    /** Keeps bundle health metadata in sync when the user renames a visible map or POI source. */
+    fun replaceManagedFileName(
+        oldFileName: String,
+        newFileName: String,
+        isMap: Boolean,
+    ) {
+        val oldSafeName = java.io.File(oldFileName).name
+        val newSafeName = java.io.File(newFileName).name
+        list().forEach { bundle ->
+            val updated =
+                if (isMap && bundle.mapFileName == oldSafeName) {
+                    bundle.copy(mapFileName = newSafeName)
+                } else if (!isMap && bundle.poiFileName == oldSafeName) {
+                    bundle.copy(poiFileName = newSafeName)
+                } else if (!isMap && bundle.refugesInfoFileName == oldSafeName) {
+                    bundle.copy(refugesInfoFileName = newSafeName)
+                } else {
+                    null
+                }
+            updated?.let { changed ->
+                upsert(changed.copy(integrity = phoneOfflineBundleIntegrity(appContext, changed)))
+            }
+        }
     }
 
     fun findRecovery(areaId: String): PhoneOfflineBundleRecovery? = readRecovery(areaId)
@@ -360,6 +487,7 @@ internal class PhoneOfflineBundleStore(
                         .ifEmpty { demTileIds },
                 installedAtMillis = preferences.getLong(key(areaId, "installed_at"), 0L),
                 integrity = preferences.getString(key(areaId, "integrity"), null).toIntegrity(),
+                remoteFiles = preferences.getString(key(areaId, "remote_files"), null).toRemoteFileMetadata(),
             )
         }
     }
@@ -417,6 +545,52 @@ internal class PhoneOfflineBundleStore(
         const val KEY_RECOVERY_AREA_IDS = "recovery_area_ids"
     }
 }
+
+private fun String?.toRemoteFileMetadata(): List<PhoneOfflineRemoteFileMetadata> =
+    runCatching {
+        if (isNullOrBlank()) return@runCatching emptyList()
+        val array = org.json.JSONArray(this)
+        buildList {
+            for (index in 0 until array.length()) {
+                array.optJSONObject(index)?.let { objectValue ->
+                    val url = objectValue.optString("url").takeIf(String::isNotBlank) ?: return@let
+                    val fileName = objectValue.optString("fileName").takeIf(String::isNotBlank) ?: return@let
+                    add(
+                        PhoneOfflineRemoteFileMetadata(
+                            url = url,
+                            fileName = fileName,
+                            entityTag = objectValue.optString("entityTag").takeIf(String::isNotBlank),
+                            lastModifiedMillis = objectValue.optLongOrNull("lastModifiedMillis"),
+                            contentLengthBytes = objectValue.optLongOrNull("contentLengthBytes"),
+                        ),
+                    )
+                }
+            }
+        }
+    }.getOrDefault(emptyList())
+
+private fun List<PhoneOfflineRemoteFileMetadata>.toJson(): String {
+    val array = org.json.JSONArray()
+    forEach { file ->
+        array.put(
+            org.json
+                .JSONObject()
+                .put("url", file.url)
+                .put("fileName", file.fileName)
+                .put("entityTag", file.entityTag)
+                .put("lastModifiedMillis", file.lastModifiedMillis)
+                .put("contentLengthBytes", file.contentLengthBytes),
+        )
+    }
+    return array.toString()
+}
+
+private fun org.json.JSONObject.optLongOrNull(name: String): Long? =
+    if (has(name) && !isNull(name)) {
+        optLong(name).takeIf { it >= 0L }
+    } else {
+        null
+    }
 
 private fun encodeIntegrity(integrity: PhoneOfflineFileIntegrity): String {
     val fields = listOf(integrity.fileName, integrity.sizeBytes, integrity.lastModifiedMillis)
