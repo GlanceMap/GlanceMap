@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PointF
 import android.util.Log
+import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,6 +70,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -80,6 +82,7 @@ import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
 import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
+import com.glancemap.glancemapcompanionapp.map.maplibre.renderDistanceMeasurement
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarkers
@@ -416,7 +419,10 @@ internal fun CompanionMapScreen(
     var selectedGpxAnalysis by remember { mutableStateOf<PhoneMapGpxItem?>(null) }
     var routeAnalysis by remember { mutableStateOf<PhoneMapRouteAnalysis?>(null) }
     var routeAnalysisSelectingPointB by remember { mutableStateOf(false) }
-    val pointSelectionMarkers = phoneMapPointSelectionMarkers(poiCreationPoint, routeToolsState)
+    val pointSelectionMarkers =
+        phoneMapPointSelectionMarkers(poiCreationPoint, routeToolsState) +
+            phoneMapDistanceMeasurementMarkers(distanceMeasurement)
+    val routePointSelectionPhase = routeToolsState.pointSelectionPhase()
     val gpxOverlays =
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
@@ -424,6 +430,7 @@ internal fun CompanionMapScreen(
     val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
         mapSourcePreference = mapSourcePreferences.saveOffline(selectedMap)
         mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+        liveMapPosition = null
         mapRuntime = mapRuntime.invalidate()
         pendingOfflineMap = selectedMap
         offlineMapError = null
@@ -434,6 +441,7 @@ internal fun CompanionMapScreen(
             requestedSource.takeIf(PhoneMapRendererCatalog::isComparisonOnlineSourceAvailable)
                 ?: PhoneOnlineMapSource.OPEN_TOPO
         mapSourcePreference = mapSourcePreferences.saveOnline(onlineSource)
+        liveMapPosition = null
         pendingOfflineMap = null
         mapUiState =
             mapUiState
@@ -491,9 +499,11 @@ internal fun CompanionMapScreen(
 
         var lastElevationSampleTarget: PhoneMapCoordinate? = null
         while (isActive) {
-            val target =
-                currentLiveMapPosition?.target
-                    ?: PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude)
+            val target = currentLiveMapPosition?.target
+            if (target == null) {
+                delay(PHONE_MAP_LIVE_METRICS_REFRESH_MS)
+                continue
+            }
             val previousTarget = lastElevationSampleTarget
             val movedMeters =
                 if (previousTarget == null) {
@@ -1030,6 +1040,20 @@ internal fun CompanionMapScreen(
             onCalibrateCompass = compassSensorSource::recalibrate,
         )
 
+    val routePointSelectionCenter =
+        liveMapPosition?.target
+            ?: PhoneMapCoordinate(
+                latitude = mapCamera.latitude,
+                longitude = mapCamera.longitude,
+            )
+    val onSelectRoutePointAtCenter = {
+        routeToolsViewModel.selectMapPoint(
+            GeoPoint(
+                latitude = routePointSelectionCenter.latitude,
+                longitude = routePointSelectionCenter.longitude,
+            ),
+        )
+    }
     val onOpenRouteTools = {
         routeAnalysis = null
         routeAnalysisSelectingPointB = false
@@ -1258,6 +1282,10 @@ internal fun CompanionMapScreen(
                                 runtime = mapRuntime,
                                 markers = pointSelectionMarkers,
                             )
+                            synchronizeDistanceMeasurementOverlay(
+                                runtime = mapRuntime,
+                                measurement = distanceMeasurement,
+                            )
                             observePoiViewport(
                                 runtime = mapRuntime,
                                 isVisible = mapUiState.contentVisibility.pois,
@@ -1272,8 +1300,12 @@ internal fun CompanionMapScreen(
                             observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { mapCamera = it })
                             observeOnlineLiveMapPosition(
                                 runtime = mapRuntime,
-                                enabled = mapSettings.liveElevationEnabled || mapSettings.liveDistanceEnabled,
+                                enabled =
+                                    mapSettings.liveElevationEnabled ||
+                                        mapSettings.liveDistanceEnabled ||
+                                        routePointSelectionPhase != null,
                                 location = mapLocation,
+                                markerAnchor = mapSettings.markerAnchor,
                                 onPositionChanged = { liveMapPosition = it },
                             )
                             observeOnlineUserPan(
@@ -1363,6 +1395,14 @@ internal fun CompanionMapScreen(
                                     runtime = comparisonMapRuntime,
                                     onCameraChanged = { mapCamera = it },
                                 )
+                                synchronizePointSelectionOverlay(
+                                    runtime = comparisonMapRuntime,
+                                    markers = pointSelectionMarkers,
+                                )
+                                synchronizeDistanceMeasurementOverlay(
+                                    runtime = comparisonMapRuntime,
+                                    measurement = distanceMeasurement,
+                                )
                                 observeOnlineUserPan(
                                     runtime = comparisonMapRuntime,
                                     onGestureActiveChanged = { active ->
@@ -1442,6 +1482,7 @@ internal fun CompanionMapScreen(
                                             hasTerrainData = false,
                                             gpxOverlays = emptyList(),
                                             pointSelectionMarkers = pointSelectionMarkers,
+                                            distanceMeasurement = distanceMeasurement,
                                             pois = emptyList(),
                                             mapMode =
                                                 PhoneMapMode(
@@ -1519,6 +1560,7 @@ internal fun CompanionMapScreen(
                                         gpxSettings = gpxOverlayState.settings,
                                         routeAnalysis = routeAnalysis.takeUnless { onlineComparisonActive },
                                         pointSelectionMarkers = pointSelectionMarkers,
+                                        distanceMeasurement = distanceMeasurement,
                                         pois =
                                             if (onlineComparisonActive) {
                                                 emptyList()
@@ -1661,6 +1703,10 @@ internal fun CompanionMapScreen(
                                     runtime = comparisonMapRuntime,
                                     markers = pointSelectionMarkers,
                                 )
+                                synchronizeDistanceMeasurementOverlay(
+                                    runtime = comparisonMapRuntime,
+                                    measurement = distanceMeasurement,
+                                )
                                 observePoiViewport(
                                     runtime = comparisonMapRuntime,
                                     isVisible = mapUiState.contentVisibility.pois,
@@ -1679,8 +1725,11 @@ internal fun CompanionMapScreen(
                                 observeOnlineLiveMapPosition(
                                     runtime = comparisonMapRuntime,
                                     enabled =
-                                        mapSettings.liveElevationEnabled || mapSettings.liveDistanceEnabled,
+                                        mapSettings.liveElevationEnabled ||
+                                            mapSettings.liveDistanceEnabled ||
+                                            routePointSelectionPhase != null,
                                     location = mapLocation,
+                                    markerAnchor = mapSettings.markerAnchor,
                                     onPositionChanged = { liveMapPosition = it },
                                 )
                                 observeOnlineUserPan(
@@ -1785,7 +1834,12 @@ internal fun CompanionMapScreen(
                     onCycleMapMode = onMapModePressed,
                     northIndicatorVisible = northIndicatorVisible,
                     compassPresentation = compassPresentation,
+                    showModeControl = routePointSelectionPhase == null,
                 )
+
+                if (routePointSelectionPhase != null) {
+                    phoneMapRouteSelectionCrosshair()
+                }
 
                 if (poiCreationActive) {
                     PhoneMapPopupCard(
@@ -1800,7 +1854,7 @@ internal fun CompanionMapScreen(
                     }
                 }
 
-                routeToolsState.pointSelectionPhase()?.let { phase ->
+                routePointSelectionPhase?.let { phase ->
                     PhoneMapPopupCard(
                         modifier =
                             Modifier
@@ -1810,6 +1864,21 @@ internal fun CompanionMapScreen(
                         title = stringResource(R.string.map_route_tools_title),
                         onDismiss = routeToolsViewModel::cancel,
                     ) {
+                        routeToolsState.pointSelectionProgress()?.let { progress ->
+                            Text(
+                                text =
+                                    progress.total?.let { total ->
+                                        stringResource(
+                                            R.string.map_route_tools_step_progress,
+                                            progress.currentStep,
+                                            total,
+                                        )
+                                    } ?: stringResource(
+                                        R.string.map_route_tools_points_progress,
+                                        progress.completed,
+                                    ),
+                            )
+                        }
                         Text(text = stringResource(routeToolsState.pointSelectionHintResource(phase)))
                     }
                 }
@@ -1835,12 +1904,7 @@ internal fun CompanionMapScreen(
                 phoneMapLiveMetrics(
                     location = mapLocation,
                     elevationMeters = liveMapElevation,
-                    position =
-                        liveMapPosition
-                            ?: PhoneMapLiveMetricsPosition(
-                                target = PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
-                                userScreenPoint = null,
-                            ),
+                    position = liveMapPosition,
                     mapMode = mapUiState.mapMode,
                     mapSettings = mapSettings,
                     isMetric = generalSettings.isMetric,
@@ -2002,6 +2066,13 @@ internal fun CompanionMapScreen(
                             onDismiss = routeToolsViewModel::cancel,
                         ),
                 )
+                if (routePointSelectionPhase != null) {
+                    phoneMapRouteSelectionControls(
+                        canUndo = routeToolsState.canUndoLastMapPoint(),
+                        onUndo = routeToolsViewModel::undoLastMapPoint,
+                        onSelectCenter = onSelectRoutePointAtCenter,
+                    )
+                }
             }
         },
         panelContent = { tool, contentMode, featureSettingsSection ->
@@ -2253,7 +2324,9 @@ internal fun CompanionMapScreen(
                 mapSettings = mapSettingsPreferences.save(mapSettings.copy(demSource = selection.demSource))
                 bundleViewModel.start(selection)
             },
-            onCancel = bundleViewModel::cancel,
+            onPause = bundleViewModel::pause,
+            onStop = bundleViewModel::stop,
+            onResume = bundleViewModel::resume,
             onCheckForUpdates = bundleViewModel::checkForUpdates,
             onRefreshSelected = bundleViewModel::refreshSelected,
             onToggleRefreshSelection = bundleViewModel::toggleRefreshSelection,
@@ -2275,22 +2348,23 @@ private fun offlineThemeSelector(
         title = stringResource(R.string.map_theme_selector_title),
         onDismiss = onDismiss,
         text = {
-            Column {
-                Text(stringResource(R.string.map_theme_selector_theme_label))
-                PhoneOfflineThemeCatalog.themes.forEach { theme ->
-                    TextButton(onClick = { onSelectTheme(theme.id) }) {
-                        Text(theme.label)
-                    }
-                }
-                Text(
-                    text = stringResource(R.string.map_theme_selector_style_label),
-                    modifier = Modifier.padding(top = 8.dp),
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                mapToolsMapSettingPicker(
+                    label = stringResource(R.string.map_theme_selector_theme_label),
+                    selectedLabel = selectedTheme.label,
+                    options = PhoneOfflineThemeCatalog.themes.map { theme -> theme.id to theme.label },
+                    onSelect = onSelectTheme,
                 )
-                selectedTheme.styles.forEach { style ->
-                    TextButton(onClick = { onSelectStyle(style.id) }) {
-                        Text(style.label)
-                    }
-                }
+                mapToolsMapSettingPicker(
+                    label = stringResource(R.string.map_theme_selector_style_label),
+                    selectedLabel =
+                        selectedTheme.styles
+                            .firstOrNull { style -> style.id == config.styleId }
+                            ?.label
+                            ?: "Default",
+                    options = selectedTheme.styles.map { style -> style.id to style.label },
+                    onSelect = onSelectStyle,
+                )
             }
         },
         confirmButton = {
@@ -2388,17 +2462,19 @@ private fun observeOnlineLiveMapPosition(
     runtime: MapRuntime,
     enabled: Boolean,
     location: PhoneMapLocation?,
+    markerAnchor: PhoneMapMarkerAnchor,
     onPositionChanged: (PhoneMapLiveMetricsPosition) -> Unit,
 ) {
     val currentRuntime by rememberUpdatedState(runtime)
     val currentLocation by rememberUpdatedState(location)
     val currentOnPositionChanged by rememberUpdatedState(onPositionChanged)
-    DisposableEffect(runtime.map, enabled, location?.fixElapsedRealtimeMillis) {
+    DisposableEffect(runtime.map, enabled, location?.fixElapsedRealtimeMillis, markerAnchor) {
         if (!enabled) return@DisposableEffect onDispose {}
         val activeMap = runtime.map ?: return@DisposableEffect onDispose {}
 
         fun publish() {
             if (!runtime.isCurrentIn(currentRuntime) || activeMap.width <= 0 || activeMap.height <= 0) return
+            activeMap.applyPhoneMapMarkerAnchor(markerAnchor)
             val target =
                 runCatching {
                     activeMap.projection.fromScreenLocation(
@@ -2419,6 +2495,10 @@ private fun observeOnlineLiveMapPosition(
                 PhoneMapLiveMetricsPosition(
                     target = PhoneMapCoordinate(target.latitude, target.longitude),
                     userScreenPoint = userScreenPoint,
+                    origin =
+                        currentLocation?.let { user ->
+                            PhoneMapCoordinate(user.latitude, user.longitude)
+                        },
                 ),
             )
         }
@@ -2776,6 +2856,19 @@ private fun synchronizePointSelectionOverlay(
 }
 
 @Composable
+private fun synchronizeDistanceMeasurementOverlay(
+    runtime: MapRuntime,
+    measurement: PhoneMapDistanceMeasurement?,
+) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, measurement) {
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
+            style.renderDistanceMeasurement(measurement)
+        }
+    }
+}
+
+@Composable
 @Suppress("LongParameterList") // The Android map surface callbacks intentionally stay explicit.
 private fun mapSurface(
     initialCamera: PhoneMapCameraSnapshot,
@@ -2827,6 +2920,7 @@ private fun mapControls(
     onCycleMapMode: () -> Unit,
     northIndicatorVisible: Boolean,
     compassPresentation: PhoneMapCompassPresentation,
+    showModeControl: Boolean,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val viewportWidthPx = maxWidth.value * LocalDensity.current.density
@@ -2912,20 +3006,99 @@ private fun mapControls(
             }
         }
 
-        FilledTonalIconButton(
-            onClick = onCycleMapMode,
-            modifier =
+        if (showModeControl) {
+            FilledTonalIconButton(
+                onClick = onCycleMapMode,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 72.dp),
+            ) {
+                Icon(
+                    imageVector = mapMode.icon(),
+                    contentDescription =
+                        stringResource(
+                            R.string.map_mode_content_description,
+                            stringResource(mapMode.labelResource()),
+                        ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.phoneMapRouteSelectionCrosshair() {
+    val density = LocalDensity.current
+    val radius = with(density) { 14.dp.toPx() }
+    val armLength = with(density) { 22.dp.toPx() }
+    val strokeWidth = with(density) { 2.5.dp.toPx() }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.45f),
+            radius = radius + with(density) { 6.dp.toPx() },
+            center = center,
+        )
+        drawCircle(
+            color = Color(0xFFF7C948),
+            radius = radius,
+            center = center,
+            style = Stroke(width = strokeWidth),
+        )
+        drawLine(
+            color = Color(0xFFF7C948),
+            start = Offset(center.x - armLength, center.y),
+            end = Offset(center.x + armLength, center.y),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = Color(0xFFF7C948),
+            start = Offset(center.x, center.y - armLength),
+            end = Offset(center.x, center.y + armLength),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawCircle(
+            color = Color(0xFFF7C948),
+            radius = with(density) { 2.5.dp.toPx() },
+            center = center,
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.phoneMapRouteSelectionControls(
+    canUndo: Boolean,
+    onUndo: () -> Unit,
+    onSelectCenter: () -> Unit,
+) {
+    Row(
+        modifier =
                 Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 96.dp),
+                    .padding(bottom = 72.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilledTonalIconButton(
+            onClick = onUndo,
+            enabled = canUndo,
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
-                imageVector = mapMode.icon(),
-                contentDescription =
-                    stringResource(
-                        R.string.map_mode_content_description,
-                        stringResource(mapMode.labelResource()),
-                    ),
+                imageVector = Icons.Filled.Remove,
+                contentDescription = stringResource(R.string.map_route_tools_undo_point_content_description),
+            )
+        }
+        FilledTonalIconButton(
+            onClick = onSelectCenter,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = stringResource(R.string.map_route_tools_select_center_content_description),
             )
         }
     }
@@ -2956,6 +3129,7 @@ private fun phoneMapNorthIndicator(compassPresentation: PhoneMapCompassPresentat
             text = stringResource(R.string.map_north_indicator_label),
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             color = Color.Black,
+            fontSize = 10.sp,
         )
     }
 }
@@ -2998,17 +3172,17 @@ private fun BoxScope.phoneMapDistanceMeasurementCard(
 private fun BoxScope.phoneMapLiveMetrics(
     location: PhoneMapLocation?,
     elevationMeters: Double?,
-    position: PhoneMapLiveMetricsPosition,
+    position: PhoneMapLiveMetricsPosition?,
     mapMode: PhoneMapMode,
     mapSettings: PhoneMapSettings,
     isMetric: Boolean,
 ) {
-    if (!mapMode.isDetachedFromLocation) return
+    if (!mapMode.isDetachedFromLocation || position == null) return
     val liveDistance =
-        if (mapSettings.liveDistanceEnabled && location != null) {
-            phoneMapDistanceMeters(
-                PhoneMapCoordinate(location.latitude, location.longitude),
-                position.target,
+        if (mapSettings.liveDistanceEnabled) {
+            phoneMapLiveDistanceMeters(
+                position = position,
+                fallbackOrigin = location?.let { user -> PhoneMapCoordinate(user.latitude, user.longitude) },
             )
         } else {
             null
@@ -3222,7 +3396,12 @@ private fun createMapView(
             }
         mapView.setOnTouchListener { _, event ->
             twoFingerTapDetector.onTouchEvent(event)
-            longPressDetector.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                longPressDetector.cancelPhoneMapLongPress(event)
+            }
+            if (event.pointerCount == 1) {
+                longPressDetector.onTouchEvent(event)
+            }
             false
         }
         val generation = callbacks.onCreated(mapView)

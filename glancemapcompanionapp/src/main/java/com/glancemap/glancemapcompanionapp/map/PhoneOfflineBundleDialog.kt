@@ -1,10 +1,14 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.text.format.Formatter
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.trailcore.oam.OamDownloadArea
 import com.glancemap.trailcore.oam.OamDownloadCatalog
 
 /** Phone offline bundle selector for map, POI, routing, and elevation data. */
@@ -38,7 +43,9 @@ internal fun PhoneOfflineBundleDialog(
     uiState: PhoneOfflineBundleUiState,
     onDismiss: () -> Unit,
     onStart: (PhoneOfflineBundleSelection) -> Unit,
-    onCancel: () -> Unit,
+    onPause: () -> Unit,
+    onStop: () -> Unit,
+    onResume: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onRefreshSelected: () -> Unit,
     onToggleRefreshSelection: (String) -> Unit,
@@ -47,6 +54,7 @@ internal fun PhoneOfflineBundleDialog(
 ) {
     var query by remember { mutableStateOf("") }
     var selectedAreaId by remember { mutableStateOf<String?>(null) }
+    var selectedAreaFolder by remember { mutableStateOf<String?>(null) }
     var includeRouting by remember { mutableStateOf(true) }
     var includeDem by remember { mutableStateOf(true) }
     var includeRefugesInfo by remember { mutableStateOf(false) }
@@ -60,6 +68,7 @@ internal fun PhoneOfflineBundleDialog(
         PhoneOfflineBundleSelectorState(
             query = query,
             selectedAreaId = selectedAreaId,
+            selectedAreaFolder = selectedAreaFolder,
             installedAreaIds = uiState.installedAreaIds,
             statusByAreaId = uiState.statusByAreaId,
         )
@@ -89,6 +98,8 @@ internal fun PhoneOfflineBundleDialog(
                     selectorState = selectorState,
                     onQueryChanged = { query = it },
                     onAreaSelected = { selectedAreaId = it },
+                    onFolderSelected = { selectedAreaFolder = it },
+                    onFolderCleared = { selectedAreaFolder = null },
                     includeRouting = includeRouting,
                     onIncludeRoutingChanged = { includeRouting = it },
                     includeDem = includeDem,
@@ -111,6 +122,8 @@ internal fun PhoneOfflineBundleDialog(
                     selectorState = selectorState,
                     onQueryChanged = { query = it },
                     onAreaSelected = { selectedAreaId = it },
+                    onFolderSelected = { selectedAreaFolder = it },
+                    onFolderCleared = { selectedAreaFolder = null },
                     includeRouting = includeRouting,
                     onIncludeRoutingChanged = { includeRouting = it },
                     includeDem = includeDem,
@@ -125,7 +138,26 @@ internal fun PhoneOfflineBundleDialog(
         confirmButton = {
             when {
                 state is PhoneOfflineBundleDownloadState.Downloading ->
-                    TextButton(onClick = onCancel) { Text(stringResource(R.string.common_action_cancel)) }
+                    Row(horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onPause) {
+                            Text(stringResource(R.string.map_bundle_action_pause))
+                        }
+                        TextButton(onClick = onStop) {
+                            Text(stringResource(R.string.map_bundle_action_stop))
+                        }
+                    }
+                state is PhoneOfflineBundleDownloadState.Paused ->
+                    TextButton(onClick = onResume) {
+                        Text(stringResource(R.string.map_bundle_action_resume))
+                    }
+                state is PhoneOfflineBundleDownloadState.Stopped ->
+                    TextButton(onClick = onResume) {
+                        Text(stringResource(R.string.map_bundle_action_restart))
+                    }
+                state is PhoneOfflineBundleDownloadState.Failed ->
+                    TextButton(onClick = onResume) {
+                        Text(stringResource(R.string.map_bundle_action_retry))
+                    }
                 uiState.isCheckingUpdates ->
                     TextButton(onClick = {}, enabled = false) {
                         Text(stringResource(R.string.map_bundle_refresh_checking))
@@ -217,6 +249,8 @@ private fun phoneOfflineBundleDialogContent(
     selectorState: PhoneOfflineBundleSelectorState,
     onQueryChanged: (String) -> Unit,
     onAreaSelected: (String) -> Unit,
+    onFolderSelected: (String) -> Unit,
+    onFolderCleared: () -> Unit,
     includeRouting: Boolean,
     onIncludeRoutingChanged: (Boolean) -> Unit,
     includeDem: Boolean,
@@ -233,9 +267,22 @@ private fun phoneOfflineBundleDialogContent(
                 if (state.progress.detail.isNotBlank()) Text(state.progress.detail)
                 bundleProgress(state.progress)
             }
+            is PhoneOfflineBundleDownloadState.Paused -> {
+                Text(stringResource(R.string.map_bundle_status_paused))
+                if (state.progress.detail.isNotBlank()) Text(state.progress.detail)
+                bundleProgress(state.progress)
+            }
+            is PhoneOfflineBundleDownloadState.Stopped -> {
+                Text(stringResource(R.string.map_bundle_status_stopped))
+                if (state.progress.detail.isNotBlank()) Text(state.progress.detail)
+                bundleProgress(state.progress)
+            }
             is PhoneOfflineBundleDownloadState.Completed ->
                 Text(stringResource(R.string.map_bundle_status_complete, state.bundle.areaLabel))
-            is PhoneOfflineBundleDownloadState.Failed -> Text(stringResource(state.reason.stringResource()))
+            is PhoneOfflineBundleDownloadState.Failed -> {
+                Text(stringResource(R.string.map_bundle_status_retry))
+                Text(stringResource(state.reason.stringResource()))
+            }
             PhoneOfflineBundleDownloadState.Cancelled ->
                 Text(stringResource(R.string.map_bundle_status_cancelled))
             PhoneOfflineBundleDownloadState.Idle ->
@@ -244,6 +291,8 @@ private fun phoneOfflineBundleDialogContent(
                         selectorState = selectorState,
                         onQueryChanged = onQueryChanged,
                         onAreaSelected = onAreaSelected,
+                        onFolderSelected = onFolderSelected,
+                        onFolderCleared = onFolderCleared,
                     )
                     bundleOptions(
                         includeRouting = includeRouting,
@@ -265,14 +314,29 @@ private fun phoneOfflineBundleAreaSelector(
     selectorState: PhoneOfflineBundleSelectorState,
     onQueryChanged: (String) -> Unit,
     onAreaSelected: (String) -> Unit,
+    onFolderSelected: (String) -> Unit,
+    onFolderCleared: () -> Unit,
 ) {
+    val areaFolders =
+        remember { phoneOfflineBundleAreaFolders(OamDownloadCatalog.areas) }
+    val areaSearchQueryNormalized = selectorState.query.trim()
     val matchingAreas =
-        remember(selectorState.query) {
-            OamDownloadCatalog.areas.filter { area ->
-                area.region.contains(selectorState.query, ignoreCase = true) ||
-                    area.continent.contains(selectorState.query, ignoreCase = true)
-            }
+        remember(areaSearchQueryNormalized, selectorState.selectedAreaFolder) {
+            OamDownloadCatalog.areas
+                .asSequence()
+                .filter { area ->
+                    selectorState.selectedAreaFolder == null ||
+                        area.continent == selectorState.selectedAreaFolder
+                }.filter { area ->
+                    areaSearchQueryNormalized.isBlank() ||
+                        area.region.contains(areaSearchQueryNormalized, ignoreCase = true) ||
+                        area.continent.contains(areaSearchQueryNormalized, ignoreCase = true)
+                }.sortedWith(compareBy<OamDownloadArea> { it.continent }.thenBy { it.region })
+                .toList()
         }
+    val showingAreaResults = areaSearchQueryNormalized.isNotBlank() || selectorState.selectedAreaFolder != null
+    val countriesLabel = stringResource(R.string.map_bundle_countries)
+    val regionsLabel = stringResource(R.string.map_bundle_regions)
     TextField(
         value = selectorState.query,
         onValueChange = onQueryChanged,
@@ -280,36 +344,65 @@ private fun phoneOfflineBundleAreaSelector(
         modifier = Modifier.fillMaxWidth(),
     )
     LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-        items(matchingAreas, key = { it.id }) { area ->
-            TextButton(
-                onClick = { onAreaSelected(area.id) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(area.region)
-                    Text(
-                        stringResource(
-                            R.string.map_bundle_area_sizes,
-                            area.mapSizeLabel,
-                            area.poiSizeLabel,
-                        ),
-                    )
-                    if (area.id in selectorState.installedAreaIds) {
-                        Text(stringResource(R.string.map_bundle_area_installed))
-                    } else if (
-                        selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.RECOVERY_NEEDED
-                    ) {
-                        Text(stringResource(R.string.map_bundle_area_recovery))
-                    } else if (selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.PARTIAL) {
-                        Text(stringResource(R.string.map_bundle_area_partial))
-                    } else if (area.id == selectorState.selectedAreaId) {
-                        Text(stringResource(R.string.map_bundle_area_selected))
+        if (!showingAreaResults) {
+            val (countryFolders, regionFolders) =
+                areaFolders.partition { (folder, _) -> folder in PHONE_BUNDLE_COUNTRY_FOLDERS }
+            phoneOfflineBundleFolderGroup(
+                label = countriesLabel,
+                folders = countryFolders,
+                selectedAreaId = selectorState.selectedAreaId,
+                onFolderSelected = onFolderSelected,
+            )
+            phoneOfflineBundleFolderGroup(
+                label = regionsLabel,
+                folders = regionFolders,
+                selectedAreaId = selectorState.selectedAreaId,
+                onFolderSelected = onFolderSelected,
+            )
+        } else {
+            if (selectorState.selectedAreaFolder != null) {
+                item {
+                    TextButton(onClick = onFolderCleared) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.map_bundle_back_to_folders))
+                    }
+                }
+            }
+            items(matchingAreas, key = { it.id }) { area ->
+                TextButton(
+                    onClick = { onAreaSelected(area.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(area.region)
+                        Text(
+                            stringResource(
+                                R.string.map_bundle_area_sizes,
+                                area.mapSizeLabel,
+                                area.poiSizeLabel,
+                            ),
+                        )
+                        if (area.id in selectorState.installedAreaIds) {
+                            Text(stringResource(R.string.map_bundle_area_installed))
+                        } else if (
+                            selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.RECOVERY_NEEDED
+                        ) {
+                            Text(stringResource(R.string.map_bundle_area_recovery))
+                        } else if (selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.PARTIAL) {
+                            Text(stringResource(R.string.map_bundle_area_partial))
+                        } else if (area.id == selectorState.selectedAreaId) {
+                            Text(stringResource(R.string.map_bundle_area_selected))
+                        }
                     }
                 }
             }
         }
     }
-    if (matchingAreas.isEmpty()) {
+    if (showingAreaResults && matchingAreas.isEmpty()) {
         Text(
             text = stringResource(R.string.map_bundle_no_areas),
             modifier = Modifier.padding(top = 8.dp),
@@ -317,9 +410,44 @@ private fun phoneOfflineBundleAreaSelector(
     }
 }
 
+private fun LazyListScope.phoneOfflineBundleFolderGroup(
+    label: String,
+    folders: List<Pair<String, List<OamDownloadArea>>>,
+    selectedAreaId: String?,
+    onFolderSelected: (String) -> Unit,
+) {
+    if (folders.isEmpty()) return
+    item { Text(text = label, modifier = Modifier.fillMaxWidth()) }
+    folders.forEach { (folder, folderAreas) ->
+        val hasSelectedArea = folderAreas.any { it.id == selectedAreaId }
+        item {
+            ListItem(
+                headlineContent = { Text(folder) },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            if (hasSelectedArea) {
+                                R.string.map_bundle_folder_area_count_selected
+                            } else {
+                                R.string.map_bundle_folder_area_count
+                            },
+                            folderAreas.size,
+                        ),
+                    )
+                },
+                leadingContent = {
+                    Icon(imageVector = Icons.Filled.Folder, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth().clickable { onFolderSelected(folder) },
+            )
+        }
+    }
+}
+
 private data class PhoneOfflineBundleSelectorState(
     val query: String,
     val selectedAreaId: String?,
+    val selectedAreaFolder: String?,
     val installedAreaIds: Set<String>,
     val statusByAreaId: Map<String, PhoneOfflineBundleHealth>,
 )
@@ -369,6 +497,16 @@ private fun bundleOptions(
         }
     }
 }
+
+private val PHONE_BUNDLE_COUNTRY_FOLDERS = setOf("Canada", "Germany", "Russia", "USA")
+
+internal fun phoneOfflineBundleAreaFolders(
+    areas: List<OamDownloadArea>,
+): List<Pair<String, List<OamDownloadArea>>> =
+    areas
+        .groupBy { it.continent }
+        .toSortedMap()
+        .map { (continent, folderAreas) -> continent to folderAreas.sortedBy { it.region } }
 
 @Composable
 private fun bundleProgress(progress: PhoneOfflineBundleProgress) {

@@ -163,9 +163,10 @@ class RefugesGeoJsonPoiImporter(
                 reportProgress?.invoke(78, "Saving Refuges.info POI…")
                 val writeStartedAtMs = SystemClock.elapsedRealtime()
                 val temporary = File(outputDir, ".${outputFile.name}.refuges.part")
-                temporary.delete()
+                var installed = false
                 val categoryCount =
                     try {
+                        check(!temporary.exists() || temporary.delete()) { "Could not reset temporary Refuges.info POI." }
                         val categories =
                             writePoiFile(
                                 file = temporary,
@@ -177,9 +178,10 @@ class RefugesGeoJsonPoiImporter(
                         check(isReadablePoiSqliteFile(temporary)) { "Generated Refuges.info POI is invalid." }
                         check(!outputFile.exists() || outputFile.delete()) { "Could not replace Refuges.info POI." }
                         check(temporary.renameTo(outputFile)) { "Could not install Refuges.info POI." }
+                        installed = true
                         categories
                     } finally {
-                        temporary.delete()
+                        if (installed && temporary.exists()) temporary.delete()
                     }
                 val writeDurationMs = SystemClock.elapsedRealtime() - writeStartedAtMs
                 persistLastRequest(

@@ -29,7 +29,17 @@ internal data class PhoneMapScreenPoint(
 internal data class PhoneMapLiveMetricsPosition(
     val target: PhoneMapCoordinate,
     val userScreenPoint: PhoneMapScreenPoint?,
+    /** Geographic origin represented by the rendered location marker. */
+    val origin: PhoneMapCoordinate? = null,
 )
+
+internal fun phoneMapLiveDistanceMeters(
+    position: PhoneMapLiveMetricsPosition,
+    fallbackOrigin: PhoneMapCoordinate?,
+): Double? =
+    (position.origin ?: fallbackOrigin)?.let { origin ->
+        phoneMapDistanceMeters(origin, position.target)
+    }
 
 internal fun phoneMapDistanceMeters(
     first: PhoneMapCoordinate,

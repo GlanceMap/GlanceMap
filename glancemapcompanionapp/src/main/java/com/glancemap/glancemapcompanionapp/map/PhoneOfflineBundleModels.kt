@@ -4,6 +4,9 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import com.glancemap.trailcore.oam.OamDownloadArea
+import com.glancemap.trailcore.oam.OamDownloadCatalog
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.URI
 import java.util.Locale
@@ -240,6 +243,141 @@ internal enum class PhoneOfflineBundleFailure {
     INVALID_POI,
     INVALID_REFUGES_INFO,
     CANCELLED,
+}
+
+internal enum class PhoneOfflineBundleOperationStatus {
+    RUNNING,
+    PAUSED,
+}
+
+/** Persisted operation plan used by the foreground bundle service. */
+internal data class PhoneOfflineBundleOperation(
+    val selections: List<PhoneOfflineBundleSelection>,
+    val refreshForces: List<PhoneOfflineBundleRefreshForces> = emptyList(),
+    val nextSelectionIndex: Int = 0,
+    val status: PhoneOfflineBundleOperationStatus = PhoneOfflineBundleOperationStatus.RUNNING,
+) {
+    fun forcesFor(index: Int): PhoneOfflineBundleRefreshForces = refreshForces.getOrNull(index) ?: PhoneOfflineBundleRefreshForces()
+}
+
+internal class PhoneOfflineBundleOperationStore(
+    context: Context,
+) {
+    private val preferences =
+        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    fun load(): PhoneOfflineBundleOperation? {
+        val encoded = preferences.getString(KEY_OPERATION, null) ?: return null
+        return runCatching {
+            val root = JSONObject(encoded)
+            val status =
+                PhoneOfflineBundleOperationStatus.valueOf(
+                    root.optString("status", PhoneOfflineBundleOperationStatus.RUNNING.name),
+                )
+            val selectionsJson = root.optJSONArray("selections") ?: return@runCatching null
+            val entries =
+                buildList {
+                    for (index in 0 until selectionsJson.length()) {
+                        val value = selectionsJson.optJSONObject(index)
+                        selectionFromJson(value)?.let { selection ->
+                            add(selection to refreshForcesFromJson(value))
+                        }
+                    }
+                }
+            if (entries.isEmpty()) {
+                null
+            } else {
+                PhoneOfflineBundleOperation(
+                    selections = entries.map { entry -> entry.first },
+                    refreshForces = entries.map { entry -> entry.second },
+                    nextSelectionIndex =
+                        root.optInt("next_selection_index", 0).coerceIn(0, entries.size),
+                    status = status,
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun save(operation: PhoneOfflineBundleOperation) {
+        val root =
+            JSONObject().apply {
+                put("status", operation.status.name)
+                put("next_selection_index", operation.nextSelectionIndex.coerceAtLeast(0))
+                put(
+                    "selections",
+                    JSONArray().apply {
+                        operation.selections.forEachIndexed { index, selection ->
+                            put(selection.toJson(operation.forcesFor(index)))
+                        }
+                    },
+                )
+            }
+        preferences.edit().putString(KEY_OPERATION, root.toString()).commit()
+    }
+
+    fun clear() {
+        preferences.edit().remove(KEY_OPERATION).commit()
+    }
+
+    private fun selectionFromJson(value: JSONObject?): PhoneOfflineBundleSelection? {
+        value ?: return null
+        val areaId = value.optString("area_id").takeIf(String::isNotBlank) ?: return null
+        val area = OamDownloadCatalog.areas.firstOrNull { it.id == areaId } ?: return null
+        return PhoneOfflineBundleSelection(
+            area = area,
+            includeMap = value.optBoolean("include_map", true),
+            includePoi = value.optBoolean("include_poi", true),
+            includeRouting = value.optBoolean("include_routing", true),
+            includeDem = value.optBoolean("include_dem", true),
+            demSource = PhoneOfflineDemSource.fromId(value.optString("dem_source")),
+            includeRefugesInfo = value.optBoolean("include_refuges_info", false),
+        )
+    }
+
+    private fun refreshForcesFromJson(
+        value: JSONObject?,
+    ): PhoneOfflineBundleRefreshForces {
+        value ?: return PhoneOfflineBundleRefreshForces()
+        return PhoneOfflineBundleRefreshForces(
+            forceMap = value.optBoolean("force_map", false),
+            forcePoi = value.optBoolean("force_poi", false),
+            forceRefugesInfo = value.optBoolean("force_refuges_info", false),
+            forceRouting = value.optBoolean("force_routing", false),
+            forceDemTileIds =
+                value
+                    .optJSONArray("force_dem_tiles")
+                    ?.let { tiles ->
+                        buildSet {
+                            for (index in 0 until tiles.length()) {
+                                tiles.optString(index).takeIf(String::isNotBlank)?.let(::add)
+                            }
+                        }
+                    }.orEmpty(),
+        )
+    }
+
+    private fun PhoneOfflineBundleSelection.toJson(
+        forces: PhoneOfflineBundleRefreshForces,
+    ): JSONObject =
+        JSONObject().apply {
+            put("area_id", area.id)
+            put("include_map", includeMap)
+            put("include_poi", includePoi)
+            put("include_routing", includeRouting)
+            put("include_dem", includeDem)
+            put("dem_source", demSource.id)
+            put("include_refuges_info", includeRefugesInfo)
+            put("force_map", forces.forceMap)
+            put("force_poi", forces.forcePoi)
+            put("force_refuges_info", forces.forceRefugesInfo)
+            put("force_routing", forces.forceRouting)
+            put("force_dem_tiles", JSONArray().apply { forces.forceDemTileIds.forEach(::put) })
+        }
+
+    private companion object {
+        const val PREFERENCES_NAME = "phone_oam_download_operation"
+        const val KEY_OPERATION = "operation"
+    }
 }
 
 internal enum class PhoneOfflineBundleStatus {

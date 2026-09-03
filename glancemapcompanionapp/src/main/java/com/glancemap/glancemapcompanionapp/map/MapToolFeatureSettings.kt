@@ -7,10 +7,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -57,6 +61,9 @@ internal fun MapToolFeatureSettingsSection.titleResource(tool: MapTool): Int =
         MapToolFeatureSettingsSection.GPX_ANALYSIS -> R.string.map_tools_gpx_settings_analysis_heading
         MapToolFeatureSettingsSection.POI_SOURCES -> R.string.map_tools_poi_settings_sources_heading
         MapToolFeatureSettingsSection.POI_APPEARANCE -> R.string.map_tools_poi_settings_appearance_heading
+        MapToolFeatureSettingsSection.GENERAL_DATA -> R.string.map_tools_settings_data_title
+        MapToolFeatureSettingsSection.GENERAL_ACTIVITY -> R.string.map_tools_settings_activity_profile
+        MapToolFeatureSettingsSection.GENERAL_SENSORS -> R.string.map_tools_settings_sensors_title
         MapToolFeatureSettingsSection.ROOT -> tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)
     }
 
@@ -82,11 +89,13 @@ internal fun MapToolFeatureSettingsContent(
         MapTool.LAYER -> Unit
         MapTool.SETTINGS ->
             mapToolsSettingsPanel(
+                section = section,
                 state = state.general,
                 onCycleMapMode = actions.onCycleMapMode,
                 onSettingsChanged = actions.onGeneralSettingsChanged,
                 onOpenBundleDownload = actions.onOpenBundleDownload,
                 onStorageChangeRequested = actions.onStorageChangeRequested,
+                onOpenSettingsSection = actions.onFeatureSettingsSection,
             )
     }
 }
@@ -527,7 +536,7 @@ private fun mapToolsMapScaleDelaySetting(
 }
 
 @Composable
-private fun mapToolsSettingsSection(
+internal fun mapToolsSettingsSection(
     title: String,
     summary: String,
     onClick: () -> Unit,
@@ -546,7 +555,7 @@ private fun mapToolsSettingsSection(
 }
 
 @Composable
-private fun <T> mapToolsMapSettingPicker(
+internal fun <T> mapToolsMapSettingPicker(
     label: String,
     selectedLabel: String,
     options: List<Pair<T, String>>,
@@ -558,14 +567,21 @@ private fun <T> mapToolsMapSettingPicker(
             Text("$label: $selectedLabel")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { (value, optionLabel) ->
-                DropdownMenuItem(
-                    text = { Text(optionLabel) },
-                    onClick = {
-                        expanded = false
-                        onSelect(value)
-                    },
-                )
+            Column(
+                modifier =
+                    Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+            ) {
+                options.forEach { (value, optionLabel) ->
+                    DropdownMenuItem(
+                        text = { Text(optionLabel) },
+                        onClick = {
+                            expanded = false
+                            onSelect(value)
+                        },
+                    )
+                }
             }
         }
     }
@@ -590,6 +606,7 @@ private fun mapToolsMapsToggle(
 internal fun mapToolsMapsQuickDisplaySettings(
     settings: PhoneMapSettings,
     onSettingsChanged: (PhoneMapSettings) -> Unit,
+    showOfflineOnlyOptions: Boolean = true,
 ) {
     HorizontalDivider()
     Text(stringResource(R.string.map_tools_maps_quick_display_heading))
@@ -608,21 +625,23 @@ internal fun mapToolsMapsQuickDisplaySettings(
         checked = settings.distanceMeasurementEnabled,
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(distanceMeasurementEnabled = enabled)) },
     )
-    mapToolsMapsToggle(
-        label = stringResource(R.string.map_tools_maps_hill_shading),
-        checked = settings.hillShadingEnabled,
-        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
-    )
-    mapToolsMapsToggle(
-        label = stringResource(R.string.map_tools_maps_relief_overlay),
-        checked = settings.reliefOverlayEnabled,
-        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(reliefOverlayEnabled = enabled)) },
-    )
-    mapToolsMapsToggle(
-        label = stringResource(R.string.map_tools_maps_night_mode),
-        checked = settings.nightModeEnabled,
-        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(nightModeEnabled = enabled)) },
-    )
+    if (showOfflineOnlyOptions) {
+        mapToolsMapsToggle(
+            label = stringResource(R.string.map_tools_maps_hill_shading),
+            checked = settings.hillShadingEnabled,
+            onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
+        )
+        mapToolsMapsToggle(
+            label = stringResource(R.string.map_tools_maps_relief_overlay),
+            checked = settings.reliefOverlayEnabled,
+            onCheckedChange = { enabled -> onSettingsChanged(settings.copy(reliefOverlayEnabled = enabled)) },
+        )
+        mapToolsMapsToggle(
+            label = stringResource(R.string.map_tools_maps_night_mode),
+            checked = settings.nightModeEnabled,
+            onCheckedChange = { enabled -> onSettingsChanged(settings.copy(nightModeEnabled = enabled)) },
+        )
+    }
 }
 
 @Composable

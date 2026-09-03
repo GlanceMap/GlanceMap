@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import java.io.File
@@ -237,11 +238,13 @@ internal fun MapToolPanelContent(
                 )
             MapTool.SETTINGS ->
                 mapToolsSettingsPanel(
+                    section = MapToolFeatureSettingsSection.ROOT,
                     state = state.general,
                     onCycleMapMode = actions.onCycleMapMode,
                     onSettingsChanged = actions.onGeneralSettingsChanged,
                     onOpenBundleDownload = actions.onOpenBundleDownload,
                     onStorageChangeRequested = actions.onStorageChangeRequested,
+                    onOpenSettingsSection = actions.onFeatureSettingsSection,
                 )
         }
     }
@@ -431,37 +434,42 @@ private fun mapToolsMapsPanel(
                 Text(stringResource(R.string.map_source_no_offline_maps))
             } else {
                 val selectedOfflineMap = state.source.map
-                state.offlineMaps.forEach { offlineMap ->
-                    val availability =
-                        state.offlineMapAvailability[offlineMap.displayName]
-                            ?: PhoneOfflineMapAvailability()
-                    mapToolsOfflineMapRow(
-                        map = offlineMap,
-                        availability = availability,
-                        selected = selectedOfflineMap == offlineMap,
-                        onClick = { actions.onSelectOffline(offlineMap) },
-                        onRename = { actions.onRenameOfflineMap(offlineMap) },
-                        onDelete = { actions.onDeleteOfflineMap(offlineMap) },
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    state.offlineMaps.forEach { offlineMap ->
+                        val availability =
+                            state.offlineMapAvailability[offlineMap.displayName]
+                                ?: PhoneOfflineMapAvailability()
+                        mapToolsOfflineMapRow(
+                            map = offlineMap,
+                            availability = availability,
+                            selected = selectedOfflineMap == offlineMap,
+                            onClick = { actions.onSelectOffline(offlineMap) },
+                            onRename = { actions.onRenameOfflineMap(offlineMap) },
+                            onDelete = { actions.onDeleteOfflineMap(offlineMap) },
+                        )
+                    }
                 }
             }
         } else {
-            state.onlineSources.forEach { onlineSource ->
-                ListItem(
-                    headlineContent = {
-                        Text(PhoneMapRendererCatalog.comparisonOnlineSourceLabel(onlineSource))
-                    },
-                    leadingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                state.onlineSources.forEach { onlineSource ->
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { actions.onSelectOnline(onlineSource) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         RadioButton(
                             selected = onlineSource == state.selectedOnlineSource,
                             onClick = { actions.onSelectOnline(onlineSource) },
                         )
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { actions.onSelectOnline(onlineSource) },
-                )
+                        Text(
+                            text = PhoneMapRendererCatalog.comparisonOnlineSourceLabel(onlineSource),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
             }
         }
         if (state.source is PhoneMapSource.Offline) {
@@ -478,7 +486,11 @@ private fun mapToolsMapsPanel(
                 ),
             )
         }
-        mapToolsMapsQuickDisplaySettings(state.settings, actions.onSettingsChanged)
+        mapToolsMapsQuickDisplaySettings(
+            settings = state.settings,
+            onSettingsChanged = actions.onSettingsChanged,
+            showOfflineOnlyOptions = isOffline,
+        )
     }
 }
 
@@ -491,46 +503,50 @@ private fun mapToolsOfflineMapRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ListItem(
-        headlineContent = {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Column(
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+        ) {
             Text(
                 text = map.displayName,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        },
-        supportingContent = {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
+            Text(
+                stringResource(
+                    R.string.map_source_capability,
                     stringResource(
-                        R.string.map_source_capability,
-                        stringResource(
-                            if (availability.hasElevationData) {
-                                R.string.map_source_capability_available
-                            } else {
-                                R.string.map_source_capability_missing
-                            },
-                        ),
-                        stringResource(
-                            if (availability.hasRoutingData) {
-                                R.string.map_source_capability_available
-                            } else {
-                                R.string.map_source_capability_missing
-                            },
-                        ),
+                        if (availability.hasElevationData) {
+                            R.string.map_source_capability_available
+                        } else {
+                            R.string.map_source_capability_missing
+                        },
                     ),
-                )
-            }
-        },
-        leadingContent = { RadioButton(selected = selected, onClick = onClick) },
-        trailingContent = {
-            mapToolEditDeleteActions(
-                onRename = onRename,
-                onDelete = onDelete,
+                    stringResource(
+                        if (availability.hasRoutingData) {
+                            R.string.map_source_capability_available
+                        } else {
+                            R.string.map_source_capability_missing
+                        },
+                    ),
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-        },
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    )
+        }
+        mapToolEditDeleteActions(
+            onRename = onRename,
+            onDelete = onDelete,
+        )
+    }
 }
 
 @Composable
@@ -568,36 +584,38 @@ private fun mapToolsGpxPanel(
             else ->
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     state.items.forEach { item ->
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = item.displayName,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onItemToggled(item.id) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = item.displayName,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = item.enabled,
+                                    onCheckedChange = { onItemToggled(item.id) },
                                 )
-                            },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = item.enabled,
-                                        onCheckedChange = { onItemToggled(item.id) },
-                                    )
-                                    IconButton(onClick = { onOpenAnalysis(item) }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Timeline,
-                                            contentDescription =
-                                                stringResource(R.string.map_tools_gpx_open_analysis),
-                                        )
-                                    }
-                                    mapToolEditDeleteActions(
-                                        onRename = { onRenameItem(item) },
-                                        onDelete = { onDeleteItem(item) },
-                                        enabled = item.isEditable,
+                                IconButton(onClick = { onOpenAnalysis(item) }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Timeline,
+                                        contentDescription =
+                                            stringResource(R.string.map_tools_gpx_open_analysis),
                                     )
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth().clickable { onItemToggled(item.id) },
-                        )
+                                mapToolEditDeleteActions(
+                                    onRename = { onRenameItem(item) },
+                                    onDelete = { onDeleteItem(item) },
+                                    enabled = item.isEditable,
+                                )
+                            }
+                        }
                     }
                 }
         }
@@ -649,37 +667,41 @@ private fun mapToolsPoiPanel(
                                 stringResource(R.string.map_tools_poi_source_count, source.poiCount)
                             else -> stringResource(R.string.map_tools_poi_source_available)
                         }
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = source.fileName.substringBeforeLast("."),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        supportingContent = { Text(sourceSummary) },
-                        trailingContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Switch(
-                                    checked = source.isEnabled,
-                                    onCheckedChange = { enabled ->
-                                        onSourceVisibilityChanged(source.fileName, enabled)
-                                    },
-                                    enabled = source.isReadable,
-                                )
-                                mapToolEditDeleteActions(
-                                    onRename = { onRenameSource(source) },
-                                    onDelete = { onDeleteSource(source) },
-                                )
-                            }
-                        },
+                    Row(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = source.isReadable) {
                                     onSourceVisibilityChanged(source.fileName, !source.isEnabled)
                                 },
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = source.fileName.substringBeforeLast("."),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = sourceSummary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(
+                                checked = source.isEnabled,
+                                onCheckedChange = { enabled ->
+                                    onSourceVisibilityChanged(source.fileName, enabled)
+                                },
+                                enabled = source.isReadable,
+                            )
+                            mapToolEditDeleteActions(
+                                onRename = { onRenameSource(source) },
+                                onDelete = { onDeleteSource(source) },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -707,23 +729,105 @@ private fun mapToolEditDeleteActions(
 }
 
 @Composable
-@Suppress("LongMethod") // General settings keep their fixed, readable sensor/status sections together.
+@Suppress("LongMethod") // General settings keep their compact root and sensor detail sections together.
 internal fun mapToolsSettingsPanel(
+    section: MapToolFeatureSettingsSection,
     state: MapToolsGeneralState,
     onCycleMapMode: () -> Unit,
     onSettingsChanged: (PhoneGeneralSettings) -> Unit,
     onOpenBundleDownload: () -> Unit,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+    onOpenSettingsSection: (MapToolFeatureSettingsSection) -> Unit,
 ) {
-    mapToolPanelColumn {
-        Text(stringResource(R.string.map_tools_settings_heading))
-        ListItem(
-            headlineContent = { Text(stringResource(R.string.map_tools_settings_map_mode)) },
-            supportingContent = { Text(stringResource(state.mapMode.labelResource())) },
-        )
-        OutlinedButton(onClick = onCycleMapMode, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_tools_settings_cycle_map_mode))
-        }
+    when (section) {
+        MapToolFeatureSettingsSection.ROOT ->
+            mapToolPanelColumn(verticalSpacing = 4.dp) {
+                Text(stringResource(R.string.map_tools_settings_heading))
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_settings_map_mode),
+                    summary = stringResource(state.mapMode.labelResource()),
+                    onClick = onCycleMapMode,
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_settings_data_title),
+                    summary =
+                        stringResource(
+                            R.string.map_tools_settings_data_summary,
+                            state.storageLocation.label,
+                        ),
+                    onClick = {
+                        onOpenSettingsSection(MapToolFeatureSettingsSection.GENERAL_DATA)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_settings_units),
+                    summary =
+                        stringResource(
+                            if (state.settings.isMetric) {
+                                R.string.map_tools_settings_units_metric
+                            } else {
+                                R.string.map_tools_settings_units_imperial
+                            },
+                        ),
+                    onClick = {
+                        onSettingsChanged(state.settings.copy(isMetric = !state.settings.isMetric))
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_settings_activity_profile),
+                    summary =
+                        stringResource(
+                            R.string.map_tools_settings_activity_summary,
+                            stringResource(
+                                if (state.settings.activityProfile == PhoneActivityProfile.BIKE) {
+                                    R.string.map_tools_settings_activity_bike
+                                } else {
+                                    R.string.map_tools_settings_activity_hike
+                                },
+                            ),
+                        ),
+                    onClick = {
+                        onOpenSettingsSection(MapToolFeatureSettingsSection.GENERAL_ACTIVITY)
+                    },
+                )
+                mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_settings_sensors_title),
+                    summary = stringResource(R.string.map_tools_settings_sensors_summary),
+                    onClick = {
+                        onOpenSettingsSection(MapToolFeatureSettingsSection.GENERAL_SENSORS)
+                    },
+                )
+            }
+
+        MapToolFeatureSettingsSection.GENERAL_DATA ->
+            mapToolsGeneralDataSettings(
+                state = state,
+                onOpenBundleDownload = onOpenBundleDownload,
+                onStorageChangeRequested = onStorageChangeRequested,
+            )
+
+        MapToolFeatureSettingsSection.GENERAL_ACTIVITY ->
+            mapToolPanelColumn(verticalSpacing = 8.dp) {
+                mapToolsActivitySettings(
+                    settings = state.settings,
+                    onSettingsChanged = onSettingsChanged,
+                )
+            }
+
+        MapToolFeatureSettingsSection.GENERAL_SENSORS ->
+            mapToolsSensorSettings(state.sensorCapabilities)
+
+        else -> Unit
+    }
+}
+
+@Composable
+private fun mapToolsGeneralDataSettings(
+    state: MapToolsGeneralState,
+    onOpenBundleDownload: () -> Unit,
+    onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+) {
+    mapToolPanelColumn(verticalSpacing = 8.dp) {
         Text(stringResource(R.string.map_tools_settings_storage_heading))
         mapToolsStorageSetting(
             location = state.storageLocation,
@@ -736,39 +840,12 @@ internal fun mapToolsSettingsPanel(
         OutlinedButton(onClick = onOpenBundleDownload, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.map_tools_settings_download_bundle))
         }
-        ListItem(
-            headlineContent = { Text(stringResource(R.string.map_tools_settings_units)) },
-            supportingContent = {
-                Text(
-                    stringResource(
-                        if (state.settings.isMetric) {
-                            R.string.map_tools_settings_units_metric
-                        } else {
-                            R.string.map_tools_settings_units_imperial
-                        },
-                    ),
-                )
-            },
-        )
-        OutlinedButton(
-            onClick = { onSettingsChanged(state.settings.copy(isMetric = !state.settings.isMetric)) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                stringResource(
-                    if (state.settings.isMetric) {
-                        R.string.map_tools_settings_switch_to_imperial
-                    } else {
-                        R.string.map_tools_settings_switch_to_metric
-                    },
-                ),
-            )
-        }
-        mapToolsActivitySettings(
-            settings = state.settings,
-            onSettingsChanged = onSettingsChanged,
-        )
-        val capabilities = state.sensorCapabilities
+    }
+}
+
+@Composable
+private fun mapToolsSensorSettings(capabilities: PhoneSensorCapabilities) {
+    mapToolPanelColumn(verticalSpacing = 8.dp) {
         Text(stringResource(R.string.map_tools_settings_sensors_heading))
         listOf(
             "GPS" to capabilities.gpsAvailable,
@@ -852,14 +929,17 @@ private fun mapToolsActivitySettings(
 }
 
 @Composable
-internal fun mapToolPanelColumn(content: @Composable () -> Unit) {
+internal fun mapToolPanelColumn(
+    verticalSpacing: Dp = 12.dp,
+    content: @Composable () -> Unit,
+) {
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(verticalSpacing),
     ) {
         content()
         Spacer(modifier = Modifier.height(8.dp))

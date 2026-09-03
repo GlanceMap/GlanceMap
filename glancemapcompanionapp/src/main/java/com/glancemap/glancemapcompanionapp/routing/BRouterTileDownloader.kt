@@ -6,6 +6,7 @@ import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
+import com.glancemap.glancemapcompanionapp.map.isUsablePhoneRoutingFile
 import com.glancemap.glancemapcompanionapp.refuges.sanitizeRemoteHttpDetail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -375,86 +377,122 @@ internal class BRouterTileDownloader(
         reportProgress: (fraction: Double, status: String, detail: String) -> Unit,
     ) {
         val temp = File(target.parentFile, "${target.name}.tmp")
-        if (temp.exists()) temp.delete()
         throwIfCancellationRequested()
-        var completedSuccessfully = false
 
         val url = "$SEGMENTS_BASE_URL/$tileName"
-        val connection =
-            (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                requestMethod = "GET"
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", USER_AGENT)
-                setRequestProperty("Connection", "Keep-Alive")
-            }
-        activeConnection = connection
-
-        try {
-            val code =
-                try {
-                    connection.responseCode
-                } catch (error: IOException) {
-                    if (cancelRequested) throw CancellationException("Cancelled by user")
-                    throw error
+        var rangeRestartCount = 0
+        while (true) {
+            val resumeOffset = temp.length().takeIf { it > 0L } ?: 0L
+            val connection = openRoutingConnection(url, resumeOffset)
+            activeConnection = connection
+            try {
+                val code =
+                    try {
+                        connection.responseCode
+                    } catch (error: IOException) {
+                        if (cancelRequested) throw CancellationException("Cancelled by user")
+                        throw error
+                    }
+                throwIfCancellationRequested()
+                if (resumeOffset > 0L && (code == HttpURLConnection.HTTP_OK || code == 416)) {
+                    if (!temp.delete()) {
+                        throw IOException("Could not reset the partial routing pack: $tileName")
+                    }
+                    rangeRestartCount += 1
+                    if (rangeRestartCount > MAX_RANGE_RESTARTS) {
+                        throw RoutingDownloadHttpException(
+                            summarizeRoutingFailure(tileName, code, "Unable to resume partial file."),
+                            code,
+                        )
+                    }
+                    continue
                 }
-            throwIfCancellationRequested()
-            if (code == HttpURLConnection.HTTP_NOT_FOUND) {
-                throw FileNotFoundException("Routing pack not found: $tileName")
-            }
-            if (code !in 200..299) {
-                val detail = readResponseText(connection.errorStream, MAX_ERROR_RESPONSE_BYTES)
-                throw RoutingDownloadHttpException(
-                    summarizeRoutingFailure(tileName, code, detail),
-                    code,
-                )
-            }
-            val contentLength = connection.contentLengthLong.takeIf { it > 0L }
-            connection.inputStream.use { input ->
-                temp.outputStream().use { output ->
-                    copyWithProgress(
-                        input = input,
-                        totalBytes = contentLength,
-                        onProgress = { copiedBytes, fraction ->
-                            reportProgress(
-                                fraction,
-                                buildRoutingStatus(
-                                    forceRefresh = forceRefresh,
-                                    step = step,
-                                    totalSteps = totalSteps,
-                                    tileName = tileName,
-                                ),
-                                formatRoutingProgressDetail(
-                                    downloadedBytes = copiedBytes,
-                                    totalBytes = contentLength,
-                                ),
-                            )
-                        },
-                    ) { buffer, length ->
-                        output.write(buffer, 0, length)
+                if (code == HttpURLConnection.HTTP_NOT_FOUND) {
+                    throw FileNotFoundException("Routing pack not found: $tileName")
+                }
+                if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
+                    val detail = readResponseText(connection.errorStream, MAX_ERROR_RESPONSE_BYTES)
+                    throw RoutingDownloadHttpException(
+                        summarizeRoutingFailure(tileName, code, detail),
+                        code,
+                    )
+                }
+                val append = resumeOffset > 0L && code == HttpURLConnection.HTTP_PARTIAL
+                val initialBytes = if (append) resumeOffset else 0L
+                if (!append && resumeOffset > 0L && !temp.delete()) {
+                    throw IOException("Could not reset the partial routing pack: $tileName")
+                }
+                val responseLength = connection.contentLengthLong.takeIf { it > 0L }
+                val totalBytes = responseLength?.let { it + initialBytes }
+                connection.inputStream.use { input ->
+                    FileOutputStream(temp, append).use { output ->
+                        copyWithProgress(
+                            input = input,
+                            totalBytes = responseLength,
+                            onProgress = { copiedBytes, _ ->
+                                val downloadedBytes = initialBytes + copiedBytes
+                                val fraction =
+                                    if (totalBytes != null && totalBytes > 0L) {
+                                        (downloadedBytes.toDouble() / totalBytes).coerceIn(0.0, 1.0)
+                                    } else {
+                                        0.0
+                                    }
+                                reportProgress(
+                                    fraction,
+                                    buildRoutingStatus(
+                                        forceRefresh = forceRefresh,
+                                        step = step,
+                                        totalSteps = totalSteps,
+                                        tileName = tileName,
+                                    ),
+                                    formatRoutingProgressDetail(
+                                        downloadedBytes = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                    ),
+                                )
+                            },
+                        ) { buffer, length ->
+                            output.write(buffer, 0, length)
+                        }
                     }
                 }
-            }
-            if (temp.length() <= 0L) {
-                throw IllegalStateException("Downloaded routing pack is empty: $tileName")
-            }
-            if (target.exists()) target.delete()
-            if (!temp.renameTo(target)) {
-                temp.copyTo(target, overwrite = true)
-                temp.delete()
-            }
-            completedSuccessfully = true
-        } finally {
-            if (!completedSuccessfully || cancelRequested) {
+                if (totalBytes != null && temp.length() != totalBytes) {
+                    throw IOException("Incomplete routing pack: ${temp.length()}/$totalBytes bytes.")
+                }
+                if (!isUsablePhoneRoutingFile(temp)) {
+                    throw IOException("Downloaded routing pack is invalid: $tileName")
+                }
+                if (temp.length() <= 0L) {
+                    throw IllegalStateException("Downloaded routing pack is empty: $tileName")
+                }
+                if (target.exists()) target.delete()
+                if (!temp.renameTo(target)) {
+                    temp.copyTo(target, overwrite = true)
+                    temp.delete()
+                }
+                return
+            } finally {
                 connection.disconnect()
+                if (activeConnection === connection) {
+                    activeConnection = null
+                }
             }
-            if (activeConnection === connection) {
-                activeConnection = null
-            }
-            if (temp.exists()) temp.delete()
         }
     }
+
+    private fun openRoutingConnection(
+        url: String,
+        resumeOffset: Long,
+    ): HttpURLConnection =
+        (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", USER_AGENT)
+            setRequestProperty("Connection", "Keep-Alive")
+            if (resumeOffset > 0L) setRequestProperty("Range", "bytes=$resumeOffset-")
+        }
 
     private fun copyWithProgress(
         input: InputStream,
@@ -609,6 +647,7 @@ internal class BRouterTileDownloader(
         const val DOWNLOAD_PROGRESS_STEP_BYTES = 1_048_576L
         const val MAX_DOWNLOAD_ATTEMPTS = 3
         const val RETRY_BACKOFF_BASE_MS = 1_500L
+        const val MAX_RANGE_RESTARTS = 2
     }
 
     private class RoutingDownloadHttpException(

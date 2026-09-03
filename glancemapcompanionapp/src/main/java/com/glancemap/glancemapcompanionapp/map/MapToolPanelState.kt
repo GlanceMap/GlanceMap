@@ -44,6 +44,9 @@ internal enum class MapToolFeatureSettingsSection {
     GPX_ANALYSIS,
     POI_SOURCES,
     POI_APPEARANCE,
+    GENERAL_DATA,
+    GENERAL_ACTIVITY,
+    GENERAL_SENSORS,
 }
 
 /** Pure panel navigation state, deliberately separate from map renderer and content state. */
@@ -129,13 +132,12 @@ internal data class MapToolPanelState(
             MapTool.MAPS -> section in mapFeatureSettingsSections
             MapTool.GPX -> section in gpxFeatureSettingsSections
             MapTool.POI -> section in poiFeatureSettingsSections
-            MapTool.LAYER,
-            MapTool.SETTINGS,
-            -> false
+            MapTool.LAYER -> false
+            MapTool.SETTINGS -> section in generalFeatureSettingsSections
         }
 
     private companion object {
-        val featureSettingsTools = setOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)
+        val featureSettingsTools = setOf(MapTool.POI, MapTool.GPX, MapTool.MAPS, MapTool.SETTINGS)
         val mapFeatureSettingsSections =
             setOf(
                 MapToolFeatureSettingsSection.ROOT,
@@ -158,6 +160,13 @@ internal data class MapToolPanelState(
                 MapToolFeatureSettingsSection.ROOT,
                 MapToolFeatureSettingsSection.POI_SOURCES,
                 MapToolFeatureSettingsSection.POI_APPEARANCE,
+            )
+        val generalFeatureSettingsSections =
+            setOf(
+                MapToolFeatureSettingsSection.ROOT,
+                MapToolFeatureSettingsSection.GENERAL_DATA,
+                MapToolFeatureSettingsSection.GENERAL_ACTIVITY,
+                MapToolFeatureSettingsSection.GENERAL_SENSORS,
             )
     }
 }

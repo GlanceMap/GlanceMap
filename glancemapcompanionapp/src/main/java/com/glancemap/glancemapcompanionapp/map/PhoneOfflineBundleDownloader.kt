@@ -17,6 +17,7 @@ import org.mapsforge.map.reader.MapFile
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -24,6 +25,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.util.Collections
 import java.util.Locale
+import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 
 private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
@@ -71,6 +73,7 @@ internal class PhoneOfflineBundleDownloader(
 ) {
     private val applicationContext = context.applicationContext
     private val storage = PhoneOfflineStorage(applicationContext)
+    private val downloadDirectory: File by lazy { storage.bundleDownloadDirectory() }
     private val activeConnections = Collections.synchronizedSet(mutableSetOf<HttpURLConnection>())
     private val refugesImporter = RefugesGeoJsonPoiImporter(applicationContext)
 
@@ -538,9 +541,11 @@ internal class PhoneOfflineBundleDownloader(
                 url = url,
                 fileName = "$areaId-map.zip",
                 phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
+                resetPartial = replaceExisting,
                 onResponseMetadata = onResponseMetadata,
                 onProgress = onProgress,
             )
+        var installed = false
         return try {
             extractExpectedEntry(
                 archive = archive,
@@ -554,9 +559,15 @@ internal class PhoneOfflineBundleDownloader(
                     is PhoneOfflineMapBundleInstallResult.Failure ->
                         throw PhoneOfflineBundleDownloadException(result.error.toMapFailure())
                 }
-            }
-        } finally {
+            }.also { installed = true }
+        } catch (error: PhoneOfflineBundleDownloadException) {
+            if (error.reason == PhoneOfflineBundleFailure.ARCHIVE) archive.delete()
+            throw error
+        } catch (error: ZipException) {
             archive.delete()
+            throw error
+        } finally {
+            if (installed) archive.delete()
         }
     }
 
@@ -572,9 +583,11 @@ internal class PhoneOfflineBundleDownloader(
                 url = url,
                 fileName = "$areaId-poi.zip",
                 phase = PhoneOfflineBundlePhase.DOWNLOADING_POI,
+                resetPartial = replaceExisting,
                 onResponseMetadata = onResponseMetadata,
                 onProgress = onProgress,
             )
+        var installed = false
         return try {
             extractExpectedEntry(
                 archive = archive,
@@ -583,9 +596,15 @@ internal class PhoneOfflineBundleDownloader(
                 onProgress = onProgress,
             ) { fileName, input, entryProgress ->
                 installPoi(fileName, input, entryProgress, replaceExisting)
-            }
-        } finally {
+            }.also { installed = true }
+        } catch (error: PhoneOfflineBundleDownloadException) {
+            if (error.reason == PhoneOfflineBundleFailure.ARCHIVE) archive.delete()
+            throw error
+        } catch (error: ZipException) {
             archive.delete()
+            throw error
+        } finally {
+            if (installed) archive.delete()
         }
     }
 
@@ -593,47 +612,55 @@ internal class PhoneOfflineBundleDownloader(
         url: String,
         fileName: String,
         phase: PhoneOfflineBundlePhase,
+        resetPartial: Boolean,
         onResponseMetadata: (PhoneOfflineRemoteFileMetadata) -> Unit,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
     ): File {
-        val archive = File(applicationContext.cacheDir, File(fileName).name)
-        val temporary = File(applicationContext.cacheDir, ".${archive.name}.part")
-        archive.delete()
-        temporary.delete()
+        val safeFileName = File(fileName).name
+        val archive = File(downloadDirectory, safeFileName)
+        val temporary = File(downloadDirectory, ".${archive.name}.part")
+        migrateLegacyArchiveFile(File(applicationContext.cacheDir, safeFileName), archive)
+        migrateLegacyArchiveFile(File(applicationContext.cacheDir, ".${archive.name}.part"), temporary)
+        if (resetPartial) {
+            archive.delete()
+        }
+        if (archive.isFile && archive.length() > 0L) return archive
+        if (archive.exists()) archive.delete()
 
-        val connection = openConnection(url)
-        activeConnections += connection
-        var completed = false
-        try {
-            val responseCode = connection.responseCode
-            if (responseCode !in HttpURLConnection.HTTP_OK..HttpURLConnection.HTTP_PARTIAL) {
-                downloadFailure(PhoneOfflineBundleFailure.HTTP)
+        downloadToTemporary(
+            url = url,
+            temporary = temporary,
+            phase = phase,
+            // A forced refresh invalidates the completed archive, but a saved .part file is
+            // still useful when the previous forced refresh was interrupted.
+            resetPartial = false,
+            onResponseMetadata = { connection, totalBytes ->
+                onResponseMetadata(
+                    connection.remoteMetadata(
+                        url = url,
+                        fileName = phoneOfflineRemoteFileName(url),
+                        contentLengthOverride = totalBytes,
+                    ),
+                )
+            },
+            onProgress = onProgress,
+        )
+        if (!temporary.renameTo(archive)) {
+            throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
+        }
+        return archive
+    }
+
+    private fun migrateLegacyArchiveFile(
+        source: File,
+        target: File,
+    ) {
+        if (!source.exists() || target.exists()) return
+        runCatching {
+            if (!source.renameTo(target)) {
+                source.copyTo(target, overwrite = false)
+                source.delete()
             }
-            onResponseMetadata(connection.remoteMetadata(url, phoneOfflineRemoteFileName(url)))
-            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
-            onProgress(PhoneOfflineBundleProgress(phase = phase, totalBytes = totalBytes))
-            connection.inputStream.use { input ->
-                temporary.outputStream().use { output ->
-                    input.copyWithProgress(output, totalBytes) { bytes ->
-                        onProgress(
-                            PhoneOfflineBundleProgress(
-                                phase = phase,
-                                bytesDownloaded = bytes,
-                                totalBytes = totalBytes,
-                            ),
-                        )
-                    }
-                }
-            }
-            if (!temporary.renameTo(archive)) {
-                throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
-            }
-            completed = true
-            return archive
-        } finally {
-            activeConnections -= connection
-            connection.disconnect()
-            if (!completed) temporary.delete()
         }
     }
 
@@ -697,6 +724,7 @@ internal class PhoneOfflineBundleDownloader(
         }
         val destination = File(directory, File(fileName).name)
         val temporary = File(directory, ".${destination.name}.bundle.part")
+        var completed = false
         return try {
             temporary.outputStream().use { output ->
                 input.copyWithProgress(output, totalBytes = null, onBytesCopied)
@@ -712,9 +740,9 @@ internal class PhoneOfflineBundleDownloader(
                 !temporary.renameTo(destination) ->
                     downloadFailure(PhoneOfflineBundleFailure.STORAGE)
                 else -> InstalledPoi(destination.name, reusedExisting = false)
-            }
+            }.also { completed = true }
         } finally {
-            if (temporary.exists()) temporary.delete()
+            if (completed && temporary.exists()) temporary.delete()
         }
     }
 
@@ -800,38 +828,106 @@ internal class PhoneOfflineBundleDownloader(
     ) {
         target.parentFile?.mkdirs()
         val temporary = File(target.parentFile, ".${target.name}.part")
-        temporary.delete()
-        val connection = openConnection(url)
-        activeConnections += connection
-        try {
-            val responseCode = connection.responseCode
-            if (responseCode !in HttpURLConnection.HTTP_OK..HttpURLConnection.HTTP_PARTIAL) {
-                throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.HTTP)
-            }
-            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
-            connection.inputStream.use { input ->
-                temporary.outputStream().use { output ->
-                    input.copyWithProgress(output, totalBytes) { bytes ->
-                        onProgress(
-                            PhoneOfflineBundleProgress(
-                                phase = phase,
-                                bytesDownloaded = bytes,
-                                totalBytes = totalBytes,
-                                detail = target.name,
-                            ),
-                        )
+        downloadToTemporary(
+            url = url,
+            temporary = temporary,
+            phase = phase,
+            // Keep a partial DEM tile even when the completed tile is being replaced.
+            resetPartial = false,
+            onProgress = { progress ->
+                onProgress(progress.copy(detail = target.name))
+            },
+        )
+        if (!isUsablePhoneDemFile(temporary)) {
+            temporary.delete()
+            downloadFailure(PhoneOfflineBundleFailure.STORAGE)
+        }
+        target.delete()
+        if (!temporary.renameTo(target)) {
+            throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
+        }
+    }
+
+    @Suppress("CyclomaticComplexMethod") // Handles the small HTTP response matrix needed for safe resume.
+    private suspend fun downloadToTemporary(
+        url: String,
+        temporary: File,
+        phase: PhoneOfflineBundlePhase,
+        resetPartial: Boolean,
+        onProgress: (PhoneOfflineBundleProgress) -> Unit,
+        onResponseMetadata: ((HttpURLConnection, Long?) -> Unit)? = null,
+    ): Long {
+        if (resetPartial) temporary.delete()
+        temporary.parentFile?.mkdirs()
+        var rangeRestartCount = 0
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val resumeOffset = temporary.length().takeIf { it > 0L } ?: 0L
+            val connection = openConnection(url, resumeOffset)
+            activeConnections += connection
+            try {
+                val responseCode = connection.responseCode
+                if (resumeOffset > 0L && responseCode == HttpURLConnection.HTTP_OK) {
+                    if (!temporary.delete()) {
+                        throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
+                    }
+                    rangeRestartCount += 1
+                    if (rangeRestartCount > MAX_RANGE_RESTARTS) {
+                        throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.HTTP)
+                    }
+                    continue
+                }
+                if (resumeOffset > 0L && responseCode == 416) {
+                    if (!temporary.delete()) {
+                        throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
+                    }
+                    rangeRestartCount += 1
+                    if (rangeRestartCount > MAX_RANGE_RESTARTS) {
+                        throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.HTTP)
+                    }
+                    continue
+                }
+                if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                    throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.HTTP)
+                }
+                val append = resumeOffset > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
+                val initialBytes = if (append) resumeOffset else 0L
+                if (!append && resumeOffset > 0L && !temporary.delete()) {
+                    throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
+                }
+                val responseBytes = connection.contentLengthLong.takeIf { it > 0L }
+                val totalBytes = responseBytes?.let { it + initialBytes }
+                onResponseMetadata?.invoke(connection, totalBytes)
+                onProgress(
+                    PhoneOfflineBundleProgress(
+                        phase = phase,
+                        bytesDownloaded = initialBytes,
+                        totalBytes = totalBytes,
+                    ),
+                )
+                connection.inputStream.use { input ->
+                    FileOutputStream(temporary, append).use { output ->
+                        input.copyWithProgress(output, responseBytes) { bytes ->
+                            onProgress(
+                                PhoneOfflineBundleProgress(
+                                    phase = phase,
+                                    bytesDownloaded = initialBytes + bytes,
+                                    totalBytes = totalBytes,
+                                ),
+                            )
+                        }
                     }
                 }
+                if (totalBytes != null && temporary.length() != totalBytes) {
+                    throw IOException(
+                        "Incomplete download for ${temporary.name}: ${temporary.length()}/$totalBytes bytes.",
+                    )
+                }
+                return temporary.length()
+            } finally {
+                activeConnections -= connection
+                connection.disconnect()
             }
-            if (!isUsablePhoneDemFile(temporary)) downloadFailure(PhoneOfflineBundleFailure.STORAGE)
-            target.delete()
-            if (!temporary.renameTo(target)) {
-                downloadFailure(PhoneOfflineBundleFailure.STORAGE)
-            }
-        } finally {
-            activeConnections -= connection
-            connection.disconnect()
-            if (temporary.exists()) temporary.delete()
         }
     }
 
@@ -865,16 +961,20 @@ internal class PhoneOfflineBundleDownloader(
     private fun HttpURLConnection.remoteMetadata(
         url: String,
         fileName: String,
+        contentLengthOverride: Long? = null,
     ): PhoneOfflineRemoteFileMetadata =
         PhoneOfflineRemoteFileMetadata(
             url = url,
             fileName = fileName,
             entityTag = getHeaderField("ETag")?.takeIf(String::isNotBlank),
             lastModifiedMillis = getHeaderFieldDate("Last-Modified", -1L).takeIf { it >= 0L },
-            contentLengthBytes = contentLengthLong.takeIf { it > 0L },
+            contentLengthBytes = contentLengthOverride ?: contentLengthLong.takeIf { it > 0L },
         )
 
-    private fun openConnection(url: String): HttpURLConnection =
+    private fun openConnection(
+        url: String,
+        resumeOffset: Long = 0L,
+    ): HttpURLConnection =
         (URI(url).toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = CONNECT_TIMEOUT_MILLIS
@@ -883,6 +983,7 @@ internal class PhoneOfflineBundleDownloader(
             useCaches = false
             setRequestProperty("Accept-Encoding", "identity")
             setRequestProperty("User-Agent", USER_AGENT)
+            if (resumeOffset > 0L) setRequestProperty("Range", "bytes=$resumeOffset-")
         }
 
     private data class InstalledMap(
@@ -901,6 +1002,7 @@ internal class PhoneOfflineBundleDownloader(
         const val CONNECT_TIMEOUT_MILLIS = 20_000
         const val READ_TIMEOUT_MILLIS = 30_000
         const val USER_AGENT = "GlanceMap-Android-OAM-Downloader/1.0 https://www.openandromaps.org"
+        const val MAX_RANGE_RESTARTS = 2
     }
 }
 

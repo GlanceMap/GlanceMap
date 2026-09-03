@@ -215,6 +215,12 @@ internal class PhoneRouteToolsViewModel(
             )
     }
 
+    fun undoLastMapPoint() {
+        val state = _uiState.value
+        if (!state.isOpen || state.isRouting) return
+        _uiState.value = state.undoLastMapPoint()
+    }
+
     fun create(currentLocation: PhoneMapLocation?) {
         val state = _uiState.value
         if (!state.isOpen || state.isRouting) return

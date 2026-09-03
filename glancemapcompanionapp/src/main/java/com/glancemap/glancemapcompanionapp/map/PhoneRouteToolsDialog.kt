@@ -5,8 +5,10 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -35,54 +37,64 @@ internal fun BoxScope.PhoneRouteToolsDialog(
     actions: PhoneRouteToolsActions,
 ) {
     if (!state.isOpen) return
-    PhoneMapPopupCard(
-        modifier =
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-                .widthIn(max = 420.dp),
-        title = stringResource(R.string.map_route_tools_title),
-        onDismiss = actions.onDismiss,
-    ) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val popupBottomInset = 128.dp
+        val popupMaxHeight = (maxHeight - popupBottomInset - 16.dp).coerceAtLeast(0.dp)
         Column(
             modifier =
                 Modifier
-                    .heightIn(max = 560.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                    .widthIn(max = 420.dp),
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            when (state.mode) {
-                null -> routeToolsChooser(state, actions.onChooseMode)
-                PhoneRouteCreationMode.CURRENT_TO_DESTINATION ->
-                    routeToolsCurrentToDestination(
-                        state,
-                        currentLocationAvailable,
-                        actions.onResetMapPoints,
-                        actions.onCreate,
-                    )
+            PhoneMapPopupCard(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = popupMaxHeight),
+                title = stringResource(R.string.map_route_tools_title),
+                onDismiss = actions.onDismiss,
+            ) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    when (state.mode) {
+                        null -> routeToolsChooser(state, actions.onChooseMode)
+                        PhoneRouteCreationMode.CURRENT_TO_DESTINATION ->
+                            routeToolsCurrentToDestination(
+                                state,
+                                currentLocationAvailable,
+                                actions.onResetMapPoints,
+                                actions.onCreate,
+                            )
 
-                PhoneRouteCreationMode.POINT_A_TO_B ->
-                    routeToolsPointToPoint(state, actions.onResetMapPoints, actions.onCreate)
+                        PhoneRouteCreationMode.POINT_A_TO_B ->
+                            routeToolsPointToPoint(state, actions.onResetMapPoints, actions.onCreate)
 
-                PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
-                    routeToolsMultiPoint(state, actions.onResetMapPoints, actions.onCreate)
+                        PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
+                            routeToolsMultiPoint(state, actions.onResetMapPoints, actions.onCreate)
 
-                PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION ->
-                    routeToolsExtend(state, actions)
+                        PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION ->
+                            routeToolsExtend(state, actions)
 
-                PhoneRouteCreationMode.COORDINATES ->
-                    routeToolsCoordinates(state, currentLocationAvailable, actions)
+                        PhoneRouteCreationMode.COORDINATES ->
+                            routeToolsCoordinates(state, currentLocationAvailable, actions)
 
-                PhoneRouteCreationMode.MODIFY_ROUTE -> routeToolsModify(state, actions)
+                        PhoneRouteCreationMode.MODIFY_ROUTE -> routeToolsModify(state, actions)
+                    }
+                    state.message?.let { message ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(message)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = actions.onDismiss, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.common_action_cancel))
+                    }
+                }
             }
-            state.message?.let { message ->
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(message)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = actions.onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.common_action_cancel))
-            }
+            Spacer(modifier = Modifier.height(popupBottomInset))
         }
     }
 }

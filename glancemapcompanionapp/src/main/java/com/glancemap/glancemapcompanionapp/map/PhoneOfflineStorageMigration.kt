@@ -400,7 +400,8 @@ internal class PhoneOfflineStorageMigration(
             if (!root.exists()) {
                 emptyList()
             } else {
-                root.walkTopDown()
+                root
+                    .walkTopDown()
                     .filter(File::isFile)
                     .map { file ->
                         FileEntry(

@@ -5,7 +5,7 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import kotlin.math.hypot
 
-/** Recognizes only a stationary, short two-finger tap and never consumes the event. */
+/** Recognizes a stationary two-finger tap or press and never consumes the event. */
 internal class PhoneTwoFingerTapDetector(
     context: Context,
     private val onTwoFingerTap: (x1: Float, y1: Float, x2: Float, y2: Float) -> Unit,
@@ -13,7 +13,6 @@ internal class PhoneTwoFingerTapDetector(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val initialPoints = mutableMapOf<Int, ScreenPoint>()
     private var candidate = false
-    private var downTime = 0L
     private var releasedPoints: Pair<ScreenPoint, ScreenPoint>? = null
 
     fun onTouchEvent(event: MotionEvent) {
@@ -22,7 +21,7 @@ internal class PhoneTwoFingerTapDetector(
             MotionEvent.ACTION_POINTER_DOWN -> handlePointerDown(event)
             MotionEvent.ACTION_MOVE -> handleMove(event)
             MotionEvent.ACTION_POINTER_UP -> handlePointerUp(event)
-            MotionEvent.ACTION_UP -> handleUp(event)
+            MotionEvent.ACTION_UP -> handleUp()
             MotionEvent.ACTION_CANCEL -> reset()
         }
     }
@@ -30,7 +29,6 @@ internal class PhoneTwoFingerTapDetector(
     private fun handleDown(event: MotionEvent) {
         reset()
         candidate = true
-        downTime = event.eventTime
         initialPoints[event.getPointerId(0)] = event.screenPoint(0)
     }
 
@@ -60,8 +58,8 @@ internal class PhoneTwoFingerTapDetector(
         }
     }
 
-    private fun handleUp(event: MotionEvent) {
-        if (candidate && releasedPoints != null && event.eventTime - downTime <= MAX_TAP_DURATION_MS) {
+    private fun handleUp() {
+        if (candidate && releasedPoints != null) {
             val (first, second) = releasedPoints ?: return
             onTwoFingerTap(first.x, first.y, second.x, second.y)
         }
@@ -70,7 +68,6 @@ internal class PhoneTwoFingerTapDetector(
 
     fun reset() {
         candidate = false
-        downTime = 0L
         releasedPoints = null
         initialPoints.clear()
     }
@@ -84,5 +81,3 @@ private data class ScreenPoint(
 }
 
 private fun MotionEvent.screenPoint(index: Int): ScreenPoint = ScreenPoint(x = getX(index), y = getY(index))
-
-private const val MAX_TAP_DURATION_MS = 500L

@@ -148,6 +148,17 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun generalSensorSettingsUseTheSameSubpageBackStackAsFeatureSettings() {
+        val root = MapToolPanelState().select(MapTool.SETTINGS)
+        val sensors = root.showFeatureSettingsSection(MapToolFeatureSettingsSection.GENERAL_SENSORS)
+
+        assertEquals(MapToolContentMode.FEATURE_SETTINGS, sensors.contentMode)
+        assertEquals(MapToolFeatureSettingsSection.GENERAL_SENSORS, sensors.featureSettingsSection)
+        assertEquals(MapToolFeatureSettingsSection.ROOT, sensors.back().featureSettingsSection)
+        assertEquals(MapToolContentMode.MAIN, sensors.back().back().contentMode)
+    }
+
+    @Test
     fun mapModeToggleAndRecenterKeepOrientationAndFollowAsSeparateState() {
         val northUp = PhoneMapMode()
         val headingUp = northUp.toggleOrientation()

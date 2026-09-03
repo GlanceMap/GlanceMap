@@ -273,6 +273,11 @@
             android:exported="false" />
 
         <service
+            android:name=".map.PhoneOfflineBundleDownloadService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <service
             android:name=".livetracking.LiveTrackingService"
             android:foregroundServiceType="location"
             android:exported="false" />

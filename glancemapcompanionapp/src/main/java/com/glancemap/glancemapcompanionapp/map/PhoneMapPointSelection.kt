@@ -23,6 +23,8 @@ internal enum class PhoneMapPointSelectionMarkerKind(
     POINT_B(label = "B", colorArgb = 0xFFEA580C.toInt()),
     DESTINATION(label = "D", colorArgb = 0xFF7C3AED.toInt()),
     WAYPOINT(label = "•", colorArgb = 0xFF0891B2.toInt()),
+    MEASUREMENT_FIRST(label = "1", colorArgb = 0xFF0284C7.toInt()),
+    MEASUREMENT_SECOND(label = "2", colorArgb = 0xFFDC2626.toInt()),
 }
 
 internal enum class PhoneMapPointSelectionPhase {
@@ -31,6 +33,14 @@ internal enum class PhoneMapPointSelectionPhase {
     POINT_B,
     CHAIN_POINT,
     RESHAPE_BEND,
+}
+
+internal data class PhoneMapPointSelectionProgress(
+    val completed: Int,
+    val total: Int?,
+) {
+    val currentStep: Int
+        get() = completed + 1
 }
 
 @Suppress(
@@ -95,6 +105,125 @@ internal fun PhoneRouteToolsUiState.pointSelectionPhase(): PhoneMapPointSelectio
 
         null -> null
     }
+
+internal fun PhoneRouteToolsUiState.pointSelectionProgress(): PhoneMapPointSelectionProgress? {
+    val phase = pointSelectionPhase() ?: return null
+    return when (phase) {
+        PhoneMapPointSelectionPhase.DESTINATION ->
+            PhoneMapPointSelectionProgress(completed = 0, total = 1)
+
+        PhoneMapPointSelectionPhase.POINT_A ->
+            PhoneMapPointSelectionProgress(
+                completed = 0,
+                total =
+                    if (
+                        mode == PhoneRouteCreationMode.MODIFY_ROUTE &&
+                        (modificationMode == PhoneRouteModificationMode.TRIM_START_TO_HERE ||
+                            modificationMode == PhoneRouteModificationMode.TRIM_END_FROM_HERE)
+                    ) {
+                        1
+                    } else {
+                        2
+                    },
+            )
+
+        PhoneMapPointSelectionPhase.POINT_B ->
+            PhoneMapPointSelectionProgress(
+                completed =
+                    if (
+                        mode == PhoneRouteCreationMode.MODIFY_ROUTE &&
+                        modificationMode == PhoneRouteModificationMode.TRIM_END_FROM_HERE
+                    ) {
+                        0
+                    } else {
+                        1
+                    },
+                total =
+                    if (
+                        mode == PhoneRouteCreationMode.MODIFY_ROUTE &&
+                        modificationMode == PhoneRouteModificationMode.TRIM_END_FROM_HERE
+                    ) {
+                        1
+                    } else {
+                        2
+                    },
+            )
+
+        PhoneMapPointSelectionPhase.CHAIN_POINT ->
+            PhoneMapPointSelectionProgress(completed = chainPoints.size, total = null)
+
+        PhoneMapPointSelectionPhase.RESHAPE_BEND ->
+            PhoneMapPointSelectionProgress(completed = 1, total = 2)
+    }
+}
+
+internal fun PhoneRouteToolsUiState.canUndoLastMapPoint(): Boolean =
+    when (mode) {
+        PhoneRouteCreationMode.CURRENT_TO_DESTINATION,
+        PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION,
+        -> destination != null
+
+        PhoneRouteCreationMode.POINT_A_TO_B -> pointB != null || pointA != null
+        PhoneRouteCreationMode.MULTI_POINT_CHAIN -> chainPoints.isNotEmpty()
+        PhoneRouteCreationMode.COORDINATES -> coordinateLatitude.isNotBlank() || coordinateLongitude.isNotBlank()
+        PhoneRouteCreationMode.MODIFY_ROUTE ->
+            when (modificationMode) {
+                PhoneRouteModificationMode.RESHAPE_ROUTE -> destination != null || pointA != null
+                PhoneRouteModificationMode.REPLACE_SECTION_A_TO_B,
+                PhoneRouteModificationMode.KEEP_ONLY_A_TO_B,
+                -> pointB != null || pointA != null
+
+                PhoneRouteModificationMode.TRIM_START_TO_HERE -> pointA != null
+                PhoneRouteModificationMode.TRIM_END_FROM_HERE -> pointB != null
+                PhoneRouteModificationMode.REVERSE_GPX -> false
+            }
+
+        null -> false
+    }
+
+internal fun PhoneRouteToolsUiState.undoLastMapPoint(): PhoneRouteToolsUiState {
+    if (!canUndoLastMapPoint()) return this
+    return when (mode) {
+        PhoneRouteCreationMode.CURRENT_TO_DESTINATION,
+        PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION,
+        -> copy(destination = null, message = null)
+
+        PhoneRouteCreationMode.POINT_A_TO_B ->
+            when {
+                pointB != null -> copy(pointB = null, message = null)
+                else -> copy(pointA = null, message = null)
+            }
+
+        PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
+            copy(chainPoints = chainPoints.dropLast(1), message = null)
+
+        PhoneRouteCreationMode.COORDINATES ->
+            copy(coordinateLatitude = "", coordinateLongitude = "", message = null)
+
+        PhoneRouteCreationMode.MODIFY_ROUTE ->
+            when (modificationMode) {
+                PhoneRouteModificationMode.RESHAPE_ROUTE ->
+                    when {
+                        destination != null -> copy(destination = null, message = null)
+                        else -> copy(pointA = null, message = null)
+                    }
+
+                PhoneRouteModificationMode.REPLACE_SECTION_A_TO_B,
+                PhoneRouteModificationMode.KEEP_ONLY_A_TO_B,
+                ->
+                    when {
+                        pointB != null -> copy(pointB = null, message = null)
+                        else -> copy(pointA = null, message = null)
+                    }
+
+                PhoneRouteModificationMode.TRIM_START_TO_HERE -> copy(pointA = null, message = null)
+                PhoneRouteModificationMode.TRIM_END_FROM_HERE -> copy(pointB = null, message = null)
+                PhoneRouteModificationMode.REVERSE_GPX -> this
+            }
+
+        null -> this
+    }
+}
 
 @Suppress(
     "CyclomaticComplexMethod",
@@ -230,6 +359,23 @@ internal fun phoneMapPointSelectionMarkers(
             null -> Unit
         }
     }
+
+internal fun phoneMapDistanceMeasurementMarkers(
+    measurement: PhoneMapDistanceMeasurement?,
+): List<PhoneMapPointSelectionMarker> =
+    measurement
+        ?.let { value ->
+            listOf(
+                PhoneMapPointSelectionMarker(
+                    kind = PhoneMapPointSelectionMarkerKind.MEASUREMENT_FIRST,
+                    point = value.first,
+                ),
+                PhoneMapPointSelectionMarker(
+                    kind = PhoneMapPointSelectionMarkerKind.MEASUREMENT_SECOND,
+                    point = value.second,
+                ),
+            )
+        }.orEmpty()
 
 @Suppress("CyclomaticComplexMethod") // Each route-tool phase has a distinct user-facing instruction.
 internal fun PhoneRouteToolsUiState.pointSelectionHintResource(

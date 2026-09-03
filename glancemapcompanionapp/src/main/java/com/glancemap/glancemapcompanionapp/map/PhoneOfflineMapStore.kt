@@ -224,6 +224,7 @@ internal class PhoneOfflineMapStore(
 
         val destination = File(directory, File(fileName).name)
         val temporary = File(directory, ".${destination.name}.bundle.part")
+        var completed = false
         return try {
             temporary.outputStream().use { output ->
                 input.copyCancellableTo(output, onBytesCopied)
@@ -243,13 +244,13 @@ internal class PhoneOfflineMapStore(
                             reusedExisting = false,
                         )
                     else -> PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
-                }
+                }.also { result -> completed = result is PhoneOfflineMapBundleInstallResult.Success }
         } catch (exception: CancellationException) {
             throw exception
         } catch (_: Exception) {
             PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
         } finally {
-            if (temporary.exists()) temporary.delete()
+            if (completed && temporary.exists()) temporary.delete()
         }
     }
 

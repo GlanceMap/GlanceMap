@@ -75,6 +75,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val gpxSettings: PhoneMapGpxSettings = PhoneMapGpxSettings(),
     val routeAnalysis: PhoneMapRouteAnalysis? = null,
     val pointSelectionMarkers: List<PhoneMapPointSelectionMarker> = emptyList(),
+    val distanceMeasurement: PhoneMapDistanceMeasurement? = null,
     val pois: List<PhoneMapPoi>,
     val poiSettings: PhoneMapPoiSettings = PhoneMapPoiSettings(),
     val mapMode: PhoneMapMode,
@@ -258,7 +259,12 @@ private class PhoneOfflineMapsforgeView(
                 rotationGestureTracker.onTouch(action, event.pointerCount)
             }
             twoFingerTapDetector.onTouchEvent(event)
-            longPressDetector.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                longPressDetector.cancelPhoneMapLongPress(event)
+            }
+            if (event.pointerCount == 1) {
+                longPressDetector.onTouchEvent(event)
+            }
             false
         }
         mapView.model.mapViewPosition.addObserver(cameraObserver)
@@ -567,12 +573,14 @@ private class PhoneOfflineMapsforgeView(
                     mapView.mapViewProjection.fromPixels(mapSpaceCenter.x, mapSpaceCenter.y)
                 }.getOrNull()
             target?.let { resolvedTarget ->
+                val markerLatLong = locationMarker?.latLong
+                val originLatLong = markerLatLong ?: currentLocation?.let { LatLong(it.latitude, it.longitude) }
                 val userScreenPoint =
-                    currentLocation?.let { location ->
+                    originLatLong?.let { origin ->
                         runCatching {
                             val mapPoint =
                                 mapView.mapViewProjection.toPixels(
-                                    LatLong(location.latitude, location.longitude),
+                                    origin,
                                 )
                             rotatePhoneMapPoint(mapPoint, pivot, rotationDegrees)
                         }.getOrNull()
@@ -580,6 +588,10 @@ private class PhoneOfflineMapsforgeView(
                 PhoneMapLiveMetricsPosition(
                     target = PhoneMapCoordinate(resolvedTarget.latitude, resolvedTarget.longitude),
                     userScreenPoint = userScreenPoint,
+                    origin =
+                        originLatLong?.let { origin ->
+                            PhoneMapCoordinate(origin.latitude, origin.longitude)
+                        },
                 )
             }
         }
@@ -789,11 +801,13 @@ private class PhoneOfflineMapsforgeOverlayLayers(
             AndroidBitmap(createPhoneMapPointSelectionMarkerBitmap(kind))
         }
     private val pointSelectionMarkers = mutableListOf<Marker>()
+    private var distanceMeasurementLine: Polyline? = null
     private var locationAccuracyCircle: Circle? = null
     private var appliedGpxOverlays: List<PhoneMapGpxOverlay> = emptyList()
     private var appliedGpxSettings = PhoneMapGpxSettings()
     private var appliedRouteAnalysis: PhoneMapRouteAnalysis? = null
     private var appliedPointSelectionMarkers: List<PhoneMapPointSelectionMarker> = emptyList()
+    private var appliedDistanceMeasurement: PhoneMapDistanceMeasurement? = null
     private var appliedPois: List<PhoneMapPoi> = emptyList()
     private var appliedPoiSettings = PhoneMapPoiSettings()
     private var appliedMapSettings = PhoneMapSettings()
@@ -805,6 +819,7 @@ private class PhoneOfflineMapsforgeOverlayLayers(
         val pois = state.pois
         val poiSettings = state.poiSettings
         val mapSettings = state.mapSettings
+        val distanceMeasurement = state.distanceMeasurement
         val location = state.location
         val isUnchanged =
             listOf(
@@ -812,6 +827,7 @@ private class PhoneOfflineMapsforgeOverlayLayers(
                 appliedGpxSettings == gpxSettings,
                 appliedRouteAnalysis == state.routeAnalysis,
                 appliedPointSelectionMarkers == state.pointSelectionMarkers,
+                appliedDistanceMeasurement == distanceMeasurement,
                 appliedPois == pois,
                 appliedPoiSettings == poiSettings,
                 appliedMapSettings == mapSettings,
@@ -824,6 +840,7 @@ private class PhoneOfflineMapsforgeOverlayLayers(
         appliedGpxSettings = gpxSettings
         appliedRouteAnalysis = state.routeAnalysis
         appliedPointSelectionMarkers = state.pointSelectionMarkers
+        appliedDistanceMeasurement = distanceMeasurement
         appliedPois = pois
         appliedPoiSettings = poiSettings
         appliedMapSettings = mapSettings
@@ -831,6 +848,7 @@ private class PhoneOfflineMapsforgeOverlayLayers(
         PhoneMapLayerMutationCoordinator.mutateLayers(mapView, OVERLAY_MUTATION_KEY) { layers ->
             syncGpxLayers(layers, gpxOverlays, gpxSettings)
             syncRouteAnalysisMarkers(layers, state.routeAnalysis)
+            syncDistanceMeasurementLine(layers, distanceMeasurement)
             syncPoiMarkers(layers, pois, poiSettings)
             syncPointSelectionMarkers(layers, state.pointSelectionMarkers)
             syncLocationAccuracyCircle(layers, mapSettings, location)
@@ -846,6 +864,11 @@ private class PhoneOfflineMapsforgeOverlayLayers(
             gpxLayersById.clear()
             routeAnalysisMarkers.values.forEach(layers::remove)
             routeAnalysisMarkers.clear()
+            distanceMeasurementLine?.let { line ->
+                layers.remove(line)
+                line.latLongs.clear()
+            }
+            distanceMeasurementLine = null
             pointSelectionMarkers.forEach(layers::remove)
             pointSelectionMarkers.clear()
             poiMarkersById.values.forEach { marker -> removePoiMarker(layers, marker) }
@@ -913,6 +936,29 @@ private class PhoneOfflineMapsforgeOverlayLayers(
         }
         addMarker("A", analysis.pointA)
         analysis.pointB?.let { point -> addMarker("B", point) }
+    }
+
+    private fun syncDistanceMeasurementLine(
+        layers: Layers,
+        measurement: PhoneMapDistanceMeasurement?,
+    ) {
+        distanceMeasurementLine?.let { line ->
+            layers.remove(line)
+            line.latLongs.clear()
+        }
+        distanceMeasurementLine = null
+        measurement ?: return
+
+        distanceMeasurementLine =
+            Polyline(createDistanceMeasurementPaint(), AndroidGraphicFactory.INSTANCE).also { line ->
+                line.latLongs.addAll(
+                    listOf(
+                        LatLong(measurement.first.latitude, measurement.first.longitude),
+                        LatLong(measurement.second.latitude, measurement.second.longitude),
+                    ),
+                )
+                layers.add(line)
+            }
     }
 
     private fun syncPointSelectionMarkers(
@@ -1113,6 +1159,13 @@ private fun createTrackPaint(
     AndroidGraphicFactory.INSTANCE.createPaint().apply {
         setColor(colorArgb.withAlphaPercent(settings.trackOpacityPercent))
         setStrokeWidth(settings.trackWidth)
+        setStyle(org.mapsforge.core.graphics.Style.STROKE)
+    }
+
+private fun createDistanceMeasurementPaint(): org.mapsforge.core.graphics.Paint =
+    AndroidGraphicFactory.INSTANCE.createPaint().apply {
+        setColor(0xFF0284C7.toInt())
+        setStrokeWidth(5f)
         setStyle(org.mapsforge.core.graphics.Style.STROKE)
     }
 

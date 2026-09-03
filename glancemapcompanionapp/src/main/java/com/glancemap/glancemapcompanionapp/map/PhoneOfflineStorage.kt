@@ -83,6 +83,9 @@ internal class PhoneOfflineStorage(
 
     fun watchGpxExportsDirectory(): File = directory("watch-gpx-exports")
 
+    /** Persistent app-private staging area for bundle archives and resumable downloads. */
+    internal fun bundleDownloadDirectory(): File = appContext.getDir("phone_offline_bundle_downloads", Context.MODE_PRIVATE)
+
     private fun directory(name: String): File = File(activeRoot(), name)
 
     private fun removableExternalFilesDir(): File? =

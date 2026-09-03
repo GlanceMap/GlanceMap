@@ -2,7 +2,6 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import org.mapsforge.core.model.BoundingBox
@@ -125,53 +124,67 @@ private fun phoneLocationMarkerBitmap(style: PhoneMapMarkerStyle): AndroidBitmap
             PHONE_LOCATION_MARKER_SIZE_PX,
             Bitmap.Config.ARGB_8888,
         )
-    val center = PHONE_LOCATION_MARKER_SIZE_PX / 2f
-    Canvas(bitmap).apply {
-        if (style == PhoneMapMarkerStyle.TRIANGLE) {
-            drawPath(
-                Path().apply {
-                    moveTo(center, 3f)
-                    lineTo(28f, 28f)
-                    lineTo(center, 24f)
-                    lineTo(4f, 28f)
-                    close()
-                },
-                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(25, 118, 210) },
-            )
-            drawPath(
-                Path().apply {
-                    moveTo(center, 7f)
-                    lineTo(22f, 24f)
-                    lineTo(center, 22f)
-                    lineTo(10f, 24f)
-                    close()
-                },
-                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE },
-            )
-        } else {
-            drawCircle(
-                center,
-                center,
-                PHONE_LOCATION_MARKER_RADIUS_PX,
-                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(25, 118, 210) },
-            )
-            drawLine(
-                center,
-                center,
-                center,
-                PHONE_LOCATION_MARKER_TIP_Y_PX,
-                Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    strokeWidth = PHONE_LOCATION_MARKER_DIRECTION_WIDTH_PX
-                    strokeCap = Paint.Cap.ROUND
-                },
-            )
-        }
+    val canvas = Canvas(bitmap)
+    val size = PHONE_LOCATION_MARKER_SIZE_PX.toFloat()
+    val center = size / 2f
+    if (style == PhoneMapMarkerStyle.TRIANGLE) {
+        val path =
+            Path().apply {
+                moveTo(center, size * 0.05f)
+                lineTo(size * 0.20f, size * 0.88f)
+                lineTo(center, size * 0.70f)
+                lineTo(size * 0.80f, size * 0.88f)
+                close()
+            }
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = PHONE_NAVIGATION_MARKER_BLUE_ARGB
+                this.style = Paint.Style.FILL
+            },
+        )
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xAA001A33.toInt()
+                this.style = Paint.Style.STROKE
+                strokeWidth = size * 0.04f
+            },
+        )
+    } else {
+        val radius = size * 0.23f
+        canvas.drawCircle(
+            center,
+            center,
+            radius + size * 0.01f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xE6FFFFFF.toInt()
+                this.style = Paint.Style.STROKE
+                strokeWidth = size * 0.06f
+            },
+        )
+        canvas.drawCircle(
+            center,
+            center,
+            radius,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = PHONE_NAVIGATION_MARKER_BLUE_ARGB
+                this.style = Paint.Style.FILL
+            },
+        )
+        canvas.drawCircle(
+            center,
+            center,
+            radius,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xAA000000.toInt()
+                this.style = Paint.Style.STROKE
+                strokeWidth = size * 0.03f
+            },
+        )
     }
     return AndroidBitmap(bitmap)
 }
 
 private const val PHONE_LOCATION_MARKER_SIZE_PX = 32
-private const val PHONE_LOCATION_MARKER_RADIUS_PX = 11f
-private const val PHONE_LOCATION_MARKER_TIP_Y_PX = 5f
-private const val PHONE_LOCATION_MARKER_DIRECTION_WIDTH_PX = 3f
+private const val PHONE_NAVIGATION_MARKER_BLUE_ARGB = 0xFF007AFF.toInt()

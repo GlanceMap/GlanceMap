@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import android.view.GestureDetector
+import android.view.MotionEvent
 
 internal fun phoneMapLongPressDetector(
     context: Context,
@@ -17,3 +18,11 @@ internal fun phoneMapLongPressDetector(
             }
         },
     )
+
+internal fun GestureDetector.cancelPhoneMapLongPress(event: MotionEvent) {
+    MotionEvent.obtain(event).also { cancelEvent ->
+        cancelEvent.action = MotionEvent.ACTION_CANCEL
+        onTouchEvent(cancelEvent)
+        cancelEvent.recycle()
+    }
+}
