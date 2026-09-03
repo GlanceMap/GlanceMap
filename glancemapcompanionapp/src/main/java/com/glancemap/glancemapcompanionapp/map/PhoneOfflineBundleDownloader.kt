@@ -89,19 +89,42 @@ internal class PhoneOfflineBundleDownloader(
             try {
                 downloadSelection(selection, onProgress, forces)
             } catch (exception: CancellationException) {
+                PhoneDownloadDiagnostics.warn(
+                    "Bundle",
+                    "Cancelled ${bundleDiagnosticContext()}",
+                )
                 saveRecoveryFailure(PhoneOfflineBundleFailure.CANCELLED)
                 throw exception
             } catch (exception: PhoneOfflineBundleDownloadException) {
+                PhoneDownloadDiagnostics.error(
+                    "Bundle",
+                    "Failed reason=${exception.reason.name} ${bundleDiagnosticContext()}",
+                    exception,
+                )
                 saveRecoveryFailure(exception.reason)
                 PhoneOfflineBundleOutcome.Failure(exception.reason)
-            } catch (_: IOException) {
+            } catch (exception: IOException) {
                 if (!currentCoroutineContext().isActive) {
+                    PhoneDownloadDiagnostics.warn(
+                        "Bundle",
+                        "Cancelled ${bundleDiagnosticContext()}",
+                    )
                     saveRecoveryFailure(PhoneOfflineBundleFailure.CANCELLED)
                     throw CancellationException()
                 }
+                PhoneDownloadDiagnostics.error(
+                    "Bundle",
+                    "Failed ${bundleDiagnosticContext()}",
+                    exception,
+                )
                 saveRecoveryFailure(PhoneOfflineBundleFailure.NETWORK)
                 PhoneOfflineBundleOutcome.Failure(PhoneOfflineBundleFailure.NETWORK)
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                PhoneDownloadDiagnostics.error(
+                    "Bundle",
+                    "Failed ${bundleDiagnosticContext()}",
+                    exception,
+                )
                 saveRecoveryFailure(PhoneOfflineBundleFailure.STORAGE)
                 PhoneOfflineBundleOutcome.Failure(PhoneOfflineBundleFailure.STORAGE)
             } finally {
@@ -511,6 +534,15 @@ internal class PhoneOfflineBundleDownloader(
         }
     }
 
+    private fun bundleDiagnosticContext(): String {
+        val selectedStorage = runCatching { storage.location().name }.getOrDefault("UNKNOWN")
+        val targetRoot =
+            runCatching { storage.activeRoot().absolutePath }
+                .getOrDefault("<unavailable>")
+        return "stage=${activeRecovery?.phase?.name ?: "UNKNOWN"} " +
+            "storage=$selectedStorage target=$targetRoot"
+    }
+
     private fun routingFileNamesForBounds(bounds: BoundingBox): List<String> {
         val bbox = bounds.asPhoneBbox()
         return BRouterTileMath.tileFileNamesForBbox(bbox)
@@ -773,6 +805,7 @@ internal class PhoneOfflineBundleDownloader(
             routingDownloader.downloadForBbox(
                 bboxInput = bbox,
                 forceRefresh = effectiveForceRefresh,
+                includeFileUris = false,
                 reportProgress = { percent, status, detail ->
                     onProgress(
                         PhoneOfflineBundleProgress(

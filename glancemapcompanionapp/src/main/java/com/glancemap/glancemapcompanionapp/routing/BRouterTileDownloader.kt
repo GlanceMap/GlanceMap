@@ -165,6 +165,7 @@ internal class BRouterTileDownloader(
         bboxInput: String,
         reportProgress: (percent: Int, status: String, detail: String) -> Unit,
         forceRefresh: Boolean = false,
+        includeFileUris: Boolean = true,
     ): RoutingTileDownloadResult =
         withContext(Dispatchers.IO) {
             cancelRequested = false
@@ -180,16 +181,27 @@ internal class BRouterTileDownloader(
             val startedAtMs = SystemClock.elapsedRealtime()
             PhoneDownloadDiagnostics.log(
                 "BRouter",
-                "Start bbox=$normalizedBbox tileCount=${tileNames.size} forceRefresh=$forceRefresh",
+                "Start bbox=$normalizedBbox tileCount=${tileNames.size} " +
+                    "forceRefresh=$forceRefresh includeFileUris=$includeFileUris " +
+                    "storage=${storage.location().name}",
             )
-
-            val outputDir = storage.routingDirectory().apply { mkdirs() }
 
             var downloaded = 0
             var skipped = 0
-            val uris = ArrayList<Uri>(tileNames.size)
+            val uris = ArrayList<Uri>(if (includeFileUris) tileNames.size else 0)
+            var stage = "resolve_output_directory"
+            var targetPath = "<unresolved>"
 
             try {
+                val outputDir = storage.routingDirectory()
+                targetPath = outputDir.absolutePath
+                stage = "prepare_output_directory"
+                ensureRoutingDirectory(outputDir)
+                PhoneDownloadDiagnostics.log(
+                    "BRouter",
+                    "Output directory ready storage=${storage.location().name} " +
+                        "target=${outputDir.absolutePath}",
+                )
                 tileNames.forEachIndexed { index, tileName ->
                     currentCoroutineContext().ensureActive()
                     throwIfCancellationRequested()
@@ -206,7 +218,9 @@ internal class BRouterTileDownloader(
                     )
 
                     val target = File(outputDir, tileName)
+                    targetPath = target.absolutePath
                     if (!forceRefresh && isUsableRoutingPackCache(target)) {
+                        stage = "reuse_cached_tile"
                         skipped += 1
                         PhoneDownloadDiagnostics.log(
                             "BRouter",
@@ -235,6 +249,7 @@ internal class BRouterTileDownloader(
                                 "",
                             )
                         }
+                        stage = "download_tile"
                         downloadTile(
                             tileName = tileName,
                             target = target,
@@ -252,23 +267,30 @@ internal class BRouterTileDownloader(
                         downloaded += 1
                     }
 
-                    uris +=
-                        FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            target,
-                        )
+                    if (includeFileUris) {
+                        stage = "create_file_uri"
+                        uris +=
+                            FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                target,
+                            )
+                    }
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) {
                     PhoneDownloadDiagnostics.warn(
                         "BRouter",
-                        "Cancelled bbox=$normalizedBbox downloaded=$downloaded skipped=$skipped",
+                        "Cancelled stage=$stage bbox=$normalizedBbox " +
+                            "storage=${storage.location().name} target=$targetPath " +
+                            "downloaded=$downloaded skipped=$skipped",
                     )
                 } else {
                     PhoneDownloadDiagnostics.error(
                         "BRouter",
-                        "Failed bbox=$normalizedBbox downloaded=$downloaded skipped=$skipped",
+                        "Failed stage=$stage bbox=$normalizedBbox " +
+                            "storage=${storage.location().name} target=$targetPath " +
+                            "downloaded=$downloaded skipped=$skipped",
                         error,
                     )
                 }
@@ -310,6 +332,16 @@ internal class BRouterTileDownloader(
             .edit()
             .putString(KEY_LAST_BBOX, bbox)
             .apply()
+    }
+
+    private fun ensureRoutingDirectory(directory: File) {
+        if (directory.isDirectory) return
+        if (directory.exists()) {
+            throw IOException("Routing target is not a directory: ${directory.absolutePath}")
+        }
+        if (!directory.mkdirs() && !directory.isDirectory) {
+            throw IOException("Could not create routing directory: ${directory.absolutePath}")
+        }
     }
 
     private suspend fun downloadTile(
@@ -465,10 +497,18 @@ internal class BRouterTileDownloader(
                 if (temp.length() <= 0L) {
                     throw IllegalStateException("Downloaded routing pack is empty: $tileName")
                 }
-                if (target.exists()) target.delete()
+                val expectedBytes = temp.length()
+                if (target.exists() && !target.delete()) {
+                    throw IOException("Could not replace routing pack: ${target.absolutePath}")
+                }
                 if (!temp.renameTo(target)) {
                     temp.copyTo(target, overwrite = true)
-                    temp.delete()
+                    if (temp.exists() && !temp.delete()) {
+                        throw IOException("Could not remove temporary routing pack: ${temp.absolutePath}")
+                    }
+                }
+                if (!isFinalPhoneRoutingFileReady(target, expectedBytes)) {
+                    throw IOException("Routing pack final file is missing or invalid: ${target.absolutePath}")
                 }
                 return
             } finally {
@@ -669,3 +709,11 @@ internal fun overallRoutingDownloadProgress(
 }
 
 internal fun isRetriableRoutingStatus(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
+internal fun isFinalPhoneRoutingFileReady(
+    file: File,
+    expectedBytes: Long,
+): Boolean =
+    file.isFile &&
+        file.length() == expectedBytes &&
+        isUsablePhoneRoutingFile(file)

@@ -987,6 +987,7 @@ class FileTransferViewModel : ViewModel() {
                                         )
                                 },
                                 forceRefresh = forceRefresh,
+                                includeFileUris = true,
                             )
                         }
 

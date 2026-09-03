@@ -344,6 +344,7 @@
     <string name="map_theme_style_classic">Classic</string>
     <string name="map_theme_style_dark">Dark</string>
     <string name="map_bundle_selector_title">Download offline bundle</string>
+    <string name="map_bundle_content_title">Bundle contents</string>
     <string name="map_bundle_search_label">Search OpenAndroMaps areas</string>
     <string name="map_bundle_area_sizes">%1$s map · %2$s POI</string>
     <string name="map_bundle_area_installed">Installed</string>
@@ -362,6 +363,7 @@
     <string name="map_bundle_action_restart">Restart</string>
     <string name="map_bundle_action_retry">Retry</string>
     <string name="map_bundle_action_refresh">Refresh installed bundles</string>
+    <string name="map_bundle_action_open_contents">Configure bundle contents</string>
     <string name="map_bundle_action_refresh_selected">Refresh selected (%1$d)</string>
     <string name="map_bundle_action_back_to_download">Back to download</string>
     <string name="map_bundle_refresh_checking">Checking installed bundles…</string>

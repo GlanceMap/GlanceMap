@@ -2471,10 +2471,11 @@ private fun observeOnlineLiveMapPosition(
     DisposableEffect(runtime.map, enabled, location?.fixElapsedRealtimeMillis, markerAnchor) {
         if (!enabled) return@DisposableEffect onDispose {}
         val activeMap = runtime.map ?: return@DisposableEffect onDispose {}
+        val activeMapView = runtime.mapView ?: return@DisposableEffect onDispose {}
 
         fun publish() {
             if (!runtime.isCurrentIn(currentRuntime) || activeMap.width <= 0 || activeMap.height <= 0) return
-            activeMap.applyPhoneMapMarkerAnchor(markerAnchor)
+            val markerAnchorChanged = activeMap.applyPhoneMapMarkerAnchor(markerAnchor)
             val target =
                 runCatching {
                     activeMap.projection.fromScreenLocation(
@@ -2501,6 +2502,9 @@ private fun observeOnlineLiveMapPosition(
                         },
                 ),
             )
+            if (markerAnchorChanged) {
+                activeMapView.post { publish() }
+            }
         }
 
         val listener = MapLibreMap.OnCameraMoveListener { publish() }
@@ -3129,7 +3133,7 @@ private fun phoneMapNorthIndicator(compassPresentation: PhoneMapCompassPresentat
             text = stringResource(R.string.map_north_indicator_label),
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             color = Color.Black,
-            fontSize = 10.sp,
+            fontSize = 8.sp,
         )
     }
 }
@@ -3565,9 +3569,9 @@ private fun MapLibreMap.enableLocationPuck(
     locationComponent.applyStyle(options)
 }
 
-private fun MapLibreMap.applyPhoneMapMarkerAnchor(anchor: PhoneMapMarkerAnchor) {
+private fun MapLibreMap.applyPhoneMapMarkerAnchor(anchor: PhoneMapMarkerAnchor): Boolean {
     val heightPx = height.toInt()
-    if (heightPx <= 0) return
+    if (heightPx <= 0) return false
     val topPadding =
         if (anchor == PhoneMapMarkerAnchor.LOWER) {
             (heightPx * 0.64f).toInt()
@@ -3583,6 +3587,7 @@ private fun MapLibreMap.applyPhoneMapMarkerAnchor(anchor: PhoneMapMarkerAnchor) 
     if (paddingNeedsUpdate) {
         setPadding(0, topPadding, 0, 0)
     }
+    return paddingNeedsUpdate
 }
 
 private fun MapLibreMap.applyCompassCamera(

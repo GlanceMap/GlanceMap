@@ -222,6 +222,8 @@ private class PhoneOfflineMapsforgeView(
     private var lastHandledCameraCommandId: Long? = null
     private var locationMarker: PhoneOfflineLocationMarker? = null
     private var pendingLocationMarkerRemoval: PhoneOfflineLocationMarker? = null
+    /** Latest marker coordinate remains available while layer mutations are deferred during gestures. */
+    private var latestLocationMarkerPosition: LatLong? = null
     private var currentLocation: PhoneMapLocation? = null
     private var currentMapMode = PhoneMapMode()
     private var hasLocationPermission = false
@@ -316,6 +318,7 @@ private class PhoneOfflineMapsforgeView(
         }
         schedulePendingRendererWorkIfReady()
         latestState?.let { state -> applyMapSettings(state.mapSettings, state.initialCamera) }
+        publishCamera()
         publishRuntimeDiagnostics()
     }
 
@@ -470,12 +473,14 @@ private class PhoneOfflineMapsforgeView(
         this.hasLocationPermission = hasLocationPermission
         val current = location
         if (current == null) {
+            latestLocationMarkerPosition = null
             removeLocationMarker()
             locationFollowUnavailableReported = false
             publishRuntimeDiagnostics()
             return
         }
         val latLong = LatLong(current.latitude, current.longitude)
+        latestLocationMarkerPosition = latLong
         val followDecision = phoneOfflineLocationFollowDecision(current, mapBounds, mapMode.follow)
         PhoneMapLayerMutationCoordinator.mutateLayers(mapView, LOCATION_MUTATION_KEY) { layers ->
             pendingLocationMarkerRemoval?.let { previous ->
@@ -545,6 +550,7 @@ private class PhoneOfflineMapsforgeView(
 
     private fun disposeLocationMarkers() {
         val markers = listOfNotNull(locationMarker, pendingLocationMarkerRemoval).distinct()
+        latestLocationMarkerPosition = null
         if (markers.isEmpty()) return
         locationMarker = null
         pendingLocationMarkerRemoval = null
@@ -573,8 +579,16 @@ private class PhoneOfflineMapsforgeView(
                     mapView.mapViewProjection.fromPixels(mapSpaceCenter.x, mapSpaceCenter.y)
                 }.getOrNull()
             target?.let { resolvedTarget ->
-                val markerLatLong = locationMarker?.latLong
-                val originLatLong = markerLatLong ?: currentLocation?.let { LatLong(it.latitude, it.longitude) }
+                val markerLatLong = latestLocationMarkerPosition ?: locationMarker?.latLong
+                val originLatLong =
+                    resolvePhoneMapLiveMetricsOrigin(
+                        markerPosition = markerLatLong?.let { marker ->
+                            PhoneMapCoordinate(marker.latitude, marker.longitude)
+                        },
+                        locationFallback = currentLocation?.let { location ->
+                            PhoneMapCoordinate(location.latitude, location.longitude)
+                        },
+                    )?.let { marker -> LatLong(marker.latitude, marker.longitude) }
                 val userScreenPoint =
                     originLatLong?.let { origin ->
                         runCatching {
@@ -588,10 +602,7 @@ private class PhoneOfflineMapsforgeView(
                 PhoneMapLiveMetricsPosition(
                     target = PhoneMapCoordinate(resolvedTarget.latitude, resolvedTarget.longitude),
                     userScreenPoint = userScreenPoint,
-                    origin =
-                        originLatLong?.let { origin ->
-                            PhoneMapCoordinate(origin.latitude, origin.longitude)
-                        },
+                    origin = originLatLong?.let { origin -> PhoneMapCoordinate(origin.latitude, origin.longitude) },
                 )
             }
         }

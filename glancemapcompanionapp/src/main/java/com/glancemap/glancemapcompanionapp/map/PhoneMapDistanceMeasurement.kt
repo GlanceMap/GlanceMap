@@ -33,11 +33,20 @@ internal data class PhoneMapLiveMetricsPosition(
     val origin: PhoneMapCoordinate? = null,
 )
 
+/** Keeps live-distance calculations anchored to the location marker, like the watch renderer. */
+internal fun resolvePhoneMapLiveMetricsOrigin(
+    markerPosition: PhoneMapCoordinate?,
+    locationFallback: PhoneMapCoordinate?,
+): PhoneMapCoordinate? = markerPosition ?: locationFallback
+
 internal fun phoneMapLiveDistanceMeters(
     position: PhoneMapLiveMetricsPosition,
     fallbackOrigin: PhoneMapCoordinate?,
 ): Double? =
-    (position.origin ?: fallbackOrigin)?.let { origin ->
+    resolvePhoneMapLiveMetricsOrigin(
+        markerPosition = position.origin,
+        locationFallback = fallbackOrigin,
+    )?.let { origin ->
         phoneMapDistanceMeters(origin, position.target)
     }
 

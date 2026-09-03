@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,10 +60,12 @@ internal fun PhoneOfflineBundleDialog(
     var includeDem by remember { mutableStateOf(true) }
     var includeRefugesInfo by remember { mutableStateOf(false) }
     var demSource by remember(initialDemSource) { mutableStateOf(initialDemSource) }
+    var showingBundleContent by remember { mutableStateOf(false) }
     val state = uiState.download
     val isDownloading = state is PhoneOfflineBundleDownloadState.Downloading
     val isBusy = isDownloading || uiState.isCheckingUpdates
     val showingRefreshResults = uiState.updateChecks.isNotEmpty()
+    val canEditBundleContents = !isBusy && !showingRefreshResults && state is PhoneOfflineBundleDownloadState.Idle
     val selectedArea = OamDownloadCatalog.areas.firstOrNull { it.id == selectedAreaId }
     val selectorState =
         PhoneOfflineBundleSelectorState(
@@ -73,131 +76,184 @@ internal fun PhoneOfflineBundleDialog(
             statusByAreaId = uiState.statusByAreaId,
         )
 
+    if (showingBundleContent) {
+        PhoneOfflineBundleContentScreen(
+            onBack = { showingBundleContent = false },
+            onDismiss = onDismiss,
+            includeRouting = includeRouting,
+            onIncludeRoutingChanged = { includeRouting = it },
+            includeDem = includeDem,
+            onIncludeDemChanged = { includeDem = it },
+            includeRefugesInfo = includeRefugesInfo,
+            onIncludeRefugesInfoChanged = { includeRefugesInfo = it },
+            demSource = demSource,
+            onDemSourceChanged = { demSource = it },
+        )
+    } else {
+        PhoneMapPopupDialog(
+            title = stringResource(R.string.map_bundle_selector_title),
+            onDismiss = onDismiss,
+            dismissEnabled = !isBusy,
+            titleAction = {
+                IconButton(
+                    onClick = { showingBundleContent = true },
+                    enabled = canEditBundleContents,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = stringResource(R.string.map_bundle_action_open_contents),
+                    )
+                }
+                IconButton(
+                    onClick = if (showingRefreshResults) onClearUpdateChecks else onCheckForUpdates,
+                    enabled = !isBusy && uiState.installedBundles.isNotEmpty(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Update,
+                        contentDescription = stringResource(R.string.map_bundle_action_refresh),
+                    )
+                }
+            },
+            text = {
+                if (uiState.isCheckingUpdates) {
+                    Text(stringResource(R.string.map_bundle_refresh_checking))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (state is PhoneOfflineBundleDownloadState.Downloading) {
+                    phoneOfflineBundleDialogContent(
+                        state = state,
+                        selectorState = selectorState,
+                        onQueryChanged = { query = it },
+                        onAreaSelected = { selectedAreaId = it },
+                        onFolderSelected = { selectedAreaFolder = it },
+                        onFolderCleared = { selectedAreaFolder = null },
+                    )
+                } else if (showingRefreshResults) {
+                    phoneOfflineBundleRefreshResults(
+                        checks = uiState.updateChecks,
+                        selectedAreaIds = uiState.selectedRefreshAreaIds,
+                        onToggleSelection = onToggleRefreshSelection,
+                        onBack = onClearUpdateChecks,
+                    )
+                } else {
+                    phoneOfflineBundleDialogContent(
+                        state = state,
+                        selectorState = selectorState,
+                        onQueryChanged = { query = it },
+                        onAreaSelected = { selectedAreaId = it },
+                        onFolderSelected = { selectedAreaFolder = it },
+                        onFolderCleared = { selectedAreaFolder = null },
+                    )
+                }
+            },
+            confirmButton = {
+                when {
+                    state is PhoneOfflineBundleDownloadState.Downloading ->
+                        Row(horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = onPause) {
+                                Text(stringResource(R.string.map_bundle_action_pause))
+                            }
+                            TextButton(onClick = onStop) {
+                                Text(stringResource(R.string.map_bundle_action_stop))
+                            }
+                        }
+                    state is PhoneOfflineBundleDownloadState.Paused ->
+                        TextButton(onClick = onResume) {
+                            Text(stringResource(R.string.map_bundle_action_resume))
+                        }
+                    state is PhoneOfflineBundleDownloadState.Stopped ->
+                        TextButton(onClick = onResume) {
+                            Text(stringResource(R.string.map_bundle_action_restart))
+                        }
+                    state is PhoneOfflineBundleDownloadState.Failed ->
+                        TextButton(onClick = onResume) {
+                            Text(stringResource(R.string.map_bundle_action_retry))
+                        }
+                    uiState.isCheckingUpdates ->
+                        TextButton(onClick = {}, enabled = false) {
+                            Text(stringResource(R.string.map_bundle_refresh_checking))
+                        }
+                    showingRefreshResults ->
+                        TextButton(
+                            enabled = uiState.selectedRefreshAreaIds.isNotEmpty(),
+                            onClick = onRefreshSelected,
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.map_bundle_action_refresh_selected,
+                                    uiState.selectedRefreshAreaIds.size,
+                                ),
+                            )
+                        }
+                    else ->
+                        TextButton(
+                            enabled = selectedArea != null,
+                            onClick = {
+                                selectedArea?.let { area ->
+                                    onStart(
+                                        PhoneOfflineBundleSelection(
+                                            area = area,
+                                            includeRouting = includeRouting,
+                                            includeDem = includeDem,
+                                            demSource = demSource,
+                                            includeRefugesInfo = includeRefugesInfo,
+                                        ),
+                                    )
+                                }
+                            },
+                        ) {
+                            Text(stringResource(R.string.map_bundle_action_download))
+                        }
+                }
+            },
+            dismissButton = {
+                if (!isBusy) {
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+@Suppress("LongParameterList") // Bundle-content controls stay bound to the download selection state.
+private fun PhoneOfflineBundleContentScreen(
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+    includeRouting: Boolean,
+    onIncludeRoutingChanged: (Boolean) -> Unit,
+    includeDem: Boolean,
+    onIncludeDemChanged: (Boolean) -> Unit,
+    includeRefugesInfo: Boolean,
+    onIncludeRefugesInfoChanged: (Boolean) -> Unit,
+    demSource: PhoneOfflineDemSource,
+    onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
+) {
     PhoneMapPopupDialog(
-        title = stringResource(R.string.map_bundle_selector_title),
+        title = stringResource(R.string.map_bundle_content_title),
         onDismiss = onDismiss,
-        dismissEnabled = !isBusy,
         titleAction = {
-            IconButton(
-                onClick = if (showingRefreshResults) onClearUpdateChecks else onCheckForUpdates,
-                enabled = !isBusy && uiState.installedBundles.isNotEmpty(),
-            ) {
+            IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.Filled.Update,
-                    contentDescription = stringResource(R.string.map_bundle_action_refresh),
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.map_bundle_action_back_to_download),
                 )
             }
         },
         text = {
-            if (uiState.isCheckingUpdates) {
-                Text(stringResource(R.string.map_bundle_refresh_checking))
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else if (state is PhoneOfflineBundleDownloadState.Downloading) {
-                phoneOfflineBundleDialogContent(
-                    state = state,
-                    selectorState = selectorState,
-                    onQueryChanged = { query = it },
-                    onAreaSelected = { selectedAreaId = it },
-                    onFolderSelected = { selectedAreaFolder = it },
-                    onFolderCleared = { selectedAreaFolder = null },
-                    includeRouting = includeRouting,
-                    onIncludeRoutingChanged = { includeRouting = it },
-                    includeDem = includeDem,
-                    onIncludeDemChanged = { includeDem = it },
-                    includeRefugesInfo = includeRefugesInfo,
-                    onIncludeRefugesInfoChanged = { includeRefugesInfo = it },
-                    demSource = demSource,
-                    onDemSourceChanged = { demSource = it },
-                )
-            } else if (showingRefreshResults) {
-                phoneOfflineBundleRefreshResults(
-                    checks = uiState.updateChecks,
-                    selectedAreaIds = uiState.selectedRefreshAreaIds,
-                    onToggleSelection = onToggleRefreshSelection,
-                    onBack = onClearUpdateChecks,
-                )
-            } else {
-                phoneOfflineBundleDialogContent(
-                    state = state,
-                    selectorState = selectorState,
-                    onQueryChanged = { query = it },
-                    onAreaSelected = { selectedAreaId = it },
-                    onFolderSelected = { selectedAreaFolder = it },
-                    onFolderCleared = { selectedAreaFolder = null },
-                    includeRouting = includeRouting,
-                    onIncludeRoutingChanged = { includeRouting = it },
-                    includeDem = includeDem,
-                    onIncludeDemChanged = { includeDem = it },
-                    includeRefugesInfo = includeRefugesInfo,
-                    onIncludeRefugesInfoChanged = { includeRefugesInfo = it },
-                    demSource = demSource,
-                    onDemSourceChanged = { demSource = it },
-                )
-            }
+            bundleOptions(
+                includeRouting = includeRouting,
+                onIncludeRoutingChanged = onIncludeRoutingChanged,
+                includeDem = includeDem,
+                onIncludeDemChanged = onIncludeDemChanged,
+                includeRefugesInfo = includeRefugesInfo,
+                onIncludeRefugesInfoChanged = onIncludeRefugesInfoChanged,
+                demSource = demSource,
+                onDemSourceChanged = onDemSourceChanged,
+            )
         },
         confirmButton = {
-            when {
-                state is PhoneOfflineBundleDownloadState.Downloading ->
-                    Row(horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onPause) {
-                            Text(stringResource(R.string.map_bundle_action_pause))
-                        }
-                        TextButton(onClick = onStop) {
-                            Text(stringResource(R.string.map_bundle_action_stop))
-                        }
-                    }
-                state is PhoneOfflineBundleDownloadState.Paused ->
-                    TextButton(onClick = onResume) {
-                        Text(stringResource(R.string.map_bundle_action_resume))
-                    }
-                state is PhoneOfflineBundleDownloadState.Stopped ->
-                    TextButton(onClick = onResume) {
-                        Text(stringResource(R.string.map_bundle_action_restart))
-                    }
-                state is PhoneOfflineBundleDownloadState.Failed ->
-                    TextButton(onClick = onResume) {
-                        Text(stringResource(R.string.map_bundle_action_retry))
-                    }
-                uiState.isCheckingUpdates ->
-                    TextButton(onClick = {}, enabled = false) {
-                        Text(stringResource(R.string.map_bundle_refresh_checking))
-                    }
-                showingRefreshResults ->
-                    TextButton(
-                        enabled = uiState.selectedRefreshAreaIds.isNotEmpty(),
-                        onClick = onRefreshSelected,
-                    ) {
-                        Text(
-                            stringResource(
-                                R.string.map_bundle_action_refresh_selected,
-                                uiState.selectedRefreshAreaIds.size,
-                            ),
-                        )
-                    }
-                else ->
-                    TextButton(
-                        enabled = selectedArea != null,
-                        onClick = {
-                            selectedArea?.let { area ->
-                                onStart(
-                                    PhoneOfflineBundleSelection(
-                                        area = area,
-                                        includeRouting = includeRouting,
-                                        includeDem = includeDem,
-                                        demSource = demSource,
-                                        includeRefugesInfo = includeRefugesInfo,
-                                    ),
-                                )
-                            }
-                        },
-                    ) {
-                        Text(stringResource(R.string.map_bundle_action_download))
-                    }
-            }
-        },
-        dismissButton = {
-            if (!isBusy) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
+            TextButton(onClick = onBack) {
+                Text(stringResource(R.string.common_action_done))
             }
         },
     )
@@ -251,14 +307,6 @@ private fun phoneOfflineBundleDialogContent(
     onAreaSelected: (String) -> Unit,
     onFolderSelected: (String) -> Unit,
     onFolderCleared: () -> Unit,
-    includeRouting: Boolean,
-    onIncludeRoutingChanged: (Boolean) -> Unit,
-    includeDem: Boolean,
-    onIncludeDemChanged: (Boolean) -> Unit,
-    includeRefugesInfo: Boolean,
-    onIncludeRefugesInfoChanged: (Boolean) -> Unit,
-    demSource: PhoneOfflineDemSource,
-    onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
 ) {
     Column {
         when (state) {
@@ -293,16 +341,6 @@ private fun phoneOfflineBundleDialogContent(
                         onAreaSelected = onAreaSelected,
                         onFolderSelected = onFolderSelected,
                         onFolderCleared = onFolderCleared,
-                    )
-                    bundleOptions(
-                        includeRouting = includeRouting,
-                        onIncludeRoutingChanged = onIncludeRoutingChanged,
-                        includeDem = includeDem,
-                        onIncludeDemChanged = onIncludeDemChanged,
-                        includeRefugesInfo = includeRefugesInfo,
-                        onIncludeRefugesInfoChanged = onIncludeRefugesInfoChanged,
-                        demSource = demSource,
-                        onDemSourceChanged = onDemSourceChanged,
                     )
                 }
         }
@@ -464,7 +502,6 @@ private fun bundleOptions(
     demSource: PhoneOfflineDemSource,
     onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
 ) {
-    Text("Bundle contents")
     ListItem(
         headlineContent = { Text("BRouter routing") },
         supportingContent = { Text("Download routing packs for this map") },

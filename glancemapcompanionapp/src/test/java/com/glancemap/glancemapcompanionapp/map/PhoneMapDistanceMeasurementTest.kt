@@ -39,6 +39,20 @@ class PhoneMapDistanceMeasurementTest {
     }
 
     @Test
+    fun liveMetricsOriginUsesMarkerPositionInsteadOfMapCenter() {
+        val marker = PhoneMapCoordinate(latitude = 46.0, longitude = 6.0)
+        val mapCenter = PhoneMapCoordinate(latitude = 46.0, longitude = 7.0)
+
+        assertEquals(
+            marker,
+            resolvePhoneMapLiveMetricsOrigin(
+                markerPosition = marker,
+                locationFallback = mapCenter,
+            ),
+        )
+    }
+
+    @Test
     fun measurementCreatesTwoDistinctMapMarkers() {
         val first = PhoneMapCoordinate(latitude = 46.0, longitude = 6.0)
         val second = PhoneMapCoordinate(latitude = 46.1, longitude = 6.1)

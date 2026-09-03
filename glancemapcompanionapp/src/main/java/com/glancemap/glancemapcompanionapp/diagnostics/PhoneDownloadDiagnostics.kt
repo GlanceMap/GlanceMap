@@ -23,11 +23,14 @@ object PhoneDownloadDiagnostics {
         throwable: Throwable? = null,
     ) {
         val detail =
-            throwable
-                ?.message
-                ?.takeIf { it.isNotBlank() }
-                ?.let { " error=$it" }
-                .orEmpty()
+            throwable?.let { error ->
+                buildString {
+                    append(" exception=${error::class.java.simpleName}")
+                    error.message
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { append(" error=$it") }
+                }
+            }.orEmpty()
         log(component, "ERROR $message$detail")
     }
 }

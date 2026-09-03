@@ -47,6 +47,21 @@ class BRouterTileDownloaderTest {
     }
 
     @Test
+    fun `requires final routing file to exist with expected size and valid index`() {
+        val file = temporaryRoutingPack(lookupVersion = SUPPORTED_ROUTING_PACK_LOOKUP_VERSION)
+        val missingFile = File(file.parentFile, "missing-routing-pack.rd5")
+
+        try {
+            assertFalse(isFinalPhoneRoutingFileReady(file, file.length() + 1L))
+            assertFalse(isFinalPhoneRoutingFileReady(file, file.length()))
+            assertFalse(isFinalPhoneRoutingFileReady(missingFile, file.length()))
+        } finally {
+            file.delete()
+            missingFile.delete()
+        }
+    }
+
+    @Test
     fun `supported routing pack lookup version matches watch bundled lookup table`() {
         val lookupFile = projectFile("app/src/main/assets/brouter/profiles2/lookups.dat")
         val lookupVersion =
