@@ -24,6 +24,16 @@ internal enum class PhoneOfflineStorageMigrationPhase {
     FAILED,
 }
 
+internal fun phoneOfflineStorageMigrationPercent(
+    copiedFiles: Int,
+    totalFiles: Int,
+): Int? =
+    totalFiles.takeIf { it > 0 }?.let {
+        (copiedFiles.toLong().coerceAtLeast(0L) * 100L / it.toLong())
+            .toInt()
+            .coerceIn(0, 100)
+    }
+
 internal data class PhoneOfflineStorageMigrationState(
     val phase: PhoneOfflineStorageMigrationPhase = PhoneOfflineStorageMigrationPhase.IDLE,
     val source: PhoneOfflineStorageLocation? = null,
@@ -33,7 +43,10 @@ internal data class PhoneOfflineStorageMigrationState(
     val requiredSpaceBytes: Long = 0L,
     val availableSpaceBytes: Long = 0L,
     val message: String? = null,
-)
+) {
+    val percent: Int?
+        get() = phoneOfflineStorageMigrationPercent(copiedFiles, totalFiles)
+}
 
 internal data class PhoneOfflineStorageMigrationProgress(
     val phase: PhoneOfflineStorageMigrationPhase,
@@ -171,10 +184,13 @@ internal class PhoneOfflineStorageMigration(
         val finalTargetRoot = File(journal.targetRootPath)
         val backupRoot = File(journal.backupRootPath)
         if (journal.phase == PhoneOfflineStorageMigrationPhase.CLEANUP) {
-            return finishCleanup(journal, managedFiles(finalTargetRoot).size)
+            return finishCleanup(journal, allFiles(finalTargetRoot).size)
         }
         val sourceFiles = managedFiles(sourceRoot)
-        val requiredSpace = sourceFiles.sumOf(FileEntry::sizeBytes)
+        val targetFiles = allFiles(finalTargetRoot)
+        val expectedFiles = mergeFiles(targetFiles, sourceFiles)
+        val sourceFilesByPath = sourceFiles.associateBy(FileEntry::relativePath)
+        val requiredSpace = expectedFiles.sumOf(FileEntry::sizeBytes)
         val targetParent = finalTargetRoot.parentFile
         if (targetParent == null || (!targetParent.exists() && !targetParent.mkdirs())) {
             return failure(
@@ -191,17 +207,6 @@ internal class PhoneOfflineStorageMigration(
                 "Not enough free space: $requiredSpace bytes required, $availableSpace available.",
             )
         }
-        if (
-            journal.phase == PhoneOfflineStorageMigrationPhase.COPYING &&
-            finalTargetRoot != sourceRoot &&
-            finalTargetRoot.exists() &&
-            finalTargetRoot.walkTopDown().any(File::isFile)
-        ) {
-            return PhoneOfflineStorageMigrationResult.Failure(
-                PhoneOfflineStorageMigrationError.TARGET_NOT_EMPTY,
-                "The target GlanceMap directory already contains data.",
-            )
-        }
 
         return try {
             if (journal.phase == PhoneOfflineStorageMigrationPhase.COPYING) {
@@ -213,9 +218,25 @@ internal class PhoneOfflineStorageMigration(
                         "The migration staging directory cannot be created.",
                     )
                 }
-                sourceFiles.forEachIndexed { index, entry ->
+                onProgress(
+                    PhoneOfflineStorageMigrationProgress(
+                        phase = PhoneOfflineStorageMigrationPhase.COPYING,
+                        source = journal.source,
+                        target = journal.target,
+                        copiedFiles = 0,
+                        totalFiles = expectedFiles.size,
+                        requiredSpaceBytes = requiredSpace,
+                        availableSpaceBytes = availableSpace,
+                    ),
+                )
+                expectedFiles.forEachIndexed { index, entry ->
                     currentCoroutineContext().ensureActive()
-                    val sourceFile = File(sourceRoot, entry.relativePath)
+                    val sourceFile =
+                        if (entry.relativePath in sourceFilesByPath) {
+                            File(sourceRoot, entry.relativePath)
+                        } else {
+                            File(finalTargetRoot, entry.relativePath)
+                        }
                     val stagingFile = File(stagingRoot, entry.relativePath)
                     if (!matches(stagingFile, entry)) {
                         copyFile(sourceFile, stagingFile)
@@ -233,7 +254,7 @@ internal class PhoneOfflineStorageMigration(
                             source = journal.source,
                             target = journal.target,
                             copiedFiles = index + 1,
-                            totalFiles = sourceFiles.size,
+                            totalFiles = expectedFiles.size,
                             requiredSpaceBytes = requiredSpace,
                             availableSpaceBytes = availableSpace,
                         ),
@@ -245,17 +266,17 @@ internal class PhoneOfflineStorageMigration(
                 )
             }
 
-            val verified = managedFiles(stagingRoot)
+            val verified = allFiles(stagingRoot)
             if (
                 journal.phase == PhoneOfflineStorageMigrationPhase.SWITCHING &&
                 !stagingRoot.exists() &&
-                managedFiles(finalTargetRoot) == sourceFiles
+                allFiles(finalTargetRoot) == expectedFiles
             ) {
                 val cleanupJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.CLEANUP)
                 writeJournal(journalFile(), cleanupJournal)
-                return finishCleanup(cleanupJournal, sourceFiles.size)
+                return finishCleanup(cleanupJournal, expectedFiles.size)
             }
-            if (verified != sourceFiles) {
+            if (verified != expectedFiles) {
                 return failure(
                     journal,
                     PhoneOfflineStorageMigrationError.VERIFY_FAILED,
@@ -268,7 +289,7 @@ internal class PhoneOfflineStorageMigration(
                     source = journal.source,
                     target = journal.target,
                     copiedFiles = verified.size,
-                    totalFiles = verified.size,
+                    totalFiles = expectedFiles.size,
                     requiredSpaceBytes = requiredSpace,
                     availableSpaceBytes = availableSpace,
                 ),
@@ -300,12 +321,12 @@ internal class PhoneOfflineStorageMigration(
                     source = journal.source,
                     target = journal.target,
                     copiedFiles = verified.size,
-                    totalFiles = verified.size,
+                    totalFiles = expectedFiles.size,
                     requiredSpaceBytes = requiredSpace,
                     availableSpaceBytes = availableSpace,
                 ),
             )
-            finishCleanup(cleanupJournal, verified.size)
+            finishCleanup(cleanupJournal, expectedFiles.size)
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -330,7 +351,7 @@ internal class PhoneOfflineStorageMigration(
         movedFiles: Int,
     ): PhoneOfflineStorageMigrationResult {
         setActiveLocation(journal.target)
-        if (!deleteManagedData(sourceRoot(journal)) || !deleteManagedData(File(journal.backupRootPath))) {
+        if (!deleteManagedData(sourceRoot(journal)) || !deleteMigrationBackup(File(journal.backupRootPath))) {
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
@@ -375,6 +396,31 @@ internal class PhoneOfflineStorageMigration(
                 }.sortedBy(FileEntry::relativePath)
                 .toList()
 
+        fun allFiles(root: File): List<FileEntry> =
+            if (!root.exists()) {
+                emptyList()
+            } else {
+                root.walkTopDown()
+                    .filter(File::isFile)
+                    .map { file ->
+                        FileEntry(
+                            relativePath = file.relativeTo(root).invariantSeparatorsPath,
+                            sizeBytes = file.length(),
+                            sha256 = sha256(file),
+                        )
+                    }.sortedBy(FileEntry::relativePath)
+                    .toList()
+            }
+
+        fun mergeFiles(
+            targetFiles: List<FileEntry>,
+            sourceFiles: List<FileEntry>,
+        ): List<FileEntry> =
+            (targetFiles + sourceFiles)
+                .associateBy(FileEntry::relativePath)
+                .values
+                .sortedBy(FileEntry::relativePath)
+
         fun matches(
             file: File,
             expected: FileEntry,
@@ -414,6 +460,8 @@ internal class PhoneOfflineStorageMigration(
                 val directory = File(root, name)
                 !directory.exists() || directory.deleteRecursively()
             }
+
+        fun deleteMigrationBackup(root: File): Boolean = !root.exists() || root.deleteRecursively()
 
         fun writeJournal(
             file: File,

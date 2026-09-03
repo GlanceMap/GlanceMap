@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -165,7 +166,7 @@ class PhoneOfflineStorageMigrationTest {
         }
 
     @Test
-    fun nonEmptyTargetIsNotOverwritten() =
+    fun existingTargetDataIsMergedAndSourceWinsOnConflict() =
         runBlocking {
             val root = createTempDirectory(prefix = "phone-storage-target-").toFile()
             try {
@@ -175,25 +176,48 @@ class PhoneOfflineStorageMigrationTest {
                     parentFile!!.mkdirs()
                     writeText("source")
                 }
+                File(source, "maps/shared.map").writeText("source version")
                 File(target, "maps/existing.map").apply {
                     parentFile!!.mkdirs()
                     writeText("existing")
                 }
+                File(target, "maps/shared.map").writeText("old target version")
+                File(target, "custom/user-note.txt").apply {
+                    parentFile!!.mkdirs()
+                    writeText("keep this file")
+                }
                 val journal = File(root, "migration.properties")
+                val progress = mutableListOf<PhoneOfflineStorageMigrationProgress>()
 
                 val result =
                     PhoneOfflineStorageMigration(source, target, journal)
-                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+                        .move(PhoneOfflineStorageLocation.EXTERNAL) { progress += it }
 
-                assertEquals(
-                    PhoneOfflineStorageMigrationError.TARGET_NOT_EMPTY,
-                    (result as PhoneOfflineStorageMigrationResult.Failure).error,
-                )
-                assertEquals("source", File(source, "maps/source.map").readText())
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("source", File(target, "maps/source.map").readText())
                 assertEquals("existing", File(target, "maps/existing.map").readText())
+                assertEquals("source version", File(target, "maps/shared.map").readText())
+                assertEquals("keep this file", File(target, "custom/user-note.txt").readText())
+                assertFalse(File(source, "maps").exists())
+                assertEquals(0, progress.first().copiedFiles)
+                assertEquals(4, progress.first().totalFiles)
+                assertEquals(100, progress.last().copiedFiles * 100 / progress.last().totalFiles)
                 assertFalse(journal.exists())
             } finally {
                 root.deleteRecursively()
             }
         }
+
+    @Test
+    fun migrationStateExposesBoundedPercentage() {
+        assertEquals(
+            50,
+            PhoneOfflineStorageMigrationState(copiedFiles = 1, totalFiles = 2).percent,
+        )
+        assertEquals(
+            100,
+            PhoneOfflineStorageMigrationState(copiedFiles = 9, totalFiles = 2).percent,
+        )
+        assertNull(PhoneOfflineStorageMigrationState(copiedFiles = 0, totalFiles = 0).percent)
+    }
 }
