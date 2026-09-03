@@ -16,8 +16,30 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 internal data class NavigateScreenLifecycleState(
     val isScreenResumed: Boolean,
     val lastScreenResumeElapsedMs: Long,
+    val menuClickWakeElapsedMs: Long,
     val menuClickGuardUntilElapsedMs: Long,
 )
+
+internal data class NavigateMenuClickGuardState(
+    val observedNonInteractive: Boolean = false,
+    val wakeElapsedMs: Long = 0L,
+    val guardUntilElapsedMs: Long = 0L,
+)
+
+internal fun updateNavigateMenuClickGuard(
+    previous: NavigateMenuClickGuardState,
+    isDeviceInteractive: Boolean,
+    nowElapsedMs: Long,
+): NavigateMenuClickGuardState =
+    when {
+        !isDeviceInteractive -> previous.copy(observedNonInteractive = true)
+        !previous.observedNonInteractive -> previous
+        else ->
+            NavigateMenuClickGuardState(
+                wakeElapsedMs = nowElapsedMs,
+                guardUntilElapsedMs = nowElapsedMs + NAVIGATE_MENU_CLICK_RESUME_GUARD_MS,
+            )
+    }
 
 @Composable
 internal fun rememberNavigateScreenLifecycleState(
@@ -30,8 +52,8 @@ internal fun rememberNavigateScreenLifecycleState(
     var lastScreenResumeElapsedMs by remember(lifecycleOwner) {
         mutableLongStateOf(SystemClock.elapsedRealtime())
     }
-    var menuClickGuardUntilElapsedMs by remember(lifecycleOwner) {
-        mutableLongStateOf(lastScreenResumeElapsedMs + NAVIGATE_MENU_CLICK_RESUME_GUARD_MS)
+    var menuClickGuardState by remember(lifecycleOwner) {
+        mutableStateOf(NavigateMenuClickGuardState())
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -42,7 +64,6 @@ internal fun rememberNavigateScreenLifecycleState(
                         val nowElapsedMs = SystemClock.elapsedRealtime()
                         isScreenResumed = true
                         lastScreenResumeElapsedMs = nowElapsedMs
-                        menuClickGuardUntilElapsedMs = nowElapsedMs + NAVIGATE_MENU_CLICK_RESUME_GUARD_MS
                     }
                     Lifecycle.Event.ON_PAUSE -> isScreenResumed = false
                     else -> Unit
@@ -56,15 +77,24 @@ internal fun rememberNavigateScreenLifecycleState(
         if (isScreenResumed && isDeviceInteractive) {
             val nowElapsedMs = SystemClock.elapsedRealtime()
             lastScreenResumeElapsedMs = nowElapsedMs
-            menuClickGuardUntilElapsedMs = nowElapsedMs + NAVIGATE_MENU_CLICK_RESUME_GUARD_MS
         }
+    }
+
+    LaunchedEffect(isDeviceInteractive) {
+        menuClickGuardState =
+            updateNavigateMenuClickGuard(
+                previous = menuClickGuardState,
+                isDeviceInteractive = isDeviceInteractive,
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+            )
     }
 
     return NavigateScreenLifecycleState(
         isScreenResumed = isScreenResumed,
         lastScreenResumeElapsedMs = lastScreenResumeElapsedMs,
-        menuClickGuardUntilElapsedMs = menuClickGuardUntilElapsedMs,
+        menuClickWakeElapsedMs = menuClickGuardState.wakeElapsedMs,
+        menuClickGuardUntilElapsedMs = menuClickGuardState.guardUntilElapsedMs,
     )
 }
 
-private const val NAVIGATE_MENU_CLICK_RESUME_GUARD_MS = 1_500L
+private const val NAVIGATE_MENU_CLICK_RESUME_GUARD_MS = 1_000L

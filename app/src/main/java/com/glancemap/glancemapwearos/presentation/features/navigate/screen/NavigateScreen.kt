@@ -103,6 +103,7 @@ fun NavigateScreen(
     val lifecycleState = rememberNavigateScreenLifecycleState(isDeviceInteractive = isDeviceInteractive)
     val isScreenResumed = lifecycleState.isScreenResumed
     val lastScreenResumeElapsedMs = lifecycleState.lastScreenResumeElapsedMs
+    val menuClickWakeElapsedMs = lifecycleState.menuClickWakeElapsedMs
     val startRecordingWithActivityPermission =
         rememberRecordingStartWithActivityPermission(
             context = context,
@@ -1022,8 +1023,8 @@ fun NavigateScreen(
                 if (nowElapsedMs < menuClickGuardUntilElapsedMs) {
                     DebugTelemetry.log(
                         "NavigationTelemetry",
-                        "event=menu_click_ignored route=navigate_screen reason=recent_resume " +
-                            "ageMs=${nowElapsedMs - lastScreenResumeElapsedMs} " +
+                        "event=menu_click_ignored route=navigate_screen reason=recent_wake " +
+                            "ageMs=${nowElapsedMs - menuClickWakeElapsedMs} " +
                             "remainingMs=${menuClickGuardUntilElapsedMs - nowElapsedMs}",
                     )
                 } else {
