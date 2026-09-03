@@ -17,6 +17,7 @@ class RecordingScreenOffDiagnosticsTest {
 
     @After
     fun resetDiagnostics() {
+        RecordingScreenOffDiagnostics.clear()
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = false)
         RecordingScreenOffDiagnostics.updateRuntimeState(
             isInteractive = true,
@@ -86,10 +87,19 @@ class RecordingScreenOffDiagnosticsTest {
         )
 
         assertEquals(0L, RecordingScreenOffDiagnostics.snapshotAndReset().pressureCallback.count)
+        RecordingScreenOffDiagnostics.recordDashboardTick()
+        RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned = 3)
+        RecordingScreenOffDiagnostics.recordDraftPersist(
+            jsonBytesWritten = 10L,
+            gpxBytesWritten = 20L,
+            pointCount = 4,
+        )
+        RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.PRESSURE)
+        assertEquals(0L, RecordingScreenOffDiagnostics.snapshotInstrumentation().recordingDashboardTickCount)
     }
 
     @Test
-    fun instrumentationCountersSeparateScreenOffWorkAndResetForNewCapture() {
+    fun instrumentationCountersPreserveCompletedCaptureUntilNextFullCapture() {
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = true)
         RecordingScreenOffDiagnostics.updateRuntimeState(
             isInteractive = true,
@@ -129,7 +139,52 @@ class RecordingScreenOffDiagnosticsTest {
         assertInstrumentationReport(report)
 
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = false)
+        val stoppedCounters = RecordingScreenOffDiagnostics.snapshotInstrumentation()
+        assertInstrumentationCounters(stoppedCounters)
+
+        RecordingScreenOffDiagnostics.recordDashboardTick()
+        RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned = 9)
+        RecordingScreenOffDiagnostics.recordDraftPersist(
+            jsonBytesWritten = 100L,
+            gpxBytesWritten = 200L,
+            pointCount = 20,
+        )
+        RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.PRESSURE)
+        assertInstrumentationCounters(RecordingScreenOffDiagnostics.snapshotInstrumentation())
+
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = true)
+        assertEquals(0L, RecordingScreenOffDiagnostics.snapshotInstrumentation().recordingDashboardTickCount)
+    }
+
+    @Test
+    fun exportOrderingKeepsInstrumentationAvailableAfterCaptureStops() {
+        RecordingScreenOffDiagnostics.configure(fullDiagnostics = true)
+        RecordingScreenOffDiagnostics.recordDashboardTick()
+        RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned = 2)
+        RecordingScreenOffDiagnostics.recordDraftPersist(
+            jsonBytesWritten = 12L,
+            gpxBytesWritten = 24L,
+            pointCount = 3,
+        )
+        RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.HEART_RATE)
+
+        RecordingScreenOffDiagnostics.configure(fullDiagnostics = false)
+
+        val exportedCounters = RecordingScreenOffDiagnostics.snapshotInstrumentation()
+        assertEquals(1L, exportedCounters.recordingDashboardTickCount)
+        assertEquals(1L, exportedCounters.tbtProjectionRunCount)
+        assertEquals(1L, exportedCounters.recordingDraftPersistCount)
+        assertEquals(1L, exportedCounters.recordingSensorCallbackCount)
+    }
+
+    @Test
+    fun explicitClearResetsPreservedInstrumentation() {
+        RecordingScreenOffDiagnostics.configure(fullDiagnostics = true)
+        RecordingScreenOffDiagnostics.recordDashboardTick()
+        RecordingScreenOffDiagnostics.configure(fullDiagnostics = false)
+        assertEquals(1L, RecordingScreenOffDiagnostics.snapshotInstrumentation().recordingDashboardTickCount)
+
+        RecordingScreenOffDiagnostics.clear()
 
         assertEquals(0L, RecordingScreenOffDiagnostics.snapshotInstrumentation().recordingDashboardTickCount)
     }

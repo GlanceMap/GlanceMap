@@ -49,6 +49,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.FieldMarkerDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.GnssDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -329,6 +330,7 @@ fun DebuggingSettingsScreen(
                     CompassDeepTraceDiagnostics.clear()
                     MarkerMotionTelemetry.clear()
                     EnergyDiagnostics.clear()
+                    RecordingScreenOffDiagnostics.clear()
                     ScreenStateDiagnostics.clear()
                     energySummaryRevision += 1L
                     DemDownloadDiagnostics.clear()

@@ -120,10 +120,20 @@ internal object RecordingScreenOffDiagnostics {
     private var elapsedTimeProvider: () -> Long = { SystemClock.elapsedRealtime() }
 
     fun configure(fullDiagnostics: Boolean) {
-        if (fullDiagnosticsEnabled.getAndSet(fullDiagnostics) != fullDiagnostics) {
+        val previousFullDiagnostics = fullDiagnosticsEnabled.getAndSet(fullDiagnostics)
+        if (previousFullDiagnostics != fullDiagnostics) {
+            // Keep the legacy elapsed-time counters windowed on every mode transition.
             snapshotAndReset()
-            resetInstrumentation()
+            // Cumulative REC/TBT counters belong to the next FULL capture session only.
+            if (fullDiagnostics) {
+                resetInstrumentation()
+            }
         }
+    }
+
+    fun clear() {
+        snapshotAndReset()
+        resetInstrumentation()
     }
 
     fun updateRuntimeState(
