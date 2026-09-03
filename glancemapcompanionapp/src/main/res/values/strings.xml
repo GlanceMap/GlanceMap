@@ -275,6 +275,7 @@
     <string name="map_tools_settings_storage_complete">Data directory changed</string>
     <string name="map_tools_settings_storage_failed">Data directory move failed</string>
     <string name="map_tools_settings_storage_ready">Data directory ready</string>
+    <string name="map_tools_settings_storage_progress">%1$d/%2$d files (%3$d%%)</string>
     <string name="map_tools_settings_units">Units</string>
     <string name="map_tools_settings_units_metric">Metric</string>
     <string name="map_tools_settings_units_imperial">Imperial</string>

@@ -285,7 +285,14 @@ internal fun mapToolsStorageSetting(
             ),
         )
         if (migration.totalFiles > 0) {
-            Text("${migration.copiedFiles}/${migration.totalFiles} files")
+            Text(
+                stringResource(
+                    R.string.map_tools_settings_storage_progress,
+                    migration.copiedFiles,
+                    migration.totalFiles,
+                    migration.percent ?: 0,
+                ),
+            )
         }
         migration.message?.takeIf(String::isNotBlank)?.let { message -> Text(message) }
     }
