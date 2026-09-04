@@ -19,7 +19,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +66,7 @@ internal data class MapToolsMapsState(
 internal data class PhoneOfflineMapAvailability(
     val hasElevationData: Boolean = false,
     val hasRoutingData: Boolean = false,
+    val bundleAreaId: String? = null,
 )
 
 internal fun phoneOfflineMapAvailability(
@@ -97,6 +100,7 @@ internal fun phoneOfflineMapAvailability(
     return PhoneOfflineMapAvailability(
         hasElevationData = hasElevationData,
         hasRoutingData = hasRoutingData,
+        bundleAreaId = bundle.areaId,
     )
 }
 
@@ -150,6 +154,7 @@ internal data class MapToolsMapsActions(
     val onSelectOffline: (PhoneOfflineMap) -> Unit,
     val onRenameOfflineMap: (PhoneOfflineMap) -> Unit,
     val onDeleteOfflineMap: (PhoneOfflineMap) -> Unit,
+    val onDownloadElevationForBundleArea: (String) -> Unit,
     val onImportMap: () -> Unit,
     val onImportElevation: () -> Unit,
     val onSelectElevationFolder: () -> Unit,
@@ -451,6 +456,7 @@ private fun mapToolsMapsPanel(
                             onClick = { actions.onSelectOffline(offlineMap) },
                             onRename = { actions.onRenameOfflineMap(offlineMap) },
                             onDelete = { actions.onDeleteOfflineMap(offlineMap) },
+                            onDownloadElevation = actions.onDownloadElevationForBundleArea,
                         )
                     }
                 }
@@ -507,6 +513,7 @@ private fun mapToolsOfflineMapRow(
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onDownloadElevation: (String) -> Unit,
 ) {
     Row(
         modifier =
@@ -546,6 +553,29 @@ private fun mapToolsOfflineMapRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        availability.bundleAreaId?.let { areaId ->
+            IconButton(
+                onClick = { onDownloadElevation(areaId) },
+                enabled = !availability.hasElevationData,
+            ) {
+                Icon(
+                    imageVector =
+                        if (availability.hasElevationData) {
+                            Icons.Filled.Landscape
+                        } else {
+                            Icons.Filled.Download
+                        },
+                    contentDescription =
+                        stringResource(
+                            if (availability.hasElevationData) {
+                                R.string.map_source_action_elevation_ready
+                            } else {
+                                R.string.map_source_action_download_elevation
+                            },
+                        ),
+                )
+            }
         }
         mapToolEditDeleteActions(
             onRename = onRename,

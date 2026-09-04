@@ -402,6 +402,7 @@ internal fun CompanionMapScreen(
     var liveMapPosition by remember { mutableStateOf<PhoneMapLiveMetricsPosition?>(null) }
     var showOfflineThemeSelector by remember { mutableStateOf(false) }
     var showOfflineBundleDownload by remember { mutableStateOf(false) }
+    var elevationBundleAreaId by remember { mutableStateOf<String?>(null) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var mapLocationMessage by remember { mutableStateOf<Int?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasPhoneMapLocationPermission()) }
@@ -1036,6 +1037,10 @@ internal fun CompanionMapScreen(
             },
             onRenameOfflineMap = { map -> openContentRename(PhoneMapManagedContent.OfflineMap(map)) },
             onDeleteOfflineMap = { map -> openContentDelete(PhoneMapManagedContent.OfflineMap(map)) },
+            onDownloadElevationForBundleArea = { areaId ->
+                elevationBundleAreaId = areaId
+                showOfflineBundleDownload = true
+            },
             onImportMap = { selectLocalMapLauncher.launch(arrayOf("application/octet-stream")) },
             onImportElevation = {
                 selectElevationLauncher.launch(
@@ -2212,7 +2217,10 @@ internal fun CompanionMapScreen(
                         onGeneralSettingsChanged = { settings ->
                             generalSettings = generalSettingsPreferences.save(settings)
                         },
-                        onOpenBundleDownload = { showOfflineBundleDownload = true },
+                        onOpenBundleDownload = {
+                            elevationBundleAreaId = null
+                            showOfflineBundleDownload = true
+                        },
                         onStorageChangeRequested = onStorageChangeRequested,
                     ),
             )
@@ -2372,7 +2380,10 @@ internal fun CompanionMapScreen(
     if (showOfflineBundleDownload) {
         PhoneOfflineBundleDialog(
             uiState = bundleUiState,
-            onDismiss = { showOfflineBundleDownload = false },
+            onDismiss = {
+                showOfflineBundleDownload = false
+                elevationBundleAreaId = null
+            },
             onStart = { selection ->
                 mapSettings = mapSettingsPreferences.save(mapSettings.copy(demSource = selection.demSource))
                 bundleViewModel.start(selection)
@@ -2386,6 +2397,8 @@ internal fun CompanionMapScreen(
             onToggleRefreshSelection = bundleViewModel::toggleRefreshSelection,
             onClearUpdateChecks = bundleViewModel::clearUpdateChecks,
             initialDemSource = mapSettings.demSource,
+            initialAreaId = elevationBundleAreaId,
+            initialIncludeRouting = elevationBundleAreaId == null,
         )
     }
 }

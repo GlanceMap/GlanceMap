@@ -53,6 +53,8 @@
     <string name="map_source_capability">Elevation: %1$s · Routing: %2$s</string>
     <string name="map_source_capability_available">available</string>
     <string name="map_source_capability_missing">not available</string>
+    <string name="map_source_action_download_elevation">Download elevation data</string>
+    <string name="map_source_action_elevation_ready">Elevation data is ready</string>
     <string name="map_tools_maps_theme_value">Map theme: %1$s · %2$s</string>
     <string name="map_tools_maps_settings_storage_heading">Offline map storage</string>
     <string name="map_tools_maps_storage_location">Data location: %1$s</string>

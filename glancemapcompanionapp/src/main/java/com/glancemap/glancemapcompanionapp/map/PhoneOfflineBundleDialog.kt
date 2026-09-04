@@ -53,11 +53,13 @@ internal fun PhoneOfflineBundleDialog(
     onToggleRefreshSelection: (String) -> Unit,
     onClearUpdateChecks: () -> Unit,
     initialDemSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
+    initialAreaId: String? = null,
+    initialIncludeRouting: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
-    var selectedAreaId by remember { mutableStateOf<String?>(null) }
+    var selectedAreaId by remember(initialAreaId) { mutableStateOf(initialAreaId) }
     var selectedAreaFolder by remember { mutableStateOf<String?>(null) }
-    var includeRouting by remember { mutableStateOf(true) }
+    var includeRouting by remember(initialIncludeRouting) { mutableStateOf(initialIncludeRouting) }
     var includeDem by remember { mutableStateOf(true) }
     var includeRefugesInfo by remember { mutableStateOf(false) }
     var demSource by remember(initialDemSource) { mutableStateOf(initialDemSource) }
