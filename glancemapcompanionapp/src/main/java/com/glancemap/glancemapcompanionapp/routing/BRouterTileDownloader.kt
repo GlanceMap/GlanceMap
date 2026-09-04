@@ -19,7 +19,9 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.net.HttpURLConnection
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Locale
@@ -219,7 +221,7 @@ internal class BRouterTileDownloader(
 
                     val target = File(outputDir, tileName)
                     targetPath = target.absolutePath
-                    if (!forceRefresh && isUsableRoutingPackCache(target)) {
+                    if (!forceRefresh && isUsablePhoneRoutingFile(target)) {
                         stage = "reuse_cached_tile"
                         skipped += 1
                         PhoneDownloadDiagnostics.log(
@@ -250,20 +252,29 @@ internal class BRouterTileDownloader(
                             )
                         }
                         stage = "download_tile"
-                        downloadTile(
-                            tileName = tileName,
-                            target = target,
-                            forceRefresh = forceRefresh,
-                            step = step,
-                            totalSteps = tileNames.size,
-                            reportProgress = { tileFraction, status, detail ->
-                                reportProgress(
-                                    overallRoutingDownloadProgress(index, tileNames.size, tileFraction),
-                                    status,
-                                    detail,
-                                )
-                            },
-                        )
+                        try {
+                            downloadTile(
+                                tileName = tileName,
+                                target = target,
+                                forceRefresh = forceRefresh,
+                                step = step,
+                                totalSteps = tileNames.size,
+                                reportProgress = { tileFraction, status, detail ->
+                                    reportProgress(
+                                        overallRoutingDownloadProgress(index, tileNames.size, tileFraction),
+                                        status,
+                                        detail,
+                                    )
+                                },
+                            )
+                        } catch (error: Throwable) {
+                            if (error is CancellationException) throw error
+                            throw BRouterTileDownloadException(
+                                tileName = tileName,
+                                userMessage = userSafeRoutingFailureMessage(error),
+                                cause = error,
+                            )
+                        }
                         downloaded += 1
                     }
 
@@ -410,6 +421,9 @@ internal class BRouterTileDownloader(
     ) {
         val temp = File(target.parentFile, "${target.name}.tmp")
         throwIfCancellationRequested()
+        if (forceRefresh && temp.exists() && !temp.delete()) {
+            throw IOException("Could not reset the partial routing pack: $tileName")
+        }
 
         val url = "$SEGMENTS_BASE_URL/$tileName"
         var rangeRestartCount = 0
@@ -584,9 +598,19 @@ internal class BRouterTileDownloader(
     private fun shouldRetryDownload(error: Throwable): Boolean =
         when (error) {
             is RoutingDownloadHttpException -> isRetriableRoutingStatus(error.statusCode)
-            is SocketTimeoutException -> true
-            is IOException -> true
+            is IOException -> isRetriableRoutingIoFailure(error)
             else -> false
+        }
+
+    private fun userSafeRoutingFailureMessage(error: Throwable): String =
+        when (error) {
+            is RoutingDownloadHttpException -> error.message.orEmpty().ifBlank { "Routing server request failed." }
+            is SocketTimeoutException -> "Connection timed out."
+            is SocketException,
+            is InterruptedIOException,
+            -> "Connection was interrupted."
+            is FileNotFoundException -> "Requested routing pack is unavailable."
+            else -> "Routing pack could not be downloaded."
         }
 
     private fun buildRoutingStatus(
@@ -696,6 +720,12 @@ internal class BRouterTileDownloader(
     ) : IOException(message)
 }
 
+internal class BRouterTileDownloadException(
+    val tileName: String,
+    val userMessage: String,
+    cause: Throwable,
+) : IOException(userMessage, cause)
+
 internal fun overallRoutingDownloadProgress(
     stepIndex: Int,
     totalSteps: Int,
@@ -709,6 +739,15 @@ internal fun overallRoutingDownloadProgress(
 }
 
 internal fun isRetriableRoutingStatus(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
+internal fun isRetriableRoutingIoFailure(error: IOException): Boolean =
+    when (error) {
+        is SocketTimeoutException,
+        is SocketException,
+        is InterruptedIOException,
+        -> true
+        else -> false
+    }
 
 internal fun isFinalPhoneRoutingFileReady(
     file: File,

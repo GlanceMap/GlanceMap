@@ -299,7 +299,10 @@ private fun PhoneOfflineBundleUpdateStatus.refreshLabel(): String =
     }
 
 @Composable
-@Suppress("LongParameterList") // Dialog content needs independent state callbacks for each option.
+@Suppress(
+    "LongParameterList",
+    "CyclomaticComplexMethod",
+) // Dialog content renders the existing download state machine without changing its transitions.
 private fun phoneOfflineBundleDialogContent(
     state: PhoneOfflineBundleDownloadState,
     selectorState: PhoneOfflineBundleSelectorState,
@@ -329,7 +332,13 @@ private fun phoneOfflineBundleDialogContent(
                 Text(stringResource(R.string.map_bundle_status_complete, state.bundle.areaLabel))
             is PhoneOfflineBundleDownloadState.Failed -> {
                 Text(stringResource(R.string.map_bundle_status_retry))
-                Text(stringResource(state.reason.stringResource()))
+                state.context?.let { context ->
+                    Text(stringResource(context.component.stringResource()))
+                    context.fileName?.takeIf(String::isNotBlank)?.let { fileName -> Text(fileName) }
+                    context.detail.takeIf(String::isNotBlank)?.let { detail ->
+                        Text(detail)
+                    } ?: Text(stringResource(state.reason.stringResource()))
+                } ?: Text(stringResource(state.reason.stringResource()))
             }
             PhoneOfflineBundleDownloadState.Cancelled ->
                 Text(stringResource(R.string.map_bundle_status_cancelled))
@@ -592,4 +601,13 @@ private fun PhoneOfflineBundleFailure.stringResource(): Int =
         PhoneOfflineBundleFailure.INVALID_POI -> R.string.map_bundle_error_invalid_poi
         PhoneOfflineBundleFailure.INVALID_REFUGES_INFO -> R.string.map_bundle_error_invalid_refuges
         PhoneOfflineBundleFailure.CANCELLED -> R.string.map_bundle_status_cancelled
+    }
+
+private fun PhoneOfflineBundleComponent.stringResource(): Int =
+    when (this) {
+        PhoneOfflineBundleComponent.MAP -> R.string.map_bundle_failure_map
+        PhoneOfflineBundleComponent.POI -> R.string.map_bundle_failure_poi
+        PhoneOfflineBundleComponent.ROUTING -> R.string.map_bundle_failure_routing
+        PhoneOfflineBundleComponent.DEM -> R.string.map_bundle_failure_dem
+        PhoneOfflineBundleComponent.REFUGES_INFO -> R.string.map_bundle_failure_refuges
     }

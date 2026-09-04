@@ -265,7 +265,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                         operationStore.save(operation)
                     }
                     is PhoneOfflineBundleOutcome.Failure -> {
-                        handleFailure(operation, area.id, outcome.reason)
+                        handleFailure(operation, area.id, outcome.reason, outcome.context)
                         return
                     }
                 }
@@ -373,14 +373,16 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         operation: PhoneOfflineBundleOperation,
         areaId: String,
         reason: PhoneOfflineBundleFailure,
+        context: PhoneOfflineBundleFailureContext? = null,
     ) {
         operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.PAUSED))
         PhoneOfflineBundleDownloadRuntime.publish(
-            PhoneOfflineBundleDownloadState.Failed(reason = reason, areaId = areaId),
+            PhoneOfflineBundleDownloadState.Failed(reason = reason, areaId = areaId, context = context),
         )
+        val notificationDetail = context?.detail.orEmpty().ifBlank { failureLabel(reason) }
         showTerminalNotification(
             title = "Offline bundle download failed",
-            detail = "${failureLabel(reason)} Partial files saved; retry to resume.",
+            detail = "$notificationDetail Partial files saved; retry to resume.",
             includeResumeAction = true,
         )
     }

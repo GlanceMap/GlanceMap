@@ -39,6 +39,7 @@ internal sealed interface PhoneOfflineBundleDownloadState {
     data class Failed(
         val reason: PhoneOfflineBundleFailure,
         val areaId: String? = null,
+        val context: PhoneOfflineBundleFailureContext? = null,
     ) : PhoneOfflineBundleDownloadState
 
     data object Cancelled : PhoneOfflineBundleDownloadState

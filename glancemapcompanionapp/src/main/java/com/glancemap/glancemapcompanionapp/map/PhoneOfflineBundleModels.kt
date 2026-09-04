@@ -213,6 +213,8 @@ internal data class PhoneOfflineBundleRecovery(
     val downloadedDemTileIds: List<String> = emptyList(),
     val detail: String = "",
     val failure: PhoneOfflineBundleFailure? = null,
+    val failureComponent: PhoneOfflineBundleComponent? = null,
+    val failureFileName: String? = null,
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -243,6 +245,22 @@ internal enum class PhoneOfflineBundleFailure {
     INVALID_POI,
     INVALID_REFUGES_INFO,
     CANCELLED,
+}
+
+/** User-safe context for the asset that failed; diagnostics retain the complete technical error. */
+internal data class PhoneOfflineBundleFailureContext(
+    val phase: PhoneOfflineBundlePhase,
+    val component: PhoneOfflineBundleComponent,
+    val fileName: String? = null,
+    val detail: String = "",
+)
+
+internal enum class PhoneOfflineBundleComponent {
+    MAP,
+    POI,
+    ROUTING,
+    DEM,
+    REFUGES_INFO,
 }
 
 internal enum class PhoneOfflineBundleOperationStatus {
@@ -455,6 +473,7 @@ internal sealed interface PhoneOfflineBundleOutcome {
 
     data class Failure(
         val reason: PhoneOfflineBundleFailure,
+        val context: PhoneOfflineBundleFailureContext? = null,
     ) : PhoneOfflineBundleOutcome
 }
 
@@ -565,6 +584,8 @@ internal class PhoneOfflineBundleStore(
         )
         editor.putString(recoveryKey(recovery.areaId, "detail"), recovery.detail)
         editor.putString(recoveryKey(recovery.areaId, "failure"), recovery.failure?.name)
+        editor.putString(recoveryKey(recovery.areaId, "failure_component"), recovery.failureComponent?.name)
+        editor.putString(recoveryKey(recovery.areaId, "failure_file"), recovery.failureFileName)
         editor.putLong(recoveryKey(recovery.areaId, "updated_at"), recovery.updatedAtMillis)
         editor.apply()
     }
@@ -591,6 +612,8 @@ internal class PhoneOfflineBundleStore(
             .remove(recoveryKey(areaId, "dem_downloaded"))
             .remove(recoveryKey(areaId, "detail"))
             .remove(recoveryKey(areaId, "failure"))
+            .remove(recoveryKey(areaId, "failure_component"))
+            .remove(recoveryKey(areaId, "failure_file"))
             .remove(recoveryKey(areaId, "updated_at"))
             .apply()
     }
@@ -663,6 +686,14 @@ internal class PhoneOfflineBundleStore(
                 preferences
                     .getString(recoveryKey(areaId, "failure"), null)
                     ?.let { value -> runCatching { PhoneOfflineBundleFailure.valueOf(value) }.getOrNull() },
+            failureComponent =
+                preferences
+                    .getString(recoveryKey(areaId, "failure_component"), null)
+                    ?.let { value -> runCatching { PhoneOfflineBundleComponent.valueOf(value) }.getOrNull() },
+            failureFileName =
+                preferences
+                    .getString(recoveryKey(areaId, "failure_file"), null)
+                    ?.let { value -> File(value).name.takeIf(String::isNotBlank) },
             updatedAtMillis = preferences.getLong(recoveryKey(areaId, "updated_at"), 0L),
         )
     }

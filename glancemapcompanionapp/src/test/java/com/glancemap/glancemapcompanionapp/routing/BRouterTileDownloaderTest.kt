@@ -5,6 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
+import java.net.SocketTimeoutException
 
 class BRouterTileDownloaderTest {
     @Test
@@ -19,6 +22,13 @@ class BRouterTileDownloaderTest {
         assertTrue(isRetriableRoutingStatus(504))
         assertTrue(isRetriableRoutingStatus(429))
         assertFalse(isRetriableRoutingStatus(404))
+    }
+
+    @Test
+    fun `retries only transient routing IO failures`() {
+        assertTrue(isRetriableRoutingIoFailure(SocketTimeoutException("timeout")))
+        assertFalse(isRetriableRoutingIoFailure(FileNotFoundException("missing")))
+        assertFalse(isRetriableRoutingIoFailure(IOException("invalid routing pack")))
     }
 
     @Test
