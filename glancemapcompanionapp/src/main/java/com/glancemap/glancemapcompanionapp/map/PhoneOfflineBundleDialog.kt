@@ -511,36 +511,35 @@ private fun bundleOptions(
     demSource: PhoneOfflineDemSource,
     onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
 ) {
-    ListItem(
-        headlineContent = { Text("BRouter routing") },
-        supportingContent = { Text("Download routing packs for this map") },
-        trailingContent = { Switch(checked = includeRouting, onCheckedChange = onIncludeRoutingChanged) },
-    )
-    ListItem(
-        headlineContent = { Text("Elevation") },
-        supportingContent = { Text(demSource.label) },
-        trailingContent = { Switch(checked = includeDem, onCheckedChange = onIncludeDemChanged) },
-    )
-    ListItem(
-        headlineContent = { Text("Refuges.info") },
-        supportingContent = { Text("Download refuges and mountain POI for this map") },
-        trailingContent = { Switch(checked = includeRefugesInfo, onCheckedChange = onIncludeRefugesInfoChanged) },
-    )
-    if (includeDem) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        ListItem(
+            headlineContent = { Text("BRouter routing") },
+            supportingContent = { Text("Download routing packs for this map") },
+            trailingContent = { Switch(checked = includeRouting, onCheckedChange = onIncludeRoutingChanged) },
+        )
+        ListItem(
+            headlineContent = { Text("Elevation") },
+            supportingContent = { Text(demSource.label) },
+            trailingContent = { Switch(checked = includeDem, onCheckedChange = onIncludeDemChanged) },
+        )
+        if (includeDem) {
             PhoneOfflineDemSource.entries.forEach { source ->
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = source == demSource,
-                        onClick = { onDemSourceChanged(source) },
-                    )
-                    Text(source.shortLabel)
-                }
+                ListItem(
+                    headlineContent = { Text(source.shortLabel) },
+                    leadingContent = {
+                        RadioButton(
+                            selected = source == demSource,
+                            onClick = { onDemSourceChanged(source) },
+                        )
+                    },
+                )
             }
         }
+        ListItem(
+            headlineContent = { Text("Refuges.info") },
+            supportingContent = { Text("Download refuges and mountain POI for this map") },
+            trailingContent = { Switch(checked = includeRefugesInfo, onCheckedChange = onIncludeRefugesInfoChanged) },
+        )
     }
 }
 
