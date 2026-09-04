@@ -220,7 +220,7 @@ private fun ColumnScope.PhoneMapGpxAnalysisContent(
             )
             PhoneMapGpxStatCard(
                 label = stringResource(R.string.map_gpx_analysis_time),
-                value = formatPhoneMapGpxDuration(analysis.estimatedDurationSeconds),
+                value = formatPhoneMapDuration(analysis.estimatedDurationSeconds),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -399,7 +399,7 @@ private fun formatOptionalPhoneMapGpxElevation(
     isMetric: Boolean,
 ): String = meters?.let { formatPhoneMapGpxElevation(it, isMetric) } ?: "—"
 
-private fun formatPhoneMapGpxDuration(seconds: Double): String {
+internal fun formatPhoneMapDuration(seconds: Double): String {
     if (!seconds.isFinite()) return "—"
     val totalMinutes = (seconds / 60.0).roundToInt().coerceAtLeast(1)
     val hours = totalMinutes / 60

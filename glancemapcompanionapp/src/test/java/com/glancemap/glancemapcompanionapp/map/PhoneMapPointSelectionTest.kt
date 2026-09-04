@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -148,5 +149,58 @@ class PhoneMapPointSelectionTest {
 
         assertEquals(PhoneMapPointSelectionPhase.POINT_B, state.pointSelectionPhase())
         assertEquals(PhoneMapPointSelectionProgress(completed = 0, total = 1), state.pointSelectionProgress())
+    }
+
+    @Test
+    fun mapCreationControlsStayAvailableAfterRequiredPointsAreSelected() {
+        val state =
+            PhoneRouteToolsUiState(
+                isOpen = true,
+                mode = PhoneRouteCreationMode.POINT_A_TO_B,
+                pointA = GeoPoint(46.0, 6.0),
+                pointB = GeoPoint(46.1, 6.1),
+            )
+
+        assertTrue(state.usesMapRouteCreationControls())
+        assertTrue(state.canCreateFromMapControls(currentLocationAvailable = false))
+        assertFalse(
+            PhoneRouteToolsUiState(
+                isOpen = true,
+                mode = PhoneRouteCreationMode.MODIFY_ROUTE,
+            ).usesMapRouteCreationControls(),
+        )
+    }
+
+    @Test
+    fun directPointPreviewUsesPacingSettingsAndOnlyReportsCompleteElevation() {
+        val points = listOf(GeoPoint(46.0, 6.0), GeoPoint(46.01, 6.0))
+        val slow =
+            buildPhoneRouteSelectionPreview(
+                points = points,
+                elevationsMeters = listOf(1_000.0, 1_100.0),
+                settings = PhoneMapGpxSettings(flatSpeedMetersPerSecond = 1f),
+                generalSettings = PhoneGeneralSettings(),
+            )
+        val fast =
+            buildPhoneRouteSelectionPreview(
+                points = points,
+                elevationsMeters = listOf(1_000.0, 1_100.0),
+                settings = PhoneMapGpxSettings(flatSpeedMetersPerSecond = 2f),
+                generalSettings = PhoneGeneralSettings(),
+            )
+        val elevationUnavailable =
+            buildPhoneRouteSelectionPreview(
+                points = points,
+                elevationsMeters = listOf(null, null),
+                settings = PhoneMapGpxSettings(),
+                generalSettings = PhoneGeneralSettings(),
+            )
+
+        requireNotNull(slow)
+        requireNotNull(fast)
+        requireNotNull(elevationUnavailable)
+        assertEquals(100.0, requireNotNull(slow.elevationGainMeters), 0.0)
+        assertTrue(slow.estimatedDurationSeconds > fast.estimatedDurationSeconds)
+        assertNull(elevationUnavailable.elevationGainMeters)
     }
 }

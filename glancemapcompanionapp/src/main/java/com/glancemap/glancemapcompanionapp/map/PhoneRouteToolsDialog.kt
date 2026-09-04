@@ -36,7 +36,7 @@ internal fun BoxScope.PhoneRouteToolsDialog(
     currentLocationAvailable: Boolean,
     actions: PhoneRouteToolsActions,
 ) {
-    if (!state.isOpen) return
+    if (!state.isOpen || state.usesMapRouteCreationControls()) return
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val popupBottomInset = 128.dp
         val popupMaxHeight = (maxHeight - popupBottomInset - 16.dp).coerceAtLeast(0.dp)

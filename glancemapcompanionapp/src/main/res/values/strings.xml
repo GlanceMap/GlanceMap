@@ -196,6 +196,8 @@
     <string name="map_route_tools_points_progress">%1$d points selected</string>
     <string name="map_route_tools_undo_point_content_description">Remove last point</string>
     <string name="map_route_tools_select_center_content_description">Select the center point</string>
+    <string name="map_route_tools_clear_points_content_description">Clear all route points</string>
+    <string name="map_route_tools_direct_estimate">Direct estimate from selected points</string>
     <string name="map_route_tools_create">Create route</string>
     <string name="map_route_tools_routing">Creating route…</string>
     <string name="map_tools_gpx_settings_sources_heading">GPX sources</string>

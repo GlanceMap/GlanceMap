@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
@@ -429,6 +431,34 @@ internal fun CompanionMapScreen(
         phoneMapPointSelectionMarkers(poiCreationPoint, routeToolsState) +
             phoneMapDistanceMeasurementMarkers(distanceMeasurement)
     val routePointSelectionPhase = routeToolsState.pointSelectionPhase()
+    val currentLocationAvailable = mapLocation != null && hasLocationPermission
+    val routeCreationControlsVisible = routeToolsState.usesMapRouteCreationControls()
+    val routeCreationPreviewPoints =
+        routeToolsState.mapRouteCreationPoints(
+            currentLocation =
+                mapLocation?.let { location ->
+                    GeoPoint(latitude = location.latitude, longitude = location.longitude)
+                },
+        )
+    var routeCreationPreview by remember { mutableStateOf<PhoneRouteSelectionPreview?>(null) }
+    LaunchedEffect(routeCreationPreviewPoints, gpxSettings, generalSettings, terrainDataVersion) {
+        routeCreationPreview =
+            if (routeCreationPreviewPoints.size < 2) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    buildPhoneRouteSelectionPreview(
+                        points = routeCreationPreviewPoints,
+                        elevationsMeters =
+                            routeCreationPreviewPoints.map { point ->
+                                elevationRepository.elevationAt(point.latitude, point.longitude)
+                            },
+                        settings = gpxSettings,
+                        generalSettings = generalSettings,
+                    )
+                }
+            }
+    }
     val gpxOverlays =
         remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
@@ -1112,6 +1142,16 @@ internal fun CompanionMapScreen(
             ),
         )
     }
+    val routeToolsActions =
+        PhoneRouteToolsActions(
+            onChooseMode = routeToolsViewModel::chooseMode,
+            onSelectModificationMode = routeToolsViewModel::chooseModificationMode,
+            onSelectRoute = routeToolsViewModel::selectRoute,
+            onCoordinatesChanged = routeToolsViewModel::updateCoordinates,
+            onResetMapPoints = routeToolsViewModel::resetMapPoints,
+            onCreate = { routeToolsViewModel.create(mapLocation) },
+            onDismiss = routeToolsViewModel::cancel,
+        )
     val onOpenRouteTools = {
         routeAnalysis = null
         routeAnalysisSelectingPointB = false
@@ -1892,7 +1932,7 @@ internal fun CompanionMapScreen(
                     onCycleMapMode = onMapModePressed,
                     northIndicatorVisible = northIndicatorVisible,
                     compassPresentation = compassPresentation,
-                    showModeControl = routePointSelectionPhase == null,
+                    showModeControl = !routeCreationControlsVisible,
                 )
 
                 if (routePointSelectionPhase != null) {
@@ -1912,33 +1952,14 @@ internal fun CompanionMapScreen(
                     }
                 }
 
-                routePointSelectionPhase?.let { phase ->
-                    PhoneMapPopupCard(
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopCenter)
-                                .statusBarsPadding()
-                                .padding(16.dp),
-                        title = stringResource(R.string.map_route_tools_title),
-                        onDismiss = routeToolsViewModel::cancel,
-                    ) {
-                        routeToolsState.pointSelectionProgress()?.let { progress ->
-                            Text(
-                                text =
-                                    progress.total?.let { total ->
-                                        stringResource(
-                                            R.string.map_route_tools_step_progress,
-                                            progress.currentStep,
-                                            total,
-                                        )
-                                    } ?: stringResource(
-                                        R.string.map_route_tools_points_progress,
-                                        progress.completed,
-                                    ),
-                            )
-                        }
-                        Text(text = stringResource(routeToolsState.pointSelectionHintResource(phase)))
-                    }
+                if (routeCreationControlsVisible) {
+                    phoneMapRouteCreationCard(
+                        state = routeToolsState,
+                        preview = routeCreationPreview,
+                        isMetric = generalSettings.isMetric,
+                        currentLocationAvailable = currentLocationAvailable,
+                        actions = routeToolsActions,
+                    )
                 }
 
                 selectedPoi?.let { poi ->
@@ -2112,22 +2133,14 @@ internal fun CompanionMapScreen(
                 }
                 PhoneRouteToolsDialog(
                     state = routeToolsState,
-                    currentLocationAvailable = mapLocation != null && hasLocationPermission,
-                    actions =
-                        PhoneRouteToolsActions(
-                            onChooseMode = routeToolsViewModel::chooseMode,
-                            onSelectModificationMode = routeToolsViewModel::chooseModificationMode,
-                            onSelectRoute = routeToolsViewModel::selectRoute,
-                            onCoordinatesChanged = routeToolsViewModel::updateCoordinates,
-                            onResetMapPoints = routeToolsViewModel::resetMapPoints,
-                            onCreate = { routeToolsViewModel.create(mapLocation) },
-                            onDismiss = routeToolsViewModel::cancel,
-                        ),
+                    currentLocationAvailable = currentLocationAvailable,
+                    actions = routeToolsActions,
                 )
-                if (routePointSelectionPhase != null) {
+                if (routeCreationControlsVisible) {
                     phoneMapRouteSelectionControls(
-                        canUndo = routeToolsState.canUndoLastMapPoint(),
+                        state = routeToolsState,
                         onUndo = routeToolsViewModel::undoLastMapPoint,
+                        onClear = routeToolsViewModel::resetMapPoints,
                         onSelectCenter = onSelectRoutePointAtCenter,
                     )
                 }
@@ -3140,22 +3153,110 @@ private fun BoxScope.phoneMapRouteSelectionCrosshair() {
 }
 
 @Composable
+private fun BoxScope.phoneMapRouteCreationCard(
+    state: PhoneRouteToolsUiState,
+    preview: PhoneRouteSelectionPreview?,
+    isMetric: Boolean,
+    currentLocationAvailable: Boolean,
+    actions: PhoneRouteToolsActions,
+) {
+    PhoneMapPopupCard(
+        modifier =
+            Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(16.dp),
+        title = stringResource(R.string.map_route_tools_title),
+        onDismiss = actions.onDismiss,
+    ) {
+        state.pointSelectionProgress()?.let { progress ->
+            Text(
+                text =
+                    progress.total?.let { total ->
+                        stringResource(
+                            R.string.map_route_tools_step_progress,
+                            progress.currentStep,
+                            total,
+                        )
+                    } ?: stringResource(
+                        R.string.map_route_tools_points_progress,
+                        progress.completed,
+                    ),
+            )
+        }
+        state.pointSelectionPhase()?.let { selectionPhase ->
+            Text(text = stringResource(state.pointSelectionHintResource(selectionPhase)))
+        }
+        if (state.mode == PhoneRouteCreationMode.CURRENT_TO_DESTINATION && !currentLocationAvailable) {
+            Text(stringResource(R.string.map_route_tools_current_location_missing))
+        }
+        preview?.let { estimate ->
+            Text(stringResource(R.string.map_route_tools_direct_estimate))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                phoneMapRouteCreationMetric(
+                    label = stringResource(R.string.map_gpx_analysis_distance),
+                    value = formatPhoneMapMeasuredDistance(estimate.distanceMeters, isMetric),
+                )
+                phoneMapRouteCreationMetric(
+                    label = stringResource(R.string.map_gpx_analysis_ascent),
+                    value =
+                        estimate.elevationGainMeters?.let { elevation ->
+                            formatPhoneMapElevation(elevation, isMetric)
+                        } ?: "—",
+                )
+                phoneMapRouteCreationMetric(
+                    label = stringResource(R.string.map_gpx_analysis_time),
+                    value = formatPhoneMapDuration(estimate.estimatedDurationSeconds),
+                )
+            }
+        }
+        if (state.canCreateFromMapControls(currentLocationAvailable)) {
+            TextButton(onClick = actions.onCreate, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.map_route_tools_create))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.phoneMapRouteCreationMetric(
+    label: String,
+    value: String,
+) {
+    Column(modifier = Modifier.weight(1f)) {
+        Text(text = label)
+        Text(text = value)
+    }
+}
+
+@Composable
 private fun BoxScope.phoneMapRouteSelectionControls(
-    canUndo: Boolean,
+    state: PhoneRouteToolsUiState,
     onUndo: () -> Unit,
+    onClear: () -> Unit,
     onSelectCenter: () -> Unit,
 ) {
     Row(
         modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 72.dp),
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 72.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
+            onClick = onSelectCenter,
+            enabled = state.pointSelectionPhase() != null,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = stringResource(R.string.map_route_tools_select_center_content_description),
+            )
+        }
+        FilledTonalIconButton(
             onClick = onUndo,
-            enabled = canUndo,
+            enabled = state.canUndoLastMapPoint(),
             modifier = Modifier.size(48.dp),
         ) {
             Icon(
@@ -3164,12 +3265,13 @@ private fun BoxScope.phoneMapRouteSelectionControls(
             )
         }
         FilledTonalIconButton(
-            onClick = onSelectCenter,
+            onClick = onClear,
+            enabled = state.canUndoLastMapPoint(),
             modifier = Modifier.size(48.dp),
         ) {
             Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = stringResource(R.string.map_route_tools_select_center_content_description),
+                imageVector = Icons.Filled.Delete,
+                contentDescription = stringResource(R.string.map_route_tools_clear_points_content_description),
             )
         }
     }

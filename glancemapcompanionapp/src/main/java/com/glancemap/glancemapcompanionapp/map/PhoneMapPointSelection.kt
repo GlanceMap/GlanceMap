@@ -118,8 +118,10 @@ internal fun PhoneRouteToolsUiState.pointSelectionProgress(): PhoneMapPointSelec
                 total =
                     if (
                         mode == PhoneRouteCreationMode.MODIFY_ROUTE &&
-                        (modificationMode == PhoneRouteModificationMode.TRIM_START_TO_HERE ||
-                            modificationMode == PhoneRouteModificationMode.TRIM_END_FROM_HERE)
+                        (
+                            modificationMode == PhoneRouteModificationMode.TRIM_START_TO_HERE ||
+                                modificationMode == PhoneRouteModificationMode.TRIM_END_FROM_HERE
+                        )
                     ) {
                         1
                     } else {
