@@ -185,5 +185,5 @@ private fun String.removePhoneGpxFileExtension(extension: String): String =
 
 internal fun List<PhoneGpxFolderFile>.normalizedPhoneGpxFolderFiles(): List<PhoneGpxFolderFile> {
     val distinctFiles = distinctBy(PhoneGpxFolderFile::id)
-    return distinctFiles.sortedBy { file -> file.displayName.lowercase() }
+    return distinctFiles.sortedBy { file -> phoneGpxDisplayNameFromFileName(file.displayName).lowercase() }
 }

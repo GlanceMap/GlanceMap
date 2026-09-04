@@ -94,7 +94,11 @@ private fun ActiveHikeSnapshot.isForecastableFor(routeDetails: RouteLibraryRoute
 fun RouteLibraryRouteDetails.matchesActiveHike(snapshot: ActiveHikeSnapshot): Boolean {
     val activeFileName = snapshot.routeId?.fileNameOrNull()
     val sameTransferredFile = activeFileName == route.storedFileName
-    val sameTitle = snapshot.routeTitle?.trim()?.equals(route.title.trim(), ignoreCase = true) == true
+    val sameTitle =
+        snapshot.routeTitle?.trim()?.let { title ->
+            title.equals(route.displayName.trim(), ignoreCase = true) ||
+                title.equals(route.metadataTitle?.trim(), ignoreCase = true)
+        } == true
     return sameTransferredFile || sameTitle
 }
 

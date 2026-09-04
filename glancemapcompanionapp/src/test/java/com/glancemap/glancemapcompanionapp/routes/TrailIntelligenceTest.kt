@@ -107,7 +107,7 @@ class TrailIntelligenceTest {
             route =
                 RouteLibraryRoute(
                     id = "route-id",
-                    title = "Dolomites Loop",
+                    displayName = "Dolomites Loop",
                     storedFileName = "dolomites.gpx",
                     importedAtMillis = 1L,
                     summary =

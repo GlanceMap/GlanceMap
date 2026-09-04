@@ -30,6 +30,18 @@ class PhoneGpxFolderSourceTest {
     }
 
     @Test
+    fun filenameDisplayNameUsesTheFilenameStemAndPreservesMeaningfulText() {
+        assertEquals("Alps Day 1", phoneGpxDisplayNameFromFileName("Alps Day 1.gpx"))
+        assertEquals("Alps Day 1", phoneGpxDisplayNameFromFileName("Alps Day 1.GPX"))
+        assertEquals(
+            "Tour du Mont Blanc",
+            phoneGpxDisplayNameFromFileName("  Tour du Mont Blanc.gpx  "),
+        )
+        assertEquals("日本縦走", phoneGpxDisplayNameFromFileName("日本縦走.gpx"))
+        assertEquals("Imported route", phoneGpxDisplayNameFromFileName("  .GPX  "))
+    }
+
+    @Test
     fun documentIdentityKeepsSameNamedFilesDistinctAndCannotCollideWithRouteLibrary() {
         val first = folderFile("content://provider/document/one", "route.gpx")
         val second = folderFile("content://provider/document/two", "route.gpx")
@@ -74,8 +86,43 @@ class PhoneGpxFolderSourceTest {
             }
 
         assertEquals(listOf(good.id), loaded.map(PhoneMapGpxItem::id))
-        assertEquals("GPX title", loaded.single().displayName)
+        assertEquals("good", loaded.single().displayName)
         assertFalse(loaded.single().isEditable)
+    }
+
+    @Test
+    fun directFilesWithTheSameEmbeddedTitleRemainDistinctByFilename() {
+        val dayOne = folderFile("content://provider/document/day-one", "Day 1.gpx")
+        val dayTwo = folderFile("content://provider/document/day-two", "Day 2.gpx")
+
+        val loaded =
+            listOf(dayOne, dayTwo).mapNotNull { source ->
+                phoneGpxFolderTrackItem(source) { ByteArrayInputStream(routeWithTitle.toByteArray()) }
+            }
+
+        assertEquals(listOf("Day 1", "Day 2"), loaded.map(PhoneMapGpxItem::displayName))
+    }
+
+    @Test
+    fun filenameWinsWhenTheGpxHasNoEmbeddedTitle() {
+        val source = folderFile("content://provider/document/untitled", "Weekend Hike.gpx")
+
+        val item =
+            phoneGpxFolderTrackItem(source) { ByteArrayInputStream(routeWithoutTitle.toByteArray()) }
+
+        assertEquals("Weekend Hike", item?.displayName)
+    }
+
+    @Test
+    fun directFileRenameUsesTheNewFilenameAfterRescan() {
+        val oldFile = folderFile("content://provider/document/route", "Old Route.gpx")
+        val newFile = folderFile("content://provider/document/route", "New Route.gpx")
+
+        val oldItem = phoneGpxFolderTrackItem(oldFile) { ByteArrayInputStream(routeWithTitle.toByteArray()) }
+        val newItem = phoneGpxFolderTrackItem(newFile) { ByteArrayInputStream(routeWithTitle.toByteArray()) }
+
+        assertEquals("Old Route", oldItem?.displayName)
+        assertEquals("New Route", newItem?.displayName)
     }
 
     private fun folderFile(
@@ -99,6 +146,27 @@ class PhoneGpxFolderSourceTest {
             """
             <gpx version="1.1">
               <trk><name>GPX title</name><trkseg>
+                <trkpt lat="46.0" lon="11.0" />
+                <trkpt lat="46.1" lon="11.1" />
+              </trkseg></trk>
+            </gpx>
+            """.trimIndent()
+
+        val routeWithTitle =
+            """
+            <gpx version="1.1">
+              <metadata><name>Same embedded title</name></metadata>
+              <trk><name>Same embedded title</name><trkseg>
+                <trkpt lat="46.0" lon="11.0" />
+                <trkpt lat="46.1" lon="11.1" />
+              </trkseg></trk>
+            </gpx>
+            """.trimIndent()
+
+        val routeWithoutTitle =
+            """
+            <gpx version="1.1">
+              <trk><trkseg>
                 <trkpt lat="46.0" lon="11.0" />
                 <trkpt lat="46.1" lon="11.1" />
               </trkseg></trk>

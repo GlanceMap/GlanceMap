@@ -44,7 +44,7 @@ internal fun MissionDayPlanProfileDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = dayUi.day.name ?: dayUi.route.title,
+                    text = dayUi.day.name ?: dayUi.route.displayName,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(

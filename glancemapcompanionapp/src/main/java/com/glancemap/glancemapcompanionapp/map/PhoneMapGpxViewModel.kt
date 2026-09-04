@@ -71,7 +71,7 @@ internal class PhoneMapGpxViewModel(
         repository.routeDetails(source.id)?.let { details ->
             PhoneMapGpxItem(
                 id = source.id,
-                displayName = source.displayName,
+                displayName = phoneGpxDisplayNameFromFileName(source.displayName),
                 track = PhoneMapGpxTrack(source.id, details.profile.points),
                 enabled = false,
             )
@@ -93,7 +93,7 @@ internal fun phoneGpxFolderTrackItem(
         val parsed = input.use(CompanionGpxRouteParser::parse)
         PhoneMapGpxItem(
             id = source.id,
-            displayName = parsed.title?.takeIf(String::isNotBlank) ?: source.displayName,
+            displayName = phoneGpxDisplayNameFromFileName(source.displayName),
             track = PhoneMapGpxTrack(source.id, parsed.points),
             enabled = false,
             isEditable = source.isWritable,

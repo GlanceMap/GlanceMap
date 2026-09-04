@@ -2,11 +2,13 @@ package com.glancemap.glancemapcompanionapp.routes
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneGeneralSettingsPreferences
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettingsPreferences
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
+import com.glancemap.glancemapcompanionapp.map.phoneGpxDisplayNameFromFileName
 import com.glancemap.glancemapcompanionapp.map.toTrailPacingConfig
 import com.glancemap.trailcore.geo.haversineDistanceMeters
 import com.glancemap.trailcore.profile.TrailRouteProfile
@@ -20,35 +22,23 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
 
-/** Locus can use the bounding-box coordinates as GPX metadata instead of a useful route name. */
-internal fun importedRouteTitle(
-    parsedTitle: String?,
-    fallbackTitle: String,
-): String =
-    parsedTitle
-        ?.trim()
-        ?.takeUnless(::isCoordinateBoundsTitle)
-        ?.takeIf(String::isNotBlank)
-        ?: fallbackTitle
-
-private fun isCoordinateBoundsTitle(title: String): Boolean = COORDINATE_BOUNDS_TITLE.matches(title)
-
-private val COORDINATE_BOUNDS_TITLE =
-    Regex(
-        """^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*-\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$""",
-    )
-
+/**
+ * A managed GPX keeps its user-facing filename identity separate from the physical file and GPX
+ * XML metadata. Older indexes used `title`; the alternate name keeps those records readable.
+ */
 data class RouteLibraryRoute(
     @field:SerializedName(value = "id", alternate = ["a"])
     val id: String,
-    @field:SerializedName(value = "title", alternate = ["b"])
-    val title: String,
+    @field:SerializedName(value = "displayName", alternate = ["title", "b"])
+    val displayName: String,
     @field:SerializedName(value = "storedFileName", alternate = ["c"])
     val storedFileName: String,
     @field:SerializedName(value = "importedAtMillis", alternate = ["d"])
     val importedAtMillis: Long,
     @field:SerializedName(value = "summary", alternate = ["e"])
     val summary: RouteLibrarySummary,
+    @field:SerializedName(value = "metadataTitle", alternate = ["f"])
+    val metadataTitle: String? = null,
 )
 
 data class RouteLibrarySummary(
@@ -125,6 +115,7 @@ class RouteLibraryRepository(
             val id = UUID.randomUUID().toString()
             val storedFileName = "$id.gpx"
             val destination = File(routesDirectory, storedFileName)
+            val displayName = displayNameFor(uri)
             appContext.contentResolver.openInputStream(uri)?.use { input ->
                 destination.outputStream().use { output -> input.copyTo(output) }
             } ?: error("Cannot read the selected GPX file.")
@@ -139,7 +130,7 @@ class RouteLibraryRepository(
             saveParsedRouteLocked(
                 destination = destination,
                 parsed = parsed,
-                fallbackTitle = displayNameFor(uri),
+                displayName = displayName,
             )
         }
 
@@ -159,7 +150,7 @@ class RouteLibraryRepository(
             saveParsedRouteLocked(
                 destination = destination,
                 parsed = parsed,
-                fallbackTitle = output.title,
+                displayName = output.title,
             )
         }
 
@@ -182,14 +173,14 @@ class RouteLibraryRepository(
     ): RouteLibraryUiState =
         mutex.withLock {
             val index = readIndex()
-            val normalizedTitle = newTitle.trim().replace(Regex("\\s+"), " ")
-            require(normalizedTitle.isNotBlank()) { "Enter a GPX name first." }
+            require(newTitle.trim().isNotBlank()) { "Enter a GPX name first." }
+            val normalizedDisplayName = phoneGpxDisplayNameFromFileName(newTitle)
             require(index.routes.any { route -> route.id == routeId }) { "The GPX route could not be found." }
             val next =
                 index.copy(
                     routes =
                         index.routes.map { route ->
-                            if (route.id == routeId) route.copy(title = normalizedTitle) else route
+                            if (route.id == routeId) route.copy(displayName = normalizedDisplayName) else route
                         },
                 )
             writeIndex(next)
@@ -251,7 +242,7 @@ class RouteLibraryRepository(
             exportFile.writeText(
                 MissionPlanGpxExporter.export(
                     day = day,
-                    routeTitle = route.title,
+                    routeTitle = route.displayName,
                     parsedRoute = parsedRoute,
                     profile = profile,
                 ),
@@ -311,7 +302,7 @@ class RouteLibraryRepository(
     private fun saveParsedRouteLocked(
         destination: File,
         parsed: ParsedCompanionRoute,
-        fallbackTitle: String,
+        displayName: String,
     ): RouteLibraryUiState {
         val id = destination.nameWithoutExtension
         val profile =
@@ -330,7 +321,7 @@ class RouteLibraryRepository(
         val route =
             RouteLibraryRoute(
                 id = id,
-                title = importedRouteTitle(parsed.title, fallbackTitle),
+                displayName = phoneGpxDisplayNameFromFileName(displayName),
                 storedFileName = destination.name,
                 importedAtMillis = System.currentTimeMillis(),
                 summary =
@@ -343,6 +334,7 @@ class RouteLibraryRepository(
                         firstThirtyMinutesDistanceMeters = firstThirtyMinutes.distanceMeters,
                         firstThirtyMinutesAscentMeters = firstThirtyMinutes.ascentMeters,
                     ),
+                metadataTitle = parsed.title,
             )
         val previous = readIndex()
         val next =
@@ -363,13 +355,25 @@ class RouteLibraryRepository(
         )
     }
 
-    private fun displayNameFor(uri: Uri): String =
-        uri.lastPathSegment
-            ?.substringAfterLast('/')
-            ?.substringBeforeLast('.')
-            ?.replace('-', ' ')
-            ?.takeIf { it.isNotBlank() }
-            ?: "Imported route"
+    private fun displayNameFor(uri: Uri): String {
+        val documentName =
+            runCatching {
+                appContext.contentResolver
+                    .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor ->
+                        val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameColumn >= 0 && cursor.moveToFirst()) cursor.getString(nameColumn) else null
+                    }
+            }.getOrNull()?.takeIf(String::isNotBlank)
+        val uriName = uri.lastPathSegment?.let(Uri::decode)
+        val sourceName = documentName ?: uriName
+        return when {
+            documentName != null -> phoneGpxDisplayNameFromFileName(documentName)
+            sourceName?.trim()?.endsWith(".gpx", ignoreCase = true) == true ->
+                phoneGpxDisplayNameFromFileName(sourceName)
+            else -> "Imported route"
+        }
+    }
 
     private fun TrailRouteProfile.nearestPointDistanceFromStart(waypoint: RouteWaypoint): Double {
         val nearestPointIndex =

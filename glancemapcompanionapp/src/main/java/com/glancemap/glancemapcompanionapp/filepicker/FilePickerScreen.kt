@@ -865,7 +865,7 @@ internal fun FilePickerScreen(
                     CompanionMapScreen(
                         gpxSources =
                             routeLibraryUiState.routes.map { route ->
-                                PhoneMapGpxSource(id = route.id, displayName = route.title)
+                                PhoneMapGpxSource(id = route.id, displayName = route.displayName)
                             },
                         initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
                         pois = phoneMapPoiUiState.pois,
@@ -1533,7 +1533,7 @@ private fun CompanionHomeScreen(
                     title = "Mission Plan",
                     description =
                         missionPlanUiState.selectedDay?.let { dayUi ->
-                            "Day ${dayUi.day.dayNumber}: ${dayUi.route.title}"
+                            "Day ${dayUi.day.dayNumber}: ${dayUi.route.displayName}"
                         } ?: "Plan multiple hiking days",
                     onClick = onOpenMissionPlan,
                 )
@@ -1690,7 +1690,7 @@ private fun TodayHikeCard(
                 Spacer(modifier = Modifier.height(4.dp))
             }
             Text(
-                text = selectedRoute.title,
+                text = selectedRoute.displayName,
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1800,7 +1800,7 @@ private fun RouteWeatherScreen(
             )
         } else {
             Text(
-                text = route.title,
+                text = route.displayName,
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(

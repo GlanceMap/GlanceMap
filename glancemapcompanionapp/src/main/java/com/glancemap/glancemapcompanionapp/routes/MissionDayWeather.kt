@@ -64,10 +64,11 @@ fun MissionPlanDayUi.matchesActiveHike(snapshot: ActiveHikeSnapshot): Boolean {
     val activeFileName = snapshot.routeId?.substringAfterLast('/')?.substringAfterLast('\\')
     val isMissionDayExport = activeFileName == "mission-day-${day.id}.gpx"
     val isOriginalRoute = activeFileName == route.storedFileName
-    val expectedDayTitle = "${route.title} — Day ${day.dayNumber}"
+    val expectedDayTitle = "${route.displayName} — Day ${day.dayNumber}"
     val isMatchingTitle =
         snapshot.routeTitle?.trim()?.let { title ->
-            title.equals(route.title.trim(), ignoreCase = true) ||
+            title.equals(route.displayName.trim(), ignoreCase = true) ||
+                title.equals(route.metadataTitle?.trim(), ignoreCase = true) ||
                 title.equals(expectedDayTitle, ignoreCase = true)
         } == true
     return isMissionDayExport || isOriginalRoute || isMatchingTitle
@@ -75,7 +76,7 @@ fun MissionPlanDayUi.matchesActiveHike(snapshot: ActiveHikeSnapshot): Boolean {
 
 fun MissionPlanDayUi.liveHikeWeatherContext(weather: MissionDayWeatherUiState?): LiveHikeWeatherContext =
     LiveHikeWeatherContext(
-        dayName = day.name ?: route.title,
+        dayName = day.name ?: route.displayName,
         plannedDate = day.plannedDate,
         plannedStartTime = day.plannedStartTime,
         samples = weather?.samples.orEmpty(),

@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.routes
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -61,6 +62,24 @@ class CompanionGpxRouteParserTest {
         assertEquals("Fallback route", parsed.title)
         assertEquals(2, parsed.points.size)
         assertEquals(1_015.0, parsed.points.last().elevationMeters)
+    }
+
+    @Test
+    fun `keeps metadata title absent when the gpx contains no route name`() {
+        val parsed =
+            parseGpx(
+                """
+                <gpx version="1.1">
+                  <trk><trkseg>
+                    <trkpt lat="46.0000" lon="11.0000" />
+                    <trkpt lat="46.0010" lon="11.0010" />
+                  </trkseg></trk>
+                </gpx>
+                """.trimIndent(),
+            )
+
+        assertNull(parsed.title)
+        assertEquals(2, parsed.points.size)
     }
 
     private fun parseGpx(gpx: String): ParsedCompanionRoute {

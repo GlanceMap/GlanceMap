@@ -197,7 +197,7 @@ fun MissionPlanScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = route.title, style = MaterialTheme.typography.titleSmall)
+                                    Text(text = route.displayName, style = MaterialTheme.typography.titleSmall)
                                     Text(
                                         text = route.summary.missionPlanRouteSummary(),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -303,13 +303,13 @@ private fun MissionPlanDayCard(
                 style = MaterialTheme.typography.labelMedium,
             )
             Text(
-                text = dayUi.day.name ?: dayUi.route.title,
+                text = dayUi.day.name ?: dayUi.route.displayName,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             if (!dayUi.day.name.isNullOrBlank()) {
                 Text(
-                    text = "Route: ${dayUi.route.title}",
+                    text = "Route: ${dayUi.route.displayName}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -403,7 +403,7 @@ private fun MissionDayWeatherDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = dayUi.day.name ?: dayUi.route.title,
+                    text = dayUi.day.name ?: dayUi.route.displayName,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 if (plannedDate == null) {
@@ -595,7 +595,7 @@ private fun MissionDayTimelineDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = dayUi.day.name ?: dayUi.route.title,
+                    text = dayUi.day.name ?: dayUi.route.displayName,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(

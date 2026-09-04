@@ -1,30 +1,43 @@
 package com.glancemap.glancemapcompanionapp.routes
 
+import com.glancemap.glancemapcompanionapp.map.phoneGpxDisplayNameFromFileName
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ImportedRouteTitleTest {
     @Test
-    fun `uses filename when GPX metadata is generated coordinate bounds`() {
+    fun `filename wins over embedded metadata title`() {
         assertEquals(
-            "rando rotwans without peak",
-            importedRouteTitle(
-                parsedTitle = "47.672269,11.886502999999948-47.687337,11.987638999999945",
-                fallbackTitle = "rando rotwans without peak",
-            ),
+            "Weekend Hike",
+            phoneGpxDisplayNameFromFileName("Weekend Hike.gpx"),
         )
     }
 
     @Test
-    fun `keeps meaningful GPX metadata title`() {
+    fun `filename wins when only track metadata has a title`() {
         assertEquals(
-            "Dolomites Loop",
-            importedRouteTitle(
-                parsedTitle = "  Dolomites Loop  ",
-                fallbackTitle = "imported route",
-            ),
+            "Mountain Day",
+            phoneGpxDisplayNameFromFileName("Mountain Day.gpx"),
         )
+    }
+
+    @Test
+    fun `route library keeps display identity separate from metadata and uuid storage`() {
+        val route =
+            RouteLibraryRoute(
+                id = "route-id",
+                displayName = "Alps Weekend",
+                storedFileName = "7fa124ab.gpx",
+                importedAtMillis = 1234L,
+                summary = emptySummary,
+                metadataTitle = "Track 001",
+            )
+
+        assertEquals("Alps Weekend", route.displayName)
+        assertEquals("7fa124ab.gpx", route.storedFileName)
+        assertEquals("Track 001", route.metadataTitle)
     }
 
     @Test
@@ -44,8 +57,22 @@ class ImportedRouteTitleTest {
             )
 
         assertEquals("route-id", route.id)
-        assertEquals("Saved route", route.title)
+        assertEquals("Saved route", route.displayName)
+        assertNull(route.metadataTitle)
         assertEquals(1_000.0, route.summary.distanceMeters, 0.0)
         assertEquals(120.0, route.summary.elevationGainMeters, 0.0)
+    }
+
+    private companion object {
+        val emptySummary =
+            RouteLibrarySummary(
+                distanceMeters = 0.0,
+                elevationGainMeters = 0.0,
+                elevationLossMeters = 0.0,
+                estimatedDurationSeconds = 0.0,
+                waypointCount = 0,
+                firstThirtyMinutesDistanceMeters = 0.0,
+                firstThirtyMinutesAscentMeters = 0.0,
+            )
     }
 }

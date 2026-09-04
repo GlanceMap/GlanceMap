@@ -197,7 +197,7 @@ private fun RouteLibraryRouteCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = route.title,
+                    text = route.displayName,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

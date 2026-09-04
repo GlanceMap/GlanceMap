@@ -237,7 +237,7 @@ internal class PhoneRouteToolsViewModel(
                 .onSuccess { saved ->
                     _uiState.value =
                         PhoneRouteToolsUiState(
-                            message = "Route saved: ${saved.selectedRoute?.title ?: "new GPX"}",
+                            message = "Route saved: ${saved.selectedRoute?.displayName ?: "new GPX"}",
                             savedRouteId = saved.selectedRouteId,
                         )
                 }.onFailure { error ->
