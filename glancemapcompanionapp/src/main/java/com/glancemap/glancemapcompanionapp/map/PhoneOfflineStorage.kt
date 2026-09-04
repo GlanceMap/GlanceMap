@@ -130,8 +130,10 @@ internal val PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES =
         "watch-gpx-exports",
     )
 
-/** A private safety area used only when two different valid managed assets share one path. */
+/** A private safety area for migration conflicts and preserved mutable user data. */
 internal const val PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME = "migration-conflicts"
 
 @Suppress("MaxLineLength")
-private fun File.containsPhoneOfflineData(): Boolean = PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES.any { name -> File(this, name).exists() }
+private fun File.containsPhoneOfflineData(): Boolean =
+    (PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES + PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME)
+        .any { name -> File(this, name).exists() }

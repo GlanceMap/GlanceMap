@@ -269,8 +269,8 @@ internal class PhoneOfflineStorageMigration(
         val targetFiles = allFiles(finalTargetRoot, hashCache)
         val reconciliation =
             reconcileFiles(
-                sourceFiles = sourceFiles,
-                targetFiles = targetFiles,
+                sourceFiles = sourceFiles.filterNot { file -> isPhoneOfflineStorageMutableDataPath(file.relativePath) },
+                targetFiles = targetFiles.filterNot { file -> isPhoneOfflineStorageMutableDataPath(file.relativePath) },
                 targetRoot = finalTargetRoot,
                 reconciler =
                     PhoneOfflineStorageReconciler { kind, file ->
@@ -279,7 +279,62 @@ internal class PhoneOfflineStorageMigration(
                         }
                     },
             )
-        val expectedFiles = reconciliation.files.map(ReconciledFile::entry)
+        val mutableReconciliation =
+            reconcilePhoneOfflineMutableData(
+                sourceFiles = sourceFiles,
+                targetFiles =
+                    targetFiles.map { entry ->
+                        PhoneOfflineStorageFile(
+                            relativePath = entry.relativePath,
+                            file = File(finalTargetRoot, entry.relativePath),
+                            sizeBytes = entry.sizeBytes,
+                            sha256 = entry.sha256,
+                        )
+                    },
+                sourceLocation = journal.source,
+                targetLocation = journal.target,
+                migrationId = File(journal.stagingRootPath).name.removePrefix(".GlanceMap-migration-"),
+            )
+        PhoneDownloadDiagnostics.log(
+            "StorageMigration",
+            "RouteLibrary sourceRouteCount=${mutableReconciliation.sourceRouteCount} " +
+                "targetRouteCount=${mutableReconciliation.targetRouteCount} " +
+                "mergedRouteCount=${mutableReconciliation.mergedRouteCount} " +
+                "sourceWins=${mutableReconciliation.sourceWinsCount} " +
+                "targetOnly=${mutableReconciliation.targetOnlyRouteCount} " +
+                "orphanedDropped=${mutableReconciliation.orphanedRoutesDropped} " +
+                "selected=${mutableReconciliation.selectedRouteId != null}",
+        )
+        PhoneDownloadDiagnostics.log(
+            "StorageMigration",
+            "MissionPlan sourcePresent=${mutableReconciliation.missionSourcePresent} " +
+                "targetPresent=${mutableReconciliation.missionTargetPresent} " +
+                "identical=${mutableReconciliation.missionIdentical} " +
+                "conflictPreserved=${mutableReconciliation.missionConflictPreserved} " +
+                "activeSourceChosen=${mutableReconciliation.missionActiveSourceChosen}",
+        )
+        val reconciledFiles =
+            (
+                reconciliation.files +
+                    mutableReconciliation.files.map { semanticFile ->
+                        ReconciledFile(
+                            entry =
+                                FileEntry(
+                                    relativePath = semanticFile.relativePath,
+                                    sizeBytes =
+                                        semanticFile.bytes?.size?.toLong()
+                                            ?: checkNotNull(semanticFile.source).sizeBytes,
+                                    sha256 =
+                                        semanticFile.bytes?.let(::sha256)
+                                            ?: checkNotNull(semanticFile.source).sha256,
+                                ),
+                            source = semanticFile.source,
+                            bytes = semanticFile.bytes,
+                            decision = semanticFile.decision,
+                        )
+                    }
+            ).sortedBy { file -> file.entry.relativePath }
+        val expectedFiles = reconciledFiles.map(ReconciledFile::entry)
         val targetParent = finalTargetRoot.parentFile
         if (targetParent == null || (!targetParent.exists() && !targetParent.mkdirs())) {
             return failure(
@@ -357,14 +412,17 @@ internal class PhoneOfflineStorageMigration(
                     ),
                 )
                 var copiedFiles = stagedFiles.size
-                reconciliation.files.forEach { reconciledFile ->
+                reconciledFiles.forEach { reconciledFile ->
                     currentCoroutineContext().ensureActive()
                     val entry = reconciledFile.entry
-                    val sourceFile = reconciledFile.source.file
                     val stagingFile = File(stagingRoot, entry.relativePath)
                     val wasAlreadyStaged = matches(stagingFile, entry)
                     if (!wasAlreadyStaged) {
-                        copyFile(sourceFile, stagingFile)
+                        if (reconciledFile.bytes != null) {
+                            writeBytes(reconciledFile.bytes, stagingFile)
+                        } else {
+                            copyFile(checkNotNull(reconciledFile.source).file, stagingFile)
+                        }
                     }
                     if (!matches(stagingFile, entry)) {
                         return failure(
@@ -437,9 +495,30 @@ internal class PhoneOfflineStorageMigration(
                 journal = switchingJournal,
                 expectedFiles = expectedFiles,
                 onProgress = onProgress,
-                reusedFiles = reconciliation.reusedFiles,
-                copiedFiles = reconciliation.copiedFiles,
-                replacedFiles = reconciliation.replacedFiles,
+                reusedFiles =
+                    reconciledFiles.count { file ->
+                        file.decision in
+                            setOf(
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_ONLY,
+                                PhoneOfflineStorageReconciliationDecision.REUSE_TARGET_IDENTICAL,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_VALID,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_INVALID,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_LARGER_ROUTING_PARTIAL,
+                                PhoneOfflineStorageReconciliationDecision.PRESERVE_TARGET_CONFLICT,
+                            )
+                    },
+                copiedFiles =
+                    reconciledFiles.count { file ->
+                        file.decision in
+                            setOf(
+                                PhoneOfflineStorageReconciliationDecision.COPY_SOURCE,
+                                PhoneOfflineStorageReconciliationDecision.REPLACE_INVALID_TARGET,
+                            )
+                    },
+                replacedFiles =
+                    reconciledFiles.count { file ->
+                        file.decision == PhoneOfflineStorageReconciliationDecision.REPLACE_INVALID_TARGET
+                    },
             )
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
@@ -863,6 +942,17 @@ internal class PhoneOfflineStorageMigration(
             check(temporary.renameTo(target)) { "Could not promote ${source.name}." }
         }
 
+        fun writeBytes(
+            bytes: ByteArray,
+            target: File,
+        ) {
+            target.parentFile?.mkdirs()
+            val temporary = File(target.parentFile, ".${target.name}.part")
+            FileOutputStream(temporary).use { output -> output.write(bytes) }
+            if (target.exists()) target.delete()
+            check(temporary.renameTo(target)) { "Could not promote ${target.name}." }
+        }
+
         fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")
             FileInputStream(file).use { input ->
@@ -875,6 +965,12 @@ internal class PhoneOfflineStorageMigration(
             }
             return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
         }
+
+        fun sha256(bytes: ByteArray): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte) }
 
         fun deleteManagedData(root: File): Boolean =
             migrationDirectoryNames.all { name ->
@@ -1074,9 +1170,14 @@ internal class PhoneOfflineStorageMigration(
 
         private data class ReconciledFile(
             val entry: FileEntry,
-            val source: PhoneOfflineStorageFile,
+            val source: PhoneOfflineStorageFile?,
+            val bytes: ByteArray? = null,
             val decision: PhoneOfflineStorageReconciliationDecision,
-        )
+        ) {
+            init {
+                require(source != null || bytes != null)
+            }
+        }
 
         private data class ReconciliationSummary(
             val files: List<ReconciledFile>,
