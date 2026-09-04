@@ -413,7 +413,7 @@ internal class PhoneOfflineBundleDownloader(
             } else {
                 existing?.demSource ?: recovery?.demSource ?: selection.demSource
             }
-        val availableRouting = availableRoutingFiles(routingExpected)
+        val availableRouting = availablePhoneRoutingFiles(routingExpected, storage.routingDirectory())
         val availableDem = availableDemFiles(demExpected, demSource)
         checkpoint(
             recoveryState.copy(
@@ -435,7 +435,8 @@ internal class PhoneOfflineBundleDownloader(
             checkpoint(
                 recoveryState.copy(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_ROUTING,
-                    downloadedRoutingFileNames = availableRoutingFiles(routingExpected),
+                    downloadedRoutingFileNames =
+                        availablePhoneRoutingFiles(routingExpected, storage.routingDirectory()),
                     detail = activeFailureContext?.detail.orEmpty().ifBlank { error.message.orEmpty() },
                 ),
             )
@@ -635,11 +636,6 @@ internal class PhoneOfflineBundleDownloader(
         val bbox = bounds.asPhoneBbox()
         return BRouterTileMath.tileFileNamesForBbox(bbox)
     }
-
-    private fun availableRoutingFiles(expected: List<String>): List<String> =
-        expected.filter { fileName ->
-            isUsablePhoneRoutingFile(File(storage.routingDirectory(), File(fileName).name))
-        }
 
     private fun availableDemFiles(
         expected: List<String>,

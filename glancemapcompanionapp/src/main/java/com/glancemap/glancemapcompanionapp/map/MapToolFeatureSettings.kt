@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapcompanionapp.map
 
+import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -194,6 +196,8 @@ private fun mapToolsMapsDataSettings(
                 Text(stringResource(R.string.map_source_select_map_folder))
             }
         }
+        HorizontalDivider()
+        mapToolsRoutingFolderSettings(state, actions)
     }
 }
 
@@ -297,6 +301,56 @@ private fun mapToolsElevationFolderSettings(
 }
 
 @Composable
+private fun mapToolsRoutingFolderSettings(
+    state: MapToolsMapsState,
+    actions: MapToolsMapsActions,
+) {
+    Text(stringResource(R.string.map_routing_folder_heading))
+    Text(stringResource(R.string.map_routing_folder_managed_summary))
+    if (state.hasSelectedRoutingFolder) {
+        Text(
+            state.routingFolderSync.folderName
+                ?: stringResource(R.string.map_routing_folder_selected),
+        )
+        Text(
+            stringResource(
+                R.string.map_routing_folder_status,
+                state.routingFolderSync.validCount,
+                state.routingFolderSync.importedCount,
+                state.routingFolderSync.reusedCount,
+                state.routingFolderSync.invalidCount,
+            ),
+        )
+        state.routingFolderSync.error?.let { error ->
+            Text(
+                stringResource(
+                    when (error) {
+                        PhoneRoutingFolderError.PERMISSION_LOST ->
+                            R.string.map_routing_folder_permission_lost
+                        PhoneRoutingFolderError.SCAN_FAILED -> R.string.map_routing_folder_scan_failed
+                        PhoneRoutingFolderError.COPY_FAILED -> R.string.map_routing_folder_copy_failed
+                    },
+                ),
+            )
+        }
+        OutlinedButton(onClick = actions.onRescanRoutingFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_routing_folder_rescan))
+        }
+        OutlinedButton(onClick = actions.onSelectRoutingFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_routing_folder_change))
+        }
+        OutlinedButton(onClick = actions.onClearRoutingFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_routing_folder_clear))
+        }
+    } else {
+        Text(stringResource(R.string.map_routing_folder_none))
+        OutlinedButton(onClick = actions.onSelectRoutingFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_routing_folder_select))
+        }
+    }
+}
+
+@Composable
 internal fun mapToolsStorageSetting(
     location: PhoneOfflineStorageLocation,
     externalStorageAvailable: Boolean,
@@ -335,6 +389,7 @@ internal fun mapToolsStorageSetting(
 @Composable
 private fun mapToolsStorageMigrationStatus(migration: PhoneOfflineStorageMigrationState) {
     if (migration.phase == PhoneOfflineStorageMigrationPhase.IDLE) return
+    val context = LocalContext.current
     Text(stringResource(migration.phase.statusResource()))
     if (migration.phase == PhoneOfflineStorageMigrationPhase.COPYING) {
         Text(stringResource(R.string.map_tools_settings_storage_merging))
@@ -346,6 +401,18 @@ private fun mapToolsStorageMigrationStatus(migration: PhoneOfflineStorageMigrati
                 migration.copiedFiles,
                 migration.totalFiles,
                 migration.percent ?: 0,
+            ),
+        )
+    }
+    if (migration.phase == PhoneOfflineStorageMigrationPhase.COPYING &&
+        migration.requiredSpaceBytes > 0L &&
+        migration.availableSpaceBytes > 0L
+    ) {
+        Text(
+            stringResource(
+                R.string.map_tools_settings_storage_space_progress,
+                Formatter.formatFileSize(context, migration.requiredSpaceBytes),
+                Formatter.formatFileSize(context, migration.availableSpaceBytes),
             ),
         )
     }

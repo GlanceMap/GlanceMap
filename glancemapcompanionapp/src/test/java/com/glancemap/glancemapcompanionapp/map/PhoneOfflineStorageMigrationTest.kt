@@ -11,6 +11,7 @@ import java.io.File
 import java.util.Properties
 import kotlin.io.path.createTempDirectory
 
+@Suppress("LargeClass") // The migration test keeps the crash-state matrix together.
 class PhoneOfflineStorageMigrationTest {
     @Test
     fun copiesManagedDataVerifiesItAndDeletesTheOldTree() =
@@ -166,6 +167,214 @@ class PhoneOfflineStorageMigrationTest {
         }
 
     @Test
+    fun cleanupJournalWithoutManifestFinishesAnAlreadyPromotedTarget() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-legacy-cleanup-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                val staging = File(root, "staging")
+                val backup = File(root, "backup")
+                File(source, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "maps/active.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid active")
+                }
+                val journal = File(root, "migration.properties")
+                Properties()
+                    .apply {
+                        setProperty("source", PhoneOfflineStorageLocation.INTERNAL.name)
+                        setProperty("target", PhoneOfflineStorageLocation.EXTERNAL.name)
+                        setProperty("sourceRoot", source.absolutePath)
+                        setProperty("targetRoot", target.absolutePath)
+                        setProperty("stagingRoot", staging.absolutePath)
+                        setProperty("backupRoot", backup.absolutePath)
+                        setProperty("phase", PhoneOfflineStorageMigrationPhase.CLEANUP.name)
+                    }.let { properties -> journal.outputStream().use { output -> properties.store(output, "test") } }
+
+                val result = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid active", File(target, "maps/active.map").readText())
+                assertFalse(File(source, "maps").exists())
+                assertFalse(journal.exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun interruptedSwitchBeforeRenamingTargetPromotesVerifiedStaging() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-switch-before-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                val staging = File(root, "staging")
+                val backup = File(root, "backup")
+                File(source, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "maps/target.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+                File(staging, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(staging, "maps/target.map").writeText("valid target")
+                val journal = File(root, "migration.properties")
+                writeSwitchJournal(source, target, staging, backup, journal, staging)
+
+                val result = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid source", File(target, "maps/source.map").readText())
+                assertEquals("valid target", File(target, "maps/target.map").readText())
+                assertFalse(File(source, "maps").exists())
+                assertFalse(backup.exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun interruptedSwitchAfterTargetBackupPromotesStagingWithoutLosingTargetOnlyData() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-switch-backup-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                val staging = File(root, "staging")
+                val backup = File(root, "backup")
+                File(source, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "maps/target-only.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target-only")
+                }
+                File(staging, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(staging, "maps/target-only.map").writeText("valid target-only")
+                assertTrue(target.renameTo(backup))
+                val journal = File(root, "migration.properties")
+                writeSwitchJournal(source, target, staging, backup, journal, staging)
+
+                val result = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid source", File(target, "maps/source.map").readText())
+                assertEquals("valid target-only", File(target, "maps/target-only.map").readText())
+                assertFalse(File(source, "maps").exists())
+                assertFalse(backup.exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun interruptedSwitchAfterPromotionFinishesCleanupFromManifest() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-switch-cleanup-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                val staging = File(root, "staging")
+                val backup = File(root, "backup")
+                File(source, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "maps/target-only.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target-only")
+                }
+                File(staging, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(staging, "maps/target-only.map").writeText("valid target-only")
+                assertTrue(target.renameTo(backup))
+                assertTrue(staging.renameTo(target))
+                val journal = File(root, "migration.properties")
+                writeSwitchJournal(source, target, staging, backup, journal, target)
+
+                val result = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target-only", File(target, "maps/target-only.map").readText())
+                assertFalse(File(source, "maps").exists())
+                assertFalse(backup.exists())
+                assertFalse(journal.exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun invalidStagingWithBackupIsRestoredAndRecoveryIsIdempotent() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-switch-invalid-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                val staging = File(root, "staging")
+                val backup = File(root, "backup")
+                File(source, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "maps/target-only.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target-only")
+                }
+                File(staging, "maps/source.map").apply {
+                    parentFile!!.mkdirs()
+                    writeText("corrupt staging")
+                }
+                assertTrue(target.renameTo(backup))
+                val journal = File(root, "migration.properties")
+                val expected =
+                    listOf(
+                        PhoneOfflineStorageMigrationFileEntry(
+                            relativePath = "maps/source.map",
+                            sizeBytes = "valid source".toByteArray().size.toLong(),
+                            sha256 = sha256ForTest("valid source".toByteArray()),
+                        ),
+                    )
+                writeSwitchJournal(source, target, staging, backup, journal, expected)
+
+                val first = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(first is PhoneOfflineStorageMigrationResult.Failure)
+                assertEquals("valid target-only", File(target, "maps/target-only.map").readText())
+                assertTrue(journal.isFile)
+                assertFalse(staging.exists())
+                assertTrue(source.isDirectory)
+
+                val second = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+                val third = migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(second is PhoneOfflineStorageMigrationResult.Success)
+                assertTrue(third is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid source", File(target, "maps/source.map").readText())
+                assertEquals("valid target-only", File(target, "maps/target-only.map").readText())
+                assertFalse(File(target, PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME).exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
     fun existingTargetDataIsMergedAndTargetWinsWhenBothMapsAreInvalid() =
         runBlocking {
             val root = createTempDirectory(prefix = "phone-storage-target-").toFile()
@@ -198,9 +407,16 @@ class PhoneOfflineStorageMigrationTest {
                 assertEquals("existing", File(target, "maps/existing.map").readText())
                 assertEquals("old target version", File(target, "maps/shared.map").readText())
                 assertEquals("keep this file", File(target, "custom/user-note.txt").readText())
+                assertEquals(
+                    "source version",
+                    File(target, PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME)
+                        .walkTopDown()
+                        .first { file -> file.isFile }
+                        .readText(),
+                )
                 assertFalse(File(source, "maps").exists())
                 assertEquals(0, progress.first().copiedFiles)
-                assertEquals(4, progress.first().totalFiles)
+                assertEquals(5, progress.first().totalFiles)
                 assertEquals(100, progress.last().copiedFiles * 100 / progress.last().totalFiles)
                 assertFalse(journal.exists())
             } finally {
@@ -219,6 +435,29 @@ class PhoneOfflineStorageMigrationTest {
             PhoneOfflineStorageMigrationState(copiedFiles = 9, totalFiles = 2).percent,
         )
         assertNull(PhoneOfflineStorageMigrationState(copiedFiles = 0, totalFiles = 0).percent)
+    }
+
+    @Test
+    fun resumedMigrationRequiresOnlyRemainingStagedBytesPlusSmallOverhead() {
+        val entries =
+            (0 until 10).map { index ->
+                PhoneOfflineStorageMigrationFileEntry(
+                    relativePath = "maps/map-$index.map",
+                    sizeBytes = 1_000_000_000L,
+                    sha256 = index.toString(),
+                )
+            }
+        val requirement =
+            phoneOfflineStorageMigrationSpaceRequirement(
+                expectedFiles = entries,
+                stagedFiles = entries.take(6),
+            )
+
+        assertEquals(10_000_000_000L, requirement.totalBytes)
+        assertEquals(6_000_000_000L, requirement.stagedBytes)
+        assertEquals(4_000_000_000L, requirement.remainingBytes)
+        assertTrue(requirement.requiredSpaceBytes <= 5_000_000_000L)
+        assertTrue(requirement.requiredSpaceBytes > 3_000_000_000L)
     }
 
     @Test
@@ -411,4 +650,74 @@ class PhoneOfflineStorageMigrationTest {
                     file.isFile && file.readText().startsWith("valid")
                 },
         )
+
+    @Suppress("LongParameterList")
+    private fun writeSwitchJournal(
+        source: File,
+        target: File,
+        staging: File,
+        backup: File,
+        journal: File,
+        manifestRoot: File,
+    ) {
+        writeSwitchJournal(
+            source = source,
+            target = target,
+            staging = staging,
+            backup = backup,
+            journal = journal,
+            entries = migrationEntries(manifestRoot),
+        )
+    }
+
+    @Suppress("LongParameterList")
+    private fun writeSwitchJournal(
+        source: File,
+        target: File,
+        staging: File,
+        backup: File,
+        journal: File,
+        entries: List<PhoneOfflineStorageMigrationFileEntry>,
+    ) {
+        val manifest = File(journal.parentFile, "migration.manifest")
+        Properties()
+            .apply {
+                setProperty("count", entries.size.toString())
+                entries.forEachIndexed { index, entry ->
+                    setProperty("entry.$index.path", entry.relativePath)
+                    setProperty("entry.$index.size", entry.sizeBytes.toString())
+                    setProperty("entry.$index.sha256", entry.sha256)
+                }
+            }.let { properties -> manifest.outputStream().use { output -> properties.store(output, "test") } }
+        Properties()
+            .apply {
+                setProperty("source", PhoneOfflineStorageLocation.INTERNAL.name)
+                setProperty("target", PhoneOfflineStorageLocation.EXTERNAL.name)
+                setProperty("sourceRoot", source.absolutePath)
+                setProperty("targetRoot", target.absolutePath)
+                setProperty("stagingRoot", staging.absolutePath)
+                setProperty("backupRoot", backup.absolutePath)
+                setProperty("phase", PhoneOfflineStorageMigrationPhase.SWITCHING.name)
+                setProperty("manifestPath", manifest.absolutePath)
+            }.let { properties -> journal.outputStream().use { output -> properties.store(output, "test") } }
+    }
+
+    private fun migrationEntries(root: File): List<PhoneOfflineStorageMigrationFileEntry> =
+        root
+            .walkTopDown()
+            .filter(File::isFile)
+            .map { file ->
+                PhoneOfflineStorageMigrationFileEntry(
+                    relativePath = file.relativeTo(root).invariantSeparatorsPath,
+                    sizeBytes = file.length(),
+                    sha256 = sha256ForTest(file.readBytes()),
+                )
+            }.sortedBy(PhoneOfflineStorageMigrationFileEntry::relativePath)
+            .toList()
+
+    private fun sha256ForTest(bytes: ByteArray): String =
+        java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { byte -> "%02x".format(byte) }
 }

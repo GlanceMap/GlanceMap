@@ -70,4 +70,35 @@ class PhoneOfflineBundleStorageTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun validImportedRoutingPackIsReusableByBundleAvailability() {
+        val root = createTempDirectory(prefix = "phone-routing-availability-").toFile()
+        try {
+            val routingDirectory = File(root, "routing-segments").apply { mkdirs() }
+            writeRoutingPack(File(routingDirectory, "E5_N45.rd5"), lookupVersion = 11)
+            File(routingDirectory, "E10_N45.rd5").writeBytes(byteArrayOf(0, 11, 0))
+
+            assertEquals(
+                listOf("E5_N45.rd5"),
+                availablePhoneRoutingFiles(
+                    expected = listOf("E5_N45.rd5", "E10_N45.rd5"),
+                    routingDirectory = routingDirectory,
+                ),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun writeRoutingPack(
+        file: File,
+        lookupVersion: Int,
+    ) {
+        val header = java.nio.ByteBuffer.allocate(25 * Long.SIZE_BYTES)
+        header.putShort(lookupVersion.toShort())
+        header.position(24 * Long.SIZE_BYTES)
+        header.putLong(25L * Long.SIZE_BYTES)
+        file.writeBytes(header.array())
+    }
 }

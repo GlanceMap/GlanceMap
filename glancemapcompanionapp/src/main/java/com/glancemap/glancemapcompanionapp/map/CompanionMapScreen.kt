@@ -313,6 +313,7 @@ internal fun CompanionMapScreen(
     val bundleStore = remember(context) { PhoneOfflineBundleStore(context.applicationContext) }
     val elevationStore = remember(context) { PhoneElevationStore(context.applicationContext) }
     val elevationFolderSource = remember(context) { PhoneElevationFolderSource(context.applicationContext) }
+    val routingFolderSource = remember(context) { PhoneRoutingFolderSource(context.applicationContext) }
     val elevationRepository = remember(context) { PhoneElevationRepository(context.applicationContext) }
     val offlineStorage = remember(context) { PhoneOfflineStorage(context.applicationContext) }
     val userPoiStore = remember(context) { PhoneMapUserPoiStore(context.applicationContext) }
@@ -375,6 +376,10 @@ internal fun CompanionMapScreen(
         mutableStateOf(elevationFolderSource.hasSelectedFolder())
     }
     var elevationFolderSync by remember { mutableStateOf(PhoneElevationFolderSyncResult()) }
+    var hasSelectedRoutingFolder by remember(routingFolderSource) {
+        mutableStateOf(routingFolderSource.hasSelectedFolder())
+    }
+    var routingFolderSync by remember { mutableStateOf(PhoneRoutingFolderSyncResult()) }
     var offlineThemeConfig by remember(offlineThemePreferences) {
         mutableStateOf(offlineThemePreferences.load())
     }
@@ -657,6 +662,22 @@ internal fun CompanionMapScreen(
                 elevationRepository.invalidate()
             }
         }
+    val selectRoutingFolderLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocumentTree(),
+        ) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                val selectionError =
+                    withContext(Dispatchers.IO) { routingFolderSource.selectFolder(treeUri) }
+                if (selectionError != null) {
+                    routingFolderSync = PhoneRoutingFolderSyncResult(error = selectionError)
+                    return@launch
+                }
+                routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
+            }
+        }
     val selectMapFolderLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocumentTree(),
@@ -733,6 +754,10 @@ internal fun CompanionMapScreen(
         hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
         terrainDataVersion += 1L
         elevationRepository.invalidate()
+    }
+    LaunchedEffect(routingFolderSource) {
+        routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+        hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
     }
     LaunchedEffect(mapUiState.contentVisibility.pois) {
         onPoiVisibilityChanged(mapUiState.contentVisibility.pois)
@@ -863,6 +888,8 @@ internal fun CompanionMapScreen(
                     bundleViewModel.refreshInstalledBundles()
                     elevationFolderSync = withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
                     hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
+                    routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                    hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
                     offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
                     hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
                     terrainDataVersion += 1L
@@ -1009,6 +1036,8 @@ internal fun CompanionMapScreen(
                     hasElevationData = hasElevationData,
                     hasSelectedElevationFolder = hasSelectedElevationFolder,
                     elevationFolderSync = elevationFolderSync,
+                    hasSelectedRoutingFolder = hasSelectedRoutingFolder,
+                    routingFolderSync = routingFolderSync,
                     themeConfig = offlineThemeConfig,
                     settings = mapSettings,
                     compassSettings = compassSettings,
@@ -1092,6 +1121,19 @@ internal fun CompanionMapScreen(
                 elevationFolderSource.clearSelectedFolder()
                 hasSelectedElevationFolder = false
                 elevationFolderSync = PhoneElevationFolderSyncResult()
+            },
+            onSelectRoutingFolder = { selectRoutingFolderLauncher.launch(null) },
+            onRescanRoutingFolder = {
+                coroutineScope.launch {
+                    routingFolderSync =
+                        withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                    hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
+                }
+            },
+            onClearRoutingFolder = {
+                routingFolderSource.clearSelectedFolder()
+                hasSelectedRoutingFolder = false
+                routingFolderSync = PhoneRoutingFolderSyncResult()
             },
             onSelectFolder = { selectMapFolderLauncher.launch(null) },
             onRescanFolder = {

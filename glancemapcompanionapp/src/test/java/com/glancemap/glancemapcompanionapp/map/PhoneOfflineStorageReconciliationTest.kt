@@ -51,6 +51,17 @@ class PhoneOfflineStorageReconciliationTest {
     }
 
     @Test
+    fun differingInvalidAssetsKeepTargetAndPreserveSourceConflict() {
+        withFiles { source, target ->
+            val result = reconciler { false }.reconcile(source, target)
+
+            assertEquals(PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_INVALID, result.decision)
+            assertEquals(target, result.selected)
+            assertTrue(result.preserveSourceConflict)
+        }
+    }
+
+    @Test
     fun largerRoutingPartialWinsWithoutRd5Validation() {
         withFiles(
             relativePath = "routing-segments/E10_N45.rd5.tmp",

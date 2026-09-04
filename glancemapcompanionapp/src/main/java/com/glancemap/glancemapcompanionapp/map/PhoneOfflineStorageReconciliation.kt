@@ -118,6 +118,7 @@ internal class PhoneOfflineStorageReconciler(
                 PhoneOfflineStorageReconciliation(
                     decision = PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_INVALID,
                     selected = target,
+                    preserveSourceConflict = true,
                 )
         }
     }
