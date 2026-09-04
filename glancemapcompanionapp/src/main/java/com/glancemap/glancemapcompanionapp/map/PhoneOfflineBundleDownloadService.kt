@@ -99,6 +99,8 @@ internal class PhoneOfflineBundleDownloadClient(
 
     fun stop() = PhoneOfflineBundleDownloadService.requestStop(applicationContext)
 
+    fun cancel() = PhoneOfflineBundleDownloadService.requestCancel(applicationContext)
+
     fun resume() {
         val operation = operationStore.load() ?: return
         operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
@@ -146,6 +148,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         when (intent?.action) {
             ACTION_PAUSE -> requestStop(StopRequest.PAUSE)
             ACTION_STOP -> requestStop(StopRequest.STOP)
+            ACTION_CANCEL -> requestStop(StopRequest.CANCEL)
             ACTION_START,
             ACTION_RESUME,
             null,
@@ -304,6 +307,11 @@ internal class PhoneOfflineBundleDownloadService : Service() {
     private fun requestStop(request: StopRequest) {
         val operation =
             operationStore.load() ?: run {
+                if (request == StopRequest.CANCEL) {
+                    terminalStop = true
+                    PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Cancelled)
+                    notificationManager.cancel(NOTIFICATION_ID)
+                }
                 stopSelf()
                 return
             }
@@ -314,20 +322,36 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         if (activeJob?.isActive == true) {
             activeJob.cancel(CancellationException(request.name.lowercase()))
         } else {
-            publishStoppedState(operation, request)
+            if (request == StopRequest.CANCEL) {
+                cancelOperation(operation)
+            } else {
+                publishStoppedState(operation, request)
+            }
         }
     }
 
     private fun handleCancellation(operation: PhoneOfflineBundleOperation) {
         if (destroyed) return
-        val request = stopRequest
-        if (request == null) {
-            operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
-            PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState())
-            return
+        when (val request = stopRequest) {
+            null -> {
+                operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
+                PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState())
+            }
+            StopRequest.CANCEL -> cancelOperation(operation)
+            else -> {
+                operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.PAUSED))
+                publishStoppedState(operation, request)
+            }
         }
-        operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.PAUSED))
-        publishStoppedState(operation, request)
+    }
+
+    private fun cancelOperation(operation: PhoneOfflineBundleOperation) {
+        terminalStop = true
+        operation.selections.forEach { selection -> bundleStore.clearRecovery(selection.area.id) }
+        operationStore.clear()
+        PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Cancelled)
+        notificationManager.cancel(NOTIFICATION_ID)
+        stopSelf()
     }
 
     private fun publishStoppedState(
@@ -576,6 +600,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
     private enum class StopRequest {
         PAUSE,
         STOP,
+        CANCEL,
     }
 
     companion object {
@@ -583,6 +608,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         const val ACTION_RESUME = "com.glancemap.glancemapcompanionapp.action.RESUME_OFFLINE_BUNDLE_DOWNLOAD"
         const val ACTION_PAUSE = "com.glancemap.glancemapcompanionapp.action.PAUSE_OFFLINE_BUNDLE_DOWNLOAD"
         const val ACTION_STOP = "com.glancemap.glancemapcompanionapp.action.STOP_OFFLINE_BUNDLE_DOWNLOAD"
+        const val ACTION_CANCEL = "com.glancemap.glancemapcompanionapp.action.CANCEL_OFFLINE_BUNDLE_DOWNLOAD"
         const val CHANNEL_ID = "phone_offline_bundle_downloads"
         const val NOTIFICATION_ID = 42_230
         const val REQUEST_OPEN_APP = 42_231
@@ -608,6 +634,14 @@ internal class PhoneOfflineBundleDownloadService : Service() {
             runCatching {
                 context.startService(
                     Intent(context, PhoneOfflineBundleDownloadService::class.java).setAction(ACTION_STOP),
+                )
+            }
+        }
+
+        fun requestCancel(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, PhoneOfflineBundleDownloadService::class.java).setAction(ACTION_CANCEL),
                 )
             }
         }

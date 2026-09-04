@@ -43,4 +43,15 @@ class PhoneOfflineBundleDownloadPlanTest {
 
         assertEquals(PhoneOfflineBundleRefreshForces(), operation.forcesFor(0))
     }
+
+    @Test
+    fun onlyResumableTerminalDownloadsOfferCancellation() {
+        val progress = PhoneOfflineBundleProgress(phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP)
+
+        assertTrue(PhoneOfflineBundleDownloadState.Paused(area.id, progress).canCancelSavedOperation())
+        assertTrue(PhoneOfflineBundleDownloadState.Stopped(area.id, progress).canCancelSavedOperation())
+        assertTrue(PhoneOfflineBundleDownloadState.Failed(PhoneOfflineBundleFailure.NETWORK).canCancelSavedOperation())
+        assertFalse(PhoneOfflineBundleDownloadState.Downloading(area.id, progress).canCancelSavedOperation())
+        assertFalse(PhoneOfflineBundleDownloadState.Cancelled.canCancelSavedOperation())
+    }
 }

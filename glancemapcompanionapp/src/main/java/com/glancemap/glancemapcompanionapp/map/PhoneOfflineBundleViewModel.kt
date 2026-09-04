@@ -83,8 +83,7 @@ internal class PhoneOfflineBundleViewModel(
 
     fun stop() = downloadClient.stop()
 
-    /** Kept for callers from older map-screen code; stopping now preserves partial files for restart. */
-    fun cancel() = stop()
+    fun cancel() = downloadClient.cancel()
 
     fun resume() = downloadClient.resume()
 
@@ -242,6 +241,11 @@ internal class PhoneOfflineBundleViewModel(
         }
     }
 }
+
+internal fun PhoneOfflineBundleDownloadState.canCancelSavedOperation(): Boolean =
+    this is PhoneOfflineBundleDownloadState.Paused ||
+        this is PhoneOfflineBundleDownloadState.Stopped ||
+        this is PhoneOfflineBundleDownloadState.Failed
 
 private fun PhoneInstalledBundle.toSelection(
     area: com.glancemap.trailcore.oam.OamDownloadArea,

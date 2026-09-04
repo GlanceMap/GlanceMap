@@ -2326,6 +2326,7 @@ internal fun CompanionMapScreen(
             },
             onPause = bundleViewModel::pause,
             onStop = bundleViewModel::stop,
+            onCancel = bundleViewModel::cancel,
             onResume = bundleViewModel::resume,
             onCheckForUpdates = bundleViewModel::checkForUpdates,
             onRefreshSelected = bundleViewModel::refreshSelected,

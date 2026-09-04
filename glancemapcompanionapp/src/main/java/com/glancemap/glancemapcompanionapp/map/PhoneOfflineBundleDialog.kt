@@ -46,6 +46,7 @@ internal fun PhoneOfflineBundleDialog(
     onStart: (PhoneOfflineBundleSelection) -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
+    onCancel: () -> Unit,
     onResume: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onRefreshSelected: () -> Unit,
@@ -207,9 +208,29 @@ internal fun PhoneOfflineBundleDialog(
             },
             dismissButton = {
                 if (!isBusy) {
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) }
+                    phoneOfflineBundleDismissButton(
+                        state = state,
+                        onDismiss = onDismiss,
+                        onCancel = onCancel,
+                    )
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun phoneOfflineBundleDismissButton(
+    state: PhoneOfflineBundleDownloadState,
+    onDismiss: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val canCancelDownload = state.canCancelSavedOperation()
+    TextButton(onClick = if (canCancelDownload) onCancel else onDismiss) {
+        Text(
+            stringResource(
+                if (canCancelDownload) R.string.common_action_cancel else R.string.common_action_close,
+            ),
         )
     }
 }
