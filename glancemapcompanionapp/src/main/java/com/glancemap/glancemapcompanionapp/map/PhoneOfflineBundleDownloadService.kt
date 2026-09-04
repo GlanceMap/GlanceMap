@@ -309,7 +309,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
             operationStore.load() ?: run {
                 if (request == StopRequest.CANCEL) {
                     terminalStop = true
-                    PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Cancelled)
+                    PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Idle)
                     notificationManager.cancel(NOTIFICATION_ID)
                 }
                 stopSelf()
@@ -349,7 +349,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         terminalStop = true
         operation.selections.forEach { selection -> bundleStore.clearRecovery(selection.area.id) }
         operationStore.clear()
-        PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Cancelled)
+        PhoneOfflineBundleDownloadRuntime.publish(PhoneOfflineBundleDownloadState.Idle)
         notificationManager.cancel(NOTIFICATION_ID)
         stopSelf()
     }
