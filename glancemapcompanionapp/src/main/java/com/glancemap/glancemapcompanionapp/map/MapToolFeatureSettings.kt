@@ -240,13 +240,63 @@ private fun mapToolsMapsTerrainSettings(
         OutlinedButton(onClick = actions.onImportElevation, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.map_tools_maps_import_elevation))
         }
+        mapToolsElevationFolderSettings(state, actions)
         HorizontalDivider()
         mapToolsMapTerrainSettings(state.settings, actions.onSettingsChanged)
     }
 }
 
 @Composable
-@Suppress("CyclomaticComplexMethod") // The fixed migration status mapping is clearer in one settings control.
+private fun mapToolsElevationFolderSettings(
+    state: MapToolsMapsState,
+    actions: MapToolsMapsActions,
+) {
+    Text(stringResource(R.string.map_elevation_folder_heading))
+    Text(stringResource(R.string.map_elevation_folder_managed_summary))
+    if (state.hasSelectedElevationFolder) {
+        Text(
+            state.elevationFolderSync.folderName
+                ?: stringResource(R.string.map_elevation_folder_selected),
+        )
+        Text(
+            stringResource(
+                R.string.map_elevation_folder_status,
+                state.elevationFolderSync.validCount,
+                state.elevationFolderSync.importedCount,
+                state.elevationFolderSync.reusedCount,
+                state.elevationFolderSync.invalidCount,
+            ),
+        )
+        state.elevationFolderSync.error?.let { error ->
+            Text(
+                stringResource(
+                    when (error) {
+                        PhoneElevationFolderError.PERMISSION_LOST ->
+                            R.string.map_elevation_folder_permission_lost
+                        PhoneElevationFolderError.SCAN_FAILED -> R.string.map_elevation_folder_scan_failed
+                        PhoneElevationFolderError.COPY_FAILED -> R.string.map_elevation_folder_copy_failed
+                    },
+                ),
+            )
+        }
+        OutlinedButton(onClick = actions.onRescanElevationFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_elevation_folder_rescan))
+        }
+        OutlinedButton(onClick = actions.onSelectElevationFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_elevation_folder_change))
+        }
+        OutlinedButton(onClick = actions.onClearElevationFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_elevation_folder_clear))
+        }
+    } else {
+        Text(stringResource(R.string.map_elevation_folder_none))
+        OutlinedButton(onClick = actions.onSelectElevationFolder, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_elevation_folder_select))
+        }
+    }
+}
+
+@Composable
 internal fun mapToolsStorageSetting(
     location: PhoneOfflineStorageLocation,
     externalStorageAvailable: Boolean,
@@ -279,33 +329,56 @@ internal fun mapToolsStorageSetting(
             Text(stringResource(R.string.map_tools_settings_storage_move_to_glancemap))
         }
     }
-    if (migration.phase != PhoneOfflineStorageMigrationPhase.IDLE) {
+    mapToolsStorageMigrationStatus(migration)
+}
+
+@Composable
+private fun mapToolsStorageMigrationStatus(migration: PhoneOfflineStorageMigrationState) {
+    if (migration.phase == PhoneOfflineStorageMigrationPhase.IDLE) return
+    Text(stringResource(migration.phase.statusResource()))
+    if (migration.phase == PhoneOfflineStorageMigrationPhase.COPYING) {
+        Text(stringResource(R.string.map_tools_settings_storage_merging))
+    }
+    if (migration.totalFiles > 0 && migration.phase.showsProgress()) {
         Text(
             stringResource(
-                when (migration.phase) {
-                    PhoneOfflineStorageMigrationPhase.COPYING -> R.string.map_tools_settings_storage_moving
-                    PhoneOfflineStorageMigrationPhase.VERIFYING -> R.string.map_tools_settings_storage_verifying
-                    PhoneOfflineStorageMigrationPhase.SWITCHING -> R.string.map_tools_settings_storage_switching
-                    PhoneOfflineStorageMigrationPhase.CLEANUP -> R.string.map_tools_settings_storage_cleanup
-                    PhoneOfflineStorageMigrationPhase.COMPLETE -> R.string.map_tools_settings_storage_complete
-                    PhoneOfflineStorageMigrationPhase.FAILED -> R.string.map_tools_settings_storage_failed
-                    PhoneOfflineStorageMigrationPhase.IDLE -> R.string.map_tools_settings_storage_ready
-                },
+                R.string.map_tools_settings_storage_progress,
+                migration.copiedFiles,
+                migration.totalFiles,
+                migration.percent ?: 0,
             ),
         )
-        if (migration.totalFiles > 0) {
-            Text(
-                stringResource(
-                    R.string.map_tools_settings_storage_progress,
-                    migration.copiedFiles,
-                    migration.totalFiles,
-                    migration.percent ?: 0,
-                ),
-            )
-        }
-        migration.message?.takeIf(String::isNotBlank)?.let { message -> Text(message) }
+    }
+    migration.message?.takeIf(String::isNotBlank)?.let { message -> Text(message) }
+    if (migration.phase == PhoneOfflineStorageMigrationPhase.COMPLETE) {
+        Text(
+            stringResource(
+                R.string.map_tools_settings_storage_summary,
+                migration.reusedFiles,
+                migration.copiedFiles,
+                migration.replacedFiles,
+            ),
+        )
     }
 }
+
+private fun PhoneOfflineStorageMigrationPhase.statusResource(): Int =
+    when (this) {
+        PhoneOfflineStorageMigrationPhase.COPYING -> R.string.map_tools_settings_storage_moving
+        PhoneOfflineStorageMigrationPhase.VERIFYING -> R.string.map_tools_settings_storage_verifying
+        PhoneOfflineStorageMigrationPhase.SWITCHING -> R.string.map_tools_settings_storage_switching
+        PhoneOfflineStorageMigrationPhase.CLEANUP -> R.string.map_tools_settings_storage_cleanup
+        PhoneOfflineStorageMigrationPhase.COMPLETE -> R.string.map_tools_settings_storage_complete
+        PhoneOfflineStorageMigrationPhase.FAILED -> R.string.map_tools_settings_storage_failed
+        PhoneOfflineStorageMigrationPhase.IDLE -> R.string.map_tools_settings_storage_ready
+    }
+
+private fun PhoneOfflineStorageMigrationPhase.showsProgress(): Boolean =
+    this !in
+        setOf(
+            PhoneOfflineStorageMigrationPhase.COMPLETE,
+            PhoneOfflineStorageMigrationPhase.FAILED,
+        )
 
 @Composable
 @Suppress("LongMethod") // Compass controls intentionally mirror the watch settings in one panel.

@@ -126,7 +126,7 @@ internal fun File.containsPhoneDemFile(): Boolean =
             .maxDepth(PHONE_DEM_SCAN_MAX_DEPTH)
             .any { file -> file.isFile && file.name.isPhoneDemFileName() && file.length() > 0L }
 
-private fun String.isPhoneDemFileName(): Boolean {
+internal fun String.isPhoneDemFileName(): Boolean {
     val lower = lowercase(Locale.ROOT)
     return lower.endsWith(".hgt") || lower.endsWith(".hgt.gz") || lower.endsWith(".hgt.zip")
 }

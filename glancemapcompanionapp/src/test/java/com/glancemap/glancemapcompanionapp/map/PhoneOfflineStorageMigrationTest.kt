@@ -166,7 +166,7 @@ class PhoneOfflineStorageMigrationTest {
         }
 
     @Test
-    fun existingTargetDataIsMergedAndSourceWinsOnConflict() =
+    fun existingTargetDataIsMergedAndTargetWinsWhenBothMapsAreInvalid() =
         runBlocking {
             val root = createTempDirectory(prefix = "phone-storage-target-").toFile()
             try {
@@ -196,7 +196,7 @@ class PhoneOfflineStorageMigrationTest {
                 assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
                 assertEquals("source", File(target, "maps/source.map").readText())
                 assertEquals("existing", File(target, "maps/existing.map").readText())
-                assertEquals("source version", File(target, "maps/shared.map").readText())
+                assertEquals("old target version", File(target, "maps/shared.map").readText())
                 assertEquals("keep this file", File(target, "custom/user-note.txt").readText())
                 assertFalse(File(source, "maps").exists())
                 assertEquals(0, progress.first().copiedFiles)
@@ -220,4 +220,195 @@ class PhoneOfflineStorageMigrationTest {
         )
         assertNull(PhoneOfflineStorageMigrationState(copiedFiles = 0, totalFiles = 0).percent)
     }
+
+    @Test
+    fun validTargetRoutingFileWinsOverInvalidSource() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-routing-target-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                File(source, "routing-segments/E10_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("invalid")
+                }
+                File(target, "routing-segments/E10_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+
+                val result =
+                    migration(source, target, File(root, "journal.properties"))
+                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target", File(target, "routing-segments/E10_N45.rd5").readText())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun targetOnlyManagedRoutingDataIsPreserved() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-target-only-").toFile()
+            try {
+                val source = File(root, "source").apply { mkdirs() }
+                val target = File(root, "target/GlanceMap")
+                File(target, "routing-segments/E5_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+
+                val result =
+                    migration(source, target, File(root, "journal.properties"))
+                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target", File(target, "routing-segments/E5_N45.rd5").readText())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun validSourceRoutingFileReplacesInvalidTarget() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-routing-source-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                File(source, "routing-segments/E10_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "routing-segments/E10_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("invalid")
+                }
+
+                val result =
+                    migration(source, target, File(root, "journal.properties"))
+                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid source", File(target, "routing-segments/E10_N45.rd5").readText())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun validTargetRoutingFinalSuppressesSourcePartial() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-routing-partial-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                File(source, "routing-segments/E10_N45.rd5.tmp").apply {
+                    parentFile!!.mkdirs()
+                    writeText("larger partial source")
+                }
+                File(target, "routing-segments/E10_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+
+                val result =
+                    migration(source, target, File(root, "journal.properties"))
+                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target", File(target, "routing-segments/E10_N45.rd5").readText())
+                assertFalse(File(target, "routing-segments/E10_N45.rd5.tmp").exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun differentValidFilesKeepTargetAndPreserveTheSourceForRecovery() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-conflict-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                File(source, "route-library/weekend.json").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid source")
+                }
+                File(target, "route-library/weekend.json").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+
+                val result =
+                    migration(source, target, File(root, "journal.properties"))
+                        .move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target", File(target, "route-library/weekend.json").readText())
+                assertEquals(
+                    "valid source",
+                    File(target, PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME)
+                        .walkTopDown()
+                        .first { file -> file.isFile }
+                        .readText(),
+                )
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    @Test
+    fun interruptedMigrationResumesWithoutLosingTargetOnlyRoutingData() =
+        runBlocking {
+            val root = createTempDirectory(prefix = "phone-storage-target-resume-").toFile()
+            try {
+                val source = File(root, "source")
+                val target = File(root, "target/GlanceMap")
+                File(source, "route-library/new-route.json").apply {
+                    parentFile!!.mkdirs()
+                    writeText("new route")
+                }
+                File(target, "routing-segments/E5_N45.rd5").apply {
+                    parentFile!!.mkdirs()
+                    writeText("valid target")
+                }
+                val journal = File(root, "journal.properties")
+
+                try {
+                    PhoneOfflineStorageMigration(source, target, journal)
+                        .move(PhoneOfflineStorageLocation.EXTERNAL) {
+                            throw CancellationException("test interruption")
+                        }
+                } catch (_: CancellationException) {
+                    // The persisted journal keeps the target tree available for resumption.
+                }
+
+                val result =
+                    migration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL)
+
+                assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
+                assertEquals("valid target", File(target, "routing-segments/E5_N45.rd5").readText())
+                assertEquals("new route", File(target, "route-library/new-route.json").readText())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+    private fun migration(
+        source: File,
+        target: File,
+        journal: File,
+    ): PhoneOfflineStorageMigration =
+        PhoneOfflineStorageMigration(
+            sourceRoot = source,
+            targetRoot = target,
+            journalFile = journal,
+            reconciler =
+                PhoneOfflineStorageReconciler { _, file ->
+                    file.isFile && file.readText().startsWith("valid")
+                },
+        )
 }

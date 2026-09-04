@@ -477,6 +477,15 @@ private class PhoneOfflineMapImportTrace(
 
 internal fun isPhoneOfflineMapCandidate(file: File): Boolean = file.isReadableMapFile()
 
+/** Shared storage reconciliation must validate Mapsforge content, not only a .map file name. */
+internal fun isUsablePhoneOfflineMapFile(file: File): Boolean =
+    isPhoneOfflineMapCandidate(file) &&
+        (
+            file.parentFile?.let { directory ->
+                PhoneOfflineMapStore(directory).validate(PhoneOfflineMap(file)) == null
+            } == true
+        )
+
 internal fun isPhoneOfflineMapDocumentCandidate(
     name: String?,
     isFile: Boolean,

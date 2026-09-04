@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -40,6 +41,8 @@ internal data class PhoneOfflineStorageMigrationState(
     val target: PhoneOfflineStorageLocation? = null,
     val copiedFiles: Int = 0,
     val totalFiles: Int = 0,
+    val reusedFiles: Int = 0,
+    val replacedFiles: Int = 0,
     val requiredSpaceBytes: Long = 0L,
     val availableSpaceBytes: Long = 0L,
     val message: String? = null,
@@ -74,6 +77,9 @@ internal sealed interface PhoneOfflineStorageMigrationResult {
         val source: PhoneOfflineStorageLocation,
         val target: PhoneOfflineStorageLocation,
         val movedFiles: Int,
+        val reusedFiles: Int = 0,
+        val copiedFiles: Int = movedFiles,
+        val replacedFiles: Int = 0,
     ) : PhoneOfflineStorageMigrationResult
 
     data class Failure(
@@ -92,7 +98,11 @@ internal data class PhoneOfflineStorageMigrationJournal(
     val phase: PhoneOfflineStorageMigrationPhase,
 )
 
-/** Moves the shared file tree only after a verified copy is ready. */
+/**
+ * Moves the shared file tree only after a verified copy is ready.
+ * Test-only roots and journal make the transactional boundary independently testable.
+ */
+@Suppress("LongParameterList")
 internal class PhoneOfflineStorageMigration(
     private val storage: PhoneOfflineStorage?,
     private val fixedSourceRoot: File?,
@@ -100,6 +110,7 @@ internal class PhoneOfflineStorageMigration(
     private val fixedJournalFile: File?,
     private val fixedSourceLocation: PhoneOfflineStorageLocation?,
     private val fixedTargetLocation: PhoneOfflineStorageLocation?,
+    private val reconciler: PhoneOfflineStorageReconciler,
 ) {
     private val mutex = Mutex()
 
@@ -111,12 +122,14 @@ internal class PhoneOfflineStorageMigration(
             fixedJournalFile = null,
             fixedSourceLocation = null,
             fixedTargetLocation = null,
+            reconciler = PhoneOfflineStorageReconciler(),
         )
 
     internal constructor(
         sourceRoot: File,
         targetRoot: File,
         journalFile: File,
+        reconciler: PhoneOfflineStorageReconciler = PhoneOfflineStorageReconciler(),
     ) :
         this(
             storage = null,
@@ -125,6 +138,7 @@ internal class PhoneOfflineStorageMigration(
             fixedJournalFile = journalFile,
             fixedSourceLocation = PhoneOfflineStorageLocation.INTERNAL,
             fixedTargetLocation = PhoneOfflineStorageLocation.EXTERNAL,
+            reconciler = reconciler,
         )
 
     fun pending(): PhoneOfflineStorageMigrationJournal? = readJournal(journalFile())
@@ -186,10 +200,23 @@ internal class PhoneOfflineStorageMigration(
         if (journal.phase == PhoneOfflineStorageMigrationPhase.CLEANUP) {
             return finishCleanup(journal, allFiles(finalTargetRoot).size)
         }
-        val sourceFiles = managedFiles(sourceRoot)
-        val targetFiles = allFiles(finalTargetRoot)
-        val expectedFiles = mergeFiles(targetFiles, sourceFiles)
-        val sourceFilesByPath = sourceFiles.associateBy(FileEntry::relativePath)
+        val hashCache = mutableMapOf<String, String>()
+        val validityCache = mutableMapOf<String, Boolean>()
+        val sourceFiles = managedFiles(sourceRoot, hashCache)
+        val targetFiles = allFiles(finalTargetRoot, hashCache)
+        val reconciliation =
+            reconcileFiles(
+                sourceFiles = sourceFiles,
+                targetFiles = targetFiles,
+                targetRoot = finalTargetRoot,
+                reconciler =
+                    PhoneOfflineStorageReconciler { kind, file ->
+                        validityCache.getOrPut(file.absolutePath) {
+                            reconciler.isValid(kind, file)
+                        }
+                    },
+            )
+        val expectedFiles = reconciliation.files.map(ReconciledFile::entry)
         val requiredSpace = expectedFiles.sumOf(FileEntry::sizeBytes)
         val targetParent = finalTargetRoot.parentFile
         if (targetParent == null || (!targetParent.exists() && !targetParent.mkdirs())) {
@@ -229,14 +256,10 @@ internal class PhoneOfflineStorageMigration(
                         availableSpaceBytes = availableSpace,
                     ),
                 )
-                expectedFiles.forEachIndexed { index, entry ->
+                reconciliation.files.forEachIndexed { index, reconciledFile ->
                     currentCoroutineContext().ensureActive()
-                    val sourceFile =
-                        if (entry.relativePath in sourceFilesByPath) {
-                            File(sourceRoot, entry.relativePath)
-                        } else {
-                            File(finalTargetRoot, entry.relativePath)
-                        }
+                    val entry = reconciledFile.entry
+                    val sourceFile = reconciledFile.source.file
                     val stagingFile = File(stagingRoot, entry.relativePath)
                     if (!matches(stagingFile, entry)) {
                         copyFile(sourceFile, stagingFile)
@@ -326,7 +349,13 @@ internal class PhoneOfflineStorageMigration(
                     availableSpaceBytes = availableSpace,
                 ),
             )
-            finishCleanup(cleanupJournal, expectedFiles.size)
+            finishCleanup(
+                journal = cleanupJournal,
+                movedFiles = expectedFiles.size,
+                reusedFiles = reconciliation.reusedFiles,
+                copiedFiles = reconciliation.copiedFiles,
+                replacedFiles = reconciliation.replacedFiles,
+            )
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -349,6 +378,9 @@ internal class PhoneOfflineStorageMigration(
     private fun finishCleanup(
         journal: PhoneOfflineStorageMigrationJournal,
         movedFiles: Int,
+        reusedFiles: Int = 0,
+        copiedFiles: Int = movedFiles,
+        replacedFiles: Int = 0,
     ): PhoneOfflineStorageMigrationResult {
         setActiveLocation(journal.target)
         if (!deleteManagedData(sourceRoot(journal)) || !deleteMigrationBackup(File(journal.backupRootPath))) {
@@ -359,7 +391,14 @@ internal class PhoneOfflineStorageMigration(
             )
         }
         journalFile().delete()
-        return PhoneOfflineStorageMigrationResult.Success(journal.source, journal.target, movedFiles)
+        return PhoneOfflineStorageMigrationResult.Success(
+            source = journal.source,
+            target = journal.target,
+            movedFiles = movedFiles,
+            reusedFiles = reusedFiles,
+            copiedFiles = copiedFiles,
+            replacedFiles = replacedFiles,
+        )
     }
 
     private fun failure(
@@ -381,22 +420,30 @@ internal class PhoneOfflineStorageMigration(
         return PhoneOfflineStorageMigrationResult.Failure(error, message)
     }
 
+    @Suppress("TooManyFunctions") // Journal, hash, copy, and cleanup helpers are one transaction boundary.
     private companion object {
-        fun managedFiles(root: File): List<FileEntry> =
-            PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES
+        fun managedFiles(
+            root: File,
+            hashCache: MutableMap<String, String> = mutableMapOf(),
+        ): List<PhoneOfflineStorageFile> =
+            migrationDirectoryNames
                 .asSequence()
                 .map { name -> File(root, name) }
                 .flatMap { directory -> directory.walkTopDown().filter(File::isFile) }
                 .map { file ->
-                    FileEntry(
+                    PhoneOfflineStorageFile(
                         relativePath = file.relativeTo(root).invariantSeparatorsPath,
+                        file = file,
                         sizeBytes = file.length(),
-                        sha256 = sha256(file),
+                        sha256 = hashCache.getOrPut(file.absolutePath) { sha256(file) },
                     )
-                }.sortedBy(FileEntry::relativePath)
+                }.sortedBy(PhoneOfflineStorageFile::relativePath)
                 .toList()
 
-        fun allFiles(root: File): List<FileEntry> =
+        fun allFiles(
+            root: File,
+            hashCache: MutableMap<String, String> = mutableMapOf(),
+        ): List<FileEntry> =
             if (!root.exists()) {
                 emptyList()
             } else {
@@ -407,20 +454,11 @@ internal class PhoneOfflineStorageMigration(
                         FileEntry(
                             relativePath = file.relativeTo(root).invariantSeparatorsPath,
                             sizeBytes = file.length(),
-                            sha256 = sha256(file),
+                            sha256 = hashCache.getOrPut(file.absolutePath) { sha256(file) },
                         )
                     }.sortedBy(FileEntry::relativePath)
                     .toList()
             }
-
-        fun mergeFiles(
-            targetFiles: List<FileEntry>,
-            sourceFiles: List<FileEntry>,
-        ): List<FileEntry> =
-            (targetFiles + sourceFiles)
-                .associateBy(FileEntry::relativePath)
-                .values
-                .sortedBy(FileEntry::relativePath)
 
         fun matches(
             file: File,
@@ -457,7 +495,7 @@ internal class PhoneOfflineStorageMigration(
         }
 
         fun deleteManagedData(root: File): Boolean =
-            PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES.all { name ->
+            migrationDirectoryNames.all { name ->
                 val directory = File(root, name)
                 !directory.exists() || directory.deleteRecursively()
             }
@@ -505,6 +543,126 @@ internal class PhoneOfflineStorageMigration(
             val relativePath: String,
             val sizeBytes: Long,
             val sha256: String,
+        )
+
+        @Suppress("LongMethod") // Reconciliation must be assembled in one deterministic relative-path pass.
+        private fun reconcileFiles(
+            sourceFiles: List<PhoneOfflineStorageFile>,
+            targetFiles: List<FileEntry>,
+            targetRoot: File,
+            reconciler: PhoneOfflineStorageReconciler,
+        ): ReconciliationSummary {
+            val sourceByPath = sourceFiles.associateBy(PhoneOfflineStorageFile::relativePath)
+            val targetByPath =
+                targetFiles.associate { entry ->
+                    entry.relativePath to
+                        PhoneOfflineStorageFile(
+                            relativePath = entry.relativePath,
+                            file = File(targetRoot, entry.relativePath),
+                            sizeBytes = entry.sizeBytes,
+                            sha256 = entry.sha256,
+                        )
+                }
+            val routingFiles =
+                (sourceFiles + targetByPath.values).filter { file ->
+                    phoneOfflineStorageAssetKind(file.relativePath) == PhoneOfflineStorageAssetKind.ROUTING
+                }
+            val validRoutingFinalPaths =
+                routingFiles
+                    .filter { file ->
+                        reconciler.isValid(PhoneOfflineStorageAssetKind.ROUTING, file.file)
+                    }.mapTo(mutableSetOf(), PhoneOfflineStorageFile::relativePath)
+            val reconciled = mutableListOf<ReconciledFile>()
+            (sourceByPath.keys + targetByPath.keys)
+                .sorted()
+                .filterNot { path ->
+                    phoneOfflineStorageAssetKind(path) == PhoneOfflineStorageAssetKind.ROUTING_PARTIAL &&
+                        routingFinalPathForPartial(path) in validRoutingFinalPaths
+                }.forEach { path ->
+                    val source = sourceByPath[path]
+                    val target = targetByPath[path]
+                    val result = reconciler.reconcile(source, target)
+                    PhoneDownloadDiagnostics.log(
+                        "StorageMigration",
+                        "decision=${result.decision.name.lowercase()} file=$path",
+                    )
+                    reconciled +=
+                        ReconciledFile(
+                            entry =
+                                FileEntry(
+                                    result.selected.relativePath,
+                                    result.selected.sizeBytes,
+                                    result.selected.sha256,
+                                ),
+                            source = result.selected,
+                            decision = result.decision,
+                        )
+                    if (result.preserveSourceConflict && source != null) {
+                        reconciled +=
+                            ReconciledFile(
+                                entry =
+                                    FileEntry(
+                                        relativePath =
+                                            "$PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME/" +
+                                                "${source.relativePath}.source-${source.sha256.take(12)}",
+                                        sizeBytes = source.sizeBytes,
+                                        sha256 = source.sha256,
+                                    ),
+                                source = source,
+                                decision = PhoneOfflineStorageReconciliationDecision.COPY_SOURCE,
+                            )
+                    }
+                }
+            return ReconciliationSummary(
+                files = reconciled.sortedBy { file -> file.entry.relativePath },
+                reusedFiles =
+                    reconciled.count { file ->
+                        file.decision in
+                            setOf(
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_ONLY,
+                                PhoneOfflineStorageReconciliationDecision.REUSE_TARGET_IDENTICAL,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_VALID,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_TARGET_INVALID,
+                                PhoneOfflineStorageReconciliationDecision.KEEP_LARGER_ROUTING_PARTIAL,
+                                PhoneOfflineStorageReconciliationDecision.PRESERVE_TARGET_CONFLICT,
+                            )
+                    },
+                copiedFiles =
+                    reconciled.count { file ->
+                        file.decision in
+                            setOf(
+                                PhoneOfflineStorageReconciliationDecision.COPY_SOURCE,
+                                PhoneOfflineStorageReconciliationDecision.REPLACE_INVALID_TARGET,
+                            )
+                    },
+                replacedFiles =
+                    reconciled.count { file ->
+                        file.decision == PhoneOfflineStorageReconciliationDecision.REPLACE_INVALID_TARGET
+                    },
+            )
+        }
+
+        private fun routingFinalPathForPartial(path: String): String? =
+            when {
+                path.endsWith(".rd5.tmp", ignoreCase = true) -> path.removeSuffix(".tmp")
+                path.endsWith(".rd5.import.part", ignoreCase = true) -> path.removeSuffix(".import.part")
+                else -> null
+            }
+
+        private val migrationDirectoryNames =
+            PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES + PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME
+
+        private data class ReconciledFile(
+            val entry: FileEntry,
+            val source: PhoneOfflineStorageFile,
+            val decision: PhoneOfflineStorageReconciliationDecision,
+        )
+
+        private data class ReconciliationSummary(
+            val files: List<ReconciledFile>,
+            val reusedFiles: Int,
+            val copiedFiles: Int,
+            val replacedFiles: Int,
         )
     }
 }

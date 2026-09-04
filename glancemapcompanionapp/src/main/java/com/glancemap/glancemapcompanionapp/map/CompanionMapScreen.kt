@@ -310,6 +310,7 @@ internal fun CompanionMapScreen(
     val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
     val bundleStore = remember(context) { PhoneOfflineBundleStore(context.applicationContext) }
     val elevationStore = remember(context) { PhoneElevationStore(context.applicationContext) }
+    val elevationFolderSource = remember(context) { PhoneElevationFolderSource(context.applicationContext) }
     val elevationRepository = remember(context) { PhoneElevationRepository(context.applicationContext) }
     val offlineStorage = remember(context) { PhoneOfflineStorage(context.applicationContext) }
     val userPoiStore = remember(context) { PhoneMapUserPoiStore(context.applicationContext) }
@@ -368,6 +369,10 @@ internal fun CompanionMapScreen(
         mutableStateOf(gpxFolderSource.hasSelectedFolder())
     }
     var gpxFolderScan by remember { mutableStateOf(PhoneGpxFolderScanResult()) }
+    var hasSelectedElevationFolder by remember(elevationFolderSource) {
+        mutableStateOf(elevationFolderSource.hasSelectedFolder())
+    }
+    var elevationFolderSync by remember { mutableStateOf(PhoneElevationFolderSyncResult()) }
     var offlineThemeConfig by remember(offlineThemePreferences) {
         mutableStateOf(offlineThemePreferences.load())
     }
@@ -602,6 +607,25 @@ internal fun CompanionMapScreen(
                 }
             }
         }
+    val selectElevationFolderLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocumentTree(),
+        ) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                val selectionError =
+                    withContext(Dispatchers.IO) { elevationFolderSource.selectFolder(treeUri) }
+                if (selectionError != null) {
+                    elevationFolderSync = PhoneElevationFolderSyncResult(error = selectionError)
+                    return@launch
+                }
+                elevationFolderSync = withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
+                hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
+                hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
+                terrainDataVersion += 1L
+                elevationRepository.invalidate()
+            }
+        }
     val selectMapFolderLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocumentTree(),
@@ -671,6 +695,13 @@ internal fun CompanionMapScreen(
     LaunchedEffect(gpxFolderSource) {
         gpxFolderScan = withContext(Dispatchers.IO) { gpxFolderSource.scanSelectedFolder() }
         hasSelectedGpxFolder = gpxFolderSource.hasSelectedFolder()
+    }
+    LaunchedEffect(elevationFolderSource) {
+        elevationFolderSync = withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
+        hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
+        hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
+        terrainDataVersion += 1L
+        elevationRepository.invalidate()
     }
     LaunchedEffect(mapUiState.contentVisibility.pois) {
         onPoiVisibilityChanged(mapUiState.contentVisibility.pois)
@@ -793,10 +824,14 @@ internal fun CompanionMapScreen(
                             phase = PhoneOfflineStorageMigrationPhase.COMPLETE,
                             source = result.source,
                             target = result.target,
-                            copiedFiles = result.movedFiles,
+                            copiedFiles = result.copiedFiles,
                             totalFiles = result.movedFiles,
+                            reusedFiles = result.reusedFiles,
+                            replacedFiles = result.replacedFiles,
                         )
                     bundleViewModel.refreshInstalledBundles()
+                    elevationFolderSync = withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
+                    hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
                     offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
                     hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
                     terrainDataVersion += 1L
@@ -941,6 +976,8 @@ internal fun CompanionMapScreen(
                     preferredOfflineMapName = mapSourcePreference.offlineMapName,
                     hasSelectedFolder = hasSelectedMapFolder,
                     hasElevationData = hasElevationData,
+                    hasSelectedElevationFolder = hasSelectedElevationFolder,
+                    elevationFolderSync = elevationFolderSync,
                     themeConfig = offlineThemeConfig,
                     settings = mapSettings,
                     compassSettings = compassSettings,
@@ -1004,6 +1041,22 @@ internal fun CompanionMapScreen(
                 selectElevationLauncher.launch(
                     arrayOf("application/octet-stream", "application/gzip", "application/zip"),
                 )
+            },
+            onSelectElevationFolder = { selectElevationFolderLauncher.launch(null) },
+            onRescanElevationFolder = {
+                coroutineScope.launch {
+                    elevationFolderSync =
+                        withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
+                    hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
+                    hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
+                    terrainDataVersion += 1L
+                    elevationRepository.invalidate()
+                }
+            },
+            onClearElevationFolder = {
+                elevationFolderSource.clearSelectedFolder()
+                hasSelectedElevationFolder = false
+                elevationFolderSync = PhoneElevationFolderSyncResult()
             },
             onSelectFolder = { selectMapFolderLauncher.launch(null) },
             onRescanFolder = {
