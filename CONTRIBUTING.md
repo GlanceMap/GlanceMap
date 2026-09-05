@@ -31,10 +31,10 @@ TRACESTRACK_API_KEY=<your Tracestrack key>
 
 Debug builds may omit this setting; Satellite remains visible but disabled.
 Tracestrack Topo is likewise visible but disabled without its key. Release
-artifact tasks require the existing MapTiler configuration, but do not require
-Tracestrack because it is an optional provider. These keys are embedded in
-Android tile requests and should therefore be restricted with the providers'
-quotas and application restrictions where available.
+artifact tasks currently treat both providers as optional, so they remain
+disabled when no key is configured. These keys are embedded in Android tile
+requests and should therefore be restricted with the providers' quotas and
+application restrictions where available.
 
 ## Branches and PRs
 
