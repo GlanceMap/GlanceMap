@@ -13,6 +13,9 @@ internal data class PhoneMapSourcePreference(
     val onlineSource: PhoneOnlineMapSource = PhoneOnlineMapSource.OPEN_TOPO,
 )
 
+internal fun PhoneMapSourcePreference.restoredOnline(): PhoneMapSourcePreference =
+    copy(mode = PhoneMapSourcePreferenceMode.ONLINE)
+
 /** Remembers the map source toggle plus the last selected map for each renderer. */
 internal class PhoneMapSourcePreferences(
     context: Context,
@@ -39,8 +42,11 @@ internal class PhoneMapSourcePreferences(
         source: PhoneOnlineMapSource = load().onlineSource,
     ): PhoneMapSourcePreference =
         load()
-            .copy(mode = PhoneMapSourcePreferenceMode.ONLINE, onlineSource = source)
+            .restoredOnline()
+            .copy(onlineSource = source)
             .also(::save)
+
+    fun restoreOnline(): PhoneMapSourcePreference = load().restoredOnline().also(::save)
 
     fun saveOffline(map: PhoneOfflineMap): PhoneMapSourcePreference =
         load()

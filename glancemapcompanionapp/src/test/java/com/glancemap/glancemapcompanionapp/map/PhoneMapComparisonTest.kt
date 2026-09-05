@@ -53,4 +53,26 @@ class PhoneMapComparisonTest {
         assertFalse(phoneMapLibreSurfaceUsesTexture(PhoneMapLibreSurfaceMode.PRIMARY))
         assertTrue(phoneMapLibreSurfaceUsesTexture(PhoneMapLibreSurfaceMode.COMPARISON))
     }
+
+    @Test
+    fun visibleComparisonOwnsSemanticOverlays() {
+        assertFalse(
+            phoneMapComparisonOwnsSemanticOverlays(
+                offlineComparisonActive = false,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertTrue(
+            phoneMapComparisonOwnsSemanticOverlays(
+                offlineComparisonActive = true,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertTrue(
+            phoneMapComparisonOwnsSemanticOverlays(
+                offlineComparisonActive = false,
+                onlineComparisonActive = true,
+            ),
+        )
+    }
 }

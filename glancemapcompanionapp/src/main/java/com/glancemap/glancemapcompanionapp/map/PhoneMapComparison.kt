@@ -15,6 +15,11 @@ internal fun phoneMapLibreSurfaceUsesTexture(
     mode: PhoneMapLibreSurfaceMode,
 ): Boolean = mode == PhoneMapLibreSurfaceMode.COMPARISON
 
+internal fun phoneMapComparisonOwnsSemanticOverlays(
+    offlineComparisonActive: Boolean,
+    onlineComparisonActive: Boolean,
+): Boolean = offlineComparisonActive || onlineComparisonActive
+
 /** Avoids camera feedback loops while the interactive comparison layer drives the base renderer. */
 internal fun phoneMapComparisonCameraNeedsSync(
     current: PhoneMapCameraSnapshot,

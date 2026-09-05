@@ -152,6 +152,7 @@ internal data class MapToolsPanelState(
 
 internal data class MapToolsMapsActions(
     val onSelectOnline: (PhoneOnlineMapSource) -> Unit,
+    val onSwitchToOnline: () -> Unit,
     val onSelectOffline: (PhoneOfflineMap) -> Unit,
     val onRenameOfflineMap: (PhoneOfflineMap) -> Unit,
     val onDeleteOfflineMap: (PhoneOfflineMap) -> Unit,
@@ -433,7 +434,7 @@ private fun mapToolsMapsPanel(
                         if (enabled) {
                             offlineMapToActivate?.let(actions.onSelectOffline)
                         } else {
-                            actions.onSelectOnline(state.selectedOnlineSource)
+                            actions.onSwitchToOnline()
                         }
                     },
                     enabled = state.offlineMaps.isNotEmpty() || isOffline,

@@ -514,10 +514,8 @@ internal fun CompanionMapScreen(
         activateOnlineMap(requestedSource, true)
     }
     val switchToOnlineMap = {
-        activateOnlineMap(
-            selectedOnlineSource,
-            PhoneMapRendererCatalog.isOnlineSourceAvailable(mapSourcePreference.onlineSource),
-        )
+        mapSourcePreference = mapSourcePreferences.restoreOnline()
+        activateOnlineMap(selectedOnlineSource, false)
     }
     phoneMapCompassLifecycle(compassSensorSource)
     phoneMapLocationLifecycle(
@@ -1110,6 +1108,7 @@ internal fun CompanionMapScreen(
     val mapActions =
         MapToolsMapsActions(
             onSelectOnline = selectOnlineMap,
+            onSwitchToOnline = switchToOnlineMap,
             onSelectOffline = { selectedMap ->
                 coroutineScope.launch {
                     val error = withContext(Dispatchers.IO) { offlineMapStore.validate(selectedMap) }
@@ -1422,6 +1421,11 @@ internal fun CompanionMapScreen(
             PhoneMapRendererCatalog.providerForOnlineSource(comparison.source)
         }
     val onlineComparisonActive = onlineComparisonProvider != null && comparisonOverlayAlpha > 0f
+    val comparisonOwnsSemanticOverlays =
+        phoneMapComparisonOwnsSemanticOverlays(
+            offlineComparisonActive = offlineComparisonActive,
+            onlineComparisonActive = onlineComparisonActive,
+        )
 
     MapToolScaffold(
         state = mapUiState.toolPanel,
@@ -1465,39 +1469,51 @@ internal fun CompanionMapScreen(
                             )
                             synchronizeGpxOverlay(
                                 runtime = mapRuntime,
-                                overlayState = gpxOverlayState,
+                                overlayState =
+                                    if (comparisonOwnsSemanticOverlays) {
+                                        gpxOverlayState.copy(overlays = emptyList())
+                                    } else {
+                                        gpxOverlayState
+                                    },
                                 hasFittedGpxOverlay = hasFittedGpxOverlay,
                                 onOverlayFitted = { hasFittedGpxOverlay = true },
                             )
                             synchronizeRouteAnalysisOverlay(
                                 runtime = mapRuntime,
-                                analysis = routeAnalysis,
+                                analysis = routeAnalysis.takeUnless { comparisonOwnsSemanticOverlays },
                             )
                             synchronizePoiOverlay(
                                 runtime = mapRuntime,
                                 pois = pois,
-                                isVisible = mapUiState.contentVisibility.pois,
+                                isVisible =
+                                    mapUiState.contentVisibility.pois && !comparisonOwnsSemanticOverlays,
                                 settings = poiSettings,
                             )
                             synchronizePointSelectionOverlay(
                                 runtime = mapRuntime,
-                                markers = pointSelectionMarkers,
+                                markers =
+                                    pointSelectionMarkers
+                                        .takeUnless { comparisonOwnsSemanticOverlays }
+                                        .orEmpty(),
                             )
                             synchronizeDistanceMeasurementOverlay(
                                 runtime = mapRuntime,
-                                measurement = distanceMeasurement,
+                                measurement =
+                                    distanceMeasurement.takeUnless { comparisonOwnsSemanticOverlays },
                             )
-                            observePoiViewport(
-                                runtime = mapRuntime,
-                                isVisible = mapUiState.contentVisibility.pois,
-                                onViewportChanged = onPoiViewportChanged,
-                            )
-                            observePoiSelection(
-                                runtime = mapRuntime,
-                                pois = pois,
-                                isVisible = mapUiState.contentVisibility.pois,
-                                onPoiSelected = { selectedPoi = it },
-                            )
+                            if (!comparisonOwnsSemanticOverlays) {
+                                observePoiViewport(
+                                    runtime = mapRuntime,
+                                    isVisible = mapUiState.contentVisibility.pois,
+                                    onViewportChanged = onPoiViewportChanged,
+                                )
+                                observePoiSelection(
+                                    runtime = mapRuntime,
+                                    pois = pois,
+                                    isVisible = mapUiState.contentVisibility.pois,
+                                    onPoiSelected = { selectedPoi = it },
+                                )
+                            }
                             observeOnlineCamera(runtime = mapRuntime, onCameraChanged = { camera ->
                                 // The base stays authoritative for an offline overlay. An upper MapLibre
                                 // comparison owns the shared camera and drives this map instead.
@@ -1561,7 +1577,8 @@ internal fun CompanionMapScreen(
                                 onMapLongPress = onMapLongPress,
                                 onTwoFingerTap = onDistanceMeasurementGesture,
                                 onMeasurementPointMoved = onDistanceMeasurementPointMoved,
-                                distanceMeasurement = distanceMeasurement,
+                                distanceMeasurement =
+                                    distanceMeasurement.takeUnless { comparisonOwnsSemanticOverlays },
                                 onMapViewCreated = { createdMapView ->
                                     mapRuntime = mapRuntime.beginMapView(createdMapView)
                                     mapRuntime.generation.renderer
@@ -1596,6 +1613,22 @@ internal fun CompanionMapScreen(
                                     camera = mapCamera,
                                 )
                                 if (onlineComparisonActive) {
+                                    synchronizeGpxOverlay(
+                                        runtime = comparisonMapRuntime,
+                                        overlayState = gpxOverlayState,
+                                        hasFittedGpxOverlay = hasFittedGpxOverlay,
+                                        onOverlayFitted = { hasFittedGpxOverlay = true },
+                                    )
+                                    synchronizeRouteAnalysisOverlay(
+                                        runtime = comparisonMapRuntime,
+                                        analysis = routeAnalysis,
+                                    )
+                                    synchronizePoiOverlay(
+                                        runtime = comparisonMapRuntime,
+                                        pois = pois,
+                                        isVisible = mapUiState.contentVisibility.pois,
+                                        settings = poiSettings,
+                                    )
                                     observeOnlineCamera(
                                         runtime = comparisonMapRuntime,
                                         onCameraChanged = { mapCamera = it },
@@ -1607,6 +1640,17 @@ internal fun CompanionMapScreen(
                                     synchronizeDistanceMeasurementOverlay(
                                         runtime = comparisonMapRuntime,
                                         measurement = distanceMeasurement,
+                                    )
+                                    observePoiViewport(
+                                        runtime = comparisonMapRuntime,
+                                        isVisible = mapUiState.contentVisibility.pois,
+                                        onViewportChanged = onPoiViewportChanged,
+                                    )
+                                    observePoiSelection(
+                                        runtime = comparisonMapRuntime,
+                                        pois = pois,
+                                        isVisible = mapUiState.contentVisibility.pois,
+                                        onPoiSelected = { selectedPoi = it },
                                     )
                                     observeOnlineUserPan(
                                         runtime = comparisonMapRuntime,
@@ -1683,10 +1727,25 @@ internal fun CompanionMapScreen(
                                             mapSettings = mapSettings,
                                             terrainDataVersion = 0L,
                                             hasTerrainData = false,
-                                            gpxOverlays = emptyList(),
-                                            pointSelectionMarkers = pointSelectionMarkers,
-                                            distanceMeasurement = distanceMeasurement,
-                                            pois = emptyList(),
+                                            gpxOverlays =
+                                                if (offlineComparisonActive) {
+                                                    gpxOverlayState.overlays
+                                                } else {
+                                                    emptyList()
+                                                },
+                                            gpxSettings = gpxOverlayState.settings,
+                                            routeAnalysis = routeAnalysis.takeIf { offlineComparisonActive },
+                                            pointSelectionMarkers =
+                                                pointSelectionMarkers.takeIf { offlineComparisonActive }.orEmpty(),
+                                            distanceMeasurement =
+                                                distanceMeasurement.takeIf { offlineComparisonActive },
+                                            pois =
+                                                if (offlineComparisonActive) {
+                                                    pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty()
+                                                } else {
+                                                    emptyList()
+                                                },
+                                            poiSettings = poiSettings,
                                             mapMode =
                                                 PhoneMapMode(
                                                     follow = PhoneMapFollowMode.FREE,
@@ -1709,8 +1768,12 @@ internal fun CompanionMapScreen(
                                                 if (offlineComparisonActive) mapCamera = camera
                                             },
                                             onLiveMapPositionChanged = {},
-                                            onViewportChanged = {},
-                                            onPoiSelected = {},
+                                            onViewportChanged = { viewport ->
+                                                if (offlineComparisonActive) onPoiViewportChanged(viewport)
+                                            },
+                                            onPoiSelected = { poi ->
+                                                if (offlineComparisonActive) selectedPoi = poi
+                                            },
                                             onMapTap = onMapTap,
                                             onMapLongPress = onMapLongPress,
                                             onTwoFingerTap = onDistanceMeasurementGesture,
@@ -1762,8 +1825,10 @@ internal fun CompanionMapScreen(
                                             if (onlineComparisonActive) emptyList() else gpxOverlayState.overlays,
                                         gpxSettings = gpxOverlayState.settings,
                                         routeAnalysis = routeAnalysis.takeUnless { onlineComparisonActive },
-                                        pointSelectionMarkers = pointSelectionMarkers,
-                                        distanceMeasurement = distanceMeasurement,
+                                        pointSelectionMarkers =
+                                            pointSelectionMarkers.takeUnless { onlineComparisonActive }.orEmpty(),
+                                        distanceMeasurement =
+                                            distanceMeasurement.takeUnless { onlineComparisonActive },
                                         pois =
                                             if (onlineComparisonActive) {
                                                 emptyList()
