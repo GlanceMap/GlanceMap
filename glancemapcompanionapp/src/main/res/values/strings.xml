@@ -44,7 +44,8 @@
     <string name="map_layer_online">Online map</string>
     <string name="map_layer_transparency">Transparency: %1$d%%</string>
     <string name="map_layer_clear">Clear comparison</string>
-    <string name="map_layer_satellite_unavailable">Satellite needs a private MapTiler API key to be configured for this build.</string>
+    <string name="map_layer_satellite_unavailable">Satellite is unavailable because MapTiler access is not configured in this build.</string>
+    <string name="map_online_source_unavailable">Unavailable: MapTiler access is not configured in this build.</string>
     <string name="map_layer_slope_title">Slope / relief</string>
     <string name="map_layer_slope_available">Uses the downloaded elevation data.</string>
     <string name="map_layer_slope_unavailable">Available on offline maps when elevation data is installed.</string>
@@ -157,6 +158,8 @@
     <string name="map_tools_gpx_loading">Loading GPX files…</string>
     <string name="map_tools_gpx_empty">No GPX files are available.</string>
     <string name="map_route_tools_title">Route tools</string>
+    <string name="map_route_tools_create_mode">Create</string>
+    <string name="map_route_tools_modify_mode">Modify</string>
     <string name="map_route_tools_choose_type">Choose how to create the route.</string>
     <string name="map_route_tools_current_to_destination">Current location → destination</string>
     <string name="map_route_tools_point_a_to_b">Point A → point B</string>
@@ -294,8 +297,6 @@
     <string name="map_tools_poi_popup_timeout">Popup timeout: %1$d s</string>
     <string name="map_tools_poi_settings_limit">Choose visible POI folders from the POI panel. Category-level controls remain available on the watch.</string>
     <string name="map_tools_settings_heading">General Settings</string>
-    <string name="map_tools_settings_map_mode">Map mode</string>
-    <string name="map_tools_settings_cycle_map_mode">Change map mode</string>
     <string name="map_tools_settings_data_title">Data &amp; offline</string>
     <string name="map_tools_settings_data_summary">Storage: %1$s · bundle downloads</string>
     <string name="map_tools_settings_storage_heading">Main data directory</string>
@@ -330,9 +331,6 @@
     <string name="map_tools_settings_sensors_heading">Sensor capabilities</string>
     <string name="map_tools_settings_sensor_available">Available</string>
     <string name="map_tools_settings_sensor_unavailable">Unavailable</string>
-    <string name="map_distance_measurement_title">Distance</string>
-    <string name="map_distance_measurement_hint">Press two fingers on the map to measure again</string>
-    <string name="map_distance_measurement_clear">Clear</string>
     <string name="map_mode_north_up">North up</string>
     <string name="map_mode_heading_up">Heading up</string>
     <string name="map_mode_follow">Follow / recenter</string>

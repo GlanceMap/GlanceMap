@@ -22,6 +22,13 @@ class PhoneMapDistanceMeasurementTest {
     }
 
     @Test
+    fun distanceMeasurementUsesPreciseMetersOnly() {
+        assertEquals("1500.0 m", formatPhoneMapDistanceMeters(1_500.0))
+        assertEquals("12.3 m", formatPhoneMapDistanceMeters(12.34))
+        assertEquals("—", formatPhoneMapDistanceMeters(Double.NaN))
+    }
+
+    @Test
     fun liveDistancePrefersRenderedMarkerOriginOverLocationFallback() {
         val renderedMarker = PhoneMapCoordinate(latitude = 46.0, longitude = 6.0)
         val locationFallback = PhoneMapCoordinate(latitude = 46.0, longitude = 7.0)
@@ -71,5 +78,46 @@ class PhoneMapDistanceMeasurementTest {
         )
         assertEquals(first, markers.first().point)
         assertEquals(second, markers.last().point)
+    }
+
+    @Test
+    fun nearestMeasurementHandleCanBeSelectedAndMoved() {
+        assertEquals(
+            0,
+            phoneMapMeasurementHandleIndex(
+                first = PhoneMapScreenPoint(x = 100f, y = 100f),
+                second = PhoneMapScreenPoint(x = 220f, y = 220f),
+                x = 106f,
+                y = 102f,
+                maxDistancePx = 16f,
+            ),
+        )
+        assertEquals(
+            PhoneMapDistanceMeasurement(
+                first = PhoneMapCoordinate(latitude = 46.2, longitude = 6.1),
+                second = PhoneMapCoordinate(latitude = 46.1, longitude = 6.1),
+            ),
+            PhoneMapDistanceMeasurement(
+                first = PhoneMapCoordinate(latitude = 46.0, longitude = 6.0),
+                second = PhoneMapCoordinate(latitude = 46.1, longitude = 6.1),
+            ).moveEndpoint(
+                index = 0,
+                point = PhoneMapCoordinate(latitude = 46.2, longitude = 6.1),
+            ),
+        )
+    }
+
+    @Test
+    fun measurementHandleOutsideTouchTargetIsIgnored() {
+        assertEquals(
+            null,
+            phoneMapMeasurementHandleIndex(
+                first = PhoneMapScreenPoint(x = 100f, y = 100f),
+                second = PhoneMapScreenPoint(x = 220f, y = 220f),
+                x = 130f,
+                y = 100f,
+                maxDistancePx = 16f,
+            ),
+        )
     }
 }

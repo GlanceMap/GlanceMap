@@ -51,6 +51,26 @@ internal data class PhoneMapRenderer(
     }
 }
 
+/** Pure provider factory used by both the catalog and tests without reading BuildConfig. */
+internal fun mapTilerSatelliteProvider(apiKey: String): RasterOnlineMapProvider? =
+    apiKey
+        .takeIf(String::isNotBlank)
+        ?.let { configuredKey ->
+            RasterOnlineMapProvider(
+                id = "maptiler_satellite",
+                displayName = "Satellite",
+                attribution = "© MapTiler © OpenStreetMap contributors",
+                rasterTileUrlTemplate =
+                    "https://api.maptiler.com/tiles/satellite-v4/{z}/{x}/{y}.jpg?key=$configuredKey",
+                maximumZoom = 22,
+            )
+        }
+
+internal fun effectiveOnlineMapSource(
+    preferred: PhoneOnlineMapSource,
+    isAvailable: (PhoneOnlineMapSource) -> Boolean,
+): PhoneOnlineMapSource = preferred.takeIf(isAvailable) ?: PhoneOnlineMapSource.OPEN_TOPO
+
 /**
  * The single source of renderer/provider choices for the companion.
  *
@@ -91,19 +111,7 @@ internal object PhoneMapRendererCatalog {
             maximumZoom = 19,
         )
 
-    private val mapTilerSatelliteProvider: RasterOnlineMapProvider? =
-        BuildConfig.MAPTILER_API_KEY
-            .takeIf(String::isNotBlank)
-            ?.let { apiKey ->
-                RasterOnlineMapProvider(
-                    id = "maptiler_satellite",
-                    displayName = "Satellite",
-                    attribution = "© MapTiler © OpenStreetMap contributors",
-                    rasterTileUrlTemplate =
-                        "https://api.maptiler.com/tiles/satellite-v4/{z}/{x}/{y}.jpg?key=$apiKey",
-                    maximumZoom = 22,
-                )
-            }
+    private val mapTilerSatelliteProvider = mapTilerSatelliteProvider(BuildConfig.MAPTILER_API_KEY)
 
     val online =
         PhoneMapRenderer(
@@ -113,13 +121,19 @@ internal object PhoneMapRendererCatalog {
             rasterOnlineProvider = mainOnlineRasterProvider,
         )
 
-    @Suppress("MaxLineLength") // The catalog exposes its available sources as one pure query.
-    fun comparisonOnlineSources(): List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries.filter(::isComparisonOnlineSourceAvailable)
+    /** All online datasets GlanceMap supports, including providers missing local configuration. */
+    fun supportedOnlineSources(): List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries
 
-    @Suppress("MaxLineLength") // Availability delegates directly to the provider lookup.
-    fun isComparisonOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForComparisonOnlineSource(source) != null
+    /** Configured providers that can currently render tiles in this build. */
+    @Suppress("MaxLineLength") // The availability query remains a single pure catalog operation.
+    fun availableOnlineSources(): List<PhoneOnlineMapSource> = supportedOnlineSources().filter(::isOnlineSourceAvailable)
 
-    fun providerForComparisonOnlineSource(source: PhoneOnlineMapSource): RasterOnlineMapProvider? =
+    /** Layer uses the same configured provider catalog as the normal online map. */
+    fun availableComparisonOnlineSources(): List<PhoneOnlineMapSource> = availableOnlineSources()
+
+    fun isOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForOnlineSource(source) != null
+
+    fun providerForOnlineSource(source: PhoneOnlineMapSource): RasterOnlineMapProvider? =
         when (source) {
             PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider
             PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider
@@ -127,7 +141,7 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.SATELLITE -> mapTilerSatelliteProvider
         }
 
-    fun comparisonOnlineSourceLabel(source: PhoneOnlineMapSource): String =
+    fun onlineSourceLabel(source: PhoneOnlineMapSource): String =
         when (source) {
             PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider.displayName
             PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider.displayName

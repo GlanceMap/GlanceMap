@@ -5,6 +5,16 @@ import kotlin.math.abs
 private const val PHONE_MAP_COMPARISON_COORDINATE_TOLERANCE = 0.000001
 private const val PHONE_MAP_COMPARISON_ZOOM_TOLERANCE = 0.01
 
+/** Rendering purposes for MapLibre surfaces with different Android compositing requirements. */
+internal enum class PhoneMapLibreSurfaceMode {
+    PRIMARY,
+    COMPARISON,
+}
+
+internal fun phoneMapLibreSurfaceUsesTexture(
+    mode: PhoneMapLibreSurfaceMode,
+): Boolean = mode == PhoneMapLibreSurfaceMode.COMPARISON
+
 /** Avoids camera feedback loops while the interactive comparison layer drives the base renderer. */
 internal fun phoneMapComparisonCameraNeedsSync(
     current: PhoneMapCameraSnapshot,

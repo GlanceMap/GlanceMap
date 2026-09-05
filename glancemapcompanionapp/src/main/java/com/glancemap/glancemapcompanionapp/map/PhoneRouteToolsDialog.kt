@@ -4,9 +4,11 @@
 
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +19,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -30,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
 @Composable
-@Suppress("FunctionNaming") // Compose entry point intentionally uses a component-style name.
+@Suppress("FunctionNaming", "LongMethod") // Compose entry point keeps the tool dialog's state and actions together.
 internal fun BoxScope.PhoneRouteToolsDialog(
     state: PhoneRouteToolsUiState,
     currentLocationAvailable: Boolean,
@@ -54,12 +60,25 @@ internal fun BoxScope.PhoneRouteToolsDialog(
                         .fillMaxWidth()
                         .heightIn(max = popupMaxHeight),
                 title = stringResource(R.string.map_route_tools_title),
+                titleAction = {
+                    IconButton(onClick = actions.onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.map_tool_action_settings_content_description),
+                        )
+                    }
+                },
                 onDismiss = actions.onDismiss,
             ) {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     Spacer(modifier = Modifier.height(8.dp))
+                    phoneRouteToolKindSelector(
+                        selected = state.toolKind,
+                        canModify = state.editableRoutes.any(PhoneMapGpxItem::isEditable),
+                        onSelected = actions.onChooseToolKind,
+                    )
                     when (state.mode) {
                         null -> routeToolsChooser(state, actions.onChooseMode)
                         PhoneRouteCreationMode.CURRENT_TO_DESTINATION ->
@@ -137,12 +156,50 @@ private fun routeToolsChooser(
     ) {
         Text(stringResource(R.string.map_route_tools_coordinates))
     }
-    OutlinedButton(
-        onClick = { onChooseMode(PhoneRouteCreationMode.MODIFY_ROUTE) },
-        enabled = state.editableRoutes.any(PhoneMapGpxItem::isEditable),
+}
+
+@Composable
+private fun phoneRouteToolKindSelector(
+    selected: PhoneRouteToolKind,
+    canModify: Boolean,
+    onSelected: (PhoneRouteToolKind) -> Unit,
+) {
+    Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(stringResource(R.string.map_route_tools_modify_route))
+        if (selected == PhoneRouteToolKind.CREATE) {
+            Button(
+                onClick = { onSelected(PhoneRouteToolKind.CREATE) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.map_route_tools_create_mode))
+            }
+        } else {
+            OutlinedButton(
+                onClick = { onSelected(PhoneRouteToolKind.CREATE) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.map_route_tools_create_mode))
+            }
+        }
+        if (selected == PhoneRouteToolKind.MODIFY) {
+            Button(
+                onClick = { onSelected(PhoneRouteToolKind.MODIFY) },
+                enabled = canModify,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.map_route_tools_modify_mode))
+            }
+        } else {
+            OutlinedButton(
+                onClick = { onSelected(PhoneRouteToolKind.MODIFY) },
+                enabled = canModify,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.map_route_tools_modify_mode))
+            }
+        }
     }
 }
 

@@ -93,7 +93,6 @@ internal fun MapToolFeatureSettingsContent(
             mapToolsSettingsPanel(
                 section = section,
                 state = state.general,
-                onCycleMapMode = actions.onCycleMapMode,
                 onSettingsChanged = actions.onGeneralSettingsChanged,
                 onOpenBundleDownload = actions.onOpenBundleDownload,
                 onStorageChangeRequested = actions.onStorageChangeRequested,

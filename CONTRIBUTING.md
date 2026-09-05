@@ -17,6 +17,21 @@
 - Keep feature UI code under `app/.../presentation/features/<feature>`.
 - Prefer small, focused files over large multipurpose files.
 
+## Local Online Map Configuration
+
+The phone companion's Satellite map uses MapTiler. Configure the build locally
+through `~/.gradle/gradle.properties` or the `MAPTILER_API_KEY` environment
+variable; never add the value to the repository's `gradle.properties`:
+
+```properties
+MAPTILER_API_KEY=<your MapTiler key>
+```
+
+Debug builds may omit this setting; Satellite remains visible but disabled.
+Release artifact tasks require it and fail with a clear configuration error.
+The key is embedded in Android tile requests and should therefore be restricted
+with the provider's quotas and application restrictions where available.
+
 ## Branches and PRs
 
 1. Create a focused branch per change.

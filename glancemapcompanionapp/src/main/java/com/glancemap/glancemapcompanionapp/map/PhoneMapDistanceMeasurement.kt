@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -25,6 +26,31 @@ internal data class PhoneMapScreenPoint(
     val x: Float,
     val y: Float,
 )
+
+/** Finds the nearest visible measurement endpoint within the touch target. */
+internal fun phoneMapMeasurementHandleIndex(
+    first: PhoneMapScreenPoint?,
+    second: PhoneMapScreenPoint?,
+    x: Float,
+    y: Float,
+    maxDistancePx: Float,
+): Int? =
+    listOfNotNull(
+        first?.let { point -> 0 to point },
+        second?.let { point -> 1 to point },
+    ).minByOrNull { (_, point) -> hypot(x - point.x, y - point.y) }
+        ?.takeIf { (_, point) -> hypot(x - point.x, y - point.y) <= maxDistancePx }
+        ?.first
+
+internal fun PhoneMapDistanceMeasurement.moveEndpoint(
+    index: Int,
+    point: PhoneMapCoordinate,
+): PhoneMapDistanceMeasurement =
+    when (index) {
+        0 -> copy(first = point)
+        1 -> copy(second = point)
+        else -> this
+    }
 
 internal data class PhoneMapLiveMetricsPosition(
     val target: PhoneMapCoordinate,
@@ -83,6 +109,11 @@ internal fun formatPhoneMapMeasuredDistance(
             "${feet.roundToInt()} ft"
         }
     }
+}
+
+internal fun formatPhoneMapDistanceMeters(meters: Double): String {
+    if (!meters.isFinite() || meters < 0.0) return "—"
+    return String.format(Locale.getDefault(), "%.1f m", meters)
 }
 
 private const val EARTH_RADIUS_METERS = 6_371_008.8

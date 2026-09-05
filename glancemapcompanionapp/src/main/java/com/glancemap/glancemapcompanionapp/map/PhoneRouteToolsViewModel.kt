@@ -29,6 +29,11 @@ internal enum class PhoneRouteCreationMode {
     MODIFY_ROUTE,
 }
 
+internal enum class PhoneRouteToolKind {
+    CREATE,
+    MODIFY,
+}
+
 internal enum class PhoneRouteModificationMode {
     RESHAPE_ROUTE,
     REPLACE_SECTION_A_TO_B,
@@ -40,6 +45,7 @@ internal enum class PhoneRouteModificationMode {
 
 internal data class PhoneRouteToolsUiState(
     val isOpen: Boolean = false,
+    val toolKind: PhoneRouteToolKind = PhoneRouteToolKind.CREATE,
     val mode: PhoneRouteCreationMode? = null,
     val modificationMode: PhoneRouteModificationMode = PhoneRouteModificationMode.REPLACE_SECTION_A_TO_B,
     val pointA: GeoPoint? = null,
@@ -71,11 +77,41 @@ internal class PhoneRouteToolsViewModel(
     }
 
     fun chooseMode(mode: PhoneRouteCreationMode) {
+        val toolKind =
+            if (mode == PhoneRouteCreationMode.MODIFY_ROUTE) {
+                PhoneRouteToolKind.MODIFY
+            } else {
+                PhoneRouteToolKind.CREATE
+            }
         _uiState.value =
             PhoneRouteToolsUiState(
                 isOpen = true,
+                toolKind = toolKind,
                 mode = mode,
                 editableRoutes = _uiState.value.editableRoutes,
+            )
+    }
+
+    fun chooseToolKind(kind: PhoneRouteToolKind) {
+        val state = _uiState.value
+        if (!state.isOpen || state.isRouting) return
+        _uiState.value =
+            state.copy(
+                toolKind = kind,
+                mode =
+                    if (kind == PhoneRouteToolKind.MODIFY) {
+                        PhoneRouteCreationMode.MODIFY_ROUTE
+                    } else {
+                        null
+                    },
+                pointA = null,
+                pointB = null,
+                destination = null,
+                chainPoints = emptyList(),
+                coordinateLatitude = "",
+                coordinateLongitude = "",
+                selectedRouteId = null,
+                message = null,
             )
     }
 

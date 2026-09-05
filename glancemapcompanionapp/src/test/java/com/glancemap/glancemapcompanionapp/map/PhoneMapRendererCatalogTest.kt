@@ -33,24 +33,24 @@ class PhoneMapRendererCatalogTest {
 
     @Test
     fun standardOsmIsAvailableAsAnOnlineComparisonSource() {
-        val sources = PhoneMapRendererCatalog.comparisonOnlineSources()
+        val sources = PhoneMapRendererCatalog.availableComparisonOnlineSources()
 
         assertTrue(sources.contains(PhoneOnlineMapSource.OPEN_TOPO))
         assertTrue(sources.contains(PhoneOnlineMapSource.OPEN_STREET_MAP))
         assertEquals(
             "open_street_map",
             PhoneMapRendererCatalog
-                .providerForComparisonOnlineSource(PhoneOnlineMapSource.OPEN_STREET_MAP)
+                .providerForOnlineSource(PhoneOnlineMapSource.OPEN_STREET_MAP)
                 ?.id,
         )
     }
 
     @Test
     fun planIgnV2IsAFreeRasterComparisonSource() {
-        val sources = PhoneMapRendererCatalog.comparisonOnlineSources()
+        val sources = PhoneMapRendererCatalog.availableComparisonOnlineSources()
         val provider =
             requireNotNull(
-                PhoneMapRendererCatalog.providerForComparisonOnlineSource(PhoneOnlineMapSource.PLAN_IGN_V2),
+                PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.PLAN_IGN_V2),
             )
 
         assertTrue(sources.contains(PhoneOnlineMapSource.PLAN_IGN_V2))
@@ -72,6 +72,45 @@ class PhoneMapRendererCatalogTest {
         assertEquals(
             PhoneOnlineMapSource.PLAN_IGN_V2,
             PhoneOnlineMapSource.fromStorageValue(PhoneOnlineMapSource.PLAN_IGN_V2.name),
+        )
+    }
+
+    @Test
+    fun supportedOnlineSourcesAlwaysIncludesSatellite() {
+        assertEquals(
+            listOf(
+                PhoneOnlineMapSource.OPEN_TOPO,
+                PhoneOnlineMapSource.PLAN_IGN_V2,
+                PhoneOnlineMapSource.OPEN_STREET_MAP,
+                PhoneOnlineMapSource.SATELLITE,
+            ),
+            PhoneMapRendererCatalog.supportedOnlineSources(),
+        )
+        assertEquals("Satellite", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.SATELLITE))
+    }
+
+    @Test
+    fun satelliteProviderFactoryRequiresAConfiguredKey() {
+        assertEquals(null, mapTilerSatelliteProvider(""))
+        val provider = requireNotNull(mapTilerSatelliteProvider("test-maptiler-key"))
+
+        assertEquals("maptiler_satellite", provider.id)
+        assertEquals("Satellite", provider.displayName)
+        assertEquals(22, provider.maximumZoom)
+        assertTrue(provider.rasterTileUrlTemplate.contains("satellite-v4/{z}/{x}/{y}.jpg"))
+    }
+
+    @Test
+    fun unavailablePersistedSatelliteFallsBackWithoutChangingPreferenceValue() {
+        assertEquals(
+            PhoneOnlineMapSource.OPEN_TOPO,
+            effectiveOnlineMapSource(PhoneOnlineMapSource.SATELLITE) { source ->
+                source != PhoneOnlineMapSource.SATELLITE
+            },
+        )
+        assertEquals(
+            PhoneOnlineMapSource.SATELLITE,
+            PhoneOnlineMapSource.fromStorageValue(PhoneOnlineMapSource.SATELLITE.name),
         )
     }
 }

@@ -54,6 +54,7 @@ val mapTilerApiKey =
         .orNull
         .orEmpty()
 val hasArkluzSmsApiKey = arkluzSmsApiKey.isNotEmpty()
+val hasMapTilerApiKey = mapTilerApiKey.isNotBlank()
 val hasValidArkluzSmsApiKey =
     arkluzSmsApiKey.length in 32..128 &&
         arkluzSmsApiKey.matches(Regex("^[A-Za-z0-9+/]+={0,2}$"))
@@ -101,6 +102,12 @@ val releaseArtifactTaskRequested =
 if (releaseArtifactTaskRequested && !hasArkluzSmsApiKey) {
     throw GradleException(
         "Missing $arkluzSmsApiKeyProperty. Release artifacts must include the Arkluz SMS API key. " +
+            "Define it in ~/.gradle/gradle.properties or as an environment variable.",
+    )
+}
+if (releaseArtifactTaskRequested && !hasMapTilerApiKey) {
+    throw GradleException(
+        "Missing $mapTilerApiKeyProperty. Release artifacts must include the configured Satellite map provider. " +
             "Define it in ~/.gradle/gradle.properties or as an environment variable.",
     )
 }

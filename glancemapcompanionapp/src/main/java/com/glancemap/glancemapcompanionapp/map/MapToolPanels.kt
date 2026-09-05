@@ -124,7 +124,6 @@ internal data class MapToolsPoiState(
 )
 
 internal data class MapToolsGeneralState(
-    val mapMode: PhoneMapMode,
     val settings: PhoneGeneralSettings = PhoneGeneralSettings(),
     val sensorCapabilities: PhoneSensorCapabilities,
     val storageLocation: PhoneOfflineStorageLocation = PhoneOfflineStorageLocation.INTERNAL,
@@ -197,7 +196,6 @@ internal data class MapToolsPanelActions(
     val onLayerMapSettingsChanged: (PhoneMapSettings) -> Unit,
     val onFeatureSettings: (MapTool) -> Unit,
     val onFeatureSettingsSection: (MapToolFeatureSettingsSection) -> Unit,
-    val onCycleMapMode: () -> Unit,
     val onGeneralSettingsChanged: (PhoneGeneralSettings) -> Unit,
     val onOpenBundleDownload: () -> Unit,
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
@@ -255,7 +253,6 @@ internal fun MapToolPanelContent(
                 mapToolsSettingsPanel(
                     section = MapToolFeatureSettingsSection.ROOT,
                     state = state.general,
-                    onCycleMapMode = actions.onCycleMapMode,
                     onSettingsChanged = actions.onGeneralSettingsChanged,
                     onOpenBundleDownload = actions.onOpenBundleDownload,
                     onStorageChangeRequested = actions.onStorageChangeRequested,
@@ -307,7 +304,7 @@ private fun mapToolsLayerPanel(
                 )
             }
         }
-        if (!PhoneMapRendererCatalog.isComparisonOnlineSourceAvailable(PhoneOnlineMapSource.SATELLITE)) {
+        if (!PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.SATELLITE)) {
             Text(stringResource(R.string.map_layer_satellite_unavailable))
         }
         state.comparison.layer?.let {
@@ -397,7 +394,7 @@ private fun comparisonLayerOptions(
 private fun comparisonLayerLabel(layer: PhoneMapComparisonLayer): String =
     when (layer) {
         is PhoneMapComparisonLayer.Online ->
-            PhoneMapRendererCatalog.comparisonOnlineSourceLabel(layer.source)
+            PhoneMapRendererCatalog.onlineSourceLabel(layer.source)
         is PhoneMapComparisonLayer.Offline -> layer.map.displayName
     }
 
@@ -469,21 +466,25 @@ private fun mapToolsMapsPanel(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 state.onlineSources.forEach { onlineSource ->
+                    val available = PhoneMapRendererCatalog.isOnlineSourceAvailable(onlineSource)
                     Row(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { actions.onSelectOnline(onlineSource) },
+                                .clickable(enabled = available) { actions.onSelectOnline(onlineSource) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
                             selected = onlineSource == state.selectedOnlineSource,
                             onClick = { actions.onSelectOnline(onlineSource) },
+                            enabled = available,
                         )
-                        Text(
-                            text = PhoneMapRendererCatalog.comparisonOnlineSourceLabel(onlineSource),
-                            modifier = Modifier.weight(1f),
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = PhoneMapRendererCatalog.onlineSourceLabel(onlineSource))
+                            if (!available) {
+                                Text(stringResource(R.string.map_online_source_unavailable))
+                            }
+                        }
                     }
                 }
             }
@@ -773,7 +774,6 @@ private fun mapToolEditDeleteActions(
 internal fun mapToolsSettingsPanel(
     section: MapToolFeatureSettingsSection,
     state: MapToolsGeneralState,
-    onCycleMapMode: () -> Unit,
     onSettingsChanged: (PhoneGeneralSettings) -> Unit,
     onOpenBundleDownload: () -> Unit,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
@@ -783,11 +783,6 @@ internal fun mapToolsSettingsPanel(
         MapToolFeatureSettingsSection.ROOT ->
             mapToolPanelColumn(verticalSpacing = 4.dp) {
                 Text(stringResource(R.string.map_tools_settings_heading))
-                mapToolsSettingsSection(
-                    title = stringResource(R.string.map_tools_settings_map_mode),
-                    summary = stringResource(state.mapMode.labelResource()),
-                    onClick = onCycleMapMode,
-                )
                 mapToolsSettingsSection(
                     title = stringResource(R.string.map_tools_settings_data_title),
                     summary =

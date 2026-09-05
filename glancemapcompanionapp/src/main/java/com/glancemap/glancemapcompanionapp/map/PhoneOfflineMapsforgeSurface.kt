@@ -56,6 +56,7 @@ internal data class PhoneOfflineMapsforgeCallbacks(
     val onMapTap: (PhoneMapCoordinate) -> Unit,
     val onMapLongPress: (PhoneMapCoordinate) -> Unit,
     val onTwoFingerTap: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit,
+    val onMeasurementPointMoved: (Int, PhoneMapCoordinate) -> Unit = { _, _ -> },
     val onUserPan: (Float) -> Unit,
     val onUserRotation: (Float) -> Unit,
     val onCameraCommandHandled: (Long) -> Unit,
@@ -90,6 +91,7 @@ internal fun offlineMapSurface(
     state: PhoneOfflineMapSurfaceState,
     callbacks: PhoneOfflineMapsforgeCallbacks,
     modifier: Modifier = Modifier.fillMaxSize(),
+    isVisible: Boolean = true,
 ) {
     val currentCallbacks by rememberUpdatedState(callbacks)
     var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
@@ -107,6 +109,9 @@ internal fun offlineMapSurface(
                         onMapTap = { currentCallbacks.onMapTap(it) },
                         onMapLongPress = { currentCallbacks.onMapLongPress(it) },
                         onTwoFingerTap = { first, second -> currentCallbacks.onTwoFingerTap(first, second) },
+                        onMeasurementPointMoved = { index, point ->
+                            currentCallbacks.onMeasurementPointMoved(index, point)
+                        },
                         onUserPan = { currentCallbacks.onUserPan(it) },
                         onUserRotation = { currentCallbacks.onUserRotation(it) },
                         onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
@@ -115,10 +120,14 @@ internal fun offlineMapSurface(
                     ),
             ).also { created ->
                 holder = created
+                created.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
                 created.render(state)
             }
         },
-        update = { activeHolder -> activeHolder.render(state) },
+        update = { activeHolder ->
+            activeHolder.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
+            activeHolder.render(state)
+        },
         modifier = modifier,
     )
 
@@ -145,21 +154,16 @@ private class PhoneOfflineMapsforgeView(
             mapScaleBar.isVisible = false
         }
     private val twoFingerTapDetector =
-        PhoneTwoFingerTapDetector(context) { x1, y1, x2, y2 ->
-            runCatching {
-                val projection = mapView.mapViewProjection
-                val first = projection.fromPixels(x1.toDouble(), y1.toDouble())
-                val second = projection.fromPixels(x2.toDouble(), y2.toDouble())
-                post {
-                    if (!disposed) {
-                        callbacks.onTwoFingerTap(
-                            PhoneMapCoordinate(first.latitude, first.longitude),
-                            PhoneMapCoordinate(second.latitude, second.longitude),
-                        )
-                    }
-                }
-            }
-        }
+        PhoneTwoFingerTapDetector(
+            context = context,
+            onTwoFingerTap = ::publishTwoFingerMeasurement,
+            onTwoFingerMove = ::publishTwoFingerMeasurement,
+            measurementHandleAt = ::measurementHandleAt,
+            onMeasurementPointMove = ::publishMeasurementPointMove,
+            onMeasurementPointDragEnd = { cancelled ->
+                if (!cancelled) suppressNextMapTap = true
+            },
+        )
     private val longPressDetector =
         phoneMapLongPressDetector(context) { x, y ->
             runCatching {
@@ -222,12 +226,14 @@ private class PhoneOfflineMapsforgeView(
     private var lastHandledCameraCommandId: Long? = null
     private var locationMarker: PhoneOfflineLocationMarker? = null
     private var pendingLocationMarkerRemoval: PhoneOfflineLocationMarker? = null
+
     /** Latest marker coordinate remains available while layer mutations are deferred during gestures. */
     private var latestLocationMarkerPosition: LatLong? = null
     private var currentLocation: PhoneMapLocation? = null
     private var currentMapMode = PhoneMapMode()
     private var hasLocationPermission = false
     private var locationFollowUnavailableReported = false
+    private var suppressNextMapTap = false
     private var renderReadyReported = false
     private var applyingProgrammaticRotation = false
     private var disposed = false
@@ -247,6 +253,8 @@ private class PhoneOfflineMapsforgeView(
         mapView.onFocusChangeListener = View.OnFocusChangeListener { _, _ -> onMapViewLifecycleChanged() }
         mapView.touchGestureHandler.setRotationEnabled(true)
         mapView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) suppressNextMapTap = false
+            twoFingerTapDetector.onTouchEvent(event)
             observeMapTap(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
@@ -260,7 +268,6 @@ private class PhoneOfflineMapsforgeView(
             event.toPhoneMapsforgeTouchAction()?.let { action ->
                 rotationGestureTracker.onTouch(action, event.pointerCount)
             }
-            twoFingerTapDetector.onTouchEvent(event)
             if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
                 longPressDetector.cancelPhoneMapLongPress(event)
             }
@@ -733,6 +740,11 @@ private class PhoneOfflineMapsforgeView(
             }
 
             MotionEvent.ACTION_UP -> {
+                if (suppressNextMapTap) {
+                    suppressNextMapTap = false
+                    tapCandidate = false
+                    return
+                }
                 val isTap =
                     tapCandidate &&
                         event.pointerCount == 1 &&
@@ -746,7 +758,72 @@ private class PhoneOfflineMapsforgeView(
                 }
             }
 
-            MotionEvent.ACTION_CANCEL -> tapCandidate = false
+            MotionEvent.ACTION_CANCEL -> {
+                tapCandidate = false
+                suppressNextMapTap = false
+            }
+        }
+    }
+
+    private fun publishTwoFingerMeasurement(
+        firstX: Float,
+        firstY: Float,
+        secondX: Float,
+        secondY: Float,
+    ) {
+        runCatching {
+            val projection = mapView.mapViewProjection
+            val first = projection.fromPixels(firstX.toDouble(), firstY.toDouble())
+            val second = projection.fromPixels(secondX.toDouble(), secondY.toDouble())
+            callbacks.onTwoFingerTap(
+                PhoneMapCoordinate(first.latitude, first.longitude),
+                PhoneMapCoordinate(second.latitude, second.longitude),
+            )
+        }
+    }
+
+    private fun measurementHandleAt(
+        x: Float,
+        y: Float,
+    ): Int? {
+        val measurement = latestState?.distanceMeasurement ?: return null
+        val rotationDegrees = mapView.mapRotation.degrees.toDouble()
+        val pivot =
+            Point(
+                mapView.mapViewCenterX.toDouble(),
+                mapView.mapViewCenterY.toDouble(),
+            )
+
+        fun screenPoint(
+            point: PhoneMapCoordinate,
+        ): PhoneMapScreenPoint? =
+            runCatching {
+                rotatePhoneMapPoint(
+                    mapView.mapViewProjection.toPixels(LatLong(point.latitude, point.longitude)),
+                    pivot,
+                    rotationDegrees,
+                )
+            }.getOrNull()?.let { value -> PhoneMapScreenPoint(value.x, value.y) }
+        return phoneMapMeasurementHandleIndex(
+            first = screenPoint(measurement.first),
+            second = screenPoint(measurement.second),
+            x = x,
+            y = y,
+            maxDistancePx = 36f * resources.displayMetrics.density,
+        )
+    }
+
+    private fun publishMeasurementPointMove(
+        index: Int,
+        x: Float,
+        y: Float,
+    ) {
+        runCatching {
+            val point = mapView.mapViewProjection.fromPixels(x.toDouble(), y.toDouble())
+            callbacks.onMeasurementPointMoved(
+                index,
+                PhoneMapCoordinate(point.latitude, point.longitude),
+            )
         }
     }
 

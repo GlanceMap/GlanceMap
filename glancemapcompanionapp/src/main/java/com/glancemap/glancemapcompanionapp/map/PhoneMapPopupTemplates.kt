@@ -27,6 +27,7 @@ internal fun PhoneMapPopupCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     title: String? = null,
+    titleAction: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(modifier = modifier) {
@@ -40,6 +41,7 @@ internal fun PhoneMapPopupCard(
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }
+                titleAction?.invoke()
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Filled.Close,
