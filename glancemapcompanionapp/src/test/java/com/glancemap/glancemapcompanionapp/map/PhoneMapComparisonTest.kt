@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,6 +73,31 @@ class PhoneMapComparisonTest {
             phoneMapComparisonOwnsSemanticOverlays(
                 offlineComparisonActive = false,
                 onlineComparisonActive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun comparisonOwnershipRemovesGpxSegmentsFromTheBaseRenderer() {
+        val segments =
+            listOf(
+                PhoneMapRouteSegment(
+                    points = listOf(GeoPoint(46.0, 7.0), GeoPoint(46.1, 7.1)),
+                ),
+            )
+
+        assertEquals(
+            emptyList<PhoneMapRouteSegment>(),
+            phoneMapComparisonBaseGpxSegments(
+                segments = segments,
+                comparisonOwnsSemanticOverlays = true,
+            ),
+        )
+        assertEquals(
+            segments,
+            phoneMapComparisonBaseGpxSegments(
+                segments = segments,
+                comparisonOwnsSemanticOverlays = false,
             ),
         )
     }

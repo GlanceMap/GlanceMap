@@ -59,7 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -89,6 +88,7 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderDistanceMeasuremen
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarkers
+import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineRasterOpacity
 import com.glancemap.trailcore.geo.GeoPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1466,12 +1466,20 @@ internal fun CompanionMapScreen(
                                 userGestureActive = onlineGestureState.isActive,
                                 compassSource = compassSensorSource,
                                 compassPresentation = compassPresentation,
+                                showLocationMarker = !comparisonOwnsSemanticOverlays,
                             )
                             synchronizeGpxOverlay(
                                 runtime = mapRuntime,
                                 overlayState =
                                     if (comparisonOwnsSemanticOverlays) {
-                                        gpxOverlayState.copy(overlays = emptyList())
+                                        gpxOverlayState.copy(
+                                            segments =
+                                                phoneMapComparisonBaseGpxSegments(
+                                                    segments = gpxOverlayState.segments,
+                                                    comparisonOwnsSemanticOverlays = true,
+                                                ),
+                                            isVisible = false,
+                                        )
                                     } else {
                                         gpxOverlayState
                                     },
@@ -1613,6 +1621,23 @@ internal fun CompanionMapScreen(
                                     camera = mapCamera,
                                 )
                                 if (onlineComparisonActive) {
+                                    synchronizeOnlineMapPresentation(
+                                        runtime = comparisonMapRuntime,
+                                        locationState = locationState,
+                                        mapMode = mapUiState.mapMode,
+                                        mapSettings =
+                                            mapSettings.copy(
+                                                northIndicatorMode = PhoneMapNorthIndicatorMode.NEVER,
+                                            ),
+                                        userGestureActive = onlineGestureState.isActive,
+                                        compassSource = compassSensorSource,
+                                        compassPresentation = compassPresentation,
+                                        ownsLocationFollow = false,
+                                    )
+                                    synchronizeOnlineRasterOpacity(
+                                        runtime = comparisonMapRuntime,
+                                        opacity = comparisonOverlayAlpha,
+                                    )
                                     synchronizeGpxOverlay(
                                         runtime = comparisonMapRuntime,
                                         overlayState = gpxOverlayState,
@@ -1712,7 +1737,7 @@ internal fun CompanionMapScreen(
                                                 callbackMap = callbackMap,
                                             )
                                     },
-                                    modifier = Modifier.fillMaxSize().alpha(comparisonOverlayAlpha),
+                                    modifier = Modifier.fillMaxSize(),
                                     isVisible = onlineComparisonActive,
                                 )
                             }
@@ -1725,6 +1750,7 @@ internal fun CompanionMapScreen(
                                             initialCamera = mapCamera,
                                             cameraOverride = mapCamera,
                                             mapSettings = mapSettings,
+                                            baseLayerOpacity = comparisonOverlayAlpha,
                                             terrainDataVersion = 0L,
                                             hasTerrainData = false,
                                             gpxOverlays =
@@ -1751,15 +1777,13 @@ internal fun CompanionMapScreen(
                                                     follow = PhoneMapFollowMode.FREE,
                                                     manualBearingDegrees = mapCamera.bearingDegrees,
                                                 ),
-                                            compassPresentation =
-                                                phoneMapCompassPresentation(
-                                                    mapMode =
-                                                        PhoneMapMode(
-                                                            follow = PhoneMapFollowMode.FREE,
-                                                            manualBearingDegrees = mapCamera.bearingDegrees,
-                                                        ),
-                                                    headingDegrees = null,
-                                                ),
+                                            compassPresentation = compassPresentation,
+                                            location =
+                                                locationState.location.takeIf {
+                                                    locationState.hasPermission && offlineComparisonActive
+                                                },
+                                            hasLocationPermission =
+                                                locationState.hasPermission && offlineComparisonActive,
                                             cameraCommand = null,
                                         ),
                                     callbacks =
@@ -1796,7 +1820,7 @@ internal fun CompanionMapScreen(
                                             onMapError = { error -> offlineMapError = error },
                                             onLocationFollowUnavailable = {},
                                         ),
-                                    modifier = Modifier.fillMaxSize().alpha(comparisonOverlayAlpha),
+                                    modifier = Modifier.fillMaxSize(),
                                     isVisible = offlineComparisonActive,
                                 )
                             }
@@ -1961,6 +1985,10 @@ internal fun CompanionMapScreen(
                                         compassSource = compassSensorSource,
                                         compassPresentation = compassPresentation,
                                     )
+                                    synchronizeOnlineRasterOpacity(
+                                        runtime = comparisonMapRuntime,
+                                        opacity = comparisonOverlayAlpha,
+                                    )
                                     synchronizeGpxOverlay(
                                         runtime = comparisonMapRuntime,
                                         overlayState = gpxOverlayState,
@@ -2078,7 +2106,7 @@ internal fun CompanionMapScreen(
                                                 callbackMap = callbackMap,
                                             )
                                     },
-                                    modifier = Modifier.fillMaxSize().alpha(comparisonOverlayAlpha),
+                                    modifier = Modifier.fillMaxSize(),
                                     isVisible = onlineComparisonActive,
                                 )
                             }
@@ -2943,7 +2971,12 @@ private fun PhoneOfflineMapError.messageResource(): Int =
     }
 
 @Composable
-@Suppress("LongMethod", "LongParameterList") // Renderer orchestration keeps the state and SDK adapters explicit.
+@SuppressLint("MissingPermission") // The component is only toggled after the location source reports permission.
+@Suppress(
+    "LongMethod",
+    "LongParameterList",
+    "CyclomaticComplexMethod",
+) // Explicit branches preserve the MapLibre location and camera lifecycle ownership.
 private fun synchronizeOnlineMapPresentation(
     runtime: MapRuntime,
     locationState: MapLocationState,
@@ -2952,6 +2985,8 @@ private fun synchronizeOnlineMapPresentation(
     userGestureActive: Boolean,
     compassSource: PhoneCompassSensorSource,
     compassPresentation: PhoneMapCompassPresentation,
+    showLocationMarker: Boolean = true,
+    ownsLocationFollow: Boolean = true,
 ) {
     val context = LocalContext.current
     val currentRuntime by rememberUpdatedState(runtime)
@@ -2964,13 +2999,14 @@ private fun synchronizeOnlineMapPresentation(
         runtime.map,
         runtime.generation.styleRevision,
         locationState.hasPermission,
+        showLocationMarker,
         compassPresentation.markerScreenRotationDegrees != null,
         mapSettings.markerStyle,
         mapSettings.gpsAccuracyCircleEnabled,
     ) {
         if (!locationState.hasPermission) return@LaunchedEffect
         runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, _, style ->
-            if (currentLocationState.hasPermission) {
+            if (currentLocationState.hasPermission && showLocationMarker) {
                 activeMap.enableLocationPuck(
                     style = style,
                     context = context,
@@ -2978,6 +3014,8 @@ private fun synchronizeOnlineMapPresentation(
                     compassRenderable = compassPresentation.markerScreenRotationDegrees != null,
                     mapSettings = mapSettings,
                 )
+            } else if (activeMap.locationComponent.isLocationComponentActivated) {
+                activeMap.locationComponent.setLocationComponentEnabled(false)
             }
         }
     }
@@ -2988,9 +3026,14 @@ private fun synchronizeOnlineMapPresentation(
         locationState.hasPermission,
         locationState.location,
         mapSettings.markerAnchor,
+        showLocationMarker,
     ) {
         val activeMap = runtime.map ?: return@LaunchedEffect
-        if (!locationState.hasPermission || !activeMap.locationComponent.isLocationComponentActivated) {
+        if (
+            !showLocationMarker ||
+            !locationState.hasPermission ||
+            !activeMap.locationComponent.isLocationComponentActivated
+        ) {
             return@LaunchedEffect
         }
         activeMap.applyPhoneMapMarkerAnchor(mapSettings.markerAnchor)
@@ -3007,9 +3050,10 @@ private fun synchronizeOnlineMapPresentation(
         mapMode,
         userGestureActive,
         compassPresentation,
+        ownsLocationFollow,
     ) {
         val activeMap = runtime.map ?: return@LaunchedEffect
-        if (!locationState.hasPermission || !activeMap.locationComponent.isLocationComponentActivated) {
+        if (!ownsLocationFollow || !locationState.hasPermission) {
             return@LaunchedEffect
         }
         when {
@@ -3045,6 +3089,19 @@ private fun synchronizeOnlineMapPresentation(
                     compassPresentation = compassPresentation,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun synchronizeOnlineRasterOpacity(
+    runtime: MapRuntime,
+    opacity: Float,
+) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, opacity) {
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
+            style.setOnlineRasterOpacity(opacity)
         }
     }
 }

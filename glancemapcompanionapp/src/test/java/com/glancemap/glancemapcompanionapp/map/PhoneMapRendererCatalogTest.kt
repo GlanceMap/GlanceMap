@@ -100,7 +100,7 @@ class PhoneMapRendererCatalogTest {
         assertEquals("cyclosm", provider.id)
         assertEquals("CyclOSM", provider.displayName)
         assertEquals(20, provider.maximumZoom)
-        assertEquals("CyclOSM | © OpenStreetMap contributors", provider.attribution)
+        assertEquals("CyclOSM | Map data: © OpenStreetMap contributors", provider.attribution)
         assertEquals(
             "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
             provider.rasterTileUrlTemplate,
@@ -141,7 +141,11 @@ class PhoneMapRendererCatalogTest {
         assertEquals("tracestrack_topo", provider.id)
         assertEquals("Tracestrack Topo", provider.displayName)
         assertEquals(19, provider.maximumZoom)
-        assertEquals("Tracestrack | © OpenStreetMap contributors", provider.attribution)
+        assertEquals(
+            "Data: © OpenStreetMap contributors, SRTM, GEBCO, SONNY's LiDAR DTM, " +
+                "NASADEM, ESA WorldCover; Maps © Tracestrack",
+            provider.attribution,
+        )
         assertEquals(
             "https://tile.tracestrack.com/topo__/{z}/{x}/{y}.webp?key=test-tracestrack-key",
             provider.rasterTileUrlTemplate,

@@ -70,6 +70,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val initialCamera: PhoneMapCameraSnapshot,
     val cameraOverride: PhoneMapCameraSnapshot? = null,
     val mapSettings: PhoneMapSettings = PhoneMapSettings(),
+    val baseLayerOpacity: Float = 1f,
     val terrainDataVersion: Long = 0L,
     val hasTerrainData: Boolean = false,
     val gpxOverlays: List<PhoneMapGpxOverlay>,
@@ -342,6 +343,7 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyRendererState(state: PhoneOfflineMapSurfaceState) {
         renderer.updateBaseLayer(state.map, state.themeConfig, state.initialCamera)
+        applyBaseLayerOpacity(state.baseLayerOpacity)
         renderer.updateTerrain(state.mapSettings, state.terrainDataVersion, state.hasTerrainData)
         applyMapSettings(state.mapSettings, state.initialCamera)
         applyCompassPresentation(state.compassPresentation)
@@ -351,6 +353,14 @@ private class PhoneOfflineMapsforgeView(
         applyCameraOverride(state.cameraOverride)
         publishCamera()
         publishRuntimeDiagnostics()
+    }
+
+    private fun applyBaseLayerOpacity(opacity: Float) {
+        val layer = renderer.currentBaseLayer ?: return
+        val clampedOpacity = opacity.coerceIn(0f, 1f)
+        if (abs(layer.alpha - clampedOpacity) <= 0.001f) return
+        layer.setAlpha(clampedOpacity)
+        requestMapRedraw()
     }
 
     private fun applyMapSettings(

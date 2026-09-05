@@ -75,7 +75,9 @@ internal fun tracestrackTopoProvider(apiKey: String): RasterOnlineMapProvider? =
             RasterOnlineMapProvider(
                 id = "tracestrack_topo",
                 displayName = "Tracestrack Topo",
-                attribution = "Tracestrack | © OpenStreetMap contributors",
+                attribution =
+                    "Data: © OpenStreetMap contributors, SRTM, GEBCO, SONNY's LiDAR DTM, " +
+                        "NASADEM, ESA WorldCover; Maps © Tracestrack",
                 rasterTileUrlTemplate =
                     "https://tile.tracestrack.com/topo__/{z}/{x}/{y}.webp?key=$configuredKey",
                 maximumZoom = 19,
@@ -131,7 +133,7 @@ internal object PhoneMapRendererCatalog {
         RasterOnlineMapProvider(
             id = "cyclosm",
             displayName = "CyclOSM",
-            attribution = "CyclOSM | © OpenStreetMap contributors",
+            attribution = "CyclOSM | Map data: © OpenStreetMap contributors",
             rasterTileUrlTemplate =
                 "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
             maximumZoom = 20,

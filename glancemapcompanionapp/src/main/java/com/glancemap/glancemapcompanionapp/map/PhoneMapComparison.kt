@@ -20,6 +20,12 @@ internal fun phoneMapComparisonOwnsSemanticOverlays(
     onlineComparisonActive: Boolean,
 ): Boolean = offlineComparisonActive || onlineComparisonActive
 
+/** A comparison renderer owns GPX exactly once, including its initial fit-to-route behavior. */
+internal fun phoneMapComparisonBaseGpxSegments(
+    segments: List<PhoneMapRouteSegment>,
+    comparisonOwnsSemanticOverlays: Boolean,
+): List<PhoneMapRouteSegment> = if (comparisonOwnsSemanticOverlays) emptyList() else segments
+
 /** Avoids camera feedback loops while the interactive comparison layer drives the base renderer. */
 internal fun phoneMapComparisonCameraNeedsSync(
     current: PhoneMapCameraSnapshot,
