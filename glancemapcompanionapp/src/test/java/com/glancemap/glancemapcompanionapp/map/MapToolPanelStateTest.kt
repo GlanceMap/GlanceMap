@@ -275,4 +275,24 @@ class MapToolPanelStateTest {
         assertTrue(state.comparison.isAvailableFor(PhoneMapSource.Online, listOf(offlineMap)))
         assertTrue(state.comparison.isAvailableFor(PhoneMapSource.Offline(offlineMap), listOf(offlineMap)))
     }
+
+    @Test
+    fun comparisonOptionsExcludeTheActiveOnlineSourceByIdentity() {
+        val options =
+            comparisonLayerOptions(
+                base = PhoneMapSource.Online,
+                baseOnlineSource = PhoneOnlineMapSource.CYCLOSM,
+                offlineMaps = emptyList(),
+                onlineSources =
+                    listOf(
+                        PhoneOnlineMapSource.CYCLOSM,
+                        PhoneOnlineMapSource.TRACESTRACK_TOPO,
+                        PhoneOnlineMapSource.SATELLITE,
+                    ),
+            )
+
+        assertFalse(options.contains(PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.CYCLOSM)))
+        assertTrue(options.contains(PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.TRACESTRACK_TOPO)))
+        assertTrue(options.contains(PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.SATELLITE)))
+    }
 }

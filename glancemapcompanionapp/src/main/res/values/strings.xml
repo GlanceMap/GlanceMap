@@ -45,7 +45,10 @@
     <string name="map_layer_transparency">Transparency: %1$d%%</string>
     <string name="map_layer_clear">Clear comparison</string>
     <string name="map_layer_satellite_unavailable">Satellite is unavailable because MapTiler access is not configured in this build.</string>
-    <string name="map_online_source_unavailable">Unavailable: MapTiler access is not configured in this build.</string>
+    <string name="map_layer_tracestrack_unavailable">Tracestrack Topo is unavailable because Tracestrack access is not configured in this build.</string>
+    <string name="map_online_source_unavailable">Unavailable in this build.</string>
+    <string name="map_online_source_satellite_unavailable">Unavailable: MapTiler access is not configured in this build.</string>
+    <string name="map_online_source_tracestrack_unavailable">Unavailable: Tracestrack access is not configured in this build.</string>
     <string name="map_layer_slope_title">Slope / relief</string>
     <string name="map_layer_slope_available">Uses the downloaded elevation data.</string>
     <string name="map_layer_slope_unavailable">Available on offline maps when elevation data is installed.</string>

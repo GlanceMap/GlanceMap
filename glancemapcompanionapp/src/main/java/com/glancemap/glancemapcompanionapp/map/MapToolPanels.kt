@@ -308,6 +308,9 @@ private fun mapToolsLayerPanel(
         if (!PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.SATELLITE)) {
             Text(stringResource(R.string.map_layer_satellite_unavailable))
         }
+        if (!PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.TRACESTRACK_TOPO)) {
+            Text(stringResource(R.string.map_layer_tracestrack_unavailable))
+        }
         state.comparison.layer?.let {
             Text(
                 stringResource(
@@ -376,7 +379,7 @@ private fun mapToolsLayerPanel(
     }
 }
 
-private fun comparisonLayerOptions(
+internal fun comparisonLayerOptions(
     base: PhoneMapSource,
     baseOnlineSource: PhoneOnlineMapSource,
     offlineMaps: List<PhoneOfflineMap>,
@@ -483,7 +486,13 @@ private fun mapToolsMapsPanel(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = PhoneMapRendererCatalog.onlineSourceLabel(onlineSource))
                             if (!available) {
-                                Text(stringResource(R.string.map_online_source_unavailable))
+                                val messageResId =
+                                    when (onlineSource) {
+                                        PhoneOnlineMapSource.SATELLITE -> R.string.map_online_source_satellite_unavailable
+                                        PhoneOnlineMapSource.TRACESTRACK_TOPO -> R.string.map_online_source_tracestrack_unavailable
+                                        else -> R.string.map_online_source_unavailable
+                                    }
+                                Text(stringResource(messageResId))
                             }
                         }
                     }

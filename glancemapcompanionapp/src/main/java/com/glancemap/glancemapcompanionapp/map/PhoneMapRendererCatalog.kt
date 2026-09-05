@@ -9,6 +9,8 @@ internal enum class PhoneOnlineMapSource {
     OPEN_TOPO,
     PLAN_IGN_V2,
     OPEN_STREET_MAP,
+    CYCLOSM,
+    TRACESTRACK_TOPO,
     SATELLITE,
 
     ;
@@ -66,6 +68,20 @@ internal fun mapTilerSatelliteProvider(apiKey: String): RasterOnlineMapProvider?
             )
         }
 
+internal fun tracestrackTopoProvider(apiKey: String): RasterOnlineMapProvider? =
+    apiKey
+        .takeIf(String::isNotBlank)
+        ?.let { configuredKey ->
+            RasterOnlineMapProvider(
+                id = "tracestrack_topo",
+                displayName = "Tracestrack Topo",
+                attribution = "Tracestrack | © OpenStreetMap contributors",
+                rasterTileUrlTemplate =
+                    "https://tile.tracestrack.com/topo__/{z}/{x}/{y}.webp?key=$configuredKey",
+                maximumZoom = 19,
+            )
+        }
+
 internal fun effectiveOnlineMapSource(
     preferred: PhoneOnlineMapSource,
     isAvailable: (PhoneOnlineMapSource) -> Boolean,
@@ -111,6 +127,17 @@ internal object PhoneMapRendererCatalog {
             maximumZoom = 19,
         )
 
+    private val cyclOsmProvider =
+        RasterOnlineMapProvider(
+            id = "cyclosm",
+            displayName = "CyclOSM",
+            attribution = "CyclOSM | © OpenStreetMap contributors",
+            rasterTileUrlTemplate =
+                "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+            maximumZoom = 20,
+        )
+
+    private val tracestrackTopoProvider = tracestrackTopoProvider(BuildConfig.TRACESTRACK_API_KEY)
     private val mapTilerSatelliteProvider = mapTilerSatelliteProvider(BuildConfig.MAPTILER_API_KEY)
 
     val online =
@@ -138,6 +165,8 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider
             PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider
             PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider
+            PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider
+            PhoneOnlineMapSource.TRACESTRACK_TOPO -> tracestrackTopoProvider
             PhoneOnlineMapSource.SATELLITE -> mapTilerSatelliteProvider
         }
 
@@ -146,6 +175,8 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider.displayName
             PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider.displayName
             PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider.displayName
+            PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider.displayName
+            PhoneOnlineMapSource.TRACESTRACK_TOPO -> "Tracestrack Topo"
             PhoneOnlineMapSource.SATELLITE -> "Satellite"
         }
 

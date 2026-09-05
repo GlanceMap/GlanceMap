@@ -11,6 +11,7 @@ val glanceMapVersionName = providers.gradleProperty("glanceMapVersionName").get(
 val glanceMapPhoneVersionCode = providers.gradleProperty("glanceMapPhoneVersionCode").get().toInt()
 val arkluzSmsApiKeyProperty = "ARKLUZ_SMS_API_KEY"
 val mapTilerApiKeyProperty = "MAPTILER_API_KEY"
+val tracestrackApiKeyProperty = "TRACESTRACK_API_KEY"
 val projectGradlePropertiesDefinesArkluzSmsApiKey =
     rootProject.file("gradle.properties").useLines { lines ->
         lines.any { line ->
@@ -29,6 +30,15 @@ val projectGradlePropertiesDefinesMapTilerApiKey =
                 trimmedLine.substringBefore('=').trim() == mapTilerApiKeyProperty
         }
     }
+val projectGradlePropertiesDefinesTracestrackApiKey =
+    rootProject.file("gradle.properties").useLines { lines ->
+        lines.any { line ->
+            val trimmedLine = line.trimStart()
+            !trimmedLine.startsWith("#") &&
+                '=' in trimmedLine &&
+                trimmedLine.substringBefore('=').trim() == tracestrackApiKeyProperty
+        }
+    }
 if (projectGradlePropertiesDefinesArkluzSmsApiKey) {
     throw GradleException(
         "$arkluzSmsApiKeyProperty must not be defined in the repository gradle.properties. " +
@@ -38,6 +48,12 @@ if (projectGradlePropertiesDefinesArkluzSmsApiKey) {
 if (projectGradlePropertiesDefinesMapTilerApiKey) {
     throw GradleException(
         "$mapTilerApiKeyProperty must not be defined in the repository gradle.properties. " +
+            "Use ~/.gradle/gradle.properties or an environment variable.",
+    )
+}
+if (projectGradlePropertiesDefinesTracestrackApiKey) {
+    throw GradleException(
+        "$tracestrackApiKeyProperty must not be defined in the repository gradle.properties. " +
             "Use ~/.gradle/gradle.properties or an environment variable.",
     )
 }
@@ -51,6 +67,12 @@ val mapTilerApiKey =
     providers
         .gradleProperty(mapTilerApiKeyProperty)
         .orElse(providers.environmentVariable(mapTilerApiKeyProperty))
+        .orNull
+        .orEmpty()
+val tracestrackApiKey =
+    providers
+        .gradleProperty(tracestrackApiKeyProperty)
+        .orElse(providers.environmentVariable(tracestrackApiKeyProperty))
         .orNull
         .orEmpty()
 val hasArkluzSmsApiKey = arkluzSmsApiKey.isNotEmpty()
@@ -139,6 +161,7 @@ android {
         buildConfigField("String", "ARKLUZ_TRACKING_URL", "\"https://arkluz.com/trk\"")
         buildConfigField("String", "ARKLUZ_SMS_API_KEY", "\"$arkluzSmsApiKey\"")
         buildConfigField("String", "MAPTILER_API_KEY", "\"$mapTilerApiKey\"")
+        buildConfigField("String", "TRACESTRACK_API_KEY", "\"$tracestrackApiKey\"")
     }
 
     signingConfigs {

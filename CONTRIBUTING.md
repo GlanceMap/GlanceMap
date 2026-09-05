@@ -19,18 +19,22 @@
 
 ## Local Online Map Configuration
 
-The phone companion's Satellite map uses MapTiler. Configure the build locally
-through `~/.gradle/gradle.properties` or the `MAPTILER_API_KEY` environment
-variable; never add the value to the repository's `gradle.properties`:
+The phone companion's Satellite map uses MapTiler and Tracestrack Topo uses
+Tracestrack. Configure either provider locally through
+`~/.gradle/gradle.properties` or its environment variable; never add values to
+the repository's `gradle.properties`:
 
 ```properties
 MAPTILER_API_KEY=<your MapTiler key>
+TRACESTRACK_API_KEY=<your Tracestrack key>
 ```
 
 Debug builds may omit this setting; Satellite remains visible but disabled.
-Release artifact tasks require it and fail with a clear configuration error.
-The key is embedded in Android tile requests and should therefore be restricted
-with the provider's quotas and application restrictions where available.
+Tracestrack Topo is likewise visible but disabled without its key. Release
+artifact tasks require the existing MapTiler configuration, but do not require
+Tracestrack because it is an optional provider. These keys are embedded in
+Android tile requests and should therefore be restricted with the providers'
+quotas and application restrictions where available.
 
 ## Branches and PRs
 

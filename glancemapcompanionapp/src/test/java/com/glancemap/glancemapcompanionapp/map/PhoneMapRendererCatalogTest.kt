@@ -76,17 +76,36 @@ class PhoneMapRendererCatalogTest {
     }
 
     @Test
-    fun supportedOnlineSourcesAlwaysIncludesSatellite() {
+    fun supportedOnlineSourcesUseTheStableUserFacingOrder() {
         assertEquals(
             listOf(
                 PhoneOnlineMapSource.OPEN_TOPO,
                 PhoneOnlineMapSource.PLAN_IGN_V2,
                 PhoneOnlineMapSource.OPEN_STREET_MAP,
+                PhoneOnlineMapSource.CYCLOSM,
+                PhoneOnlineMapSource.TRACESTRACK_TOPO,
                 PhoneOnlineMapSource.SATELLITE,
             ),
             PhoneMapRendererCatalog.supportedOnlineSources(),
         )
+        assertEquals("CyclOSM", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.CYCLOSM))
+        assertEquals("Tracestrack Topo", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.TRACESTRACK_TOPO))
         assertEquals("Satellite", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.SATELLITE))
+    }
+
+    @Test
+    fun cyclOsmUsesTheOfficialKeylessRasterProvider() {
+        val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.CYCLOSM))
+
+        assertEquals("cyclosm", provider.id)
+        assertEquals("CyclOSM", provider.displayName)
+        assertEquals(20, provider.maximumZoom)
+        assertEquals("CyclOSM | © OpenStreetMap contributors", provider.attribution)
+        assertEquals(
+            "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+            provider.rasterTileUrlTemplate,
+        )
+        assertTrue(PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.CYCLOSM))
     }
 
     @Test
@@ -111,6 +130,35 @@ class PhoneMapRendererCatalogTest {
         assertEquals(
             PhoneOnlineMapSource.SATELLITE,
             PhoneOnlineMapSource.fromStorageValue(PhoneOnlineMapSource.SATELLITE.name),
+        )
+    }
+
+    @Test
+    fun tracestrackProviderRequiresAConfiguredKey() {
+        assertEquals(null, tracestrackTopoProvider(""))
+        val provider = requireNotNull(tracestrackTopoProvider("test-tracestrack-key"))
+
+        assertEquals("tracestrack_topo", provider.id)
+        assertEquals("Tracestrack Topo", provider.displayName)
+        assertEquals(19, provider.maximumZoom)
+        assertEquals("Tracestrack | © OpenStreetMap contributors", provider.attribution)
+        assertEquals(
+            "https://tile.tracestrack.com/topo__/{z}/{x}/{y}.webp?key=test-tracestrack-key",
+            provider.rasterTileUrlTemplate,
+        )
+    }
+
+    @Test
+    fun unavailablePersistedTracestrackFallsBackWithoutChangingPreferenceValue() {
+        assertEquals(
+            PhoneOnlineMapSource.OPEN_TOPO,
+            effectiveOnlineMapSource(PhoneOnlineMapSource.TRACESTRACK_TOPO) { source ->
+                source != PhoneOnlineMapSource.TRACESTRACK_TOPO
+            },
+        )
+        assertEquals(
+            PhoneOnlineMapSource.TRACESTRACK_TOPO,
+            PhoneOnlineMapSource.fromStorageValue(PhoneOnlineMapSource.TRACESTRACK_TOPO.name),
         )
     }
 }
