@@ -14,7 +14,9 @@ internal data class PhoneMapSourcePreference(
 )
 
 internal fun PhoneMapSourcePreference.restoredOnline(): PhoneMapSourcePreference =
-    copy(mode = PhoneMapSourcePreferenceMode.ONLINE)
+    copy(
+        mode = PhoneMapSourcePreferenceMode.ONLINE,
+    )
 
 /** Remembers the map source toggle plus the last selected map for each renderer. */
 internal class PhoneMapSourcePreferences(

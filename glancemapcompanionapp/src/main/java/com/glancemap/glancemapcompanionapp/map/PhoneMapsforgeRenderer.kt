@@ -893,5 +893,6 @@ private class PhoneFirstVisibleTileRendererLayer(
 internal fun PhoneMapCameraSnapshot.toRendererMapPosition(): MapPosition =
     MapPosition(
         LatLong(latitude, longitude),
-        zoom.toInt().coerceIn(0, Byte.MAX_VALUE.toInt()).toByte(),
+        zoom.coerceIn(0.0, Byte.MAX_VALUE.toDouble()),
+        Rotation.NULL_ROTATION,
     )

@@ -15,7 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -43,6 +42,8 @@ internal data class RoutingBBox(
 internal data class RoutingTileDownloadResult(
     val tileUris: List<Uri>,
     val tileNames: List<String>,
+    val availableTileNames: List<String>,
+    val unavailableTileNames: List<String>,
     val bbox: String,
     val downloadedCount: Int,
     val skippedCount: Int,
@@ -168,6 +169,8 @@ internal class BRouterTileDownloader(
         reportProgress: (percent: Int, status: String, detail: String) -> Unit,
         forceRefresh: Boolean = false,
         includeFileUris: Boolean = true,
+        knownUnavailableTileNames: Set<String> = emptySet(),
+        onTileUnavailable: (String, Int) -> Unit = { _, _ -> },
     ): RoutingTileDownloadResult =
         withContext(Dispatchers.IO) {
             cancelRequested = false
@@ -190,6 +193,8 @@ internal class BRouterTileDownloader(
 
             var downloaded = 0
             var skipped = 0
+            val availableTileNames = linkedSetOf<String>()
+            val unavailableTileNames = linkedSetOf<String>()
             val uris = ArrayList<Uri>(if (includeFileUris) tileNames.size else 0)
             var stage = "resolve_output_directory"
             var targetPath = "<unresolved>"
@@ -221,9 +226,31 @@ internal class BRouterTileDownloader(
 
                     val target = File(outputDir, tileName)
                     targetPath = target.absolutePath
-                    if (!forceRefresh && isUsablePhoneRoutingFile(target)) {
+                    var downloadedThisTile = false
+                    val knownUnavailable =
+                        !forceRefresh &&
+                            tileName in knownUnavailableTileNames &&
+                            !isUsablePhoneRoutingFile(target)
+                    if (knownUnavailable) {
+                        stage = "skip_known_unavailable_tile"
+                        if (target.exists() && !target.delete()) {
+                            throw IOException("Could not remove unavailable routing pack: " + target.absolutePath)
+                        }
+                        val partial = File(target.parentFile, target.name + ".tmp")
+                        if (partial.exists() && !partial.delete()) {
+                            throw IOException("Could not remove unavailable routing partial: ${partial.absolutePath}")
+                        }
+                        unavailableTileNames += tileName
+                        onTileUnavailable(tileName, HttpURLConnection.HTTP_NOT_FOUND)
+                        reportProgress(
+                            overallRoutingDownloadProgress(index, tileNames.size, 1.0),
+                            "Routing pack " + step + "/" + tileNames.size + " unavailable.",
+                            tileName,
+                        )
+                    } else if (!forceRefresh && isUsablePhoneRoutingFile(target)) {
                         stage = "reuse_cached_tile"
                         skipped += 1
+                        availableTileNames += tileName
                         PhoneDownloadDiagnostics.log(
                             "BRouter",
                             "Cache hit tile=$tileName step=$step/${tileNames.size} bytes=${target.length()}",
@@ -267,6 +294,25 @@ internal class BRouterTileDownloader(
                                     )
                                 },
                             )
+                            downloadedThisTile = true
+                        } catch (error: RoutingDownloadHttpException) {
+                            if (error.statusCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                                stage = "skip_unavailable_tile"
+                                unavailableTileNames += tileName
+                                onTileUnavailable(tileName, error.statusCode)
+                                reportProgress(
+                                    overallRoutingDownloadProgress(index, tileNames.size, 1.0),
+                                    "Routing pack " + step + "/" + tileNames.size + " unavailable.",
+                                    tileName,
+                                )
+                            } else {
+                                throw BRouterTileDownloadException(
+                                    tileName = tileName,
+                                    userMessage = userSafeRoutingFailureMessage(error),
+                                    statusCode = error.statusCode,
+                                    cause = error,
+                                )
+                            }
                         } catch (error: Throwable) {
                             if (error is CancellationException) throw error
                             throw BRouterTileDownloadException(
@@ -275,10 +321,13 @@ internal class BRouterTileDownloader(
                                 cause = error,
                             )
                         }
-                        downloaded += 1
+                        if (isUsablePhoneRoutingFile(target)) {
+                            availableTileNames += tileName
+                            if (downloadedThisTile) downloaded += 1
+                        }
                     }
 
-                    if (includeFileUris) {
+                    if (tileName in availableTileNames && includeFileUris) {
                         stage = "create_file_uri"
                         uris +=
                             FileProvider.getUriForFile(
@@ -322,6 +371,8 @@ internal class BRouterTileDownloader(
             RoutingTileDownloadResult(
                 tileUris = uris,
                 tileNames = tileNames,
+                availableTileNames = availableTileNames.toList(),
+                unavailableTileNames = unavailableTileNames.toList(),
                 bbox = normalizedBbox,
                 downloadedCount = downloaded,
                 skippedCount = skipped,
@@ -454,7 +505,16 @@ internal class BRouterTileDownloader(
                     continue
                 }
                 if (code == HttpURLConnection.HTTP_NOT_FOUND) {
-                    throw FileNotFoundException("Routing pack not found: $tileName")
+                    if (!isUsablePhoneRoutingFile(target) && target.exists() && !target.delete()) {
+                        throw IOException("Could not remove unavailable routing pack: " + target.absolutePath)
+                    }
+                    if (temp.exists() && !temp.delete()) {
+                        throw IOException("Could not remove unavailable routing partial: ${temp.absolutePath}")
+                    }
+                    throw RoutingDownloadHttpException(
+                        summarizeRoutingFailure(tileName, code, ""),
+                        code,
+                    )
                 }
                 if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
                     val detail = readResponseText(connection.errorStream, MAX_ERROR_RESPONSE_BYTES)
@@ -609,7 +669,6 @@ internal class BRouterTileDownloader(
             is SocketException,
             is InterruptedIOException,
             -> "Connection was interrupted."
-            is FileNotFoundException -> "Requested routing pack is unavailable."
             else -> "Routing pack could not be downloaded."
         }
 
@@ -714,7 +773,7 @@ internal class BRouterTileDownloader(
         const val MAX_RANGE_RESTARTS = 2
     }
 
-    private class RoutingDownloadHttpException(
+    internal class RoutingDownloadHttpException(
         message: String,
         val statusCode: Int,
     ) : IOException(message)
@@ -723,6 +782,7 @@ internal class BRouterTileDownloader(
 internal class BRouterTileDownloadException(
     val tileName: String,
     val userMessage: String,
+    val statusCode: Int? = null,
     cause: Throwable,
 ) : IOException(userMessage, cause)
 

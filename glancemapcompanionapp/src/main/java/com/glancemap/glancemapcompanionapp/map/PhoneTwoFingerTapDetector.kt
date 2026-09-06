@@ -17,6 +17,7 @@ internal class PhoneTwoFingerTapDetector(
     private val measurementHandleAt: (x: Float, y: Float) -> Int? = { _, _ -> null },
     private val onMeasurementPointMove: (index: Int, x: Float, y: Float) -> Unit =
         { _, _, _ -> },
+    private val onMeasurementGestureStart: () -> Unit = {},
     private val onMeasurementPointDragStart: () -> Unit = {},
     private val onMeasurementPointDragEnd: (cancelled: Boolean) -> Unit = { _ -> },
 ) {
@@ -30,10 +31,13 @@ internal class PhoneTwoFingerTapDetector(
     private var secondPointerId: Int? = null
     private var draggedPointerId: Int? = null
     private var draggedHandleIndex: Int? = null
+    private var measurementGestureOwned = false
 
     private val activateRunnable = Runnable { activateIfPossible() }
 
-    fun onTouchEvent(event: MotionEvent) {
+    /** Returns true when this detector owns the current gesture instead of the native map. */
+    fun onTouchEvent(event: MotionEvent): Boolean {
+        val ownedBeforeEvent = measurementGestureOwned
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> handleDown(event)
             MotionEvent.ACTION_POINTER_DOWN -> handlePointerDown(event)
@@ -42,6 +46,7 @@ internal class PhoneTwoFingerTapDetector(
             MotionEvent.ACTION_UP -> handleUp()
             MotionEvent.ACTION_CANCEL -> reset()
         }
+        return ownedBeforeEvent || measurementGestureOwned
     }
 
     private fun handleDown(event: MotionEvent) {
@@ -53,8 +58,10 @@ internal class PhoneTwoFingerTapDetector(
         candidate = true
         measurementHandleAt(point.x, point.y)?.let { handleIndex ->
             candidate = false
+            measurementGestureOwned = true
             draggedPointerId = pointerId
             draggedHandleIndex = handleIndex
+            onMeasurementGestureStart()
             onMeasurementPointDragStart()
         }
     }
@@ -64,6 +71,7 @@ internal class PhoneTwoFingerTapDetector(
             finishMeasurementDrag(cancelled = true)
             return
         }
+        if (measurementGestureOwned) return
         if (candidate && event.pointerCount == 2) {
             val pointerId = event.getPointerId(event.actionIndex)
             val point = event.screenPoint(event.actionIndex)
@@ -117,13 +125,13 @@ internal class PhoneTwoFingerTapDetector(
         if (candidate && event.pointerCount == 2) {
             activateIfPossible()
             active = false
-            clearTouchState()
+            clearTouchTracking()
         } else if (active) {
             currentTwoFingerPoints()?.let { points ->
                 onTwoFingerMove(points.first.x, points.first.y, points.second.x, points.second.y)
             }
             active = false
-            clearTouchState()
+            clearTouchTracking()
         } else {
             cancelCandidate()
         }
@@ -133,14 +141,17 @@ internal class PhoneTwoFingerTapDetector(
         if (draggedPointerId != null) {
             finishMeasurementDrag(cancelled = false)
         } else {
-            clearTouchState()
+            clearTouchTracking()
         }
+        measurementGestureOwned = false
     }
 
     private fun activateIfPossible() {
         if (!candidate || active) return
         val points = currentTwoFingerPoints() ?: return
         active = true
+        measurementGestureOwned = true
+        onMeasurementGestureStart()
         onTwoFingerTap(points.first.x, points.first.y, points.second.x, points.second.y)
     }
 
@@ -156,7 +167,7 @@ internal class PhoneTwoFingerTapDetector(
     }
 
     private fun finishMeasurementDrag(cancelled: Boolean) {
-        clearTouchState()
+        clearTouchTracking()
         onMeasurementPointDragEnd(cancelled)
     }
 
@@ -170,7 +181,7 @@ internal class PhoneTwoFingerTapDetector(
         latestPoints.clear()
     }
 
-    private fun clearTouchState() {
+    private fun clearTouchTracking() {
         handler.removeCallbacks(activateRunnable)
         candidate = false
         active = false
@@ -187,6 +198,7 @@ internal class PhoneTwoFingerTapDetector(
         cancelCandidate()
         draggedPointerId = null
         draggedHandleIndex = null
+        measurementGestureOwned = false
         if (wasDragging) onMeasurementPointDragEnd(true)
     }
 }

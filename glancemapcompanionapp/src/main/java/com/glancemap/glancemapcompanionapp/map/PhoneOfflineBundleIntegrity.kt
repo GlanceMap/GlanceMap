@@ -180,6 +180,8 @@ internal fun phoneOfflineBundleHealth(
             expectedDemTileIds = bundle.demTileIds,
             downloadedDemTileIds = downloadedDem,
             hasRecovery = recovery != null,
+            unavailableRoutingFileNames = bundle.unavailableRoutingFileNames,
+            unavailableDemTileIds = bundle.unavailableDemTileIds,
         )
     val status =
         when {

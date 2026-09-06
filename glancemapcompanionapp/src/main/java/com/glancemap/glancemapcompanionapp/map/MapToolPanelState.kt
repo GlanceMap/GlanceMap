@@ -215,6 +215,7 @@ internal data class PhoneMapUiState(
     val toolLauncherExpanded: Boolean = false,
     val mapMode: PhoneMapMode = PhoneMapMode(),
     val cameraCommand: PhoneMapCameraCommand? = null,
+    val nextCameraCommandId: Long = 1L,
 ) {
     fun selectTool(tool: MapTool): PhoneMapUiState = copy(toolPanel = toolPanel.select(tool))
 
@@ -243,9 +244,10 @@ internal data class PhoneMapUiState(
         copy(
             cameraCommand =
                 PhoneMapCameraCommand(
-                    id = (cameraCommand?.id ?: 0L) + 1L,
+                    id = nextCameraCommandId,
                     zoomDelta = delta,
                 ),
+            nextCameraCommandId = nextCameraCommandId + 1L,
         )
 
     fun consumeCommand(id: Long): PhoneMapUiState = if (cameraCommand?.id == id) copy(cameraCommand = null) else this

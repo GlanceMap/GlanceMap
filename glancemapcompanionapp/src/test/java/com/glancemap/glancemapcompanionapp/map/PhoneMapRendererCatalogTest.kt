@@ -89,8 +89,27 @@ class PhoneMapRendererCatalogTest {
             PhoneMapRendererCatalog.supportedOnlineSources(),
         )
         assertEquals("CyclOSM", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.CYCLOSM))
-        assertEquals("Tracestrack Topo", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.TRACESTRACK_TOPO))
+        assertEquals(
+            "Tracestrack Topo",
+            PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.TRACESTRACK_TOPO),
+        )
         assertEquals("Satellite", PhoneMapRendererCatalog.onlineSourceLabel(PhoneOnlineMapSource.SATELLITE))
+    }
+
+    @Test
+    fun availableSourcesAreTheConfiguredSubsetInSupportedOrder() {
+        assertEquals(
+            PhoneMapRendererCatalog
+                .supportedOnlineSources()
+                .filter(PhoneMapRendererCatalog::isOnlineSourceAvailable),
+            PhoneMapRendererCatalog.availableOnlineSources(),
+        )
+        PhoneMapRendererCatalog.supportedOnlineSources().forEach { source ->
+            assertEquals(
+                PhoneMapRendererCatalog.providerForOnlineSource(source) != null,
+                PhoneMapRendererCatalog.isOnlineSourceAvailable(source),
+            )
+        }
     }
 
     @Test
@@ -100,7 +119,11 @@ class PhoneMapRendererCatalogTest {
         assertEquals("cyclosm", provider.id)
         assertEquals("CyclOSM", provider.displayName)
         assertEquals(20, provider.maximumZoom)
-        assertEquals("CyclOSM | Map data: © OpenStreetMap contributors", provider.attribution)
+        assertEquals(
+            "<a href=\"https://www.cyclosm.org/\">CyclOSM</a> | Map data: " +
+                "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>",
+            provider.attribution,
+        )
         assertEquals(
             "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
             provider.rasterTileUrlTemplate,
@@ -142,8 +165,9 @@ class PhoneMapRendererCatalogTest {
         assertEquals("Tracestrack Topo", provider.displayName)
         assertEquals(19, provider.maximumZoom)
         assertEquals(
-            "Data: © OpenStreetMap contributors, SRTM, GEBCO, SONNY's LiDAR DTM, " +
-                "NASADEM, ESA WorldCover; Maps © Tracestrack",
+            "Data: <a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>, " +
+                "SRTM, GEBCO, SONNY's LiDAR DTM, NASADEM, ESA WorldCover; " +
+                "<a href=\"https://tracestrack.com/\">Maps © Tracestrack</a>",
             provider.attribution,
         )
         assertEquals(

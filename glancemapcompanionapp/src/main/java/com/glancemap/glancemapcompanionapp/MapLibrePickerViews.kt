@@ -1105,6 +1105,10 @@ internal fun ensureMapLibreConfigured(context: Context) {
     synchronized(MapLibreConfiguration) {
         if (MapLibreConfiguration.initialized) return
         MapLibre.getInstance(context.applicationContext)
+        // Tile URLs can contain provider credentials. Keep MapLibre's request diagnostics off
+        // centrally; disabling only failure URL printing still leaks URLs on cancellation.
+        HttpRequestUtil.setLogEnabled(false)
+        HttpRequestUtil.setPrintRequestUrlOnFailure(false)
         val packageName = context.packageName
         HttpRequestUtil.setOkHttpClient(
             OkHttpClient

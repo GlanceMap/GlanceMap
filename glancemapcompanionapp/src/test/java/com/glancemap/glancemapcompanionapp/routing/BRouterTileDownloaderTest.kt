@@ -85,6 +85,35 @@ class BRouterTileDownloaderTest {
         assertEquals(lookupVersion, SUPPORTED_ROUTING_PACK_LOOKUP_VERSION)
     }
 
+    @Test
+    fun bboxCoordinatesStayWestSouthEastNorthAndUseTheExpectedTileOrigin() {
+        val bbox = BRouterTileMath.parseBbox("-30,10,-20,20")
+
+        assertEquals("-30.00000,10.00000,-20.00000,20.00000", bbox.asQueryString())
+        assertEquals(
+            listOf(
+                "W30_N10.rd5",
+                "W25_N10.rd5",
+                "W30_N15.rd5",
+                "W25_N15.rd5",
+            ),
+            BRouterTileMath.tileFileNamesForBbox(bbox),
+        )
+    }
+
+    @Test
+    fun remote404KeepsItsHttpStatusDistinctFromLocalFileErrors() {
+        val remote404 =
+            BRouterTileDownloader.RoutingDownloadHttpException(
+                message = "HTTP 404",
+                statusCode = 404,
+            )
+
+        assertEquals(404, remote404.statusCode)
+        assertFalse(isRetriableRoutingStatus(remote404.statusCode))
+        assertFalse(isRetriableRoutingIoFailure(FileNotFoundException("local file missing")))
+    }
+
     private fun temporaryRoutingPack(lookupVersion: Int): File =
         File.createTempFile("routing-pack", ".rd5").apply {
             writeBytes(

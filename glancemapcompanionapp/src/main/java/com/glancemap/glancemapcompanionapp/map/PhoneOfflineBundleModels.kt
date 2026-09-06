@@ -87,6 +87,7 @@ internal data class PhoneOfflineRemoteFileMetadata(
     val entityTag: String?,
     val lastModifiedMillis: Long?,
     val contentLengthBytes: Long?,
+    val httpStatusCode: Int? = null,
 )
 
 /** Metadata for files installed by the phone bundle flow, including remote update state. */
@@ -104,6 +105,8 @@ internal data class PhoneInstalledBundle(
     val downloadedDemTileIds: List<String> = emptyList(),
     val integrity: List<PhoneOfflineFileIntegrity> = emptyList(),
     val remoteFiles: List<PhoneOfflineRemoteFileMetadata> = emptyList(),
+    val unavailableRoutingFileNames: List<String> = emptyList(),
+    val unavailableDemTileIds: List<String> = emptyList(),
 )
 
 internal enum class PhoneOfflineBundleUpdateStatus {
@@ -171,6 +174,12 @@ internal fun PhoneOfflineRemoteFileMetadata.compareWith(
 ): PhoneOfflineRemoteMetadataComparison =
     when {
         url != other.url -> PhoneOfflineRemoteMetadataComparison.CHANGED
+        httpStatusCode != null || other.httpStatusCode != null ->
+            if (httpStatusCode == other.httpStatusCode) {
+                PhoneOfflineRemoteMetadataComparison.SAME
+            } else {
+                PhoneOfflineRemoteMetadataComparison.CHANGED
+            }
         contentLengthBytes != null &&
             other.contentLengthBytes != null &&
             contentLengthBytes == other.contentLengthBytes -> PhoneOfflineRemoteMetadataComparison.SAME
@@ -189,7 +198,8 @@ internal fun PhoneOfflineRemoteFileMetadata.compareWith(
     }
 
 internal fun PhoneOfflineRemoteFileMetadata.isComparable(): Boolean =
-    entityTag != null ||
+    httpStatusCode != null ||
+        entityTag != null ||
         lastModifiedMillis != null ||
         contentLengthBytes != null
 
@@ -216,6 +226,8 @@ internal data class PhoneOfflineBundleRecovery(
     val failureComponent: PhoneOfflineBundleComponent? = null,
     val failureFileName: String? = null,
     val updatedAtMillis: Long = System.currentTimeMillis(),
+    val unavailableRoutingFileNames: List<String> = emptyList(),
+    val unavailableDemTileIds: List<String> = emptyList(),
 )
 
 internal enum class PhoneOfflineBundlePhase {
@@ -410,6 +422,7 @@ internal data class PhoneOfflineBundleHealth(
     val expectedFileNames: List<String> = emptyList(),
     val availableFileNames: List<String> = emptyList(),
     val missingFileNames: List<String> = emptyList(),
+    val unavailableFileNames: List<String> = emptyList(),
     val invalidFileNames: List<String> = emptyList(),
     val integrity: List<PhoneOfflineFileIntegrity> = emptyList(),
     val hasRecovery: Boolean = false,
@@ -430,6 +443,8 @@ internal fun phoneOfflineBundleHealth(
     expectedDemTileIds: List<String>,
     downloadedDemTileIds: List<String>,
     hasRecovery: Boolean = false,
+    unavailableRoutingFileNames: List<String> = emptyList(),
+    unavailableDemTileIds: List<String> = emptyList(),
 ): PhoneOfflineBundleHealth {
     val expected =
         buildList {
@@ -447,11 +462,16 @@ internal fun phoneOfflineBundleHealth(
             addAll(downloadedRoutingFileNames.map { java.io.File(it).name })
             addAll(downloadedDemTileIds.map { it.uppercase(Locale.ROOT) })
         }.distinct()
-    val missing = expected.filterNot(available::contains)
+    val unavailable =
+        buildList {
+            addAll(unavailableRoutingFileNames.map { java.io.File(it).name })
+            addAll(unavailableDemTileIds.map { it.uppercase(Locale.ROOT) })
+        }.distinct().filter(expected::contains).filterNot(available::contains)
+    val missing = expected.filterNot { it in available || it in unavailable }
     val status =
         when {
             hasRecovery -> PhoneOfflineBundleStatus.RECOVERY_NEEDED
-            missing.isEmpty() -> PhoneOfflineBundleStatus.COMPLETE
+            missing.isEmpty() && unavailable.isEmpty() -> PhoneOfflineBundleStatus.COMPLETE
             available.isEmpty() -> PhoneOfflineBundleStatus.NOT_INSTALLED
             else -> PhoneOfflineBundleStatus.PARTIAL
         }
@@ -460,6 +480,7 @@ internal fun phoneOfflineBundleHealth(
         expectedFileNames = expected,
         availableFileNames = available,
         missingFileNames = missing,
+        unavailableFileNames = unavailable,
         hasRecovery = hasRecovery,
     )
 }
@@ -513,6 +534,14 @@ internal class PhoneOfflineBundleStore(
         editor.putString(
             key(bundle.areaId, "dem_downloaded"),
             bundle.downloadedDemTileIds.joinToString("\n"),
+        )
+        editor.putString(
+            key(bundle.areaId, "routing_unavailable"),
+            bundle.unavailableRoutingFileNames.joinToString("\n"),
+        )
+        editor.putString(
+            key(bundle.areaId, "dem_unavailable"),
+            bundle.unavailableDemTileIds.joinToString("\n"),
         )
         editor.putString(
             key(bundle.areaId, "integrity"),
@@ -582,6 +611,14 @@ internal class PhoneOfflineBundleStore(
             recoveryKey(recovery.areaId, "dem_downloaded"),
             recovery.downloadedDemTileIds.joinToString("\n"),
         )
+        editor.putString(
+            recoveryKey(recovery.areaId, "routing_unavailable"),
+            recovery.unavailableRoutingFileNames.joinToString("\n"),
+        )
+        editor.putString(
+            recoveryKey(recovery.areaId, "dem_unavailable"),
+            recovery.unavailableDemTileIds.joinToString("\n"),
+        )
         editor.putString(recoveryKey(recovery.areaId, "detail"), recovery.detail)
         editor.putString(recoveryKey(recovery.areaId, "failure"), recovery.failure?.name)
         editor.putString(recoveryKey(recovery.areaId, "failure_component"), recovery.failureComponent?.name)
@@ -610,6 +647,8 @@ internal class PhoneOfflineBundleStore(
             .remove(recoveryKey(areaId, "routing_downloaded"))
             .remove(recoveryKey(areaId, "dem"))
             .remove(recoveryKey(areaId, "dem_downloaded"))
+            .remove(recoveryKey(areaId, "routing_unavailable"))
+            .remove(recoveryKey(areaId, "dem_unavailable"))
             .remove(recoveryKey(areaId, "detail"))
             .remove(recoveryKey(areaId, "failure"))
             .remove(recoveryKey(areaId, "failure_component"))
@@ -635,20 +674,20 @@ internal class PhoneOfflineBundleStore(
                 refugesInfoFileName = preferences.getString(key(areaId, "refuges_info"), null)?.safePoiFileName(),
                 routingFileNames = routingFileNames,
                 downloadedRoutingFileNames =
-                    preferences
-                        .getString(key(areaId, "routing_downloaded"), null)
-                        .toFileNames(".rd5")
-                        .ifEmpty { routingFileNames },
+                    preferences.getString(key(areaId, "routing_downloaded"), null)?.toFileNames(".rd5")
+                        ?: routingFileNames,
                 demSource = PhoneOfflineDemSource.fromId(preferences.getString(key(areaId, "dem_source"), null)),
                 demTileIds = demTileIds,
                 downloadedDemTileIds =
-                    preferences
-                        .getString(key(areaId, "dem_downloaded"), null)
-                        .toTileIds()
-                        .ifEmpty { demTileIds },
+                    preferences.getString(key(areaId, "dem_downloaded"), null)?.toTileIds()
+                        ?: demTileIds,
                 installedAtMillis = preferences.getLong(key(areaId, "installed_at"), 0L),
                 integrity = preferences.getString(key(areaId, "integrity"), null).toIntegrity(),
                 remoteFiles = preferences.getString(key(areaId, "remote_files"), null).toRemoteFileMetadata(),
+                unavailableRoutingFileNames =
+                    preferences.getString(key(areaId, "routing_unavailable"), null).toFileNames(".rd5"),
+                unavailableDemTileIds =
+                    preferences.getString(key(areaId, "dem_unavailable"), null).toTileIds(),
             )
         }
     }
@@ -681,6 +720,10 @@ internal class PhoneOfflineBundleStore(
                     .toFileNames(".rd5"),
             demTileIds = preferences.getString(recoveryKey(areaId, "dem"), null).toTileIds(),
             downloadedDemTileIds = preferences.getString(recoveryKey(areaId, "dem_downloaded"), null).toTileIds(),
+            unavailableRoutingFileNames =
+                preferences.getString(recoveryKey(areaId, "routing_unavailable"), null).toFileNames(".rd5"),
+            unavailableDemTileIds =
+                preferences.getString(recoveryKey(areaId, "dem_unavailable"), null).toTileIds(),
             detail = preferences.getString(recoveryKey(areaId, "detail"), "").orEmpty(),
             failure =
                 preferences
@@ -731,6 +774,7 @@ private fun String?.toRemoteFileMetadata(): List<PhoneOfflineRemoteFileMetadata>
                             entityTag = objectValue.optString("entityTag").takeIf(String::isNotBlank),
                             lastModifiedMillis = objectValue.optLongOrNull("lastModifiedMillis"),
                             contentLengthBytes = objectValue.optLongOrNull("contentLengthBytes"),
+                            httpStatusCode = objectValue.optIntOrNull("httpStatusCode"),
                         ),
                     )
                 }
@@ -748,7 +792,8 @@ private fun List<PhoneOfflineRemoteFileMetadata>.toJson(): String {
                 .put("fileName", file.fileName)
                 .put("entityTag", file.entityTag)
                 .put("lastModifiedMillis", file.lastModifiedMillis)
-                .put("contentLengthBytes", file.contentLengthBytes),
+                .put("contentLengthBytes", file.contentLengthBytes)
+                .put("httpStatusCode", file.httpStatusCode),
         )
     }
     return array.toString()
@@ -757,6 +802,13 @@ private fun List<PhoneOfflineRemoteFileMetadata>.toJson(): String {
 private fun org.json.JSONObject.optLongOrNull(name: String): Long? =
     if (has(name) && !isNull(name)) {
         optLong(name).takeIf { it >= 0L }
+    } else {
+        null
+    }
+
+private fun org.json.JSONObject.optIntOrNull(name: String): Int? =
+    if (has(name) && !isNull(name)) {
+        optInt(name).takeIf { it > 0 }
     } else {
         null
     }

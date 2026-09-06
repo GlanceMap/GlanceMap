@@ -33,4 +33,16 @@ class PhoneMapLibreGenerationTest {
         assertEquals(0L, replacement.styleRevision)
         assertFalse(replacement.accepts(styleReady.renderer))
     }
+
+    @Test
+    fun rendererLifetimeCallbacksRemainCurrentAfterStyleReady() {
+        val renderer = MapRuntime(generation = PhoneMapLibreGeneration().nextRenderer())
+        val styleReady =
+            renderer.copy(
+                generation = renderer.generation.onStyleReady(renderer.generation.renderer),
+            )
+
+        assertFalse(renderer.isCurrentIn(styleReady))
+        assertTrue(renderer.isRendererCurrentIn(styleReady))
+    }
 }

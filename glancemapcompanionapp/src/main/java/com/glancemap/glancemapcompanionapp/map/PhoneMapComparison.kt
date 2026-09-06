@@ -20,6 +20,21 @@ internal fun phoneMapComparisonOwnsSemanticOverlays(
     onlineComparisonActive: Boolean,
 ): Boolean = offlineComparisonActive || onlineComparisonActive
 
+internal fun phoneMapComparisonOwnsUserCamera(
+    offlineComparisonActive: Boolean,
+    onlineComparisonActive: Boolean,
+): Boolean = offlineComparisonActive || onlineComparisonActive
+
+internal fun phoneMapComparisonOwnsFollowAndCommands(
+    baseSource: PhoneMapSource,
+    onlineComparisonActive: Boolean,
+): Boolean = baseSource is PhoneMapSource.Offline && onlineComparisonActive
+
+internal fun phoneMapComparisonOwnsInitialGpxFit(
+    baseSource: PhoneMapSource,
+    onlineComparisonActive: Boolean,
+): Boolean = baseSource is PhoneMapSource.Offline && onlineComparisonActive
+
 /** A comparison renderer owns GPX exactly once, including its initial fit-to-route behavior. */
 internal fun phoneMapComparisonBaseGpxSegments(
     segments: List<PhoneMapRouteSegment>,

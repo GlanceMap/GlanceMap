@@ -15,6 +15,17 @@ class PhoneOfflineBundleRefreshTest {
     }
 
     @Test
+    fun remote404MetadataRemainsComparableUntilCoverageReturns() {
+        val unavailable = metadata(entityTag = null, modified = null, size = null).copy(httpStatusCode = 404)
+        val stillUnavailable = unavailable.copy(entityTag = "different")
+        val available = metadata(entityTag = "new", modified = 2L, size = 100L)
+
+        assertTrue(unavailable.isComparable())
+        assertEquals(PhoneOfflineRemoteMetadataComparison.SAME, unavailable.compareWith(stillUnavailable))
+        assertEquals(PhoneOfflineRemoteMetadataComparison.CHANGED, unavailable.compareWith(available))
+    }
+
+    @Test
     fun changedBundleFilesMapToRefreshForces() {
         val bundle =
             PhoneInstalledBundle(

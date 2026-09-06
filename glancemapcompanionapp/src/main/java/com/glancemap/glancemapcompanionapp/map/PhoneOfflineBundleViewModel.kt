@@ -233,7 +233,13 @@ internal class PhoneOfflineBundleViewModel(
                         recovery.areaId to
                             PhoneOfflineBundleHealth(
                                 status = PhoneOfflineBundleStatus.RECOVERY_NEEDED,
-                                missingFileNames = recovery.routingFileNames + recovery.demTileIds,
+                                missingFileNames =
+                                    (recovery.routingFileNames + recovery.demTileIds).filterNot { fileName ->
+                                        fileName in recovery.unavailableRoutingFileNames ||
+                                            fileName in recovery.unavailableDemTileIds
+                                    },
+                                unavailableFileNames =
+                                    recovery.unavailableRoutingFileNames + recovery.unavailableDemTileIds,
                                 hasRecovery = true,
                             )
                     )

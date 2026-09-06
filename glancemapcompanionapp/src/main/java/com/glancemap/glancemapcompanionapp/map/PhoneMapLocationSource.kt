@@ -24,6 +24,19 @@ internal data class PhoneMapLocation(
     val altitudeMeters: Double? = null,
 )
 
+internal data class PhoneMapLocationAndroidMetadata(
+    val accuracyMeters: Float?,
+    val elapsedRealtimeNanos: Long?,
+    val altitudeMeters: Double?,
+)
+
+internal fun PhoneMapLocation.toAndroidLocationMetadata(): PhoneMapLocationAndroidMetadata =
+    PhoneMapLocationAndroidMetadata(
+        accuracyMeters = accuracyMeters?.takeIf { it.isFinite() && it >= 0f },
+        elapsedRealtimeNanos = fixElapsedRealtimeMillis.takeIf { it > 0L }?.times(1_000_000L),
+        altitudeMeters = altitudeMeters?.takeIf { it.isFinite() },
+    )
+
 internal val phoneMapLocationPermissions =
     arrayOf(
         android.Manifest.permission.ACCESS_FINE_LOCATION,

@@ -4,6 +4,9 @@ import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.trailcore.map.MapMode
 import com.glancemap.trailcore.map.MapRendererCapabilities
 
+private const val OPEN_STREET_MAP_ATTRIBUTION =
+    "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"
+
 /** The supported internet map datasets, separate from the online/offline renderer choice. */
 internal enum class PhoneOnlineMapSource {
     OPEN_TOPO,
@@ -61,7 +64,9 @@ internal fun mapTilerSatelliteProvider(apiKey: String): RasterOnlineMapProvider?
             RasterOnlineMapProvider(
                 id = "maptiler_satellite",
                 displayName = "Satellite",
-                attribution = "© MapTiler © OpenStreetMap contributors",
+                attribution =
+                    "<a href=\"https://www.maptiler.com/copyright/\">© MapTiler</a> " +
+                        OPEN_STREET_MAP_ATTRIBUTION,
                 rasterTileUrlTemplate =
                     "https://api.maptiler.com/tiles/satellite-v4/{z}/{x}/{y}.jpg?key=$configuredKey",
                 maximumZoom = 22,
@@ -76,8 +81,9 @@ internal fun tracestrackTopoProvider(apiKey: String): RasterOnlineMapProvider? =
                 id = "tracestrack_topo",
                 displayName = "Tracestrack Topo",
                 attribution =
-                    "Data: © OpenStreetMap contributors, SRTM, GEBCO, SONNY's LiDAR DTM, " +
-                        "NASADEM, ESA WorldCover; Maps © Tracestrack",
+                    "Data: $OPEN_STREET_MAP_ATTRIBUTION, SRTM, GEBCO, SONNY's LiDAR DTM, " +
+                        "NASADEM, ESA WorldCover; " +
+                        "<a href=\"https://tracestrack.com/\">Maps © Tracestrack</a>",
                 rasterTileUrlTemplate =
                     "https://tile.tracestrack.com/topo__/{z}/{x}/{y}.webp?key=$configuredKey",
                 maximumZoom = 19,
@@ -100,7 +106,7 @@ internal object PhoneMapRendererCatalog {
         RasterOnlineMapProvider(
             id = "open_street_map",
             displayName = "OpenStreetMap",
-            attribution = "© OpenStreetMap contributors",
+            attribution = OPEN_STREET_MAP_ATTRIBUTION,
             rasterTileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         )
 
@@ -112,7 +118,8 @@ internal object PhoneMapRendererCatalog {
             id = "open_topo_map",
             displayName = "OpenTopoMap",
             attribution =
-                "© OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)",
+                "$OPEN_STREET_MAP_ATTRIBUTION, SRTM | Map style: " +
+                    "<a href=\"https://opentopomap.org/about\">© OpenTopoMap</a> (CC-BY-SA)",
             rasterTileUrlTemplate = "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
             maximumZoom = 17,
         )
@@ -121,7 +128,8 @@ internal object PhoneMapRendererCatalog {
         RasterOnlineMapProvider(
             id = "plan_ign_v2",
             displayName = "Plan IGN V2",
-            attribution = "© IGN - Géoplateforme",
+            attribution =
+                "<a href=\"https://geoservices.ign.fr/\">© IGN - Géoplateforme</a>",
             rasterTileUrlTemplate =
                 "https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&" +
                     "LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM_0_19&" +
@@ -133,7 +141,9 @@ internal object PhoneMapRendererCatalog {
         RasterOnlineMapProvider(
             id = "cyclosm",
             displayName = "CyclOSM",
-            attribution = "CyclOSM | Map data: © OpenStreetMap contributors",
+            attribution =
+                "<a href=\"https://www.cyclosm.org/\">CyclOSM</a> | Map data: " +
+                    OPEN_STREET_MAP_ATTRIBUTION,
             rasterTileUrlTemplate =
                 "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
             maximumZoom = 20,

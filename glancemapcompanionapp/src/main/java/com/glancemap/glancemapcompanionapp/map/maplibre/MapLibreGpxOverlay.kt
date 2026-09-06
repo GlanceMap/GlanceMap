@@ -77,6 +77,12 @@ internal fun MapLibreMap.fitGpxTrackBounds(
     mapView.fitBoundsWhenLaidOut(this, bounds, isCurrent, onFitted)
 }
 
+internal fun phoneMapGpxFitIsStillEligible(
+    rendererIsCurrent: Boolean,
+    fitOwner: Boolean,
+    alreadyFitted: Boolean,
+): Boolean = rendererIsCurrent && fitOwner && !alreadyFitted
+
 private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(): Feature =
     Feature
         .fromGeometry(

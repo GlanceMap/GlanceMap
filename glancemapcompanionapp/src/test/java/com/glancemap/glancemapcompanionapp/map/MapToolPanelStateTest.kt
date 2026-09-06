@@ -191,6 +191,15 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun zoomCommandIdsRemainMonotonicAfterConsumption() {
+        val first = PhoneMapUiState().requestZoom(1)
+        val second = first.consumeCommand(requireNotNull(first.cameraCommand).id).requestZoom(-1)
+
+        assertEquals(1L, requireNotNull(first.cameraCommand).id)
+        assertEquals(2L, requireNotNull(second.cameraCommand).id)
+    }
+
+    @Test
     fun panelTransitionsPreserveMapSourceAndSemanticVisibility() {
         val initial =
             PhoneMapUiState(

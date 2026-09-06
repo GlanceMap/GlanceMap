@@ -51,6 +51,72 @@ class PhoneOfflineBundleStorageTest {
     }
 
     @Test
+    fun confirmedRemote404IsUnavailableWithoutBecomingARepair() {
+        val health =
+            phoneOfflineBundleHealth(
+                hasMap = true,
+                hasPoi = true,
+                expectsRefugesInfo = false,
+                hasRefugesInfo = false,
+                expectedRoutingFileNames = listOf("W30_N10.rd5", "W25_N10.rd5"),
+                downloadedRoutingFileNames = listOf("W25_N10.rd5"),
+                expectedDemTileIds = listOf("N45E006"),
+                downloadedDemTileIds = emptyList(),
+                unavailableRoutingFileNames = listOf("W30_N10.rd5"),
+                unavailableDemTileIds = listOf("N45E006"),
+            )
+
+        assertEquals(PhoneOfflineBundleStatus.PARTIAL, health.status)
+        assertEquals(listOf("W30_N10.rd5", "N45E006"), health.unavailableFileNames)
+        assertTrue(health.missingFileNames.isEmpty())
+        assertTrue("W30_N10.rd5" !in health.availableFileNames)
+    }
+
+    @Test
+    fun allOptionalCoverageCanBeUnavailableWhileBaseBundleRemainsInstalled() {
+        val health =
+            phoneOfflineBundleHealth(
+                hasMap = true,
+                hasPoi = true,
+                expectsRefugesInfo = false,
+                hasRefugesInfo = false,
+                expectedRoutingFileNames = listOf("W30_N10.rd5", "W25_N10.rd5"),
+                downloadedRoutingFileNames = emptyList(),
+                expectedDemTileIds = listOf("N45E006"),
+                downloadedDemTileIds = emptyList(),
+                unavailableRoutingFileNames = listOf("W30_N10.rd5", "W25_N10.rd5"),
+                unavailableDemTileIds = listOf("N45E006"),
+            )
+
+        assertEquals(PhoneOfflineBundleStatus.PARTIAL, health.status)
+        assertTrue(health.missingFileNames.isEmpty())
+        assertEquals(
+            listOf("W30_N10.rd5", "W25_N10.rd5", "N45E006"),
+            health.unavailableFileNames,
+        )
+    }
+
+    @Test
+    fun usableCachedFileWinsOverAStaleUnavailableMarker() {
+        val health =
+            phoneOfflineBundleHealth(
+                hasMap = true,
+                hasPoi = true,
+                expectsRefugesInfo = false,
+                hasRefugesInfo = false,
+                expectedRoutingFileNames = listOf("W30_N10.rd5"),
+                downloadedRoutingFileNames = listOf("W30_N10.rd5"),
+                expectedDemTileIds = emptyList(),
+                downloadedDemTileIds = emptyList(),
+                unavailableRoutingFileNames = listOf("W30_N10.rd5"),
+            )
+
+        assertEquals(PhoneOfflineBundleStatus.COMPLETE, health.status)
+        assertTrue(health.unavailableFileNames.isEmpty())
+        assertTrue(health.missingFileNames.isEmpty())
+    }
+
+    @Test
     fun selectedDemLocationIsVisibleToMapsforge() {
         val root = createTempDirectory(prefix = "phone-dem-renderer-").toFile()
         try {

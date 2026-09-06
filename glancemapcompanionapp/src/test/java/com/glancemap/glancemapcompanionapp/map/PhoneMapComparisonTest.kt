@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.glancemapcompanionapp.map.maplibre.phoneMapGpxFitIsStillEligible
 import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -78,6 +79,42 @@ class PhoneMapComparisonTest {
     }
 
     @Test
+    fun comparisonOwnsUserCameraOnlyWhileVisible() {
+        assertFalse(phoneMapComparisonOwnsUserCamera(false, false))
+        assertTrue(phoneMapComparisonOwnsUserCamera(true, false))
+        assertTrue(phoneMapComparisonOwnsUserCamera(false, true))
+    }
+
+    @Test
+    fun onlineComparisonOwnsFollowAndCommandsOnlyAboveOfflineBase() {
+        assertFalse(phoneMapComparisonOwnsFollowAndCommands(PhoneMapSource.Online, true))
+        assertFalse(phoneMapComparisonOwnsFollowAndCommands(PhoneMapSource.Offline(offlineMap()), false))
+        assertTrue(phoneMapComparisonOwnsFollowAndCommands(PhoneMapSource.Offline(offlineMap()), true))
+    }
+
+    @Test
+    fun initialGpxFitHasExactlyOneOwnerAcrossSourceTransitions() {
+        assertFalse(phoneMapComparisonOwnsInitialGpxFit(PhoneMapSource.Online, true))
+        assertFalse(phoneMapComparisonOwnsInitialGpxFit(PhoneMapSource.Offline(offlineMap()), false))
+        assertTrue(phoneMapComparisonOwnsInitialGpxFit(PhoneMapSource.Offline(offlineMap()), true))
+    }
+
+    @Test
+    fun delayedGpxFitRequiresCurrentRendererOwnerAndUnfittedState() {
+        assertTrue(phoneMapGpxFitIsStillEligible(true, true, false))
+        assertFalse(phoneMapGpxFitIsStillEligible(false, true, false))
+        assertFalse(phoneMapGpxFitIsStillEligible(true, false, false))
+        assertFalse(phoneMapGpxFitIsStillEligible(true, true, true))
+    }
+
+    @Test
+    fun fractionalCameraSyncStillRequiresNoFeedbackWhenValuesMatch() {
+        val camera = PhoneMapCameraSnapshot(46.0, 7.0, 12.75, 45f)
+
+        assertFalse(phoneMapComparisonCameraNeedsSync(camera, camera.copy()))
+    }
+
+    @Test
     fun comparisonOwnershipRemovesGpxSegmentsFromTheBaseRenderer() {
         val segments =
             listOf(
@@ -101,4 +138,6 @@ class PhoneMapComparisonTest {
             ),
         )
     }
+
+    private fun offlineMap(): PhoneOfflineMap = PhoneOfflineMap(java.io.File("alps.map"))
 }

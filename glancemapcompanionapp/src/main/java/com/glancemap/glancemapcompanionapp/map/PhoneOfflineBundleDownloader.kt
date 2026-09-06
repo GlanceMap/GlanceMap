@@ -6,6 +6,7 @@ import com.glancemap.glancemapcompanionapp.refuges.RefugesGeoJsonPoiImporter
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloadException
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloader
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileMath
+import com.glancemap.glancemapcompanionapp.routing.RoutingTileDownloadResult
 import com.glancemap.trailcore.oam.OamDownloadArea
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -415,6 +416,28 @@ internal class PhoneOfflineBundleDownloader(
             }
         val availableRouting = availablePhoneRoutingFiles(routingExpected, storage.routingDirectory())
         val availableDem = availableDemFiles(demExpected, demSource)
+        var unavailableRouting =
+            (existing?.unavailableRoutingFileNames.orEmpty() + recovery?.unavailableRoutingFileNames.orEmpty())
+                .map { File(it).name }
+                .filter { it in routingExpected }
+                .filterNot(availableRouting::contains)
+                .distinct()
+        var unavailableDem =
+            (
+                existing
+                    ?.unavailableDemTileIds
+                    .orEmpty()
+                    .takeIf { existing?.demSource == demSource }
+                    .orEmpty() +
+                    recovery
+                        ?.unavailableDemTileIds
+                        .orEmpty()
+                        .takeIf { recovery?.demSource == demSource }
+                        .orEmpty()
+            ).map { it.uppercase(Locale.ROOT) }
+                .filter { it in demExpected }
+                .filterNot(availableDem::contains)
+                .distinct()
         checkpoint(
             recoveryState.copy(
                 phase =
@@ -428,6 +451,8 @@ internal class PhoneOfflineBundleDownloader(
                 demTileIds = demExpected,
                 downloadedDemTileIds = availableDem,
                 demSource = demSource,
+                unavailableRoutingFileNames = unavailableRouting,
+                unavailableDemTileIds = unavailableDem,
             ),
         )
 
@@ -437,12 +462,13 @@ internal class PhoneOfflineBundleDownloader(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_ROUTING,
                     downloadedRoutingFileNames =
                         availablePhoneRoutingFiles(routingExpected, storage.routingDirectory()),
+                    unavailableRoutingFileNames = unavailableRouting,
                     detail = activeFailureContext?.detail.orEmpty().ifBlank { error.message.orEmpty() },
                 ),
             )
             throw error
         }
-        val routingFileNames =
+        val downloadedRoutingFileNames =
             if (selection.includeRouting) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for routing." }
                 setFailureContext(
@@ -450,14 +476,48 @@ internal class PhoneOfflineBundleDownloader(
                     component = PhoneOfflineBundleComponent.ROUTING,
                 )
                 try {
-                    downloadRouting(bounds, forces.forceRouting, onProgress).also { downloaded ->
-                        check(downloaded.containsAll(routingExpected)) { "Routing bundle is incomplete." }
+                    downloadRouting(
+                        bounds = bounds,
+                        forceRefresh = forces.forceRouting,
+                        skipUnavailable = if (forces.forceRouting) emptySet() else unavailableRouting.toSet(),
+                        onProgress = onProgress,
+                        onTileUnavailable = { tileName, statusCode ->
+                            unavailableRouting =
+                                (unavailableRouting + tileName).distinct()
+                            remoteFilesByUrl["$BROUTER_SEGMENTS_BASE_URL/$tileName"] =
+                                PhoneOfflineRemoteFileMetadata(
+                                    url = "$BROUTER_SEGMENTS_BASE_URL/$tileName",
+                                    fileName = tileName,
+                                    entityTag = null,
+                                    lastModifiedMillis = null,
+                                    contentLengthBytes = null,
+                                    httpStatusCode = statusCode,
+                                )
+                            checkpoint(
+                                recoveryState.copy(
+                                    downloadedRoutingFileNames =
+                                        availablePhoneRoutingFiles(routingExpected, storage.routingDirectory()),
+                                    unavailableRoutingFileNames = unavailableRouting,
+                                ),
+                            )
+                        },
+                    ).let { result ->
+                        val downloaded = availablePhoneRoutingFiles(routingExpected, storage.routingDirectory())
+                        unavailableRouting =
+                            (unavailableRouting + result.unavailableTileNames)
+                                .filterNot(downloaded::contains)
+                                .distinct()
+                        check((downloaded + unavailableRouting).containsAll(routingExpected)) {
+                            "Routing bundle is incomplete."
+                        }
                         checkpoint(
                             recoveryState.copy(
                                 phase = PhoneOfflineBundlePhase.DOWNLOADING_DEM,
                                 downloadedRoutingFileNames = downloaded,
+                                unavailableRoutingFileNames = unavailableRouting,
                             ),
                         )
+                        downloaded
                     }
                 } catch (error: BRouterTileDownloadException) {
                     setFailureContext(
@@ -473,8 +533,7 @@ internal class PhoneOfflineBundleDownloader(
             } else {
                 availableRouting
             }
-        val downloadedRoutingFileNames =
-            if (selection.includeRouting) routingFileNames else availableRouting
+        val routingFileNames = routingExpected
         val demTileIds =
             if (selection.includeDem) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
@@ -483,14 +542,50 @@ internal class PhoneOfflineBundleDownloader(
                     component = PhoneOfflineBundleComponent.DEM,
                 )
                 try {
-                    downloadDem(bounds, demSource, forces.forceDemTileIds, onProgress).also { downloaded ->
+                    downloadDem(
+                        bounds = bounds,
+                        source = demSource,
+                        forceTileIds = forces.forceDemTileIds,
+                        skipUnavailable = unavailableDem.toSet(),
+                        onProgress = onProgress,
+                        onTileUnavailable = { tileId, statusCode ->
+                            unavailableDem = (unavailableDem + tileId).distinct()
+                            remoteFilesByUrl[demSource.remoteUrl(tileId)] =
+                                PhoneOfflineRemoteFileMetadata(
+                                    url = demSource.remoteUrl(tileId),
+                                    fileName = demSource.remoteFileName(tileId),
+                                    entityTag = null,
+                                    lastModifiedMillis = null,
+                                    contentLengthBytes = null,
+                                    httpStatusCode = statusCode,
+                                )
+                            checkpoint(
+                                recoveryState.copy(
+                                    downloadedRoutingFileNames = downloadedRoutingFileNames,
+                                    downloadedDemTileIds =
+                                        availableDemFiles(demExpected, demSource),
+                                    unavailableRoutingFileNames = unavailableRouting,
+                                    unavailableDemTileIds = unavailableDem,
+                                ),
+                            )
+                        },
+                    ).let { result ->
+                        val downloaded = availableDemFiles(demExpected, demSource)
+                        unavailableDem =
+                            (unavailableDem + result.unavailableTileIds)
+                                .map { it.uppercase(Locale.ROOT) }
+                                .filterNot(downloaded::contains)
+                                .distinct()
                         checkpoint(
                             recoveryState.copy(
                                 phase = PhoneOfflineBundlePhase.DOWNLOADING_REFUGES,
                                 downloadedRoutingFileNames = downloadedRoutingFileNames,
                                 downloadedDemTileIds = downloaded,
+                                unavailableRoutingFileNames = unavailableRouting,
+                                unavailableDemTileIds = unavailableDem,
                             ),
                         )
+                        downloaded
                     }
                 } catch (error: Throwable) {
                     checkpoint(
@@ -498,6 +593,8 @@ internal class PhoneOfflineBundleDownloader(
                             phase = PhoneOfflineBundlePhase.DOWNLOADING_DEM,
                             downloadedRoutingFileNames = downloadedRoutingFileNames,
                             downloadedDemTileIds = availableDemFiles(demExpected, demSource),
+                            unavailableRoutingFileNames = unavailableRouting,
+                            unavailableDemTileIds = unavailableDem,
                             detail = error.message.orEmpty(),
                         ),
                     )
@@ -580,6 +677,8 @@ internal class PhoneOfflineBundleDownloader(
                 downloadedDemTileIds = downloadedDemTileIds,
                 installedAtMillis = System.currentTimeMillis(),
                 remoteFiles = remoteFilesByUrl.values.sortedBy { it.url },
+                unavailableRoutingFileNames = unavailableRouting,
+                unavailableDemTileIds = unavailableDem,
             )
         val completedBundle = bundle.copy(integrity = phoneOfflineBundleIntegrity(applicationContext, bundle))
         bundleStore.upsert(completedBundle)
@@ -905,14 +1004,18 @@ internal class PhoneOfflineBundleDownloader(
     private suspend fun downloadRouting(
         bounds: BoundingBox,
         forceRefresh: Boolean,
+        skipUnavailable: Set<String>,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
-    ): List<String> {
+        onTileUnavailable: (String, Int) -> Unit,
+    ): RoutingTileDownloadResult {
         val bbox = bounds.asPhoneBbox()
         val result =
             routingDownloader.downloadForBbox(
                 bboxInput = bbox,
                 forceRefresh = forceRefresh,
                 includeFileUris = false,
+                knownUnavailableTileNames = skipUnavailable,
+                onTileUnavailable = onTileUnavailable,
                 reportProgress = { percent, status, detail ->
                     onProgress(
                         PhoneOfflineBundleProgress(
@@ -925,19 +1028,24 @@ internal class PhoneOfflineBundleDownloader(
                     )
                 },
             )
-        return result.tileNames.filter { fileName ->
-            val target = File(storage.routingDirectory(), File(fileName).name)
-            isUsablePhoneRoutingFile(target)
-        }
+        return result
     }
+
+    private data class PhoneOfflineDemDownloadResult(
+        val unavailableTileIds: List<String>,
+    )
 
     private suspend fun downloadDem(
         bounds: BoundingBox,
         source: PhoneOfflineDemSource,
         forceTileIds: Set<String>,
+        skipUnavailable: Set<String>,
         onProgress: (PhoneOfflineBundleProgress) -> Unit,
-    ): List<String> {
+        onTileUnavailable: (String, Int) -> Unit,
+    ): PhoneOfflineDemDownloadResult {
         val tileIds = phoneDemTileIdsForBounds(bounds)
+        val forcedTileIds = forceTileIds.map { it.uppercase(Locale.ROOT) }.toSet()
+        val unavailable = linkedSetOf<String>()
         tileIds.forEachIndexed { index, tileId ->
             val target = phoneOfflineDemFile(storage.elevationDirectory(), source, tileId)
             onProgress(
@@ -946,18 +1054,48 @@ internal class PhoneOfflineBundleDownloader(
                     detail = "$tileId (${index + 1}/${tileIds.size})",
                 ),
             )
-            if (tileId.uppercase(Locale.ROOT) in forceTileIds || !isUsablePhoneDemFile(target)) {
-                downloadFileToTarget(
-                    url = source.remoteUrl(tileId),
-                    target = target,
-                    phase = PhoneOfflineBundlePhase.DOWNLOADING_DEM,
-                    onProgress = onProgress,
-                )
+            val normalizedTileId = tileId.uppercase(Locale.ROOT)
+            if (
+                normalizedTileId in skipUnavailable &&
+                normalizedTileId !in forcedTileIds &&
+                !isUsablePhoneDemFile(target)
+            ) {
+                if (target.exists() && !target.delete()) {
+                    downloadFailure(PhoneOfflineBundleFailure.STORAGE)
+                }
+                val partial = File(target.parentFile, "." + target.name + ".part")
+                if (partial.exists() && !partial.delete()) {
+                    downloadFailure(PhoneOfflineBundleFailure.STORAGE)
+                }
+                unavailable += normalizedTileId
+                onTileUnavailable(normalizedTileId, HttpURLConnection.HTTP_NOT_FOUND)
+            } else if (normalizedTileId in forcedTileIds || !isUsablePhoneDemFile(target)) {
+                try {
+                    downloadFileToTarget(
+                        url = source.remoteUrl(tileId),
+                        target = target,
+                        phase = PhoneOfflineBundlePhase.DOWNLOADING_DEM,
+                        onProgress = onProgress,
+                    )
+                } catch (error: PhoneOfflineHttpException) {
+                    if (!isPhoneOfflineRemoteUnavailable(error)) throw error
+                    if (!isUsablePhoneDemFile(target)) {
+                        if (target.exists() && !target.delete()) {
+                            downloadFailure(PhoneOfflineBundleFailure.STORAGE)
+                        }
+                    }
+                    val partial = File(target.parentFile, "." + target.name + ".part")
+                    if (partial.exists() && !partial.delete()) {
+                        downloadFailure(PhoneOfflineBundleFailure.STORAGE)
+                    }
+                    unavailable += normalizedTileId
+                    onTileUnavailable(normalizedTileId, error.statusCode)
+                }
             }
         }
-        return tileIds.filter { tileId ->
-            isUsablePhoneDemFile(phoneOfflineDemFile(storage.elevationDirectory(), source, tileId))
-        }
+        return PhoneOfflineDemDownloadResult(
+            unavailableTileIds = unavailable.toList(),
+        )
     }
 
     private suspend fun downloadFileToTarget(
@@ -1028,7 +1166,7 @@ internal class PhoneOfflineBundleDownloader(
                     continue
                 }
                 if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
-                    throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.HTTP)
+                    throw PhoneOfflineHttpException(responseCode, url)
                 }
                 val append = resumeOffset > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
                 val initialBytes = if (append) resumeOffset else 0L
@@ -1089,8 +1227,16 @@ internal class PhoneOfflineBundleDownloader(
                 activeConnections += connection
                 try {
                     val responseCode = connection.responseCode
-                    if (responseCode !in 200..399) throw IOException("HTTP $responseCode for ${request.url}")
-                    connection.remoteMetadata(request.url, request.fileName)
+                    if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                        connection.remoteMetadata(
+                            request.url,
+                            request.fileName,
+                            httpStatusCode = responseCode,
+                        )
+                    } else {
+                        if (responseCode !in 200..399) throw IOException("HTTP $responseCode for ${request.url}")
+                        connection.remoteMetadata(request.url, request.fileName)
+                    }
                 } finally {
                     activeConnections -= connection
                     connection.disconnect()
@@ -1102,6 +1248,7 @@ internal class PhoneOfflineBundleDownloader(
         url: String,
         fileName: String,
         contentLengthOverride: Long? = null,
+        httpStatusCode: Int? = null,
     ): PhoneOfflineRemoteFileMetadata =
         PhoneOfflineRemoteFileMetadata(
             url = url,
@@ -1109,6 +1256,7 @@ internal class PhoneOfflineBundleDownloader(
             entityTag = getHeaderField("ETag")?.takeIf(String::isNotBlank),
             lastModifiedMillis = getHeaderFieldDate("Last-Modified", -1L).takeIf { it >= 0L },
             contentLengthBytes = contentLengthOverride ?: contentLengthLong.takeIf { it > 0L },
+            httpStatusCode = httpStatusCode,
         )
 
     private fun openConnection(
@@ -1163,6 +1311,19 @@ internal fun expectedPhoneBundleArchiveEntryName(
 private class PhoneOfflineBundleDownloadException(
     val reason: PhoneOfflineBundleFailure,
 ) : IOException()
+
+internal class PhoneOfflineHttpException(
+    val statusCode: Int,
+    url: String,
+) : IOException("HTTP $statusCode for $url")
+
+internal fun isPhoneOfflineRemoteUnavailable(
+    error: Throwable,
+): Boolean = error is PhoneOfflineHttpException && isPhoneOfflineRemoteUnavailableStatus(error.statusCode)
+
+internal fun isPhoneOfflineRemoteUnavailableStatus(
+    statusCode: Int,
+): Boolean = statusCode == HttpURLConnection.HTTP_NOT_FOUND
 
 private fun Throwable.toPhoneOfflineBundleFailureDetail(): String =
     when (this) {

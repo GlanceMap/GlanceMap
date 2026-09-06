@@ -351,8 +351,15 @@ private fun phoneOfflineBundleDialogContent(
                 if (state.progress.detail.isNotBlank()) Text(state.progress.detail)
                 bundleProgress(state.progress)
             }
-            is PhoneOfflineBundleDownloadState.Completed ->
+            is PhoneOfflineBundleDownloadState.Completed -> {
                 Text(stringResource(R.string.map_bundle_status_complete, state.bundle.areaLabel))
+                val unavailableCount =
+                    state.bundle.unavailableRoutingFileNames.size +
+                        state.bundle.unavailableDemTileIds.size
+                if (unavailableCount > 0) {
+                    Text("$unavailableCount optional coverage tile(s) unavailable.")
+                }
+            }
             is PhoneOfflineBundleDownloadState.Failed -> {
                 Text(stringResource(R.string.map_bundle_status_retry))
                 state.context?.let { context ->

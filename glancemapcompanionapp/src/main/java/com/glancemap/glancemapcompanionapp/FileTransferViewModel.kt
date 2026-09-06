@@ -1011,10 +1011,22 @@ class FileTransferViewModel : ViewModel() {
 
                     val message =
                         when {
+                            result.availableTileNames.isEmpty() && result.unavailableTileNames.isNotEmpty() ->
+                                "No requested routing packs are available " +
+                                    "(${result.unavailableTileNames.size} unavailable)."
+                            forceRefresh && result.downloadedCount > 0 && result.unavailableTileNames.isNotEmpty() ->
+                                "Routing refreshed: ${result.downloadedCount} pack(s) updated, " +
+                                    "${result.unavailableTileNames.size} unavailable."
                             forceRefresh && result.downloadedCount > 0 ->
                                 "Routing refreshed: ${result.downloadedCount} pack(s) updated."
+                            result.downloadedCount > 0 && result.unavailableTileNames.isNotEmpty() ->
+                                "Routing ready: ${result.downloadedCount} downloaded, " +
+                                    "${result.unavailableTileNames.size} unavailable."
                             result.downloadedCount > 0 && result.skippedCount > 0 ->
                                 "Routing ready: ${result.downloadedCount} downloaded, ${result.skippedCount} already present."
+                            result.unavailableTileNames.isNotEmpty() ->
+                                "Routing already available (${result.skippedCount} pack(s) already present), " +
+                                    "${result.unavailableTileNames.size} unavailable."
                             result.downloadedCount > 0 ->
                                 "Routing ready: ${result.downloadedCount} pack(s) downloaded."
                             else ->
@@ -1022,7 +1034,7 @@ class FileTransferViewModel : ViewModel() {
                         }
 
                     _lastRoutingDownloadedFiles.value =
-                        result.tileUris.zip(result.tileNames).map { (uri, name) ->
+                        result.tileUris.zip(result.availableTileNames).map { (uri, name) ->
                             GeneratedPhoneFile(uri = uri, fileName = name)
                         }
                     _routingDownloadProgress.value =

@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.BoundingBox
+import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Tile
 import java.io.File
 
@@ -56,6 +57,15 @@ class PhoneOfflineMapsforgeSurfaceTest {
         val identity = identity("Bayern_oam.osm.map", "elv-hiking")
 
         assertEquals(PhoneMapsforgeBaseLayerChange.NONE, phoneMapsforgeBaseLayerChange(identity, identity))
+    }
+
+    @Test
+    fun mapsforgeCameraConversionPreservesFractionalZoom() {
+        val camera = PhoneMapCameraSnapshot(47.5, 11.5, 12.75, 90f)
+
+        val converted = camera.toRendererMapPosition().toPhoneMapCameraSnapshotOrNull()
+
+        assertEquals(12.75, requireNotNull(converted).zoom, 0.0)
     }
 
     @Test
@@ -192,6 +202,33 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
+    fun mapsforgeSelectionRoundTripsThroughRotationAroundTheConfiguredLowerAnchor() {
+        val lowerMapCenter = Point(360.0, 820.0)
+        val projectedPoint = Point(428.0, 764.0)
+
+        val screenPoint =
+            phoneMapsforgeScreenPointForMapPoint(
+                point = projectedPoint,
+                pivot = lowerMapCenter,
+                rotationDegrees = 37.0,
+            )
+        val recoveredPoint =
+            phoneMapsforgeMapPointFromScreen(
+                point = Point(screenPoint.x.toDouble(), screenPoint.y.toDouble()),
+                pivot = lowerMapCenter,
+                rotationDegrees = 37.0,
+            )
+
+        assertEquals(projectedPoint.x, recoveredPoint.x, 0.01)
+        assertEquals(projectedPoint.y, recoveredPoint.y, 0.01)
+        assertEquals(
+            lowerMapCenter.y.toFloat(),
+            phoneMapsforgeScreenPointForMapPoint(lowerMapCenter, lowerMapCenter, 37.0).y,
+            0.0f,
+        )
+    }
+
+    @Test
     fun nativeRotationTrackerReportsOnlyMeaningfulTwoFingerBearingChanges() {
         val tracker = PhoneMapsforgeRotationGestureTracker()
         tracker.onTouch(PhoneMapsforgeTouchAction.DOWN, pointerCount = 1)
@@ -291,4 +328,12 @@ class PhoneOfflineMapsforgeSurfaceTest {
             mapIdentity = "/maps/$mapName",
             themeConfig = PhoneOfflineThemeConfig("elevate", styleId),
         )
+
+    @Test
+    fun baseLayerOpacityUpdateClampsAndSkipsEquivalentValues() {
+        assertEquals(0.4f, phoneOfflineBaseLayerOpacityUpdate(1f, 0.4f)!!, 0f)
+        assertEquals(0f, phoneOfflineBaseLayerOpacityUpdate(0.4f, -1f)!!, 0f)
+        assertEquals(1f, phoneOfflineBaseLayerOpacityUpdate(0.4f, 2f)!!, 0f)
+        assertNull(phoneOfflineBaseLayerOpacityUpdate(0.4f, 0.4005f))
+    }
 }
