@@ -121,6 +121,56 @@ class PhoneTwoFingerTapDetectorTest {
         assertEquals(0, starts)
     }
 
+    @Test
+    fun disabledTwoFingerGestureRemainsAvailableToTheNativeMap() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        var enabled = false
+        var starts = 0
+        val detector =
+            PhoneTwoFingerTapDetector(
+                context = context,
+                onTwoFingerTap = { _, _, _, _ -> },
+                onMeasurementGestureStart = { starts += 1 },
+                isMeasurementEnabled = { enabled },
+            )
+
+        singleEvent(MotionEvent.ACTION_DOWN, 10f, 10f).consume { event ->
+            assertFalse(detector.onTouchEvent(event))
+        }
+        multiEvent(MotionEvent.ACTION_POINTER_DOWN, 10f, 10f, 20f, 20f, pointerActionIndex = 1)
+            .consume { event -> assertFalse(detector.onTouchEvent(event)) }
+        SystemClock.sleep(220L)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertEquals(0, starts)
+    }
+
+    @Test
+    fun disablingDuringPendingRecognitionCancelsWithoutTakingOwnership() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        var enabled = true
+        var starts = 0
+        val detector =
+            PhoneTwoFingerTapDetector(
+                context = context,
+                onTwoFingerTap = { _, _, _, _ -> },
+                onMeasurementGestureStart = { starts += 1 },
+                isMeasurementEnabled = { enabled },
+            )
+
+        singleEvent(MotionEvent.ACTION_DOWN, 10f, 10f).consume(detector::onTouchEvent)
+        multiEvent(MotionEvent.ACTION_POINTER_DOWN, 10f, 10f, 20f, 20f, pointerActionIndex = 1)
+            .consume(detector::onTouchEvent)
+        enabled = false
+        singleEvent(MotionEvent.ACTION_MOVE, 10f, 10f).consume { event ->
+            assertFalse(detector.onTouchEvent(event))
+        }
+        SystemClock.sleep(220L)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertEquals(0, starts)
+    }
+
     private fun singleEvent(
         action: Int,
         x: Float,

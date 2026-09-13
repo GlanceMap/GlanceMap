@@ -20,6 +20,7 @@ internal class PhoneTwoFingerTapDetector(
     private val onMeasurementGestureStart: () -> Unit = {},
     private val onMeasurementPointDragStart: () -> Unit = {},
     private val onMeasurementPointDragEnd: (cancelled: Boolean) -> Unit = { _ -> },
+    private val isMeasurementEnabled: () -> Boolean = { true },
 ) {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val handler = Handler(Looper.getMainLooper())
@@ -38,13 +39,19 @@ internal class PhoneTwoFingerTapDetector(
     /** Returns true when this detector owns the current gesture instead of the native map. */
     fun onTouchEvent(event: MotionEvent): Boolean {
         val ownedBeforeEvent = measurementGestureOwned
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> handleDown(event)
-            MotionEvent.ACTION_POINTER_DOWN -> handlePointerDown(event)
-            MotionEvent.ACTION_MOVE -> handleMove(event)
-            MotionEvent.ACTION_POINTER_UP -> handlePointerUp(event)
-            MotionEvent.ACTION_UP -> handleUp()
-            MotionEvent.ACTION_CANCEL -> reset()
+        if (isMeasurementEnabled()) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> handleDown(event)
+                MotionEvent.ACTION_POINTER_DOWN -> handlePointerDown(event)
+                MotionEvent.ACTION_MOVE -> handleMove(event)
+                MotionEvent.ACTION_POINTER_UP -> handlePointerUp(event)
+                MotionEvent.ACTION_UP -> handleUp()
+                MotionEvent.ACTION_CANCEL -> reset()
+            }
+        } else if (measurementGestureOwned) {
+            reset()
+        } else {
+            cancelCandidate()
         }
         return ownedBeforeEvent || measurementGestureOwned
     }
@@ -147,12 +154,17 @@ internal class PhoneTwoFingerTapDetector(
     }
 
     private fun activateIfPossible() {
-        if (!candidate || active) return
-        val points = currentTwoFingerPoints() ?: return
-        active = true
-        measurementGestureOwned = true
-        onMeasurementGestureStart()
-        onTwoFingerTap(points.first.x, points.first.y, points.second.x, points.second.y)
+        if (!isMeasurementEnabled()) {
+            cancelCandidate()
+        } else if (!candidate || active) {
+            return
+        } else {
+            val points = currentTwoFingerPoints() ?: return
+            active = true
+            measurementGestureOwned = true
+            onMeasurementGestureStart()
+            onTwoFingerTap(points.first.x, points.first.y, points.second.x, points.second.y)
+        }
     }
 
     private fun currentTwoFingerPoints(): Pair<ScreenPoint, ScreenPoint>? =

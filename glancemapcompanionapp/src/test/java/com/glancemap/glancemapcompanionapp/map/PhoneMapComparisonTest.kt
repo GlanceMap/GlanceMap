@@ -115,6 +115,35 @@ class PhoneMapComparisonTest {
     }
 
     @Test
+    fun cameraZoomConversionPreservesGroundScaleAcrossDensitiesAndFractionalZooms() {
+        val latitude = 47.5
+        val mapLibreZoom = 12.75
+
+        listOf(1.0, 2.0, 3.0).forEach { density ->
+            val mapLibreTileScale = PHONE_MAPLIBRE_CAMERA_TILE_SIZE_PX * density
+            val mapsforgeTileSize = 256.0 * density
+            val expectedResolution =
+                phoneGroundResolutionMetersPerPixel(latitude, mapLibreZoom, mapLibreTileScale)
+            val mapsforgeZoom =
+                phoneMapsforgeZoomForGroundResolution(latitude, expectedResolution, mapsforgeTileSize)
+            val mapLibreZoomAgain =
+                phoneMapLibreZoomForGroundResolution(latitude, expectedResolution, density)
+
+            assertEquals(
+                expectedResolution,
+                phoneGroundResolutionMetersPerPixel(latitude, mapsforgeZoom, mapsforgeTileSize),
+                1e-9,
+            )
+            assertEquals(mapLibreZoom, mapLibreZoomAgain, 1e-9)
+            assertEquals(
+                mapLibreZoom + 1.0,
+                phoneMapsforgeZoomForMapLibreZoom(mapLibreZoom, mapsforgeTileSize, density),
+                1e-9,
+            )
+        }
+    }
+
+    @Test
     fun comparisonOwnershipRemovesGpxSegmentsFromTheBaseRenderer() {
         val segments =
             listOf(

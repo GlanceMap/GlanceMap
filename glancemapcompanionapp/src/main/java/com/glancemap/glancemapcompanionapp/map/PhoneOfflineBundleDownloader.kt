@@ -534,7 +534,7 @@ internal class PhoneOfflineBundleDownloader(
                 availableRouting
             }
         val routingFileNames = routingExpected
-        val demTileIds =
+        val downloadedDemTileIds =
             if (selection.includeDem) {
                 val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
                 setFailureContext(
@@ -603,9 +603,6 @@ internal class PhoneOfflineBundleDownloader(
             } else {
                 availableDem
             }
-        val downloadedDemTileIds =
-            if (selection.includeDem) demTileIds else availableDem
-
         val existingRefugesInfo =
             resolvePhoneOfflineBundleLocalAsset(
                 candidateFileNames = listOf(existing?.refugesInfoFileName, recovery?.refugesInfoFileName),
@@ -673,7 +670,7 @@ internal class PhoneOfflineBundleDownloader(
                 routingFileNames = routingFileNames,
                 downloadedRoutingFileNames = downloadedRoutingFileNames,
                 demSource = demSource,
-                demTileIds = demTileIds,
+                demTileIds = demExpected,
                 downloadedDemTileIds = downloadedDemTileIds,
                 installedAtMillis = System.currentTimeMillis(),
                 remoteFiles = remoteFilesByUrl.values.sortedBy { it.url },
@@ -1116,14 +1113,11 @@ internal class PhoneOfflineBundleDownloader(
                 onProgress(progress.copy(detail = target.name))
             },
         )
-        if (!isUsablePhoneDemFile(temporary)) {
+        if (!isUsablePhoneDemFile(temporary, target.name)) {
             temporary.delete()
             downloadFailure(PhoneOfflineBundleFailure.STORAGE)
         }
-        target.delete()
-        if (!temporary.renameTo(target)) {
-            throw PhoneOfflineBundleDownloadException(PhoneOfflineBundleFailure.STORAGE)
-        }
+        installPhoneDemFile(temporary, target)
     }
 
     @Suppress("CyclomaticComplexMethod") // Handles the small HTTP response matrix needed for safe resume.
@@ -1331,7 +1325,7 @@ private fun Throwable.toPhoneOfflineBundleFailureDetail(): String =
         else -> ""
     }
 
-private fun downloadFailure(
+internal fun downloadFailure(
     reason: PhoneOfflineBundleFailure,
 ): Nothing = throw PhoneOfflineBundleDownloadException(reason)
 

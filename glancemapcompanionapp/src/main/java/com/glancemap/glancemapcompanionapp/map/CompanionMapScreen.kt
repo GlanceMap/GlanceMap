@@ -98,6 +98,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdate
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.gestures.MoveGestureDetector
@@ -109,6 +110,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import kotlin.math.log2
 import kotlin.math.roundToInt
 
 internal val defaultPhoneMapCamera =
@@ -490,7 +492,9 @@ internal fun CompanionMapScreen(
         }
     val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
         mapSourcePreference = mapSourcePreferences.saveOffline(selectedMap)
-        mapRuntime.map?.cameraSnapshotOrNull()?.let { mapCamera = it }
+        mapRuntime.map
+            ?.cameraSnapshotOrNull(mapRuntime.mapView?.pixelRatio?.toDouble() ?: 1.0)
+            ?.let { mapCamera = it }
         liveMapPosition = null
         mapRuntime = mapRuntime.invalidate()
         pendingOfflineMap = selectedMap
@@ -1620,6 +1624,9 @@ internal fun CompanionMapScreen(
                                 onMapLongPress = onMapLongPress,
                                 onTwoFingerTap = onDistanceMeasurementGesture,
                                 onMeasurementPointMoved = onDistanceMeasurementPointMoved,
+                                isMeasurementEnabled = {
+                                    mapSettings.distanceMeasurementEnabled && !comparisonOwnsSemanticOverlays
+                                },
                                 distanceMeasurement =
                                     distanceMeasurement.takeUnless { comparisonOwnsSemanticOverlays },
                                 onMapViewCreated = { createdMapView ->
@@ -1762,6 +1769,9 @@ internal fun CompanionMapScreen(
                                     onMapLongPress = onMapLongPress,
                                     onTwoFingerTap = onDistanceMeasurementGesture,
                                     onMeasurementPointMoved = onDistanceMeasurementPointMoved,
+                                    isMeasurementEnabled = {
+                                        mapSettings.distanceMeasurementEnabled && onlineComparisonActive
+                                    },
                                     distanceMeasurement = distanceMeasurement,
                                     onMapViewCreated = { createdMapView ->
                                         comparisonMapRuntime =
@@ -1797,6 +1807,8 @@ internal fun CompanionMapScreen(
                                             initialCamera = mapCamera,
                                             transparentBackground = true,
                                             isInteractive = offlineComparisonActive,
+                                            measurementEnabled =
+                                                mapSettings.distanceMeasurementEnabled && offlineComparisonActive,
                                             cameraOverride = mapCamera,
                                             mapSettings = mapSettings,
                                             baseLayerOpacity = comparisonOverlayAlpha,
@@ -1890,6 +1902,8 @@ internal fun CompanionMapScreen(
                                                 offlineThemeConfig
                                             },
                                         initialCamera = mapCamera,
+                                        measurementEnabled =
+                                            mapSettings.distanceMeasurementEnabled && !onlineComparisonActive,
                                         mapSettings = mapSettings,
                                         terrainDataVersion = terrainDataVersion,
                                         hasTerrainData = hasElevationData,
@@ -2143,6 +2157,9 @@ internal fun CompanionMapScreen(
                                     onMapLongPress = onMapLongPress,
                                     onTwoFingerTap = onDistanceMeasurementGesture,
                                     onMeasurementPointMoved = onDistanceMeasurementPointMoved,
+                                    isMeasurementEnabled = {
+                                        mapSettings.distanceMeasurementEnabled && onlineComparisonActive
+                                    },
                                     distanceMeasurement = distanceMeasurement,
                                     onMapViewCreated = { createdMapView ->
                                         comparisonMapRuntime =
@@ -2794,7 +2811,9 @@ private fun observeOnlineCamera(
         val listener =
             MapLibreMap.OnCameraMoveListener {
                 if (runtime.isRendererCurrentIn(currentRuntime)) {
-                    activeMap.cameraSnapshotOrNull()?.let(currentOnCameraChanged)
+                    activeMap
+                        .cameraSnapshotOrNull(runtime.mapView?.pixelRatio?.toDouble() ?: 1.0)
+                        ?.let(currentOnCameraChanged)
                 }
             }
         activeMap.addOnCameraMoveListener(listener)
@@ -3015,9 +3034,10 @@ private fun synchronizeComparisonOnlineCamera(
 ) {
     LaunchedEffect(runtime.map, camera) {
         val activeMap = runtime.map ?: return@LaunchedEffect
-        val current = activeMap.cameraSnapshotOrNull()
+        val pixelRatio = runtime.mapView?.pixelRatio?.toDouble() ?: 1.0
+        val current = activeMap.cameraSnapshotOrNull(pixelRatio)
         if (current == null || phoneMapComparisonCameraNeedsSync(current, camera)) {
-            activeMap.moveCamera(camera.toMapLibreCameraUpdate())
+            activeMap.moveCamera(camera.toMapLibreCameraUpdate(activeMap, pixelRatio))
         }
     }
 }
@@ -3273,6 +3293,7 @@ private fun mapSurface(
     surfaceMode: PhoneMapLibreSurfaceMode,
     isInteractive: Boolean = true,
     isVisible: Boolean = true,
+    isMeasurementEnabled: () -> Boolean = { true },
     onMapTap: (PhoneMapCoordinate) -> Unit,
     onMapLongPress: (PhoneMapCoordinate) -> Unit,
     onTwoFingerTap: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit,
@@ -3288,6 +3309,7 @@ private fun mapSurface(
     val latestOnMapTap = rememberUpdatedState(onMapTap)
     val latestOnMapLongPress = rememberUpdatedState(onMapLongPress)
     val latestDistanceMeasurement = rememberUpdatedState(distanceMeasurement)
+    val latestIsMeasurementEnabled = rememberUpdatedState(isMeasurementEnabled)
     key(surfaceMode, onlineProvider.id, additionalAttribution) {
         AndroidView(
             factory = { viewContext ->
@@ -3298,6 +3320,7 @@ private fun mapSurface(
                     additionalAttribution = additionalAttribution,
                     surfaceMode = surfaceMode,
                     distanceMeasurement = { latestDistanceMeasurement.value },
+                    isMeasurementEnabled = { latestIsMeasurementEnabled.value() },
                     callbacks =
                         PhoneMapViewCallbacks(
                             onTwoFingerTap = { first, second -> latestOnTwoFingerTap.value(first, second) },
@@ -3868,6 +3891,7 @@ private fun createMapView(
     additionalAttribution: String?,
     surfaceMode: PhoneMapLibreSurfaceMode,
     distanceMeasurement: () -> PhoneMapDistanceMeasurement?,
+    isMeasurementEnabled: () -> Boolean,
     callbacks: PhoneMapViewCallbacks,
 ): MapView {
     ensureMapLibreConfigured(context)
@@ -3964,6 +3988,7 @@ private fun createMapView(
                 onTwoFingerMove = ::publishTwoFingerMeasurement,
                 measurementHandleAt = ::measurementHandleAt,
                 onMeasurementPointMove = ::publishMeasurementPointMove,
+                isMeasurementEnabled = isMeasurementEnabled,
                 onMeasurementGestureStart = {
                     mapView.cancelPhoneMapNativeGesture()
                     longPressDetector.cancelPhoneMapLongPress()
@@ -4016,7 +4041,12 @@ private fun createMapView(
                 ),
             ) {
                 if (!mapView.isDestroyed) {
-                    map.moveCamera(initialCamera.toMapLibreCameraUpdate())
+                    map.moveCamera(
+                        initialCamera.toMapLibreCameraUpdate(
+                            activeMap = map,
+                            pixelRatio = mapView.pixelRatio.toDouble(),
+                        ),
+                    )
                     callbacks.onStyleReady(generation, mapView, map)
                 }
             }
@@ -4257,17 +4287,29 @@ internal fun PhoneMapLocation.toAndroidLocation(): android.location.Location =
         metadata.elapsedRealtimeNanos?.let { elapsedRealtimeNanos = it }
     }
 
-private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate() =
-    CameraUpdateFactory.newCameraPosition(
+private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate(
+    activeMap: MapLibreMap? = null,
+    pixelRatio: Double = 1.0,
+): CameraUpdate {
+    val targetZoom =
+        groundResolutionMetersPerPixel?.let { resolution ->
+            activeMap?.let { map ->
+                val currentResolution =
+                    map.projection.getMetersPerPixelAtLatitude(latitude) / pixelRatio
+                map.cameraPosition.zoom + log2(currentResolution / resolution)
+            }
+        } ?: zoom
+    val cameraPosition =
         CameraPosition
             .Builder()
             .target(LatLng(latitude, longitude))
-            .zoom(zoom)
+            .zoom(targetZoom)
             .bearing(bearingDegrees.toDouble())
-            .build(),
-    )
+            .build()
+    return CameraUpdateFactory.newCameraPosition(cameraPosition)
+}
 
-private fun MapLibreMap.cameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
+private fun MapLibreMap.cameraSnapshotOrNull(pixelRatio: Double = 1.0): PhoneMapCameraSnapshot? =
     runCatching {
         val camera = cameraPosition
         val target = camera.target ?: return@runCatching null
@@ -4276,5 +4318,7 @@ private fun MapLibreMap.cameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
             longitude = target.longitude,
             zoom = camera.zoom,
             bearingDegrees = camera.bearing.toFloat(),
+            groundResolutionMetersPerPixel =
+                projection.getMetersPerPixelAtLatitude(target.latitude) / pixelRatio,
         )
     }.getOrNull()

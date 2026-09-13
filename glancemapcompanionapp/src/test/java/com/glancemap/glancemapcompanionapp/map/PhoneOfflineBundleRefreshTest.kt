@@ -99,6 +99,41 @@ class PhoneOfflineBundleRefreshTest {
         )
     }
 
+    @Test
+    fun unavailableDemRemainsExpectedAndBecomesARefreshCandidateWhenAvailable() {
+        val bundle =
+            PhoneInstalledBundle(
+                areaId = "area",
+                areaLabel = "Area",
+                mapFileName = "Area.map",
+                poiFileName = "Area.poi",
+                demTileIds = listOf("N45E006", "N45E007"),
+                downloadedDemTileIds = listOf("N45E006"),
+                unavailableDemTileIds = listOf("N45E007"),
+                installedAtMillis = 1L,
+            )
+        val changed =
+            PhoneOfflineBundleUpdateCheck(
+                bundle = bundle,
+                status = PhoneOfflineBundleUpdateStatus.UPDATE_AVAILABLE,
+                checkedFileCount = 1,
+                changedFileNames = listOf("N45E007.hgt.zip"),
+            )
+
+        assertEquals(
+            setOf("N45E007"),
+            changed.refreshForces(area()).forceDemTileIds,
+        )
+        assertEquals(
+            setOf("N45E006", "N45E007"),
+            PhoneOfflineBundleUpdateCheck(
+                bundle = bundle,
+                status = PhoneOfflineBundleUpdateStatus.UNKNOWN,
+                checkedFileCount = 0,
+            ).refreshForces(area()).forceDemTileIds,
+        )
+    }
+
     private fun metadata(
         entityTag: String?,
         modified: Long?,

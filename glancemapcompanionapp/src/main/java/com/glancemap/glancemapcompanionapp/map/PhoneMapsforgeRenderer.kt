@@ -104,6 +104,7 @@ internal data class PhoneOfflineInitialCameraSelection(
     val camera: PhoneMapCameraSnapshot,
     val reason: PhoneOfflineInitialCameraReason,
     val zoomClamped: Boolean,
+    val rendererZoom: Double = camera.zoom,
 )
 
 internal data class PhoneOfflineMapCameraContext(
@@ -117,15 +118,31 @@ internal data class PhoneOfflineMapCameraContext(
 internal fun phoneOfflineInitialCameraSelection(
     requested: PhoneMapCameraSnapshot,
     context: PhoneOfflineMapCameraContext,
+    mapsforgeTileSizePx: Double = PHONE_MAPLIBRE_CAMERA_TILE_SIZE_PX,
+    mapLibrePixelRatio: Double = 1.0,
 ): PhoneOfflineInitialCameraSelection {
     val rangeMin = minOf(context.zoomMin.toInt(), context.zoomMax.toInt())
     val rangeMax = maxOf(context.zoomMin.toInt(), context.zoomMax.toInt())
     if (context.bounds.contains(requested.latitude, requested.longitude)) {
-        val zoom = requested.zoom.coerceIn(rangeMin.toDouble(), rangeMax.toDouble())
+        val requestedRendererZoom =
+            requested.groundResolutionMetersPerPixel?.let { resolution ->
+                phoneMapsforgeZoomForGroundResolution(
+                    requested.latitude,
+                    resolution,
+                    mapsforgeTileSizePx,
+                )
+            } ?: phoneMapsforgeZoomForMapLibreZoom(
+                requested.zoom,
+                mapsforgeTileSizePx,
+                mapLibrePixelRatio,
+            )
+        val rendererZoom = requestedRendererZoom.coerceIn(rangeMin.toDouble(), rangeMax.toDouble())
+        val cameraZoom = requested.zoom.coerceIn(rangeMin.toDouble(), rangeMax.toDouble())
         return PhoneOfflineInitialCameraSelection(
-            camera = requested.copy(zoom = zoom),
+            camera = requested.copy(zoom = cameraZoom),
             reason = PhoneOfflineInitialCameraReason.CURRENT_VIEWPORT,
-            zoomClamped = zoom != requested.zoom,
+            zoomClamped = rendererZoom != requestedRendererZoom,
+            rendererZoom = rendererZoom,
         )
     }
     val hasMapStart = context.mapStart != null
@@ -146,6 +163,7 @@ internal fun phoneOfflineInitialCameraSelection(
                 PhoneOfflineInitialCameraReason.DEFAULT
             },
         zoomClamped = zoom != requestedZoom,
+        rendererZoom = zoom.toDouble(),
     )
 }
 
@@ -393,7 +411,17 @@ internal class PhoneMapsforgeRenderer(
                 zoomMin = mapFile.mapFileInfo.zoomLevelMin,
                 zoomMax = mapFile.mapFileInfo.zoomLevelMax,
             )
-        val camera = phoneOfflineInitialCameraSelection(initialCamera, cameraContext)
+        val model = mapView.model
+        val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
+        val resources = context.resources
+        val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
+        val camera =
+            phoneOfflineInitialCameraSelection(
+                requested = initialCamera,
+                context = cameraContext,
+                mapsforgeTileSizePx = mapsforgeTileSizePx,
+                mapLibrePixelRatio = mapLibrePixelRatio,
+            )
         trace.begin(PhoneOfflineMapRendererStage.MAPFILE_OPEN)
         trace.mapFileOpened(
             boundsAvailable = true,
@@ -412,7 +440,15 @@ internal class PhoneMapsforgeRenderer(
         if (change == PhoneMapsforgeBaseLayerChange.MAP_SWAP) {
             mapView.setZoomLevelMin(mapFile.mapFileInfo.zoomLevelMin)
             mapView.setZoomLevelMax(mapFile.mapFileInfo.zoomLevelMax)
-            mapView.model.mapViewPosition.setMapPosition(camera.camera.toRendererMapPosition(), false)
+            val mapViewPosition = model.mapViewPosition
+            mapViewPosition.setMapPosition(
+                MapPosition(
+                    LatLong(camera.camera.latitude, camera.camera.longitude),
+                    camera.rendererZoom,
+                    Rotation.NULL_ROTATION,
+                ),
+                false,
+            )
         }
         return cameraContext
     }
@@ -890,9 +926,17 @@ private class PhoneFirstVisibleTileRendererLayer(
         } ?: false
 }
 
-internal fun PhoneMapCameraSnapshot.toRendererMapPosition(): MapPosition =
-    MapPosition(
+internal fun PhoneMapCameraSnapshot.toRendererMapPosition(
+    mapsforgeTileSizePx: Double = PHONE_MAPLIBRE_CAMERA_TILE_SIZE_PX,
+    mapLibrePixelRatio: Double = 1.0,
+): MapPosition {
+    val mapsforgeZoom =
+        groundResolutionMetersPerPixel?.let { resolution ->
+            phoneMapsforgeZoomForGroundResolution(latitude, resolution, mapsforgeTileSizePx)
+        } ?: phoneMapsforgeZoomForMapLibreZoom(zoom, mapsforgeTileSizePx, mapLibrePixelRatio)
+    return MapPosition(
         LatLong(latitude, longitude),
-        zoom.coerceIn(0.0, Byte.MAX_VALUE.toDouble()),
+        mapsforgeZoom.coerceIn(0.0, Byte.MAX_VALUE.toDouble()),
         Rotation.NULL_ROTATION,
     )
+}

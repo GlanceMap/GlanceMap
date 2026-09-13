@@ -53,15 +53,21 @@ internal fun isUsablePhoneRoutingFile(file: File): Boolean {
     return hasSupportedVersion && runCatching { validatePhoneRoutingSegmentIndex(file) }.isSuccess
 }
 
-internal fun isUsablePhoneDemFile(file: File): Boolean {
+internal fun isUsablePhoneDemFile(
+    file: File,
+    intendedFileName: String = file.name,
+): Boolean {
     val isNonEmptyFile = file.isFile && file.length() > 0L
-    return isNonEmptyFile && runCatching { validatePhoneDemFile(file) }.isSuccess
+    return isNonEmptyFile && runCatching { validatePhoneDemFile(file, intendedFileName) }.isSuccess
 }
 
-internal fun validatePhoneDemFile(file: File) {
+internal fun validatePhoneDemFile(
+    file: File,
+    intendedFileName: String = file.name,
+) {
     when {
-        file.name.endsWith(".gz", ignoreCase = true) -> validatePhoneDemGzip(file)
-        file.name.endsWith(".zip", ignoreCase = true) -> validatePhoneDemZip(file)
+        intendedFileName.endsWith(".gz", ignoreCase = true) -> validatePhoneDemGzip(file)
+        intendedFileName.endsWith(".zip", ignoreCase = true) -> validatePhoneDemZip(file)
         else -> check(isPlausiblePhoneDemSize(file.length())) { "Invalid DEM size." }
     }
 }

@@ -54,7 +54,7 @@ internal fun observePoiViewport(
 
         val listener =
             MapLibreMap.OnCameraIdleListener {
-                if (runtime.isCurrentIn(currentRuntime)) {
+                if (runtime.isRendererCurrentIn(currentRuntime)) {
                     activeMap.phoneMapViewportOrNull()?.let(currentOnViewportChanged)
                 }
             }
@@ -81,7 +81,7 @@ internal fun observePoiSelection(
 
         val listener =
             MapLibreMap.OnMapClickListener { point ->
-                if (!runtime.isCurrentIn(currentRuntime)) {
+                if (!runtime.isRendererCurrentIn(currentRuntime)) {
                     false
                 } else {
                     val poi =

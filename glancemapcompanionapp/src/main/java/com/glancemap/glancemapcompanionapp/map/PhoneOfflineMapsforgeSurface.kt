@@ -98,6 +98,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val initialCamera: PhoneMapCameraSnapshot,
     val transparentBackground: Boolean = false,
     val isInteractive: Boolean = true,
+    val measurementEnabled: Boolean = true,
     val cameraOverride: PhoneMapCameraSnapshot? = null,
     val mapSettings: PhoneMapSettings = PhoneMapSettings(),
     val baseLayerOpacity: Float = 1f,
@@ -212,6 +213,9 @@ private class PhoneOfflineMapsforgeView(
             onTwoFingerMove = ::publishTwoFingerMeasurement,
             measurementHandleAt = ::measurementHandleAt,
             onMeasurementPointMove = ::publishMeasurementPointMove,
+            isMeasurementEnabled = {
+                latestState?.measurementEnabled == true && latestState?.isInteractive == true
+            },
             onMeasurementGestureStart = {
                 if (!disposed) {
                     mapView.cancelPhoneMapNativeGesture()
@@ -514,11 +518,24 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyCameraOverride(camera: PhoneMapCameraSnapshot?) {
         val target = camera ?: return
+        val model = mapView.model
+        val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
+        val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
+        val mapViewPosition = mapView.model.mapViewPosition
         val current =
-            mapView.model.mapViewPosition.mapPosition
-                .toPhoneMapCameraSnapshotOrNull()
+            mapViewPosition.mapPosition
+                .toPhoneMapCameraSnapshotOrNull(
+                    mapsforgeTileSizePx = mapsforgeTileSizePx,
+                    mapLibrePixelRatio = mapLibrePixelRatio,
+                )
         if (current != null && !phoneMapComparisonCameraNeedsSync(current, target)) return
-        mapView.model.mapViewPosition.setMapPosition(target.toRendererMapPosition(), false)
+        mapViewPosition.setMapPosition(
+            target.toRendererMapPosition(
+                mapsforgeTileSizePx = mapsforgeTileSizePx,
+                mapLibrePixelRatio = mapLibrePixelRatio,
+            ),
+            false,
+        )
         applyMapBearing(target.bearingDegrees)
         appliedMapBearingDegrees = normalizePhoneHeadingDegrees(target.bearingDegrees)
         requestMapRedraw()
@@ -539,7 +556,7 @@ private class PhoneOfflineMapsforgeView(
             if (degrees == 0f) {
                 Rotation.NULL_ROTATION
             } else {
-                Rotation(degrees, mapView.mapViewCenterX, mapView.mapViewCenterY)
+                Rotation(degrees, mapView.width * 0.5f, mapView.height * 0.5f)
             }
         applyingProgrammaticRotation = true
         try {
@@ -656,7 +673,14 @@ private class PhoneOfflineMapsforgeView(
             val rotationDegrees = mapView.mapRotation.degrees.toDouble()
             val pivot = mapView.phoneMapRotationPivot()
             val screenCenter = Point(mapView.width / 2.0, mapView.height / 2.0)
-            val mapSpaceCenter = phoneMapsforgeMapPointFromScreen(screenCenter, pivot, rotationDegrees)
+            val mapSpaceCenter =
+                phoneMapsforgeMapPointFromScreen(
+                    point = screenCenter,
+                    pivot = pivot,
+                    rotationDegrees = rotationDegrees,
+                    offsetX = mapView.offsetX.toDouble(),
+                    offsetY = mapView.offsetY.toDouble(),
+                )
             val target =
                 runCatching {
                     mapView.mapViewProjection.fromPixels(mapSpaceCenter.x, mapSpaceCenter.y)
@@ -681,7 +705,13 @@ private class PhoneOfflineMapsforgeView(
                                 mapView.mapViewProjection.toPixels(
                                     origin,
                                 )
-                            phoneMapsforgeScreenPointForMapPoint(mapPoint, pivot, rotationDegrees)
+                            phoneMapsforgeScreenPointForMapPoint(
+                                point = mapPoint,
+                                pivot = pivot,
+                                rotationDegrees = rotationDegrees,
+                                offsetX = mapView.offsetX.toDouble(),
+                                offsetY = mapView.offsetY.toDouble(),
+                            )
                         }.getOrNull()
                     }
                 PhoneMapLiveMetricsPosition(
@@ -715,12 +745,19 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun publishCamera(): Boolean {
+        val model = mapView.model
+        val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
+        val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
+        val mapViewPosition = mapView.model.mapViewPosition
         val snapshot =
             if (disposed) {
                 null
             } else {
-                mapView.model.mapViewPosition.mapPosition
-                    .toPhoneMapCameraSnapshotOrNull()
+                mapViewPosition.mapPosition
+                    .toPhoneMapCameraSnapshotOrNull(
+                        mapsforgeTileSizePx = mapsforgeTileSizePx,
+                        mapLibrePixelRatio = mapLibrePixelRatio,
+                    )
             }
         snapshot?.let { camera ->
             val liveMapPosition = liveMapPositionOrNull()
@@ -872,9 +909,11 @@ private class PhoneOfflineMapsforgeView(
         ): PhoneMapScreenPoint? =
             runCatching {
                 phoneMapsforgeScreenPointForMapPoint(
-                    mapView.mapViewProjection.toPixels(LatLong(point.latitude, point.longitude)),
-                    pivot,
-                    rotationDegrees,
+                    point = mapView.mapViewProjection.toPixels(LatLong(point.latitude, point.longitude)),
+                    pivot = pivot,
+                    rotationDegrees = rotationDegrees,
+                    offsetX = mapView.offsetX.toDouble(),
+                    offsetY = mapView.offsetY.toDouble(),
                 )
             }.getOrNull()?.let { value -> PhoneMapScreenPoint(value.x, value.y) }
         return phoneMapMeasurementHandleIndex(
@@ -1276,6 +1315,8 @@ internal fun phoneMapsforgeScreenPointForMapPoint(
     point: Point,
     pivot: Point,
     rotationDegrees: Double,
+    offsetX: Double = 0.0,
+    offsetY: Double = 0.0,
 ): PhoneMapScreenPoint {
     val radians = Math.toRadians(rotationDegrees)
     val cosine = cos(radians)
@@ -1283,8 +1324,8 @@ internal fun phoneMapsforgeScreenPointForMapPoint(
     val deltaX = point.x - pivot.x
     val deltaY = point.y - pivot.y
     return PhoneMapScreenPoint(
-        x = (pivot.x + deltaX * cosine - deltaY * sine).toFloat(),
-        y = (pivot.y + deltaX * sine + deltaY * cosine).toFloat(),
+        x = (pivot.x + deltaX * cosine - deltaY * sine + offsetX).toFloat(),
+        y = (pivot.y + deltaX * sine + deltaY * cosine + offsetY).toFloat(),
     )
 }
 
@@ -1292,12 +1333,14 @@ internal fun phoneMapsforgeMapPointFromScreen(
     point: Point,
     pivot: Point,
     rotationDegrees: Double,
+    offsetX: Double = 0.0,
+    offsetY: Double = 0.0,
 ): Point {
     val radians = Math.toRadians(rotationDegrees)
     val cosine = cos(radians)
     val sine = sin(radians)
-    val deltaX = point.x - pivot.x
-    val deltaY = point.y - pivot.y
+    val deltaX = point.x - offsetX - pivot.x
+    val deltaY = point.y - offsetY - pivot.y
     return Point(
         pivot.x + deltaX * cosine + deltaY * sine,
         pivot.y - deltaX * sine + deltaY * cosine,
@@ -1306,8 +1349,8 @@ internal fun phoneMapsforgeMapPointFromScreen(
 
 private fun MapView.phoneMapRotationPivot(): Point =
     Point(
-        mapViewCenterX.toDouble(),
-        mapViewCenterY.toDouble(),
+        width / 2.0,
+        height / 2.0,
     )
 
 private fun MapView.phoneMapPointFromScreen(
@@ -1318,6 +1361,8 @@ private fun MapView.phoneMapPointFromScreen(
         point = Point(x.toDouble(), y.toDouble()),
         pivot = phoneMapRotationPivot(),
         rotationDegrees = mapRotation.degrees.toDouble(),
+        offsetX = offsetX.toDouble(),
+        offsetY = offsetY.toDouble(),
     )
 
 private fun MapView.phoneMapLatLongFromScreen(
@@ -1411,13 +1456,23 @@ private fun createRouteAnalysisMarkerBitmap(
     return bitmap
 }
 
-internal fun MapPosition.toPhoneMapCameraSnapshotOrNull(): PhoneMapCameraSnapshot? =
+internal fun MapPosition.toPhoneMapCameraSnapshotOrNull(
+    mapsforgeTileSizePx: Double = PHONE_MAPLIBRE_CAMERA_TILE_SIZE_PX,
+    mapLibrePixelRatio: Double = 1.0,
+): PhoneMapCameraSnapshot? =
     runCatching {
+        val groundResolution =
+            phoneGroundResolutionMetersPerPixel(
+                latitudeDegrees = latLong.latitude,
+                zoom = zoom,
+                tileSizePx = mapsforgeTileSizePx,
+            )
         PhoneMapCameraSnapshot(
             latitude = latLong.latitude,
             longitude = latLong.longitude,
-            zoom = zoom,
+            zoom = phoneMapLibreZoomForGroundResolution(latLong.latitude, groundResolution, mapLibrePixelRatio),
             bearingDegrees = mapsforgeMapBearingDegrees(rotation.degrees),
+            groundResolutionMetersPerPixel = groundResolution,
         )
     }.getOrNull()
 

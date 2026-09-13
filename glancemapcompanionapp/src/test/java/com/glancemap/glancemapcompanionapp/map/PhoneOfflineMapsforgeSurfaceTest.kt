@@ -65,7 +65,7 @@ class PhoneOfflineMapsforgeSurfaceTest {
 
         val converted = camera.toRendererMapPosition().toPhoneMapCameraSnapshotOrNull()
 
-        assertEquals(12.75, requireNotNull(converted).zoom, 0.0)
+        assertEquals(12.75, requireNotNull(converted).zoom, 1e-9)
     }
 
     @Test
@@ -173,6 +173,11 @@ class PhoneOfflineMapsforgeSurfaceTest {
             PhoneOfflineInitialCameraReason.MAP_METADATA,
             phoneOfflineInitialCameraSelection(outside, cameraContext(bounds, bounds.centerPoint)).reason,
         )
+        assertEquals(
+            12.0,
+            phoneOfflineInitialCameraSelection(outside, cameraContext(bounds, bounds.centerPoint)).rendererZoom,
+            0.0,
+        )
     }
 
     @Test
@@ -196,34 +201,64 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
+    fun initialOfflineViewportConvertsMapLibreZoomToTheActualMapsforgeScale() {
+        val bounds = BoundingBox(47.0, 11.0, 48.0, 12.0)
+        val selection =
+            phoneOfflineInitialCameraSelection(
+                requested = PhoneMapCameraSnapshot(47.5, 11.5, 14.0),
+                context = cameraContext(bounds, null),
+                mapsforgeTileSizePx = 256.0,
+                mapLibrePixelRatio = 1.0,
+            )
+
+        assertEquals(15.0, selection.rendererZoom, 0.0)
+    }
+
+    @Test
     fun mapsforgeRotationUsesTheInverseSemanticBearing() {
         assertEquals(-90f, mapsforgeRotationDegreesFor(90f), 0.001f)
         assertEquals(90f, mapsforgeMapBearingDegrees(-90f), 0.001f)
     }
 
     @Test
-    fun mapsforgeSelectionRoundTripsThroughRotationAroundTheConfiguredLowerAnchor() {
-        val lowerMapCenter = Point(360.0, 820.0)
-        val projectedPoint = Point(428.0, 764.0)
+    fun mapsforgeSelectionRoundTripsThroughRotationAndViewportOffsets() {
+        val viewportWidth = 720
+        val viewportHeight = 1000
+        val mapViewCenterX = 0.5
+        val mapViewCenterY = 0.82
+        val viewportOffsetX = viewportWidth * (mapViewCenterX - 0.5)
+        val viewportOffsetY = viewportHeight * (mapViewCenterY - 0.5)
+        val rotationPivot = Point(viewportWidth / 2.0, viewportHeight / 2.0)
+        val projectedPoint = Point(428.0, 444.0)
 
         val screenPoint =
             phoneMapsforgeScreenPointForMapPoint(
                 point = projectedPoint,
-                pivot = lowerMapCenter,
+                pivot = rotationPivot,
                 rotationDegrees = 37.0,
+                offsetX = viewportOffsetX,
+                offsetY = viewportOffsetY,
             )
         val recoveredPoint =
             phoneMapsforgeMapPointFromScreen(
                 point = Point(screenPoint.x.toDouble(), screenPoint.y.toDouble()),
-                pivot = lowerMapCenter,
+                pivot = rotationPivot,
                 rotationDegrees = 37.0,
+                offsetX = viewportOffsetX,
+                offsetY = viewportOffsetY,
             )
 
         assertEquals(projectedPoint.x, recoveredPoint.x, 0.01)
         assertEquals(projectedPoint.y, recoveredPoint.y, 0.01)
         assertEquals(
-            lowerMapCenter.y.toFloat(),
-            phoneMapsforgeScreenPointForMapPoint(lowerMapCenter, lowerMapCenter, 37.0).y,
+            (rotationPivot.y + viewportOffsetY).toFloat(),
+            phoneMapsforgeScreenPointForMapPoint(
+                rotationPivot,
+                rotationPivot,
+                37.0,
+                offsetX = viewportOffsetX,
+                offsetY = viewportOffsetY,
+            ).y,
             0.0f,
         )
     }
