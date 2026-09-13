@@ -551,6 +551,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         bikeWeightKg = bikeWeightKg,
         screenSize = screenSize,
         isMetric = isMetric,
+        isScreenInteractive = isScreenInteractive,
         showRouteCompletePrompt = showRouteCompleteRecordingPrompt,
         onRouteCompletePromptDismiss = {
             showRouteCompleteRecordingPrompt = false
@@ -588,6 +589,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
         compactPopupSuppressed = shortcutTrayExpanded,
+        isScreenInteractive = isScreenInteractive,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||

@@ -106,7 +106,8 @@ class RecordingScreenOffDiagnosticsTest {
             isRecordingActive = true,
         )
         RecordingScreenOffDiagnostics.recordDashboardTick()
-        RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild(pointsScanned = 4)
+        RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild()
+        RecordingScreenOffDiagnostics.recordDashboardAggregateBuild(pointsScanned = 4)
         RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned = 3)
         RecordingScreenOffDiagnostics.recordDraftPersist(
             jsonBytesWritten = 10L,
@@ -121,7 +122,8 @@ class RecordingScreenOffDiagnosticsTest {
             isRecordingActive = true,
         )
         RecordingScreenOffDiagnostics.recordDashboardTick()
-        RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild(pointsScanned = 8)
+        RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild()
+        RecordingScreenOffDiagnostics.recordDashboardAggregateBuild(pointsScanned = 8)
         RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned = 5)
         RecordingScreenOffDiagnostics.recordDraftPersist(
             jsonBytesWritten = 30L,
@@ -194,6 +196,8 @@ class RecordingScreenOffDiagnosticsTest {
         assertEquals(1L, counters.recordingDashboardScreenOffTickCount)
         assertEquals(2L, counters.recordingDashboardSnapshotBuildCount)
         assertEquals(1L, counters.recordingDashboardScreenOffSnapshotBuildCount)
+        assertEquals(2L, counters.recordingDashboardAggregateBuildCount)
+        assertEquals(1L, counters.recordingDashboardScreenOffAggregateBuildCount)
         assertEquals(12L, counters.recordingDashboardPointsScanned)
         assertEquals(8L, counters.recordingDashboardScreenOffPointsScanned)
         assertEquals(2L, counters.tbtProjectionRunCount)
@@ -224,6 +228,7 @@ class RecordingScreenOffDiagnosticsTest {
 
     private fun assertInstrumentationReport(report: String) {
         assertTrue(report.contains("recordingDashboardScreenOffTickCount=1"))
+        assertTrue(report.contains("recordingDashboardAggregateBuildCount=2"))
         assertTrue(report.contains("tbtProjectionSegmentsScanned=8"))
         assertTrue(report.contains("recordingDraftTotalBytesWritten=130"))
         assertTrue(report.contains("recordingSensorHeartRateCallbackCount=2"))

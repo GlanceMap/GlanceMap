@@ -56,6 +56,8 @@ internal data class RecordingInstrumentationCounters(
     val recordingDashboardScreenOffTickCount: Long,
     val recordingDashboardSnapshotBuildCount: Long,
     val recordingDashboardScreenOffSnapshotBuildCount: Long,
+    val recordingDashboardAggregateBuildCount: Long,
+    val recordingDashboardScreenOffAggregateBuildCount: Long,
     val recordingDashboardPointsScanned: Long,
     val recordingDashboardScreenOffPointsScanned: Long,
     val tbtProjectionRunCount: Long,
@@ -101,6 +103,7 @@ internal object RecordingScreenOffDiagnostics {
     private val elapsedMsByActivity = Array(RecordingScreenOffActivity.entries.size) { AtomicLong() }
     private val dashboardTickCount = ClassifiedCounter()
     private val dashboardSnapshotBuildCount = ClassifiedCounter()
+    private val dashboardAggregateBuildCount = ClassifiedCounter()
     private val dashboardPointsScanned = ClassifiedCounter()
     private val tbtProjectionRunCount = ClassifiedCounter()
     private val tbtProjectionSegmentsScanned = ClassifiedCounter()
@@ -164,9 +167,14 @@ internal object RecordingScreenOffDiagnostics {
         recordEnabled(dashboardTickCount)
     }
 
-    fun recordDashboardSnapshotBuild(pointsScanned: Int) {
+    fun recordDashboardSnapshotBuild() {
         if (!fullDiagnosticsEnabled.get()) return
         recordEnabled(dashboardSnapshotBuildCount)
+    }
+
+    fun recordDashboardAggregateBuild(pointsScanned: Int) {
+        if (!fullDiagnosticsEnabled.get()) return
+        recordEnabled(dashboardAggregateBuildCount)
         recordEnabled(dashboardPointsScanned, pointsScanned.toLong())
     }
 
@@ -210,6 +218,8 @@ internal object RecordingScreenOffDiagnostics {
             recordingDashboardScreenOffTickCount = dashboardTickCount.screenOffCount.get(),
             recordingDashboardSnapshotBuildCount = dashboardSnapshotBuildCount.count.get(),
             recordingDashboardScreenOffSnapshotBuildCount = dashboardSnapshotBuildCount.screenOffCount.get(),
+            recordingDashboardAggregateBuildCount = dashboardAggregateBuildCount.count.get(),
+            recordingDashboardScreenOffAggregateBuildCount = dashboardAggregateBuildCount.screenOffCount.get(),
             recordingDashboardPointsScanned = dashboardPointsScanned.count.get(),
             recordingDashboardScreenOffPointsScanned = dashboardPointsScanned.screenOffCount.get(),
             tbtProjectionRunCount = tbtProjectionRunCount.count.get(),
@@ -299,6 +309,7 @@ internal object RecordingScreenOffDiagnostics {
         arrayOf(
             dashboardTickCount,
             dashboardSnapshotBuildCount,
+            dashboardAggregateBuildCount,
             dashboardPointsScanned,
             tbtProjectionRunCount,
             tbtProjectionSegmentsScanned,

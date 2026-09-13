@@ -85,6 +85,10 @@ internal fun Appendable.writeRecordingInstrumentationSummarySection(
     appendLine(
         "recordingDashboardScreenOffSnapshotBuildCount=${counters.recordingDashboardScreenOffSnapshotBuildCount}",
     )
+    appendLine("recordingDashboardAggregateBuildCount=${counters.recordingDashboardAggregateBuildCount}")
+    appendLine(
+        "recordingDashboardScreenOffAggregateBuildCount=${counters.recordingDashboardScreenOffAggregateBuildCount}",
+    )
     appendLine("recordingDashboardPointsScanned=${counters.recordingDashboardPointsScanned}")
     appendLine("recordingDashboardScreenOffPointsScanned=${counters.recordingDashboardScreenOffPointsScanned}")
     appendLine("tbtProjectionRunCount=${counters.tbtProjectionRunCount}")

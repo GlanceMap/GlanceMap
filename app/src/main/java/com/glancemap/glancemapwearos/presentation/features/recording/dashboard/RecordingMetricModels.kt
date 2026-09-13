@@ -53,6 +53,62 @@ data class RecordingCalorieEstimate(
     val cyclingPhysicsSegments: Int = 0,
 )
 
+internal data class RecordingDashboardStatistics(
+    val elevationGainMeters: Double,
+    val elevationLossMeters: Double,
+    val hasElevationData: Boolean,
+    val fastestRecordedSpeedMps: Double?,
+    val calorieEstimate: RecordingCalorieEstimate,
+    val averageHeartRateBpm: Int?,
+    val maxRecordedHeartRateBpm: Int?,
+    val averageCadenceSpm: Int?,
+    val maxRecordedCadenceSpm: Int?,
+    val averagePowerWatts: Int?,
+    val maxRecordedPowerWatts: Int?,
+    val hasRecordedPowerData: Boolean,
+)
+
+private data class RecordingDashboardStatisticsCacheKey(
+    val points: List<RecordedTracePoint>,
+    val userWeightKg: Float,
+    val backpackWeightKg: Float,
+    val bikeWeightKg: Float,
+    val activityProfile: String,
+)
+
+internal class RecordingDashboardStatisticsCache {
+    private var cachedKey: RecordingDashboardStatisticsCacheKey? = null
+    private var cachedStatistics: RecordingDashboardStatistics? = null
+
+    fun getOrBuild(
+        points: List<RecordedTracePoint>,
+        userWeightKg: Float,
+        backpackWeightKg: Float,
+        bikeWeightKg: Float,
+        activityProfile: String,
+    ): RecordingDashboardStatistics {
+        val key =
+            RecordingDashboardStatisticsCacheKey(
+                points = points,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = activityProfile,
+            )
+        if (key == cachedKey) return checkNotNull(cachedStatistics)
+        return buildRecordingDashboardStatistics(
+            points = points,
+            userWeightKg = userWeightKg,
+            backpackWeightKg = backpackWeightKg,
+            bikeWeightKg = bikeWeightKg,
+            activityProfile = activityProfile,
+        ).also {
+            cachedKey = key
+            cachedStatistics = it
+        }
+    }
+}
+
 data class RecordingDashboardSnapshot(
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val durationSeconds: Double,
@@ -185,8 +241,16 @@ internal fun buildRecordingDashboardSnapshot(
     backpackWeightKg: Float = SettingsRepository.DEFAULT_BACKPACK_WEIGHT_KG,
     bikeWeightKg: Float = SettingsRepository.DEFAULT_BIKE_WEIGHT_KG,
     activityProfile: String = state.activityProfile,
+    recordedStatistics: RecordingDashboardStatistics =
+        buildRecordingDashboardStatistics(
+            points = state.points,
+            userWeightKg = userWeightKg,
+            backpackWeightKg = backpackWeightKg,
+            bikeWeightKg = bikeWeightKg,
+            activityProfile = activityProfile,
+        ),
 ): RecordingDashboardSnapshot {
-    RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild(state.points.size)
+    RecordingScreenOffDiagnostics.recordDashboardSnapshotBuild()
     val startedAt = state.startedAtMillis ?: nowMillis
     val currentPausedMillis =
         if (state.paused) {
@@ -198,7 +262,6 @@ internal fun buildRecordingDashboardSnapshot(
         (nowMillis - startedAt - state.accumulatedPausedMillis - currentPausedMillis).coerceAtLeast(0L)
     val activeDurationSeconds = activeDurationMillis / 1000.0
     val totalDurationSeconds = ((nowMillis - startedAt).coerceAtLeast(0L)) / 1000.0
-    val canonicalProfile = buildRecordingCanonicalProfile(state.points)
     val lastRecordedPoint = state.points.lastOrNull()
     val livePoint =
         state.latestLivePoint
@@ -210,23 +273,14 @@ internal fun buildRecordingDashboardSnapshot(
             SettingsRepository.RECORDING_SENSOR_SOURCE_POD -> state.externalSpeedMps
             else -> currentPoint?.speedMps ?: lastRecordedPoint?.speedMps
         }
-    val calorieEstimate =
-        estimateRecordingCalories(
-            points = state.points,
-            userWeightKg = userWeightKg,
-            backpackWeightKg = backpackWeightKg,
-            bikeWeightKg = bikeWeightKg,
-            activityProfile = activityProfile,
-        )
-    val hasElevationData = state.points.any { it.elevationMeters?.isFinite() == true }
     return RecordingDashboardSnapshot(
         activityProfile = activityProfile,
         durationSeconds = activeDurationSeconds,
         totalDurationSeconds = totalDurationSeconds,
         distanceMeters = displayDistanceMeters,
-        elevationGainMeters = canonicalProfile?.totalAscent ?: 0.0,
-        elevationLossMeters = canonicalProfile?.totalDescent ?: 0.0,
-        hasElevationData = hasElevationData,
+        elevationGainMeters = recordedStatistics.elevationGainMeters,
+        elevationLossMeters = recordedStatistics.elevationLossMeters,
+        hasElevationData = recordedStatistics.hasElevationData,
         currentElevationMeters = (lastRecordedPoint ?: livePoint)?.elevationMeters,
         currentSpeedMps = displayCurrentSpeedMps,
         externalSpeedMps = state.externalSpeedMps,
@@ -237,9 +291,7 @@ internal fun buildRecordingDashboardSnapshot(
                 null
             },
         fastestSpeedMps =
-            state.points
-                .mapNotNull { point -> point.speedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } }
-                .maxOrNull()
+            recordedStatistics.fastestRecordedSpeedMps
                 ?: displayCurrentSpeedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 },
         externalDistanceMeters = state.externalDistanceMeters,
         gpsAccuracyMeters = currentPoint?.accuracyMeters ?: lastRecordedPoint?.accuracyMeters,
@@ -249,23 +301,23 @@ internal fun buildRecordingDashboardSnapshot(
         recordingMaxGapSeconds = state.recordingMaxGapMillis / 1000.0,
         userWeightKg = userWeightKg,
         backpackWeightKg = backpackWeightKg,
-        calorieEstimate = calorieEstimate,
+        calorieEstimate = recordedStatistics.calorieEstimate,
         heartRateBpm = state.heartRateBpm,
         heartRateFromBluetooth = state.heartRateFromBluetooth,
-        averageHeartRateBpm = state.points.averageHeartRateBpm(),
-        maxHeartRateBpm = state.points.maxHeartRateBpm() ?: state.heartRateBpm?.takeIf { it > 0 },
+        averageHeartRateBpm = recordedStatistics.averageHeartRateBpm,
+        maxHeartRateBpm = recordedStatistics.maxRecordedHeartRateBpm ?: state.heartRateBpm?.takeIf { it > 0 },
         stepCount = state.stepCount,
         stepCountFromBluetooth = state.stepCountFromBluetooth,
         cadenceSpm = state.cadenceSpm,
-        averageCadenceSpm = state.points.averageCadenceSpm(),
-        maxCadenceSpm = state.points.maxCadenceSpm() ?: state.cadenceSpm?.takeIf { it > 0 },
+        averageCadenceSpm = recordedStatistics.averageCadenceSpm,
+        maxCadenceSpm = recordedStatistics.maxRecordedCadenceSpm ?: state.cadenceSpm?.takeIf { it > 0 },
         cadenceFromBluetooth = state.cadenceFromBluetooth,
         powerWatts = state.externalPowerWatts,
-        averagePowerWatts = state.points.averagePowerWatts(),
-        maxPowerWatts = state.points.maxPowerWatts() ?: state.externalPowerWatts?.takeIf { it >= 0 },
+        averagePowerWatts = recordedStatistics.averagePowerWatts,
+        maxPowerWatts = recordedStatistics.maxRecordedPowerWatts ?: state.externalPowerWatts?.takeIf { it >= 0 },
         powerFromBluetooth =
             state.externalPowerFromBluetooth ||
-                state.points.any { point -> point.powerWatts != null },
+                recordedStatistics.hasRecordedPowerData,
         barometricPressureHpa = state.barometricPressureHpa,
         lastLiveFixAgeMillis = state.latestLivePoint?.timeMillis?.ageMillisAt(nowMillis),
         lastRecordedPointAgeMillis = lastRecordedPoint?.timeMillis?.ageMillisAt(nowMillis),
@@ -273,6 +325,42 @@ internal fun buildRecordingDashboardSnapshot(
         distanceSource = state.distanceSource,
         cadenceSource = state.cadenceSource,
         stepsSource = state.stepsSource,
+    )
+}
+
+internal fun buildRecordingDashboardStatistics(
+    points: List<RecordedTracePoint>,
+    userWeightKg: Float,
+    backpackWeightKg: Float,
+    bikeWeightKg: Float = SettingsRepository.DEFAULT_BIKE_WEIGHT_KG,
+    activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
+): RecordingDashboardStatistics {
+    RecordingScreenOffDiagnostics.recordDashboardAggregateBuild(points.size)
+    val canonicalProfile = buildRecordingCanonicalProfile(points)
+    val fastestRecordedSpeedMps =
+        points
+            .mapNotNull { point -> point.speedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } }
+            .maxOrNull()
+    return RecordingDashboardStatistics(
+        elevationGainMeters = canonicalProfile?.totalAscent ?: 0.0,
+        elevationLossMeters = canonicalProfile?.totalDescent ?: 0.0,
+        hasElevationData = points.any { it.elevationMeters?.isFinite() == true },
+        fastestRecordedSpeedMps = fastestRecordedSpeedMps,
+        calorieEstimate =
+            estimateRecordingCalories(
+                points = points,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = activityProfile,
+            ),
+        averageHeartRateBpm = points.averageHeartRateBpm(),
+        maxRecordedHeartRateBpm = points.maxHeartRateBpm(),
+        averageCadenceSpm = points.averageCadenceSpm(),
+        maxRecordedCadenceSpm = points.maxCadenceSpm(),
+        averagePowerWatts = points.averagePowerWatts(),
+        maxRecordedPowerWatts = points.maxPowerWatts(),
+        hasRecordedPowerData = points.any { point -> point.powerWatts != null },
     )
 }
 

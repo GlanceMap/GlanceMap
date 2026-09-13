@@ -92,16 +92,25 @@ internal fun rememberNavigateGuidanceRuntime(
         remember(activeSession?.trackId, activeSession?.reversed) {
             mutableStateOf<Double?>(null)
         }
+    val guidanceGeometryCache = remember { NavigateGuidanceGeometryCache() }
     val rawState =
-        computeTurnByTurnGuidanceState(
+        guidanceGeometryCache.primaryState(
             session = activeSession,
             currentLocation = guidanceLocation,
             tuning = tuning,
             previousDistanceFromStartMeters = previousGuidanceProgressMeters,
-        )
-    rawState.projectionSegmentsScanned?.let { segmentsScanned ->
-        RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned)
-    }
+        ) {
+            computeTurnByTurnGuidanceState(
+                session = activeSession,
+                currentLocation = guidanceLocation,
+                tuning = tuning,
+                previousDistanceFromStartMeters = previousGuidanceProgressMeters,
+            ).also { computedState ->
+                computedState.projectionSegmentsScanned?.let { segmentsScanned ->
+                    RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned)
+                }
+            }
+        }
     LaunchedEffect(activeSession?.trackId, activeSession?.reversed, rawState.distanceFromStartMeters) {
         rawState.distanceFromStartMeters?.let { previousGuidanceProgressMeters = it }
     }
@@ -204,10 +213,15 @@ internal fun rememberNavigateGuidanceRuntime(
     var dismissedGuideBackPromptTrackId by remember { mutableStateOf<String?>(null) }
     val guideBackTrackId = activeSession?.trackId
     val guideBackTargetPoint =
-        nearestGuidanceRoutePoint(
+        guidanceGeometryCache.nearestRoutePoint(
             session = activeSession,
             currentLocation = guidanceLocation,
-        )
+        ) {
+            nearestGuidanceRoutePoint(
+                session = activeSession,
+                currentLocation = guidanceLocation,
+            )
+        }
     LaunchedEffect(
         state.active,
         state.offRoute,

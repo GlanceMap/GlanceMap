@@ -54,11 +54,12 @@ fun RenameValueDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    var draftValue by remember(initialValue) { mutableStateOf(initialValue) }
+
     if (!visible) return
 
     val adaptive = rememberWearAdaptiveSpec()
     val dialogWidthFraction = 0.84f
-    var draftValue by remember(initialValue) { mutableStateOf(initialValue) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
