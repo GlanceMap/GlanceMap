@@ -21,12 +21,12 @@ class TraceRecordingDraftStore(
     private val draftDir: File = context.getDir("recording_drafts", Context.MODE_PRIVATE)
     private val metadataFile = File(draftDir, "current.json")
     private val metadataTempFile = File(draftDir, "current.json.tmp")
-    private val gpxFile = File(draftDir, "current.gpx")
-    private val gpxTempFile = File(draftDir, "current.gpx.tmp")
+    private val legacyGpxFile = File(draftDir, "current.gpx")
+    private val legacyGpxTempFile = File(draftDir, "current.gpx.tmp")
 
     suspend fun load(): TraceRecordingDraft? =
         withContext(Dispatchers.IO) {
-            runCatching(::readDraft).getOrNull()
+            runCatching(::readDraft).getOrNull().also { deleteLegacyGpxArtifacts() }
         }
 
     private fun readDraft(): TraceRecordingDraft? =
@@ -78,19 +78,10 @@ class TraceRecordingDraftStore(
         val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
         metadataTempFile.writeBytes(jsonBytes)
         metadataTempFile.renameAtomicallyTo(metadataFile)
-
-        val nowMillis = System.currentTimeMillis()
-        val title =
-            buildRecordingTitle(
-                startedAtMillis = state.startedAtMillis ?: nowMillis,
-                endedAtMillis = state.points.lastOrNull()?.timeMillis ?: nowMillis,
-            )
-        val gpxBytes = encodeRecordedTraceAsGpx(title = title, points = state.points)
-        gpxTempFile.writeBytes(gpxBytes)
-        gpxTempFile.renameAtomicallyTo(gpxFile)
+        deleteLegacyGpxArtifacts()
         TraceRecordingDraftPersistStats(
             jsonBytesWritten = jsonBytes.size,
-            gpxBytesWritten = gpxBytes.size,
+            gpxBytesWritten = 0,
             pointCount = state.points.size,
         )
     }
@@ -99,11 +90,15 @@ class TraceRecordingDraftStore(
         withContext(Dispatchers.IO) {
             metadataFile.delete()
             metadataTempFile.delete()
-            gpxFile.delete()
-            gpxTempFile.delete()
+            deleteLegacyGpxArtifacts()
         }
 
-    fun draftPath(): String = gpxFile.absolutePath
+    fun draftPath(): String = metadataFile.absolutePath
+
+    private fun deleteLegacyGpxArtifacts() {
+        legacyGpxFile.delete()
+        legacyGpxTempFile.delete()
+    }
 }
 
 private object TraceRecordingDraftJson {
