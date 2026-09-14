@@ -8,6 +8,7 @@ internal class LocationServiceTelemetry(
     private val tag: String,
     private val summaryIntervalMs: Long,
     private val logSink: (String) -> Unit = { message -> DebugTelemetry.log(tag, message) },
+    private val telemetryEnabled: () -> Boolean = DebugTelemetry::isEnabled,
 ) {
     private var summaryWindowStartedAtMs: Long = 0L
     private var locationCallbacks: Int = 0
@@ -277,7 +278,7 @@ internal class LocationServiceTelemetry(
         val firstFixDelayMs =
             burst.firstFixAcceptedAtElapsedMs
                 ?.let { (it - burst.startedAtElapsedMs).coerceAtLeast(0L) }
-        log(
+        log {
             "burstSummary id=$burstId source=$source reason=$reason " +
                 "durationMs=${(endedAtElapsedMs - burst.startedAtElapsedMs).coerceAtLeast(0L)} " +
                 "screenState=${burst.screenState} expectedIntervalMs=${burst.expectedIntervalMs} " +
@@ -287,8 +288,8 @@ internal class LocationServiceTelemetry(
                 "firstFixDetail=${burst.firstFixDetail ?: "na"} " +
                 "firstFixDelayMs=${firstFixDelayMs ?: "na"} " +
                 "firstFixAgeMs=${burst.firstFixAgeMs ?: "na"} " +
-                "firstFixAccuracyM=${burst.firstFixAccuracyM?.format(1) ?: "na"}",
-        )
+                "firstFixAccuracyM=${burst.firstFixAccuracyM?.format(1) ?: "na"}"
+        }
     }
 
     fun logImmediateRequestSkippedPassiveExperiment(
@@ -769,15 +770,15 @@ internal class LocationServiceTelemetry(
         if (burst && runtimeMode == "INTERACTIVE") {
             burstInteractiveDoubleApplyCount += 1
         }
-        log(
+        log {
             "requestUpdates applied: priority=$priority intervalMs=$intervalMs " +
                 "minDistanceM=$minDistanceMeters state=${activityState.name} " +
                 "bound=$bound keepOpen=$keepOpen watchOnly=$watchOnly burst=$burst " +
                 "backend=$backend mode=$runtimeMode trackingEnabled=$trackingEnabled " +
                 "interactive=$interactive screenState=$screenState reason=$runtimeReason " +
                 "finePermission=$hasFinePermission coarsePermission=$hasCoarsePermission " +
-                "passivePriority=$passivePriority",
-        )
+                "passivePriority=$passivePriority"
+        }
     }
 
     fun logRequestUpdatesCleared(
@@ -788,11 +789,11 @@ internal class LocationServiceTelemetry(
         screenState: String,
         backgroundGpsEnabled: Boolean,
     ) {
-        log(
+        log {
             "requestUpdates cleared: reason=$reason bound=$bound keepOpen=$keepOpen " +
                 "trackingEnabled=$trackingEnabled screenState=$screenState " +
-                "backgroundGpsEnabled=$backgroundGpsEnabled",
-        )
+                "backgroundGpsEnabled=$backgroundGpsEnabled"
+        }
     }
 
     fun logLocationBatchProcessed(
@@ -803,11 +804,11 @@ internal class LocationServiceTelemetry(
         callbackOrigin: String,
         duplicateCandidatesDropped: Int,
     ) {
-        log(
+        log {
             "locationBatch: raw=$rawCandidates normalized=$normalizedCandidates " +
                 "accepted=$acceptedCandidates fallback=$fallbackUsed " +
-                "origin=$callbackOrigin duplicatesDropped=$duplicateCandidatesDropped",
-        )
+                "origin=$callbackOrigin duplicatesDropped=$duplicateCandidatesDropped"
+        }
     }
 
     fun setDebugEnabled(enabled: Boolean) {
@@ -851,13 +852,13 @@ internal class LocationServiceTelemetry(
         )
         val gapMs = recordAcceptedFix(nowElapsedMs)
         lastAcceptedFixAccuracyM = accuracyM
-        log(
+        log {
             "fixAccepted: source=$source detail=$sourceDetail ageMs=$ageMs " +
                 "accuracyM=${accuracyM.format(1)} origin=$origin provider=${provider ?: "unknown"} " +
                 "gapMs=${gapMs ?: "na"} screenState=$latestScreenState " +
                 "expectedIntervalMs=$latestExpectedIntervalMs trackingEnabled=$latestTrackingEnabled " +
-                "backgroundGpsEnabled=$latestBackgroundGpsEnabled",
-        )
+                "backgroundGpsEnabled=$latestBackgroundGpsEnabled"
+        }
         maybeLogSummary(nowElapsedMs, activityState, burst)
     }
 
@@ -928,6 +929,11 @@ internal class LocationServiceTelemetry(
 
     private fun log(message: String) {
         logSink(message)
+    }
+
+    private fun log(messageProvider: () -> String) {
+        if (!telemetryEnabled()) return
+        logSink(messageProvider())
     }
 
     private fun gapStatsFor(screenState: String): FixGapStats =

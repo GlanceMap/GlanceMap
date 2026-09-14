@@ -648,24 +648,26 @@ class TraceRecordingViewModel(
             ) {
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
-                        "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
-                        "count=$suppressedJitterPointCount " +
-                        "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
-                        "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
-                        "stationaryRadiusMeters=${
-                            motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
-                        } " +
-                        "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                        "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
-                        "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
-                        "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
-                        "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
-                        "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
-                        "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
+                    {
+                        "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
+                            "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
+                            "count=$suppressedJitterPointCount " +
+                            "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
+                            "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
+                            "stationaryRadiusMeters=${
+                                motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
+                            } " +
+                            "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                            "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                            "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
+                            "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
+                            "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
+                            "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
+                            "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
+                            "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}"
+                    },
                 )
             }
             if (motionResult.reason == RecordingMotionReason.STATIONARY_JITTER) {
@@ -679,15 +681,17 @@ class TraceRecordingViewModel(
         if (motionResult.reason == RecordingMotionReason.DELAYED_DELIVERY_RECOVERY) {
             DebugTelemetry.log(
                 "TraceRecording",
-                "event=motion_delayed_delivery_recovery " +
-                    "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
-                    "liveCallbackGapMs=$liveCallbackGapMillis " +
-                    "gapExpectedIntervalMs=${callbackGapTiming.expectedIntervalMillis} " +
-                    "currentEffectiveIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
-                    "endpointDisplacementM=${motionResult.displacementMeters.formatTelemetry(1)} " +
-                    "previousSpeedMps=${previousRecordedPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
-                    "currentSpeedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                    "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+                {
+                    "event=motion_delayed_delivery_recovery " +
+                        "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
+                        "liveCallbackGapMs=$liveCallbackGapMillis " +
+                        "gapExpectedIntervalMs=${callbackGapTiming.expectedIntervalMillis} " +
+                        "currentEffectiveIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
+                        "endpointDisplacementM=${motionResult.displacementMeters.formatTelemetry(1)} " +
+                        "previousSpeedMps=${previousRecordedPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
+                        "currentSpeedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}"
+                },
             )
         }
         if (!motionResult.accepted) {
@@ -735,20 +739,22 @@ class TraceRecordingViewModel(
                 val accuracyPolicy = recordingFixQualityGate.latestAccuracyPolicySnapshot
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
-                        "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
-                        "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                        "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
-                        "accuracyBaselineMedianMeters=${
-                            accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
-                        } " +
-                        "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
-                        "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
-                        "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
+                    {
+                        "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
+                            "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
+                            "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
+                            "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                            "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
+                            "accuracyBaselineMedianMeters=${
+                                accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+                            } " +
+                            "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+                            "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
+                            "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                            "provider=${sanitizeTelemetryValue(location.provider ?: "na")}"
+                    },
                 )
             }
             return null
@@ -947,13 +953,15 @@ class TraceRecordingViewModel(
                     ) {
                         DebugTelemetry.log(
                             "TraceRecording",
-                            "event=track_point_smoothed mode=${currentState.trackSmoothingMode} " +
-                                "count=$smoothedPointCount " +
-                                "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
-                                "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
-                                "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
-                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
-                                "confirmedReversals=$confirmedReversalCorrectionCount",
+                            {
+                                "event=track_point_smoothed mode=${currentState.trackSmoothingMode} " +
+                                    "count=$smoothedPointCount " +
+                                    "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
+                                    "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
+                                    "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
+                                    "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                                    "confirmedReversals=$confirmedReversalCorrectionCount"
+                            },
                         )
                     }
                 }
@@ -985,13 +993,15 @@ class TraceRecordingViewModel(
                     continuityDistanceSuppressedMeters += suppressedMeters
                     DebugTelemetry.log(
                         "TraceRecording",
-                        "event=continuity_distance_capped count=$continuityDistanceCapCount " +
-                            "reason=${continuityRecoveryReason ?: "na"} " +
-                            "geometricMeters=${watchGpsGeometricDelta.formatTelemetry(1)} " +
-                            "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
-                            "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
-                            "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
-                            "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}",
+                        {
+                            "event=continuity_distance_capped count=$continuityDistanceCapCount " +
+                                "reason=${continuityRecoveryReason ?: "na"} " +
+                                "geometricMeters=${watchGpsGeometricDelta.formatTelemetry(1)} " +
+                                "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
+                                "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
+                                "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
+                                "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}"
+                        },
                     )
                 }
                 val pointCount = currentState.points.size + 1
@@ -1033,37 +1043,39 @@ class TraceRecordingViewModel(
                 if (pointCount == 1 || pointCount % RECORDING_TELEMETRY_POINT_INTERVAL == 0) {
                     DebugTelemetry.log(
                         "TraceRecording",
-                        "event=point points=$pointCount " +
-                            "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
-                            "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
-                            "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
-                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                            "elevationMeters=${point.elevationMeters?.toInt() ?: -1} " +
-                            "elevationSource=${point.elevationSource ?: "na"} " +
-                            "demHits=$demElevationHitCount demMisses=$demElevationMissCount " +
-                            "demResolution=${lastDemResolutionLabel ?: "na"} " +
-                            "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
-                            "gpsElevationUsed=$gpsElevationUsedCount " +
-                            "gpsActiveDurationMs=$gpsActiveDurationMillis " +
-                            "recordingGapCount=$recordingGapCount recordingMaxGapMs=$recordingMaxGapMillis " +
-                            sensorTelemetryTokens(nowMillis = System.currentTimeMillis()) + " " +
-                            "heartRateBpm=${point.heartRateBpm ?: -1} stepCount=${point.stepCount ?: -1} " +
-                            "cadenceSpm=${point.cadenceSpm ?: -1} " +
-                            "powerWatts=${point.powerWatts ?: -1} " +
-                            "pressureHpa=${point.barometricPressureHpa?.toInt() ?: -1} " +
-                            "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
-                            "skippedUnusable=$skippedUnusableLocationCount " +
-                            "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
-                            "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
-                            "straightDriftPoints=$straightDriftCorrectedPointCount " +
-                            "continuityDistanceCaps=$continuityDistanceCapCount " +
-                            "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
-                            smartTrackTelemetryTokens() + " " +
-                            recordingPointDensityTelemetryTokens() + " " +
-                            "confirmedReversals=$confirmedReversalCorrectionCount " +
-                            "segmentReason=${segmentStartReason ?: "na"} " +
-                            "hybridElevationPoints=$hybridElevationPointCount " +
-                            smartElevationTelemetryTokens(),
+                        {
+                            "event=point points=$pointCount " +
+                                "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
+                                "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
+                                "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
+                                "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                                "elevationMeters=${point.elevationMeters?.toInt() ?: -1} " +
+                                "elevationSource=${point.elevationSource ?: "na"} " +
+                                "demHits=$demElevationHitCount demMisses=$demElevationMissCount " +
+                                "demResolution=${lastDemResolutionLabel ?: "na"} " +
+                                "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
+                                "gpsElevationUsed=$gpsElevationUsedCount " +
+                                "gpsActiveDurationMs=$gpsActiveDurationMillis " +
+                                "recordingGapCount=$recordingGapCount recordingMaxGapMs=$recordingMaxGapMillis " +
+                                sensorTelemetryTokens(nowMillis = System.currentTimeMillis()) + " " +
+                                "heartRateBpm=${point.heartRateBpm ?: -1} stepCount=${point.stepCount ?: -1} " +
+                                "cadenceSpm=${point.cadenceSpm ?: -1} " +
+                                "powerWatts=${point.powerWatts ?: -1} " +
+                                "pressureHpa=${point.barometricPressureHpa?.toInt() ?: -1} " +
+                                "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
+                                "skippedUnusable=$skippedUnusableLocationCount " +
+                                "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
+                                "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
+                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                                "continuityDistanceCaps=$continuityDistanceCapCount " +
+                                "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
+                                smartTrackTelemetryTokens() + " " +
+                                recordingPointDensityTelemetryTokens() + " " +
+                                "confirmedReversals=$confirmedReversalCorrectionCount " +
+                                "segmentReason=${segmentStartReason ?: "na"} " +
+                                "hybridElevationPoints=$hybridElevationPointCount " +
+                                smartElevationTelemetryTokens()
+                        },
                     )
                 }
                 schedulePointDraftPersist()

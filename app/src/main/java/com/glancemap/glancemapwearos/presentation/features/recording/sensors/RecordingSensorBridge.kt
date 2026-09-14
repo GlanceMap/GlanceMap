@@ -703,6 +703,7 @@ private fun logRecordingSensorStatus(
     paused: Boolean,
     event: String,
 ) {
+    if (!DebugTelemetry.isEnabled()) return
     val available = availableRecordingSensors(sensorManager)
     val bodySensorsGranted = hasPermission(context, Manifest.permission.BODY_SENSORS)
     val activityRecognitionGranted = hasActivityRecognitionPermission(context)

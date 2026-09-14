@@ -438,8 +438,7 @@ internal fun rememberNavigateGuidanceRuntime(
         gpxFlatSpeedMps,
     ) {
         if (!state.active && session == null) return@LaunchedEffect
-        DebugTelemetry.log(
-            "TurnByTurn",
+        DebugTelemetry.log("TurnByTurn") {
             buildTurnByTurnTelemetryMessage(
                 state = state,
                 paused = paused,
@@ -461,8 +460,8 @@ internal fun rememberNavigateGuidanceRuntime(
                 resolvedGpsIntervalMs = guidanceGpsDeliveryIntervalMs,
                 resolvedEtaFlatSpeedMps = gpxFlatSpeedMps,
                 resolvedTurnAlertMaxDistanceMeters = turnAlertMaxDistanceMeters(activityProfile),
-            ),
-        )
+            )
+        }
     }
 
     return NavigateGuidanceRuntime(
