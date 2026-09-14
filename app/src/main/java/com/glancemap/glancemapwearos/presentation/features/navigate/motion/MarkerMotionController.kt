@@ -21,6 +21,7 @@ internal data class MarkerMotionSeed(
     val reading: MarkerMotionReading,
     val sourceMode: LocationSourceMode = LocationSourceMode.AUTO_FUSED,
     val origin: MarkerMotionAnchorOrigin = MarkerMotionAnchorOrigin.CACHED_LOCATION,
+    val isAcceptedFix: Boolean = true,
 )
 
 internal enum class MarkerMotionAnchorOrigin(
@@ -103,6 +104,7 @@ internal class MarkerMotionController(
         nowElapsedMs: Long = state.lastAcceptedFix?.fixElapsedMs ?: 0L,
     ) {
         state.lastAcceptedFix = null
+        state.lastAcceptedFixWasTrusted = false
         state.displayedLatLong = null
         state.visualTrajectory.reset(nowElapsedMs).recordTelemetryInterruption()
         state.predictionRequiresFreshFix = true
@@ -127,6 +129,7 @@ internal class MarkerMotionController(
                         ),
                     sourceMode = anchor.sourceMode,
                     origin = MarkerMotionAnchorOrigin.RETAINED_VISUAL,
+                    isAcceptedFix = state.lastAcceptedFixWasTrusted,
                 )
             }
 
@@ -148,6 +151,7 @@ internal class MarkerMotionController(
                 sourceMode = seed.sourceMode,
             )
         state.lastAcceptedFix = motionFix
+        state.lastAcceptedFixWasTrusted = seed.isAcceptedFix
         state.displayedLatLong = seed.latLong
         state.visualTrajectory.seed(motionFix.toVisualAnchor(seed.latLong)).recordTelemetryInterruption()
         state.predictionRequiresFreshFix = !allowPredictionUntilFreshFix
@@ -502,6 +506,7 @@ private class MarkerMotionGpsFixProcessor(
                 bearingDeg = motion.bearingDeg,
                 sourceMode = context.fix.sourceMode,
             )
+        state.lastAcceptedFixWasTrusted = true
         state.predictionRequiresFreshFix = false
         return applyAcceptedGpsFix(context, motion)
     }
@@ -1266,6 +1271,7 @@ private class MarkerMotionGpsFixProcessor(
 
 private class MarkerMotionState {
     var lastAcceptedFix: MotionFix? = null
+    var lastAcceptedFixWasTrusted: Boolean = false
     var displayedLatLong: LatLong? = null
     val visualTrajectory = MarkerVisualTrajectory()
     var predictionRequiresFreshFix: Boolean = true

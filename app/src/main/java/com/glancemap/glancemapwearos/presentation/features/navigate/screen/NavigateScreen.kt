@@ -376,6 +376,16 @@ fun NavigateScreen(
                     )
                 AndroidBitmap(bitmap)
             }
+        val historicalNavigationMarkerBitmap =
+            remember(navigationMarkerStyle, navigationMarkerSizePx) {
+                AndroidBitmap(
+                    createNavigationMarkerBitmap(
+                        style = navigationMarkerStyle,
+                        sizePx = navigationMarkerSizePx,
+                        fillColor = NAVIGATION_MARKER_HISTORICAL_ARGB,
+                    ),
+                )
+            }
 
         NavigateCompassEffects(
             compassViewModel = compassViewModel,
@@ -402,8 +412,8 @@ fun NavigateScreen(
             isAmbient = isAmbient,
             promptForCalibration = promptForCalibration,
             showCalibrationDialog = showCalibrationDialog,
-            onShowCalibrationDialog = { navigateViewModel.showCalibrationDialog() },
-            onHideCalibrationDialog = { navigateViewModel.hideCalibrationDialog() },
+            onShowCalibrationDialog = { navigateViewModel.setCalibrationDialogVisible(true) },
+            onHideCalibrationDialog = { navigateViewModel.setCalibrationDialogVisible(false) },
             onApplyRecalibration = { compassViewModel.recalibrate() },
             onRecalibrationSucceeded = compassUiState.onCalibrationSucceeded,
         )
@@ -473,6 +483,8 @@ fun NavigateScreen(
                 expectedGpsIntervalMs = expectedMarkerGpsIntervalMs,
                 isBikeActivityProfile = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 navigationMarkerBitmap = navigationMarkerBitmap,
+                historicalNavigationMarkerBitmap = historicalNavigationMarkerBitmap,
+                retainedLocationAnchor = uiState.retainedLocationAnchor,
                 suppressLocationMarker = offlineMode,
                 navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             )
@@ -493,9 +505,7 @@ fun NavigateScreen(
         }
         val rawCurrentLocation by locationViewModel.currentLocation.collectAsState()
         val gpsFixFreshForAccuracyCircle =
-            gpsSignalSnapshot.isLocationAvailable &&
-                gpsSignalSnapshot.lastFixElapsedRealtimeMs > 0L &&
-                gpsSignalSnapshot.lastFixAgeMs in 0..gpsSignalSnapshot.lastFixFreshMaxAgeMs
+            locationUiState.locationMarkerTrustState == LocationMarkerTrustState.CURRENT
         val watchGpsDegradedWarning = locationUiState.watchGpsDegradedWarning
         val gpsEnvironmentWarning = locationUiState.gpsEnvironmentWarning
         val mapAppearanceApplyInProgress by mapViewModel.mapAppearanceApplyInProgress.collectAsState()
@@ -681,13 +691,15 @@ fun NavigateScreen(
                 shouldTrackLocation = shouldTrackLocation,
                 locationMarkerLatLong = locationMarker?.latLong,
                 lastKnownLocation = uiState.lastKnownLocation,
+                retainedLocationAnchor = uiState.retainedLocationAnchor,
+                startupMapFallbackState = uiState.startupMapFallbackState,
+                onStartupMapFallbackEvent = navigateViewModel::onStartupMapFallbackEvent,
                 navigateTarget = navigateTarget,
                 pendingPoiFocusTarget = pendingPoiFocusTarget,
                 mapView = mapView,
                 mapViewModel = mapViewModel,
                 selectedMapPath = selectedMapPath,
                 activeGpxDetails = activeGpxDetails,
-                navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             )
         val guidanceRuntime =
             rememberNavigateGuidanceRuntime(

@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import com.glancemap.glancemapwearos.core.maps.GeoBounds
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapFileState
@@ -23,7 +24,10 @@ internal fun OfflineStartCenteringEffect(
     activeGpxDetails: List<GpxTrackDetails>,
     skipInitialCentering: Boolean = false,
     enabled: Boolean = isOfflineMode,
+    onInitialCenteringApplied: (() -> Unit)? = null,
+    deferWhenNoCenter: Boolean = false,
 ) {
+    val latestOnInitialCenteringApplied = rememberUpdatedState(onInitialCenteringApplied)
     val mapFiles by mapViewModel.mapFiles.collectAsState()
     val selectedMapArea =
         remember(mapFiles, selectedMapPath) {
@@ -42,6 +46,7 @@ internal fun OfflineStartCenteringEffect(
         selectedMapArea,
         activeGpxDetails,
         skipInitialCentering,
+        deferWhenNoCenter,
         mapViewModel,
         mapView,
     ) {
@@ -56,6 +61,7 @@ internal fun OfflineStartCenteringEffect(
                 MapZoomChangeAttribution.prepare(mapView, "offline_viewport_restore")
                 mapView.model.mapViewPosition.setZoomLevel(zoomLevel.toByte(), false)
                 mapView.setCenter(center)
+                latestOnInitialCenteringApplied.value?.invoke()
                 mapViewModel.markOfflineStartCenterHandled(selectedMapPath, activeGpxDetails)
                 return@LaunchedEffect
             }
@@ -73,10 +79,21 @@ internal fun OfflineStartCenteringEffect(
         }
 
         val targetCenter = resolveOfflineStartCenter(selectedMapArea, activeGpxDetails)
-        targetCenter?.let { mapView.setCenter(it) }
+        if (shouldDeferInitialCentering(deferWhenNoCenter, targetCenter)) {
+            return@LaunchedEffect
+        }
+        targetCenter?.let {
+            mapView.setCenter(it)
+            latestOnInitialCenteringApplied.value?.invoke()
+        }
         mapViewModel.finishOfflineStartCenter(selectedMapPath, activeGpxDetails, forceStartupCenter)
     }
 }
+
+internal fun shouldDeferInitialCentering(
+    deferWhenNoCenter: Boolean,
+    targetCenter: LatLong?,
+): Boolean = deferWhenNoCenter && targetCenter == null
 
 private fun MapViewModel.finishOfflineStartCenter(
     selectedMapPath: String?,

@@ -144,13 +144,14 @@ internal fun hasMeaningfulCompassErrorImprovement(
 internal fun createNavigationMarkerBitmap(
     style: NavigationMarkerStyle,
     sizePx: Int = 24,
+    fillColor: Int = NAVIGATION_MARKER_BLUE_ARGB,
 ): Bitmap {
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
     when (style) {
-        NavigationMarkerStyle.DOT -> drawDotMarker(canvas, sizePx)
-        NavigationMarkerStyle.TRIANGLE -> drawArrowMarker(canvas, sizePx)
+        NavigationMarkerStyle.DOT -> drawDotMarker(canvas, sizePx, fillColor)
+        NavigationMarkerStyle.TRIANGLE -> drawArrowMarker(canvas, sizePx, fillColor)
     }
     return bitmap
 }
@@ -158,11 +159,13 @@ internal fun createNavigationMarkerBitmap(
 private fun drawDotMarker(
     canvas: Canvas,
     sizePx: Int,
+    fillColor: Int,
 ) {
-    drawDotMarkerBitmap(canvas, sizePx)
+    drawDotMarkerBitmap(canvas, sizePx, fillColor)
 }
 
 internal const val NAVIGATION_MARKER_BLUE_ARGB: Int = 0xFF007AFF.toInt()
+internal const val NAVIGATION_MARKER_HISTORICAL_ARGB: Int = 0xFF9CA3AF.toInt()
 private const val COMPASS_CONE_MIN_ERROR_DEG = 8f
 private const val COMPASS_CONE_MAX_ERROR_DEG = 45f
 private const val COMPASS_CONE_MIN_WIDTH_SCALE = 1.0f
