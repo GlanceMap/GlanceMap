@@ -84,6 +84,7 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import kotlin.math.min
 
 @Composable
+@Suppress("CyclomaticComplexMethod", "FunctionName", "LongMethod", "LongParameterList")
 internal fun BoxScope.TurnByTurnGuidanceOverlay(
     state: TurnByTurnGuidanceState,
     paused: Boolean,
@@ -99,6 +100,8 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     actionPromptRequestToken: Long,
     compactPopupEnabled: Boolean,
     compactPopupSuppressed: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     suppressed: Boolean = false,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -240,6 +243,8 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                         state = state,
                         isMetric = isMetric,
                         showDetails = !state.offRoute || guideBackToRouteActive,
+                        elevationProgressRingEnabled = elevationProgressRingEnabled,
+                        routeProgressRingSegments = routeProgressRingSegments,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (expandedPageIndex == 0) {
@@ -676,16 +681,21 @@ internal fun GuidanceRemainingArc(
 }
 
 @Composable
+@Suppress("FunctionName", "LongParameterList")
 internal fun GuidanceRouteProgressChrome(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
     showDetails: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
         RouteProgressRing(
             progress = state.routeProgressFraction,
             offRoute = state.offRoute,
+            elevationProgressRingEnabled = elevationProgressRingEnabled,
+            routeProgressRingSegments = routeProgressRingSegments,
             modifier = Modifier.fillMaxSize().zIndex(0f),
         )
         if (showDetails) {
@@ -985,13 +995,15 @@ private fun GuideBackPromptButton(
 }
 
 @Composable
+@Suppress("FunctionName")
 private fun RouteProgressRing(
     progress: Float?,
     offRoute: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     modifier: Modifier = Modifier,
 ) {
     val clampedProgress = progress?.coerceIn(0f, 1f) ?: return
-    val progressColor = if (offRoute) OFF_ROUTE_AMBER else MaterialTheme.colorScheme.primary
     Canvas(modifier = modifier) {
         val strokeWidth = 3.dp.toPx()
         val inset = strokeWidth / 2f + 3.dp.toPx()
@@ -1013,15 +1025,36 @@ private fun RouteProgressRing(
             style = Stroke(width = strokeWidth),
         )
         if (clampedProgress > 0f) {
-            drawArc(
-                color = progressColor,
-                startAngle = PROGRESS_ARC_START_DEGREES,
-                sweepAngle = PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
+            if (offRoute || !elevationProgressRingEnabled || routeProgressRingSegments.isEmpty()) {
+                drawArc(
+                    color = if (offRoute) OFF_ROUTE_AMBER else Color(ROUTE_PROGRESS_RING_FALLBACK_GREEN),
+                    startAngle = PROGRESS_ARC_START_DEGREES,
+                    sweepAngle = PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+            } else {
+                clipRouteProgressRingSegments(
+                    segments = routeProgressRingSegments,
+                    progress = clampedProgress,
+                ).forEach { segment ->
+                    drawArc(
+                        color = Color(segment.color),
+                        startAngle =
+                            PROGRESS_ARC_START_DEGREES +
+                                PROGRESS_ARC_SWEEP_DEGREES * segment.startFraction,
+                        sweepAngle =
+                            PROGRESS_ARC_SWEEP_DEGREES *
+                                (segment.endFraction - segment.startFraction),
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                    )
+                }
+            }
         }
     }
 }

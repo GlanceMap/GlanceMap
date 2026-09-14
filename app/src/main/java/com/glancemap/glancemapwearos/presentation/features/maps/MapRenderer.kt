@@ -12,6 +12,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,14 @@ internal fun shouldWarmMapStartupTileCache(
     skipNextStartupPrewarm: Boolean,
     hillshadeEnabled: Boolean,
 ): Boolean = prewarmingEnabled && !skipNextStartupPrewarm && !hillshadeEnabled
+
+internal fun mapLabelTextScale(size: String): Float =
+    when (size) {
+        SettingsRepository.MAP_LABEL_SIZE_SMALL -> 0.85f
+        SettingsRepository.MAP_LABEL_SIZE_LARGE -> 1.15f
+        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> 1.30f
+        else -> 1.0f
+    }
 
 class MapRenderer(
     private val context: Context,
@@ -180,6 +189,7 @@ class MapRenderer(
     private var currentReliefOverlayEnabled: Boolean = false
     private var currentDemSource: DemSource = DemSource.DEFAULT
     private var currentElevationLabelsMetric: Boolean = true
+    private var currentMapLabelTextScale: Float = 1.0f
 
     // Signature to detect changes even if same File path is reused
     private var currentThemeSignature: String = ""
@@ -672,6 +682,16 @@ class MapRenderer(
         rebuildTileCacheRequested = true
         skipNextStartupTilePrewarm = true
         updateMapLayer(currentMapPath)
+    }
+
+    fun setMapLabelTextScale(textScale: Float) {
+        if (currentMapLabelTextScale == textScale) return
+
+        currentMapLabelTextScale = textScale
+        currentLayer?.setTextScale(textScale)
+        if (currentLayer != null) {
+            forceRedraw()
+        }
     }
 
     fun updateMapLayer(mapPath: String?) {
@@ -1176,6 +1196,7 @@ class MapRenderer(
                 },
             ).apply {
                 setXmlRenderTheme(theme)
+                setTextScale(currentMapLabelTextScale)
                 trySetThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
                 if (warmStartupCache) {
                     armStartupTilePrewarm(this)

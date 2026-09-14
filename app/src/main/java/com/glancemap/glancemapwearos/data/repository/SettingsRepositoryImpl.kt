@@ -50,6 +50,16 @@ private fun legacyZoomScaleMeters(zoom: Int): Int =
         latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
     ).roundToInt()
 
+internal fun sanitizeMapLabelSize(size: String?): String =
+    when (size) {
+        SettingsRepository.MAP_LABEL_SIZE_SMALL,
+        SettingsRepository.MAP_LABEL_SIZE_DEFAULT,
+        SettingsRepository.MAP_LABEL_SIZE_LARGE,
+        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE,
+        -> size
+        else -> SettingsRepository.MAP_LABEL_SIZE_DEFAULT
+    }
+
 class SettingsRepositoryImpl private constructor(
     private val context: Context,
 ) : SettingsRepository {
@@ -140,6 +150,8 @@ class SettingsRepositoryImpl private constructor(
             booleanPreferencesKey("turn_by_turn_off_route_alerts_enabled")
         val TURN_BY_TURN_COMPACT_POPUP_ENABLED =
             booleanPreferencesKey("turn_by_turn_compact_popup_enabled")
+        val TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED =
+            booleanPreferencesKey("turn_by_turn_elevation_progress_ring_enabled")
         val TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS =
             intPreferencesKey("turn_by_turn_off_route_alert_threshold_meters")
         val TURN_BY_TURN_OFF_ROUTE_REPEAT_SECONDS =
@@ -168,6 +180,7 @@ class SettingsRepositoryImpl private constructor(
         val SHOW_TIME_IN_NAVIGATE = booleanPreferencesKey("show_time_in_navigate")
         val NAVIGATE_TIME_FORMAT = stringPreferencesKey("navigate_time_format")
         val MAP_ZOOM_BUTTONS_MODE = stringPreferencesKey("map_zoom_buttons_mode")
+        val MAP_LABEL_SIZE = stringPreferencesKey("map_label_size")
         val GPS_ACCURACY_CIRCLE_ENABLED = booleanPreferencesKey("gps_accuracy_circle_enabled")
         val MAP_ZOOM_DEFAULT = intPreferencesKey("map_zoom_default")
         val MAP_ZOOM_MIN = intPreferencesKey("map_zoom_min")
@@ -872,6 +885,16 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_COMPACT_POPUP_ENABLED] = enabled }
     }
 
+    override val turnByTurnElevationProgressRingEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED]
+                ?: SettingsRepository.DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED
+        }
+
+    override suspend fun setTurnByTurnElevationProgressRingEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED] = enabled }
+    }
+
     override val turnByTurnOffRouteAlertThresholdMeters: Flow<Int> =
         context.dataStore.data.map {
             it[PrefKeys.TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS]
@@ -1226,6 +1249,17 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit {
             it[PrefKeys.MAP_ZOOM_BUTTONS_MODE] =
                 if (mode in allowedZoomButtonModes) mode else SettingsRepository.ZOOM_BUTTONS_BOTH
+        }
+    }
+
+    override val mapLabelSize: Flow<String> =
+        context.dataStore.data.map { preferences ->
+            sanitizeMapLabelSize(preferences[PrefKeys.MAP_LABEL_SIZE])
+        }
+
+    override suspend fun setMapLabelSize(size: String) {
+        context.dataStore.edit {
+            it[PrefKeys.MAP_LABEL_SIZE] = sanitizeMapLabelSize(size)
         }
     }
 

@@ -29,6 +29,7 @@ internal data class NavigateSettingsState(
     val turnByTurnTurnAlertsMode: String,
     val turnByTurnOffRouteAlertsEnabled: Boolean,
     val turnByTurnCompactPopupEnabled: Boolean,
+    val turnByTurnElevationProgressRingEnabled: Boolean,
     val turnByTurnOffRouteThresholdMeters: Int,
     val turnByTurnOffRouteRepeatSeconds: Int,
     val turnByTurnGpsInAmbient: Boolean,
@@ -109,6 +110,10 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val turnByTurnCompactPopupEnabled by settingsViewModel.turnByTurnCompactPopupEnabled.collectAsState(
         initial = SettingsRepository.DEFAULT_TURN_BY_TURN_COMPACT_POPUP_ENABLED,
     )
+    val turnByTurnElevationProgressRingEnabled by
+        settingsViewModel.turnByTurnElevationProgressRingEnabled.collectAsState(
+            initial = SettingsRepository.DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED,
+        )
     val turnByTurnOffRouteThresholdMeters by settingsViewModel.turnByTurnOffRouteAlertThresholdMeters.collectAsState(
         initial = SettingsRepository.DEFAULT_TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS,
     )
@@ -196,6 +201,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         turnByTurnTurnAlertsMode = turnByTurnTurnAlertsMode,
         turnByTurnOffRouteAlertsEnabled = turnByTurnOffRouteAlertsEnabled,
         turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+        turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
         turnByTurnOffRouteThresholdMeters = turnByTurnOffRouteThresholdMeters,
         turnByTurnOffRouteRepeatSeconds = turnByTurnOffRouteRepeatSeconds,
         turnByTurnGpsInAmbient = turnByTurnGpsInAmbient,

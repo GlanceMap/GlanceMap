@@ -448,6 +448,19 @@ class SettingsViewModel(
             settingsRepository.setTurnByTurnCompactPopupEnabled(enabled)
         }
 
+    val turnByTurnElevationProgressRingEnabled: StateFlow<Boolean> =
+        settingsRepository.turnByTurnElevationProgressRingEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED,
+            )
+
+    fun setTurnByTurnElevationProgressRingEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setTurnByTurnElevationProgressRingEnabled(enabled)
+        }
+
     val turnByTurnOffRouteAlertThresholdMeters: StateFlow<Int> =
         settingsRepository.turnByTurnOffRouteAlertThresholdMeters
             .stateIn(
@@ -611,6 +624,19 @@ class SettingsViewModel(
     fun setMapZoomButtonsMode(mode: String) =
         viewModelScope.launch {
             settingsRepository.setMapZoomButtonsMode(mode)
+        }
+
+    val mapLabelSize: StateFlow<String> =
+        settingsRepository.mapLabelSize
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.MAP_LABEL_SIZE_DEFAULT,
+            )
+
+    fun setMapLabelSize(size: String) =
+        viewModelScope.launch {
+            settingsRepository.setMapLabelSize(size)
         }
 
     val gpsAccuracyCircleEnabled: StateFlow<Boolean> =

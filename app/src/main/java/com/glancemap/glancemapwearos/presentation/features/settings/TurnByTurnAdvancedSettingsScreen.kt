@@ -17,6 +17,7 @@ fun TurnByTurnAdvancedSettingsScreen(
     val offRouteThresholdMeters by viewModel.turnByTurnOffRouteAlertThresholdMeters.collectAsState()
     val offRouteRepeatSeconds by viewModel.turnByTurnOffRouteRepeatSeconds.collectAsState()
     val screenOffBatchingEnabled by viewModel.turnByTurnScreenOffBatchingEnabled.collectAsState()
+    val elevationProgressRingEnabled by viewModel.turnByTurnElevationProgressRingEnabled.collectAsState()
 
     WearSettingsListScreen(horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -77,6 +78,19 @@ fun TurnByTurnAdvancedSettingsScreen(
                         "Save battery, later alerts"
                     } else {
                         "Normal alert timing"
+                    },
+            )
+        }
+        item {
+            SettingsToggleChip(
+                checked = elevationProgressRingEnabled,
+                onCheckedChanged = viewModel::setTurnByTurnElevationProgressRingEnabled,
+                label = "Elevation progress ring",
+                secondaryLabel =
+                    if (elevationProgressRingEnabled) {
+                        "Colour progress by route grade"
+                    } else {
+                        "Use a green progress ring"
                     },
             )
         }

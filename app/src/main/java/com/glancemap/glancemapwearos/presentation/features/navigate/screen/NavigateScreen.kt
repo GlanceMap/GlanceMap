@@ -964,6 +964,19 @@ fun NavigateScreen(
             },
         )
 
+        val routeProgressRingSegments =
+            remember(
+                turnByTurnGuidanceSession?.trackId,
+                turnByTurnGuidanceSession?.reversed,
+                turnByTurnElevationProgressRingEnabled,
+            ) {
+                if (turnByTurnElevationProgressRingEnabled) {
+                    turnByTurnGuidanceSession?.let(::buildRouteProgressRingSegments).orEmpty()
+                } else {
+                    emptyList()
+                }
+            }
+
         NavigateContent(
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
@@ -1083,6 +1096,8 @@ fun NavigateScreen(
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
             turnByTurnCompactPopupEnabled =
                 turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
+            turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+            routeProgressRingSegments = routeProgressRingSegments,
             onTurnByTurnVoiceGuidanceChange = settingsViewModel::setTurnByTurnVoiceGuidanceEnabled,
             guideBackToRouteActive = guidanceRuntime.guideBackToRouteActive,
             showGuideBackPrompt = guidanceRuntime.showGuideBackPrompt,
