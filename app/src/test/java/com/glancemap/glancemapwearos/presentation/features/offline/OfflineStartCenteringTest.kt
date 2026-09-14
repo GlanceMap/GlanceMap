@@ -8,6 +8,13 @@ import org.mapsforge.core.model.LatLong
 
 class OfflineStartCenteringTest {
     @Test
+    fun `online fallback waits for map metadata instead of consuming empty center`() {
+        assertEquals(true, shouldDeferInitialCentering(deferWhenNoCenter = true, targetCenter = null))
+        assertEquals(false, shouldDeferInitialCentering(deferWhenNoCenter = true, targetCenter = LatLong(45.0, 6.0)))
+        assertEquals(false, shouldDeferInitialCentering(deferWhenNoCenter = false, targetCenter = null))
+    }
+
+    @Test
     fun `map only centers on selected map`() {
         val center =
             resolveOfflineStartCenter(
