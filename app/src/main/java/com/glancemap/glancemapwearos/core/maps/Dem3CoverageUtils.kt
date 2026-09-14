@@ -92,9 +92,10 @@ object Dem3CoverageUtils {
             if (demSignature == DEM_SIGNATURE_NONE) {
                 0
             } else {
-                requiredTileIds.count { tileId ->
-                    tileCoverageCandidates(demRoots, tileId).any { it.exists() && it.isFile }
-                }
+                countRenderableTiles(
+                    demRoots = demRoots,
+                    requiredTileIds = requiredTileIds,
+                )
             }
 
         return DemCoverageSummary(
@@ -193,6 +194,14 @@ object Dem3CoverageUtils {
         }
     }
 
+    internal fun countRenderableTiles(
+        demRoots: List<File>,
+        requiredTileIds: Set<String>,
+    ): Int =
+        requiredTileIds.count { tileId ->
+            tileFileCandidates(demRoots, tileId).any { it.isFile && it.length() > 0L }
+        }
+
     private fun requiredTileIdsForMap(
         mapFile: File,
         mapSignature: String,
@@ -250,11 +259,6 @@ object Dem3CoverageUtils {
             File(demRoot, "$upperTileId.hgt"),
         )
     }
-
-    private fun tileCoverageCandidates(
-        demRoots: List<File>,
-        tileId: String,
-    ): List<File> = tileFileCandidates(demRoots, tileId) + missingTileMarkerCandidates(demRoots, tileId)
 
     fun missingTileMarkerCandidates(
         demRoots: List<File>,
