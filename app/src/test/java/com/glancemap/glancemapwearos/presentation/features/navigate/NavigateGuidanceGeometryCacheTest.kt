@@ -8,12 +8,42 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.bui
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.computeTurnByTurnGuidanceState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
 
 class NavigateGuidanceGeometryCacheTest {
+    @Test
+    fun guideBackDestinationDoesNotComputeWhenDisabled() {
+        var computations = 0
+
+        val destination =
+            guideBackDestinationIfEnabled(enabled = false) {
+                computations += 1
+                LatLong(45.0, 6.0)
+            }
+
+        assertNull(destination)
+        assertEquals(0, computations)
+    }
+
+    @Test
+    fun guideBackDestinationStillComputesWhenEnabled() {
+        var computations = 0
+        val expected = LatLong(45.0, 6.0)
+
+        val destination =
+            guideBackDestinationIfEnabled(enabled = true) {
+                computations += 1
+                expected
+            }
+
+        assertEquals(expected, destination)
+        assertEquals(1, computations)
+    }
+
     @Test
     fun `unrelated recomposition reuses geometry but each fix still gets per fix processing`() {
         val cache = NavigateGuidanceGeometryCache()

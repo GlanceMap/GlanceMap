@@ -213,14 +213,16 @@ internal fun rememberNavigateGuidanceRuntime(
     var dismissedGuideBackPromptTrackId by remember { mutableStateOf<String?>(null) }
     val guideBackTrackId = activeSession?.trackId
     val guideBackTargetPoint =
-        guidanceGeometryCache.nearestRoutePoint(
-            session = activeSession,
-            currentLocation = guidanceLocation,
-        ) {
-            nearestGuidanceRoutePoint(
+        guideBackDestinationIfEnabled(brouterGuideBackEnabled) {
+            guidanceGeometryCache.nearestRoutePoint(
                 session = activeSession,
                 currentLocation = guidanceLocation,
-            )
+            ) {
+                nearestGuidanceRoutePoint(
+                    session = activeSession,
+                    currentLocation = guidanceLocation,
+                )
+            }
         }
     LaunchedEffect(
         state.active,
@@ -528,6 +530,11 @@ internal fun rememberNavigateGuidanceRuntime(
         },
     )
 }
+
+internal fun guideBackDestinationIfEnabled(
+    enabled: Boolean,
+    compute: () -> LatLong?,
+): LatLong? = if (enabled) compute() else null
 
 private fun List<LatLong>.sumRouteDistanceMeters(): Double =
     zipWithNext().sumOf { (start, end) ->

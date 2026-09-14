@@ -183,10 +183,9 @@ fun computeTurnByTurnGuidanceState(
             offRoute = false,
         )
     }
-    val fullRouteElevation = remainingElevationMeters(session, 0.0)
-
     if (currentLocation == null) {
         val nextInstruction = session.instructions.firstOrNull()
+        val fullRouteElevation = remainingElevationMeters(session, 0.0)
         return TurnByTurnGuidanceState(
             active = true,
             mode = GuidanceMode.WAITING_FOR_LOCATION,
@@ -216,6 +215,7 @@ fun computeTurnByTurnGuidanceState(
     val start = session.trackPoints.first().latLong
     val distanceToStart = haversineMeters(currentLocation, start)
     if (!session.startReached && distanceToStart > tuning.startReachedDistanceMeters) {
+        val fullRouteElevation = remainingElevationMeters(session, 0.0)
         return TurnByTurnGuidanceState(
             active = true,
             mode = GuidanceMode.TO_START,
