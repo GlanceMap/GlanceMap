@@ -427,10 +427,7 @@ fun GpxAppearanceSettingsScreen(
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            SettingsSectionChip(
-                label = "GPX settings",
-                secondaryLabel = "Back to GPX settings",
-                compactRoundWidthFraction = 0.78f,
+            GpxSettingsShortcutChip(
                 onClick = onOpenGpxSettings,
             )
         }

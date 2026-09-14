@@ -194,9 +194,11 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     }
 }
 
+@Suppress("CyclomaticComplexMethod", "FunctionName", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.PanningLiveMetricsOverlay(
     navMode: NavMode,
+    screenSize: WearScreenSize,
     liveElevationEnabled: Boolean,
     liveElevationLabel: String?,
     liveDistanceEnabled: Boolean,
@@ -206,29 +208,51 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
     navButtonBottomPadding: Dp,
     navButtonSize: Dp,
 ) {
-    cappedFontScale {
+    val liveMetricFontSize =
+        when (screenSize) {
+            WearScreenSize.SMALL -> 12.sp
+            WearScreenSize.MEDIUM,
+            WearScreenSize.LARGE,
+            -> 13.sp
+        }
+    val liveMetricLineHeight =
+        when (screenSize) {
+            WearScreenSize.SMALL -> 14.sp
+            WearScreenSize.MEDIUM,
+            WearScreenSize.LARGE,
+            -> 15.sp
+        }
+    val liveMetricIconSize =
+        when (screenSize) {
+            WearScreenSize.SMALL -> 12.dp
+            WearScreenSize.MEDIUM,
+            WearScreenSize.LARGE,
+            -> 13.dp
+        }
+
+    cappedFontScale(maxFontScale = 1.15f) {
         if (navMode == NavMode.PANNING && liveElevationEnabled) {
             Row(
                 modifier =
                     Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = zoomLabelTopPadding + 28.dp)
-                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(7.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_live_elevation_altitude),
                     contentDescription = "live_elevation",
-                    modifier = Modifier.size(10.dp),
+                    modifier = Modifier.size(liveMetricIconSize),
                     tint = Color(0xFF34D399),
                 )
                 Text(
                     text = " ${liveElevationLabel ?: "--"}",
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp,
-                    lineHeight = 10.sp,
+                    fontSize = liveMetricFontSize,
+                    lineHeight = liveMetricLineHeight,
                 )
             }
         }
@@ -264,8 +288,8 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = navButtonBottomPadding + navButtonSize + 8.dp)
-                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(7.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
@@ -274,7 +298,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                     contentDescription = "live_distance",
                     modifier =
                         Modifier
-                            .size(10.dp)
+                            .size(liveMetricIconSize)
                             .rotate(90f),
                     tint = Color.White.copy(alpha = 0.92f),
                 )
@@ -282,8 +306,8 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                     text = liveDistanceLabel,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp,
-                    lineHeight = 10.sp,
+                    fontSize = liveMetricFontSize,
+                    lineHeight = liveMetricLineHeight,
                 )
             }
         }
