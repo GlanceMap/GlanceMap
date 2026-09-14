@@ -52,6 +52,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardOverlay
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteShortcutTray
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolInlineProgressBanner
@@ -120,6 +121,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onCreatePoiClick: () -> Unit,
     keepAppOpen: Boolean,
     onKeepAppOpenToggle: () -> Unit,
+    traceRecordingViewModel: TraceRecordingViewModel,
     traceRecordingState: TraceRecordingUiState,
     recordingDashboardMetricSlots: List<String>,
     turnByTurnDashboardMetricSlots: List<String>,
@@ -544,7 +546,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     )
 
     RecordingDashboardOverlay(
-        state = traceRecordingState,
+        traceRecordingViewModel = traceRecordingViewModel,
         metricSlots = recordingDashboardMetricSlots,
         userWeightKg = userWeightKg,
         backpackWeightKg = backpackWeightKg,
@@ -574,7 +576,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         guidanceState = turnByTurnGuidanceState,
         guidancePaused = turnByTurnGuidancePaused,
         voiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
-        recordingState = traceRecordingState,
+        traceRecordingViewModel = traceRecordingViewModel,
         metricSlots = recordingDashboardMetricSlots,
         guidanceMetricSlots = turnByTurnDashboardMetricSlots,
         userWeightKg = userWeightKg,

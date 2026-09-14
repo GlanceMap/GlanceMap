@@ -26,11 +26,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -63,6 +67,15 @@ class TraceRecordingViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TraceRecordingUiState())
     val uiState: StateFlow<TraceRecordingUiState> = _uiState.asStateFlow()
+    val recordingPresentationState: StateFlow<TraceRecordingUiState> =
+        uiState
+            .map(TraceRecordingUiState::toRecordingPresentationState)
+            .distinctUntilChanged()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
+                initialValue = TraceRecordingUiState().toRecordingPresentationState(),
+            )
     private val _startWarning = MutableStateFlow<RecordingStartWarning?>(null)
     val startWarning: StateFlow<RecordingStartWarning?> = _startWarning.asStateFlow()
     private val _locationStartWarning = MutableStateFlow<RecordingLocationStartWarning?>(null)
@@ -140,6 +153,9 @@ class TraceRecordingViewModel(
     private var autoResumeTriggerCount = 0
     private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
+
+    fun currentStepCount(): Int? = latestSensorMetrics.stepCount ?: _uiState.value.stepCount
+
     private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
     private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0

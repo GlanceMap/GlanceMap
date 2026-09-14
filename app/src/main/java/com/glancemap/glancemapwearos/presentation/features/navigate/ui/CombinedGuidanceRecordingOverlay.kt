@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -75,6 +76,7 @@ import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboar
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardStatisticsCache
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingFullscreenPageShell
@@ -96,7 +98,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     guidanceState: TurnByTurnGuidanceState,
     guidancePaused: Boolean,
     voiceGuidanceEnabled: Boolean,
-    recordingState: TraceRecordingUiState,
+    traceRecordingViewModel: TraceRecordingViewModel,
     metricSlots: List<String>,
     guidanceMetricSlots: List<String>,
     userWeightKg: Float,
@@ -127,6 +129,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     onGuidanceMetricSelected: (Int, String) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    val recordingState by traceRecordingViewModel.uiState.collectAsState()
     if ((!guidanceState.active && !guidancePaused) || (!recordingState.active && !recordingState.saving)) return
 
     var expanded by remember { mutableStateOf(false) }

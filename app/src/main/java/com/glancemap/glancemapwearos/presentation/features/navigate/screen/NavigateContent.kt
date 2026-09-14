@@ -66,6 +66,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.LocalFullscreenPopupTimeFormat
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
@@ -128,6 +129,7 @@ internal fun NavigateContent(
     keepAppOpen: Boolean,
     onKeepAppOpenToggle: () -> Unit,
     backButtonExitsNavigation: Boolean,
+    traceRecordingViewModel: TraceRecordingViewModel,
     traceRecordingState: TraceRecordingUiState,
     recordingStatusMessage: String?,
     recordingDashboardMetricSlots: List<String>,
@@ -931,6 +933,7 @@ internal fun NavigateContent(
             CompositionLocalProvider(LocalFullscreenPopupTimeFormat provides navigateTimeFormat) {
                 NavigateOverlaysLayer(
                     mapView = mapView,
+                    traceRecordingViewModel = traceRecordingViewModel,
                     mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
                     slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
                     slopeOverlayEnabled = slopeOverlayEnabled,

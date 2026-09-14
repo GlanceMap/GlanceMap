@@ -186,7 +186,7 @@ fun NavigateScreen(
         val activePoiOverlaySources by poiViewModel.activeOverlaySources.collectAsState()
         val navigateTarget by poiViewModel.navigateTarget.collectAsState()
         val offlinePoiSearchUiState by poiViewModel.offlineSearchUiState.collectAsState()
-        val traceRecordingState by traceRecordingViewModel.uiState.collectAsState()
+        val traceRecordingState by traceRecordingViewModel.recordingPresentationState.collectAsState()
         val recordingSampleIntervalSeconds by settingsViewModel.recordingSampleIntervalSeconds.collectAsState()
         val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
         val turnByTurnGpsIntervalSeconds by settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
@@ -1040,6 +1040,7 @@ fun NavigateScreen(
             keepAppOpen = keepAppOpen,
             onKeepAppOpenToggle = screenActions.toggleKeepAppOpen,
             backButtonExitsNavigation = backButtonExitsNavigation,
+            traceRecordingViewModel = traceRecordingViewModel,
             traceRecordingState = traceRecordingState,
             recordingStatusMessage = recordingStatusMessage,
             recordingDashboardMetricSlots = recordingDashboardMetricSlots,

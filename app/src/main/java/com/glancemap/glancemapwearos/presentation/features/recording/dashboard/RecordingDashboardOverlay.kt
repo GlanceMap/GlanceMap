@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -28,7 +29,7 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.defaultRecordingDashboardMetricSlotsForProfile
 import com.glancemap.glancemapwearos.data.repository.newRecordingDashboardPageMetricSlotsForProfile
 import com.glancemap.glancemapwearos.data.repository.normalizeRecordingDashboardMetricSlots
-import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
@@ -41,7 +42,7 @@ import kotlinx.coroutines.isActive
 @Suppress("FunctionNaming", "LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun BoxScope.RecordingDashboardOverlay(
-    state: TraceRecordingUiState,
+    traceRecordingViewModel: TraceRecordingViewModel,
     metricSlots: List<String>,
     userWeightKg: Float,
     backpackWeightKg: Float,
@@ -61,6 +62,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
     actionPromptRequestToken: Long,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    val state by traceRecordingViewModel.uiState.collectAsState()
     if (!state.active && !state.saving) return
 
     var expanded by remember { mutableStateOf(false) }
