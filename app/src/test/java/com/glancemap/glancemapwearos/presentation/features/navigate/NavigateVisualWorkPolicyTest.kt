@@ -9,6 +9,42 @@ import org.junit.Test
 
 class NavigateVisualWorkPolicyTest {
     @Test
+    fun navigateTimeChipClockRunsOnlyForVisibleInteractiveTimeDisplay() {
+        assertTrue(
+            shouldRunNavigateTimeChipClock(
+                visible = true,
+                isScreenInteractive = true,
+                showTime = true,
+            ),
+        )
+        assertFalse(
+            shouldRunNavigateTimeChipClock(
+                visible = true,
+                isScreenInteractive = false,
+                showTime = true,
+            ),
+        )
+        assertFalse(
+            shouldRunNavigateTimeChipClock(
+                visible = false,
+                isScreenInteractive = true,
+                showTime = true,
+            ),
+        )
+    }
+
+    @Test
+    fun navigateTimeChipClockStopsWhenStaticRecordingStatusReplacesTime() {
+        assertFalse(
+            shouldRunNavigateTimeChipClock(
+                visible = true,
+                isScreenInteractive = true,
+                showTime = false,
+            ),
+        )
+    }
+
+    @Test
     fun orientationVisualLoopRunsOnlyForInteractiveFollowModes() {
         assertTrue(
             shouldRunOrientationVisualLoop(

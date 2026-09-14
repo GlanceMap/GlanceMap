@@ -74,6 +74,7 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.model.common.Observer
 
@@ -1068,6 +1069,7 @@ internal fun NavigateContent(
                         !shouldSuppressNavigateTime &&
                         (showNavigateTime || traceRecordingState.active || traceRecordingState.saving),
                 showTime = showNavigateTime,
+                isScreenInteractive = screenState.isInteractive,
                 timeFormat = navigateTimeFormat,
                 recordingActive = traceRecordingState.active || traceRecordingState.saving,
                 recordingPaused = traceRecordingState.paused,
@@ -1144,6 +1146,7 @@ internal fun NavigateContent(
 private fun CenteredNavigateTimeChip(
     visible: Boolean,
     showTime: Boolean,
+    isScreenInteractive: Boolean,
     timeFormat: String,
     recordingActive: Boolean,
     recordingPaused: Boolean,
@@ -1156,10 +1159,18 @@ private fun CenteredNavigateTimeChip(
     if (!visible) return
     val context = LocalContext.current
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMillis = System.currentTimeMillis()
+    val clockUpdatesActive =
+        shouldRunNavigateTimeChipClock(
+            visible = visible,
+            isScreenInteractive = isScreenInteractive,
+            showTime = showTime,
+        )
+    LaunchedEffect(clockUpdatesActive) {
+        if (!clockUpdatesActive) return@LaunchedEffect
+        nowMillis = System.currentTimeMillis()
+        while (isActive) {
             delay(1_000L)
+            nowMillis = System.currentTimeMillis()
         }
     }
     val label =
@@ -1253,6 +1264,12 @@ private fun CenteredNavigateTimeChip(
         }
     }
 }
+
+internal fun shouldRunNavigateTimeChipClock(
+    visible: Boolean,
+    isScreenInteractive: Boolean,
+    showTime: Boolean,
+): Boolean = visible && isScreenInteractive && showTime
 
 internal fun shouldEnterPanningAfterDoubleTap(
     center: LatLong?,
