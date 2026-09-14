@@ -26,7 +26,9 @@ class TraceRecordingDraftStore(
 
     suspend fun load(): TraceRecordingDraft? =
         withContext(Dispatchers.IO) {
-            runCatching(::readDraft).getOrNull().also { deleteLegacyGpxArtifacts() }
+            runCatching(::readDraft).getOrNull().also { draft ->
+                if (draft != null) deleteLegacyGpxArtifacts()
+            }
         }
 
     private fun readDraft(): TraceRecordingDraft? =

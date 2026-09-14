@@ -93,6 +93,31 @@ class TraceRecordingDraftStoreTest {
             assertFalse(File(draftDir, "current.gpx.tmp").exists())
         }
 
+    @Test
+    fun corruptJsonPreservesLegacyGpxArtifactsForSalvage() =
+        runBlocking {
+            File(draftDir, "current.json").writeText("{corrupt")
+            val legacyGpx = File(draftDir, "current.gpx").apply { writeText("legacy") }
+            val legacyGpxTemp = File(draftDir, "current.gpx.tmp").apply { writeText("legacy temp") }
+
+            assertEquals(null, store.load())
+            assertTrue(legacyGpx.exists())
+            assertTrue(legacyGpxTemp.exists())
+        }
+
+    @Test
+    fun successfulSaveRemovesStaleLegacyGpxArtifacts() =
+        runBlocking {
+            val legacyGpx = File(draftDir, "current.gpx").apply { writeText("legacy") }
+            val legacyGpxTemp = File(draftDir, "current.gpx.tmp").apply { writeText("legacy temp") }
+
+            store.save(state = recoveryState(), lastUiAction = "save")
+
+            assertFalse(legacyGpx.exists())
+            assertFalse(legacyGpxTemp.exists())
+            assertTrue(File(draftDir, "current.json").exists())
+        }
+
     private fun recoveryState() =
         TraceRecordingUiState(
             active = true,
