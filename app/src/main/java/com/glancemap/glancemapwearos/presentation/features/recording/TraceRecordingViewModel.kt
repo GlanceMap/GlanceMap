@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
@@ -24,11 +26,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -61,6 +67,15 @@ class TraceRecordingViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TraceRecordingUiState())
     val uiState: StateFlow<TraceRecordingUiState> = _uiState.asStateFlow()
+    val recordingPresentationState: StateFlow<TraceRecordingUiState> =
+        uiState
+            .map(TraceRecordingUiState::toRecordingPresentationState)
+            .distinctUntilChanged()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
+                initialValue = TraceRecordingUiState().toRecordingPresentationState(),
+            )
     private val _startWarning = MutableStateFlow<RecordingStartWarning?>(null)
     val startWarning: StateFlow<RecordingStartWarning?> = _startWarning.asStateFlow()
     private val _locationStartWarning = MutableStateFlow<RecordingLocationStartWarning?>(null)
@@ -138,6 +153,9 @@ class TraceRecordingViewModel(
     private var autoResumeTriggerCount = 0
     private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
+
+    fun currentStepCount(): Int? = latestSensorMetrics.stepCount ?: _uiState.value.stepCount
+
     private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
     private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0
@@ -580,6 +598,8 @@ class TraceRecordingViewModel(
                 knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
             )
         val sensorMetricsAtFix = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+        val smartTrackStartedAtElapsedMs =
+            RecordingScreenOffDiagnostics.start()
         val motionResult =
             recordingMovementConfidenceGate.evaluate(
                 previous = previousRecordedPoint,
@@ -609,6 +629,10 @@ class TraceRecordingViewModel(
                 activityProfile = state.activityProfile,
                 previousFilterAccuracyMeters = previousFilterAccuracyMeters,
             )
+        RecordingScreenOffDiagnostics.stop(
+            activity = RecordingScreenOffActivity.SMART_TRACK,
+            startedAtElapsedMs = smartTrackStartedAtElapsedMs,
+        )
         recordingPointDensityTelemetry.observeSmartTrackDecision(motionResult)
         if (DebugTelemetry.isEnabled()) {
             smartTrackTelemetry.observeMotion(
@@ -624,24 +648,26 @@ class TraceRecordingViewModel(
             ) {
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
-                        "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
-                        "count=$suppressedJitterPointCount " +
-                        "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
-                        "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
-                        "stationaryRadiusMeters=${
-                            motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
-                        } " +
-                        "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                        "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
-                        "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
-                        "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
-                        "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
-                        "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
-                        "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}",
+                    {
+                        "event=motion_${motionResult.status.name.lowercase(Locale.ROOT)} " +
+                            "reason=${motionResult.reason.name.lowercase(Locale.ROOT)} " +
+                            "count=$suppressedJitterPointCount " +
+                            "distanceMeters=${motionResult.displacementMeters.formatTelemetry(1)} " +
+                            "totalDistanceMeters=${suppressedJitterDistanceMeters.formatTelemetry(1)} " +
+                            "stationaryRadiusMeters=${
+                                motionResult.evidence.stationaryRadiusMeters?.formatTelemetry(1) ?: "na"
+                            } " +
+                            "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                            "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                            "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
+                            "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
+                            "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
+                            "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
+                            "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
+                            "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}"
+                    },
                 )
             }
             if (motionResult.reason == RecordingMotionReason.STATIONARY_JITTER) {
@@ -655,20 +681,24 @@ class TraceRecordingViewModel(
         if (motionResult.reason == RecordingMotionReason.DELAYED_DELIVERY_RECOVERY) {
             DebugTelemetry.log(
                 "TraceRecording",
-                "event=motion_delayed_delivery_recovery " +
-                    "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
-                    "liveCallbackGapMs=$liveCallbackGapMillis " +
-                    "gapExpectedIntervalMs=${callbackGapTiming.expectedIntervalMillis} " +
-                    "currentEffectiveIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
-                    "endpointDisplacementM=${motionResult.displacementMeters.formatTelemetry(1)} " +
-                    "previousSpeedMps=${previousRecordedPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
-                    "currentSpeedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                    "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}",
+                {
+                    "event=motion_delayed_delivery_recovery " +
+                        "acceptedPointGapMs=$elapsedSinceAcceptedMs " +
+                        "liveCallbackGapMs=$liveCallbackGapMillis " +
+                        "gapExpectedIntervalMs=${callbackGapTiming.expectedIntervalMillis} " +
+                        "currentEffectiveIntervalMs=$latestEffectiveRecordingSamplingIntervalMs " +
+                        "endpointDisplacementM=${motionResult.displacementMeters.formatTelemetry(1)} " +
+                        "previousSpeedMps=${previousRecordedPoint?.speedMps?.formatTelemetry(2) ?: "na"} " +
+                        "currentSpeedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"}"
+                },
             )
         }
         if (!motionResult.accepted) {
             recordingMovementConfidenceGate.reset()
         }
+        val fixQualityStartedAtElapsedMs =
+            RecordingScreenOffDiagnostics.start()
         val fixQualityResult =
             recordingFixQualityGate.evaluate(
                 candidate =
@@ -688,6 +718,10 @@ class TraceRecordingViewModel(
                     ),
                 activityProfile = state.activityProfile,
             )
+        RecordingScreenOffDiagnostics.stop(
+            activity = RecordingScreenOffActivity.SMART_TRACK,
+            startedAtElapsedMs = fixQualityStartedAtElapsedMs,
+        )
         if (DebugTelemetry.isEnabled()) {
             smartTrackTelemetry.observeQuality(
                 result = fixQualityResult,
@@ -705,20 +739,22 @@ class TraceRecordingViewModel(
                 val accuracyPolicy = recordingFixQualityGate.latestAccuracyPolicySnapshot
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
-                        "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
-                        "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
-                        "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
-                        "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                        "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
-                        "accuracyBaselineMedianMeters=${
-                            accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
-                        } " +
-                        "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
-                        "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
-                        "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
-                        "provider=${sanitizeTelemetryValue(location.provider ?: "na")}",
+                    {
+                        "event=fix_quality_${fixQualityResult.status.name.lowercase(Locale.ROOT)} " +
+                            "reason=${fixQualityResult.reason.name.lowercase(Locale.ROOT)} " +
+                            "held=$qualityHeldFixCount rejected=$qualityRejectedFixCount " +
+                            "accuracyMeters=${livePoint.accuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "filterAccuracyMeters=${filterAccuracyMeters?.formatTelemetry(1) ?: "na"} " +
+                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                            "accuracyBaselineSamples=${accuracyPolicy?.sampleCount ?: -1} " +
+                            "accuracyBaselineMedianMeters=${
+                                accuracyPolicy?.baselineMedianMeters?.formatTelemetry(1) ?: "na"
+                            } " +
+                            "accuracyLimitMeters=${accuracyPolicy?.resolvedLimitMeters?.formatTelemetry(1) ?: "na"} " +
+                            "adaptiveAccuracyLimit=${accuracyPolicy?.adaptiveLimitActive ?: "na"} " +
+                            "speedMps=${livePoint.speedMps?.formatTelemetry(2) ?: "na"} " +
+                            "provider=${sanitizeTelemetryValue(location.provider ?: "na")}"
+                    },
                 )
             }
             return null
@@ -805,6 +841,10 @@ class TraceRecordingViewModel(
         val selectedElevationSource = recordingElevationSource
         return viewModelScope.launch {
             locationPointMutex.withLock {
+                val recordingPointStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
+                val demLookupStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
                 val elevation =
                     elevationProvider.resolveElevation(
                         latitude = latitude,
@@ -813,6 +853,10 @@ class TraceRecordingViewModel(
                         source = selectedElevationSource,
                         demSource = selectedDemSource,
                     )
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.DEM_LOOKUP,
+                    startedAtElapsedMs = demLookupStartedAtElapsedMs,
+                )
                 if (elevation.demAttempted) {
                     if (elevation.demHit) {
                         demElevationHitCount += 1
@@ -828,6 +872,8 @@ class TraceRecordingViewModel(
                 }
                 val sensorMetrics = sensorMetricsAtFix
                 val startsNewSegment = startsNewSegmentForPoint
+                val hybridElevationStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
                 val fusedElevation =
                     hybridElevationFilter.update(
                         RecordingHybridElevationInput(
@@ -845,6 +891,10 @@ class TraceRecordingViewModel(
                             activityProfile = _uiState.value.activityProfile,
                         ),
                     )
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.HYBRID_ELEVATION,
+                    startedAtElapsedMs = hybridElevationStartedAtElapsedMs,
+                )
                 if (fusedElevation.pressureUsed) {
                     hybridElevationPointCount += 1
                     hybridPressureDeltaMeters += kotlin.math.abs(fusedElevation.pressureDeltaMeters)
@@ -867,7 +917,13 @@ class TraceRecordingViewModel(
                         segmentStartReason = segmentStartReason,
                     )
                 val currentState = _uiState.value
-                if (!currentState.active || currentState.saving) return@withLock
+                if (!currentState.active || currentState.saving) {
+                    RecordingScreenOffDiagnostics.stop(
+                        activity = RecordingScreenOffActivity.RECORDING_POINT,
+                        startedAtElapsedMs = recordingPointStartedAtElapsedMs,
+                    )
+                    return@withLock
+                }
                 if (pendingSegmentStartReason == pendingSegmentStartReasonForPoint) {
                     pendingSegmentStartReason = null
                 }
@@ -897,13 +953,15 @@ class TraceRecordingViewModel(
                     ) {
                         DebugTelemetry.log(
                             "TraceRecording",
-                            "event=track_point_smoothed mode=${currentState.trackSmoothingMode} " +
-                                "count=$smoothedPointCount " +
-                                "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
-                                "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
-                                "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
-                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
-                                "confirmedReversals=$confirmedReversalCorrectionCount",
+                            {
+                                "event=track_point_smoothed mode=${currentState.trackSmoothingMode} " +
+                                    "count=$smoothedPointCount " +
+                                    "adjustmentMeters=${canonicalAppend.adjustmentMeters.formatTelemetry(2)} " +
+                                    "totalAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(1)} " +
+                                    "maxAdjustmentMeters=${maxSmoothedAdjustmentMeters.formatTelemetry(2)} " +
+                                    "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                                    "confirmedReversals=$confirmedReversalCorrectionCount"
+                            },
                         )
                     }
                 }
@@ -935,13 +993,15 @@ class TraceRecordingViewModel(
                     continuityDistanceSuppressedMeters += suppressedMeters
                     DebugTelemetry.log(
                         "TraceRecording",
-                        "event=continuity_distance_capped count=$continuityDistanceCapCount " +
-                            "reason=${continuityRecoveryReason ?: "na"} " +
-                            "geometricMeters=${watchGpsGeometricDelta.formatTelemetry(1)} " +
-                            "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
-                            "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
-                            "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
-                            "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}",
+                        {
+                            "event=continuity_distance_capped count=$continuityDistanceCapCount " +
+                                "reason=${continuityRecoveryReason ?: "na"} " +
+                                "geometricMeters=${watchGpsGeometricDelta.formatTelemetry(1)} " +
+                                "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
+                                "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
+                                "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
+                                "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}"
+                        },
                     )
                 }
                 val pointCount = currentState.points.size + 1
@@ -983,40 +1043,48 @@ class TraceRecordingViewModel(
                 if (pointCount == 1 || pointCount % RECORDING_TELEMETRY_POINT_INTERVAL == 0) {
                     DebugTelemetry.log(
                         "TraceRecording",
-                        "event=point points=$pointCount " +
-                            "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
-                            "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
-                            "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
-                            "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
-                            "elevationMeters=${point.elevationMeters?.toInt() ?: -1} " +
-                            "elevationSource=${point.elevationSource ?: "na"} " +
-                            "demHits=$demElevationHitCount demMisses=$demElevationMissCount " +
-                            "demResolution=${lastDemResolutionLabel ?: "na"} " +
-                            "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
-                            "gpsElevationUsed=$gpsElevationUsedCount " +
-                            "gpsActiveDurationMs=$gpsActiveDurationMillis " +
-                            "recordingGapCount=$recordingGapCount recordingMaxGapMs=$recordingMaxGapMillis " +
-                            sensorTelemetryTokens(nowMillis = System.currentTimeMillis()) + " " +
-                            "heartRateBpm=${point.heartRateBpm ?: -1} stepCount=${point.stepCount ?: -1} " +
-                            "cadenceSpm=${point.cadenceSpm ?: -1} " +
-                            "powerWatts=${point.powerWatts ?: -1} " +
-                            "pressureHpa=${point.barometricPressureHpa?.toInt() ?: -1} " +
-                            "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
-                            "skippedUnusable=$skippedUnusableLocationCount " +
-                            "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
-                            "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
-                            "straightDriftPoints=$straightDriftCorrectedPointCount " +
-                            "continuityDistanceCaps=$continuityDistanceCapCount " +
-                            "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
-                            smartTrackTelemetryTokens() + " " +
-                            recordingPointDensityTelemetryTokens() + " " +
-                            "confirmedReversals=$confirmedReversalCorrectionCount " +
-                            "segmentReason=${segmentStartReason ?: "na"} " +
-                            "hybridElevationPoints=$hybridElevationPointCount " +
-                            smartElevationTelemetryTokens(),
+                        {
+                            "event=point points=$pointCount " +
+                                "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
+                                "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
+                                "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
+                                "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
+                                "elevationMeters=${point.elevationMeters?.toInt() ?: -1} " +
+                                "elevationSource=${point.elevationSource ?: "na"} " +
+                                "demHits=$demElevationHitCount demMisses=$demElevationMissCount " +
+                                "demResolution=${lastDemResolutionLabel ?: "na"} " +
+                                "demAxisLen=${lastDemAxisLen ?: -1} demTile=${lastDemTileId ?: "na"} " +
+                                "gpsElevationUsed=$gpsElevationUsedCount " +
+                                "gpsActiveDurationMs=$gpsActiveDurationMillis " +
+                                "recordingGapCount=$recordingGapCount recordingMaxGapMs=$recordingMaxGapMillis " +
+                                sensorTelemetryTokens(nowMillis = System.currentTimeMillis()) + " " +
+                                "heartRateBpm=${point.heartRateBpm ?: -1} stepCount=${point.stepCount ?: -1} " +
+                                "cadenceSpm=${point.cadenceSpm ?: -1} " +
+                                "powerWatts=${point.powerWatts ?: -1} " +
+                                "pressureHpa=${point.barometricPressureHpa?.toInt() ?: -1} " +
+                                "skippedInterval=$skippedIntervalCount skippedPaused=$skippedPausedCount " +
+                                "skippedUnusable=$skippedUnusableLocationCount " +
+                                "qualityHeld=$qualityHeldFixCount qualityRejected=$qualityRejectedFixCount " +
+                                "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
+                                "straightDriftPoints=$straightDriftCorrectedPointCount " +
+                                "continuityDistanceCaps=$continuityDistanceCapCount " +
+                                "continuityDistanceSuppressedM=" +
+                                continuityDistanceSuppressedMeters.formatTelemetry(1) +
+                                " " +
+                                smartTrackTelemetryTokens() + " " +
+                                recordingPointDensityTelemetryTokens() + " " +
+                                "confirmedReversals=$confirmedReversalCorrectionCount " +
+                                "segmentReason=${segmentStartReason ?: "na"} " +
+                                "hybridElevationPoints=$hybridElevationPointCount " +
+                                smartElevationTelemetryTokens()
+                        },
                     )
                 }
                 schedulePointDraftPersist()
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.RECORDING_POINT,
+                    startedAtElapsedMs = recordingPointStartedAtElapsedMs,
+                )
             }
         }
     }
@@ -1172,7 +1240,13 @@ class TraceRecordingViewModel(
     fun onPressureSample(sample: RecordingPressureSample) {
         val state = _uiState.value
         if (shouldObserveSmartPressure(state)) {
+            val pressureProcessingStartedAtElapsedMs =
+                RecordingScreenOffDiagnostics.start()
             hybridElevationFilter.observePressure(sample)
+            RecordingScreenOffDiagnostics.stop(
+                activity = RecordingScreenOffActivity.HYBRID_ELEVATION,
+                startedAtElapsedMs = pressureProcessingStartedAtElapsedMs,
+            )
         }
     }
 
@@ -1563,11 +1637,17 @@ class TraceRecordingViewModel(
                                         smartElevationDiagnostics = smartElevationDiagnostics,
                                     ),
                             )
+                        val gpxPersistStartedAtElapsedMs =
+                            RecordingScreenOffDiagnostics.start()
                         gpxRepository.saveGpxFileAtomic(
                             fileName = fileName,
                             inputStream = ByteArrayInputStream(bytes),
                             onProgress = {},
                             expectedSize = bytes.size.toLong(),
+                        )
+                        RecordingScreenOffDiagnostics.stop(
+                            activity = RecordingScreenOffActivity.GPX_PERSIST,
+                            startedAtElapsedMs = gpxPersistStartedAtElapsedMs,
                         )
                         val savedPath = gpxRepository.absolutePathForFileName(fileName)
                         runCatching { parseGpxData(File(savedPath)) }
@@ -1753,10 +1833,18 @@ class TraceRecordingViewModel(
     ) {
         if (!state.active || state.saving) return
         draftPersistMutex.withLock {
+            val draftPersistStartedAtElapsedMs =
+                RecordingScreenOffDiagnostics.start()
             runCatching {
                 draftStore.save(
                     state = state,
                     lastUiAction = lastUiAction,
+                )
+            }.onSuccess { stats ->
+                RecordingScreenOffDiagnostics.recordDraftPersist(
+                    jsonBytesWritten = stats.jsonBytesWritten.toLong(),
+                    gpxBytesWritten = stats.gpxBytesWritten.toLong(),
+                    pointCount = stats.pointCount,
                 )
             }.onFailure { error ->
                 DebugTelemetry.log(
@@ -1764,6 +1852,10 @@ class TraceRecordingViewModel(
                     "event=draft_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
                 )
             }
+            RecordingScreenOffDiagnostics.stop(
+                activity = RecordingScreenOffActivity.DRAFT_PERSIST,
+                startedAtElapsedMs = draftPersistStartedAtElapsedMs,
+            )
         }
     }
 

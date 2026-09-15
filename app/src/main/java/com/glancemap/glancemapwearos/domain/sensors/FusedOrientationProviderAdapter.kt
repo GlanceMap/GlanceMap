@@ -10,6 +10,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingDiag
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceProviderSample
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -676,6 +677,7 @@ internal class FusedOrientationProviderAdapter(
     private fun handleDeviceOrientationWithIntegrity(orientation: DeviceOrientation) {
         val requestGeneration = dispatchedOrientationRequestGeneration
         if (!isActiveOrientationRequest(requestGeneration)) return
+        ScreenOffActivityDiagnostics.recordCompassCallback()
         val arrivalElapsedMs = SystemClock.elapsedRealtime()
         val sampleAtElapsedMs =
             (orientation.elapsedRealtimeNs / NANOS_PER_MILLISECOND)

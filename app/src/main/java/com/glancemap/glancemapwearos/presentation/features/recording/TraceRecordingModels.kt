@@ -71,6 +71,33 @@ data class TraceRecordingUiState(
     val pointCount: Int get() = points.size
 }
 
+/**
+ * State needed by high-level navigation and recording controls.
+ *
+ * Sensor readings remain available from [TraceRecordingViewModel.uiState] to the dashboard, but
+ * they do not need to invalidate the navigation composition that owns the map and runtime work.
+ */
+internal fun TraceRecordingUiState.toRecordingPresentationState(): TraceRecordingUiState =
+    copy(
+        heartRateBpm = null,
+        heartRateFromBluetooth = false,
+        externalSpeedMps = null,
+        externalRawDistanceUnits = null,
+        externalDistanceMeters = null,
+        externalDistanceUpdatedAtMillis = 0L,
+        externalDistanceFallbackBaseMeters = null,
+        externalDistanceFallbackGpsMeters = null,
+        externalIntegratedDistanceMeters = null,
+        externalPowerWatts = null,
+        externalPowerFromBluetooth = false,
+        externalBatteryLevelPercent = null,
+        stepCount = null,
+        stepCountFromBluetooth = false,
+        cadenceSpm = null,
+        cadenceFromBluetooth = false,
+        barometricPressureHpa = null,
+    )
+
 internal fun effectiveAutoPauseStartMillis(
     state: TraceRecordingUiState,
     confirmationMillis: Long,

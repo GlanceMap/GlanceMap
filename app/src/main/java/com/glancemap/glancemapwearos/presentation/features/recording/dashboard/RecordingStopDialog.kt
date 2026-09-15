@@ -33,18 +33,20 @@ import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
 
+@Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun RecordingStopPromptCard(
     state: TraceRecordingUiState,
-    snapshot: RecordingDashboardSnapshot,
+    snapshot: RecordingDashboardSnapshot?,
     isMetric: Boolean,
+    visible: Boolean,
     onDiscard: () -> Unit,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
     val metrics =
         remember(snapshot, isMetric) {
-            recordingRecapMetricsForSnapshot(snapshot, isMetric)
+            snapshot?.let { recordingRecapMetricsForSnapshot(it, isMetric) }.orEmpty()
         }
     val defaultTitle =
         remember(state.startedAtMillis) {
@@ -55,13 +57,13 @@ internal fun RecordingStopPromptCard(
             )
         }
     var draftTitle by remember(defaultTitle) { mutableStateOf(defaultTitle) }
-    val shortRecording = isShortRecording(snapshot, state)
+    val shortRecording = snapshot?.let { isShortRecording(it, state) } == true
     var showRenameDialog by remember(defaultTitle) { mutableStateOf(false) }
     var showDiscardConfirmation by remember(defaultTitle) { mutableStateOf(false) }
 
     if (showRenameDialog) {
         RenameValueDialog(
-            visible = true,
+            visible = visible,
             title = "Rename activity",
             initialValue = draftTitle,
             isSaving = false,
@@ -77,7 +79,7 @@ internal fun RecordingStopPromptCard(
     }
 
     DeleteConfirmationDialog(
-        visible = showDiscardConfirmation,
+        visible = visible && showDiscardConfirmation,
         title = "Discard recording?",
         message = "This recording will be permanently deleted and cannot be recovered.",
         confirmText = "Discard",
@@ -89,7 +91,7 @@ internal fun RecordingStopPromptCard(
     )
 
     WearActionDialog(
-        visible = !showDiscardConfirmation,
+        visible = visible && !showDiscardConfirmation && snapshot != null,
         title = if (shortRecording) "Short recording" else "Save recording",
         onDismissRequest = onCancel,
         backgroundColor = Color.Black,

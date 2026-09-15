@@ -9,6 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.IntSize
 import com.glancemap.glancemapwearos.core.maps.mapZoomScaleStepsMeters
 import com.glancemap.glancemapwearos.core.maps.nearestMetricScaleStepIndex
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
+import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
@@ -30,6 +33,7 @@ internal data class NavigateLiveHudState(
 @Suppress("CyclomaticComplexMethod", "LongMethod", "LongParameterList")
 internal fun rememberNavigateLiveHudState(
     enabled: Boolean,
+    screenState: LocationScreenState,
     mapHolder: MapHolder?,
     mapView: MapView?,
     currentZoomLevel: Int,
@@ -97,6 +101,7 @@ internal fun rememberNavigateLiveHudState(
 
     LaunchedEffect(
         enabled,
+        screenState,
         navMode,
         liveElevationEnabled,
         liveDistanceEnabled,
@@ -107,12 +112,21 @@ internal fun rememberNavigateLiveHudState(
         isMetric,
         visibleMapSizePx,
     ) {
+        val activeMapHolder = mapHolder
+        val activeMapView = mapView
+        if (activeMapHolder == null || activeMapView == null) {
+            liveElevationLabel = null
+            liveDistanceLabel = null
+            return@LaunchedEffect
+        }
         if (
-            !enabled ||
-            navMode != NavMode.PANNING ||
-            (!liveElevationEnabled && !liveDistanceEnabled) ||
-            mapHolder == null ||
-            mapView == null
+            !shouldPollNavigateLiveHud(
+                enabled = enabled,
+                screenState = screenState,
+                navMode = navMode,
+                liveElevationEnabled = liveElevationEnabled,
+                liveDistanceEnabled = liveDistanceEnabled,
+            )
         ) {
             liveElevationLabel = null
             liveDistanceLabel = null
@@ -121,12 +135,13 @@ internal fun rememberNavigateLiveHudState(
 
         var lastElevationSampleCenter: LatLong? = null
         while (isActive) {
+            ScreenOffActivityDiagnostics.recordLiveHudTick()
             val visibleScreenCenter =
                 resolveVisibleScreenCenterLatLong(
-                    mapView = mapView,
+                    mapView = activeMapView,
                     visibleHeightPx = visibleMapSizePx.height,
                 )
-            val elevationCenter = visibleScreenCenter ?: mapView.model.mapViewPosition.center
+            val elevationCenter = visibleScreenCenter ?: activeMapView.model.mapViewPosition.center
             if (liveElevationEnabled) {
                 val previousCenter = lastElevationSampleCenter
                 val movedMeters =
@@ -148,7 +163,7 @@ internal fun rememberNavigateLiveHudState(
                 if (shouldResampleElevation) {
                     val sampledMeters =
                         withContext(Dispatchers.Default) {
-                            mapHolder.renderer.sampleElevationMeters(
+                            activeMapHolder.renderer.sampleElevationMeters(
                                 lat = elevationCenter.latitude,
                                 lon = elevationCenter.longitude,
                             )
@@ -192,6 +207,18 @@ internal fun rememberNavigateLiveHudState(
         liveDistanceLabel = liveDistanceLabel,
     )
 }
+
+internal fun shouldPollNavigateLiveHud(
+    enabled: Boolean,
+    screenState: LocationScreenState,
+    navMode: NavMode,
+    liveElevationEnabled: Boolean,
+    liveDistanceEnabled: Boolean,
+): Boolean =
+    enabled &&
+        screenState.isInteractive &&
+        navMode == NavMode.PANNING &&
+        (liveElevationEnabled || liveDistanceEnabled)
 
 internal fun preferredScaleMetersForZoomLevel(
     currentZoomLevel: Int,

@@ -108,25 +108,37 @@ class MapAppearanceIndicatorPolicyTest {
     }
 
     @Test
-    fun `initial timeout retains feedback until a later first visible signal`() =
+    fun `initial timeout accepts a later drawable current viewport`() =
         runBlocking {
             val policy = mapAppearanceIndicatorPolicy(MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD)
             var calls = 0
             var timeoutObserved = false
+            val request =
+                VisibleTileViewportReadinessRequest(
+                    layerId = 101,
+                    requestId = 7L,
+                    viewportKey = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet()),
+                )
+            val currentViewportEvent =
+                VisibleTileViewportReadinessEvent(
+                    layerId = 101,
+                    requestId = 7L,
+                    viewportKey = VisibleTileViewportKey(zoomLevel = 15, tiles = emptySet()),
+                )
 
             val firstVisible =
                 awaitInitialFirstVisibleAfterTimeout(
                     timeoutMs = 4_500L,
                     awaitFirstVisible = {
                         calls += 1
-                        if (calls == 1) null else "visible"
+                        if (calls == 1) null else currentViewportEvent
                     },
                     onTimeout = { timeoutObserved = true },
                 )
 
             assertTrue(shouldRetainInitialMapLoadIndicator(policy, mapReady = false))
             assertFalse(shouldRetainInitialMapLoadIndicator(policy, mapReady = true))
-            assertEquals("visible", firstVisible)
+            assertTrue(initialVisibleTileViewportReadinessMatches(request, firstVisible))
             assertEquals(2, calls)
             assertTrue(timeoutObserved)
         }
@@ -140,7 +152,7 @@ class MapAppearanceIndicatorPolicyTest {
     }
 
     @Test
-    fun `viewport readiness accepts an already arrived tile for the same request`() {
+    fun `initial viewport readiness accepts an already drawable viewport`() {
         val viewport = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet())
         val request =
             VisibleTileViewportReadinessRequest(
@@ -150,7 +162,7 @@ class MapAppearanceIndicatorPolicyTest {
             )
 
         assertTrue(
-            visibleTileViewportReadinessMatches(
+            initialVisibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,
@@ -162,7 +174,7 @@ class MapAppearanceIndicatorPolicyTest {
     }
 
     @Test
-    fun `viewport readiness rejects old viewport layer or request events`() {
+    fun `initial viewport readiness accepts a changed current viewport for the same request`() {
         val request =
             VisibleTileViewportReadinessRequest(
                 layerId = 101,
@@ -170,8 +182,8 @@ class MapAppearanceIndicatorPolicyTest {
                 viewportKey = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet()),
             )
 
-        assertFalse(
-            visibleTileViewportReadinessMatches(
+        assertTrue(
+            initialVisibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,
@@ -180,8 +192,19 @@ class MapAppearanceIndicatorPolicyTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun `initial viewport readiness rejects a different layer or request`() {
+        val request =
+            VisibleTileViewportReadinessRequest(
+                layerId = 101,
+                requestId = 7L,
+                viewportKey = VisibleTileViewportKey(zoomLevel = 16, tiles = emptySet()),
+            )
+
         assertFalse(
-            visibleTileViewportReadinessMatches(
+            initialVisibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 102,
@@ -191,7 +214,7 @@ class MapAppearanceIndicatorPolicyTest {
             ),
         )
         assertFalse(
-            visibleTileViewportReadinessMatches(
+            initialVisibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,

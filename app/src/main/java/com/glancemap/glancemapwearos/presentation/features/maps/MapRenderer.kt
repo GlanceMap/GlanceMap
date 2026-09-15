@@ -653,14 +653,15 @@ class MapRenderer(
     internal suspend fun awaitInitialViewportReadiness(
         request: VisibleTileViewportReadinessRequest,
         timeoutMs: Long,
-    ): VisibleTileViewportReadinessEvent? =
-        (currentLayer as? FirstVisibleTileRendererLayer)
-            ?.takeIf { layer -> System.identityHashCode(layer) == request.layerId }
-            ?.let { layer ->
-                layer
-                    .awaitViewportReadiness(request, timeoutMs)
-                    ?.takeIf { currentLayer === layer }
-            }
+    ): VisibleTileViewportReadinessEvent? {
+        val layer = currentLayer as? FirstVisibleTileRendererLayer ?: return null
+        val activeRequest =
+            request.takeIf { System.identityHashCode(layer) == it.layerId }
+                ?: layer.armCurrentViewportReadiness()
+        return layer
+            .awaitViewportReadiness(activeRequest, timeoutMs)
+            ?.takeIf { currentLayer === layer }
+    }
 
     internal fun currentFirstVisibleMapVersion(): Long = firstVisibleMapCounter.get()
 

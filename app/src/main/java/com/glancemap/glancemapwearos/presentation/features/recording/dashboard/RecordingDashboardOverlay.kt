@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -21,12 +23,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.SwipeToDismissBox
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.defaultRecordingDashboardMetricSlotsForProfile
 import com.glancemap.glancemapwearos.data.repository.newRecordingDashboardPageMetricSlotsForProfile
 import com.glancemap.glancemapwearos.data.repository.normalizeRecordingDashboardMetricSlots
-import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
@@ -39,7 +42,7 @@ import kotlinx.coroutines.isActive
 @Suppress("FunctionNaming", "LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun BoxScope.RecordingDashboardOverlay(
-    state: TraceRecordingUiState,
+    traceRecordingViewModel: TraceRecordingViewModel,
     metricSlots: List<String>,
     userWeightKg: Float,
     backpackWeightKg: Float,
@@ -48,6 +51,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
     isMetric: Boolean,
     showRouteCompletePrompt: Boolean = false,
     onRouteCompletePromptDismiss: () -> Unit = {},
+    isScreenInteractive: Boolean,
     suppressed: Boolean,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -58,9 +62,12 @@ internal fun BoxScope.RecordingDashboardOverlay(
     actionPromptRequestToken: Long,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    val state by traceRecordingViewModel.uiState.collectAsState()
     if (!state.active && !state.saving) return
 
     var expanded by remember { mutableStateOf(false) }
+    val expandedVisibility = remember { MutableTransitionState(false) }
+    expandedVisibility.targetState = expanded
     var showCompactControls by remember { mutableStateOf(false) }
     var showStopPrompt by remember { mutableStateOf(false) }
     var stopPromptPausedRecording by remember { mutableStateOf(false) }
@@ -73,13 +80,8 @@ internal fun BoxScope.RecordingDashboardOverlay(
     var lastHandledExpandRequestToken by remember {
         mutableLongStateOf(expandRequestToken)
     }
+    val dashboardStatisticsCache = remember { RecordingDashboardStatisticsCache() }
 
-    LaunchedEffect(state.active, state.paused, state.saving) {
-        while (isActive && (state.active || state.saving)) {
-            nowMillis = System.currentTimeMillis()
-            delay(1_000L)
-        }
-    }
     LaunchedEffect(suppressed) {
         if (suppressed) {
             expanded = false
@@ -128,7 +130,6 @@ internal fun BoxScope.RecordingDashboardOverlay(
     DisposableEffect(Unit) {
         onDispose { onExpandedChange(false) }
     }
-    if (suppressed) return
 
     val sessionProfile = state.activityProfile
     val slots = normalizedRecordingDashboardSlots(metricSlots, sessionProfile)
@@ -138,18 +139,84 @@ internal fun BoxScope.RecordingDashboardOverlay(
             dashboardPageIndex = pageCount - 1
         }
     }
-    val snapshot =
-        buildRecordingDashboardSnapshot(
-            state = state,
-            nowMillis = nowMillis,
-            userWeightKg = userWeightKg,
-            backpackWeightKg = backpackWeightKg,
-            bikeWeightKg = bikeWeightKg,
-            activityProfile = sessionProfile,
+    val dashboardPresentationVisible =
+        shouldUpdateRecordingDashboardPresentation(
+            isScreenInteractive = isScreenInteractive,
+            suppressed = suppressed,
+            expandedTransitionCurrent = expandedVisibility.currentState,
+            expandedTransitionTarget = expandedVisibility.targetState,
+            expandedTransitionRunning = !expandedVisibility.isIdle,
+            stopPromptVisible = showStopPrompt,
         )
+    LaunchedEffect(state.active, state.paused, state.saving, dashboardPresentationVisible) {
+        if (!dashboardPresentationVisible) return@LaunchedEffect
+        while (isActive && (state.active || state.saving)) {
+            RecordingScreenOffDiagnostics.recordDashboardTick()
+            nowMillis = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+    val recordedStatistics =
+        if (dashboardPresentationVisible) {
+            dashboardStatisticsCache.getOrBuild(
+                points = state.points,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = sessionProfile,
+            )
+        } else {
+            null
+        }
+    val snapshot =
+        if (dashboardPresentationVisible) {
+            buildRecordingDashboardSnapshot(
+                state = state,
+                nowMillis = nowMillis,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = sessionProfile,
+                recordedStatistics = checkNotNull(recordedStatistics),
+            )
+        } else {
+            null
+        }
+
+    if (showStopPrompt) {
+        RecordingStopPromptCard(
+            state = state,
+            snapshot = snapshot,
+            isMetric = isMetric,
+            visible = dashboardPresentationVisible,
+            onDiscard = {
+                showStopPrompt = false
+                showCompactControls = false
+                expanded = false
+                stopPromptPausedRecording = false
+                onDiscard()
+            },
+            onSave = { title ->
+                showStopPrompt = false
+                showCompactControls = false
+                expanded = false
+                stopPromptPausedRecording = false
+                onStopConfirmed(title)
+            },
+            onCancel = {
+                showStopPrompt = false
+                if (stopPromptPausedRecording) {
+                    onResume()
+                }
+                stopPromptPausedRecording = false
+            },
+        )
+    }
+
+    if (suppressed || !isScreenInteractive) return
 
     AnimatedVisibility(
-        visible = expanded,
+        visibleState = expandedVisibility,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier =
@@ -167,7 +234,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
                             .take(RECORDING_DASHBOARD_PAGE_SLOT_COUNT),
                     pageIndex = dashboardPageIndex,
                     pageCount = pageCount,
-                    snapshot = snapshot,
+                    snapshot = checkNotNull(snapshot),
                     screenSize = screenSize,
                     isMetric = isMetric,
                     onSlotLongPress = { slotIndex ->
@@ -266,35 +333,6 @@ internal fun BoxScope.RecordingDashboardOverlay(
         }
     }
 
-    if (showStopPrompt) {
-        RecordingStopPromptCard(
-            state = state,
-            snapshot = snapshot,
-            isMetric = isMetric,
-            onDiscard = {
-                showStopPrompt = false
-                showCompactControls = false
-                expanded = false
-                stopPromptPausedRecording = false
-                onDiscard()
-            },
-            onSave = { title ->
-                showStopPrompt = false
-                showCompactControls = false
-                expanded = false
-                stopPromptPausedRecording = false
-                onStopConfirmed(title)
-            },
-            onCancel = {
-                showStopPrompt = false
-                if (stopPromptPausedRecording) {
-                    onResume()
-                }
-                stopPromptPausedRecording = false
-            },
-        )
-    }
-
     if (metricPickerSlot != NO_SELECTED_SLOT) {
         val currentMetric = slots.getOrElse(metricPickerSlot) { SettingsRepository.RECORDING_METRIC_DISTANCE }
         OptionPickerDialog(
@@ -321,6 +359,19 @@ private fun recordingActionPromptTopPadding(screenSize: WearScreenSize): Dp =
         WearScreenSize.MEDIUM -> 86.dp
         WearScreenSize.SMALL -> 82.dp
     }
+
+@Suppress("LongParameterList")
+internal fun shouldUpdateRecordingDashboardPresentation(
+    isScreenInteractive: Boolean,
+    suppressed: Boolean,
+    expandedTransitionCurrent: Boolean,
+    expandedTransitionTarget: Boolean,
+    stopPromptVisible: Boolean,
+    expandedTransitionRunning: Boolean = false,
+): Boolean =
+    isScreenInteractive &&
+        !suppressed &&
+        (expandedTransitionCurrent || expandedTransitionTarget || expandedTransitionRunning || stopPromptVisible)
 
 internal fun normalizedRecordingDashboardSlots(
     metricSlots: List<String>,
