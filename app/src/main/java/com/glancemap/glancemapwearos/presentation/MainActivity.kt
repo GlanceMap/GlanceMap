@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 .collectAsState(initial = true)
             val navigateTimeFormat by appContainer.settingsViewModel.navigateTimeFormat.collectAsState()
             val isMetric by appContainer.settingsViewModel.isMetric.collectAsState()
-            val traceRecordingState by appContainer.traceRecordingViewModel.uiState.collectAsState()
+            val traceRecordingState by appContainer.traceRecordingViewModel.recordingPresentationState.collectAsState()
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
                     externalRunPodAddress = recordingExternalRunPodAddress,
                     cyclingWheelCircumferenceMeters = cyclingWheelCircumferenceMeters,
                     activityProfile = traceRecordingState.activityProfile,
-                    initialStepCount = traceRecordingState.stepCount,
+                    initialStepCount = appContainer.traceRecordingViewModel.currentStepCount(),
                     onMetrics = appContainer.traceRecordingViewModel::onSensorMetrics,
                     onPressureSample = appContainer.traceRecordingViewModel::onPressureSample,
                 )

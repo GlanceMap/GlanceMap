@@ -28,6 +28,13 @@ internal object ScreenStateDiagnostics {
         val currentDisplayState: DisplayState?,
         val currentAppForeground: Boolean?,
         val openIntervalsIncluded: Boolean,
+        val screenStateReconciliationSampleCount: Long,
+        val screenStateMismatchSampleCount: Long,
+        val screenStateInteractiveReportedWhileDeviceOffSampleCount: Long,
+        val screenStateNonInteractiveReportedWhileDeviceOnSampleCount: Long,
+        val screenStateObservedMismatchDurationMs: Long,
+        val screenStateMaxObservedMismatchDurationMs: Long,
+        val screenStateLastObservedMismatchType: String?,
     )
 
     private val lock = Any()
@@ -45,6 +52,15 @@ internal object ScreenStateDiagnostics {
     private var appForegroundDurationMs = 0L
     private var displayTransitionCount = 0
     private var appForegroundTransitionCount = 0
+    private var screenStateReconciliationSampleCount = 0L
+    private var screenStateMismatchSampleCount = 0L
+    private var screenStateInteractiveReportedWhileDeviceOffSampleCount = 0L
+    private var screenStateNonInteractiveReportedWhileDeviceOnSampleCount = 0L
+    private var screenStateObservedMismatchDurationMs = 0L
+    private var screenStateMaxObservedMismatchDurationMs = 0L
+    private var mismatchStartedAtElapsedMs: Long? = null
+    private var mismatchType: String? = null
+    private var screenStateLastObservedMismatchType: String? = null
 
     fun configure(
         captureActive: Boolean,
@@ -125,6 +141,49 @@ internal object ScreenStateDiagnostics {
         }
     }
 
+    fun reconcileScreenState(
+        reportedIsInteractive: Boolean,
+        actualIsInteractive: Boolean,
+    ) = reconcileScreenState(
+        reportedIsInteractive = reportedIsInteractive,
+        actualIsInteractive = actualIsInteractive,
+        nowElapsedMs = SystemClock.elapsedRealtime(),
+    )
+
+    internal fun reconcileScreenState(
+        reportedIsInteractive: Boolean,
+        actualIsInteractive: Boolean,
+        nowElapsedMs: Long,
+    ) {
+        synchronized(lock) {
+            if (!captureActive) return
+            screenStateReconciliationSampleCount += 1L
+            val nextMismatchType =
+                when {
+                    reportedIsInteractive && !actualIsInteractive -> "interactive_reported_while_device_off"
+                    !reportedIsInteractive && actualIsInteractive -> "non_interactive_reported_while_device_on"
+                    else -> null
+                }
+            if (nextMismatchType == null) {
+                closeMismatch(nowElapsedMs)
+                return
+            }
+            screenStateMismatchSampleCount += 1L
+            when (nextMismatchType) {
+                "interactive_reported_while_device_off" ->
+                    screenStateInteractiveReportedWhileDeviceOffSampleCount += 1L
+                "non_interactive_reported_while_device_on" ->
+                    screenStateNonInteractiveReportedWhileDeviceOnSampleCount += 1L
+            }
+            if (mismatchType != nextMismatchType) {
+                closeMismatch(nowElapsedMs)
+                mismatchType = nextMismatchType
+                mismatchStartedAtElapsedMs = nowElapsedMs
+                screenStateLastObservedMismatchType = nextMismatchType
+            }
+        }
+    }
+
     fun summary(): Summary = summary(nowElapsedMs = SystemClock.elapsedRealtime())
 
     internal fun summary(nowElapsedMs: Long): Summary =
@@ -134,6 +193,9 @@ internal object ScreenStateDiagnostics {
             val ambientDuration = ambientDurationMs + openDisplayDuration(DisplayState.AMBIENT, nowElapsedMs)
             val offDuration = offDurationMs + openDisplayDuration(DisplayState.OFF, nowElapsedMs)
             val foregroundDuration = appForegroundDurationMs + openAppForegroundDuration(nowElapsedMs)
+            val openMismatchDuration = openMismatchDuration(nowElapsedMs)
+            val interactiveReportedWhileOffCount = screenStateInteractiveReportedWhileDeviceOffSampleCount
+            val nonInteractiveReportedWhileOnCount = screenStateNonInteractiveReportedWhileDeviceOnSampleCount
             val captureEnd = if (captureActive) nowElapsedMs else captureEndedAtElapsedMs
             Summary(
                 captureActive = captureActive,
@@ -150,6 +212,14 @@ internal object ScreenStateDiagnostics {
                 currentDisplayState = displayState,
                 currentAppForeground = appForeground,
                 openIntervalsIncluded = captureActive,
+                screenStateReconciliationSampleCount = screenStateReconciliationSampleCount,
+                screenStateMismatchSampleCount = screenStateMismatchSampleCount,
+                screenStateInteractiveReportedWhileDeviceOffSampleCount = interactiveReportedWhileOffCount,
+                screenStateNonInteractiveReportedWhileDeviceOnSampleCount = nonInteractiveReportedWhileOnCount,
+                screenStateObservedMismatchDurationMs = screenStateObservedMismatchDurationMs + openMismatchDuration,
+                screenStateMaxObservedMismatchDurationMs =
+                    maxOf(screenStateMaxObservedMismatchDurationMs, openMismatchDuration),
+                screenStateLastObservedMismatchType = screenStateLastObservedMismatchType,
             )
         }
 
@@ -163,6 +233,15 @@ internal object ScreenStateDiagnostics {
             appForegroundDurationMs = 0L
             displayTransitionCount = 0
             appForegroundTransitionCount = 0
+            screenStateReconciliationSampleCount = 0L
+            screenStateMismatchSampleCount = 0L
+            screenStateInteractiveReportedWhileDeviceOffSampleCount = 0L
+            screenStateNonInteractiveReportedWhileDeviceOnSampleCount = 0L
+            screenStateObservedMismatchDurationMs = 0L
+            screenStateMaxObservedMismatchDurationMs = 0L
+            mismatchStartedAtElapsedMs = null
+            mismatchType = null
+            screenStateLastObservedMismatchType = null
             captureEndedAtElapsedMs = null
             if (captureActive) {
                 captureStartedAtElapsedMs = nowElapsedMs
@@ -196,12 +275,22 @@ internal object ScreenStateDiagnostics {
         appForegroundDurationMs = 0L
         displayTransitionCount = 0
         appForegroundTransitionCount = 0
+        screenStateReconciliationSampleCount = 0L
+        screenStateMismatchSampleCount = 0L
+        screenStateInteractiveReportedWhileDeviceOffSampleCount = 0L
+        screenStateNonInteractiveReportedWhileDeviceOnSampleCount = 0L
+        screenStateObservedMismatchDurationMs = 0L
+        screenStateMaxObservedMismatchDurationMs = 0L
+        mismatchStartedAtElapsedMs = null
+        mismatchType = null
+        screenStateLastObservedMismatchType = null
     }
 
     private fun stopCapture(nowElapsedMs: Long) {
         if (!captureActive) return
         closeDisplayInterval(nowElapsedMs)
         closeAppForegroundInterval(nowElapsedMs)
+        closeMismatch(nowElapsedMs)
         captureActive = false
         captureEndedAtElapsedMs = nowElapsedMs
     }
@@ -246,6 +335,21 @@ internal object ScreenStateDiagnostics {
         } else {
             0L
         }
+
+    private fun openMismatchDuration(nowElapsedMs: Long): Long =
+        mismatchStartedAtElapsedMs
+            ?.let { startedAtMs -> (nowElapsedMs - startedAtMs).coerceAtLeast(0L) }
+            ?: 0L
+
+    private fun closeMismatch(nowElapsedMs: Long) {
+        val durationMs = openMismatchDuration(nowElapsedMs)
+        if (mismatchStartedAtElapsedMs != null) {
+            screenStateObservedMismatchDurationMs += durationMs
+            screenStateMaxObservedMismatchDurationMs = maxOf(screenStateMaxObservedMismatchDurationMs, durationMs)
+        }
+        mismatchStartedAtElapsedMs = null
+        mismatchType = null
+    }
 
     private fun resolveDisplayState(
         isInteractive: Boolean,

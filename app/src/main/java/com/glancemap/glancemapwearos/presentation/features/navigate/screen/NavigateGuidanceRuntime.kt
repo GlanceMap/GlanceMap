@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxEtaModelConfig
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxViewModel
@@ -91,13 +92,25 @@ internal fun rememberNavigateGuidanceRuntime(
         remember(activeSession?.trackId, activeSession?.reversed) {
             mutableStateOf<Double?>(null)
         }
+    val guidanceGeometryCache = remember { NavigateGuidanceGeometryCache() }
     val rawState =
-        computeTurnByTurnGuidanceState(
+        guidanceGeometryCache.primaryState(
             session = activeSession,
             currentLocation = guidanceLocation,
             tuning = tuning,
             previousDistanceFromStartMeters = previousGuidanceProgressMeters,
-        )
+        ) {
+            computeTurnByTurnGuidanceState(
+                session = activeSession,
+                currentLocation = guidanceLocation,
+                tuning = tuning,
+                previousDistanceFromStartMeters = previousGuidanceProgressMeters,
+            ).also { computedState ->
+                computedState.projectionSegmentsScanned?.let { segmentsScanned ->
+                    RecordingScreenOffDiagnostics.recordTbtProjection(segmentsScanned)
+                }
+            }
+        }
     LaunchedEffect(activeSession?.trackId, activeSession?.reversed, rawState.distanceFromStartMeters) {
         rawState.distanceFromStartMeters?.let { previousGuidanceProgressMeters = it }
     }
@@ -200,10 +213,17 @@ internal fun rememberNavigateGuidanceRuntime(
     var dismissedGuideBackPromptTrackId by remember { mutableStateOf<String?>(null) }
     val guideBackTrackId = activeSession?.trackId
     val guideBackTargetPoint =
-        nearestGuidanceRoutePoint(
-            session = activeSession,
-            currentLocation = guidanceLocation,
-        )
+        guideBackDestinationIfEnabled(brouterGuideBackEnabled) {
+            guidanceGeometryCache.nearestRoutePoint(
+                session = activeSession,
+                currentLocation = guidanceLocation,
+            ) {
+                nearestGuidanceRoutePoint(
+                    session = activeSession,
+                    currentLocation = guidanceLocation,
+                )
+            }
+        }
     LaunchedEffect(
         state.active,
         state.offRoute,
@@ -306,6 +326,7 @@ internal fun rememberNavigateGuidanceRuntime(
             startHereStableSampleCount = 0
             return@LaunchedEffect
         }
+        RecordingScreenOffDiagnostics.recordTbtProjection(points.lastIndex)
 
         val distanceToStart = haversineMeters(location, start)
         val distanceToEnd = haversineMeters(location, end)
@@ -419,8 +440,7 @@ internal fun rememberNavigateGuidanceRuntime(
         gpxFlatSpeedMps,
     ) {
         if (!state.active && session == null) return@LaunchedEffect
-        DebugTelemetry.log(
-            "TurnByTurn",
+        DebugTelemetry.log("TurnByTurn") {
             buildTurnByTurnTelemetryMessage(
                 state = state,
                 paused = paused,
@@ -442,8 +462,8 @@ internal fun rememberNavigateGuidanceRuntime(
                 resolvedGpsIntervalMs = guidanceGpsDeliveryIntervalMs,
                 resolvedEtaFlatSpeedMps = gpxFlatSpeedMps,
                 resolvedTurnAlertMaxDistanceMeters = turnAlertMaxDistanceMeters(activityProfile),
-            ),
-        )
+            )
+        }
     }
 
     return NavigateGuidanceRuntime(
@@ -510,6 +530,11 @@ internal fun rememberNavigateGuidanceRuntime(
         },
     )
 }
+
+internal fun guideBackDestinationIfEnabled(
+    enabled: Boolean,
+    compute: () -> LatLong?,
+): LatLong? = if (enabled) compute() else null
 
 private fun List<LatLong>.sumRouteDistanceMeters(): Double =
     zipWithNext().sumOf { (start, end) ->

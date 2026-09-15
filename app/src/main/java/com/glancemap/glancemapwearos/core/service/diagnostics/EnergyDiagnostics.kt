@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 
@@ -16,6 +17,7 @@ internal object EnergyDiagnostics {
     private const val TAG = "EnergyTelemetry"
     private const val MAX_LINES = 2_000
     private const val MAX_CURRENT_INTEGRATION_GAP_MS = 150_000L
+    private const val MIN_INTEGRATED_CURRENT_COVERAGE_PCT = 50.0
     private const val UA_MS_PER_MAH = 3_600_000_000.0
 
     data class ModeStats(
@@ -101,13 +103,17 @@ internal object EnergyDiagnostics {
 
     data class BatteryUseStats(
         val durationMs: Long,
-        val consumedMah: Double,
-        val averageDrawMa: Double,
+        val captureDurationMs: Long,
+        val measuredDurationMs: Long,
+        val consumedMah: Double?,
+        val averageDrawMa: Double?,
         val integratedCurrentMah: Double?,
         val medianDrawMa: Double?,
         val p90DrawMa: Double?,
         val measurement: String,
         val confidence: String,
+        val measurementCoveragePct: Double,
+        val reason: String,
         val chargeCounterStartUah: Int?,
         val chargeCounterEndUah: Int?,
     )
@@ -133,6 +139,7 @@ internal object EnergyDiagnostics {
     private val recordingSensorDurations = linkedMapOf<String, MutableDurationStats>()
     private val activePartialWakeLocks = mutableMapOf<Int, ActivePartialWakeLock>()
     private val activeRecordingSensors = mutableMapOf<String, Long>()
+    private val previousProcessCpuMs = AtomicLong(-1L)
     private var droppedLines: Int = 0
 
     fun clear() {
@@ -141,6 +148,7 @@ internal object EnergyDiagnostics {
             batteryBenchmarkInvalidReasons.clear()
             droppedLines = 0
         }
+        previousProcessCpuMs.set(-1L)
         synchronized(runtimeAttributionLock) {
             partialWakeLockDurations.clear()
             recordingSensorDurations.clear()
@@ -299,6 +307,7 @@ internal object EnergyDiagnostics {
         context: Context,
         reason: String,
         detail: String = "",
+        reportedScreenInteractive: Boolean? = null,
     ) {
         if (!shouldRecordSample(reason)) return
 
@@ -320,9 +329,16 @@ internal object EnergyDiagnostics {
         val capacityPct = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val chargeCounterUah = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
         val processCpuMs = Process.getElapsedCpuTime()
+        val previousCpuMs = previousProcessCpuMs.getAndSet(processCpuMs)
+        val processCpuDeltaMs =
+            previousCpuMs
+                .takeIf { it >= 0L }
+                ?.let { (processCpuMs - it).coerceAtLeast(0L) }
 
         val powerSave = powerManager?.isPowerSaveMode ?: false
-        val interactive = powerManager?.isInteractive ?: false
+        val actualInteractive = powerManager?.isInteractive
+        val interactive = actualInteractive ?: false
+        reconcileScreenStateIfAvailable(reportedScreenInteractive, actualInteractive)
         val thermal =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && powerManager != null) {
                 powerManager.currentThermalStatus.toString()
@@ -347,13 +363,14 @@ internal object EnergyDiagnostics {
                 append(" capPropPct=").append(propertyOrNa(capacityPct))
                 append(" chargeCounterUah=").append(propertyOrNa(chargeCounterUah))
                 append(" procCpuMs=").append(processCpuMs)
+                append(" procCpuDeltaMs=").append(processCpuDeltaMs ?: "na")
                 append(" saver=").append(powerSave)
                 append(" interactive=").append(interactive)
                 append(" thermal=").append(thermal)
             }
 
         push(line)
-        DebugTelemetry.log(TAG, line)
+        if (DebugTelemetry.isEnabled()) DebugTelemetry.log(TAG, line)
     }
 
     fun recordEvent(
@@ -579,31 +596,60 @@ internal object EnergyDiagnostics {
             .mapNotNull(::batteryObservationOrNull)
             .sortedBy { it.atMs }
 
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     private fun buildBatteryUse(observations: List<BatteryObservation>): BatteryUseStats? {
         val integratedUse = integrateCurrentUse(observations)
         val chargeObservations = observations.filter { it.chargeCounterUah != null }
         val startCharge = chargeObservations.firstOrNull()
         val endCharge = chargeObservations.lastOrNull()
         val chargeCounterUse = resolveChargeCounterUse(startCharge, endCharge)
-        val consumedMah = chargeCounterUse?.consumedMah ?: integratedUse?.consumedMah
-        val durationMs = chargeCounterUse?.durationMs ?: integratedUse?.durationMs
-        return if (consumedMah != null && durationMs != null) {
-            val currentSamples = observations.mapNotNull { it.dischargeCurrentUa }.sorted()
-            BatteryUseStats(
-                durationMs = durationMs,
-                consumedMah = consumedMah,
-                averageDrawMa = consumedMah * 3_600_000.0 / durationMs,
-                integratedCurrentMah = integratedUse?.consumedMah,
-                medianDrawMa = percentile(currentSamples, 0.5)?.div(1_000.0),
-                p90DrawMa = percentile(currentSamples, 0.9)?.div(1_000.0),
-                measurement = if (chargeCounterUse != null) "charge_counter" else "integrated_current",
-                confidence = if (chargeCounterUse != null) "high" else "medium",
-                chargeCounterStartUah = startCharge?.chargeCounterUah,
-                chargeCounterEndUah = endCharge?.chargeCounterUah,
-            )
-        } else {
-            null
-        }
+        val captureDurationMs = captureDurationMs(observations) ?: return null
+        val currentSamples = observations.mapNotNull { it.dischargeCurrentUa }.sorted()
+        val measuredDurationMs = chargeCounterUse?.durationMs ?: integratedUse?.durationMs ?: return null
+        val measurementCoveragePct = measurementCoveragePct(measuredDurationMs, captureDurationMs)
+        val measurementIsInsufficient =
+            chargeCounterUse == null &&
+                integratedUse != null &&
+                measurementCoveragePct < MIN_INTEGRATED_CURRENT_COVERAGE_PCT
+        val consumedMah =
+            when {
+                measurementIsInsufficient -> null
+                chargeCounterUse != null -> chargeCounterUse.consumedMah
+                else -> integratedUse?.consumedMah
+            }
+        val measurement =
+            when {
+                measurementIsInsufficient -> "insufficient_data"
+                chargeCounterUse != null -> "charge_counter"
+                else -> "integrated_current"
+            }
+        val confidence =
+            when {
+                measurementIsInsufficient -> "low"
+                chargeCounterUse != null -> "high"
+                else -> "medium"
+            }
+        return BatteryUseStats(
+            durationMs = measuredDurationMs,
+            captureDurationMs = captureDurationMs,
+            measuredDurationMs = measuredDurationMs,
+            consumedMah = consumedMah,
+            averageDrawMa = consumedMah?.let { it * 3_600_000.0 / measuredDurationMs },
+            integratedCurrentMah = integratedUse?.consumedMah,
+            medianDrawMa = percentile(currentSamples, 0.5)?.div(1_000.0),
+            p90DrawMa = percentile(currentSamples, 0.9)?.div(1_000.0),
+            measurement = measurement,
+            confidence = confidence,
+            measurementCoveragePct = measurementCoveragePct,
+            reason =
+                when {
+                    measurementIsInsufficient -> "integrated_current_coverage_too_low"
+                    chargeCounterUse != null -> "charge_counter"
+                    else -> "integrated_current"
+                },
+            chargeCounterStartUah = startCharge?.chargeCounterUah,
+            chargeCounterEndUah = endCharge?.chargeCounterUah,
+        )
     }
 
     private fun batteryObservationOrNull(line: String): BatteryObservation? {
@@ -629,6 +675,7 @@ internal object EnergyDiagnostics {
         }
     }
 
+    @Suppress("ReturnCount")
     private fun summarizeScreenStateEnergy(
         observations: List<BatteryObservation>,
         batteryUse: BatteryUseStats?,
@@ -651,7 +698,7 @@ internal object EnergyDiagnostics {
         val screenOnUse = screenOn.toUseOrNull()
         val screenOffUse = screenOff.toUseOrNull()
         val attributedMah = (screenOnUse?.consumedMah ?: 0.0) + (screenOffUse?.consumedMah ?: 0.0)
-        val totalMeasuredMah = batteryUse.consumedMah
+        val totalMeasuredMah = batteryUse.consumedMah ?: return null
         val coveragePct =
             if (totalMeasuredMah > 0.0) {
                 (attributedMah * 100.0 / totalMeasuredMah).coerceIn(0.0, 100.0)
@@ -732,6 +779,36 @@ internal object EnergyDiagnostics {
             durationMs = durationMs,
         )
     }
+
+    private fun captureDurationMs(observations: List<BatteryObservation>): Long? =
+        observations.firstOrNull()?.atMs?.let { firstAtMs ->
+            observations.lastOrNull()?.atMs?.let { lastAtMs ->
+                (lastAtMs - firstAtMs).takeIf { it > 0L }
+            }
+        }
+
+    internal fun reconcileScreenStateIfAvailable(
+        reportedScreenInteractive: Boolean?,
+        actualInteractive: Boolean?,
+    ) {
+        if (captureMode.get() != CaptureMode.FULL) return
+        if (reportedScreenInteractive != null && actualInteractive != null) {
+            ScreenStateDiagnostics.reconcileScreenState(
+                reportedIsInteractive = reportedScreenInteractive,
+                actualIsInteractive = actualInteractive,
+            )
+        }
+    }
+
+    private fun measurementCoveragePct(
+        measuredDurationMs: Long,
+        captureDurationMs: Long,
+    ): Double =
+        if (captureDurationMs > 0L) {
+            (measuredDurationMs * 100.0 / captureDurationMs).coerceIn(0.0, 100.0)
+        } else {
+            0.0
+        }
 
     private fun integrateCurrentUse(observations: List<BatteryObservation>): IntegratedCurrentUse? {
         var integratedUaMs = 0.0

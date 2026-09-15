@@ -26,6 +26,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingSensorDiagnosticKind
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
@@ -446,12 +449,16 @@ fun RecordingSensorBridge(
         var lastPressurePublishedAtElapsedMs = 0L
         var lastPressurePublishedHpa: Double? = null
 
-        fun publishSensorUpdate(update: (RecordingSensorMetrics) -> RecordingSensorMetrics) {
+        fun publishSensorUpdate(
+            kind: RecordingSensorDiagnosticKind,
+            update: (RecordingSensorMetrics) -> RecordingSensorMetrics,
+        ) {
             mainHandler.post {
                 if (disposed.get()) return@post
                 val updatedMetrics = update(metrics)
                 metrics = updatedMetrics
                 onMetrics(updatedMetrics)
+                RecordingScreenOffDiagnostics.recordSensorUiPublish(kind)
             }
         }
 
@@ -460,6 +467,9 @@ fun RecordingSensorBridge(
                 override fun onSensorChanged(event: SensorEvent) {
                     when (event.sensor.type) {
                         Sensor.TYPE_HEART_RATE -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.HEART_RATE)
+                            val callbackStartedAtElapsedMs =
+                                RecordingScreenOffDiagnostics.start()
                             val bpm =
                                 event.values
                                     .firstOrNull()
@@ -476,11 +486,15 @@ fun RecordingSensorBridge(
                                     lastPublishedBpm = lastHeartRatePublishedBpm,
                                 )
                             ) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.HEART_RATE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
                                 return
                             }
                             lastHeartRatePublishedAtElapsedMs = nowElapsed
                             lastHeartRatePublishedBpm = bpm
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.HEART_RATE) { current ->
                                 current.copy(
                                     heartRateBpm = bpm,
                                     heartRateUpdatedAtMillis =
@@ -489,12 +503,17 @@ fun RecordingSensorBridge(
                                     heartRateFromBluetooth = false,
                                 )
                             }
+                            RecordingScreenOffDiagnostics.stop(
+                                activity = RecordingScreenOffActivity.HEART_RATE_CALLBACK,
+                                startedAtElapsedMs = callbackStartedAtElapsedMs,
+                            )
                         }
                         Sensor.TYPE_STEP_COUNTER -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.STEP)
                             val value = event.values.firstOrNull() ?: return
                             val now = System.currentTimeMillis()
                             val reading = sensorRuntimeState.updateStepCounter(value = value, nowMillis = now)
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.STEP) { current ->
                                 current.copy(
                                     stepCount = reading.steps,
                                     stepCountUpdatedAtMillis = now,
@@ -521,9 +540,10 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_STEP_DETECTOR -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.CADENCE)
                             val now = System.currentTimeMillis()
                             val cadence = sensorRuntimeState.updateStepDetector(nowMillis = now)
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.CADENCE) { current ->
                                 current.copy(
                                     cadenceSpm =
                                         if (useInternalCadence) {
@@ -547,12 +567,21 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_PRESSURE -> {
+                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.PRESSURE)
+                            val callbackStartedAtElapsedMs =
+                                RecordingScreenOffDiagnostics.start()
                             val pressure =
                                 event.values
                                     .firstOrNull()
                                     ?.toDouble()
                                     ?.takeIf { it > 0.0 }
-                                    ?: return
+                            if (pressure == null) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
+                                return
+                            }
                             val eventElapsedRealtimeMillis =
                                 (event.timestamp / 1_000_000L).takeIf { it > 0L }
                                     ?: SystemClock.elapsedRealtime()
@@ -577,16 +606,26 @@ fun RecordingSensorBridge(
                                         meaningfullyChanged &&
                                             elapsedSincePublish >= PRESSURE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS
                                     )
-                            if (!shouldPublish) return
+                            if (!shouldPublish) {
+                                RecordingScreenOffDiagnostics.stop(
+                                    activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                    startedAtElapsedMs = callbackStartedAtElapsedMs,
+                                )
+                                return
+                            }
                             lastPressurePublishedAtElapsedMs = nowElapsed
                             lastPressurePublishedHpa = pressure
-                            publishSensorUpdate { current ->
+                            publishSensorUpdate(RecordingSensorDiagnosticKind.PRESSURE) { current ->
                                 current.copy(
                                     barometricPressureHpa = pressure,
                                     barometricPressureUpdatedAtMillis = now,
                                     barometricPressureSensorEventCount = rawEventCount,
                                 )
                             }
+                            RecordingScreenOffDiagnostics.stop(
+                                activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
+                                startedAtElapsedMs = callbackStartedAtElapsedMs,
+                            )
                         }
                     }
                 }
@@ -664,6 +703,7 @@ private fun logRecordingSensorStatus(
     paused: Boolean,
     event: String,
 ) {
+    if (!DebugTelemetry.isEnabled()) return
     val available = availableRecordingSensors(sensorManager)
     val bodySensorsGranted = hasPermission(context, Manifest.permission.BODY_SENSORS)
     val activityRecognitionGranted = hasActivityRecognitionPermission(context)

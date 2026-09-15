@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -67,6 +68,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.TURN_BY_TURN_DASHBOARD_PAGE_SLOT_COUNT
@@ -74,7 +76,9 @@ import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboar
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
+import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardStatisticsCache
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingFullscreenPageShell
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingStopPromptCard
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.buildRecordingDashboardSnapshot
@@ -82,6 +86,7 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.f
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.logRecordingDashboardPageChange
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.normalizedRecordingDashboardSlots
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingMetricPickerOptionsForProfile
+import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.shouldUpdateRecordingDashboardPresentation
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
@@ -93,7 +98,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     guidanceState: TurnByTurnGuidanceState,
     guidancePaused: Boolean,
     voiceGuidanceEnabled: Boolean,
-    recordingState: TraceRecordingUiState,
+    traceRecordingViewModel: TraceRecordingViewModel,
     metricSlots: List<String>,
     guidanceMetricSlots: List<String>,
     userWeightKg: Float,
@@ -110,6 +115,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     compactPopupSuppressed: Boolean,
     elevationProgressRingEnabled: Boolean,
     routeProgressRingSegments: List<RouteProgressRingSegment>,
+    isScreenInteractive: Boolean,
     suppressed: Boolean,
     onPauseGuidance: () -> Unit,
     onResumeGuidance: () -> Unit,
@@ -125,6 +131,7 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     onGuidanceMetricSelected: (Int, String) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    val recordingState by traceRecordingViewModel.uiState.collectAsState()
     if ((!guidanceState.active && !guidancePaused) || (!recordingState.active && !recordingState.saving)) return
 
     var expanded by remember { mutableStateOf(false) }
@@ -153,13 +160,8 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     var lastHandledExpandRequestToken by remember {
         mutableLongStateOf(expandRequestToken)
     }
+    val dashboardStatisticsCache = remember { RecordingDashboardStatisticsCache() }
 
-    LaunchedEffect(recordingState.active, recordingState.paused, recordingState.saving) {
-        while (isActive && (recordingState.active || recordingState.saving)) {
-            nowMillis = System.currentTimeMillis()
-            delay(1_000L)
-        }
-    }
     LaunchedEffect(suppressed) {
         if (suppressed) {
             expanded = false
@@ -209,7 +211,6 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
     DisposableEffect(Unit) {
         onDispose { onExpandedChange(false) }
     }
-    if (suppressed) return
 
     val sessionProfile = recordingState.activityProfile
     val slots = normalizedRecordingDashboardSlots(metricSlots, sessionProfile)
@@ -227,15 +228,82 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
         slots
             .drop(recordingPageIndex * RECORDING_DASHBOARD_PAGE_SLOT_COUNT)
             .take(RECORDING_DASHBOARD_PAGE_SLOT_COUNT)
-    val snapshot =
-        buildRecordingDashboardSnapshot(
-            state = recordingState,
-            nowMillis = nowMillis,
-            userWeightKg = userWeightKg,
-            backpackWeightKg = backpackWeightKg,
-            bikeWeightKg = bikeWeightKg,
-            activityProfile = sessionProfile,
+    val recordingPageVisible = pageIndex > guidanceMetricPageCount
+    val dashboardPresentationVisible =
+        shouldUpdateRecordingDashboardPresentation(
+            isScreenInteractive = isScreenInteractive,
+            suppressed = suppressed,
+            expandedTransitionCurrent = expandedVisibility.currentState && recordingPageVisible,
+            expandedTransitionTarget = expandedVisibility.targetState && recordingPageVisible,
+            expandedTransitionRunning = !expandedVisibility.isIdle,
+            stopPromptVisible = showStopPrompt,
         )
+    LaunchedEffect(recordingState.active, recordingState.paused, recordingState.saving, dashboardPresentationVisible) {
+        if (!dashboardPresentationVisible) return@LaunchedEffect
+        while (isActive && (recordingState.active || recordingState.saving)) {
+            RecordingScreenOffDiagnostics.recordDashboardTick()
+            nowMillis = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+    val recordedStatistics =
+        if (dashboardPresentationVisible) {
+            dashboardStatisticsCache.getOrBuild(
+                points = recordingState.points,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = sessionProfile,
+            )
+        } else {
+            null
+        }
+    val snapshot =
+        if (dashboardPresentationVisible) {
+            buildRecordingDashboardSnapshot(
+                state = recordingState,
+                nowMillis = nowMillis,
+                userWeightKg = userWeightKg,
+                backpackWeightKg = backpackWeightKg,
+                bikeWeightKg = bikeWeightKg,
+                activityProfile = sessionProfile,
+                recordedStatistics = checkNotNull(recordedStatistics),
+            )
+        } else {
+            null
+        }
+
+    if (showStopPrompt) {
+        RecordingStopPromptCard(
+            state = recordingState,
+            snapshot = snapshot,
+            isMetric = isMetric,
+            visible = dashboardPresentationVisible,
+            onDiscard = {
+                showStopPrompt = false
+                showActions = false
+                expanded = false
+                stopPromptPausedRecording = false
+                onDiscardRecording()
+            },
+            onSave = { title ->
+                showStopPrompt = false
+                showActions = false
+                expanded = false
+                stopPromptPausedRecording = false
+                onFinishRecording(title)
+            },
+            onCancel = {
+                showStopPrompt = false
+                if (stopPromptPausedRecording) {
+                    onResumeRecording()
+                }
+                stopPromptPausedRecording = false
+            },
+        )
+    }
+
+    if (suppressed || !isScreenInteractive) return
 
     AnimatedVisibility(
         visibleState = expandedVisibility,
@@ -348,35 +416,6 @@ internal fun BoxScope.CombinedGuidanceRecordingOverlay(
                 showStopPrompt = true
             },
             onCancel = { showActions = false },
-        )
-    }
-
-    if (showStopPrompt) {
-        RecordingStopPromptCard(
-            state = recordingState,
-            snapshot = snapshot,
-            isMetric = isMetric,
-            onDiscard = {
-                showStopPrompt = false
-                showActions = false
-                expanded = false
-                stopPromptPausedRecording = false
-                onDiscardRecording()
-            },
-            onSave = { title ->
-                showStopPrompt = false
-                showActions = false
-                expanded = false
-                stopPromptPausedRecording = false
-                onFinishRecording(title)
-            },
-            onCancel = {
-                showStopPrompt = false
-                if (stopPromptPausedRecording) {
-                    onResumeRecording()
-                }
-                stopPromptPausedRecording = false
-            },
         )
     }
 
@@ -535,7 +574,7 @@ private fun CombinedFullscreenDashboard(
     guidanceMetricPageCount: Int,
     pageIndex: Int,
     pageCount: Int,
-    snapshot: RecordingDashboardSnapshot,
+    snapshot: RecordingDashboardSnapshot?,
     screenSize: WearScreenSize,
     isMetric: Boolean,
     compassHeadingDeg: Float,
@@ -601,7 +640,7 @@ private fun CombinedFullscreenDashboard(
         } else {
             CombinedRecordingPage(
                 slots = slots,
-                snapshot = snapshot,
+                snapshot = checkNotNull(snapshot),
                 screenSize = screenSize,
                 isMetric = isMetric,
                 onSlotLongPress = onSlotLongPress,

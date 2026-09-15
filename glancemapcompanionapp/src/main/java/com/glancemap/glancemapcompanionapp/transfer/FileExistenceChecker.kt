@@ -41,7 +41,7 @@ class FileExistenceChecker(
         recoveringNodesUntilMs.merge(nodeId, untilMs) { old, new -> maxOf(old, new) }
         PhoneTransferDiagnostics.warn(
             "Exists",
-            "Mark node recovering node=$nodeId durationMs=$durationMs reason=$reason",
+            "Mark node recovering durationMs=$durationMs reason=$reason",
         )
     }
 
@@ -57,7 +57,7 @@ class FileExistenceChecker(
 
         PhoneTransferDiagnostics.warn(
             "Exists",
-            "Wait for watch responsiveness node=$nodeId timeoutMs=$timeoutMs reason=$reason",
+            "Wait for watch responsiveness timeoutMs=$timeoutMs reason=$reason",
         )
 
         while (System.currentTimeMillis() <= deadlineMs) {
@@ -70,7 +70,7 @@ class FileExistenceChecker(
                 recoveringNodesUntilMs.remove(nodeId)
                 PhoneTransferDiagnostics.log(
                     "Exists",
-                    "Watch responsive again node=$nodeId reason=$reason",
+                    "Watch responsive again reason=$reason",
                 )
                 return true
             }
@@ -82,7 +82,7 @@ class FileExistenceChecker(
 
         PhoneTransferDiagnostics.warn(
             "Exists",
-            "Watch still not responsive node=$nodeId timeoutMs=$timeoutMs reason=$reason",
+            "Watch still not responsive timeoutMs=$timeoutMs reason=$reason",
         )
         return false
     }
@@ -290,7 +290,7 @@ class FileExistenceChecker(
             if (nodeId.isNotBlank()) {
                 responsiveNodesUntilMs[nodeId] = System.currentTimeMillis() + RESPONSIVE_CACHE_MS
             }
-            PhoneTransferDiagnostics.log("Exists", "Ping reply requestId=$requestId node=$nodeId")
+            PhoneTransferDiagnostics.log("Exists", "Ping reply requestId=$requestId")
         }.onFailure {
             Log.w(TAG, "Failed to parse ping result", it)
             PhoneTransferDiagnostics.error("Exists", "Failed to parse ping result", it)
@@ -328,7 +328,7 @@ class FileExistenceChecker(
 
         PhoneTransferDiagnostics.warn(
             "Exists",
-            "Node in recovery window node=$nodeId reason=$reason",
+            "Node in recovery window reason=$reason",
         )
         awaitResponsive(
             nodeId = nodeId,
@@ -343,7 +343,7 @@ class FileExistenceChecker(
             sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, byteArrayOf())
         }.onFailure {
             Log.d(TAG, "Watch prewarm message failed (non-fatal): ${it.message}")
-            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed node=$nodeId msg=${it.message}")
+            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed msg=${it.message}")
         }
     }
 
@@ -370,15 +370,15 @@ class FileExistenceChecker(
             val ok = withTimeoutOrNull(PING_TIMEOUT_MS) { deferred.await() } == true
             if (ok) {
                 responsiveNodesUntilMs[nodeId] = System.currentTimeMillis() + RESPONSIVE_CACHE_MS
-                PhoneTransferDiagnostics.log("Exists", "Ping ok node=$nodeId")
+                PhoneTransferDiagnostics.log("Exists", "Ping ok")
             } else {
-                Log.d(TAG, "Watch ping timed out for node=$nodeId")
-                PhoneTransferDiagnostics.warn("Exists", "Ping timeout node=$nodeId")
+                Log.d(TAG, "Watch ping timed out")
+                PhoneTransferDiagnostics.warn("Exists", "Ping timeout")
             }
             ok
         } catch (e: Exception) {
-            Log.d(TAG, "Watch ping failed for node=$nodeId: ${e.message}")
-            PhoneTransferDiagnostics.error("Exists", "Ping failed node=$nodeId", e)
+            Log.d(TAG, "Watch ping failed: ${e.message}")
+            PhoneTransferDiagnostics.error("Exists", "Ping failed", e)
             false
         } finally {
             pendingPings.remove(requestId)?.cancel()

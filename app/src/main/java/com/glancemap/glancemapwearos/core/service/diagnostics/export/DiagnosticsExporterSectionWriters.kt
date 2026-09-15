@@ -5,6 +5,8 @@ package com.glancemap.glancemapwearos.core.service.diagnostics.export
 import com.glancemap.glancemapwearos.core.service.diagnostics.DemDownloadSummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingDiagnosticCounter
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingInstrumentationCounters
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
 
@@ -57,16 +59,97 @@ internal fun Appendable.writeScreenStateSummarySection(summary: ScreenStateDiagn
     appendLine("currentDisplayState=${summary.currentDisplayState?.name ?: "na"}")
     appendLine("currentAppForeground=${summary.currentAppForeground?.toString() ?: "na"}")
     appendLine("openIntervalsIncluded=${summary.openIntervalsIncluded}")
+    appendLine("screenStateReconciliationSampleCount=${summary.screenStateReconciliationSampleCount}")
+    appendLine("screenStateMismatchSampleCount=${summary.screenStateMismatchSampleCount}")
+    appendLine(
+        "screenStateInteractiveReportedWhileDeviceOffSampleCount=" +
+            summary.screenStateInteractiveReportedWhileDeviceOffSampleCount,
+    )
+    appendLine(
+        "screenStateNonInteractiveReportedWhileDeviceOnSampleCount=" +
+            summary.screenStateNonInteractiveReportedWhileDeviceOnSampleCount,
+    )
+    appendLine("screenStateObservedMismatchDurationMs=${summary.screenStateObservedMismatchDurationMs}")
+    appendLine("screenStateMaxObservedMismatchDurationMs=${summary.screenStateMaxObservedMismatchDurationMs}")
+    appendLine("screenStateLastObservedMismatchType=${summary.screenStateLastObservedMismatchType ?: "none"}")
+}
+
+internal fun Appendable.writeRecordingInstrumentationSummarySection(
+    counters: RecordingInstrumentationCounters,
+) {
+    appendLine()
+    appendLine("Recording/TBT Work Summary")
+    appendLine("recordingDashboardTickCount=${counters.recordingDashboardTickCount}")
+    appendLine("recordingDashboardScreenOffTickCount=${counters.recordingDashboardScreenOffTickCount}")
+    appendLine("recordingDashboardSnapshotBuildCount=${counters.recordingDashboardSnapshotBuildCount}")
+    appendLine(
+        "recordingDashboardScreenOffSnapshotBuildCount=${counters.recordingDashboardScreenOffSnapshotBuildCount}",
+    )
+    appendLine("recordingDashboardAggregateBuildCount=${counters.recordingDashboardAggregateBuildCount}")
+    appendLine(
+        "recordingDashboardScreenOffAggregateBuildCount=${counters.recordingDashboardScreenOffAggregateBuildCount}",
+    )
+    appendLine("recordingDashboardPointsScanned=${counters.recordingDashboardPointsScanned}")
+    appendLine("recordingDashboardScreenOffPointsScanned=${counters.recordingDashboardScreenOffPointsScanned}")
+    appendLine("tbtProjectionRunCount=${counters.tbtProjectionRunCount}")
+    appendLine("tbtScreenOffProjectionRunCount=${counters.tbtScreenOffProjectionRunCount}")
+    appendLine("tbtProjectionSegmentsScanned=${counters.tbtProjectionSegmentsScanned}")
+    appendLine("tbtScreenOffProjectionSegmentsScanned=${counters.tbtScreenOffProjectionSegmentsScanned}")
+    appendLine("tbtProjectionMaxSegments=${counters.tbtProjectionMaxSegments}")
+    appendLine("tbtScreenOffProjectionMaxSegments=${counters.tbtScreenOffProjectionMaxSegments}")
+    appendLine("recordingDraftPersistCount=${counters.recordingDraftPersistCount}")
+    appendLine("recordingDraftScreenOffPersistCount=${counters.recordingDraftScreenOffPersistCount}")
+    appendLine("recordingDraftJsonBytesWritten=${counters.recordingDraftJsonBytesWritten}")
+    appendLine("recordingDraftScreenOffJsonBytesWritten=${counters.recordingDraftScreenOffJsonBytesWritten}")
+    appendLine("recordingDraftGpxBytesWritten=${counters.recordingDraftGpxBytesWritten}")
+    appendLine("recordingDraftScreenOffGpxBytesWritten=${counters.recordingDraftScreenOffGpxBytesWritten}")
+    appendLine("recordingDraftTotalBytesWritten=${counters.recordingDraftTotalBytesWritten}")
+    appendLine("recordingDraftScreenOffTotalBytesWritten=${counters.recordingDraftScreenOffTotalBytesWritten}")
+    appendLine("recordingDraftMaxPointCount=${counters.recordingDraftMaxPointCount}")
+    appendLine("recordingDraftScreenOffMaxPointCount=${counters.recordingDraftScreenOffMaxPointCount}")
+    appendLine("recordingDraftPointsSerialized=${counters.recordingDraftPointsSerialized}")
+    appendLine("recordingDraftScreenOffPointsSerialized=${counters.recordingDraftScreenOffPointsSerialized}")
+    appendLine("recordingSensorCallbackCount=${counters.recordingSensorCallbackCount}")
+    appendLine("recordingSensorScreenOffCallbackCount=${counters.recordingSensorScreenOffCallbackCount}")
+    appendLine("recordingSensorUiPublishCount=${counters.recordingSensorUiPublishCount}")
+    appendLine("recordingSensorScreenOffUiPublishCount=${counters.recordingSensorScreenOffUiPublishCount}")
+    writeSensorCounterLines(
+        prefix = "recordingSensor",
+        suffix = "Callback",
+        counters = counters.sensorCallbackCounts,
+    )
+    writeSensorCounterLines(
+        prefix = "recordingSensor",
+        suffix = "UiPublish",
+        counters = counters.sensorUiPublishCounts,
+    )
+}
+
+private fun Appendable.writeSensorCounterLines(
+    prefix: String,
+    suffix: String,
+    counters: Map<String, RecordingDiagnosticCounter>,
+) {
+    counters.forEach { (kind, counter) ->
+        appendLine("$prefix${kind}${suffix}Count=${counter.count}")
+        appendLine("$prefix${kind}ScreenOff${suffix}Count=${counter.screenOffCount}")
+    }
 }
 
 private fun Appendable.writeBatteryConsumptionSummary(batteryUse: EnergyDiagnostics.BatteryUseStats?) {
     appendLine("Battery Consumption Summary")
     batteryUse?.let {
-        appendLine("batteryUsedMah=${TelemetryFormatters.decimal(batteryUse.consumedMah, 2)}")
-        appendLine("averageDrawMa=${TelemetryFormatters.decimal(batteryUse.averageDrawMa, 1)}")
+        appendLine("batteryUsedMah=${TelemetryFormatters.decimalOrNa(batteryUse.consumedMah, 2)}")
+        appendLine("averageDrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.averageDrawMa, 1)}")
+        appendLine("captureDurationMs=${batteryUse.captureDurationMs}")
+        appendLine("measuredDurationMs=${batteryUse.measuredDurationMs}")
         appendLine("durationMs=${batteryUse.durationMs}")
         appendLine("measurement=${batteryUse.measurement}")
         appendLine("confidence=${batteryUse.confidence}")
+        appendLine(
+            "measurementCoveragePct=${TelemetryFormatters.decimal(batteryUse.measurementCoveragePct, 1)}",
+        )
+        appendLine("reason=${batteryUse.reason}")
         appendLine("medianDrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.medianDrawMa, 1)}")
         appendLine("p90DrawMa=${TelemetryFormatters.decimalOrNa(batteryUse.p90DrawMa, 1)}")
         appendLine("integratedCurrentMah=${TelemetryFormatters.decimalOrNa(batteryUse.integratedCurrentMah, 2)}")

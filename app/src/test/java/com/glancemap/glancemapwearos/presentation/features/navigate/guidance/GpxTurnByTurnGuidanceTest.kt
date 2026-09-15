@@ -146,6 +146,75 @@ class GpxTurnByTurnGuidanceTest {
     }
 
     @Test
+    fun waitingForLocationReportsFullRouteElevation() {
+        val session =
+            sessionFromProfile(
+                trackId = "waiting-elevation.gpx",
+                points =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001, elevation = 200.0),
+                        point(45.0, 6.002, elevation = 150.0),
+                    ),
+            )
+
+        val state = computeTurnByTurnGuidanceState(session = session, currentLocation = null)
+
+        assertEquals(session.cumulativeAscentMeters.last(), state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeDescentMeters.last(), state.remainingDescentMeters ?: -1.0, 0.01)
+    }
+
+    @Test
+    fun toStartReportsFullRouteElevation() {
+        val session =
+            sessionFromProfile(
+                trackId = "to-start-elevation.gpx",
+                startReached = false,
+                points =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001, elevation = 200.0),
+                        point(45.0, 6.002, elevation = 150.0),
+                    ),
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.01),
+            )
+
+        assertEquals(GuidanceMode.TO_START, state.mode)
+        assertEquals(session.cumulativeAscentMeters.last(), state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeDescentMeters.last(), state.remainingDescentMeters ?: -1.0, 0.01)
+    }
+
+    @Test
+    fun followRouteWithInsufficientElevationKeepsElevationUnavailable() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "partial-elevation.gpx",
+                trackTitle = "Partial elevation route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001),
+                        point(45.0, 6.002),
+                    ),
+                startReached = true,
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.0002),
+            )
+
+        assertNull(state.remainingAscentMeters)
+        assertNull(state.remainingDescentMeters)
+    }
+
+    @Test
     fun guidanceFollowsRouteAfterStartIsReached() {
         val session =
             buildGpxGuidanceSession(
@@ -687,13 +756,14 @@ class GpxTurnByTurnGuidanceTest {
     private fun sessionFromProfile(
         trackId: String,
         points: List<TrackPoint>,
+        startReached: Boolean = true,
         reversed: Boolean = false,
     ): GpxGuidanceSession =
         buildTurnByTurnGuidanceSessionFromProfile(
             trackId = trackId,
             trackTitle = trackId,
             profile = buildProfile(FileSig(0L, points.size.toLong()), points),
-            startReached = true,
+            startReached = startReached,
             reversed = reversed,
         )
 }

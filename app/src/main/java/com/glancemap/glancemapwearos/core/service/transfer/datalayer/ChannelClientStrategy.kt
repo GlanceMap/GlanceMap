@@ -26,7 +26,7 @@ class ChannelClientStrategy {
         val channelClient = Wearable.getChannelClient(service)
 
         try {
-            Log.d(TAG, "📥 Channel opened: path=${channel.path}, file=${metadata.fileName}")
+            Log.d(TAG, "📥 Channel opened: file=${metadata.fileName}")
             TransferDiagnostics.log(
                 "ChannelIO",
                 "Receiving channel payload id=${metadata.transferId} file=${metadata.fileName}",
@@ -40,6 +40,7 @@ class ChannelClientStrategy {
                     inputStream = inp,
                     expectedSize = null, // Channel size usually unknown
                     resumeOffset = 0L,
+                    diagnosticContext = "transferId=${metadata.transferId}",
                     onProgress = onProgress,
                 )
             }

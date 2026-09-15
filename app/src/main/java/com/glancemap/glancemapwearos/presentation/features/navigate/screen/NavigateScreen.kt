@@ -103,6 +103,7 @@ fun NavigateScreen(
     val lifecycleState = rememberNavigateScreenLifecycleState(isDeviceInteractive = isDeviceInteractive)
     val isScreenResumed = lifecycleState.isScreenResumed
     val lastScreenResumeElapsedMs = lifecycleState.lastScreenResumeElapsedMs
+    val menuClickWakeElapsedMs = lifecycleState.menuClickWakeElapsedMs
     val startRecordingWithActivityPermission =
         rememberRecordingStartWithActivityPermission(
             context = context,
@@ -185,7 +186,7 @@ fun NavigateScreen(
         val activePoiOverlaySources by poiViewModel.activeOverlaySources.collectAsState()
         val navigateTarget by poiViewModel.navigateTarget.collectAsState()
         val offlinePoiSearchUiState by poiViewModel.offlineSearchUiState.collectAsState()
-        val traceRecordingState by traceRecordingViewModel.uiState.collectAsState()
+        val traceRecordingState by traceRecordingViewModel.recordingPresentationState.collectAsState()
         val recordingSampleIntervalSeconds by settingsViewModel.recordingSampleIntervalSeconds.collectAsState()
         val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
         val turnByTurnGpsIntervalSeconds by settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
@@ -548,11 +549,16 @@ fun NavigateScreen(
                 )
             }
         var visiblePoiMarkers by remember { mutableStateOf<List<PoiOverlayMarker>>(emptyList()) }
-        val markerMotionDebugOverlayLabel =
-            rememberMarkerMotionDebugOverlayLabel(
+        val markerMotionDebugOverlayRefreshEnabled =
+            shouldRefreshMarkerMotionDebugOverlay(
                 gpsDebugTelemetry = gpsDebugTelemetry,
                 gpsDebugTelemetryPopupEnabled = gpsDebugTelemetryPopupEnabled,
                 offlineMode = offlineMode,
+                screenState = screenState,
+            )
+        val markerMotionDebugOverlayLabel =
+            rememberMarkerMotionDebugOverlayLabel(
+                refreshEnabled = markerMotionDebugOverlayRefreshEnabled,
                 renderState = compassRenderState,
                 renderedHeadingDeg = renderedCompassHeadingDeg,
             )
@@ -1026,6 +1032,7 @@ fun NavigateScreen(
                 }
             },
             isMetric = isMetric,
+            screenState = screenState,
             navMode = effectiveNavMode,
             locationMarker = locationMarker,
             lastKnownLocation = recenterTarget,
@@ -1047,8 +1054,8 @@ fun NavigateScreen(
                 if (nowElapsedMs < menuClickGuardUntilElapsedMs) {
                     DebugTelemetry.log(
                         "NavigationTelemetry",
-                        "event=menu_click_ignored route=navigate_screen reason=recent_resume " +
-                            "ageMs=${nowElapsedMs - lastScreenResumeElapsedMs} " +
+                        "event=menu_click_ignored route=navigate_screen reason=recent_wake " +
+                            "ageMs=${nowElapsedMs - menuClickWakeElapsedMs} " +
                             "remainingMs=${menuClickGuardUntilElapsedMs - nowElapsedMs}",
                     )
                 } else {
@@ -1064,6 +1071,7 @@ fun NavigateScreen(
             keepAppOpen = keepAppOpen,
             onKeepAppOpenToggle = screenActions.toggleKeepAppOpen,
             backButtonExitsNavigation = backButtonExitsNavigation,
+            traceRecordingViewModel = traceRecordingViewModel,
             traceRecordingState = traceRecordingState,
             recordingStatusMessage = recordingStatusMessage,
             recordingDashboardMetricSlots = recordingDashboardMetricSlots,

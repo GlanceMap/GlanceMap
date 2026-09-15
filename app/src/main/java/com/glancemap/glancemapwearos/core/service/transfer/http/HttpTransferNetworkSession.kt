@@ -5,6 +5,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.util.TransferUtils
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -17,16 +18,66 @@ internal class HttpTransferNetworkSession(
 ) {
     private var callback: ConnectivityManager.NetworkCallback? = null
 
-    suspend fun acquireWifi(timeoutMs: Long): Network? {
+    suspend fun acquireWifi(
+        timeoutMs: Long,
+        transferId: String = "",
+        startupDeadlineElapsedMs: Long? = null,
+    ): Network? {
+        val acquireStartMs = SystemClock.elapsedRealtime()
         val existing = findWifiNetwork()
-        if (existing != null) {
-            return existing
+        TransferDiagnostics.log(
+            "HttpWifi",
+            "event=wifi_acquire_start transferId=${transferId.ifBlank { "na" }} " +
+                "wifiAlreadyActive=${existing != null} initialTransport=${currentTransportLabel()}",
+        )
+        return when {
+            existing != null -> {
+                TransferDiagnostics.log(
+                    "HttpWifi",
+                    "event=wifi_acquire_success transferId=${transferId.ifBlank { "na" }} " +
+                        "wifiAlreadyActive=true wifiAcquireMs=${SystemClock.elapsedRealtime() - acquireStartMs} " +
+                        "remainingStartupBudgetMs=${remainingBudget(startupDeadlineElapsedMs)} " +
+                        "remainingAfterWifiMs=${remainingBudget(startupDeadlineElapsedMs)}",
+                )
+                existing
+            }
+            timeoutMs <= 0L -> {
+                TransferDiagnostics.warn(
+                    "HttpWifi",
+                    "event=wifi_acquire_failure transferId=${transferId.ifBlank { "na" }} " +
+                        "wifiAlreadyActive=false wifiAcquireMs=${SystemClock.elapsedRealtime() - acquireStartMs} " +
+                        "remainingStartupBudgetMs=${remainingBudget(startupDeadlineElapsedMs)} " +
+                        "remainingAfterWifiMs=${remainingBudget(startupDeadlineElapsedMs)} reason=budget_exhausted",
+                )
+                null
+            }
+            else -> {
+                Log.d(TAG, "Requesting Wi-Fi...")
+                val deferred = CompletableDeferred<Network?>()
+                callback = TransferUtils.requestWifiNetwork(connectivityManager, deferred)
+                val network = withTimeoutOrNull(timeoutMs) { deferred.await() }
+                if (network == null) close()
+                val acquireMs = SystemClock.elapsedRealtime() - acquireStartMs
+                if (network != null) {
+                    TransferDiagnostics.log(
+                        "HttpWifi",
+                        "event=wifi_acquire_success transferId=${transferId.ifBlank { "na" }} " +
+                            "wifiAlreadyActive=false wifiAcquireMs=$acquireMs " +
+                            "remainingStartupBudgetMs=${remainingBudget(startupDeadlineElapsedMs)} " +
+                            "remainingAfterWifiMs=${remainingBudget(startupDeadlineElapsedMs)}",
+                    )
+                } else {
+                    TransferDiagnostics.warn(
+                        "HttpWifi",
+                        "event=wifi_acquire_failure transferId=${transferId.ifBlank { "na" }} " +
+                            "wifiAlreadyActive=false wifiAcquireMs=$acquireMs " +
+                            "remainingStartupBudgetMs=${remainingBudget(startupDeadlineElapsedMs)} " +
+                            "remainingAfterWifiMs=${remainingBudget(startupDeadlineElapsedMs)} reason=timeout",
+                    )
+                }
+                network
+            }
         }
-
-        Log.d(TAG, "Requesting Wi-Fi...")
-        val deferred = CompletableDeferred<Network?>()
-        callback = TransferUtils.requestWifiNetwork(connectivityManager, deferred)
-        return withTimeoutOrNull(timeoutMs) { deferred.await() }
     }
 
     fun findWifiNetwork(): Network? {
@@ -54,7 +105,9 @@ internal class HttpTransferNetworkSession(
             coroutineContext.ensureActive()
             val wifi = findWifiNetwork()
             if (wifi != null) return wifi
-            delay(recheckMs)
+            val remainingMs = deadline - SystemClock.elapsedRealtime()
+            if (remainingMs <= 0L) break
+            delay(recheckMs.coerceAtMost(remainingMs))
         }
         return null
     }
@@ -78,6 +131,24 @@ internal class HttpTransferNetworkSession(
             @Suppress("DEPRECATION")
             connectivityManager.bindProcessToNetwork(null)
         }
+    }
+
+    private fun currentTransportLabel(): String {
+        val capabilities =
+            connectivityManager.activeNetwork?.let(connectivityManager::getNetworkCapabilities)
+        return when {
+            capabilities == null -> "none"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "bluetooth"
+            else -> "other"
+        }
+    }
+
+    private fun remainingBudget(deadlineElapsedMs: Long?): Long? = deadlineElapsedMs?.let(::remainingBudgetAt)
+
+    private fun remainingBudgetAt(deadlineElapsedMs: Long): Long {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        return (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
     }
 
     private companion object {

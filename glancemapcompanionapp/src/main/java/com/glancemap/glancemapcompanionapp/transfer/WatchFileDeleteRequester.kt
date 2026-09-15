@@ -43,7 +43,7 @@ class WatchFileDeleteRequester(
             sendMessage(nodeId, DataLayerPaths.PATH_DELETE_FILE, payload)
             withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
         } catch (e: Exception) {
-            Log.e(TAG, "Delete request failed for '$fileName' on node=$nodeId", e)
+            Log.e(TAG, "Delete request failed for '$fileName'", e)
             null
         } finally {
             pendingRequests.remove(requestId)?.cancel()

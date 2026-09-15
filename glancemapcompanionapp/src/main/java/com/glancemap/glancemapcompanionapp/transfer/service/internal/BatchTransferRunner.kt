@@ -29,6 +29,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -133,6 +134,7 @@ internal class BatchTransferRunner(
         strategyFactory: TransferStrategyFactory,
     ) {
         val batchStartMs = SystemClock.elapsedRealtime()
+        val batchId = UUID.randomUUID().toString()
         paused.set(false)
         cancelRequested.set(false)
         httpPauseRequested.set(false)
@@ -143,7 +145,7 @@ internal class BatchTransferRunner(
         uiUpdater.reset()
         PhoneTransferDiagnostics.log(
             "Batch",
-            "Start batch files=${fileUris.size} targetNode=${targetNode.displayName}(${targetNode.id})",
+            "event=batch_start batchId=$batchId files=${fileUris.size} target=${targetNode.displayName}",
         )
 
         uiState.update {
@@ -212,6 +214,11 @@ internal class BatchTransferRunner(
                 )
             }
             notificationHelper.cancelForeground()
+            PhoneTransferDiagnostics.log(
+                "Batch",
+                "event=batch_complete batchId=$batchId sent=0 skipped=${conflicts.size} " +
+                    "durationMs=${SystemClock.elapsedRealtime() - batchStartMs}",
+            )
             return
         }
 
@@ -385,7 +392,8 @@ internal class BatchTransferRunner(
                 )
                 PhoneTransferDiagnostics.log(
                     "Batch",
-                    "File ${index + 1}/$n start name=${item.displayName} strategy=$effectiveStrategyKind " +
+                    "event=file_start batchId=$batchId transferId=$transferId fileIndex=${index + 1} fileCount=$n " +
+                        "attempt=1 name=${item.displayName} strategy=$effectiveStrategyKind " +
                         "reason=$strategyReason size=${item.size}" +
                         (if (wifiRssi != null) " rssi=${wifiRssi}dBm linkSpeed=${wifiLinkSpeed}Mbps" else ""),
                 )
@@ -434,20 +442,36 @@ internal class BatchTransferRunner(
                         totalSize = item.size,
                         isMapFile = isMapLikeFile,
                         checksumSha256 = fileSha256,
+                        diagnosticBatchId = batchId,
+                        fileIndex = index + 1,
+                        fileCount = n,
                     )
 
                 val progressReporter: (Float, String) -> Unit = { fileProg, text ->
                     val p = fileProg.coerceIn(0f, 1f)
-                    val weighted = hashPhaseWeight + ((1f - hashPhaseWeight) * p)
-                    val overall = ((index.toFloat() + weighted) / n.toFloat()).coerceIn(0f, 1f)
-                    uiUpdater.update(overall, "$prefix\n$text")
+                    uiUpdater.update(p, "$prefix\n$text")
                 }
                 var result: TransferResult
                 var fileAttemptCount = 0
                 val fileStrategiesAttempted = mutableListOf<String>()
+                var finalStrategyKind = effectiveStrategyKind
                 while (true) {
                     fileAttemptCount++
-                    fileStrategiesAttempted += effectiveStrategyKind.name
+                    metadata = metadata.copy(attempt = fileAttemptCount)
+                    fileStrategiesAttempted +=
+                        if (strategy is HttpTransferServer) {
+                            TransferStrategyKind.HTTP.name
+                        } else if (strategy is ChannelClientStrategy) {
+                            TransferStrategyKind.CHANNEL.name
+                        } else {
+                            TransferStrategyKind.MESSAGE.name
+                        }
+                    PhoneTransferDiagnostics.log(
+                        "Batch",
+                        "event=transfer_attempt batchId=$batchId transferId=${metadata.transferId} " +
+                            "fileIndex=${index + 1} fileCount=$n attempt=$fileAttemptCount " +
+                            "strategy=${fileStrategiesAttempted.last()}",
+                    )
                     result =
                         runTransferAttempt(
                             strategy = strategy,
@@ -561,7 +585,16 @@ internal class BatchTransferRunner(
                         continue
                     }
 
-                    if (shouldFallbackToChannel(strategy, item.size, result)) {
+                    val fallbackAllowed = shouldFallbackToChannel(strategy, item.size, result)
+                    if (strategy is HttpTransferServer && !result.success) {
+                        PhoneTransferDiagnostics.log(
+                            "Batch",
+                            "event=fallback_decision batchId=$batchId transferId=${metadata.transferId} " +
+                                "from=HTTP to=CHANNEL allowed=$fallbackAllowed " +
+                                "reason=${fallbackDecisionReason(item.size, result)}",
+                        )
+                    }
+                    if (fallbackAllowed) {
                         supersedeWatchTransfer(
                             targetNodeId = targetNode.id,
                             transferId = metadata.transferId,
@@ -588,8 +621,9 @@ internal class BatchTransferRunner(
                             "$prefix\nHTTP failed, retrying via Bluetooth…",
                         )
                         val retryTransferId = UUID.randomUUID().toString()
-                        val retryMetadata = metadata.copy(transferId = retryTransferId)
                         fileAttemptCount++
+                        metadata = metadata.copy(transferId = retryTransferId, attempt = fileAttemptCount)
+                        finalStrategyKind = TransferStrategyKind.CHANNEL
                         fileStrategiesAttempted += "CHANNEL(fallback)"
                         result =
                             normalizeRetryFileExists(
@@ -597,7 +631,7 @@ internal class BatchTransferRunner(
                                     strategy = ChannelClientStrategy(),
                                     fileUri = item.uri,
                                     targetNodeId = targetNode.id,
-                                    metadata = retryMetadata,
+                                    metadata = metadata,
                                     onProgress = progressReporter,
                                 ),
                             )
@@ -609,17 +643,18 @@ internal class BatchTransferRunner(
 
                 if (!result.success) throw IllegalStateException(toUserFacingTransferError(result))
                 val fileDurationMs = SystemClock.elapsedRealtime() - fileStartMs
-                val fileSizeMB = item.size / (1024.0 * 1024.0)
-                val fileSpeedMBps = if (fileDurationMs > 0) fileSizeMB / (fileDurationMs / 1000.0) else 0.0
+                val fileSizeMiB = item.size / (1024.0 * 1024.0)
+                val fileSpeedMiBps = if (fileDurationMs > 0) fileSizeMiB / (fileDurationMs / 1000.0) else 0.0
                 Log.d(
                     TAG,
-                    "Completed ${item.displayName} via $effectiveStrategyKind in " +
-                        "${fileDurationMs}ms (${String.format("%.2f", fileSpeedMBps)} MB/s)",
+                    "Completed ${item.displayName} via $finalStrategyKind in " +
+                        "${fileDurationMs}ms (${String.format(Locale.US, "%.2f", fileSpeedMiBps)} MiB/s)",
                 )
                 PhoneTransferDiagnostics.log(
                     "Batch",
-                    "Summary file=${item.displayName} strategy=$effectiveStrategyKind size=${item.size} " +
-                        "durationMs=$fileDurationMs speedMBps=${String.format("%.2f", fileSpeedMBps)} " +
+                    "event=file_complete batchId=$batchId transferId=${metadata.transferId} fileIndex=${index + 1} " +
+                        "fileCount=$n file=${item.displayName} strategy=$finalStrategyKind size=${item.size} " +
+                        "durationMs=$fileDurationMs speedMiBps=${String.format(Locale.US, "%.2f", fileSpeedMiBps)} " +
                         "attempts=$fileAttemptCount strategiesUsed=${fileStrategiesAttempted.joinToString("→")}",
                 )
 
@@ -665,7 +700,8 @@ internal class BatchTransferRunner(
             Log.d(TAG, "Batch completed in ${SystemClock.elapsedRealtime() - batchStartMs}ms")
             PhoneTransferDiagnostics.log(
                 "Batch",
-                "Batch complete sent=$sent skipped=$skipped durationMs=${SystemClock.elapsedRealtime() - batchStartMs}",
+                "event=batch_complete batchId=$batchId sent=$sent skipped=$skipped " +
+                    "durationMs=${SystemClock.elapsedRealtime() - batchStartMs}",
             )
         } finally {
             paused.set(false)
@@ -778,6 +814,7 @@ internal class BatchTransferRunner(
                 isPaused = false,
                 canResume = false,
                 pauseReason = "",
+                progressText = terminalTransferErrorProgressText(errorMessage),
             )
         }
         notificationHelper.showError(message = errorMessage)
@@ -979,9 +1016,8 @@ internal class BatchTransferRunner(
         item: FileItem,
         result: TransferResult,
     ): Boolean {
-        if (result.success) return false
         if (strategy !is HttpTransferServer) return false
-        if (isLikelyDifferentSubnetHttpFailure(result.message)) return false
+        if (!shouldConsiderFreshHttpRetry(result)) return false
 
         val retryKey = freshHttpRetryKey(item)
         val currentRetryCount = freshHttpRetryCount(item)

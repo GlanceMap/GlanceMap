@@ -101,6 +101,7 @@ data class TurnByTurnGuidanceState(
     val recentManeuverTerrain: GuidanceTerrainConfirmation? = null,
     val alertSessionKey: String? = null,
     val alertGpsDeliveryIntervalMs: Long? = null,
+    val projectionSegmentsScanned: Int? = null,
 )
 
 data class GuidanceProjection(
@@ -187,10 +188,9 @@ fun computeTurnByTurnGuidanceState(
             offRoute = false,
         )
     }
-    val fullRouteElevation = remainingElevationMeters(session, 0.0)
-
     if (currentLocation == null) {
         val nextInstruction = session.instructions.firstOrNull()
+        val fullRouteElevation = remainingElevationMeters(session, 0.0)
         return TurnByTurnGuidanceState(
             active = true,
             mode = GuidanceMode.WAITING_FOR_LOCATION,
@@ -220,6 +220,7 @@ fun computeTurnByTurnGuidanceState(
     val start = session.trackPoints.first().latLong
     val distanceToStart = haversineMeters(currentLocation, start)
     if (!session.startReached && distanceToStart > tuning.startReachedDistanceMeters) {
+        val fullRouteElevation = remainingElevationMeters(session, 0.0)
         return TurnByTurnGuidanceState(
             active = true,
             mode = GuidanceMode.TO_START,
@@ -255,6 +256,7 @@ fun computeTurnByTurnGuidanceState(
                 projection = it,
             )
         }
+    val projectionSegmentsScanned = projection?.let { points.lastIndex }
     val distanceToRoute = projection?.distanceToRouteMeters
     val bearingToRoute = nearestRoutePoint?.let { bearingDegrees(currentLocation, it).toFloat() }
     val distanceFromStart = projection?.distanceFromStartMeters ?: 0.0
@@ -280,6 +282,7 @@ fun computeTurnByTurnGuidanceState(
             routeProgressFraction = 1f,
             offRoute = false,
             distanceFromStartMeters = session.totalDistanceMeters,
+            projectionSegmentsScanned = projectionSegmentsScanned,
             remainingAscentMeters = 0.0,
             remainingDescentMeters = 0.0,
         )
@@ -335,6 +338,7 @@ fun computeTurnByTurnGuidanceState(
         remainingDescentMeters = remainingElevation.second,
         nextSegmentTerrain = nextSegmentTerrain,
         recentManeuverTerrain = recentManeuverTerrain,
+        projectionSegmentsScanned = projectionSegmentsScanned,
     )
 }
 

@@ -35,9 +35,10 @@ class PoiRepositoryImpl(
         onProgress: (bytesCopied: Long) -> Unit,
         expectedSize: Long?,
         resumeOffset: Long,
+        diagnosticContext: String?,
     ): String? =
         withContext(Dispatchers.IO) {
-            poiFiles.saveAtomic(fileName, inputStream, onProgress, expectedSize, resumeOffset)
+            poiFiles.saveAtomic(fileName, inputStream, onProgress, expectedSize, resumeOffset, diagnosticContext)
         }
 
     override suspend fun deletePoiFile(path: String): Boolean =

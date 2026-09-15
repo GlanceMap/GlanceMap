@@ -104,6 +104,22 @@ internal object DebugTelemetry {
         tag: String,
         message: String,
     ) {
+        if (!hasActiveConsumer(tag)) return
+        logFormatted(tag, message)
+    }
+
+    fun log(
+        tag: String,
+        messageProvider: () -> String,
+    ) {
+        if (!hasActiveConsumer(tag)) return
+        logFormatted(tag, messageProvider())
+    }
+
+    private fun logFormatted(
+        tag: String,
+        message: String,
+    ) {
         val nowMs = System.currentTimeMillis()
         val line = "${tsFormatter.format(Instant.ofEpochMilli(nowMs))} [$tag] $message"
         if (tag == COMPASS_TELEMETRY_TAG) {
@@ -122,6 +138,10 @@ internal object DebugTelemetry {
         }
         Log.d(tag, message)
     }
+
+    private fun hasActiveConsumer(tag: String): Boolean =
+        enabled.get() ||
+            (tag == COMPASS_TELEMETRY_TAG && CompassDeepTraceDiagnostics.state.value.active)
 
     fun snapshot(): List<String> = synchronized(lock) { lines.toList() }
 

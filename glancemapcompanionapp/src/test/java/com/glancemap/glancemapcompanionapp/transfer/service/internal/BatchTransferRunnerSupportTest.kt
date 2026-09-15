@@ -141,6 +141,94 @@ class BatchTransferRunnerSupportTest {
     }
 
     @Test
+    fun `foreground quota failure is terminal and never falls back to channel`() {
+        val result =
+            TransferResult(
+                success = false,
+                message = "FGS_DATA_SYNC_QUOTA_EXHAUSTED",
+            )
+
+        assertTrue(isForegroundServiceQuotaExhaustedFailure(result.message))
+        assertTrue(isTerminalForegroundServiceFailure(result.message))
+        assertFalse(
+            shouldFallbackToChannel(
+                strategy = HttpTransferServer(),
+                fileSize = TransferStrategyFactory.CHANNEL_FALLBACK_MAX_BYTES,
+                result = result,
+            ),
+        )
+        assertEquals(
+            "The watch cannot start another background file transfer right now. " +
+                "Open GlanceMap on the watch and try again.",
+            toUserFacingTransferError(result),
+        )
+    }
+
+    @Test
+    fun `generic foreground rejection is also terminal for same foreground transport`() {
+        val result = TransferResult(false, "FGS_START_NOT_ALLOWED")
+
+        assertTrue(isTerminalForegroundServiceFailure(result.message))
+        assertFalse(
+            shouldFallbackToChannel(
+                strategy = HttpTransferServer(),
+                fileSize = TransferStrategyFactory.CHANNEL_FALLBACK_MAX_BYTES,
+                result = result,
+            ),
+        )
+    }
+
+    @Test
+    fun `data sync timeout is terminal and never falls back or retries`() {
+        val result = TransferResult(false, "FGS_DATA_SYNC_TIMEOUT")
+
+        assertTrue(isForegroundServiceDataSyncTimeoutFailure(result.message))
+        assertTrue(isTerminalForegroundServiceFailure(result.message))
+        assertFalse(shouldConsiderFreshHttpRetry(result))
+        assertFalse(
+            shouldFallbackToChannel(
+                strategy = HttpTransferServer(),
+                fileSize = TransferStrategyFactory.CHANNEL_FALLBACK_MAX_BYTES,
+                result = result,
+            ),
+        )
+        assertEquals(
+            "The watch reached Android's background transfer time limit. " +
+                "Open GlanceMap on the watch and try the transfer again.",
+            toUserFacingTransferError(result),
+        )
+    }
+
+    @Test
+    fun `resume failure replaces stale resume text with the error`() {
+        val text = terminalTransferErrorProgressText("Watch did not reconnect")
+
+        assertEquals("Error: Watch did not reconnect", text)
+        assertFalse(text.contains("resuming", ignoreCase = true))
+    }
+
+    @Test
+    fun `pausing again replaces resume text with paused state`() {
+        val text =
+            buildManualPauseProgressText(
+                filePrefix = "File 1/1: map.map",
+                existingText = "Resuming current file from partial…\nHTTP: 214.00 MiB / 931.53 MiB",
+            )
+
+        assertTrue(text.contains("Paused. Ready to resume from partial."))
+        assertFalse(text.contains("Resuming", ignoreCase = true))
+    }
+
+    @Test
+    fun `ordinary network failure remains eligible for fresh http retry`() {
+        assertTrue(
+            shouldConsiderFreshHttpRetry(
+                TransferResult(false, "Socket timeout while connecting to phone"),
+            ),
+        )
+    }
+
+    @Test
     fun `routing packs are replaceable transfer targets`() {
         assertTrue(isReplaceableTransferFileName("E5_N45.rd5"))
         assertFalse(isReplaceableTransferFileName("Alps.map"))

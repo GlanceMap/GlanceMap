@@ -27,9 +27,17 @@ data class TransferMetadata(
     val totalSize: Long,
     val isMapFile: Boolean,
     val checksumSha256: String? = null,
+    val diagnosticBatchId: String? = null,
+    val fileIndex: Int? = null,
+    val fileCount: Int? = null,
+    val attempt: Int = 1,
 )
 
 data class TransferResult(
     val success: Boolean,
     val message: String,
 )
+
+internal fun TransferMetadata.diagnosticContext(): String =
+    "transferId=$transferId batchId=${diagnosticBatchId ?: "na"} " +
+        "fileIndex=${fileIndex ?: "na"} fileCount=${fileCount ?: "na"} attempt=$attempt"

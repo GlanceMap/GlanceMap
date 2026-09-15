@@ -44,7 +44,7 @@ class WatchDataLayerRepository(
             Log.d(TAG, "Status send failed: ${it.message}")
             TransferDiagnostics.warn(
                 "Ack",
-                "Status send failed node=$sourceNodeId transferId=$transferId phase=$phase",
+                "Status send failed transferId=$transferId phase=$phase",
             )
         }
     }
@@ -55,6 +55,11 @@ class WatchDataLayerRepository(
         status: String,
         detail: String,
     ) {
+        val ackStartMs = SystemClock.elapsedRealtime()
+        TransferDiagnostics.log(
+            "Ack",
+            "event=ack_send_start transferId=$transferId status=$status",
+        )
         val payload =
             JSONObject()
                 .apply {
@@ -71,12 +76,25 @@ class WatchDataLayerRepository(
                 payload = payload,
                 attempts = ACK_MAX_SEND_ATTEMPTS,
                 reconnectWindowMs = ACK_RETRY_WAIT_MS,
+                onAttempt = { attempt ->
+                    TransferDiagnostics.log(
+                        "Ack",
+                        "event=ack_attempt transferId=$transferId status=$status attempt=$attempt",
+                    )
+                },
+            )
+        }.onSuccess {
+            TransferDiagnostics.log(
+                "Ack",
+                "event=ack_send_success transferId=$transferId status=$status " +
+                    "ackDurationMs=${SystemClock.elapsedRealtime() - ackStartMs}",
             )
         }.onFailure {
             Log.w(TAG, "Failed sending ACK to phone after retries: ${it.message}")
             TransferDiagnostics.warn(
                 "Ack",
-                "ACK send failed node=$sourceNodeId transferId=$transferId status=$status",
+                "event=ack_send_failure transferId=$transferId status=$status " +
+                    "ackDurationMs=${SystemClock.elapsedRealtime() - ackStartMs} reason=${it.javaClass.simpleName}",
             )
         }
     }
@@ -95,25 +113,28 @@ class WatchDataLayerRepository(
         )
     }
 
+    @Suppress("LongParameterList")
     private suspend fun sendReliableMessage(
         nodeId: String,
         path: String,
         payload: ByteArray,
         attempts: Int,
         reconnectWindowMs: Long,
+        onAttempt: ((Int) -> Unit)? = null,
     ) {
         var lastError: Throwable? = null
         repeat(attempts) { attempt ->
+            onAttempt?.invoke(attempt + 1)
             val result =
                 runCatching {
                     messageClient.sendMessage(nodeId, path, payload).await()
                 }
             if (result.isSuccess) {
                 if (attempt > 0) {
-                    Log.d(TAG, "Recovered send for path=$path node=$nodeId on attempt=${attempt + 1}")
+                    Log.d(TAG, "Recovered send for path=$path on attempt=${attempt + 1}")
                     TransferDiagnostics.log(
                         "Ack",
-                        "Recovered send path=$path node=$nodeId attempt=${attempt + 1}",
+                        "Recovered send path=$path attempt=${attempt + 1}",
                     )
                 }
                 return
@@ -132,7 +153,7 @@ class WatchDataLayerRepository(
             )
             TransferDiagnostics.warn(
                 "Ack",
-                "Node disconnected path=$path node=$nodeId retry=${attempt + 2}/$attempts",
+                "Node disconnected path=$path retry=${attempt + 2}/$attempts",
             )
             val reconnected = awaitNodeConnection(nodeId, reconnectWindowMs)
             if (!reconnected) {

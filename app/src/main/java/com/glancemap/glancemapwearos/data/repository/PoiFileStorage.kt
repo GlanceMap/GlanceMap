@@ -19,12 +19,14 @@ internal class PoiFileStorage(
                 ?: emptyList()
         }
 
+    @Suppress("LongParameterList")
     suspend fun saveAtomic(
         fileName: String,
         inputStream: InputStream,
         onProgress: (bytesCopied: Long) -> Unit,
         expectedSize: Long?,
         resumeOffset: Long,
+        diagnosticContext: String?,
     ): String? {
         val expectedBytes = expectedSize?.takeIf { it > 0L }
         val options =
@@ -39,6 +41,7 @@ internal class PoiFileStorage(
                 keepPartialOnCancel = true,
                 keepPartialOnFailure = true,
                 computeSha256 = true,
+                diagnosticContext = diagnosticContext,
             )
         return AtomicStreamWriter
             .writeAtomic(

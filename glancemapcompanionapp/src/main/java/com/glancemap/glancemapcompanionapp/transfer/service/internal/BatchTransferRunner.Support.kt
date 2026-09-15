@@ -6,6 +6,7 @@ import com.glancemap.glancemapcompanionapp.transfer.TransferStrategyKind
 import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferResult
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferStrategy
+import com.glancemap.shared.transfer.TransferDataLayerContract
 
 internal data class FileItem(
     val uri: Uri,
@@ -25,6 +26,7 @@ internal fun shouldFallbackToChannel(
 ): Boolean {
     if (result.success) return false
     if (strategy !is HttpTransferServer) return false
+    if (isTerminalForegroundServiceFailure(result.message)) return false
 
     val msg = result.message.lowercase()
     if (msg.contains("file_exists")) return false
@@ -37,6 +39,20 @@ internal fun shouldFallbackToChannel(
     }
     return true
 }
+
+internal fun fallbackDecisionReason(
+    fileSize: Long,
+    result: TransferResult,
+): String =
+    when {
+        result.success -> "result_success"
+        isTerminalForegroundServiceFailure(result.message) -> "terminal_fgs_failure"
+        result.message.contains("file_exists", ignoreCase = true) -> "file_exists"
+        result.message.contains("cancelled", ignoreCase = true) -> "cancelled"
+        fileSize > TransferStrategyFactory.CHANNEL_FALLBACK_MAX_BYTES &&
+            !shouldAllowLargeChannelRescueFallback(result) -> "file_too_large"
+        else -> "eligible_http_failure"
+    }
 
 internal fun shouldPreferChannelForRemainingBatch(result: TransferResult): Boolean {
     val msg = result.message.lowercase()
@@ -56,6 +72,34 @@ internal fun isExplicitPhoneHttpUnreachableFailure(message: String): Boolean {
         msg.contains("failed to connect to phone http server") ||
         msg.contains("failed to connect to /")
 }
+
+internal fun isForegroundServiceQuotaExhaustedFailure(message: String): Boolean =
+    message.contains(
+        TransferDataLayerContract.FGS_DATA_SYNC_QUOTA_EXHAUSTED,
+        ignoreCase = true,
+    )
+
+internal fun isForegroundServiceStartNotAllowedFailure(message: String): Boolean =
+    message.contains(
+        TransferDataLayerContract.FGS_START_NOT_ALLOWED,
+        ignoreCase = true,
+    )
+
+internal fun isForegroundServiceDataSyncTimeoutFailure(message: String): Boolean =
+    message.contains(
+        TransferDataLayerContract.FGS_DATA_SYNC_TIMEOUT,
+        ignoreCase = true,
+    )
+
+internal fun isTerminalForegroundServiceFailure(message: String): Boolean =
+    isForegroundServiceQuotaExhaustedFailure(message) ||
+        isForegroundServiceStartNotAllowedFailure(message) ||
+        isForegroundServiceDataSyncTimeoutFailure(message)
+
+internal fun shouldConsiderFreshHttpRetry(result: TransferResult): Boolean =
+    !result.success &&
+        !isTerminalForegroundServiceFailure(result.message) &&
+        !isLikelyDifferentSubnetHttpFailure(result.message)
 
 internal fun isLikelyDifferentSubnetHttpFailure(message: String): Boolean {
     val normalized = message.lowercase()
@@ -177,9 +221,22 @@ internal fun buildManualPauseProgressText(
     ).joinToString("\n")
 }
 
+internal fun terminalTransferErrorProgressText(errorMessage: String): String = "Error: $errorMessage"
+
 internal fun toUserFacingTransferError(result: TransferResult): String {
     val normalized = result.message.lowercase()
     return when {
+        isForegroundServiceQuotaExhaustedFailure(result.message) ->
+            "The watch cannot start another background file transfer right now. " +
+                "Open GlanceMap on the watch and try again."
+
+        isForegroundServiceStartNotAllowedFailure(result.message) ->
+            "The watch could not start the background file transfer. Open GlanceMap on the watch and try again."
+
+        isForegroundServiceDataSyncTimeoutFailure(result.message) ->
+            "The watch reached Android's background transfer time limit. " +
+                "Open GlanceMap on the watch and try the transfer again."
+
         normalized.contains(HttpTransferServer.RESULT_HTTP_STALLED_PREFIX.lowercase()) ->
             "Transfer stalled while waiting for the watch to reconnect."
 

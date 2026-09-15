@@ -52,6 +52,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardOverlay
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteShortcutTray
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolInlineProgressBanner
@@ -76,6 +77,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     slopeOverlayProcessing: Boolean,
     slopeOverlayProgressPercent: Int?,
     navMode: NavMode,
+    isScreenInteractive: Boolean,
     screenSize: WearScreenSize,
     isMetric: Boolean,
     liveElevationEnabled: Boolean,
@@ -119,6 +121,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onCreatePoiClick: () -> Unit,
     keepAppOpen: Boolean,
     onKeepAppOpenToggle: () -> Unit,
+    traceRecordingViewModel: TraceRecordingViewModel,
     traceRecordingState: TraceRecordingUiState,
     recordingDashboardMetricSlots: List<String>,
     turnByTurnDashboardMetricSlots: List<String>,
@@ -245,8 +248,16 @@ internal fun BoxScope.NavigateOverlaysLayer(
         mapRotationDeg,
         navigationMarkerAnchorMode,
         suppressLiveMetricsForPoi,
+        isScreenInteractive,
     ) {
-        if (navMode != NavMode.PANNING || !liveDistanceEnabled || suppressLiveMetricsForPoi) {
+        if (
+            !shouldRunPanningDistanceGuideProjection(
+                isScreenInteractive = isScreenInteractive,
+                navMode = navMode,
+                liveDistanceEnabled = liveDistanceEnabled,
+                suppressLiveMetricsForPoi = suppressLiveMetricsForPoi,
+            )
+        ) {
             liveDistanceLineStart = null
             return@LaunchedEffect
         }
@@ -502,6 +513,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         onRecenterRequested = onRecenterRequested,
         onToggleOrientation = onToggleOrientation,
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
+        isScreenInteractive = isScreenInteractive,
     )
 
     TurnByTurnGuidanceOverlay(
@@ -539,13 +551,14 @@ internal fun BoxScope.NavigateOverlaysLayer(
     )
 
     RecordingDashboardOverlay(
-        state = traceRecordingState,
+        traceRecordingViewModel = traceRecordingViewModel,
         metricSlots = recordingDashboardMetricSlots,
         userWeightKg = userWeightKg,
         backpackWeightKg = backpackWeightKg,
         bikeWeightKg = bikeWeightKg,
         screenSize = screenSize,
         isMetric = isMetric,
+        isScreenInteractive = isScreenInteractive,
         showRouteCompletePrompt = showRouteCompleteRecordingPrompt,
         onRouteCompletePromptDismiss = {
             showRouteCompleteRecordingPrompt = false
@@ -568,7 +581,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         guidanceState = turnByTurnGuidanceState,
         guidancePaused = turnByTurnGuidancePaused,
         voiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
-        recordingState = traceRecordingState,
+        traceRecordingViewModel = traceRecordingViewModel,
         metricSlots = recordingDashboardMetricSlots,
         guidanceMetricSlots = turnByTurnDashboardMetricSlots,
         elevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
@@ -585,6 +598,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
         compactPopupSuppressed = shortcutTrayExpanded,
+        isScreenInteractive = isScreenInteractive,
         suppressed =
             poiTapMessage != null ||
                 suppressGuidanceForPanning ||
@@ -606,3 +620,14 @@ internal fun BoxScope.NavigateOverlaysLayer(
         },
     )
 }
+
+internal fun shouldRunPanningDistanceGuideProjection(
+    isScreenInteractive: Boolean,
+    navMode: NavMode,
+    liveDistanceEnabled: Boolean,
+    suppressLiveMetricsForPoi: Boolean,
+): Boolean =
+    isScreenInteractive &&
+        navMode == NavMode.PANNING &&
+        liveDistanceEnabled &&
+        !suppressLiveMetricsForPoi

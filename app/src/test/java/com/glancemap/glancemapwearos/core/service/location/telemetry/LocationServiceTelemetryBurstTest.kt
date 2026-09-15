@@ -13,6 +13,7 @@ class LocationServiceTelemetryBurstTest {
                 tag = "LocTelemetryTest",
                 summaryIntervalMs = 60_000L,
                 logSink = messages::add,
+                telemetryEnabled = { true },
             )
         telemetry.onCallbackFixAccepted(
             nowElapsedMs = 1_000L,

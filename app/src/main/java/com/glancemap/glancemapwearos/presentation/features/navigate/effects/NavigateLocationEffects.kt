@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.config.resolveEffectiveWatchGpsAccuracyMeters
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
@@ -818,6 +820,8 @@ internal fun rememberNavigateLocationUiState(
                         }
                 val markerVisible = shouldRenderLocationVisualUpdate(latestScreenState.value)
 
+                val markerMotionStartedAtElapsedMs =
+                    RecordingScreenOffDiagnostics.start()
                 val motionUpdate =
                     markerMotionController.onGpsFix(
                         fix =
@@ -843,6 +847,10 @@ internal fun rememberNavigateLocationUiState(
                                 isMarkerVisible = markerVisible,
                             ),
                     )
+                RecordingScreenOffDiagnostics.stop(
+                    activity = RecordingScreenOffActivity.MARKER_MOTION,
+                    startedAtElapsedMs = markerMotionStartedAtElapsedMs,
+                )
                 val displayLatLong = motionUpdate.displayedLatLong
                 markerMotionSignal.trySend(Unit)
                 if (motionUpdate.fixAccepted) {
