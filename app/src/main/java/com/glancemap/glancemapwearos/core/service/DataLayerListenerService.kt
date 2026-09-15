@@ -96,7 +96,6 @@ class DataLayerListenerService : WearableListenerService() {
                     return
                 }
             WatchLiveHikeSyncPreferences.setEnabled(applicationContext, enabled)
-            Log.d(TAG, "Live Hike sync ${if (enabled) "enabled" else "disabled"} by companion")
             return
         }
         handlers.handleMessage(messageEvent)

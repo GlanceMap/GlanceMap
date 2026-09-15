@@ -7,7 +7,6 @@ import com.glancemap.glancemapcompanionapp.WatchInstalledMap
 import com.glancemap.glancemapcompanionapp.transfer.datalayer.DataLayerPaths
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -69,14 +68,6 @@ class WatchInstalledMapsRequester(
                 .toByteArray(Charsets.UTF_8)
 
         return try {
-            try {
-                sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, ByteArray(0))
-                delay(PREWARM_SETTLE_MS)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Throwable) {
-                Log.w(TAG, "Map-list prewarm failed for node=$nodeId", error)
-            }
             sendMessage(nodeId, installedMapQueryPath(), payload)
             val snapshot = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
             if (snapshot != null) {
@@ -178,6 +169,5 @@ class WatchInstalledMapsRequester(
     private companion object {
         private const val TAG = "WatchMapListRequester"
         private const val REQUEST_TIMEOUT_MS = 8_000L
-        private const val PREWARM_SETTLE_MS = 300L
     }
 }
