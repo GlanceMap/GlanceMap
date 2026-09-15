@@ -1024,8 +1024,8 @@ private fun RouteProgressRing(
             size = arcSize,
             style = Stroke(width = strokeWidth),
         )
-        if (clampedProgress > 0f) {
-            if (offRoute || !elevationProgressRingEnabled || routeProgressRingSegments.isEmpty()) {
+        if (offRoute || !elevationProgressRingEnabled || routeProgressRingSegments.isEmpty()) {
+            if (clampedProgress > 0f) {
                 drawArc(
                     color = if (offRoute) OFF_ROUTE_AMBER else Color(ROUTE_PROGRESS_RING_FALLBACK_GREEN),
                     startAngle = PROGRESS_ARC_START_DEGREES,
@@ -1035,25 +1035,25 @@ private fun RouteProgressRing(
                     size = arcSize,
                     style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
                 )
-            } else {
-                clipRouteProgressRingSegments(
-                    segments = routeProgressRingSegments,
-                    progress = clampedProgress,
-                ).forEach { segment ->
-                    drawArc(
-                        color = Color(segment.color),
-                        startAngle =
-                            PROGRESS_ARC_START_DEGREES +
-                                PROGRESS_ARC_SWEEP_DEGREES * segment.startFraction,
-                        sweepAngle =
-                            PROGRESS_ARC_SWEEP_DEGREES *
-                                (segment.endFraction - segment.startFraction),
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-                    )
-                }
+            }
+        } else {
+            clipUpcomingRouteProgressRingSegments(
+                segments = routeProgressRingSegments,
+                progress = clampedProgress,
+            ).forEach { segment ->
+                drawArc(
+                    color = Color(segment.color),
+                    startAngle =
+                        PROGRESS_ARC_START_DEGREES +
+                            PROGRESS_ARC_SWEEP_DEGREES * segment.startFraction,
+                    sweepAngle =
+                        PROGRESS_ARC_SWEEP_DEGREES *
+                            (segment.endFraction - segment.startFraction),
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
             }
         }
     }

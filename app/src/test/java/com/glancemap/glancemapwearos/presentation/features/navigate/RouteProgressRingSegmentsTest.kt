@@ -16,6 +16,7 @@ class RouteProgressRingSegmentsTest {
                 point(0.001, 110.0),
                 point(0.003, 100.0),
                 point(0.004, 100.0),
+                point(0.005, 100.0),
             )
         val cumulative = buildCumulativeDistances(points.map { it.latLong })
 
@@ -32,10 +33,11 @@ class RouteProgressRingSegmentsTest {
         assertEquals(elevationSegmentColor(GpxElevationSegmentType.FLAT), segments[2].color)
         assertEquals((cumulative[1] / cumulative.last()).toFloat(), segments[0].endFraction)
         assertEquals((cumulative[2] / cumulative.last()).toFloat(), segments[1].endFraction)
+        assertEquals((cumulative[4] / cumulative.last()).toFloat(), segments[2].endFraction)
     }
 
     @Test
-    fun clipsCompletedSegmentsWithoutChangingTheirColors() {
+    fun clipsUpcomingSegmentsWithoutChangingTheirColors() {
         val segments =
             listOf(
                 RouteProgressRingSegment(0f, 0.25f, 1),
@@ -43,14 +45,12 @@ class RouteProgressRingSegmentsTest {
                 RouteProgressRingSegment(0.75f, 1f, 3),
             )
 
-        val clipped = clipRouteProgressRingSegments(segments, progress = 0.5f)
-
         assertEquals(
             listOf(
-                RouteProgressRingSegment(0f, 0.25f, 1),
-                RouteProgressRingSegment(0.25f, 0.5f, 2),
+                RouteProgressRingSegment(0.5f, 0.75f, 2),
+                RouteProgressRingSegment(0.75f, 1f, 3),
             ),
-            clipped,
+            clipUpcomingRouteProgressRingSegments(segments, progress = 0.5f),
         )
     }
 

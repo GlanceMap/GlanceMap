@@ -31,42 +31,57 @@ internal fun buildRouteProgressRingSegments(
         return emptyList()
     }
 
-    return (0 until points.lastIndex).mapNotNull { index ->
-        val startDistance = cumulativeDistancesMeters[index]
-        val endDistance = cumulativeDistancesMeters[index + 1]
-        if (
-            !startDistance.isFinite() ||
-            !endDistance.isFinite() ||
-            endDistance <= startDistance
-        ) {
-            return@mapNotNull null
-        }
-
-        val startFraction = (startDistance / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
-        val endFraction = (endDistance / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
-        if (endFraction <= startFraction) return@mapNotNull null
-
-        val from = points[index]
-        val to = points[index + 1]
-        val crossesSegmentBoundary =
-            if (reversed) {
-                from.startsNewSegment
-            } else {
-                to.startsNewSegment
+    return mergeAdjacentRouteProgressRingSegments(
+        (0 until points.lastIndex).mapNotNull { index ->
+            val startDistance = cumulativeDistancesMeters[index]
+            val endDistance = cumulativeDistancesMeters[index + 1]
+            if (
+                !startDistance.isFinite() ||
+                !endDistance.isFinite() ||
+                endDistance <= startDistance
+            ) {
+                return@mapNotNull null
             }
-        val color =
-            if (crossesSegmentBoundary) {
-                ROUTE_PROGRESS_RING_FALLBACK_GREEN
-            } else {
-                elevationSegmentColor(classifyElevationSegment(from, to))
-            }
-        RouteProgressRingSegment(
-            startFraction = startFraction,
-            endFraction = endFraction,
-            color = color,
-        )
-    }
+
+            val startFraction = (startDistance / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
+            val endFraction = (endDistance / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
+            if (endFraction <= startFraction) return@mapNotNull null
+
+            val from = points[index]
+            val to = points[index + 1]
+            val crossesSegmentBoundary =
+                if (reversed) {
+                    from.startsNewSegment
+                } else {
+                    to.startsNewSegment
+                }
+            val color =
+                if (crossesSegmentBoundary) {
+                    ROUTE_PROGRESS_RING_FALLBACK_GREEN
+                } else {
+                    elevationSegmentColor(classifyElevationSegment(from, to))
+                }
+            RouteProgressRingSegment(
+                startFraction = startFraction,
+                endFraction = endFraction,
+                color = color,
+            )
+        },
+    )
 }
+
+private fun mergeAdjacentRouteProgressRingSegments(
+    segments: List<RouteProgressRingSegment>,
+): List<RouteProgressRingSegment> =
+    segments.fold(mutableListOf()) { merged, segment ->
+        val previous = merged.lastOrNull()
+        if (previous != null && previous.color == segment.color && previous.endFraction == segment.startFraction) {
+            merged[merged.lastIndex] = previous.copy(endFraction = segment.endFraction)
+        } else {
+            merged += segment
+        }
+        merged
+    }
 
 private fun hasValidRouteProgressRingInput(
     points: List<TrackPoint>,
@@ -80,14 +95,14 @@ private fun hasValidRouteProgressRingInput(
         else -> points.all { it.elevation?.isFinite() == true }
     }
 
-internal fun clipRouteProgressRingSegments(
+internal fun clipUpcomingRouteProgressRingSegments(
     segments: List<RouteProgressRingSegment>,
     progress: Float,
 ): List<RouteProgressRingSegment> {
     val clampedProgress = progress.coerceIn(0f, 1f)
     return segments.mapNotNull { segment ->
-        val startFraction = segment.startFraction.coerceIn(0f, 1f)
-        val endFraction = minOf(segment.endFraction.coerceIn(0f, 1f), clampedProgress)
+        val startFraction = maxOf(segment.startFraction.coerceIn(0f, 1f), clampedProgress)
+        val endFraction = segment.endFraction.coerceIn(0f, 1f)
         if (endFraction <= startFraction) {
             null
         } else {
