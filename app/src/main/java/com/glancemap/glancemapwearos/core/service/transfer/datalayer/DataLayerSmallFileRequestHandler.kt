@@ -1,20 +1,28 @@
 package com.glancemap.glancemapwearos.core.service.transfer.datalayer
 
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.TransferConstants
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.foregroundStartFailureDetail
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferTerminalOutcome
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.google.android.gms.wearable.MessageEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayInputStream
+import java.util.Locale
 
 internal class DataLayerSmallFileRequestHandler(
     private val service: DataLayerListenerService,
@@ -25,6 +33,8 @@ internal class DataLayerSmallFileRequestHandler(
 ) {
     private val appScope get() = service.appScope()
 
+    // Keep message validation, foreground ownership, and cleanup in one mutex scope.
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     fun handle(messageEvent: MessageEvent) {
         val path = messageEvent.path
         val sourceNodeId = messageEvent.sourceNodeId
@@ -33,7 +43,7 @@ internal class DataLayerSmallFileRequestHandler(
         val parts = path.split('/').filter { it.isNotBlank() }
         if (parts.size < 4) {
             Log.w(TAG, "Invalid small file path: $path")
-            TransferDiagnostics.warn("Small", "Invalid small-file path=$path")
+            TransferDiagnostics.warn("Small", "Invalid small-file path")
             return
         }
 
@@ -93,18 +103,45 @@ internal class DataLayerSmallFileRequestHandler(
                 if (fileOps.fileBlocksIncomingTransfer(fileName)) {
                     val msg = "FILE_EXISTS:$fileName"
                     TransferDiagnostics.warn("Small", "Target file already exists id=$transferId file=$fileName")
-                    notificationHelper.startForeground(notificationId, fileName, "Already exists")
-                    notificationHelper.stopForeground(notificationId)
                     notificationHelper.showError(notificationId, fileName, "Already exists")
-                    sendAck(sourceNodeId, transferId, "ERROR", msg)
+                    appScope.launch(Dispatchers.IO) {
+                        runCatching { sendAck(sourceNodeId, transferId, "ERROR", msg) }
+                            .onFailure {
+                                TransferDiagnostics.warn(
+                                    "Small",
+                                    "Terminal ACK failed id=$transferId status=ERROR",
+                                )
+                            }
+                    }
                     return@withLock
                 }
 
                 val wakeLock = service.acquireWakeLock("GlanceMap::SmallTransfer", TransferConstants.SMALL_WAKELOCK_MS)
                 service.releasePrewarmWakeLock("small_transfer_start:$fileName")
+                var transferStarted = false
+                var foregroundStarted = false
+                var foregroundStopped = false
+                var terminalAck: TerminalAck? = null
                 try {
-                    service.onTransferStarted()
+                    service.beginForegroundTransfer(
+                        transferId = transferId,
+                        fileName = fileName,
+                        sourceNodeId = sourceNodeId,
+                        notificationId = notificationId,
+                        job = requireNotNull(currentCoroutineContext()[Job]),
+                    )
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=fgs_start_attempt id=$transferId file=$fileName size=${bytes.size} fgsType=dataSync",
+                    )
                     notificationHelper.startForeground(notificationId, fileName, "Saving…")
+                    foregroundStarted = true
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=fgs_start_success id=$transferId file=$fileName",
+                    )
+                    service.onTransferStarted()
+                    transferStarted = true
 
                     val startMs = SystemClock.elapsedRealtime()
                     ByteArrayInputStream(bytes).use { input ->
@@ -113,16 +150,31 @@ internal class DataLayerSmallFileRequestHandler(
                             inputStream = input,
                             expectedSize = bytes.size.toLong(),
                             resumeOffset = 0L,
+                            diagnosticContext = "transferId=$transferId",
                             onProgress = { /* no progress */ },
                         )
                     }
                     val durationMs = SystemClock.elapsedRealtime() - startMs
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=write_complete transferId=$transferId bytesReceived=${bytes.size} commitSucceeded=true",
+                    )
 
                     // Verify checksum if available
                     val expectedSha = expectedChecksum?.lowercase()
+                    val checksumStartMs = SystemClock.elapsedRealtime()
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=checksum_start transferId=$transferId",
+                    )
                     if (!expectedSha.isNullOrBlank()) {
                         val actualSha = fileOps.computeFinalFileSha256(fileName)?.lowercase()
                         if (actualSha != null && actualSha != expectedSha) {
+                            TransferDiagnostics.warn(
+                                "Small",
+                                "event=checksum_complete transferId=$transferId checksumVerified=false " +
+                                    "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
+                            )
                             TransferDiagnostics.warn(
                                 "Small",
                                 "Checksum mismatch id=$transferId file=$fileName",
@@ -135,38 +187,104 @@ internal class DataLayerSmallFileRequestHandler(
                             "Checksum verified id=$transferId file=$fileName",
                         )
                     }
-
-                    notificationHelper.stopForeground(notificationId)
-                    notificationHelper.showCompletion(notificationId, fileName, "Saved ✓")
-
-                    sendAck(sourceNodeId, transferId, "DONE", "")
-                    val sizeMB = bytes.size / (1024.0 * 1024.0)
-                    val speedMBps = if (durationMs > 0) sizeMB / (durationMs / 1000.0) else 0.0
                     TransferDiagnostics.log(
                         "Small",
-                        "Summary id=$transferId file=$fileName size=${bytes.size} durationMs=$durationMs speedMBps=${String.format("%.2f", speedMBps)}",
+                        "event=checksum_complete transferId=$transferId " +
+                            "checksumVerified=${if (expectedSha.isNullOrBlank()) "na" else "true"} " +
+                            "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
+                    )
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=commit_complete transferId=$transferId commitSucceeded=true",
+                    )
+
+                    if (!service.claimForegroundTransfer(transferId, TransferTerminalOutcome.DONE)) return@withLock
+                    terminalAck = TerminalAck(status = "DONE", detail = "")
+                    notificationHelper.stopForeground(notificationId)
+                    foregroundStopped = true
+                    notificationHelper.showCompletion(notificationId, fileName, "Saved ✓")
+                    val sizeMiB = bytes.size / (1024.0 * 1024.0)
+                    val speedMiBps = if (durationMs > 0) sizeMiB / (durationMs / 1000.0) else 0.0
+                    TransferDiagnostics.log(
+                        "Small",
+                        "Summary id=$transferId file=$fileName size=${bytes.size} durationMs=$durationMs " +
+                            "speedMiBps=${String.format(Locale.US, "%.2f", speedMiBps)} bytesReceived=${bytes.size} " +
+                            "copyDurationMs=$durationMs finalAckStatus=${terminalAck.status}",
                     )
                     EnergyDiagnostics.recordEvent(
                         reason = "small_transfer_done",
                         detail = "file=$fileName transferId=$transferId bytes=${bytes.size}",
                     )
+                } catch (e: CancellationException) {
+                    if (e.message != FGS_DATA_SYNC_TIMEOUT) throw e
+                    TransferDiagnostics.warn(
+                        "Small",
+                        "Timeout cancellation handled id=$transferId file=$fileName",
+                    )
                 } catch (e: Exception) {
+                    val detail =
+                        if (e.javaClass.name == "android.app.ForegroundServiceStartNotAllowedException") {
+                            foregroundStartFailureDetail(e.javaClass.name, Build.VERSION.SDK_INT, e.message)
+                        } else {
+                            e.message ?: "Unknown error"
+                        }
                     Log.e(TAG, "❌ Small file save failed", e)
                     TransferDiagnostics.error(
                         "Small",
-                        "Failed id=$transferId file=$fileName",
+                        "Failed id=$transferId file=$fileName detail=$detail",
                         e,
                     )
-                    notificationHelper.stopForeground(notificationId)
-                    notificationHelper.showError(notificationId, fileName, "Failed: ${e.message}")
-                    sendAck(sourceNodeId, transferId, "ERROR", e.message ?: "Unknown error")
-                    EnergyDiagnostics.recordEvent(
-                        reason = "small_transfer_error",
-                        detail = "file=$fileName transferId=$transferId msg=${e.message ?: "unknown"}",
-                    )
+                    if (service.claimForegroundTransfer(transferId, TransferTerminalOutcome.ERROR)) {
+                        terminalAck = TerminalAck(status = "ERROR", detail = detail)
+                        if (foregroundStarted && !foregroundStopped) {
+                            runCatching { notificationHelper.stopForeground(notificationId) }
+                        }
+                        notificationHelper.showError(notificationId, fileName, "Failed: $detail")
+                        EnergyDiagnostics.recordEvent(
+                            reason = "small_transfer_error",
+                            detail = "file=$fileName transferId=$transferId msg=$detail",
+                        )
+                    }
                 } finally {
-                    service.onTransferFinished()
-                    service.releaseWakeLock(wakeLock)
+                    if (
+                        foregroundStarted &&
+                        !foregroundStopped &&
+                        service.foregroundTransferOutcome(transferId) != TransferTerminalOutcome.TIMEOUT
+                    ) {
+                        runCatching { notificationHelper.stopForeground(notificationId) }
+                    }
+                    service.endForegroundTransfer(transferId)
+                    runCatching {
+                        if (transferStarted) service.onTransferFinished()
+                    }.onFailure {
+                        TransferDiagnostics.warn(
+                            "Small",
+                            "Transfer-finished cleanup failed id=$transferId",
+                        )
+                    }
+                    runCatching { service.releaseWakeLock(wakeLock) }
+                        .onFailure {
+                            TransferDiagnostics.warn(
+                                "Small",
+                                "Wake-lock cleanup failed id=$transferId",
+                            )
+                        }
+                    TransferDiagnostics.log(
+                        "Small",
+                        "event=cleanup_complete transferId=$transferId",
+                    )
+                    terminalAck?.let { ack ->
+                        appScope.launch(Dispatchers.IO) {
+                            runCatching {
+                                sendAck(sourceNodeId, transferId, ack.status, ack.detail)
+                            }.onFailure {
+                                TransferDiagnostics.warn(
+                                    "Small",
+                                    "Terminal ACK failed id=$transferId status=${ack.status}",
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -175,4 +293,9 @@ internal class DataLayerSmallFileRequestHandler(
     private companion object {
         const val TAG = "DataLayerSmallReq"
     }
+
+    private data class TerminalAck(
+        val status: String,
+        val detail: String,
+    )
 }

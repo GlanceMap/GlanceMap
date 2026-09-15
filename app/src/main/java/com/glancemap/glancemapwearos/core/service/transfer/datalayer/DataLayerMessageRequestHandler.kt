@@ -107,7 +107,7 @@ internal class DataLayerMessageRequestHandler(
             }
 
             TransferConstants.PATH_PREPARE_CHANNEL -> {
-                TransferDiagnostics.log("MsgReq", "Prewarm request from node=${messageEvent.sourceNodeId}")
+                TransferDiagnostics.log("MsgReq", "Prewarm request")
                 // Extract and store checksum for the upcoming channel transfer
                 runCatching {
                     val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
@@ -177,7 +177,7 @@ internal class DataLayerMessageRequestHandler(
         val payload = runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }.getOrNull()
         if (payload == null) {
             Log.w(TAG, "Invalid JSON exists request")
-            TransferDiagnostics.warn("MsgReq", "Invalid exists request JSON from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Invalid exists request JSON")
             return
         }
 
@@ -232,18 +232,18 @@ internal class DataLayerMessageRequestHandler(
         val payload = runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }.getOrNull()
         if (payload == null) {
             Log.w(TAG, "Invalid JSON ping request")
-            TransferDiagnostics.warn("MsgReq", "Invalid ping request JSON from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Invalid ping request JSON")
             return
         }
 
         val requestId = payload.optString("id", "")
         if (requestId.isBlank()) {
             Log.w(TAG, "Missing request id in ping request: $payload")
-            TransferDiagnostics.warn("MsgReq", "Missing ping request id from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Missing ping request id")
             return
         }
 
-        TransferDiagnostics.log("MsgReq", "Ping request id=$requestId from node=$sourceNodeId")
+        TransferDiagnostics.log("MsgReq", "Ping request id=$requestId")
 
         appScope.launch(Dispatchers.IO) {
             val reply =
@@ -258,7 +258,7 @@ internal class DataLayerMessageRequestHandler(
                     TransferConstants.PATH_PING_RESULT,
                     reply.toString().toByteArray(Charsets.UTF_8),
                 )
-                TransferDiagnostics.log("MsgReq", "Ping reply id=$requestId to node=$sourceNodeId")
+                TransferDiagnostics.log("MsgReq", "Ping reply id=$requestId")
             }.onFailure {
                 Log.d(TAG, "Ping reply send failed: ${it.message}")
                 TransferDiagnostics.warn("MsgReq", "Ping reply send failed id=$requestId")
@@ -271,14 +271,14 @@ internal class DataLayerMessageRequestHandler(
         val payload = runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }.getOrNull()
         if (payload == null) {
             Log.w(TAG, "Invalid JSON Wi-Fi status request")
-            TransferDiagnostics.warn("MsgReq", "Invalid Wi-Fi status request JSON from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Invalid Wi-Fi status request JSON")
             return
         }
 
         val requestId = payload.optString("id", "")
         if (requestId.isBlank()) {
             Log.w(TAG, "Missing request id in Wi-Fi status request: $payload")
-            TransferDiagnostics.warn("MsgReq", "Missing Wi-Fi status request id from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Missing Wi-Fi status request id")
             return
         }
 
@@ -301,7 +301,7 @@ internal class DataLayerMessageRequestHandler(
                     TransferConstants.PATH_CHECK_WIFI_STATUS_RESULT,
                     reply.toString().toByteArray(Charsets.UTF_8),
                 )
-                TransferDiagnostics.log("MsgReq", "Wi-Fi status reply id=$requestId to node=$sourceNodeId")
+                TransferDiagnostics.log("MsgReq", "Wi-Fi status reply id=$requestId")
             }.onFailure {
                 Log.d(TAG, "Wi-Fi status reply send failed: ${it.message}")
                 TransferDiagnostics.warn("MsgReq", "Wi-Fi status reply send failed id=$requestId")
@@ -331,7 +331,7 @@ internal class DataLayerMessageRequestHandler(
         val payload = runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }.getOrNull()
         if (payload == null) {
             Log.w(TAG, "Invalid JSON batch exists request")
-            TransferDiagnostics.warn("MsgReq", "Invalid batch exists request JSON from node=$sourceNodeId")
+            TransferDiagnostics.warn("MsgReq", "Invalid batch exists request JSON")
             return
         }
 

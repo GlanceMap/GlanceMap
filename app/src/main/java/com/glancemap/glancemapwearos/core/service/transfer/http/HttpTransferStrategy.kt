@@ -14,11 +14,45 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.URL
 
+internal const val HTTP_STARTUP_BUDGET_MS = 40_000L
+
+internal fun remainingHttpStartupBudget(
+    deadlineElapsedMs: Long,
+    nowElapsedMs: Long,
+): Long = (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
+
+internal fun cappedHttpTimeoutMs(
+    normalTimeoutMs: Long,
+    remainingBudgetMs: Long,
+): Int? {
+    if (remainingBudgetMs <= 0L) return null
+    return minOf(normalTimeoutMs, remainingBudgetMs)
+        .coerceIn(1L, Int.MAX_VALUE.toLong())
+        .toInt()
+}
+
+internal fun cappedHttpRetryDelayMs(
+    normalDelayMs: Long,
+    remainingBudgetMs: Long,
+): Long = minOf(normalDelayMs, remainingBudgetMs.coerceAtLeast(0L))
+
+internal data class HttpTransferReceiveResult(
+    val sha256: String?,
+    val fullFileSizeBytes: Long,
+    val resumeOffsetBytes: Long,
+    val finalFileSizeBytes: Long,
+    val bytesTransferredThisAttempt: Long,
+    val attemptThroughputMiBps: Double,
+    val startupElapsedMs: Long,
+    val wifiAcquireMs: Long,
+    val timeToFileRequestMs: Long?,
+    val dataTransferDurationMs: Long,
+    val reconnectCount: Int,
+)
+
 internal class HttpTransferStrategy : AutoCloseable {
     companion object {
         private const val TAG = "HttpReceiver"
-
-        private const val WIFI_REQUEST_TIMEOUT_MS = 20_000L
 
         private const val CONNECT_TIMEOUT_MS = 4_000
         private const val READ_TIMEOUT_MS = 12_000
@@ -33,6 +67,7 @@ internal class HttpTransferStrategy : AutoCloseable {
     private val reusableSessionLock = Any()
     private var reusableSession: ReusableHttpSession? = null
 
+    @Suppress("LongMethod")
     suspend fun receive(
         host: TransferRuntimeHost,
         metadata: ReceiverMetadata,
@@ -40,7 +75,7 @@ internal class HttpTransferStrategy : AutoCloseable {
         resumeOffset: Long,
         onTransferState: (phase: String, detail: String) -> Unit,
         onProgress: (Long) -> Unit,
-    ): String? =
+    ): HttpTransferReceiveResult =
         withContext(Dispatchers.IO) {
             TrafficStats.setThreadStatsTag(0x1000)
 
@@ -49,10 +84,11 @@ internal class HttpTransferStrategy : AutoCloseable {
             val urlStr = "$baseUrlStr$cleanPath"
             val url = URL(urlStr)
 
-            Log.d(TAG, "🌐 HTTP transfer start url=$urlStr size=${metadata.totalSize} resumeOffset=$resumeOffset")
+            Log.d(TAG, "🌐 HTTP transfer start interface=wifi size=${metadata.totalSize} resumeOffset=$resumeOffset")
             TransferDiagnostics.log(
                 "Http",
-                "Open HTTP session id=${metadata.transferId} file=${metadata.fileName} url=$urlStr resumeOffset=$resumeOffset",
+                "Open HTTP session id=${metadata.transferId} file=${metadata.fileName} " +
+                    "interfaceCategory=wifi addressFamily=ipv4 resumeOffset=$resumeOffset",
             )
             EnergyDiagnostics.recordSample(
                 context = host.context,
@@ -65,6 +101,12 @@ internal class HttpTransferStrategy : AutoCloseable {
                     ?: throw IOException("ConnectivityManager not found")
 
             val nowMs = SystemClock.elapsedRealtime()
+            val startupDeadlineMs = nowMs + HTTP_STARTUP_BUDGET_MS
+            TransferDiagnostics.log(
+                "Http",
+                "event=http_startup_budget transferId=${metadata.transferId} " +
+                    "startupBudgetMs=$HTTP_STARTUP_BUDGET_MS startupStartElapsedMs=$nowMs",
+            )
             val warmSession =
                 obtainReusableSession(
                     baseUrlStr = baseUrlStr,
@@ -73,20 +115,35 @@ internal class HttpTransferStrategy : AutoCloseable {
                     fileName = metadata.fileName,
                 )
             val networkSession = warmSession?.networkSession ?: HttpTransferNetworkSession(connectivityManager)
-            val initialNetwork = warmSession?.network ?: networkSession.acquireWifi(WIFI_REQUEST_TIMEOUT_MS)
+            val wifiAcquireStartMs = SystemClock.elapsedRealtime()
+            val initialNetwork =
+                warmSession?.network
+                    ?: networkSession.acquireWifi(
+                        remainingHttpStartupBudget(startupDeadlineMs, SystemClock.elapsedRealtime()),
+                        transferId = metadata.transferId,
+                        startupDeadlineElapsedMs = startupDeadlineMs,
+                    )
+            val wifiAcquireMs =
+                if (warmSession != null) 0L else SystemClock.elapsedRealtime() - wifiAcquireStartMs
             if (initialNetwork == null) {
+                val remainingBudgetMs =
+                    remainingHttpStartupBudget(startupDeadlineMs, SystemClock.elapsedRealtime())
                 TransferDiagnostics.warn(
                     "Http",
-                    "No Wi-Fi available id=${metadata.transferId} file=${metadata.fileName}",
+                    "event=http_startup_failure transferId=${metadata.transferId} file=${metadata.fileName} " +
+                        "startupElapsedMs=${SystemClock.elapsedRealtime() - nowMs} " +
+                        "startupFailurePhase=wifi_acquisition " +
+                        "remainingBudgetMs=$remainingBudgetMs " +
+                        "failureReason=no_wifi",
                 )
                 throw IOException("No Wi-Fi network available. Cannot perform HTTP transfer.")
             }
             val skipInitialProbe = warmSession?.probeValidated == true
             if (warmSession != null) {
-                Log.d(TAG, "Reusing warm HTTP session for $baseUrlStr")
+                Log.d(TAG, "Reusing warm HTTP session")
                 TransferDiagnostics.log(
                     "Http",
-                    "Reusing warm session id=${metadata.transferId} file=${metadata.fileName} baseUrl=$baseUrlStr",
+                    "Reusing warm session id=${metadata.transferId} file=${metadata.fileName}",
                 )
             }
 
@@ -113,6 +170,9 @@ internal class HttpTransferStrategy : AutoCloseable {
                         initialNetwork = initialNetwork,
                         resumeOffset = resumeOffset,
                         skipInitialProbe = skipInitialProbe,
+                        startupDeadlineElapsedMs = startupDeadlineMs,
+                        startupStartElapsedMs = nowMs,
+                        wifiAcquireMs = wifiAcquireMs,
                         onTransferState = onTransferState,
                         onProgress = onProgress,
                     )
@@ -125,7 +185,19 @@ internal class HttpTransferStrategy : AutoCloseable {
                         lastUsedElapsedMs = SystemClock.elapsedRealtime(),
                     ),
                 )
-                receiveResult.sha256
+                HttpTransferReceiveResult(
+                    sha256 = receiveResult.sha256,
+                    fullFileSizeBytes = receiveResult.fullFileSizeBytes,
+                    resumeOffsetBytes = receiveResult.resumeOffsetBytes,
+                    finalFileSizeBytes = receiveResult.finalFileSizeBytes,
+                    bytesTransferredThisAttempt = receiveResult.bytesTransferredThisAttempt,
+                    attemptThroughputMiBps = receiveResult.attemptThroughputMiBps,
+                    startupElapsedMs = receiveResult.startupElapsedMs,
+                    wifiAcquireMs = wifiAcquireMs,
+                    timeToFileRequestMs = receiveResult.timeToFileRequestMs,
+                    dataTransferDurationMs = receiveResult.dataTransferDurationMs,
+                    reconnectCount = receiveResult.reconnectCount,
+                )
             } catch (e: Exception) {
                 TransferDiagnostics.error(
                     "Http",
@@ -154,7 +226,7 @@ internal class HttpTransferStrategy : AutoCloseable {
             reusableSession?.let {
                 TransferDiagnostics.warn(
                     "Http",
-                    "Discard warm session baseUrl=${it.baseUrlStr} reason=strategy_close",
+                    "Discard warm session reason=strategy_close",
                 )
             }
             reusableSession?.networkSession?.close()
@@ -182,7 +254,7 @@ internal class HttpTransferStrategy : AutoCloseable {
                     }
                 TransferDiagnostics.warn(
                     "Http",
-                    "Discard warm session id=$transferId file=$fileName baseUrl=${current.baseUrlStr} reason=$reason",
+                    "Discard warm session id=$transferId file=$fileName reason=$reason",
                 )
                 current.networkSession.close()
                 reusableSession = null
@@ -200,7 +272,7 @@ internal class HttpTransferStrategy : AutoCloseable {
                     ?.also {
                         TransferDiagnostics.warn(
                             "Http",
-                            "Discard warm session baseUrl=${it.baseUrlStr} reason=replaced",
+                            "Discard warm session reason=replaced",
                         )
                     }?.networkSession
                     ?.close()

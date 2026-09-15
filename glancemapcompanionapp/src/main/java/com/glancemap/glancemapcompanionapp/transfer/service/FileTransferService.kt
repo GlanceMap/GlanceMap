@@ -336,7 +336,7 @@ class FileTransferService : LifecycleService() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching {
-                PhoneTransferDiagnostics.warn("Service", "Send cancel to watch node=$node id=$id")
+                PhoneTransferDiagnostics.warn("Service", "Send cancel to watch id=$id")
                 dataLayerRepository.sendCancelTransfer(node, id)
             }.onFailure {
                 Log.w(TAG, "Cancel propagation failed: ${it.message}")

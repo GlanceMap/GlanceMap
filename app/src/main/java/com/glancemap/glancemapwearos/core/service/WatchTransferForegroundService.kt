@@ -3,29 +3,43 @@ package com.glancemap.glancemapwearos.core.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStrategy
+import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferTerminalResult
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.foregroundStartFailureDetail
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.ForegroundTransferOwner
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TerminalResultDelivery
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockManager
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferRunner
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferRuntimeHost
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferTerminalOutcome
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferTerminalState
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class WatchTransferForegroundService :
     Service(),
@@ -43,6 +57,9 @@ class WatchTransferForegroundService :
     private val fileOps by lazy { WatchFileOps(app) }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeTransfers = AtomicInteger(0)
+    private val activeRequestsByStartId = ConcurrentHashMap<Int, TransferRequest>()
+    private val foregroundLock = Any()
+    private val foregroundOwner = ForegroundTransferOwner()
     private val serviceInstanceId = Integer.toHexString(System.identityHashCode(this))
 
     private lateinit var notificationHelper: NotificationHelper
@@ -64,7 +81,7 @@ class WatchTransferForegroundService :
                 httpReceiver = httpReceiver,
                 sessionState = transferSessionState,
                 sendStatus = dataLayerRepository::sendStatus,
-                sendAck = dataLayerRepository::sendAck,
+                claimTerminal = ::claimTerminal,
             )
     }
 
@@ -85,51 +102,90 @@ class WatchTransferForegroundService :
             return START_NOT_STICKY
         }
 
-        activeTransfers.incrementAndGet()
-        notificationHelper.startForeground(
-            request.metadata.notificationId,
-            request.metadata.fileName,
-            "Preparing Download…",
-        )
+        val ownsInitialForeground =
+            synchronized(foregroundLock) {
+                activeRequestsByStartId[startId] = request
+                activeTransfers.incrementAndGet()
+                foregroundOwner.reserveIfAvailable(startId)
+            }
+        if (ownsInitialForeground) {
+            val failure = startForegroundForRequest(request)
+            if (failure != null) {
+                synchronized(foregroundLock) {
+                    foregroundOwner.clearIfOwner(startId)
+                }
+                finishRejectedRequest(request, startId, failure)
+                return START_NOT_STICKY
+            }
+        }
+
+        launchTransfer(request, startId)
+
+        return START_NOT_STICKY
+    }
+
+    private fun launchTransfer(
+        request: TransferRequest,
+        startId: Int,
+    ) {
         TransferDiagnostics.log(
             "FgService",
             "Launch HTTP transfer id=${request.metadata.transferId} file=${request.metadata.fileName} startId=$startId",
         )
 
-        serviceScope.launch {
-            try {
-                transferMutex.withLock {
-                    val fileName = request.metadata.fileName
-                    if (fileOps.fileExistsOnWatch(fileName)) {
-                        val msg = "FILE_EXISTS:$fileName"
-                        releasePrewarmWakeLock("http_rejected_exists:$fileName")
-                        TransferDiagnostics.warn(
-                            "FgService",
-                            "Target file already exists id=${request.metadata.transferId} file=$fileName",
-                        )
-                        notificationHelper.startForeground(
-                            request.metadata.notificationId,
-                            request.metadata.fileName,
-                            "Already exists",
-                        )
-                        notificationHelper.stopForeground(request.metadata.notificationId)
-                        notificationHelper.showError(request.metadata.notificationId, request.metadata.fileName, "Already exists")
-                        dataLayerRepository.sendStatus(request.metadata.sourceNodeId, request.metadata.transferId, "ERROR", msg)
-                        dataLayerRepository.sendAck(request.metadata.sourceNodeId, request.metadata.transferId, "ERROR", msg)
-                        return@withLock
-                    }
+        val transferJob =
+            serviceScope.launch {
+                try {
+                    transferMutex.withLock {
+                        if (request.terminalState.current() != null) return@withLock
+                        if (!ensureForegroundForRequest(request, startId)) return@withLock
 
-                    runner.runHttp(request.metadata, request.httpPath)
-                }
-            } finally {
-                transferSessionState.clearHttpTransfer(request.metadata.transferId)
-                if (activeTransfers.decrementAndGet() <= 0) {
-                    stopSelf()
+                        val fileName = request.metadata.fileName
+                        if (fileOps.fileExistsOnWatch(fileName)) {
+                            val msg = "FILE_EXISTS:$fileName"
+                            if (request.terminalState.tryClaim(TransferTerminalOutcome.ERROR)) {
+                                releasePrewarmWakeLock("http_rejected_exists:$fileName")
+                                TransferDiagnostics.warn(
+                                    "FgService",
+                                    "Target file already exists id=${request.metadata.transferId} file=$fileName",
+                                )
+                                notificationHelper.updateForeground(
+                                    request.metadata.notificationId,
+                                    request.metadata.fileName,
+                                    "Already exists",
+                                    -1,
+                                )
+                                notificationHelper.showError(request.metadata.notificationId, request.metadata.fileName, "Already exists")
+                                request.terminalResult.record(
+                                    HttpTransferTerminalResult(
+                                        phase = "ERROR",
+                                        ackStatus = "ERROR",
+                                        detail = msg,
+                                    ),
+                                )
+                            }
+                            return@withLock
+                        }
+
+                        runner.runHttp(request.metadata, request.httpPath) { result ->
+                            request.terminalResult.record(result)
+                        }
+                    }
+                } finally {
+                    request.terminalResult.deliverAfterCleanup(
+                        cleanup = {
+                            transferSessionState.clearHttpTransfer(request.metadata.transferId)
+                            finishRequest(request, startId)
+                            TransferDiagnostics.log(
+                                "FgService",
+                                "event=cleanup_complete transferId=${request.metadata.transferId}",
+                            )
+                        },
+                        deliver = { result -> sendTerminalResult(request, result) },
+                    )
                 }
             }
-        }
-
-        return START_NOT_STICKY
+        request.job.set(transferJob)
     }
 
     override fun onDestroy() {
@@ -137,9 +193,71 @@ class WatchTransferForegroundService :
             "FgService",
             "Destroy instance=$serviceInstanceId activeTransferId=${transferSessionState.activeTransferId().orEmpty()}",
         )
+        activeRequestsByStartId.values.forEach { request ->
+            request.job.get()?.cancel(CancellationException("Transfer service destroyed"))
+            if (request.terminalState.tryClaim(TransferTerminalOutcome.CANCELLED)) {
+                request.terminalResult.record(
+                    HttpTransferTerminalResult(
+                        phase = "CANCELLED",
+                        ackStatus = "ERROR",
+                        detail = "Cancelled",
+                    ),
+                )
+            }
+        }
         runCatching { httpReceiver.close() }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    // Keep stale-owner validation and the atomic terminal claim in one timeout sequence.
+    @Suppress("ReturnCount")
+    override fun onTimeout(
+        startId: Int,
+        fgsType: Int,
+    ) {
+        super.onTimeout(startId, fgsType)
+        if (fgsType and ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC == 0) return
+
+        val request = activeRequestsByStartId[startId]
+        val currentStartId = synchronized(foregroundLock) { foregroundOwner.currentStartId() }
+        val transferId = request?.metadata?.transferId
+        if (request == null || currentStartId != startId) {
+            val current = activeRequestsByStartId[currentStartId]
+            TransferDiagnostics.log(
+                "FgService",
+                "event=timeout_ignored reason=stale_start_id timeoutStartId=$startId " +
+                    "currentStartId=$currentStartId transferId=${current?.metadata?.transferId.orEmpty()}",
+            )
+            return
+        }
+        TransferDiagnostics.warn(
+            "FgService",
+            "event=fgs_timeout startId=$startId transferId=${transferId.orEmpty()} " +
+                "fgsType=dataSync sdk=${Build.VERSION.SDK_INT}",
+        )
+        if (!request.terminalState.tryClaim(TransferTerminalOutcome.TIMEOUT)) {
+            TransferDiagnostics.log(
+                "FgService",
+                "event=timeout_ignored reason=terminal_already_claimed timeoutStartId=$startId " +
+                    "currentStartId=$currentStartId transferId=${request.metadata.transferId} " +
+                    "existing=${request.terminalState.current()}",
+            )
+            return
+        }
+
+        request.terminalResult.record(
+            HttpTransferTerminalResult(
+                phase = "ERROR",
+                ackStatus = "ERROR",
+                detail = FGS_DATA_SYNC_TIMEOUT,
+            ),
+        )
+        request.job.get()?.cancel(CancellationException(FGS_DATA_SYNC_TIMEOUT))
+        transferSessionState.cancelTransferById(request.metadata.transferId, FGS_DATA_SYNC_TIMEOUT)
+        demoteForegroundIfOwner(startId, request.metadata.notificationId)
+        stopSelf(startId)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -159,6 +277,7 @@ class WatchTransferForegroundService :
         resumeOffset: Long,
         keepPartialOnFailure: Boolean,
         computeSha256: Boolean,
+        diagnosticContext: String?,
         onProgress: (Long) -> Unit,
     ): String? =
         fileOps.saveFile(
@@ -168,6 +287,7 @@ class WatchTransferForegroundService :
             resumeOffset = resumeOffset,
             keepPartialOnFailure = keepPartialOnFailure,
             computeSha256 = computeSha256,
+            diagnosticContext = diagnosticContext,
             onProgress = onProgress,
         )
 
@@ -225,9 +345,176 @@ class WatchTransferForegroundService :
         }
     }
 
+    private fun sendTerminalResult(
+        request: TransferRequest,
+        result: HttpTransferTerminalResult,
+    ) {
+        val metadata = request.metadata
+        app.applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                dataLayerRepository.sendStatus(metadata.sourceNodeId, metadata.transferId, result.phase, result.detail)
+            }.onFailure {
+                TransferDiagnostics.warn(
+                    "FgService",
+                    "Terminal status failed id=${metadata.transferId} phase=${result.phase}",
+                )
+            }
+            runCatching {
+                dataLayerRepository.sendAck(metadata.sourceNodeId, metadata.transferId, result.ackStatus, result.detail)
+            }.onFailure {
+                TransferDiagnostics.warn(
+                    "FgService",
+                    "Terminal ACK failed id=${metadata.transferId} status=${result.ackStatus}",
+                )
+            }
+        }
+    }
+
+    private fun claimTerminal(
+        transferId: String,
+        outcome: TransferTerminalOutcome,
+    ): Boolean =
+        activeRequestsByStartId.values
+            .firstOrNull { it.metadata.transferId == transferId }
+            ?.terminalState
+            ?.tryClaim(outcome)
+            ?: false
+
+    private fun ensureForegroundForRequest(
+        request: TransferRequest,
+        startId: Int,
+    ): Boolean {
+        var foregroundReady = isForegroundOwner(startId)
+        if (!foregroundReady) {
+            val previousOwner =
+                synchronized(foregroundLock) {
+                    val previous = foregroundOwner.replace(startId)
+                    previous
+                }
+            val failure = startForegroundForRequest(request)
+            if (failure == null) {
+                foregroundReady = true
+            } else {
+                synchronized(foregroundLock) {
+                    foregroundOwner.restoreIfOwner(startId, previousOwner)
+                }
+                if (request.terminalState.tryClaim(TransferTerminalOutcome.ERROR)) {
+                    releasePrewarmWakeLock("http_fgs_start_failed:${request.metadata.fileName}")
+                    request.terminalResult.record(
+                        HttpTransferTerminalResult(
+                            phase = "ERROR",
+                            ackStatus = "ERROR",
+                            detail = failure,
+                        ),
+                    )
+                }
+            }
+        }
+        return foregroundReady
+    }
+
+    private fun finishRejectedRequest(
+        request: TransferRequest,
+        startId: Int,
+        detail: String,
+    ) {
+        if (request.terminalState.tryClaim(TransferTerminalOutcome.ERROR)) {
+            releasePrewarmWakeLock("http_fgs_start_failed:${request.metadata.fileName}")
+            request.terminalResult.record(
+                HttpTransferTerminalResult(
+                    phase = "ERROR",
+                    ackStatus = "ERROR",
+                    detail = detail,
+                ),
+            )
+        }
+        request.terminalResult.deliverAfterCleanup(
+            cleanup = {
+                finishRequest(request, startId)
+                TransferDiagnostics.log(
+                    "FgService",
+                    "event=cleanup_complete transferId=${request.metadata.transferId}",
+                )
+            },
+            deliver = { result -> sendTerminalResult(request, result) },
+        )
+    }
+
+    private fun finishRequest(
+        request: TransferRequest,
+        startId: Int,
+    ) {
+        val remainingTransfers: Int
+        val shouldStopForeground: Boolean
+        synchronized(foregroundLock) {
+            activeRequestsByStartId.remove(startId)
+            remainingTransfers = activeTransfers.decrementAndGet()
+            shouldStopForeground = foregroundOwner.release(startId, remainingTransfers)
+        }
+        if (shouldStopForeground) {
+            runCatching { notificationHelper.stopForeground(request.metadata.notificationId) }
+        }
+        if (remainingTransfers <= 0) stopSelf(startId)
+    }
+
+    private fun isForegroundOwner(startId: Int): Boolean =
+        synchronized(foregroundLock) {
+            foregroundOwner.isOwner(startId)
+        }
+
+    private fun demoteForegroundIfOwner(
+        startId: Int,
+        notificationId: Int,
+    ) {
+        val isOwner =
+            synchronized(foregroundLock) {
+                foregroundOwner.clearIfOwner(startId)
+            }
+        if (isOwner) {
+            runCatching { notificationHelper.stopForeground(notificationId) }
+        }
+    }
+
+    // Platform foreground promotion failures are runtime exceptions on supported API levels.
+    @Suppress("TooGenericExceptionCaught")
+    private fun startForegroundForRequest(
+        request: TransferRequest,
+    ): String? {
+        try {
+            TransferDiagnostics.log(
+                "FgService",
+                "event=fgs_start_attempt id=${request.metadata.transferId} file=${request.metadata.fileName} " +
+                    "size=${request.metadata.totalSize} fgsType=dataSync sdk=${Build.VERSION.SDK_INT}",
+            )
+            notificationHelper.startForeground(
+                request.metadata.notificationId,
+                request.metadata.fileName,
+                "Preparing Download…",
+            )
+            TransferDiagnostics.log(
+                "FgService",
+                "event=fgs_start_success id=${request.metadata.transferId} file=${request.metadata.fileName}",
+            )
+            return null
+        } catch (error: RuntimeException) {
+            val detail = foregroundStartFailureDetail(error.javaClass.name, Build.VERSION.SDK_INT, error.message)
+            TransferDiagnostics.error(
+                "FgService",
+                "event=fgs_start_rejected id=${request.metadata.transferId} file=${request.metadata.fileName} " +
+                    "size=${request.metadata.totalSize} fgsType=dataSync sdk=${Build.VERSION.SDK_INT} " +
+                    "exception=${error.javaClass.simpleName} detail=$detail",
+                error,
+            )
+            return detail
+        }
+    }
+
     private data class TransferRequest(
         val metadata: ReceiverMetadata,
         val httpPath: String,
+        val terminalState: TransferTerminalState = TransferTerminalState(metadata.transferId),
+        val job: AtomicReference<Job?> = AtomicReference(null),
+        val terminalResult: TerminalResultDelivery<HttpTransferTerminalResult> = TerminalResultDelivery(),
     ) {
         companion object {
             fun fromIntent(intent: Intent): TransferRequest? {

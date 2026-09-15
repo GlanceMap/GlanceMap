@@ -69,7 +69,7 @@ class WatchInstalledMapsRequester(
                 sendMessage(nodeId, DataLayerPaths.PATH_PREPARE_CHANNEL, ByteArray(0))
                 delay(PREWARM_SETTLE_MS)
             }.onFailure {
-                Log.w(TAG, "Map-list prewarm failed for node=$nodeId", it)
+                Log.w(TAG, "Map-list prewarm failed", it)
             }
             sendMessage(nodeId, DataLayerPaths.PATH_LIST_MAPS, payload)
             val snapshot = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
@@ -84,7 +84,7 @@ class WatchInstalledMapsRequester(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Map list request failed for node=$nodeId", e)
+            Log.e(TAG, "Map list request failed", e)
             Result.Error(e)
         } finally {
             pendingRequests.remove(requestId)?.cancel()
