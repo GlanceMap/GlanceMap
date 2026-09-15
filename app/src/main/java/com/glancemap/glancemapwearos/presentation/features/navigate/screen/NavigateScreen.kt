@@ -386,6 +386,12 @@ fun NavigateScreen(
                     ),
                 )
             }
+        DisposableEffect(navigationMarkerBitmap, historicalNavigationMarkerBitmap) {
+            onDispose {
+                navigationMarkerBitmap.decrementRefCount()
+                historicalNavigationMarkerBitmap.decrementRefCount()
+            }
+        }
 
         NavigateCompassEffects(
             compassViewModel = compassViewModel,

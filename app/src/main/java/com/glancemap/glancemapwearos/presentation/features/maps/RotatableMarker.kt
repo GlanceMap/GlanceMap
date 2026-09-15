@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.maps
 
+import org.mapsforge.core.graphics.Bitmap
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
@@ -11,10 +12,16 @@ import kotlin.math.floor
 
 class RotatableMarker(
     latLong: LatLong,
-    bitmap: org.mapsforge.core.graphics.Bitmap,
+    bitmap: Bitmap,
     horizontalOffset: Int,
     verticalOffset: Int,
 ) : Marker(latLong, bitmap, horizontalOffset, verticalOffset) {
+    init {
+        // Marker releases its bitmap but does not acquire it. Keep a separate reference from
+        // the Compose cache so switching between cached marker appearances stays safe.
+        bitmap.incrementRefCount()
+    }
+
     var heading: Float = 0f
         set(value) {
             field = ((value % 360f) + 360f) % 360f
@@ -25,6 +32,13 @@ class RotatableMarker(
     @Volatile private var cachedTileSize: Int = -1
 
     @Volatile private var cachedMapSize: Long = 0L
+
+    @Synchronized
+    override fun setBitmap(bitmap: Bitmap) {
+        if (this.bitmap === bitmap) return
+        bitmap.incrementRefCount()
+        super.setBitmap(bitmap)
+    }
 
     override fun draw(
         boundingBox: BoundingBox,
@@ -37,6 +51,7 @@ class RotatableMarker(
 
         val ll = this.latLong ?: return
         val bmp = this.bitmap ?: return
+        if (bmp.isDestroyed) return
         if (!boundingBox.contains(ll)) return
 
         val tileSize = displayModel.tileSize

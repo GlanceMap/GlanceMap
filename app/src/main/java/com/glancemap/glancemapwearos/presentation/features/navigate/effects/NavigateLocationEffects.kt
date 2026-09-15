@@ -567,7 +567,7 @@ internal fun rememberNavigateLocationUiState(
                 navigateViewModel.onRenderedLocationUpdate(it)
             }
             locationMarker?.let { marker ->
-                mapView.mutateLayers { layers -> layers.remove(marker) }
+                removeNavigationMarker(mapView, marker)
             }
             locationMarker = null
             lastRenderedMarkerLatLong = null
@@ -599,7 +599,7 @@ internal fun rememberNavigateLocationUiState(
         val latLong = currentMarker.latLong ?: return@LaunchedEffect
         val heading = currentMarker.heading
         val isVisible = currentMarker.isVisible
-        mapView.mutateLayers { layers -> layers.remove(currentMarker) }
+        removeNavigationMarker(mapView, currentMarker)
         locationMarker =
             RotatableMarker(
                 latLong,
@@ -646,7 +646,7 @@ internal fun rememberNavigateLocationUiState(
             navigateViewModel.onRenderedLocationUpdate(it)
         }
         locationMarker?.let { marker ->
-            mapView.mutateLayers { layers -> layers.remove(marker) }
+            removeNavigationMarker(mapView, marker)
         }
         locationMarker = null
         lastRenderedMarkerLatLong = null
@@ -956,7 +956,7 @@ internal fun rememberNavigateLocationUiState(
                 navigateViewModel.onRenderedLocationUpdate(it)
             }
             locationMarker?.let { marker ->
-                mapView.mutateLayers { layers -> layers.remove(marker) }
+                removeNavigationMarker(mapView, marker)
             }
             locationMarker = null
             lastRenderedMarkerLatLong = null
@@ -1261,8 +1261,19 @@ private fun removeAllRotatableMarkers(mapView: MapView) {
             val layer = layers[i]
             if (layer is RotatableMarker) {
                 layers.remove(layer)
+                layer.onDestroy()
             }
         }
+    }
+}
+
+private fun removeNavigationMarker(
+    mapView: MapView,
+    marker: RotatableMarker,
+) {
+    mapView.mutateLayers { layers ->
+        layers.remove(marker)
+        marker.onDestroy()
     }
 }
 
