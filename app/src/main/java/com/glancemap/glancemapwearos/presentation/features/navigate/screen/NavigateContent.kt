@@ -1142,6 +1142,8 @@ internal fun NavigateContent(
     }
 }
 
+// Stateless Compose renderer: its direct UI inputs preserve the visible clock, status, and gestures.
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 private fun CenteredNavigateTimeChip(
     visible: Boolean,

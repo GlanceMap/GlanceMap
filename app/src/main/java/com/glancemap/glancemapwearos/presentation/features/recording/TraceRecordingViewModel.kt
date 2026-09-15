@@ -1068,7 +1068,9 @@ class TraceRecordingViewModel(
                                 "qualityRelocations=$qualityRelocationCount smoothedPoints=$smoothedPointCount " +
                                 "straightDriftPoints=$straightDriftCorrectedPointCount " +
                                 "continuityDistanceCaps=$continuityDistanceCapCount " +
-                                "continuityDistanceSuppressedM=${continuityDistanceSuppressedMeters.formatTelemetry(1)} " +
+                                "continuityDistanceSuppressedM=" +
+                                continuityDistanceSuppressedMeters.formatTelemetry(1) +
+                                " " +
                                 smartTrackTelemetryTokens() + " " +
                                 recordingPointDensityTelemetryTokens() + " " +
                                 "confirmedReversals=$confirmedReversalCorrectionCount " +
