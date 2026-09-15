@@ -1,11 +1,13 @@
 package com.glancemap.glancemapwearos.core.service.transfer.datalayer
 
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
 import com.glancemap.glancemapwearos.core.service.WatchTransferForegroundService
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.foregroundStartFailureDetail
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferSessionState
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
 import com.glancemap.shared.transfer.TransferDataLayerContract
@@ -29,7 +31,7 @@ internal class DataLayerWifiTransferRequestHandler(
         val payload = runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }.getOrNull()
         if (payload == null) {
             Log.w(TAG, "Invalid JSON Wi-Fi request")
-            TransferDiagnostics.warn("WiFiReq", "Invalid START_WIFI_TRANSFER JSON from node=$sourceNodeId")
+            TransferDiagnostics.warn("WiFiReq", "Invalid START_WIFI_TRANSFER JSON")
             return
         }
 
@@ -48,24 +50,26 @@ internal class DataLayerWifiTransferRequestHandler(
                 .ifBlank { null }
 
         if (transferId.isBlank() || ip.isBlank() || port <= 0 || safeName.isBlank()) {
-            Log.w(TAG, "Missing fields in Wi-Fi request: $payload")
+            Log.w(TAG, "Missing fields in Wi-Fi request")
             TransferDiagnostics.warn(
                 "WiFiReq",
-                "Missing START_WIFI_TRANSFER fields id=$transferId ipBlank=${ip.isBlank()} port=$port nameBlank=${safeName.isBlank()}",
+                "event=invalid_wifi_transfer_request reason=missing_required_field " +
+                    "transferId=${transferId.ifBlank { "na" }} ipBlank=${ip.isBlank()} port=$port " +
+                    "nameBlank=${safeName.isBlank()}",
             )
             return
         }
 
         Log.d(
             TAG,
-            "START_WIFI_TRANSFER id=$transferId protocol=$protocol ip=$ip port=$port path=$httpPath size=$totalSize name=$safeName",
+            "START_WIFI_TRANSFER id=$transferId protocol=$protocol port=$port size=$totalSize",
         )
 
         val fileName = fileOps.sanitizeFileName(Uri.decode(safeName))
         val notificationId = transferId.hashCode()
         TransferDiagnostics.log(
             "WiFiReq",
-            "START id=$transferId file=$fileName protocol=$protocol size=$totalSize path=$httpPath sourceNode=$sourceNodeId",
+            "START id=$transferId file=$fileName protocol=$protocol size=$totalSize",
         )
 
         if (protocol == "http") {
@@ -74,7 +78,7 @@ internal class DataLayerWifiTransferRequestHandler(
                 if (existingTransfer.transferId == transferId) {
                     TransferDiagnostics.warn(
                         "WiFiReq",
-                        "Duplicate START ignored id=$transferId file=$fileName sourceNode=$sourceNodeId",
+                        "Duplicate START ignored id=$transferId file=$fileName",
                     )
                     return
                 }
@@ -151,7 +155,7 @@ internal class DataLayerWifiTransferRequestHandler(
                 )
                 TransferDiagnostics.log(
                     "WiFiReq",
-                    "Register active HTTP transfer id=$transferId file=$fileName sourceNode=$sourceNodeId",
+                    "Register active HTTP transfer id=$transferId file=$fileName",
                 )
                 TransferDiagnostics.log(
                     "WiFiReq",
@@ -161,13 +165,15 @@ internal class DataLayerWifiTransferRequestHandler(
             }.onFailure { error ->
                 sessionState.clearHttpTransfer(metadata.transferId)
                 service.releasePrewarmWakeLock("http_service_start_failed:${metadata.fileName}")
+                val detail = foregroundStartFailureDetail(error.javaClass.name, Build.VERSION.SDK_INT, error.message)
                 TransferDiagnostics.error(
                     "WiFiReq",
-                    "Failed to launch foreground transfer id=${metadata.transferId} file=${metadata.fileName}",
+                    "Failed to launch foreground transfer id=${metadata.transferId} " +
+                        "file=${metadata.fileName} detail=$detail",
                     error,
                 )
                 appScope.launch(Dispatchers.IO) {
-                    val msg = error.message ?: "FAILED_TO_START_HTTP_SERVICE"
+                    val msg = detail
                     sendStatus(metadata.sourceNodeId, metadata.transferId, "ERROR", msg)
                     sendAck(metadata.sourceNodeId, metadata.transferId, "ERROR", msg)
                 }

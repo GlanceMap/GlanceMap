@@ -6,6 +6,7 @@ import com.glancemap.glancemapcompanionapp.transfer.util.NotificationHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal class UiProgressUpdater(
     private val uiState: MutableStateFlow<FileTransferUiState>,
@@ -26,7 +27,7 @@ internal class UiProgressUpdater(
         text: String,
     ) {
         val p = progress.coerceIn(0f, 1f)
-        val pInt = (p * 100).toInt().coerceIn(0, 100)
+        val pInt = (p * 100).roundToInt().coerceIn(0, 100)
 
         if (!shouldUpdateUi(pInt, text)) return
 
