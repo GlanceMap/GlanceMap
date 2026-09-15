@@ -74,7 +74,6 @@ class DataLayerListenerService : WearableListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        notificationHelper.createNotificationChannel()
         if (DebugTelemetry.isEnabled()) {
             TransferDiagnostics.log("Service", "Created instance=$serviceInstanceId")
         }
