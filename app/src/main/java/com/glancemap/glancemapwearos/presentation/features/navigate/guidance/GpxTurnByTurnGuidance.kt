@@ -47,6 +47,8 @@ data class GpxGuidanceSession(
     val instructions: List<RouteInstruction>,
     val startReached: Boolean = false,
     val reversed: Boolean = false,
+    val cumulativeAscentMeters: List<Double> = emptyList(),
+    val cumulativeDescentMeters: List<Double> = emptyList(),
 )
 
 enum class GuidanceMode {
@@ -126,6 +128,7 @@ data class GpxGuidanceTuning(
     val minInstructionAngleDegrees: Double = 25.0,
 )
 
+@Suppress("LongParameterList") // Keep the existing guidance builder API while adding profile distances.
 fun buildGpxGuidanceSession(
     trackId: String,
     trackTitle: String,
@@ -133,9 +136,11 @@ fun buildGpxGuidanceSession(
     startReached: Boolean = false,
     reversed: Boolean = false,
     tuning: GpxGuidanceTuning = GpxGuidanceTuning(),
+    cumulativeDistancesMeters: List<Double>? = null,
 ): GpxGuidanceSession {
     require(trackPoints.size >= 2) { "The GPX does not contain enough points for guidance." }
-    val cumulative = buildCumulativeDistances(trackPoints.map { it.latLong })
+    val cumulative = cumulativeDistancesMeters ?: buildCumulativeDistances(trackPoints.map { it.latLong })
+    require(cumulative.size == trackPoints.size) { "The cumulative route distances must match the track points." }
     return GpxGuidanceSession(
         trackId = trackId,
         trackTitle = trackTitle,
@@ -417,26 +422,108 @@ private fun remainingElevationMeters(
     session: GpxGuidanceSession,
     distanceFromStartMeters: Double,
 ): Pair<Double?, Double?> {
-    val points = session.trackPoints
-    if (points.count { it.elevation?.isFinite() == true } < 2) return null to null
-    var ascent = 0.0
-    var descent = 0.0
-    for (index in 0 until points.lastIndex) {
-        val segmentStart = session.cumulativeDistancesMeters.getOrNull(index) ?: continue
-        val segmentEnd = session.cumulativeDistancesMeters.getOrNull(index + 1) ?: continue
-        if (segmentEnd <= distanceFromStartMeters) continue
-        val from = points[index].elevation?.takeIf(Double::isFinite) ?: continue
-        val to = points[index + 1].elevation?.takeIf(Double::isFinite) ?: continue
-        val segmentFraction =
-            if (distanceFromStartMeters > segmentStart && segmentEnd > segmentStart) {
-                ((segmentEnd - distanceFromStartMeters) / (segmentEnd - segmentStart)).coerceIn(0.0, 1.0)
-            } else {
-                1.0
-            }
-        val delta = (to - from) * segmentFraction
-        if (delta > 0.0) ascent += delta else descent += -delta
+    val hasElevationSnapshot = hasUsableElevationSnapshot(session)
+    val totalAscent = session.cumulativeAscentMeters.lastOrNull()?.takeIf(Double::isFinite)
+    val totalDescent = session.cumulativeDescentMeters.lastOrNull()?.takeIf(Double::isFinite)
+    val ascentAtDistance =
+        if (hasElevationSnapshot && totalAscent != null && totalDescent != null) {
+            interpolateCumulativeElevation(
+                cumulativeDistancesMeters = session.cumulativeDistancesMeters,
+                cumulativeElevationMeters = session.cumulativeAscentMeters,
+                distanceMeters = distanceFromStartMeters,
+                totalDistanceMeters = session.totalDistanceMeters,
+            )
+        } else {
+            null
+        }
+    val descentAtDistance =
+        if (hasElevationSnapshot && totalAscent != null && totalDescent != null) {
+            interpolateCumulativeElevation(
+                cumulativeDistancesMeters = session.cumulativeDistancesMeters,
+                cumulativeElevationMeters = session.cumulativeDescentMeters,
+                distanceMeters = distanceFromStartMeters,
+                totalDistanceMeters = session.totalDistanceMeters,
+            )
+        } else {
+            null
+        }
+
+    return when {
+        totalAscent == null -> null to null
+        totalDescent == null -> null to null
+        ascentAtDistance == null -> null to null
+        descentAtDistance == null -> null to null
+        else -> {
+            (totalAscent - ascentAtDistance).coerceAtLeast(0.0) to
+                (totalDescent - descentAtDistance).coerceAtLeast(0.0)
+        }
     }
-    return ascent to descent
+}
+
+private fun hasUsableElevationSnapshot(session: GpxGuidanceSession): Boolean =
+    when {
+        session.cumulativeDistancesMeters.isEmpty() -> false
+        session.cumulativeDistancesMeters.size != session.cumulativeAscentMeters.size -> false
+        session.cumulativeDistancesMeters.size != session.cumulativeDescentMeters.size -> false
+        else -> true
+    }
+
+private fun hasValidInterpolationInput(
+    cumulativeDistancesMeters: List<Double>,
+    cumulativeElevationMeters: List<Double>,
+    totalDistanceMeters: Double,
+): Boolean =
+    when {
+        cumulativeDistancesMeters.isEmpty() -> false
+        cumulativeDistancesMeters.size != cumulativeElevationMeters.size -> false
+        !totalDistanceMeters.isFinite() -> false
+        totalDistanceMeters < 0.0 -> false
+        else -> true
+    }
+
+private fun interpolateCumulativeElevation(
+    cumulativeDistancesMeters: List<Double>,
+    cumulativeElevationMeters: List<Double>,
+    distanceMeters: Double,
+    totalDistanceMeters: Double,
+): Double? {
+    val interpolated =
+        if (!hasValidInterpolationInput(cumulativeDistancesMeters, cumulativeElevationMeters, totalDistanceMeters)) {
+            null
+        } else {
+            val target = distanceMeters.coerceIn(0.0, totalDistanceMeters)
+            val upperIndex =
+                cumulativeDistancesMeters.binarySearch(target).let { result ->
+                    if (result >= 0) result else -result - 1
+                }
+            when {
+                upperIndex <= 0 -> cumulativeElevationMeters.firstOrNull()?.takeIf(Double::isFinite)
+                upperIndex >= cumulativeDistancesMeters.size ->
+                    cumulativeElevationMeters.lastOrNull()?.takeIf(Double::isFinite)
+                else -> {
+                    val startDistance = cumulativeDistancesMeters[upperIndex - 1]
+                    val endDistance = cumulativeDistancesMeters[upperIndex]
+                    val startElevation = cumulativeElevationMeters[upperIndex - 1]
+                    val endElevation = cumulativeElevationMeters[upperIndex]
+                    val hasFiniteValues =
+                        startDistance.isFinite() &&
+                            endDistance.isFinite() &&
+                            startElevation.isFinite() &&
+                            endElevation.isFinite()
+                    when {
+                        !hasFiniteValues -> null
+                        endDistance <= startDistance -> endElevation
+                        else -> {
+                            val fraction =
+                                ((target - startDistance) / (endDistance - startDistance))
+                                    .coerceIn(0.0, 1.0)
+                            startElevation + (endElevation - startElevation) * fraction
+                        }
+                    }
+                }
+            }
+        }
+    return interpolated
 }
 
 private const val NEXT_SEGMENT_TERRAIN_LOOK_AHEAD_METERS = 300.0

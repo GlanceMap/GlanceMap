@@ -14,7 +14,6 @@ import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GpxGuidanceSession
-import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GpxGuidanceTuning
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionSource
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
@@ -57,6 +56,39 @@ private data class GpxGuidanceBuildResult(
     val warningMessage: String? = null,
     val guidanceMode: String = "exact_gpx",
 )
+
+internal fun buildTurnByTurnGuidanceSessionFromProfile(
+    trackId: String,
+    trackTitle: String,
+    profile: TrackProfile,
+    startReached: Boolean,
+    reversed: Boolean,
+): GpxGuidanceSession {
+    val guidanceProfile =
+        if (reversed) {
+            buildProfile(
+                sig = profile.sig,
+                pts = reverseTrackPointsForProfile(profile.points),
+                elevationFilterConfig = profile.elevationFilterConfig,
+            )
+        } else {
+            profile
+        }
+    val session =
+        buildGpxGuidanceSession(
+            trackId = trackId,
+            trackTitle = trackTitle,
+            trackPoints = guidanceProfile.points,
+            startReached = startReached,
+            reversed = reversed,
+            cumulativeDistancesMeters = guidanceProfile.cumDist.toList(),
+        )
+    val hasUsableElevation = guidanceProfile.points.count { it.elevation?.isFinite() == true } >= 2
+    return session.copy(
+        cumulativeAscentMeters = guidanceProfile.cumAscent.toList().takeIf { hasUsableElevation } ?: emptyList(),
+        cumulativeDescentMeters = guidanceProfile.cumDescent.toList().takeIf { hasUsableElevation } ?: emptyList(),
+    )
+}
 
 data class GpxRouteServices(
     val planner: RoutePlanner,
@@ -1145,22 +1177,14 @@ class GpxViewModel(
             _gpxFiles.value.firstOrNull { it.path == absolutePath }?.displayTitle
                 ?: normalizeUserFacingGpxText(file.nameWithoutExtension)
                 ?: file.nameWithoutExtension
-        val basePoints =
-            if (reversed) {
-                profile.points.asReversed()
-            } else {
-                profile.points
-            }
-
         return GpxGuidanceBuildResult(
             session =
-                buildGpxGuidanceSession(
+                buildTurnByTurnGuidanceSessionFromProfile(
                     trackId = absolutePath,
                     trackTitle = if (reversed) "$displayTitle reverse" else displayTitle,
-                    trackPoints = basePoints,
+                    profile = profile,
                     startReached = startReached,
                     reversed = reversed,
-                    tuning = GpxGuidanceTuning(),
                 ),
         )
     }

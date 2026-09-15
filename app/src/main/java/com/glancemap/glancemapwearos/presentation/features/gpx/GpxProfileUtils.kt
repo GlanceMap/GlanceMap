@@ -142,6 +142,16 @@ internal fun buildProfile(
     return TrackProfile(sig, elevationFilterConfig, pts, segLen, cumDist, cumAsc, cumDesc)
 }
 
+internal fun reverseTrackPointsForProfile(points: List<TrackPoint>): List<TrackPoint> =
+    points.asReversed().mapIndexed { reversedIndex, point ->
+        val originalIndex = points.lastIndex - reversedIndex
+        point.copy(
+            startsNewSegment =
+                reversedIndex == 0 ||
+                    points.getOrNull(originalIndex + 1)?.startsNewSegment == true,
+        )
+    }
+
 internal fun readBestGpxTitle(file: File): String? = parseGpxData(file).title
 
 internal fun parseGpxPoints(file: File): List<TrackPoint> = parseGpxData(file).points
