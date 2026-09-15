@@ -219,7 +219,7 @@ internal class PhoneDataLayerRepository(
                     reportConnectionIssueIfServiceFailure(error)
                     PhoneTransferDiagnostics.error(
                         "DataLayer",
-                        "sendMessage failed path=$path node=$nodeId attempt=${attempt + 1}",
+                        "sendMessage failed attempt=${attempt + 1}",
                         error,
                     )
                     throw error

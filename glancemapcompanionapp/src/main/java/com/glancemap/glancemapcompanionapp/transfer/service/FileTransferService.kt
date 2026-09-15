@@ -142,6 +142,8 @@ class FileTransferService : LifecycleService() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     historyStore.load()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
                 } catch (error: Throwable) {
                     Log.w(TAG, "Unable to restore transfer history", error)
                     PhoneTransferDiagnostics.error("Service", "Unable to restore transfer history", error)
@@ -272,13 +274,7 @@ class FileTransferService : LifecycleService() {
                 try {
                     if (previousJob != null) {
                         PhoneTransferDiagnostics.warn("Service", "Waiting for previous batch to stop before restart")
-                        runCatching { previousJob.join() }
-                            .onFailure {
-                                PhoneTransferDiagnostics.warn(
-                                    "Service",
-                                    "Previous batch join ended with ${it.message}",
-                                )
-                            }
+                        previousJob.join()
                     }
                     PhoneTransferDiagnostics.log(
                         "Service",
@@ -362,7 +358,7 @@ class FileTransferService : LifecycleService() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                PhoneTransferDiagnostics.warn("Service", "Send cancel to watch node=$node id=$id")
+                PhoneTransferDiagnostics.warn("Service", "Send cancel to watch id=$id")
                 dataLayerRepository.sendCancelTransfer(node, id)
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -644,7 +640,7 @@ class FileTransferService : LifecycleService() {
             CompanionJourneyDiagnostics.activeHikeSnapshotRejected()
             PhoneTransferDiagnostics.warn(
                 "ActiveHike",
-                "Ignored invalid active-hike snapshot from node=$sourceNodeId",
+                "Ignored invalid active-hike snapshot",
             )
         } else {
             val current = _activeHikeSnapshot.value

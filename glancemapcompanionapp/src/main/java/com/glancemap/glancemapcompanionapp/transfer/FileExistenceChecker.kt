@@ -351,7 +351,7 @@ class FileExistenceChecker(
             throw cancellation
         } catch (error: Throwable) {
             Log.d(TAG, "Watch prewarm message failed (non-fatal): ${error.message}")
-            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed node=$nodeId msg=${error.message}")
+            PhoneTransferDiagnostics.warn("Exists", "Prewarm failed msg=${error.message}")
         }
     }
 
