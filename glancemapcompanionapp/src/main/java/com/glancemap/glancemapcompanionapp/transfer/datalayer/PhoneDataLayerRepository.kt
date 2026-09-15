@@ -198,16 +198,16 @@ internal class PhoneDataLayerRepository(
     ) = withContext(Dispatchers.IO) {
         requireStartedAndAvailable()
         var lastError: Throwable? = null
-        PhoneTransferDiagnostics.log("DataLayer", "sendMessage path=$path node=$nodeId")
+        PhoneTransferDiagnostics.log("DataLayer", "sendMessage")
         repeat(MAX_SEND_ATTEMPTS) { attempt ->
             try {
                 messageClient.sendMessage(nodeId, path, payload).await()
                 clearConnectionIssue()
                 if (attempt > 0) {
-                    Log.d(TAG, "sendMessage recovered for path=$path node=$nodeId on attempt=${attempt + 1}")
+                    Log.d(TAG, "sendMessage recovered on attempt=${attempt + 1}")
                     PhoneTransferDiagnostics.log(
                         "DataLayer",
-                        "Recovered send path=$path node=$nodeId attempt=${attempt + 1}",
+                        "Recovered send attempt=${attempt + 1}",
                     )
                 }
                 return@withContext
@@ -227,12 +227,12 @@ internal class PhoneDataLayerRepository(
 
                 Log.w(
                     TAG,
-                    "Target node temporarily disconnected for path=$path node=$nodeId. " +
+                    "Target node temporarily disconnected. " +
                         "Waiting for reconnect before retry ${attempt + 2}/$MAX_SEND_ATTEMPTS.",
                 )
                 PhoneTransferDiagnostics.warn(
                     "DataLayer",
-                    "Node disconnected path=$path node=$nodeId retry=${attempt + 2}/$MAX_SEND_ATTEMPTS",
+                    "Node disconnected retry=${attempt + 2}/$MAX_SEND_ATTEMPTS",
                 )
                 val reconnected = awaitNodeConnection(nodeId, SEND_RETRY_WAIT_MS)
                 if (!reconnected) delay(SEND_RETRY_DELAY_MS)

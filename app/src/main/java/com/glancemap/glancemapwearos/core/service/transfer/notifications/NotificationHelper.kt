@@ -9,7 +9,35 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.glancemap.glancemapwearos.R
+import com.glancemap.shared.transfer.TransferDataLayerContract
 import kotlin.math.abs
+
+internal const val FGS_DATA_SYNC_QUOTA_EXHAUSTED = TransferDataLayerContract.FGS_DATA_SYNC_QUOTA_EXHAUSTED
+internal const val FGS_START_NOT_ALLOWED = TransferDataLayerContract.FGS_START_NOT_ALLOWED
+internal const val FGS_DATA_SYNC_TIMEOUT = TransferDataLayerContract.FGS_DATA_SYNC_TIMEOUT
+
+private const val FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION =
+    "android.app.ForegroundServiceStartNotAllowedException"
+
+internal fun foregroundStartFailureDetail(
+    exceptionClassName: String,
+    sdkInt: Int,
+    exceptionMessage: String? = null,
+): String =
+    // Android 15 uses this exception for dataSync quota exhaustion, but Android also
+    // uses it for ordinary background-start restrictions; require both quota markers.
+    when {
+        sdkInt >= Build.VERSION_CODES.S &&
+            exceptionClassName == FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION &&
+            exceptionMessage?.contains("time limit already exhausted", ignoreCase = true) == true &&
+            exceptionMessage.contains("dataSync", ignoreCase = true) ->
+            FGS_DATA_SYNC_QUOTA_EXHAUSTED
+
+        sdkInt >= Build.VERSION_CODES.S && exceptionClassName == FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION ->
+            FGS_START_NOT_ALLOWED
+
+        else -> "FGS_START_FAILED:${exceptionClassName.substringAfterLast('.')}"
+    }
 
 class NotificationHelper(
     private val service: Service,
@@ -22,14 +50,18 @@ class NotificationHelper(
         private const val MIN_UPDATE_PROGRESS_STEP = 4 // percent
     }
 
-    private val notificationManager =
+    private val notificationManager by lazy {
         service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
 
     private var lastUpdateTimeMs: Long = 0L
     private var lastProgress: Int = -999
     private var lastStatus: String = ""
+    private var notificationChannelCreated = false
 
+    @Synchronized
     fun createNotificationChannel() {
+        if (notificationChannelCreated) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel =
                 NotificationChannel(
@@ -39,6 +71,7 @@ class NotificationHelper(
                 )
             notificationManager.createNotificationChannel(channel)
         }
+        notificationChannelCreated = true
     }
 
     /** Foreground (non-swipeable) */
@@ -47,6 +80,7 @@ class NotificationHelper(
         fileName: String,
         status: String,
     ) {
+        createNotificationChannel()
         val foregroundServiceType =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
@@ -97,10 +131,10 @@ class NotificationHelper(
      * Stop foreground and REMOVE the foreground notification.
      * (Then you can post a normal swipeable notification.)
      */
-    fun stopForeground(notificationId: Int) {
+    fun stopForeground(notificationId: Int? = null) {
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
         // extra safety: ensure the old foreground notif id is cleared
-        notificationManager.cancel(notificationId)
+        notificationId?.let(notificationManager::cancel)
     }
 
     /** Normal (swipeable) completion notification */
@@ -109,6 +143,7 @@ class NotificationHelper(
         fileName: String,
         status: String = "Saved ✓",
     ) {
+        createNotificationChannel()
         notificationManager.notify(notificationId, buildCompletionNotification(fileName, status).build())
     }
 
@@ -118,6 +153,7 @@ class NotificationHelper(
         fileName: String,
         status: String,
     ) {
+        createNotificationChannel()
         notificationManager.notify(notificationId, buildErrorNotification(fileName, status).build())
     }
 

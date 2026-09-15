@@ -52,7 +52,10 @@ import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
+import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
@@ -63,6 +66,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.LocalFullscreenPopupTimeFormat
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
@@ -70,6 +74,7 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.model.common.Observer
 
@@ -106,6 +111,7 @@ internal fun NavigateContent(
     onMapPanCompleted: () -> Unit,
     onViewportChanged: (LatLong, Int) -> Unit,
     isMetric: Boolean,
+    screenState: LocationScreenState,
     navMode: NavMode,
     locationMarker: RotatableMarker?,
     lastKnownLocation: LatLong?,
@@ -124,6 +130,7 @@ internal fun NavigateContent(
     keepAppOpen: Boolean,
     onKeepAppOpenToggle: () -> Unit,
     backButtonExitsNavigation: Boolean,
+    traceRecordingViewModel: TraceRecordingViewModel,
     traceRecordingState: TraceRecordingUiState,
     recordingStatusMessage: String?,
     recordingDashboardMetricSlots: List<String>,
@@ -513,6 +520,7 @@ internal fun NavigateContent(
     val liveHudState =
         rememberNavigateLiveHudState(
             enabled = hasLocationPermission && mapView != null,
+            screenState = screenState,
             mapHolder = mapHolder,
             mapView = mapView,
             currentZoomLevel = currentZoomLevel,
@@ -690,6 +698,7 @@ internal fun NavigateContent(
                 var lastCenter = mapView.model.mapViewPosition.center
                 val observer =
                     Observer {
+                        ScreenOffActivityDiagnostics.recordMapViewportCallback()
                         val newCenter = mapView.model.mapViewPosition.center
                         val newZoom =
                             mapView.model.mapViewPosition.zoomLevel
@@ -925,12 +934,14 @@ internal fun NavigateContent(
             CompositionLocalProvider(LocalFullscreenPopupTimeFormat provides navigateTimeFormat) {
                 NavigateOverlaysLayer(
                     mapView = mapView,
+                    traceRecordingViewModel = traceRecordingViewModel,
                     mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
                     slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
                     slopeOverlayEnabled = slopeOverlayEnabled,
                     slopeOverlayProcessing = slopeOverlayProcessing,
                     slopeOverlayProgressPercent = slopeOverlayProgressPercent,
                     navMode = navMode,
+                    isScreenInteractive = screenState.isInteractive,
                     screenSize = screenSize,
                     isMetric = isMetric,
                     liveElevationEnabled = liveElevationEnabled,
@@ -1058,6 +1069,7 @@ internal fun NavigateContent(
                         !shouldSuppressNavigateTime &&
                         (showNavigateTime || traceRecordingState.active || traceRecordingState.saving),
                 showTime = showNavigateTime,
+                isScreenInteractive = screenState.isInteractive,
                 timeFormat = navigateTimeFormat,
                 recordingActive = traceRecordingState.active || traceRecordingState.saving,
                 recordingPaused = traceRecordingState.paused,
@@ -1130,10 +1142,13 @@ internal fun NavigateContent(
     }
 }
 
+// Stateless Compose renderer: its direct UI inputs preserve the visible clock, status, and gestures.
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 private fun CenteredNavigateTimeChip(
     visible: Boolean,
     showTime: Boolean,
+    isScreenInteractive: Boolean,
     timeFormat: String,
     recordingActive: Boolean,
     recordingPaused: Boolean,
@@ -1146,10 +1161,18 @@ private fun CenteredNavigateTimeChip(
     if (!visible) return
     val context = LocalContext.current
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMillis = System.currentTimeMillis()
+    val clockUpdatesActive =
+        shouldRunNavigateTimeChipClock(
+            visible = visible,
+            isScreenInteractive = isScreenInteractive,
+            showTime = showTime,
+        )
+    LaunchedEffect(clockUpdatesActive) {
+        if (!clockUpdatesActive) return@LaunchedEffect
+        nowMillis = System.currentTimeMillis()
+        while (isActive) {
             delay(1_000L)
+            nowMillis = System.currentTimeMillis()
         }
     }
     val label =
@@ -1243,6 +1266,12 @@ private fun CenteredNavigateTimeChip(
         }
     }
 }
+
+internal fun shouldRunNavigateTimeChipClock(
+    visible: Boolean,
+    isScreenInteractive: Boolean,
+    showTime: Boolean,
+): Boolean = visible && isScreenInteractive && showTime
 
 internal fun shouldEnterPanningAfterDoubleTap(
     center: LatLong?,

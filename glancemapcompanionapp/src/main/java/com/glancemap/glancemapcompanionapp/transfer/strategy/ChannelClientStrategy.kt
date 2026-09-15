@@ -19,6 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.OutputStream
+import java.util.Locale
 
 class ChannelClientStrategy :
     TransferStrategy,
@@ -85,7 +86,8 @@ class ChannelClientStrategy :
                 onProgress(0f, "Waking watch…")
                 PhoneTransferDiagnostics.log(
                     "Channel",
-                    "Transfer start file=${metadata.displayFileName} node=$targetNodeId size=${metadata.totalSize}",
+                    "Transfer start ${metadata.diagnosticContext()} " +
+                        "file=${metadata.displayFileName} size=${metadata.totalSize}",
                 )
                 val payload =
                     JSONObject()
@@ -149,17 +151,19 @@ class ChannelClientStrategy :
 
                 // 3) Copy
                 val copyStartMs = SystemClock.elapsedRealtime()
+                var bytesSent = 0L
                 BufferedOutputStream(rawOut, bufferBytes).use { out ->
                     input.use { inp ->
                         onProgress(0f, "Transferring…")
-                        TransferUtils.copyWithProgress(
-                            input = inp,
-                            output = out,
-                            totalBytes = metadata.totalSize,
-                            bufferBytes = bufferBytes,
-                            awaitIfPaused = awaitIfPaused,
-                            onProgress = onProgress,
-                        )
+                        bytesSent =
+                            TransferUtils.copyWithProgress(
+                                input = inp,
+                                output = out,
+                                totalBytes = metadata.totalSize,
+                                bufferBytes = bufferBytes,
+                                awaitIfPaused = awaitIfPaused,
+                                onProgress = onProgress,
+                            )
                     }
                 }
                 val copyMs = SystemClock.elapsedRealtime() - copyStartMs
@@ -177,9 +181,38 @@ class ChannelClientStrategy :
                 )
                 PhoneTransferDiagnostics.log(
                     "Channel",
-                    "Metrics file=${metadata.displayFileName} open=${openMs}ms stream=${streamOpenMs}ms copy=${copyMs}ms ack=${ackWaitMs}ms total=${SystemClock.elapsedRealtime() - totalStartMs}ms",
+                    "event=channel_summary ${metadata.diagnosticContext()} " +
+                        "file=${metadata.displayFileName} bytesSent=$bytesSent " +
+                        "copyDurationMs=$copyMs " +
+                        "averageMiBps=${String.format(
+                            Locale.US,
+                            "%.2f",
+                            if (copyMs > 0L) {
+                                bytesSent / (1024.0 * 1024.0) / (copyMs / 1000.0)
+                            } else {
+                                0.0
+                            },
+                        )} " +
+                        "ackWaitMs=$ackWaitMs " +
+                        "finalAckStatus=${ack?.let { if (it.success) "DONE" else "ERROR" } ?: "TIMEOUT"} " +
+                        "openMs=$openMs streamOpenMs=$streamOpenMs " +
+                        "totalMs=${SystemClock.elapsedRealtime() - totalStartMs}",
                 )
-                return@withContext ack ?: TransferResult(true, "Sent, but watch did not confirm save.")
+                if (ack == null) {
+                    PhoneTransferDiagnostics.warn(
+                        "Channel",
+                        "event=channel_ack_timeout ${metadata.diagnosticContext()} " +
+                            "file=${metadata.displayFileName} waitMs=$ackWaitMs",
+                    )
+                } else {
+                    PhoneTransferDiagnostics.log(
+                        "Channel",
+                        "event=channel_ack_received ${metadata.diagnosticContext()} " +
+                            "file=${metadata.displayFileName} " +
+                            "success=${ack.success} waitMs=$ackWaitMs",
+                    )
+                }
+                return@withContext channelAckResult(ack)
             } catch (ce: CancellationException) {
                 throw ce
             } catch (e: Exception) {
@@ -210,3 +243,12 @@ class ChannelClientStrategy :
         activeChannelClient = null
     }
 }
+
+internal const val CHANNEL_ACK_TIMEOUT_MESSAGE = "File sent, but watch did not confirm that it was saved."
+
+internal fun channelAckResult(ack: TransferResult?): TransferResult =
+    if (ack != null) {
+        ack
+    } else {
+        TransferResult(false, CHANNEL_ACK_TIMEOUT_MESSAGE)
+    }

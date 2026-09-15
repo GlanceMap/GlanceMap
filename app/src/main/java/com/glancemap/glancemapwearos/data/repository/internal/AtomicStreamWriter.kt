@@ -16,6 +16,7 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
 
@@ -35,6 +36,7 @@ internal object AtomicStreamWriter {
         val keepPartialOnFailure: Boolean = false, // keep .part on recoverable IO failure
         // Fresh writes stream SHA-256 inline; resumed writes fall back to a final-file hash.
         val computeSha256: Boolean = false,
+        val diagnosticContext: String? = null,
     )
 
     data class WriteResult(
@@ -137,7 +139,7 @@ internal object AtomicStreamWriter {
             }
             val writeDurationMs = monotonicNowMs() - writeStartMs
             val writtenSincePart = bytesCopied - startOffset
-            val writeThroughputMBps =
+            val writeThroughputMiBps =
                 if (writeDurationMs > 0 && writtenSincePart > 0) {
                     (writtenSincePart / 1_048_576.0) / (writeDurationMs / 1000.0)
                 } else {
@@ -172,14 +174,18 @@ internal object AtomicStreamWriter {
                 } ?: "inputReadMs=na outputWriteMs=na"
             val timingSummary =
                 "$timingFields flushMs=$flushDurationMs fsyncMs=$fsyncDurationMs " +
-                    "finalizeMs=$promotionDurationMs promotion=$promotion"
+                    "commitDurationMs=$promotionDurationMs promotion=$promotion"
+            val diagnosticContext = options.diagnosticContext?.let { "$it " }.orEmpty()
             val logMessage =
                 "Disk write $safeName: written=${writtenSincePart}B durationMs=$writeDurationMs " +
-                    "throughput=${String.format("%.2f", writeThroughputMBps)}MB/s fsync=${options.fsync} " +
+                    "outputThroughputMiBps=${String.format(Locale.US, "%.2f", writeThroughputMiBps)} " +
+                    "fsync=${options.fsync} " +
                     timingSummary
             val telemetryMessage =
-                "event=atomic_output_complete file=$safeName written=${writtenSincePart}B " +
-                    "durationMs=$writeDurationMs throughput=${String.format("%.2f", writeThroughputMBps)}MBps " +
+                "event=atomic_output_complete $diagnosticContext" +
+                    "file=$safeName written=${writtenSincePart}B " +
+                    "durationMs=$writeDurationMs " +
+                    "outputThroughputMiBps=${String.format(Locale.US, "%.2f", writeThroughputMiBps)} " +
                     "$timingSummary fsync=${options.fsync}"
             safeLogDebug(TAG, logMessage)
             if (captureTiming) DebugTelemetry.log(TAG, telemetryMessage)

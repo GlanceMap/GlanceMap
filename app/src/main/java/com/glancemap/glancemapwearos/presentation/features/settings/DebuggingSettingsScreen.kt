@@ -49,6 +49,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.FieldMarkerDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.GnssDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -329,6 +330,7 @@ fun DebuggingSettingsScreen(
                     CompassDeepTraceDiagnostics.clear()
                     MarkerMotionTelemetry.clear()
                     EnergyDiagnostics.clear()
+                    RecordingScreenOffDiagnostics.clear()
                     ScreenStateDiagnostics.clear()
                     energySummaryRevision += 1L
                     DemDownloadDiagnostics.clear()
@@ -397,7 +399,9 @@ fun DebuggingSettingsScreen(
                         diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY &&
                         lastBatteryUse != null
                     ) {
-                        "Last run · ${TelemetryFormatters.decimal(lastBatteryUse.consumedMah, 2)} mAh"
+                        lastBatteryUse.consumedMah?.let {
+                            "Last run · ${TelemetryFormatters.decimal(it, 2)} mAh"
+                        } ?: "Last run · insufficient data"
                     } else {
                         "Off - tap to start"
                     },

@@ -261,7 +261,7 @@ object TransferUtils {
                         bytesDelta >= UPDATE_INTERVAL_BYTES ||
                         (totalBytes > 0 && newTotal >= totalBytes)
                     ) {
-                        val speedMBps =
+                        val speedMiBps =
                             if (timeDelta >= SPEED_WARMUP_MIN_MS) {
                                 val speedBytesPerSec = (bytesDelta * 1000L) / timeDelta
                                 speedBytesPerSec.toDouble() / (1024.0 * 1024.0)
@@ -276,10 +276,10 @@ object TransferUtils {
                                 0.0
                             }
 
-                        val text = buildProgressText(newTotal, totalBytes, speedMBps)
+                        val text = buildProgressText(newTotal, totalBytes, speedMiBps)
 
                         onProgress(progress.toFloat(), text)
-                        if (speedMBps != null) {
+                        if (speedMiBps != null) {
                             lastBytesForSpeed = newTotal
                             lastTimeForSpeed = nowMs
                         }
@@ -295,13 +295,13 @@ object TransferUtils {
 
     private fun formatBytes(bytes: Long): String {
         val b = max(bytes, 0L).toDouble()
-        val kb = 1024.0
-        val mb = kb * 1024.0
-        val gb = mb * 1024.0
+        val kib = 1024.0
+        val mib = kib * 1024.0
+        val gib = mib * 1024.0
         return when {
-            b >= gb -> String.format(Locale.US, "%.2f GB", b / gb)
-            b >= mb -> String.format(Locale.US, "%.2f MB", b / mb)
-            b >= kb -> String.format(Locale.US, "%.0f KB", b / kb)
+            b >= gib -> String.format(Locale.US, "%.2f GiB", b / gib)
+            b >= mib -> String.format(Locale.US, "%.2f MiB", b / mib)
+            b >= kib -> String.format(Locale.US, "%.0f KiB", b / kib)
             else -> "$bytes B"
         }
     }
@@ -309,7 +309,7 @@ object TransferUtils {
     private fun buildProgressText(
         copiedBytes: Long,
         totalBytes: Long,
-        speedMBps: Double?,
+        speedMiBps: Double?,
     ): String {
         val base =
             if (totalBytes > 0) {
@@ -318,9 +318,9 @@ object TransferUtils {
                 formatBytes(copiedBytes)
             }
         val speedSuffix =
-            speedMBps
+            speedMiBps
                 ?.let {
-                    " (${String.format(Locale.US, "%.2f", it)} MB/s)"
+                    " (${String.format(Locale.US, "%.2f", it)} MiB/s)"
                 }.orEmpty()
         return base + speedSuffix
     }

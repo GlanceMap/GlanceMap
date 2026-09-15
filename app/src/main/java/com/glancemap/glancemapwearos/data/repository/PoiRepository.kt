@@ -35,12 +35,14 @@ data class PoiPoint(
 interface PoiRepository {
     suspend fun listPoiFiles(): List<File>
 
+    @Suppress("LongParameterList")
     suspend fun savePoiFileAtomic(
         fileName: String,
         inputStream: InputStream,
         onProgress: (bytesCopied: Long) -> Unit,
         expectedSize: Long? = null,
         resumeOffset: Long = 0L,
+        diagnosticContext: String? = null,
     ): String?
 
     suspend fun deletePoiFile(path: String): Boolean

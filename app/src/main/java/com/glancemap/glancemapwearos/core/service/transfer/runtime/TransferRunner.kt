@@ -6,26 +6,34 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostic
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.contract.TransferConstants
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferProgressCallbacks
+import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferReceiveResult
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferResultNotifier
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStrategy
+import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferTerminalResult
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
+import java.util.Locale
 
+@Suppress("LongParameterList")
 internal class TransferRunner(
     private val host: TransferRuntimeHost,
     private val notificationHelper: NotificationHelper,
     private val httpReceiver: HttpTransferStrategy,
     private val sessionState: TransferSessionState,
     private val sendStatus: suspend (sourceNodeId: String, transferId: String, phase: String, detail: String) -> Unit,
-    private val sendAck: suspend (sourceNodeId: String, transferId: String, status: String, detail: String) -> Unit,
+    private val claimTerminal: (transferId: String, outcome: TransferTerminalOutcome) -> Boolean = { _, _ -> true },
 ) {
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ThrowsCount")
     suspend fun runHttp(
         metadata: ReceiverMetadata,
         path: String,
+        onTerminalResult: (HttpTransferTerminalResult) -> Unit = {},
     ) {
+        val totalAttemptStartMs = SystemClock.elapsedRealtime()
         val wakeLock = host.acquireWakeLock("GlanceMap::HttpTransfer", TransferConstants.WAKELOCK_MAX_MS)
         val wifiLock = host.acquireWifiLock("GlanceMap::WifiHighPerf")
         host.releasePrewarmWakeLock("http_transfer_start:${metadata.fileName}")
@@ -40,11 +48,9 @@ internal class TransferRunner(
         val resultNotifier =
             HttpTransferResultNotifier(
                 notificationHelper = notificationHelper,
-                sendStatus = sendStatus,
-                sendAck = sendAck,
+                claimTerminal = claimTerminal,
             )
 
-        notificationHelper.startForeground(metadata.notificationId, metadata.fileName, "Preparing Download…")
         sessionState.registerActiveTransfer(
             transferId = metadata.transferId,
             job = currentCoroutineContext()[Job],
@@ -54,9 +60,13 @@ internal class TransferRunner(
         host.onTransferStarted()
         TransferDiagnostics.log(
             "Runner",
-            "HTTP start id=${metadata.transferId} file=${metadata.fileName} size=${metadata.totalSize} path=$path",
+            "HTTP start id=${metadata.transferId} file=${metadata.fileName} size=${metadata.totalSize}",
         )
 
+        var terminalResult: HttpTransferTerminalResult? = null
+        var receiveResult: HttpTransferReceiveResult? = null
+        var checksumVerified = false
+        var checksumDurationMs: Long? = null
         try {
             sendStatus(metadata.sourceNodeId, metadata.transferId, "REQUEST_RECEIVED", "Connecting to Phone (HTTP)…")
 
@@ -75,8 +85,7 @@ internal class TransferRunner(
                 throw IllegalStateException("MISSING_HTTP_TOKEN")
             }
 
-            val startMs = SystemClock.elapsedRealtime()
-            val receivedSha256 =
+            val currentReceiveResult =
                 httpReceiver.receive(
                     host = host,
                     metadata = metadata,
@@ -85,27 +94,97 @@ internal class TransferRunner(
                     onTransferState = progressCallbacks::onTransferState,
                     onProgress = progressCallbacks::onProgress,
                 )
-            val durationMs = SystemClock.elapsedRealtime() - startMs
+            receiveResult = currentReceiveResult
+            TransferDiagnostics.log(
+                "Runner",
+                "event=write_complete transferId=${metadata.transferId} " +
+                    "fullFileSizeBytes=${currentReceiveResult.fullFileSizeBytes} " +
+                    "resumeOffsetBytes=${currentReceiveResult.resumeOffsetBytes} " +
+                    "finalFileSizeBytes=${currentReceiveResult.finalFileSizeBytes} " +
+                    "bytesTransferredThisAttempt=${currentReceiveResult.bytesTransferredThisAttempt} " +
+                    "commitSucceeded=true",
+            )
 
             TransferDiagnostics.log(
                 "Runner",
                 "HTTP payload received id=${metadata.transferId} file=${metadata.fileName}; verifying checksum",
             )
-            verifyChecksumIfNeeded(metadata, receivedSha256)
-            val sizeMB = metadata.totalSize / (1024.0 * 1024.0)
-            val speedMBps = if (durationMs > 0) sizeMB / (durationMs / 1000.0) else 0.0
+            val checksumStartMs = SystemClock.elapsedRealtime()
             TransferDiagnostics.log(
                 "Runner",
-                "Summary id=${metadata.transferId} file=${metadata.fileName} size=${metadata.totalSize} durationMs=$durationMs speedMBps=${String.format("%.2f", speedMBps)}",
+                "event=checksum_start transferId=${metadata.transferId}",
             )
-            resultNotifier.onSuccess(metadata)
+            try {
+                verifyChecksumIfNeeded(metadata, currentReceiveResult.sha256)
+                checksumVerified = true
+            } finally {
+                checksumDurationMs = SystemClock.elapsedRealtime() - checksumStartMs
+                TransferDiagnostics.log(
+                    "Runner",
+                    "event=checksum_complete transferId=${metadata.transferId} " +
+                        "checksumVerified=$checksumVerified checksumDurationMs=$checksumDurationMs",
+                )
+            }
+            TransferDiagnostics.log(
+                "Runner",
+                "event=commit_complete transferId=${metadata.transferId} commitSucceeded=true",
+            )
+            TransferDiagnostics.log(
+                "Runner",
+                "Summary id=${metadata.transferId} file=${metadata.fileName} " +
+                    "fullFileSizeBytes=${currentReceiveResult.fullFileSizeBytes} " +
+                    "resumeOffsetBytes=${currentReceiveResult.resumeOffsetBytes} " +
+                    "finalFileSizeBytes=${currentReceiveResult.finalFileSizeBytes} " +
+                    "bytesTransferredThisAttempt=${currentReceiveResult.bytesTransferredThisAttempt} " +
+                    "durationMs=${currentReceiveResult.dataTransferDurationMs} " +
+                    "attemptThroughputMiBps=${
+                        String.format(Locale.US, "%.2f", currentReceiveResult.attemptThroughputMiBps)
+                    }",
+            )
+            TransferDiagnostics.log(
+                "Runner",
+                "event=http_final_summary transferId=${metadata.transferId} " +
+                    "fullFileSizeBytes=${currentReceiveResult.fullFileSizeBytes} " +
+                    "resumeOffsetBytes=${currentReceiveResult.resumeOffsetBytes} " +
+                    "finalFileSizeBytes=${currentReceiveResult.finalFileSizeBytes} " +
+                    "bytesTransferredThisAttempt=${currentReceiveResult.bytesTransferredThisAttempt} " +
+                    "startupElapsedMs=${currentReceiveResult.startupElapsedMs} " +
+                    "wifiAcquireMs=${currentReceiveResult.wifiAcquireMs} " +
+                    "timeToFileRequestMs=${currentReceiveResult.timeToFileRequestMs ?: "na"} " +
+                    "dataTransferDurationMs=${currentReceiveResult.dataTransferDurationMs} " +
+                    "attemptThroughputMiBps=${
+                        String.format(Locale.US, "%.2f", currentReceiveResult.attemptThroughputMiBps)
+                    } " +
+                    "reconnectCount=${currentReceiveResult.reconnectCount} " +
+                    "checksumDurationMs=$checksumDurationMs checksumVerified=$checksumVerified " +
+                    "commitSucceeded=true " +
+                    "totalAttemptDurationMs=${SystemClock.elapsedRealtime() - totalAttemptStartMs} " +
+                    "finalResult=DONE",
+            )
+            terminalResult = resultNotifier.onSuccess(metadata)
         } catch (ce: CancellationException) {
             Log.w(TAG, "⛔ HTTP transfer cancelled", ce)
             TransferDiagnostics.warn(
                 "Runner",
                 "HTTP cancelled id=${metadata.transferId} file=${metadata.fileName}",
             )
-            resultNotifier.onCancelled(metadata)
+            TransferDiagnostics.log(
+                "Runner",
+                "event=http_final_summary transferId=${metadata.transferId} " +
+                    "fullFileSizeBytes=${metadata.totalSize} " +
+                    "resumeOffsetBytes=${receiveResult?.resumeOffsetBytes ?: "na"} " +
+                    "finalFileSizeBytes=${receiveResult?.finalFileSizeBytes ?: "na"} " +
+                    "bytesTransferredThisAttempt=${receiveResult?.bytesTransferredThisAttempt ?: "na"} " +
+                    "startupElapsedMs=${receiveResult?.startupElapsedMs ?: "na"} " +
+                    "dataTransferDurationMs=${receiveResult?.dataTransferDurationMs ?: "na"} " +
+                    "attemptThroughputMiBps=${receiveResult?.attemptThroughputMiBps ?: "na"} " +
+                    "checksumVerified=$checksumVerified commitSucceeded=false " +
+                    "totalAttemptDurationMs=${SystemClock.elapsedRealtime() - totalAttemptStartMs} " +
+                    "finalResult=CANCELLED",
+            )
+            if (ce.message != FGS_DATA_SYNC_TIMEOUT) {
+                terminalResult = resultNotifier.onCancelled(metadata)
+            }
             throw ce
         } catch (e: Exception) {
             Log.e(TAG, "❌ HTTP transfer failed", e)
@@ -114,7 +193,21 @@ internal class TransferRunner(
                 "HTTP failed id=${metadata.transferId} file=${metadata.fileName}",
                 e,
             )
-            resultNotifier.onError(metadata, e)
+            TransferDiagnostics.log(
+                "Runner",
+                "event=http_final_summary transferId=${metadata.transferId} fullFileSizeBytes=${metadata.totalSize} " +
+                    "resumeOffsetBytes=${receiveResult?.resumeOffsetBytes ?: "na"} " +
+                    "finalFileSizeBytes=${receiveResult?.finalFileSizeBytes ?: "na"} " +
+                    "bytesTransferredThisAttempt=${receiveResult?.bytesTransferredThisAttempt ?: "na"} " +
+                    "startupElapsedMs=${receiveResult?.startupElapsedMs ?: "na"} " +
+                    "dataTransferDurationMs=${receiveResult?.dataTransferDurationMs ?: "na"} " +
+                    "attemptThroughputMiBps=${receiveResult?.attemptThroughputMiBps ?: "na"} " +
+                    "checksumDurationMs=${checksumDurationMs ?: "na"} " +
+                    "checksumVerified=$checksumVerified commitSucceeded=false " +
+                    "totalAttemptDurationMs=${SystemClock.elapsedRealtime() - totalAttemptStartMs} finalResult=ERROR " +
+                    "failureReason=${e.javaClass.simpleName}",
+            )
+            terminalResult = resultNotifier.onError(metadata, e)
         } finally {
             TransferDiagnostics.log(
                 "Runner",
@@ -124,6 +217,7 @@ internal class TransferRunner(
             host.onTransferFinished()
             host.releaseWakeLock(wakeLock)
             host.releaseWifiLock(wifiLock)
+            terminalResult?.let(onTerminalResult)
         }
     }
 

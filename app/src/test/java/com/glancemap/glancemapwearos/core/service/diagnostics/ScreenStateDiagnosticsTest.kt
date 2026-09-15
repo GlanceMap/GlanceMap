@@ -50,4 +50,38 @@ class ScreenStateDiagnosticsTest {
         assertEquals(ScreenStateDiagnostics.DisplayState.OFF, summary.currentDisplayState)
         assertFalse(summary.currentAppForeground ?: true)
     }
+
+    @Test
+    fun reconciliationTracksMismatchSamplesAndDuration() {
+        ScreenStateDiagnostics.configure(
+            captureActive = true,
+            nowElapsedMs = 1_000L,
+        )
+        ScreenStateDiagnostics.reconcileScreenState(
+            reportedIsInteractive = true,
+            actualIsInteractive = false,
+            nowElapsedMs = 1_100L,
+        )
+        ScreenStateDiagnostics.reconcileScreenState(
+            reportedIsInteractive = true,
+            actualIsInteractive = false,
+            nowElapsedMs = 1_500L,
+        )
+        ScreenStateDiagnostics.reconcileScreenState(
+            reportedIsInteractive = true,
+            actualIsInteractive = true,
+            nowElapsedMs = 1_700L,
+        )
+        ScreenStateDiagnostics.configure(captureActive = false, nowElapsedMs = 2_000L)
+
+        val summary = ScreenStateDiagnostics.summary(nowElapsedMs = 2_000L)
+
+        assertEquals(3L, summary.screenStateReconciliationSampleCount)
+        assertEquals(2L, summary.screenStateMismatchSampleCount)
+        assertEquals(2L, summary.screenStateInteractiveReportedWhileDeviceOffSampleCount)
+        assertEquals(0L, summary.screenStateNonInteractiveReportedWhileDeviceOnSampleCount)
+        assertEquals(600L, summary.screenStateObservedMismatchDurationMs)
+        assertEquals(600L, summary.screenStateMaxObservedMismatchDurationMs)
+        assertEquals("interactive_reported_while_device_off", summary.screenStateLastObservedMismatchType)
+    }
 }

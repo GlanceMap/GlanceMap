@@ -36,7 +36,8 @@ class MessageClientStrategy : TransferStrategy {
             awaitIfPaused()
             PhoneTransferDiagnostics.log(
                 "Message",
-                "Transfer start file=${metadata.displayFileName} node=$targetNodeId size=${metadata.totalSize}",
+                "Transfer start ${metadata.diagnosticContext()} " +
+                    "file=${metadata.displayFileName} size=${metadata.totalSize}",
             )
 
             onProgress(0f, "Reading file...")
@@ -92,7 +93,8 @@ class MessageClientStrategy : TransferStrategy {
                         lastSendException = e
                         PhoneTransferDiagnostics.warn(
                             "Message",
-                            "Send attempt $attempt failed file=${metadata.displayFileName} msg=${e.message}",
+                            "Send attempt $attempt ${metadata.diagnosticContext()} " +
+                                "file=${metadata.displayFileName} msg=${e.message}",
                         )
                         if (attempt < MAX_SEND_ATTEMPTS) delay(1000L * attempt)
                     }
@@ -100,7 +102,8 @@ class MessageClientStrategy : TransferStrategy {
                 if (lastSendException != null) {
                     PhoneTransferDiagnostics.error(
                         "Message",
-                        "Send failed after $MAX_SEND_ATTEMPTS attempts file=${metadata.displayFileName}",
+                        "Send failed after $MAX_SEND_ATTEMPTS attempts ${metadata.diagnosticContext()} " +
+                            "file=${metadata.displayFileName}",
                         lastSendException,
                     )
                     return@withContext TransferResult(false, "Send failed after $MAX_SEND_ATTEMPTS attempts: ${lastSendException.message}")
@@ -118,7 +121,8 @@ class MessageClientStrategy : TransferStrategy {
                 )
                 PhoneTransferDiagnostics.log(
                     "Message",
-                    "Metrics file=${metadata.displayFileName} read=${readMs}ms send=${sendMs}ms ack=${ackWaitMs}ms total=${SystemClock.elapsedRealtime() - totalStartMs}ms",
+                    "Metrics ${metadata.diagnosticContext()} file=${metadata.displayFileName} read=${readMs}ms " +
+                        "send=${sendMs}ms ack=${ackWaitMs}ms total=${SystemClock.elapsedRealtime() - totalStartMs}ms",
                 )
                 return@withContext result ?: TransferResult(true, "Sent, but watch did not confirm save.")
             } catch (cancellation: CancellationException) {

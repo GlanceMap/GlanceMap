@@ -14,6 +14,7 @@ internal interface TransferRuntimeHost {
 
     fun onTransferFinished()
 
+    @Suppress("LongParameterList")
     suspend fun saveFile(
         fileName: String,
         inputStream: InputStream,
@@ -21,6 +22,7 @@ internal interface TransferRuntimeHost {
         resumeOffset: Long = 0L,
         keepPartialOnFailure: Boolean = false,
         computeSha256: Boolean = true,
+        diagnosticContext: String? = null,
         onProgress: (Long) -> Unit,
     ): String?
 

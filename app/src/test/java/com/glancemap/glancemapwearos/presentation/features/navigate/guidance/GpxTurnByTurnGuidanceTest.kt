@@ -5,6 +5,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHintSo
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
@@ -138,6 +139,76 @@ class GpxTurnByTurnGuidanceTest {
         assertEquals(GuidanceMode.TO_START, state.mode)
         assertTrue((state.distanceToStartMeters ?: 0.0) > 700.0)
         assertNotNull(state.bearingToStartDegrees)
+    }
+
+    @Test
+    fun waitingForLocationReportsFullRouteElevation() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "waiting-elevation.gpx",
+                trackTitle = "Waiting elevation route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001, elevation = 200.0),
+                        point(45.0, 6.002, elevation = 150.0),
+                    ),
+            )
+
+        val state = computeTurnByTurnGuidanceState(session = session, currentLocation = null)
+
+        assertEquals(100.0, state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(50.0, state.remainingDescentMeters ?: -1.0, 0.01)
+    }
+
+    @Test
+    fun toStartReportsFullRouteElevation() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "to-start-elevation.gpx",
+                trackTitle = "To start elevation route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001, elevation = 200.0),
+                        point(45.0, 6.002, elevation = 150.0),
+                    ),
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.01),
+            )
+
+        assertEquals(GuidanceMode.TO_START, state.mode)
+        assertEquals(100.0, state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(50.0, state.remainingDescentMeters ?: -1.0, 0.01)
+    }
+
+    @Test
+    fun followRouteWithInsufficientElevationKeepsElevationUnavailable() {
+        val session =
+            buildGpxGuidanceSession(
+                trackId = "partial-elevation.gpx",
+                trackTitle = "Partial elevation route",
+                trackPoints =
+                    listOf(
+                        point(45.0, 6.0, elevation = 100.0),
+                        point(45.0, 6.001),
+                        point(45.0, 6.002),
+                    ),
+                startReached = true,
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(45.0, 6.0002),
+            )
+
+        assertNull(state.remainingAscentMeters)
+        assertNull(state.remainingDescentMeters)
     }
 
     @Test

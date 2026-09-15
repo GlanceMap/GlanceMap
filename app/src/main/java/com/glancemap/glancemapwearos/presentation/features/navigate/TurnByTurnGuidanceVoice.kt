@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
@@ -21,6 +22,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Rou
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -40,6 +42,8 @@ internal fun TurnByTurnGuidanceVoiceEffect(
     if (!voiceEnabled) return
 
     val appContext = context.applicationContext
+    val applicationScope = remember(appContext) { (appContext as GlanceMapWearApp).applicationScope }
+    val ttsLifecycle = remember(appContext) { TtsInstanceLifecycle() }
     var ttsReady by remember { mutableStateOf(false) }
     var alertedInstructionKey by remember { mutableStateOf<String?>(null) }
     var alertedStraightSectionKey by remember { mutableStateOf<String?>(null) }
@@ -49,8 +53,11 @@ internal fun TurnByTurnGuidanceVoiceEffect(
     val tts =
         remember(appContext) {
             TextToSpeech(appContext) { status ->
-                ttsReady = status == TextToSpeech.SUCCESS
-                DebugTelemetry.log("TurnByTurn", "voice=init status=$status ready=$ttsReady")
+                ttsLifecycle.runIfActive {
+                    val ready = status == TextToSpeech.SUCCESS
+                    ttsReady = ready
+                    DebugTelemetry.log("TurnByTurn", "voice=init status=$status ready=$ready")
+                }
             }.also { engine ->
                 engine.setAudioAttributes(
                     AudioAttributes
@@ -90,29 +97,40 @@ internal fun TurnByTurnGuidanceVoiceEffect(
 
     DisposableEffect(tts) {
         onDispose {
-            tts.stop()
-            tts.shutdown()
+            ttsLifecycle.retire {
+                applicationScope.launch {
+                    try {
+                        tts.stop()
+                    } finally {
+                        tts.shutdown()
+                    }
+                }
+            }
         }
     }
 
     LaunchedEffect(ttsReady) {
         if (ttsReady) {
-            val locale = Locale.getDefault()
-            val languageResult = tts.setLanguage(locale)
-            val selectedVoice = selectBestLocalTtsVoice(tts.voices, locale)
-            val voiceResult = selectedVoice?.let { tts.setVoice(it) }
-            val speechRateResult = tts.setSpeechRate(TTS_SPEECH_RATE)
-            val activeVoice = tts.voice ?: selectedVoice
-            DebugTelemetry.log(
-                "TurnByTurn",
-                "voice=config languageResult=$languageResult voiceResult=${voiceResult ?: "na"} " +
-                    "speechRate=$TTS_SPEECH_RATE speechRateResult=$speechRateResult locale=${locale.toLanguageTag()} " +
-                    "engine=${tts.defaultEngine ?: "na"} selectedVoice=${activeVoice?.name ?: "na"} " +
-                    "voiceLocale=${activeVoice?.locale?.toLanguageTag() ?: "na"} " +
-                    "quality=${activeVoice?.quality ?: "na"} latency=${activeVoice?.latency ?: "na"} " +
-                    "network=${activeVoice?.isNetworkConnectionRequired ?: "na"} " +
-                    "availableVoices=${tts.voices?.size ?: 0} localLocaleVoices=${tts.voices.localVoiceCount(locale)}",
-            )
+            ttsLifecycle.runIfActive {
+                val locale = Locale.getDefault()
+                val languageResult = tts.setLanguage(locale)
+                val selectedVoice = selectBestLocalTtsVoice(tts.voices, locale)
+                val voiceResult = selectedVoice?.let { tts.setVoice(it) }
+                val speechRateResult = tts.setSpeechRate(TTS_SPEECH_RATE)
+                val activeVoice = tts.voice ?: selectedVoice
+                DebugTelemetry.log(
+                    "TurnByTurn",
+                    "voice=config languageResult=$languageResult voiceResult=${voiceResult ?: "na"} " +
+                        "speechRate=$TTS_SPEECH_RATE speechRateResult=$speechRateResult " +
+                        "locale=${locale.toLanguageTag()} " +
+                        "engine=${tts.defaultEngine ?: "na"} selectedVoice=${activeVoice?.name ?: "na"} " +
+                        "voiceLocale=${activeVoice?.locale?.toLanguageTag() ?: "na"} " +
+                        "quality=${activeVoice?.quality ?: "na"} latency=${activeVoice?.latency ?: "na"} " +
+                        "network=${activeVoice?.isNetworkConnectionRequired ?: "na"} " +
+                        "availableVoices=${tts.voices?.size ?: 0} " +
+                        "localLocaleVoices=${tts.voices.localVoiceCount(locale)}",
+                )
+            }
         }
     }
 
@@ -122,7 +140,7 @@ internal fun TurnByTurnGuidanceVoiceEffect(
             alertedStraightSectionKey = null
             arrivalAlertedTrack = null
             offRouteRecoveryPending = false
-            tts.stop()
+            ttsLifecycle.runIfActive { tts.stop() }
         }
     }
 
@@ -164,7 +182,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
                 "distanceM=${distanceMeters.toInt()} alertDistanceM=${alertDistanceMeters.toInt()} " +
                 "profile=$activityProfile",
         )
-        val speakResult = tts.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, instructionKey)
+        val speakResult =
+            ttsLifecycle.runIfActive {
+                tts.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, instructionKey)
+            } ?: return@LaunchedEffect
         DebugTelemetry.log("TurnByTurn", "voice=speak_result id=$instructionKey result=$speakResult")
         if (speakResult == TextToSpeech.SUCCESS) {
             alertedInstructionKey = instructionKey
@@ -195,7 +216,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
             "voice=continue_straight index=${instruction.trackPointIndex} " +
                 "distanceM=${distanceMeters.toInt()} thresholdM=${VOICE_CONTINUE_STRAIGHT_MIN_DISTANCE_METERS.toInt()}",
         )
-        val speakResult = tts.speak(spokenText, TextToSpeech.QUEUE_ADD, null, straightKey)
+        val speakResult =
+            ttsLifecycle.runIfActive {
+                tts.speak(spokenText, TextToSpeech.QUEUE_ADD, null, straightKey)
+            } ?: return@LaunchedEffect
         DebugTelemetry.log("TurnByTurn", "voice=speak_result id=$straightKey result=$speakResult")
         if (speakResult == TextToSpeech.SUCCESS) {
             alertedStraightSectionKey = straightKey
@@ -210,7 +234,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         if (arrivalAlertedTrack == trackKey) return@LaunchedEffect
         DebugTelemetry.log("TurnByTurn", "voice=arrival track=${state.trackTitle ?: "unknown"}")
         val utteranceId = "arrival:$trackKey"
-        val speakResult = tts.speak("You have arrived", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        val speakResult =
+            ttsLifecycle.runIfActive {
+                tts.speak("You have arrived", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            } ?: return@LaunchedEffect
         DebugTelemetry.log("TurnByTurn", "voice=speak_result id=$utteranceId result=$speakResult")
         if (speakResult == TextToSpeech.SUCCESS) {
             arrivalAlertedTrack = trackKey
@@ -237,7 +264,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
                 return@LaunchedEffect
             }
             val utteranceId = "off_route:${System.currentTimeMillis()}"
-            val speakResult = tts.speak("You are off route.", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            val speakResult =
+                ttsLifecycle.runIfActive {
+                    tts.speak("You are off route.", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+                } ?: return@LaunchedEffect
             DebugTelemetry.log(
                 "TurnByTurn",
                 "voice=off_route distanceToRouteM=${currentState.distanceToRouteMeters?.toInt() ?: "na"} " +
@@ -262,7 +292,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         if (!state.active || state.mode != GuidanceMode.FOLLOW_ROUTE || state.offRoute) return@LaunchedEffect
 
         val utteranceId = "back_on_route:${System.currentTimeMillis()}"
-        val speakResult = tts.speak("Back on route", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        val speakResult =
+            ttsLifecycle.runIfActive {
+                tts.speak("Back on route", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            } ?: return@LaunchedEffect
         DebugTelemetry.log(
             "TurnByTurn",
             "voice=back_on_route distanceToRouteM=${state.distanceToRouteMeters?.toInt() ?: "na"} result=$speakResult",

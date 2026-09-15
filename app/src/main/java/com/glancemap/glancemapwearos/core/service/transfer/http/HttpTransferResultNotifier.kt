@@ -1,34 +1,38 @@
 package com.glancemap.glancemapwearos.core.service.transfer.http
+
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferTerminalOutcome
+
+internal data class HttpTransferTerminalResult(
+    val phase: String,
+    val ackStatus: String,
+    val detail: String,
+)
 
 internal class HttpTransferResultNotifier(
     private val notificationHelper: NotificationHelper,
-    private val sendStatus: suspend (sourceNodeId: String, transferId: String, phase: String, detail: String) -> Unit,
-    private val sendAck: suspend (sourceNodeId: String, transferId: String, status: String, detail: String) -> Unit,
+    private val claimTerminal: (transferId: String, outcome: TransferTerminalOutcome) -> Boolean,
 ) {
-    suspend fun onSuccess(metadata: ReceiverMetadata) {
-        notificationHelper.stopForeground(metadata.notificationId)
+    fun onSuccess(metadata: ReceiverMetadata): HttpTransferTerminalResult? {
+        if (!claimTerminal(metadata.transferId, TransferTerminalOutcome.DONE)) return null
         notificationHelper.showCompletion(metadata.notificationId, metadata.fileName, "Saved ✓")
-        sendStatus(metadata.sourceNodeId, metadata.transferId, "DONE", "")
-        sendAck(metadata.sourceNodeId, metadata.transferId, "DONE", "")
+        return HttpTransferTerminalResult(phase = "DONE", ackStatus = "DONE", detail = "")
     }
 
-    suspend fun onCancelled(metadata: ReceiverMetadata) {
-        notificationHelper.stopForeground(metadata.notificationId)
+    fun onCancelled(metadata: ReceiverMetadata): HttpTransferTerminalResult? {
+        if (!claimTerminal(metadata.transferId, TransferTerminalOutcome.CANCELLED)) return null
         notificationHelper.showError(metadata.notificationId, metadata.fileName, "Cancelled")
-        sendStatus(metadata.sourceNodeId, metadata.transferId, "CANCELLED", "")
-        sendAck(metadata.sourceNodeId, metadata.transferId, "ERROR", "Cancelled")
+        return HttpTransferTerminalResult(phase = "CANCELLED", ackStatus = "ERROR", detail = "Cancelled")
     }
 
-    suspend fun onError(
+    fun onError(
         metadata: ReceiverMetadata,
         error: Exception,
-    ) {
-        notificationHelper.stopForeground(metadata.notificationId)
+    ): HttpTransferTerminalResult? {
+        if (!claimTerminal(metadata.transferId, TransferTerminalOutcome.ERROR)) return null
         notificationHelper.showError(metadata.notificationId, metadata.fileName, "Failed: ${error.message}")
         val detail = error.message ?: "Unknown error"
-        sendStatus(metadata.sourceNodeId, metadata.transferId, "ERROR", detail)
-        sendAck(metadata.sourceNodeId, metadata.transferId, "ERROR", detail)
+        return HttpTransferTerminalResult(phase = "ERROR", ackStatus = "ERROR", detail = detail)
     }
 }

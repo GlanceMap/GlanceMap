@@ -1507,15 +1507,35 @@ class MapViewModel(
         val mapReady = initialViewportReady != null || firstVisibleMap != null
         if (mapReady) {
             onFirstVisibleMap()
+            val initialViewportChanged =
+                initialViewportReadiness?.let { armed ->
+                    initialViewportReady?.let { observed ->
+                        armed.layerId != observed.layerId ||
+                            armed.requestId != observed.requestId ||
+                            armed.viewportKey != observed.viewportKey
+                    }
+                } ?: false
             MapHotPathDiagnostics.recordEvent(
                 stage = "map_update_ui",
-                status = "first_visible_observed",
+                status =
+                    if (initialViewportChanged) {
+                        "first_visible_current_viewport"
+                    } else {
+                        "first_visible_observed"
+                    },
                 detail =
                     if (initialViewportReady != null) {
                         "reason=initial_map_load scope=viewport " +
                             "layer=${initialViewportReady.layerId} " +
                             "request=${initialViewportReady.requestId} " +
-                            "tiles=${initialViewportReady.viewportKey.tiles.size}"
+                            "tiles=${initialViewportReady.viewportKey.tiles.size}" +
+                            if (initialViewportChanged) {
+                                " armedLayer=${initialViewportReadiness?.layerId} " +
+                                    "armedRequest=${initialViewportReadiness?.requestId} " +
+                                    "armedTiles=${initialViewportReadiness?.viewportKey?.tiles?.size}"
+                            } else {
+                                ""
+                            }
                     } else {
                         "reason=${checkNotNull(firstVisibleRequest).telemetryReason} " +
                             "baseline=$firstVisibleMapBaselineVersion version=${firstVisibleMap?.version} " +

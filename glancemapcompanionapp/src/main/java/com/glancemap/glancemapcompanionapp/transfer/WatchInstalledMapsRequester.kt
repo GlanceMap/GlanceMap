@@ -18,6 +18,8 @@ import java.util.concurrent.TimeoutException
 private typealias WatchInstalledSnapshot =
     Pair<List<WatchInstalledMap>, List<WatchInstalledCoverageArea>>
 
+internal fun installedMapQueryPath(): String = DataLayerPaths.PATH_LIST_MAPS
+
 /**
  * Phone-side helper: asks the watch for installed map files and their bbox.
  *
@@ -75,7 +77,7 @@ class WatchInstalledMapsRequester(
             } catch (error: Throwable) {
                 Log.w(TAG, "Map-list prewarm failed for node=$nodeId", error)
             }
-            sendMessage(nodeId, DataLayerPaths.PATH_LIST_MAPS, payload)
+            sendMessage(nodeId, installedMapQueryPath(), payload)
             val snapshot = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
             if (snapshot != null) {
                 Result.Success(
@@ -90,7 +92,7 @@ class WatchInstalledMapsRequester(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (e: Exception) {
-            Log.e(TAG, "Map list request failed for node=$nodeId", e)
+            Log.e(TAG, "Map list request failed", e)
             Result.Error(e)
         } finally {
             pendingRequests.remove(requestId)?.cancel()
