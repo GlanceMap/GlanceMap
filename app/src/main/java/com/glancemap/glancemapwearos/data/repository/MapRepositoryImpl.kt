@@ -36,6 +36,7 @@ class MapRepositoryImpl(
         expectedSize: Long? = null,
         resumeOffset: Long = 0L,
         computeSha256: Boolean = true,
+        diagnosticContext: String? = null,
     ): String? =
         withContext(Dispatchers.IO) {
             val exp = expectedSize?.takeIf { it > 0L }
@@ -52,6 +53,7 @@ class MapRepositoryImpl(
                     keepPartialOnCancel = true,
                     keepPartialOnFailure = true,
                     computeSha256 = computeSha256,
+                    diagnosticContext = diagnosticContext,
                 )
 
             val result =

@@ -63,7 +63,7 @@ class HttpTransferServer :
         private const val DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
         private const val MAP_BUFFER_SIZE = 4 * 1024 * 1024
         private const val ACK_TIMEOUT_MS = 45 * 60 * 1000L
-        private const val FIRST_REQUEST_TIMEOUT_MS = 15_000L
+        internal const val FIRST_REQUEST_TIMEOUT_MS = 45_000L
 
         private const val SERVER_READY_TIMEOUT_MS = 5_000L
         private const val SERVER_READY_POLL_DELAY_MS = 100L
@@ -97,6 +97,9 @@ class HttpTransferServer :
     @Volatile
     private var activeProbeRequest: CompletableDeferred<Unit>? = null
 
+    @Volatile
+    private var activeProbeDownload: ActiveDownload? = null
+
     private val activeDownloads = ConcurrentHashMap<String, ActiveDownload>()
 
     override suspend fun transfer(
@@ -112,10 +115,11 @@ class HttpTransferServer :
             val totalStartMs = SystemClock.elapsedRealtime()
 
             val ipAddress = TransferUtils.getWifiIpAddress(context)
-            Log.d(TAG, "Phone IP detected as: $ipAddress")
+            Log.d(TAG, "Phone Wi-Fi IP resolved")
             PhoneTransferDiagnostics.log(
                 "Http",
-                "Transfer start file=${metadata.displayFileName} node=$targetNodeId size=${metadata.totalSize} ip=$ipAddress",
+                "Transfer start ${metadata.diagnosticContext()} file=${metadata.displayFileName} " +
+                    "size=${metadata.totalSize} interfaceCategory=wifi addressFamily=ipv4",
             )
 
             if (ipAddress.isNullOrBlank()) {
@@ -143,6 +147,7 @@ class HttpTransferServer :
                     metadata = metadata,
                     transferToken = transferToken,
                     firstRequest = firstRequest,
+                    startedAtElapsedMs = totalStartMs,
                     interruptionDeferred = interruptionDeferred,
                     awaitIfPaused = {
                         pauseBlocked.set(true)
@@ -162,11 +167,13 @@ class HttpTransferServer :
                 val serverReadyMs = SystemClock.elapsedRealtime() - serverStartMs
                 activeDownloads[downloadPath] = activeDownload
                 activeProbeRequest = firstRequest
+                activeProbeDownload = activeDownload
 
-                Log.d(TAG, "✅ Server ready at http://$ipAddress:$port$downloadPath")
+                Log.d(TAG, "✅ HTTP server ready port=$port")
                 PhoneTransferDiagnostics.log(
                     "Http",
-                    "Server ready file=${metadata.displayFileName} url=http://$ipAddress:$port$downloadPath",
+                    "event=http_server_ready ${metadata.diagnosticContext()} " +
+                        "file=${metadata.displayFileName} port=$port",
                 )
 
                 val json =
@@ -185,12 +192,13 @@ class HttpTransferServer :
 
                 Log.d(
                     TAG,
-                    "Sending START_WIFI_TRANSFER file=${metadata.displayFileName} " +
-                        "node=$targetNodeId ip=$ipAddress port=$port path=$downloadPath size=$fileSize",
+                    "Sending START_WIFI_TRANSFER id=${metadata.transferId} file=${metadata.displayFileName} " +
+                        "port=$port size=$fileSize",
                 )
                 PhoneTransferDiagnostics.log(
                     "Http",
-                    "Send START_WIFI_TRANSFER file=${metadata.displayFileName} node=$targetNodeId port=$port path=$downloadPath",
+                    "event=start_wifi_transfer_sent ${metadata.diagnosticContext()} " +
+                        "file=${metadata.displayFileName} port=$port",
                 )
                 Wearable
                     .getMessageClient(context)
@@ -200,6 +208,12 @@ class HttpTransferServer :
                 onProgress(0f, "Waiting for watch to download (HTTP)…")
 
                 val firstRequestStartMs = SystemClock.elapsedRealtime()
+                PhoneTransferDiagnostics.log(
+                    "Http",
+                    "event=http_wait_first_request " +
+                        "transferId=${metadata.transferId} file=${metadata.displayFileName} " +
+                        "size=${metadata.totalSize} timeoutMs=$FIRST_REQUEST_TIMEOUT_MS",
+                )
                 var ackBeforeFirstRequest: TransferResult? = null
                 val firstRequestHit =
                     withTimeoutOrNull(FIRST_REQUEST_TIMEOUT_MS) {
@@ -225,13 +239,13 @@ class HttpTransferServer :
                     Log.w(
                         TAG,
                         "Watch did not hit server within ${FIRST_REQUEST_TIMEOUT_MS / 1000}s " +
-                            "file=${metadata.displayFileName} " +
-                            "node=$targetNodeId ip=$ipAddress port=$port path=$downloadPath",
+                            "transferId=${metadata.transferId} file=${metadata.displayFileName} port=$port",
                     )
                     PhoneTransferDiagnostics.warn(
                         "Http",
-                        "Watch did not hit server within ${FIRST_REQUEST_TIMEOUT_MS / 1000}s " +
-                            "file=${metadata.displayFileName} node=$targetNodeId",
+                        "event=http_no_request_timeout ${metadata.diagnosticContext()} " +
+                            "elapsedMs=$firstRequestMs timeoutMs=$FIRST_REQUEST_TIMEOUT_MS " +
+                            "file=${metadata.displayFileName}",
                     )
                     return@withContext TransferResult(
                         success = false,
@@ -247,10 +261,17 @@ class HttpTransferServer :
                     )
                     PhoneTransferDiagnostics.warn(
                         "Http",
-                        "Early HTTP result file=${metadata.displayFileName} firstRequest=${firstRequestMs}ms result=${ackBeforeFirstRequest.message}",
+                        "Early HTTP result ${metadata.diagnosticContext()} file=${metadata.displayFileName} " +
+                            "firstRequest=${firstRequestMs}ms result=${ackBeforeFirstRequest.message}",
                     )
                     return@withContext ackBeforeFirstRequest
                 }
+
+                PhoneTransferDiagnostics.log(
+                    "Http",
+                    "event=http_first_signal_received ${metadata.diagnosticContext()} " +
+                        "elapsedMs=$firstRequestMs file=${metadata.displayFileName} size=${metadata.totalSize}",
+                )
 
                 val ackStartMs = SystemClock.elapsedRealtime()
                 val result =
@@ -270,7 +291,9 @@ class HttpTransferServer :
                 )
                 PhoneTransferDiagnostics.log(
                     "Http",
-                    "Metrics file=${metadata.displayFileName} serverReady=${serverReadyMs}ms firstRequest=${firstRequestMs}ms ack=${ackWaitMs}ms total=${SystemClock.elapsedRealtime() - totalStartMs}ms result=${result.message}",
+                    "event=http_metrics ${metadata.diagnosticContext()} file=${metadata.displayFileName} " +
+                        "serverReadyMs=$serverReadyMs firstSignalMs=$firstRequestMs ackWaitMs=$ackWaitMs " +
+                        "totalMs=${SystemClock.elapsedRealtime() - totalStartMs} result=${result.message}",
                 )
 
                 return@withContext result
@@ -287,12 +310,16 @@ class HttpTransferServer :
                 if (activeProbeRequest === firstRequest) {
                     activeProbeRequest = null
                 }
+                if (activeProbeDownload === activeDownload) {
+                    activeProbeDownload = null
+                }
             }
         }
 
     override fun close() {
         activeDownloads.clear()
         activeProbeRequest = null
+        activeProbeDownload = null
         runCatching { server?.stop(1000, 2000) }
         server = null
         assignedPort = null
@@ -345,6 +372,14 @@ class HttpTransferServer :
                         activeProbeRequest?.let { probe ->
                             if (!probe.isCompleted) probe.complete(Unit)
                         }
+                        activeProbeDownload?.let { active ->
+                            PhoneTransferDiagnostics.log(
+                                "Http",
+                                "event=http_probe_received ${active.metadata.diagnosticContext()} " +
+                                    "requestType=probe " +
+                                    "elapsedMs=${SystemClock.elapsedRealtime() - active.startedAtElapsedMs}",
+                            )
+                        }
                         call.respondText("OK")
                     }
                 }
@@ -358,8 +393,8 @@ class HttpTransferServer :
                 ?: throw IllegalStateException("Failed to bind server port")
         val port = connector.port
 
-        Log.d(TAG, "Connectors=${connectors.joinToString { "${it.host}:${it.port}" }}")
-        PhoneTransferDiagnostics.log("Http", "Server connectors=${connectors.joinToString { "${it.host}:${it.port}" }}")
+        Log.d(TAG, "HTTP connectors=${connectors.size} port=$port")
+        PhoneTransferDiagnostics.log("Http", "Server connectors=${connectors.size} port=$port")
 
         server = newServer
         assignedPort = port
@@ -377,7 +412,13 @@ class HttpTransferServer :
             return
         }
 
+        val fileRequestElapsedMs = SystemClock.elapsedRealtime() - active.startedAtElapsedMs
         if (!active.firstRequest.isCompleted) active.firstRequest.complete(Unit)
+        PhoneTransferDiagnostics.log(
+            "Http",
+            "event=http_file_request_received ${active.metadata.diagnosticContext()} " +
+                "requestType=file elapsedMs=$fileRequestElapsedMs",
+        )
 
         val displayFileName = active.metadata.displayFileName
         val fileSize = active.metadata.totalSize
@@ -411,15 +452,17 @@ class HttpTransferServer :
                 resumeOffset = startOffset,
                 isMapFile = active.metadata.isMapFile,
             )
-        Log.d(TAG, "Incoming request: path=${call.request.path()} rangeStart=$startOffset")
+        Log.d(TAG, "Incoming HTTP request rangeStart=$startOffset")
         PhoneTransferDiagnostics.log(
             "Http",
-            "Incoming request file=${active.metadata.displayFileName} path=${call.request.path()} rangeStart=$startOffset stallTimeoutMs=$stallTimeoutMs",
+            "Incoming request ${active.metadata.diagnosticContext()} file=${active.metadata.displayFileName} " +
+                "rangeStart=$startOffset stallTimeoutMs=$stallTimeoutMs",
         )
         if (startOffset > 0L) {
             PhoneTransferDiagnostics.log(
                 "Http",
-                "Resuming partial file=${active.metadata.displayFileName} from=${formatBytes(startOffset)} stallTimeoutMs=$stallTimeoutMs",
+                "Resuming partial ${active.metadata.diagnosticContext()} file=${active.metadata.displayFileName} " +
+                    "from=${formatBytes(startOffset)} stallTimeoutMs=$stallTimeoutMs",
             )
         }
         val responseStatus =
@@ -440,6 +483,9 @@ class HttpTransferServer :
                 null
             }
 
+        var sourceReadMs = 0L
+        var responseWriteMs = 0L
+        var rangeSeekOrSkipMs = 0L
         call.respondOutputStream(
             contentType = ContentType.Application.OctetStream,
             status = responseStatus,
@@ -457,7 +503,9 @@ class HttpTransferServer :
                     val requestJob = currentCoroutineContext()[Job]
 
                     if (startOffset > 0L) {
+                        val skipStartMs = SystemClock.elapsedRealtime()
                         skipFully(inp, startOffset)
+                        rangeSeekOrSkipMs += SystemClock.elapsedRealtime() - skipStartMs
                     }
 
                     active.abortRequest = {
@@ -495,24 +543,33 @@ class HttpTransferServer :
                         }
 
                     if (fileSize > 0L) {
-                        val progress = (sent.toDouble() / fileSize.toDouble()).coerceIn(0.0, 1.0)
+                        val progress =
+                            calculateHttpProgressFraction(
+                                resumeOffsetBytes = startOffset,
+                                bytesTransferredThisAttempt = (sent - startOffset).coerceAtLeast(0L),
+                                fullFileSizeBytes = fileSize,
+                            )
+                        val completedBytes =
+                            calculateCumulativeHttpProgressBytes(
+                                resumeOffsetBytes = startOffset,
+                                bytesTransferredThisAttempt = (sent - startOffset).coerceAtLeast(0L),
+                                fullFileSizeBytes = fileSize,
+                            )
                         active.onProgress(
-                            progress.toFloat(),
-                            formatTransferText(
-                                sent = sent,
+                            progress,
+                            formatActiveTransferText(
+                                completedBytes = completedBytes,
                                 totalSize = fileSize,
-                                speedMBps = null,
-                                resumeOffset = startOffset,
+                                speedMiBps = null,
                             ),
                         )
                     } else {
                         active.onProgress(
                             0f,
-                            formatTransferText(
-                                sent = sent,
+                            formatActiveTransferText(
+                                completedBytes = 0L,
                                 totalSize = 0L,
-                                speedMBps = null,
-                                resumeOffset = startOffset,
+                                speedMiBps = null,
                             ),
                         )
                     }
@@ -533,20 +590,29 @@ class HttpTransferServer :
                                 if (idleMs < stallTimeoutMs) continue
                                 if (!stallReported.compareAndSet(false, true)) continue
 
+                                val currentCompletedBytes =
+                                    calculateCumulativeHttpProgressBytes(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt =
+                                            (currentSent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
                                 val progress =
-                                    if (fileSize > 0L) {
-                                        (currentSent.toDouble() / fileSize.toDouble()).coerceIn(0.0, 1.0).toFloat()
-                                    } else {
-                                        0f
-                                    }
-                                val waitText = buildReconnectWaitText(currentSent, fileSize)
+                                    calculateHttpProgressFraction(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt =
+                                            (currentSent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
+                                val waitText = buildReconnectWaitText(currentCompletedBytes, fileSize)
                                 Log.w(
                                     TAG,
                                     "HTTP stall detected file=$displayFileName idle=${idleMs}ms timeout=${stallTimeoutMs}ms sent=$currentSent",
                                 )
                                 PhoneTransferDiagnostics.warn(
                                     "Http",
-                                    "Stall detected file=$displayFileName idle=${idleMs}ms timeoutMs=$stallTimeoutMs sent=$currentSent",
+                                    "Stall detected ${active.metadata.diagnosticContext()} file=$displayFileName " +
+                                        "idle=${idleMs}ms timeoutMs=$stallTimeoutMs sent=$currentSent",
                                 )
                                 active.onProgress(progress, waitText)
                                 if (!active.interruptionDeferred.isCompleted) {
@@ -608,13 +674,21 @@ class HttpTransferServer :
                                 if (windowMs < HTTP_SLOW_PROGRESS_WINDOW_MS) continue
                                 if (!stallReported.compareAndSet(false, true)) return@launch
 
+                                val currentCompletedBytes =
+                                    calculateCumulativeHttpProgressBytes(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt =
+                                            (currentSent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
                                 val progress =
-                                    if (fileSize > 0L) {
-                                        (currentSent.toDouble() / fileSize.toDouble()).coerceIn(0.0, 1.0).toFloat()
-                                    } else {
-                                        0f
-                                    }
-                                val waitText = buildReconnectWaitText(currentSent, fileSize)
+                                    calculateHttpProgressFraction(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt =
+                                            (currentSent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
+                                val waitText = buildReconnectWaitText(currentCompletedBytes, fileSize)
                                 Log.w(
                                     TAG,
                                     "HTTP slow-progress detected file=$displayFileName window=${windowMs}ms bytes=$progressBytes sent=$currentSent",
@@ -658,10 +732,14 @@ class HttpTransferServer :
                                 }
                             if (toRead <= 0) break
 
+                            val readStartMs = SystemClock.elapsedRealtime()
                             val read = inp.read(buffer, 0, toRead)
+                            sourceReadMs += SystemClock.elapsedRealtime() - readStartMs
                             if (read < 0) break
 
+                            val writeStartMs = SystemClock.elapsedRealtime()
                             write(buffer, 0, read)
+                            responseWriteMs += SystemClock.elapsedRealtime() - writeStartMs
                             sent += read.toLong()
                             sentBytes.set(sent)
                             lastProgressAt.set(SystemClock.elapsedRealtime())
@@ -671,10 +749,17 @@ class HttpTransferServer :
                             }
 
                             while (milestoneLoggingEnabled && sent >= nextMilestoneBytes) {
-                                val milestoneText = buildMilestoneText(sent, fileSize)
+                                val completedBytes =
+                                    calculateCumulativeHttpProgressBytes(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt = (sent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
+                                val milestoneText = buildMilestoneText(completedBytes, fileSize)
                                 PhoneTransferDiagnostics.log(
                                     "Http",
-                                    "Milestone file=$displayFileName $milestoneText",
+                                    "Milestone ${active.metadata.diagnosticContext()} " +
+                                        "file=$displayFileName $milestoneText",
                                 )
                                 nextMilestoneBytes += HTTP_MILESTONE_LOG_STEP_BYTES
                             }
@@ -690,49 +775,62 @@ class HttpTransferServer :
 
                                 val timeDelta = max(1L, now - lastSpeedMs)
                                 val bytesDelta = sent - lastSpeedBytes
-                                val mbps =
+                                val mibps =
                                     if (timeDelta >= SPEED_WARMUP_MIN_MS) {
                                         (bytesDelta * 1000.0) / timeDelta / (1024.0 * 1024.0)
                                     } else {
                                         null
                                     }
 
-                                if (mbps != null) {
+                                if (mibps != null) {
                                     lastSpeedMs = now
                                     lastSpeedBytes = sent
                                 }
 
+                                val completedBytes =
+                                    calculateCumulativeHttpProgressBytes(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt = (sent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
+                                    )
                                 val progress =
-                                    if (fileSize > 0) {
-                                        (sent.toDouble() / fileSize.toDouble()).coerceIn(0.0, 1.0)
-                                    } else {
-                                        0.0
-                                    }
-
-                                val text =
-                                    formatTransferText(
-                                        sent = sent,
-                                        totalSize = fileSize,
-                                        speedMBps = mbps,
-                                        resumeOffset = startOffset,
+                                    calculateHttpProgressFraction(
+                                        resumeOffsetBytes = startOffset,
+                                        bytesTransferredThisAttempt =
+                                            (sent - startOffset).coerceAtLeast(0L),
+                                        fullFileSizeBytes = fileSize,
                                     )
 
-                                active.onProgress(progress.toFloat(), text)
+                                val text =
+                                    formatActiveTransferText(
+                                        completedBytes = completedBytes,
+                                        totalSize = fileSize,
+                                        speedMiBps = mibps,
+                                    )
+
+                                active.onProgress(progress, text)
                             }
 
                             if (remaining == 0L) break
                         }
 
+                        val finalCompletedBytes =
+                            calculateCumulativeHttpProgressBytes(
+                                resumeOffsetBytes = startOffset,
+                                bytesTransferredThisAttempt = (sent - startOffset).coerceAtLeast(0L),
+                                fullFileSizeBytes = fileSize,
+                            )
                         val finalProgress =
-                            if (fileSize > 0) {
-                                (sent.toDouble() / fileSize.toDouble()).coerceIn(0.0, 1.0).toFloat()
-                            } else {
-                                0f
-                            }
+                            calculateHttpProgressFraction(
+                                resumeOffsetBytes = startOffset,
+                                bytesTransferredThisAttempt =
+                                    (sent - startOffset).coerceAtLeast(0L),
+                                fullFileSizeBytes = fileSize,
+                            )
                         active.onProgress(
                             finalProgress,
                             formatFinalizationText(
-                                sent = sent,
+                                completedBytes = finalCompletedBytes,
                                 totalSize = fileSize,
                                 resumeOffset = startOffset,
                             ),
@@ -741,6 +839,18 @@ class HttpTransferServer :
                         active.abortRequest = null
                         stallWatchdog.cancel()
                         slowProgressWatchdog.cancel()
+                        val bytesServedThisAttempt =
+                            (sent - startOffset).coerceAtLeast(0L)
+                        PhoneTransferDiagnostics.log(
+                            "Http",
+                            "event=http_response_summary ${active.metadata.diagnosticContext()} " +
+                                "fullFileSizeBytes=$fileSize resumeOffsetBytes=$startOffset " +
+                                "finalFileSizeBytes=$sent " +
+                                "bytesServedThisAttempt=$bytesServedThisAttempt " +
+                                "sourceReadMs=$sourceReadMs responseWriteMs=$responseWriteMs " +
+                                "rangeSeekOrSkipMs=$rangeSeekOrSkipMs " +
+                                "totalAttemptDurationMs=${SystemClock.elapsedRealtime() - active.startedAtElapsedMs}",
+                        )
                     }
                 }
             }
@@ -748,31 +858,31 @@ class HttpTransferServer :
     }
 
     private fun buildReconnectWaitText(
-        sent: Long,
+        completedBytes: Long,
         totalSize: Long,
     ): String {
         val detail =
             if (totalSize > 0L) {
-                "HTTP: ${formatBytes(sent)} / ${formatBytes(totalSize)}"
+                "HTTP: ${formatBytes(completedBytes)} / ${formatBytes(totalSize)}"
             } else {
-                "HTTP: ${formatBytes(sent)}"
+                "HTTP: ${formatBytes(completedBytes)}"
             }
         return "Waiting for watch reconnect…\n$detail"
     }
 
     private fun buildMilestoneText(
-        sent: Long,
+        completedBytes: Long,
         totalSize: Long,
     ): String {
         val base =
             if (totalSize > 0L) {
-                "${formatBytes(sent)} / ${formatBytes(totalSize)}"
+                "${formatBytes(completedBytes)} / ${formatBytes(totalSize)}"
             } else {
-                formatBytes(sent)
+                formatBytes(completedBytes)
             }
         val percent =
             if (totalSize > 0L) {
-                val ratio = (sent.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0) * 100.0
+                val ratio = (completedBytes.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0) * 100.0
                 String.format(Locale.US, " (%.1f%%)", ratio)
             } else {
                 ""
@@ -802,59 +912,51 @@ class HttpTransferServer :
         throw IllegalStateException("HTTP server did not become reachable on $host:$port")
     }
 
-    private fun formatBytes(bytes: Long): String {
+    internal fun formatBytes(bytes: Long): String {
         val b = max(bytes, 0L).toDouble()
-        val kb = 1024.0
-        val mb = kb * 1024.0
-        val gb = mb * 1024.0
+        val kib = 1024.0
+        val mib = kib * 1024.0
+        val gib = mib * 1024.0
         return when {
-            b >= gb -> String.format(Locale.US, "%.2f GB", b / gb)
-            b >= mb -> String.format(Locale.US, "%.2f MB", b / mb)
-            b >= kb -> String.format(Locale.US, "%.0f KB", b / kb)
+            b >= gib -> String.format(Locale.US, "%.2f GiB", b / gib)
+            b >= mib -> String.format(Locale.US, "%.2f MiB", b / mib)
+            b >= kib -> String.format(Locale.US, "%.0f KiB", b / kib)
             else -> "$bytes B"
         }
     }
 
-    private fun formatProgressText(
-        sent: Long,
+    internal fun formatProgressText(
+        completedBytes: Long,
         totalSize: Long,
-        speedMBps: Double?,
+        speedMiBps: Double?,
         prefix: String = "",
     ): String {
         val base =
             if (totalSize > 0L) {
-                "${formatBytes(sent)} / ${formatBytes(totalSize)}"
+                "${formatBytes(completedBytes)} / ${formatBytes(totalSize)}"
             } else {
-                formatBytes(sent)
+                formatBytes(completedBytes)
             }
         val speedSuffix =
-            speedMBps
+            speedMiBps
                 ?.let {
-                    " (${String.format(Locale.US, "%.2f", it)} MB/s)"
+                    " (${String.format(Locale.US, "%.2f", it)} MiB/s)"
                 }.orEmpty()
         return "$prefix$base$speedSuffix"
     }
 
-    private fun formatTransferText(
-        sent: Long,
+    internal fun formatActiveTransferText(
+        completedBytes: Long,
         totalSize: Long,
-        speedMBps: Double?,
-        resumeOffset: Long,
-    ): String {
-        val detail = formatProgressText(sent, totalSize, speedMBps, prefix = "HTTP: ")
-        return if (resumeOffset > 0L) {
-            "Resuming from partial…\n$detail"
-        } else {
-            detail
-        }
-    }
+        speedMiBps: Double?,
+    ): String = formatProgressText(completedBytes, totalSize, speedMiBps, prefix = "HTTP: ")
 
     private fun formatFinalizationText(
-        sent: Long,
+        completedBytes: Long,
         totalSize: Long,
         resumeOffset: Long,
     ): String {
-        val detail = formatProgressText(sent, totalSize, speedMBps = null, prefix = "HTTP: ")
+        val detail = formatProgressText(completedBytes, totalSize, speedMiBps = null, prefix = "HTTP: ")
         return if (resumeOffset > 0L) {
             "Verifying…\n$detail"
         } else {
@@ -943,6 +1045,7 @@ class HttpTransferServer :
         val metadata: TransferMetadata,
         val transferToken: String,
         val firstRequest: CompletableDeferred<Unit>,
+        val startedAtElapsedMs: Long,
         val interruptionDeferred: CompletableDeferred<TransferResult>,
         val awaitIfPaused: suspend () -> Unit,
         val isAwaitingPause: () -> Boolean,
@@ -953,4 +1056,37 @@ class HttpTransferServer :
         @Volatile
         var abortRequest: (() -> Unit)? = null
     }
+}
+
+internal fun calculateCumulativeHttpProgressBytes(
+    resumeOffsetBytes: Long,
+    bytesTransferredThisAttempt: Long,
+    fullFileSizeBytes: Long,
+): Long {
+    val resumeOffset = resumeOffsetBytes.coerceAtLeast(0L)
+    val attemptBytes = bytesTransferredThisAttempt.coerceAtLeast(0L)
+    val cumulativeBytes =
+        if (attemptBytes > Long.MAX_VALUE - resumeOffset) {
+            Long.MAX_VALUE
+        } else {
+            resumeOffset + attemptBytes
+        }
+    return cumulativeBytes.coerceIn(0L, fullFileSizeBytes.coerceAtLeast(0L))
+}
+
+internal fun calculateHttpProgressFraction(
+    resumeOffsetBytes: Long,
+    bytesTransferredThisAttempt: Long,
+    fullFileSizeBytes: Long,
+): Float {
+    val totalBytes = fullFileSizeBytes.coerceAtLeast(0L)
+    if (totalBytes == 0L) return 0f
+
+    return (
+        calculateCumulativeHttpProgressBytes(
+            resumeOffsetBytes = resumeOffsetBytes,
+            bytesTransferredThisAttempt = bytesTransferredThisAttempt,
+            fullFileSizeBytes = totalBytes,
+        ).toDouble() / totalBytes.toDouble()
+    ).toFloat().coerceIn(0f, 1f)
 }

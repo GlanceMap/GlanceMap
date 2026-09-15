@@ -79,7 +79,7 @@ class WatchInstalledMapsRequester(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Map list request failed for node=$nodeId", e)
+            Log.e(TAG, "Map list request failed", e)
             Result.Error(e)
         } finally {
             pendingRequests.remove(requestId)?.cancel()

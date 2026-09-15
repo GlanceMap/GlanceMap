@@ -15,6 +15,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.coroutineContext
 
+@Suppress("LargeClass")
 internal class HttpTransferConnectionLoop(
     private val host: TransferRuntimeHost,
     private val networkSession: HttpTransferNetworkSession,
@@ -38,8 +39,25 @@ internal class HttpTransferConnectionLoop(
     internal data class ReceiveResult(
         val sha256: String?,
         val finalNetwork: Network,
+        val fullFileSizeBytes: Long,
+        val resumeOffsetBytes: Long,
+        val finalFileSizeBytes: Long,
+        val bytesTransferredThisAttempt: Long,
+        val attemptThroughputMiBps: Double,
+        val startupElapsedMs: Long,
+        val timeToFileRequestMs: Long? = null,
+        val dataTransferDurationMs: Long = 0L,
+        val reconnectCount: Int = 0,
     )
 
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "LongMethod",
+        "LongParameterList",
+        "NestedBlockDepth",
+        "ReturnCount",
+        "ThrowsCount",
+    )
     suspend fun receive(
         metadata: ReceiverMetadata,
         baseUrlStr: String,
@@ -47,25 +65,50 @@ internal class HttpTransferConnectionLoop(
         initialNetwork: Network,
         resumeOffset: Long,
         skipInitialProbe: Boolean,
+        startupDeadlineElapsedMs: Long? = null,
+        startupStartElapsedMs: Long = SystemClock.elapsedRealtime(),
+        wifiAcquireMs: Long = 0L,
         onTransferState: (phase: String, detail: String) -> Unit,
         onProgress: (Long) -> Unit,
     ): ReceiveResult {
         var activeWifi = initialNetwork
-        when (val prepared = prepareResumeOffset(metadata, resumeOffset, onTransferState)) {
-            is ResumePreparation.Completed -> {
-                TransferDiagnostics.log(
-                    "HttpConn",
-                    "Recovered completed partial id=${metadata.transferId} file=${metadata.fileName}",
-                )
-                return ReceiveResult(
-                    sha256 = prepared.sha256,
-                    finalNetwork = activeWifi,
-                )
+        val preparedOffset =
+            when (val prepared = prepareResumeOffset(metadata, resumeOffset, onTransferState)) {
+                is ResumePreparation.Completed -> {
+                    TransferDiagnostics.log(
+                        "HttpConn",
+                        "Recovered completed partial id=${metadata.transferId} file=${metadata.fileName}",
+                    )
+                    return ReceiveResult(
+                        sha256 = prepared.sha256,
+                        finalNetwork = activeWifi,
+                        fullFileSizeBytes = metadata.totalSize,
+                        resumeOffsetBytes = metadata.totalSize.takeIf { it > 0L } ?: resumeOffset,
+                        finalFileSizeBytes = metadata.totalSize.takeIf { it > 0L } ?: resumeOffset,
+                        bytesTransferredThisAttempt = 0L,
+                        attemptThroughputMiBps = 0.0,
+                        startupElapsedMs = SystemClock.elapsedRealtime() - startupStartElapsedMs,
+                    )
+                }
+                is ResumePreparation.Continue -> prepared.offset
             }
-            is ResumePreparation.Continue -> Unit
-        }
         if (!skipInitialProbe) {
-            probeServer(activeWifi, URL("$baseUrlStr/"), metadata)
+            val probeTimeoutMs =
+                remainingHttpStartupBudget(startupDeadlineElapsedMs ?: Long.MAX_VALUE, SystemClock.elapsedRealtime())
+                    .coerceAtMost(PROBE_TIMEOUT_MS.toLong())
+            if (probeTimeoutMs > 0L) {
+                runCatching {
+                    probeServer(activeWifi, URL("$baseUrlStr/"), metadata, probeTimeoutMs.toInt())
+                }.onFailure {
+                    // The file request below is the retryable reachability check. Do not spend a
+                    // second independent retry window after this best-effort probe.
+                    Log.w(TAG, "Initial HTTP probe failed; continuing with request retries: ${it.message}")
+                    TransferDiagnostics.warn(
+                        "HttpConn",
+                        "Initial probe failed id=${metadata.transferId}; continuing with request retries",
+                    )
+                }
+            }
         } else {
             Log.d(TAG, "Skipping HTTP root probe for warm session")
             TransferDiagnostics.log(
@@ -79,28 +122,30 @@ internal class HttpTransferConnectionLoop(
         var pausedSinceMs = 0L
 
         try {
-            var connectDeadlineMs = SystemClock.elapsedRealtime() + connectRetryWindowMs
+            var startupComplete = startupDeadlineElapsedMs == null
+            var connectDeadlineMs =
+                minOf(
+                    SystemClock.elapsedRealtime() + connectRetryWindowMs,
+                    startupDeadlineElapsedMs ?: Long.MAX_VALUE,
+                )
             var currentRetryBudgetMs = connectRetryWindowMs
             var lastError: Throwable? = null
             var attempt = 0
 
-            var desiredOffset =
-                when (val prepared = prepareResumeOffset(metadata, resumeOffset, onTransferState)) {
-                    is ResumePreparation.Completed -> {
-                        return ReceiveResult(
-                            sha256 = prepared.sha256,
-                            finalNetwork = activeWifi,
-                        )
-                    }
-                    is ResumePreparation.Continue -> prepared.offset
-                }
+            var desiredOffset = preparedOffset
 
             TransferDiagnostics.log(
                 "HttpConn",
                 "Session start id=${metadata.transferId} file=${metadata.fileName} " +
                     "resumeOffset=$desiredOffset totalSize=${metadata.totalSize} " +
-                    "isResume=${desiredOffset > 0L} budgetMs=$connectRetryWindowMs",
+                    "isResume=${desiredOffset > 0L} " +
+                    "startupBudgetMs=${startupDeadlineElapsedMs?.let { it - startupStartElapsedMs } ?: "na"} " +
+                    "reconnectBudgetMs=$connectRetryWindowMs wifiAcquireMs=$wifiAcquireMs",
             )
+
+            var fileRequestStartElapsedMs: Long? = null
+            var timeToFileRequestMs: Long? = null
+            var reconnectCount = 0
 
             while (SystemClock.elapsedRealtime() < connectDeadlineMs) {
                 coroutineContext.ensureActive()
@@ -110,11 +155,43 @@ internal class HttpTransferConnectionLoop(
                 conn = null
 
                 try {
+                    val startupRemainingMs =
+                        startupDeadlineElapsedMs?.let {
+                            remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
+                        }
+                    val attemptTimeoutMs =
+                        startupRemainingMs?.let {
+                            cappedHttpTimeoutMs(connectTimeoutMs.toLong(), it)
+                        }
+                    if (startupRemainingMs != null && attemptTimeoutMs == null) break
+
+                    val startupElapsedBeforeAttemptMs = SystemClock.elapsedRealtime() - startupStartElapsedMs
+                    if (attempt == 1 || attempt == 2 || attempt % 4 == 0) {
+                        TransferDiagnostics.log(
+                            "HttpConn",
+                            "event=http_connect_attempt transferId=${metadata.transferId} " +
+                                "connectAttempt=$attempt startupElapsedMs=$startupElapsedBeforeAttemptMs " +
+                                "remainingBudgetMs=${startupRemainingMs ?: "na"} resumeOffset=$desiredOffset",
+                        )
+                    }
+                    if (fileRequestStartElapsedMs == null) {
+                        fileRequestStartElapsedMs = startupElapsedBeforeAttemptMs
+                        TransferDiagnostics.log(
+                            "HttpConn",
+                            "event=http_file_request_start transferId=${metadata.transferId} " +
+                                "connectAttempt=$attempt fileRequestStartElapsedMs=$startupElapsedBeforeAttemptMs " +
+                                "remainingBudgetMs=${startupRemainingMs ?: "na"}",
+                        )
+                    }
+
                     val connection =
                         (activeWifi.openConnection(url) as HttpURLConnection).apply {
                             requestMethod = "GET"
-                            connectTimeout = connectTimeoutMs
-                            readTimeout = readTimeoutMs
+                            connectTimeout = attemptTimeoutMs ?: connectTimeoutMs
+                            readTimeout =
+                                startupRemainingMs?.let {
+                                    cappedHttpTimeoutMs(readTimeoutMs.toLong(), it)
+                                } ?: readTimeoutMs
                             doInput = true
                             useCaches = false
                             instanceFollowRedirects = true
@@ -133,8 +210,35 @@ internal class HttpTransferConnectionLoop(
                     Log.d(TAG, "HTTP connect id=${metadata.transferId} attempt=$attempt rangeOffset=$desiredOffset")
                     connection.connect()
 
+                    if (!startupComplete) {
+                        connection.readTimeout =
+                            cappedHttpTimeoutMs(
+                                readTimeoutMs.toLong(),
+                                remainingHttpStartupBudget(
+                                    requireNotNull(startupDeadlineElapsedMs),
+                                    SystemClock.elapsedRealtime(),
+                                ),
+                            ) ?: throw IOException("HTTP startup budget exhausted before the first request")
+                    }
                     val code = connection.responseCode
                     Log.d(TAG, "HTTP Response: $code")
+                    if (!startupComplete) {
+                        startupComplete = true
+                        timeToFileRequestMs = SystemClock.elapsedRealtime() - startupStartElapsedMs
+                        TransferDiagnostics.log(
+                            "HttpConn",
+                            "event=http_file_request_response transferId=${metadata.transferId} " +
+                                "responseCode=$code timeToFileRequestMs=$timeToFileRequestMs " +
+                                "startupElapsedMs=$timeToFileRequestMs " +
+                                "remainingBudgetMs=" +
+                                remainingHttpStartupBudget(
+                                    requireNotNull(startupDeadlineElapsedMs),
+                                    SystemClock.elapsedRealtime(),
+                                ),
+                        )
+                        connectDeadlineMs = SystemClock.elapsedRealtime() + currentRetryBudgetMs
+                        connection.readTimeout = readTimeoutMs
+                    }
 
                     if (desiredOffset > 0L) {
                         when (code) {
@@ -160,6 +264,12 @@ internal class HttpTransferConnectionLoop(
                                         return ReceiveResult(
                                             sha256 = repaired.sha256,
                                             finalNetwork = activeWifi,
+                                            fullFileSizeBytes = metadata.totalSize,
+                                            resumeOffsetBytes = desiredOffset,
+                                            finalFileSizeBytes = desiredOffset,
+                                            bytesTransferredThisAttempt = 0L,
+                                            attemptThroughputMiBps = 0.0,
+                                            startupElapsedMs = SystemClock.elapsedRealtime() - startupStartElapsedMs,
                                         )
                                     }
                                     is ResumePreparation.Continue -> {
@@ -188,6 +298,8 @@ internal class HttpTransferConnectionLoop(
                         onTransferState("RESUMED", "Connection restored. Resuming transfer…")
                     }
 
+                    val dataTransferStartMs = SystemClock.elapsedRealtime()
+                    var bytesReceived = desiredOffset
                     val receivedSha256 =
                         connection.inputStream.use { input ->
                             host.saveFile(
@@ -197,30 +309,74 @@ internal class HttpTransferConnectionLoop(
                                 resumeOffset = desiredOffset,
                                 keepPartialOnFailure = true,
                                 computeSha256 = shouldComputeInlineChecksumForHttp(desiredOffset),
-                                onProgress = onProgress,
+                                diagnosticContext = "transferId=${metadata.transferId}",
+                                onProgress = { bytes ->
+                                    bytesReceived = maxOf(bytesReceived, bytes)
+                                    onProgress(bytes)
+                                },
                             )
                         }
+                    val dataTransferDurationMs = SystemClock.elapsedRealtime() - dataTransferStartMs
+                    val finalFileSizeBytes = bytesReceived.coerceAtLeast(desiredOffset)
+                    val bytesTransferredThisAttempt =
+                        calculateBytesTransferredThisAttempt(
+                            resumeOffsetBytes = desiredOffset,
+                            finalFileSizeBytes = finalFileSizeBytes,
+                        )
+                    val attemptThroughputMiBps =
+                        calculateAttemptThroughputMiBps(
+                            bytesTransferredThisAttempt = bytesTransferredThisAttempt,
+                            dataTransferDurationMs = dataTransferDurationMs,
+                        )
+                    val formattedAttemptThroughputMiBps =
+                        String.format(java.util.Locale.US, "%.2f", attemptThroughputMiBps)
+                    val startupElapsedMs =
+                        timeToFileRequestMs ?: (SystemClock.elapsedRealtime() - startupStartElapsedMs)
 
                     Log.d(TAG, "✅ HTTP Receive Complete")
                     TransferDiagnostics.log(
                         "HttpConn",
-                        "HTTP receive complete id=${metadata.transferId} file=${metadata.fileName}",
+                        "event=http_data_summary transferId=${metadata.transferId} file=${metadata.fileName} " +
+                            "fullFileSizeBytes=${metadata.totalSize} resumeOffsetBytes=$desiredOffset " +
+                            "finalFileSizeBytes=$finalFileSizeBytes " +
+                            "bytesTransferredThisAttempt=$bytesTransferredThisAttempt " +
+                            "dataTransferDurationMs=$dataTransferDurationMs " +
+                            "attemptThroughputMiBps=$formattedAttemptThroughputMiBps " +
+                            "reconnectCount=$reconnectCount " +
+                            "startupElapsedMs=$startupElapsedMs " +
+                            "timeToFileRequestMs=${timeToFileRequestMs ?: "na"}",
                     )
                     return ReceiveResult(
                         sha256 = receivedSha256,
                         finalNetwork = activeWifi,
+                        fullFileSizeBytes = metadata.totalSize,
+                        resumeOffsetBytes = desiredOffset,
+                        finalFileSizeBytes = finalFileSizeBytes,
+                        bytesTransferredThisAttempt = bytesTransferredThisAttempt,
+                        attemptThroughputMiBps = attemptThroughputMiBps,
+                        startupElapsedMs = startupElapsedMs,
+                        timeToFileRequestMs = timeToFileRequestMs,
+                        dataTransferDurationMs = dataTransferDurationMs,
+                        reconnectCount = reconnectCount,
                     )
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (e: IOException) {
                     lastError = e
+                    val attemptResumeOffsetBytes = desiredOffset
                     desiredOffset = host.getPartialSize(metadata.fileName)
+                    val bytesTransferredThisAttempt =
+                        calculateBytesTransferredThisAttempt(
+                            resumeOffsetBytes = attemptResumeOffsetBytes,
+                            finalFileSizeBytes = desiredOffset,
+                        )
                     val hasPartialData = desiredOffset > 0L
                     val nowMs = SystemClock.elapsedRealtime()
                     val currentWifi = networkSession.findWifiNetwork()
                     if (!networkPaused) {
                         networkPaused = true
                         pausedSinceMs = nowMs
+                        reconnectCount++
                         val detail =
                             if (currentWifi == null) {
                                 "Network lost. Waiting for Wi-Fi…"
@@ -235,7 +391,10 @@ internal class HttpTransferConnectionLoop(
                         )
                         TransferDiagnostics.warn(
                             "HttpConn",
-                            "Paused id=${metadata.transferId} file=${metadata.fileName} partialBytes=$desiredOffset hasPartial=$hasPartialData wifiAvailable=${currentWifi != null} attempt=$attempt",
+                            "Paused id=${metadata.transferId} file=${metadata.fileName} " +
+                                "resumeOffsetBytes=$attemptResumeOffsetBytes finalFileSizeBytes=$desiredOffset " +
+                                "bytesTransferredThisAttempt=$bytesTransferredThisAttempt hasPartial=$hasPartialData " +
+                                "wifiAvailable=${currentWifi != null} attempt=$attempt",
                         )
                         onTransferState("PAUSED", detail)
                     }
@@ -249,7 +408,11 @@ internal class HttpTransferConnectionLoop(
                                 connectRetryWindowMs
                             }
                         currentRetryBudgetMs = pauseBudgetMs
-                        connectDeadlineMs = maxOf(connectDeadlineMs, pausedSinceMs + pauseBudgetMs)
+                        if (startupComplete) {
+                            connectDeadlineMs = maxOf(connectDeadlineMs, pausedSinceMs + pauseBudgetMs)
+                        } else {
+                            connectDeadlineMs = requireNotNull(startupDeadlineElapsedMs)
+                        }
                         Log.d(
                             TAG,
                             "HTTP retry budget file=${metadata.fileName} partialBytes=$desiredOffset " +
@@ -268,12 +431,22 @@ internal class HttpTransferConnectionLoop(
                     }
 
                     if (currentWifi == null) {
+                        val startupRemainingMs =
+                            startupDeadlineElapsedMs?.let {
+                                remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
+                            }
+                        if (startupRemainingMs != null && startupRemainingMs <= 0L) {
+                            throw IOException("HTTP startup budget exhausted before the first request", e)
+                        }
                         val remainingPauseBudgetMs =
                             (networkPauseTimeoutMs - (nowMs - pausedSinceMs))
                                 .coerceAtLeast(0L)
+                        val boundedPauseBudgetMs =
+                            startupRemainingMs?.let { minOf(remainingPauseBudgetMs, it) }
+                                ?: remainingPauseBudgetMs
                         val restoredNetwork =
                             networkSession.waitForWifiReconnect(
-                                timeoutMs = remainingPauseBudgetMs,
+                                timeoutMs = boundedPauseBudgetMs,
                                 recheckMs = networkRecheckMs,
                             ) ?: throw IOException(
                                 "No Wi-Fi network after ${networkPauseTimeoutMs / 1000}s",
@@ -297,13 +470,23 @@ internal class HttpTransferConnectionLoop(
                                     return ReceiveResult(
                                         sha256 = prepared.sha256,
                                         finalNetwork = activeWifi,
+                                        fullFileSizeBytes = metadata.totalSize,
+                                        resumeOffsetBytes = desiredOffset,
+                                        finalFileSizeBytes = desiredOffset,
+                                        bytesTransferredThisAttempt = 0L,
+                                        attemptThroughputMiBps = 0.0,
+                                        startupElapsedMs = SystemClock.elapsedRealtime() - startupStartElapsedMs,
                                     )
                                 }
                                 is ResumePreparation.Continue -> prepared.offset
                             }
                         attempt = 0
                         // Start a fresh connection window once Wi-Fi is back.
-                        connectDeadlineMs = SystemClock.elapsedRealtime() + connectRetryWindowMs
+                        connectDeadlineMs =
+                            startupDeadlineElapsedMs?.let {
+                                minOf(it, SystemClock.elapsedRealtime() + connectRetryWindowMs)
+                            }
+                                ?: (SystemClock.elapsedRealtime() + connectRetryWindowMs)
                         currentRetryBudgetMs =
                             if (desiredOffset > 0L) {
                                 networkPauseTimeoutMs
@@ -323,34 +506,67 @@ internal class HttpTransferConnectionLoop(
                             "HttpConn",
                             "Refreshing Wi-Fi binding file=${metadata.fileName} partialBytes=$desiredOffset attempt=$attempt",
                         )
+                        val refreshTimeoutMs: Long? =
+                            if (startupDeadlineElapsedMs != null) {
+                                cappedHttpTimeoutMs(
+                                    REFRESH_BIND_TIMEOUT_MS,
+                                    remainingHttpStartupBudget(startupDeadlineElapsedMs, SystemClock.elapsedRealtime()),
+                                )?.toLong()
+                            } else {
+                                REFRESH_BIND_TIMEOUT_MS
+                            }
                         val reboundWifi =
-                            networkSession.acquireWifi(REFRESH_BIND_TIMEOUT_MS)
-                                ?: currentWifi
+                            refreshTimeoutMs?.let {
+                                networkSession.acquireWifi(
+                                    timeoutMs = it,
+                                    transferId = metadata.transferId,
+                                    startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                                )
+                            } ?: currentWifi
                         activeWifi = reboundWifi
                         networkSession.bindToNetwork(reboundWifi)
-                        runCatching { probeServer(reboundWifi, URL("$baseUrlStr/"), metadata) }
-                            .onSuccess {
-                                Log.d(TAG, "HTTP probe recovered after reconnect attempt")
-                                TransferDiagnostics.log(
-                                    "HttpConn",
-                                    "Probe recovered after rebind id=${metadata.transferId} file=${metadata.fileName}",
+                        val probeTimeoutMs: Int? =
+                            if (startupDeadlineElapsedMs != null) {
+                                cappedHttpTimeoutMs(
+                                    PROBE_TIMEOUT_MS.toLong(),
+                                    remainingHttpStartupBudget(startupDeadlineElapsedMs, SystemClock.elapsedRealtime()),
                                 )
-                                attempt = 0
-                            }.onFailure {
-                                Log.w(TAG, "HTTP probe still failing after Wi-Fi rebind: ${it.message}")
-                                TransferDiagnostics.warn(
-                                    "HttpConn",
-                                    "Probe still failing after rebind id=${metadata.transferId} file=${metadata.fileName}",
-                                )
+                            } else {
+                                PROBE_TIMEOUT_MS
                             }
+                        if (probeTimeoutMs != null) {
+                            runCatching { probeServer(reboundWifi, URL("$baseUrlStr/"), metadata, probeTimeoutMs) }
+                                .onSuccess {
+                                    Log.d(TAG, "HTTP probe recovered after reconnect attempt")
+                                    TransferDiagnostics.log(
+                                        "HttpConn",
+                                        "Probe recovered after rebind id=${metadata.transferId} " +
+                                            "file=${metadata.fileName}",
+                                    )
+                                    attempt = 0
+                                }.onFailure {
+                                    Log.w(TAG, "HTTP probe still failing after Wi-Fi rebind: ${it.message}")
+                                    TransferDiagnostics.warn(
+                                        "HttpConn",
+                                        "Probe still failing after rebind id=${metadata.transferId} file=${metadata.fileName}",
+                                    )
+                                }
+                        }
                     } else if (currentWifi != activeWifi) {
                         activeWifi = currentWifi
                         networkSession.bindToNetwork(currentWifi)
                     }
 
-                    Log.w(TAG, "HTTP failed (${e.message}). Retrying...", e)
+                    Log.w(TAG, "HTTP failed (${e.message}). Retrying...")
                     val backoff = (connectRetryDelayMs * attempt).coerceAtMost(3_000L)
-                    delay(backoff)
+                    val delayMs =
+                        startupDeadlineElapsedMs?.let {
+                            cappedHttpRetryDelayMs(
+                                backoff,
+                                remainingHttpStartupBudget(it, SystemClock.elapsedRealtime()),
+                            )
+                        } ?: backoff
+                    if (delayMs > 0L) delay(delayMs)
                 }
             }
 
@@ -359,15 +575,27 @@ internal class HttpTransferConnectionLoop(
                 "HTTP connect window exhausted file=${metadata.fileName} partialBytes=$desiredOffset " +
                     "budgetMs=$currentRetryBudgetMs lastError=${lastError?.message}",
             )
+            val remainingBudgetMs =
+                startupDeadlineElapsedMs?.let {
+                    remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
+                } ?: "na"
             TransferDiagnostics.error(
                 "HttpConn",
-                "Connect window exhausted id=${metadata.transferId} file=${metadata.fileName} partialBytes=$desiredOffset budgetMs=$currentRetryBudgetMs",
+                "event=http_startup_failure transferId=${metadata.transferId} file=${metadata.fileName} " +
+                    "startupElapsedMs=${SystemClock.elapsedRealtime() - startupStartElapsedMs} " +
+                    "startupFailurePhase=${if (startupComplete) "connection" else "file_request"} " +
+                    "remainingBudgetMs=$remainingBudgetMs " +
+                    "failureReason=connect_window_exhausted partialBytes=$desiredOffset " +
+                    "reconnectCount=$reconnectCount currentRetryBudgetMs=$currentRetryBudgetMs",
                 lastError,
             )
-            throw IOException(
-                "Failed to connect to phone HTTP server within ${currentRetryBudgetMs}ms. Last error: ${lastError?.message}",
-                lastError,
-            )
+            val failureMessage =
+                if (!startupComplete) {
+                    "HTTP startup budget exhausted before the first request. Last error: ${lastError?.message}"
+                } else {
+                    "Failed to connect to phone HTTP server within ${currentRetryBudgetMs}ms. Last error: ${lastError?.message}"
+                }
+            throw IOException(failureMessage, lastError)
         } finally {
             runCatching { conn?.disconnect() }
         }
@@ -453,14 +681,20 @@ internal class HttpTransferConnectionLoop(
         network: Network,
         url: URL,
         metadata: ReceiverMetadata,
+        timeoutMs: Int = PROBE_TIMEOUT_MS,
     ) {
+        val probeStartMs = SystemClock.elapsedRealtime()
+        TransferDiagnostics.log(
+            "HttpConn",
+            "event=http_probe_start transferId=${metadata.transferId} timeoutMs=$timeoutMs",
+        )
         var c: HttpURLConnection? = null
         try {
             c =
                 (network.openConnection(url) as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 1500
-                    readTimeout = 1500
+                    connectTimeout = timeoutMs
+                    readTimeout = timeoutMs
                     doInput = true
                     useCaches = false
                     setRequestProperty("Connection", "close")
@@ -469,13 +703,19 @@ internal class HttpTransferConnectionLoop(
             c.connect()
             val code = c.responseCode
             Log.d(TAG, "✅ Probe / => $code")
+            TransferDiagnostics.log(
+                "HttpConn",
+                "event=http_probe_complete transferId=${metadata.transferId} responseCode=$code " +
+                    "probeDurationMs=${SystemClock.elapsedRealtime() - probeStartMs}",
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Probe failed for $url", e)
+            Log.w(TAG, "❌ Probe failed")
             TransferDiagnostics.warn(
                 "HttpConn",
-                "Probe failed id=${metadata.transferId} file=${metadata.fileName} url=$url",
+                "event=http_probe_failure transferId=${metadata.transferId} file=${metadata.fileName} " +
+                    "probeDurationMs=${SystemClock.elapsedRealtime() - probeStartMs} reason=${e.javaClass.simpleName}",
             )
-            throw IOException("Cannot reach phone HTTP server at $url (${e.message})", e)
+            throw IOException("Cannot reach phone HTTP server (${e.message})", e)
         } finally {
             runCatching { c?.disconnect() }
         }
@@ -483,9 +723,27 @@ internal class HttpTransferConnectionLoop(
 
     private companion object {
         const val TAG = "HttpConnLoop"
+        const val PROBE_TIMEOUT_MS = 1_500
         const val REFRESH_BIND_TIMEOUT_MS = 2_000L
         const val HTTP_REQUESTED_RANGE_NOT_SATISFIABLE = 416
     }
 }
 
 internal fun shouldComputeInlineChecksumForHttp(resumeOffset: Long): Boolean = resumeOffset <= 0L
+
+internal fun calculateBytesTransferredThisAttempt(
+    resumeOffsetBytes: Long,
+    finalFileSizeBytes: Long,
+): Long =
+    (finalFileSizeBytes.coerceAtLeast(0L) - resumeOffsetBytes.coerceAtLeast(0L))
+        .coerceAtLeast(0L)
+
+internal fun calculateAttemptThroughputMiBps(
+    bytesTransferredThisAttempt: Long,
+    dataTransferDurationMs: Long,
+): Double =
+    if (bytesTransferredThisAttempt > 0L && dataTransferDurationMs > 0L) {
+        bytesTransferredThisAttempt / (1024.0 * 1024.0) / (dataTransferDurationMs / 1000.0)
+    } else {
+        0.0
+    }

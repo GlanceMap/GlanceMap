@@ -164,6 +164,7 @@ internal class WatchFileOps(
     /**
      * Save with expected-size enforcement and stable ".part" resume support.
      */
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "LongParameterList", "ThrowsCount")
     suspend fun saveFile(
         fileName: String,
         inputStream: InputStream,
@@ -171,6 +172,7 @@ internal class WatchFileOps(
         resumeOffset: Long = 0L,
         keepPartialOnFailure: Boolean = false,
         computeSha256: Boolean = true,
+        diagnosticContext: String? = null,
         onProgress: (Long) -> Unit,
     ): String? {
         try {
@@ -183,6 +185,7 @@ internal class WatchFileOps(
                             onProgress = onProgress,
                             expectedSize = expectedSize,
                             resumeOffset = resumeOffset,
+                            diagnosticContext = diagnosticContext,
                         )
                     container.syncManager.requestGpxSync()
                     sha256
@@ -197,6 +200,7 @@ internal class WatchFileOps(
                             expectedSize = expectedSize,
                             resumeOffset = resumeOffset,
                             computeSha256 = computeSha256,
+                            diagnosticContext = diagnosticContext,
                         )
                     container.syncManager.requestMapSync()
                     sha256
@@ -210,6 +214,7 @@ internal class WatchFileOps(
                             onProgress = onProgress,
                             expectedSize = expectedSize,
                             resumeOffset = resumeOffset,
+                            diagnosticContext = diagnosticContext,
                         )
                     container.syncManager.requestPoiSync()
                     sha256
@@ -229,6 +234,7 @@ internal class WatchFileOps(
                             keepPartialOnCancel = true,
                             keepPartialOnFailure = true,
                             computeSha256 = computeSha256,
+                            diagnosticContext = diagnosticContext,
                         )
                     val result =
                         AtomicStreamWriter.writeAtomic(
@@ -256,6 +262,7 @@ internal class WatchFileOps(
                             keepPartialOnCancel = true,
                             keepPartialOnFailure = true,
                             computeSha256 = computeSha256,
+                            diagnosticContext = diagnosticContext,
                         )
                     val result =
                         AtomicStreamWriter.writeAtomic(

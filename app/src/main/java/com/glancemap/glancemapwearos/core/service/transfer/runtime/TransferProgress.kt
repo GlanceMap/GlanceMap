@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.transfer.runtime
 import android.os.SystemClock
+import java.util.Locale
 
 internal class UiUpdateThrottler(
     private val minIntervalMs: Long,
@@ -45,7 +46,7 @@ internal class ProgressTracker(
         val timeDelta = now - lastTime
         val bytesDelta = bytesCopied - lastBytes
 
-        val speedMBps =
+        val speedMiBps =
             if (timeDelta > 0) {
                 (bytesDelta * 1000f) / (timeDelta * 1024f * 1024f)
             } else {
@@ -55,17 +56,22 @@ internal class ProgressTracker(
         lastTime = now
         lastBytes = bytesCopied
 
-        return baseText(bytesCopied, speedMBps)
+        return baseText(bytesCopied, speedMiBps)
     }
 
     private fun baseText(
         bytesCopied: Long,
-        speedMBps: Float?,
+        speedMiBps: Float?,
     ): String {
-        val mb = bytesCopied / 1_048_576f
+        val mib = bytesCopied / 1_048_576f
         val totalStr =
-            if (totalSize > 0) "/${String.format("%.1f", totalSize / 1_048_576f)} MB" else ""
-        val speedStr = if (speedMBps != null) " (${String.format("%.2f", speedMBps)} MB/s)" else ""
-        return "${String.format("%.1f", mb)}$totalStr$speedStr"
+            if (totalSize > 0) "/${String.format(Locale.US, "%.1f", totalSize / 1_048_576f)} MiB" else ""
+        val speedStr =
+            if (speedMiBps != null) {
+                " (${String.format(Locale.US, "%.2f", speedMiBps)} MiB/s)"
+            } else {
+                ""
+            }
+        return "${String.format(Locale.US, "%.1f", mib)}$totalStr$speedStr"
     }
 }

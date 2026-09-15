@@ -34,12 +34,14 @@ class GpxRepositoryImpl(
                 ?: emptyList()
         }
 
+    @Suppress("LongParameterList")
     suspend fun saveGpxFileAtomic(
         fileName: String,
         inputStream: InputStream,
         onProgress: (bytesCopied: Long) -> Unit,
         expectedSize: Long? = null,
         resumeOffset: Long = 0L,
+        diagnosticContext: String? = null,
     ): String? =
         withContext(Dispatchers.IO) {
             val exp = expectedSize?.takeIf { it > 0L }
@@ -56,6 +58,7 @@ class GpxRepositoryImpl(
                     keepPartialOnCancel = true, // keep .part on pause
                     keepPartialOnFailure = true, // keep .part on recoverable IO failure
                     computeSha256 = true,
+                    diagnosticContext = diagnosticContext,
                 )
 
             val result =

@@ -703,6 +703,7 @@ object DiagnosticsExporter {
             writer.appendLine("Device")
             writer.appendLine("Manufacturer: ${Build.MANUFACTURER}")
             writer.appendLine("Model: ${Build.MODEL}")
+            writer.appendLine("Android: ${Build.VERSION.RELEASE}")
             writer.appendLine("SDK: ${Build.VERSION.SDK_INT}")
             writer.appendLine()
             writer.appendLine("Memory Snapshot")

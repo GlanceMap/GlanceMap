@@ -30,6 +30,10 @@ object TransferDataLayerContract {
     const val PATH_TRANSFER_ACK = "/glancemap/transfer_ack"
     const val PATH_CANCEL_TRANSFER = "/glancemap/cancel_transfer"
 
+    const val FGS_DATA_SYNC_QUOTA_EXHAUSTED = "FGS_DATA_SYNC_QUOTA_EXHAUSTED"
+    const val FGS_START_NOT_ALLOWED = "FGS_START_NOT_ALLOWED"
+    const val FGS_DATA_SYNC_TIMEOUT = "FGS_DATA_SYNC_TIMEOUT"
+
     // HTTP transfer hardening
     const val HTTP_AUTH_HEADER = "X-GlanceMap-Transfer-Token"
     const val HTTP_AUTH_TOKEN_JSON_KEY = "http_token"

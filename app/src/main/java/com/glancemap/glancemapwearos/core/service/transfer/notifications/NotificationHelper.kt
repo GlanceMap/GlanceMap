@@ -9,7 +9,35 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.glancemap.glancemapwearos.R
+import com.glancemap.shared.transfer.TransferDataLayerContract
 import kotlin.math.abs
+
+internal const val FGS_DATA_SYNC_QUOTA_EXHAUSTED = TransferDataLayerContract.FGS_DATA_SYNC_QUOTA_EXHAUSTED
+internal const val FGS_START_NOT_ALLOWED = TransferDataLayerContract.FGS_START_NOT_ALLOWED
+internal const val FGS_DATA_SYNC_TIMEOUT = TransferDataLayerContract.FGS_DATA_SYNC_TIMEOUT
+
+private const val FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION =
+    "android.app.ForegroundServiceStartNotAllowedException"
+
+internal fun foregroundStartFailureDetail(
+    exceptionClassName: String,
+    sdkInt: Int,
+    exceptionMessage: String? = null,
+): String =
+    // Android 15 uses this exception for dataSync quota exhaustion, but Android also
+    // uses it for ordinary background-start restrictions; require both quota markers.
+    when {
+        sdkInt >= Build.VERSION_CODES.S &&
+            exceptionClassName == FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION &&
+            exceptionMessage?.contains("time limit already exhausted", ignoreCase = true) == true &&
+            exceptionMessage.contains("dataSync", ignoreCase = true) ->
+            FGS_DATA_SYNC_QUOTA_EXHAUSTED
+
+        sdkInt >= Build.VERSION_CODES.S && exceptionClassName == FOREGROUND_SERVICE_START_NOT_ALLOWED_EXCEPTION ->
+            FGS_START_NOT_ALLOWED
+
+        else -> "FGS_START_FAILED:${exceptionClassName.substringAfterLast('.')}"
+    }
 
 class NotificationHelper(
     private val service: Service,
@@ -103,10 +131,10 @@ class NotificationHelper(
      * Stop foreground and REMOVE the foreground notification.
      * (Then you can post a normal swipeable notification.)
      */
-    fun stopForeground(notificationId: Int) {
+    fun stopForeground(notificationId: Int? = null) {
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
         // extra safety: ensure the old foreground notif id is cleared
-        notificationManager.cancel(notificationId)
+        notificationId?.let(notificationManager::cancel)
     }
 
     /** Normal (swipeable) completion notification */

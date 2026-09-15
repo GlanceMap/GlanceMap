@@ -33,17 +33,17 @@ internal class WatchWifiStatusChecker(
 
         return try {
             runCatching {
-                PhoneTransferDiagnostics.log("WatchWifi", "Check requestId=$requestId node=$nodeId")
+                PhoneTransferDiagnostics.log("WatchWifi", "Check requestId=$requestId")
                 sendMessage(nodeId, DataLayerPaths.PATH_CHECK_WIFI_STATUS, payload)
                 val result = withTimeoutOrNull(CHECK_TIMEOUT_MS) { deferred.await() }
                 if (result == null) {
-                    PhoneTransferDiagnostics.warn("WatchWifi", "Check timeout requestId=$requestId node=$nodeId")
+                    PhoneTransferDiagnostics.warn("WatchWifi", "Check timeout requestId=$requestId")
                 }
                 result
             }.getOrElse { error ->
                 if (error is CancellationException) throw error
                 Log.w(TAG, "Watch Wi-Fi status check failed", error)
-                PhoneTransferDiagnostics.error("WatchWifi", "Check failed requestId=$requestId node=$nodeId", error)
+                PhoneTransferDiagnostics.error("WatchWifi", "Check failed requestId=$requestId", error)
                 null
             }
         } finally {
