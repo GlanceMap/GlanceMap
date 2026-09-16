@@ -246,6 +246,8 @@ fun NavigateScreen(
             mutableStateOf<RouteToolSession?>(null)
         }
         var poiCreationSelectionActive by rememberSaveable { mutableStateOf(false) }
+        var showPoiCreationChoiceDialog by rememberSaveable { mutableStateOf(false) }
+        var showPoiCoordinateEntryDialog by rememberSaveable { mutableStateOf(false) }
         var completedRouteToolDraft by remember { mutableStateOf<RouteToolSession?>(null) }
         var routeToolExecutionInProgress by remember { mutableStateOf(false) }
         var routeToolExecutionStatus by remember { mutableStateOf<String?>(null) }
@@ -636,6 +638,8 @@ fun NavigateScreen(
             completedRouteToolDraftActive = completedRouteToolDraft != null,
             routeToolExecutionInProgress = routeToolExecutionInProgress,
             routeToolSessionActive = routeToolSession != null,
+            showPoiCreationChoiceDialog = showPoiCreationChoiceDialog,
+            showPoiCoordinateEntryDialog = showPoiCoordinateEntryDialog,
             showCreatedPoiRenameDialog = showCreatedPoiRenameDialog,
             createdPoiRenameInProgress = createdPoiRenameInProgress,
             poiCreationSelectionActive = poiCreationSelectionActive,
@@ -652,6 +656,8 @@ fun NavigateScreen(
                 routeToolCreatePreviewMessage = null
                 routeToolCreatePreviewInProgress = false
             },
+            onDismissPoiCreationChoiceDialog = { showPoiCreationChoiceDialog = false },
+            onDismissPoiCoordinateEntryDialog = { showPoiCoordinateEntryDialog = false },
             onDismissCreatedPoiRename = {
                 showCreatedPoiRenameDialog = false
                 createdPoiPendingRename = null
@@ -866,6 +872,14 @@ fun NavigateScreen(
                 showNotificationPermissionDialog = false
                 pendingKeepAppOpen = false
             },
+            showPoiCreationChoiceDialog = showPoiCreationChoiceDialog,
+            showPoiCoordinateEntryDialog = showPoiCoordinateEntryDialog,
+            onDismissPoiCreationChoiceDialog = { showPoiCreationChoiceDialog = false },
+            onOpenPoiCoordinateEntryDialog = {
+                showPoiCreationChoiceDialog = false
+                showPoiCoordinateEntryDialog = true
+            },
+            onDismissPoiCoordinateEntryDialog = { showPoiCoordinateEntryDialog = false },
             showCreatedPoiRenameDialog = showCreatedPoiRenameDialog,
             createdPoiPendingRename = createdPoiPendingRename,
             createdPoiRenameInProgress = createdPoiRenameInProgress,
@@ -1098,7 +1112,10 @@ fun NavigateScreen(
             onShortcutTrayToggle = screenActions.toggleShortcutTray,
             onShortcutTrayDismiss = { shortcutTrayExpanded = false },
             onOpenGpxTools = routeToolActions.openRouteToolsPanel,
-            onStartPoiCreation = routeToolActions.startPoiCreationSelection,
+            onStartPoiCreation = {
+                shortcutTrayExpanded = false
+                showPoiCreationChoiceDialog = true
+            },
             gpsIndicatorState = effectiveGpsIndicatorState,
             gpsEnvironmentWarning = gpsEnvironmentWarning,
             watchGpsDegradedWarning = watchGpsDegradedWarning,

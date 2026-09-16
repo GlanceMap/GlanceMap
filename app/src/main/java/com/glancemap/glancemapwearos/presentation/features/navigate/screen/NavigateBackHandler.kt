@@ -5,11 +5,14 @@ import androidx.compose.runtime.Composable
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 
 @Composable
+@Suppress("LongParameterList", "FunctionNaming")
 internal fun NavigateBackHandler(
     createdPoiCreateInProgress: Boolean,
     completedRouteToolDraftActive: Boolean,
     routeToolExecutionInProgress: Boolean,
     routeToolSessionActive: Boolean,
+    showPoiCreationChoiceDialog: Boolean,
+    showPoiCoordinateEntryDialog: Boolean,
     showCreatedPoiRenameDialog: Boolean,
     createdPoiRenameInProgress: Boolean,
     poiCreationSelectionActive: Boolean,
@@ -18,6 +21,8 @@ internal fun NavigateBackHandler(
     backButtonExitsNavigation: Boolean,
     onDismissCompletedRouteToolDraft: () -> Unit,
     onCancelRouteToolSession: () -> Unit,
+    onDismissPoiCreationChoiceDialog: () -> Unit,
+    onDismissPoiCoordinateEntryDialog: () -> Unit,
     onDismissCreatedPoiRename: () -> Unit,
     onCancelPoiCreation: () -> Unit,
     onDismissRouteToolsPanel: () -> Unit,
@@ -33,6 +38,8 @@ internal fun NavigateBackHandler(
                 }
             }
             routeToolSessionActive -> onCancelRouteToolSession()
+            showPoiCoordinateEntryDialog -> onDismissPoiCoordinateEntryDialog()
+            showPoiCreationChoiceDialog -> onDismissPoiCreationChoiceDialog()
             showCreatedPoiRenameDialog -> {
                 if (!createdPoiRenameInProgress) {
                     onDismissCreatedPoiRename()
