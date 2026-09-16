@@ -670,13 +670,13 @@ internal enum class CoordinateStep(
     fun next(): CoordinateStep {
         val entries = CoordinateStep.entries
         val currentIndex = entries.indexOf(this)
-        return entries[(currentIndex + 1) % entries.size]
+        return entries[(currentIndex + 1).coerceAtMost(entries.lastIndex)]
     }
 
     fun previous(): CoordinateStep {
         val entries = CoordinateStep.entries
         val currentIndex = entries.indexOf(this)
-        return entries[(currentIndex - 1 + entries.size) % entries.size]
+        return entries[(currentIndex - 1).coerceAtLeast(0)]
     }
 
     companion object {
@@ -873,7 +873,8 @@ internal fun CoordinateStepSelector(
     ) {
         Text("Step ${step.label}", style = MaterialTheme.typography.bodySmall)
         IconButton(
-            onClick = { onStepChange(step.previous()) },
+            enabled = step != CoordinateStep.ONE_TEN_THOUSANDTH,
+            onClick = { onStepChange(step.next()) },
             colors =
                 IconButtonDefaults.iconButtonColors(
                     containerColor = Color.White.copy(alpha = 0.14f),
@@ -883,7 +884,8 @@ internal fun CoordinateStepSelector(
             Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
         }
         IconButton(
-            onClick = { onStepChange(step.next()) },
+            enabled = step != CoordinateStep.TENTH,
+            onClick = { onStepChange(step.previous()) },
             colors =
                 IconButtonDefaults.iconButtonColors(
                     containerColor = Color.White.copy(alpha = 0.14f),
@@ -1129,8 +1131,12 @@ internal fun poiSearchSummary(state: PoiSearchUiState): String =
 internal fun formatCoordinateValue(value: Double): String = String.format("%.5f", value)
 
 internal fun normalizeLongitude(value: Double): Double {
-    var normalized = value
-    while (normalized < -180.0) normalized += 360.0
-    while (normalized > 180.0) normalized -= 360.0
-    return normalized
+    check(value.isFinite()) { "Longitude must be finite" }
+    val remainder = value % 360.0
+    return when {
+        remainder > 180.0 -> remainder - 360.0
+        remainder < -180.0 -> remainder + 360.0
+        remainder == -180.0 && value > 0.0 -> 180.0
+        else -> remainder
+    }
 }
