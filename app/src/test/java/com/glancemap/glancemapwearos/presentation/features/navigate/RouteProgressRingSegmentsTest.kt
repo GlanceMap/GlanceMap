@@ -1,6 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import com.glancemap.glancemapwearos.presentation.features.gpx.FileSig
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
+import com.glancemap.glancemapwearos.presentation.features.gpx.buildProfile
+import com.glancemap.glancemapwearos.presentation.features.gpx.buildTurnByTurnGuidanceSessionFromProfile
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildCumulativeDistances
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -9,31 +12,110 @@ import org.mapsforge.core.model.LatLong
 
 class RouteProgressRingSegmentsTest {
     @Test
-    fun mapsMixedTerrainByRouteDistance() {
-        val points =
-            listOf(
-                point(0.0, 100.0),
-                point(0.001, 110.0),
-                point(0.003, 100.0),
-                point(0.004, 100.0),
-                point(0.005, 100.0),
+    fun keepsTerrainPlacementProportionalToRouteDistance() {
+        val segments =
+            buildSegments(
+                distances = listOf(0.0, 200.0, 800.0),
+                cumulativeAscent = listOf(0.0, 8.0, 8.0),
+                cumulativeDescent = listOf(0.0, 0.0, 18.0),
             )
+
+        assertEquals(2, segments.size)
+        assertEquals(0.25f, segments[0].endFraction)
+        assertEquals(1f, segments[1].endFraction)
+    }
+
+    @Test
+    fun adjacentSameColorSectionsAreMerged() {
+        val segments =
+            buildSegments(
+                distances = listOf(0.0, 60.0, 120.0, 180.0),
+                cumulativeAscent = listOf(0.0, 6.0, 12.0, 18.0),
+            )
+
+        assertEquals(
+            listOf(RouteProgressRingSegment(0f, 1f, elevationSegmentColor(GpxElevationSegmentType.CLIMB))),
+            segments,
+        )
+    }
+
+    @Test
+    fun suppressesShortNonMeaningfulOppositeDirectionBlip() {
+        val segments =
+            buildSegments(
+                distances = listOf(0.0, 120.0, 150.0, 270.0),
+                cumulativeAscent = listOf(0.0, 0.0, 1.5, 1.5),
+                cumulativeDescent = listOf(0.0, 6.0, 6.0, 12.0),
+            )
+
+        assertEquals(1, segments.size)
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DOWNHILL), segments.single().color)
+    }
+
+    @Test
+    fun preservesMeaningfulShortSteepClimbBetweenLongerSections() {
+        val segments =
+            buildSegments(
+                distances = listOf(0.0, 120.0, 150.0, 270.0),
+                cumulativeAscent = listOf(0.0, 0.0, 4.0, 4.0),
+                cumulativeDescent = listOf(0.0, 6.0, 6.0, 12.0),
+            )
+
+        assertEquals(3, segments.size)
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DOWNHILL), segments[0].color)
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.CLIMB), segments[1].color)
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DOWNHILL), segments[2].color)
+    }
+
+    @Test
+    fun missingCanonicalElevationFallsBackToGreenRing() {
+        val points = listOf(point(0.0), point(0.001))
         val cumulative = buildCumulativeDistances(points.map { it.latLong })
 
-        val segments =
+        assertTrue(
             buildRouteProgressRingSegments(
                 points = points,
                 cumulativeDistancesMeters = cumulative,
                 totalDistanceMeters = cumulative.last(),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun keepsGpxSegmentBoundarySeparateFromTerrainAggregation() {
+        val segments =
+            buildSegments(
+                distances = listOf(0.0, 120.0, 240.0),
+                cumulativeAscent = listOf(0.0, 12.0, 24.0),
+                startsNewSegments = setOf(1),
             )
 
-        assertEquals(3, segments.size)
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.CLIMB), segments[0].color)
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DOWNHILL), segments[1].color)
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.FLAT), segments[2].color)
-        assertEquals((cumulative[1] / cumulative.last()).toFloat(), segments[0].endFraction)
-        assertEquals((cumulative[2] / cumulative.last()).toFloat(), segments[1].endFraction)
-        assertEquals((cumulative[4] / cumulative.last()).toFloat(), segments[2].endFraction)
+        assertEquals(2, segments.size)
+        assertEquals(ROUTE_PROGRESS_RING_FALLBACK_GREEN, segments[0].color)
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.CLIMB), segments[1].color)
+    }
+
+    @Test
+    fun reversedGuidanceUsesTerrainInTravelDirection() {
+        val forwardPoints =
+            listOf(
+                point(0.0, elevation = 100.0),
+                point(120.0, elevation = 100.0),
+                point(240.0, elevation = 112.0),
+            )
+        val profile = buildProfile(FileSig(0L, 1L), forwardPoints)
+        val reversedSession =
+            buildTurnByTurnGuidanceSessionFromProfile(
+                trackId = "reverse.gpx",
+                trackTitle = "Reverse",
+                profile = profile,
+                startReached = true,
+                reversed = true,
+            )
+
+        val segments = buildRouteProgressRingSegments(reversedSession)
+
+        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DESCENT), segments.first().color)
     }
 
     @Test
@@ -54,72 +136,34 @@ class RouteProgressRingSegmentsTest {
         )
     }
 
-    @Test
-    fun missingElevationFallsBackToGreenRing() {
-        val points = listOf(point(0.0, 100.0), point(0.001, null))
-        val cumulative = buildCumulativeDistances(points.map { it.latLong })
-
-        assertTrue(
-            buildRouteProgressRingSegments(
-                points = points,
-                cumulativeDistancesMeters = cumulative,
-                totalDistanceMeters = cumulative.last(),
-            ).isEmpty(),
+    private fun buildSegments(
+        distances: List<Double>,
+        cumulativeAscent: List<Double>,
+        cumulativeDescent: List<Double> = List(distances.size) { 0.0 },
+        startsNewSegments: Set<Int> = emptySet(),
+    ): List<RouteProgressRingSegment> {
+        val points =
+            distances.mapIndexed { index, distance ->
+                point(
+                    latitude = distance,
+                    startsNewSegment = index in startsNewSegments,
+                )
+            }
+        return buildRouteProgressRingSegments(
+            points = points,
+            cumulativeDistancesMeters = distances,
+            totalDistanceMeters = distances.last(),
+            cumulativeAscentMeters = cumulativeAscent,
+            cumulativeDescentMeters = cumulativeDescent,
         )
-    }
-
-    @Test
-    fun keepsGpxSegmentBoundariesOutOfGradeClassification() {
-        val points =
-            listOf(
-                point(0.0, 100.0),
-                point(0.001, 110.0),
-                point(0.002, 120.0, startsNewSegment = true),
-                point(0.003, 100.0),
-            )
-        val cumulative = buildCumulativeDistances(points.map { it.latLong })
-
-        val segments =
-            buildRouteProgressRingSegments(
-                points = points,
-                cumulativeDistancesMeters = cumulative,
-                totalDistanceMeters = cumulative.last(),
-            )
-
-        assertEquals(ROUTE_PROGRESS_RING_FALLBACK_GREEN, segments[1].color)
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DESCENT), segments[2].color)
-    }
-
-    @Test
-    fun reversesGradeDirectionAndReadsReversedBoundary() {
-        val points =
-            listOf(
-                point(0.003, 100.0),
-                point(0.002, 110.0, startsNewSegment = true),
-                point(0.001, 120.0),
-                point(0.0, 110.0),
-            )
-        val cumulative = buildCumulativeDistances(points.map { it.latLong })
-
-        val segments =
-            buildRouteProgressRingSegments(
-                points = points,
-                cumulativeDistancesMeters = cumulative,
-                totalDistanceMeters = cumulative.last(),
-                reversed = true,
-            )
-
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.CLIMB), segments[0].color)
-        assertEquals(ROUTE_PROGRESS_RING_FALLBACK_GREEN, segments[1].color)
-        assertEquals(elevationSegmentColor(GpxElevationSegmentType.DESCENT), segments[2].color)
     }
 
     private fun point(
         latitude: Double,
-        elevation: Double?,
+        elevation: Double? = 100.0,
         startsNewSegment: Boolean = false,
     ) = TrackPoint(
-        latLong = LatLong(latitude, 6.0),
+        latLong = LatLong(0.0, latitude / 111_320.0),
         elevation = elevation,
         startsNewSegment = startsNewSegment,
     )

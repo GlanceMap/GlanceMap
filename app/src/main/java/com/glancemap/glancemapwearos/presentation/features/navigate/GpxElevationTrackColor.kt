@@ -75,13 +75,10 @@ internal fun buildElevationTrackSegments(
 internal fun classifyElevationSegment(
     from: TrackPoint,
     to: TrackPoint,
-): GpxElevationSegmentType {
-    val gradePercent =
-        elevationGradePercent(
-            from = from,
-            to = to,
-        )
-    return when {
+): GpxElevationSegmentType = classifyElevationGradePercent(elevationGradePercent(from = from, to = to))
+
+internal fun classifyElevationGradePercent(gradePercent: Double?): GpxElevationSegmentType =
+    when {
         gradePercent == null -> GpxElevationSegmentType.FLAT
         gradePercent >= 8.0 -> GpxElevationSegmentType.CLIMB
         gradePercent >= 2.0 -> GpxElevationSegmentType.UPHILL
@@ -89,7 +86,6 @@ internal fun classifyElevationSegment(
         gradePercent <= -2.0 -> GpxElevationSegmentType.DOWNHILL
         else -> GpxElevationSegmentType.FLAT
     }
-}
 
 private fun elevationGradePercent(
     from: TrackPoint,

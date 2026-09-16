@@ -85,13 +85,8 @@ fun TurnByTurnAdvancedSettingsScreen(
             SettingsToggleChip(
                 checked = elevationProgressRingEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnElevationProgressRingEnabled,
-                label = "Elevation progress ring",
-                secondaryLabel =
-                    if (elevationProgressRingEnabled) {
-                        "Colour progress by route grade"
-                    } else {
-                        "Use a green progress ring"
-                    },
+                label = "Elevation ring",
+                secondaryLabel = "▲ uphill · ▼ downhill",
             )
         }
     }
