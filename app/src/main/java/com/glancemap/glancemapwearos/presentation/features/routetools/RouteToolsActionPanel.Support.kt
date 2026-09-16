@@ -856,32 +856,41 @@ private fun RouteEndpointEditorSection(
             onIncrease = { longitude?.let { onLongitudeChange(it + step.delta) } },
             modifier = modifier,
         )
-        Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
+        CoordinateStepSelector(step = step, onStepChange = onStepChange, modifier = modifier)
+    }
+}
+
+@Composable
+internal fun CoordinateStepSelector(
+    step: CoordinateStep,
+    onStepChange: (CoordinateStep) -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Step ${step.label}", style = MaterialTheme.typography.bodySmall)
+        IconButton(
+            onClick = { onStepChange(step.previous()) },
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.14f),
+                    contentColor = Color.White,
+                ),
         ) {
-            Text("Step ${step.label}", style = MaterialTheme.typography.bodySmall)
-            IconButton(
-                onClick = { onStepChange(step.previous()) },
-                colors =
-                    IconButtonDefaults.iconButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        contentColor = Color.White,
-                    ),
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
-            }
-            IconButton(
-                onClick = { onStepChange(step.next()) },
-                colors =
-                    IconButtonDefaults.iconButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        contentColor = Color.White,
-                    ),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase coordinate step")
-            }
+            Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
+        }
+        IconButton(
+            onClick = { onStepChange(step.next()) },
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.14f),
+                    contentColor = Color.White,
+                ),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Increase coordinate step")
         }
     }
 }

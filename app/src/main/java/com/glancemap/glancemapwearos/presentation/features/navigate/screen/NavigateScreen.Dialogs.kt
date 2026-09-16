@@ -32,6 +32,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.GpxViewModel
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchUiState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
 import com.glancemap.glancemapwearos.presentation.features.routetools.CoordinateStep
+import com.glancemap.glancemapwearos.presentation.features.routetools.CoordinateStepSelector
 import com.glancemap.glancemapwearos.presentation.features.routetools.CoordinateTextEntryDialog
 import com.glancemap.glancemapwearos.presentation.features.routetools.CoordinateValueEditorRow
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteCreateMode
@@ -342,6 +343,7 @@ private fun PoiCoordinateEntryDialog(
 
     var latitude by remember(visible) { mutableStateOf(coordinateSeed?.latitude) }
     var longitude by remember(visible) { mutableStateOf(coordinateSeed?.longitude) }
+    var coordinateStep by remember(visible) { mutableStateOf(CoordinateStep.ONE_THOUSANDTH) }
     var editingField by remember(visible) { mutableStateOf<PoiCoordinateEntryField?>(null) }
     val selectedField = editingField
     if (selectedField != null) {
@@ -370,7 +372,6 @@ private fun PoiCoordinateEntryDialog(
         } else {
             null
         }
-    val step = CoordinateStep.ONE_THOUSANDTH
     WearFormDialog(
         visible = true,
         title = "Coordinates",
@@ -381,16 +382,21 @@ private fun PoiCoordinateEntryDialog(
             label = "Latitude",
             value = latitude,
             onEdit = { editingField = PoiCoordinateEntryField.LATITUDE },
-            onDecrease = { latitude = latitude?.let { (it - step.delta).coerceAtLeast(-90.0) } },
-            onIncrease = { latitude = latitude?.let { (it + step.delta).coerceAtMost(90.0) } },
+            onDecrease = { latitude = latitude?.let { (it - coordinateStep.delta).coerceAtLeast(-90.0) } },
+            onIncrease = { latitude = latitude?.let { (it + coordinateStep.delta).coerceAtMost(90.0) } },
             modifier = formTokens.controlModifier,
         )
         CoordinateValueEditorRow(
             label = "Longitude",
             value = longitude,
             onEdit = { editingField = PoiCoordinateEntryField.LONGITUDE },
-            onDecrease = { longitude = longitude?.let { normalizeLongitude(it - step.delta) } },
-            onIncrease = { longitude = longitude?.let { normalizeLongitude(it + step.delta) } },
+            onDecrease = { longitude = longitude?.let { normalizeLongitude(it - coordinateStep.delta) } },
+            onIncrease = { longitude = longitude?.let { normalizeLongitude(it + coordinateStep.delta) } },
+            modifier = formTokens.controlModifier,
+        )
+        CoordinateStepSelector(
+            step = coordinateStep,
+            onStepChange = { coordinateStep = it },
             modifier = formTokens.controlModifier,
         )
         if (endpoint == null) {
