@@ -46,11 +46,19 @@ internal fun shouldWarmMapStartupTileCache(
 
 internal fun mapLabelTextScale(size: String): Float =
     when (size) {
-        SettingsRepository.MAP_LABEL_SIZE_SMALL -> 0.85f
-        SettingsRepository.MAP_LABEL_SIZE_LARGE -> 1.15f
-        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> 1.30f
+        SettingsRepository.MAP_LABEL_SIZE_SMALL -> 0.80f
+        SettingsRepository.MAP_LABEL_SIZE_LARGE -> 1.50f
+        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> 1.75f
         else -> 1.0f
     }
+
+internal fun mapRendererLayerTextScale(textScale: Float): Float = textScale.takeIf { it.isFinite() } ?: 1.0f
+
+internal fun shouldRecreateBaseLayerForMapLabelTextScaleChange(
+    previousTextScale: Float,
+    nextTextScale: Float,
+    hasMapPath: Boolean,
+): Boolean = previousTextScale != nextTextScale && hasMapPath
 
 class MapRenderer(
     private val context: Context,
@@ -212,6 +220,7 @@ class MapRenderer(
     private var currentTileCacheId: String = "$CACHE_ID_PREFIX-bootstrap"
     private var skipNextStartupTilePrewarm: Boolean = false
     private var cleanLayerSwapRequested: Boolean = false
+    private var preserveAuxiliaryLayersOnCleanSwap: Boolean = false
 
     @Volatile private var cacheCleanupInProgress: Boolean = false
     private val tileCacheUpdateCounter = AtomicLong(0L)
@@ -686,13 +695,49 @@ class MapRenderer(
     }
 
     fun setMapLabelTextScale(textScale: Float) {
-        if (currentMapLabelTextScale == textScale) return
+        val normalizedTextScale = mapRendererLayerTextScale(textScale)
+        if (currentMapLabelTextScale == normalizedTextScale) return
 
-        currentMapLabelTextScale = textScale
-        currentLayer?.setTextScale(textScale)
-        if (currentLayer != null) {
-            forceRedraw()
+        val previousTextScale = currentMapLabelTextScale
+        val previousCacheId = currentTileCacheId
+        val previousLayer = currentLayer
+        currentMapLabelTextScale = normalizedTextScale
+        val desiredCacheId =
+            resolveMapRendererDesiredCacheId(
+                mapSignature = computeMapRendererMapSignature(currentMapPath),
+                themeSignature = currentThemeSignature,
+                elevationLabelsMetric = currentElevationLabelsMetric,
+                labelTextScale = normalizedTextScale,
+            )
+        val mapPath = currentMapPath
+        if (
+            shouldRecreateBaseLayerForMapLabelTextScaleChange(
+                previousTextScale = previousTextScale,
+                nextTextScale = normalizedTextScale,
+                hasMapPath = !mapPath.isNullOrBlank(),
+            )
+        ) {
+            cleanLayerSwapRequested = true
+            preserveAuxiliaryLayersOnCleanSwap = true
+            updateMapLayer(mapPath)
         }
+        val layerRecreated = previousLayer != null && currentLayer != null && previousLayer !== currentLayer
+        val cacheRecreated = previousCacheId != currentTileCacheId && currentTileCacheId == desiredCacheId
+        MapHotPathDiagnostics.recordEvent(
+            stage = "mapRenderer.setMapLabelTextScale",
+            status =
+                if (layerRecreated) {
+                    "base_layer_recreated"
+                } else if (cacheRecreated) {
+                    "base_cache_recreated"
+                } else {
+                    "deferred_until_layer_creation"
+                },
+            detail =
+                "oldScale=$previousTextScale newScale=$normalizedTextScale " +
+                    "oldCacheId=$previousCacheId newCacheId=$desiredCacheId " +
+                    "layerRecreated=$layerRecreated cacheRecreated=$cacheRecreated",
+        )
     }
 
     fun updateMapLayer(mapPath: String?) {
@@ -709,6 +754,7 @@ class MapRenderer(
                 mapSignature = newMapSignature,
                 themeSignature = currentThemeSignature,
                 elevationLabelsMetric = currentElevationLabelsMetric,
+                labelTextScale = currentMapLabelTextScale,
             )
         desiredCacheIdForTiming = desiredCacheId
         if (
@@ -733,6 +779,8 @@ class MapRenderer(
         )
 
         try {
+            val preserveAuxiliaryLayers =
+                cleanLayerSwapRequested && preserveAuxiliaryLayersOnCleanSwap
             cleanLayerSwap = consumeCleanLayerSwap()
             if (rebuildTileCacheRequested || desiredCacheId != currentTileCacheId) {
                 recreateTileCache(newCacheId = desiredCacheId)
@@ -825,17 +873,12 @@ class MapRenderer(
             currentMapPath = mapPath
             currentMapSignature = newMapSignature
             currentDemSignature = newDemSignature
-            updateHillshadeLayer(
-                mapFile = mapFile,
-                demSignature = newDemSignature,
-                requiredDemTileIds =
-                    if (currentHillShadingEnabled) {
-                        Dem3CoverageUtils.requiredTileIdsForMap(mapFile)
-                    } else {
-                        null
-                    },
-            )
-            updateReliefOverlayLayer()
+            if (!preserveAuxiliaryLayers) {
+                updateAuxiliaryLayersForMap(
+                    mapFile = mapFile,
+                    demSignature = newDemSignature,
+                )
+            }
 
             forceRedraw()
             timingStatus = "loaded"
@@ -867,18 +910,41 @@ class MapRenderer(
         }
     }
 
+    private fun updateAuxiliaryLayersForMap(
+        mapFile: File,
+        demSignature: String?,
+    ) {
+        updateHillshadeLayer(
+            mapFile = mapFile,
+            demSignature = demSignature,
+            requiredDemTileIds =
+                if (currentHillShadingEnabled) {
+                    Dem3CoverageUtils.requiredTileIdsForMap(mapFile)
+                } else {
+                    null
+                },
+        )
+        updateReliefOverlayLayer()
+    }
+
     private fun consumeCleanLayerSwap(): Boolean {
         val cleanLayerSwap = cleanLayerSwapRequested
+        val preserveAuxiliaryLayers = cleanLayerSwap && preserveAuxiliaryLayersOnCleanSwap
         cleanLayerSwapRequested = false
+        preserveAuxiliaryLayersOnCleanSwap = false
         val cleared =
-            clearCurrentLayer(
-                reason =
-                    if (cleanLayerSwap) {
-                        "clean_theme_reload"
-                    } else {
-                        "map_reload"
-                    },
-            )
+            if (preserveAuxiliaryLayers) {
+                clearBaseMapLayer(reason = "clean_label_scale_reload")
+            } else {
+                clearCurrentLayer(
+                    reason =
+                        if (cleanLayerSwap) {
+                            "clean_theme_reload"
+                        } else {
+                            "map_reload"
+                        },
+                )
+            }
         if (cleanLayerSwap && cleared) {
             purgeTileCache(reason = "theme_after_layer_clear")
             forceRedraw()
@@ -949,20 +1015,8 @@ class MapRenderer(
     }
 
     private fun clearCurrentLayer(reason: String = "unspecified"): Boolean {
-        val hadCurrentLayer = currentLayer != null
-        val storeOwnedByCurrentLayer = currentLayer?.mapDataStore === currentStore
-
         clearHillshadeLayer(reason = reason)
-
-        currentLayer?.let { layer ->
-            disableLayerTileExpansion(layer, reason)
-            mapView.mutateLayers { layers ->
-                layers.remove(layer)
-                runCatching { layer.onDestroy() }
-                    .onFailure { Log.w(TAG, "clearCurrentLayer: Failed to destroy TileRendererLayer", it) }
-            }
-        }
-        currentLayer = null
+        val hadCurrentLayer = clearBaseMapLayer(reason = reason)
 
         reliefOverlayLayer?.let { layer ->
             mapView.mutateLayers { layers ->
@@ -977,15 +1031,30 @@ class MapRenderer(
         }
         liveElevationSampler = null
 
+        publishReliefOverlayState(force = true)
+
+        return hadCurrentLayer
+    }
+
+    private fun clearBaseMapLayer(reason: String): Boolean {
+        val hadCurrentLayer = currentLayer != null
+        val storeOwnedByCurrentLayer = currentLayer?.mapDataStore === currentStore
+        currentLayer?.let { layer ->
+            disableLayerTileExpansion(layer, reason)
+            mapView.mutateLayers { layers ->
+                layers.remove(layer)
+                runCatching { layer.onDestroy() }
+                    .onFailure { Log.w(TAG, "clearBaseMapLayer: Failed to destroy TileRendererLayer", it) }
+            }
+        }
+        currentLayer = null
         if (!storeOwnedByCurrentLayer) {
             currentStore?.let { store ->
                 runCatching { store.close() }
-                    .onFailure { e -> Log.w(TAG, "clearCurrentLayer: Failed to close MapDataStore", e) }
+                    .onFailure { e -> Log.w(TAG, "clearBaseMapLayer: Failed to close MapDataStore", e) }
             }
         }
         currentStore = null
-        publishReliefOverlayState(force = true)
-
         return hadCurrentLayer
     }
 
@@ -1197,7 +1266,7 @@ class MapRenderer(
                 },
             ).apply {
                 setXmlRenderTheme(theme)
-                setTextScale(currentMapLabelTextScale)
+                setTextScale(mapRendererLayerTextScale(currentMapLabelTextScale))
                 trySetThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
                 if (warmStartupCache) {
                     armStartupTilePrewarm(this)

@@ -178,8 +178,8 @@ private fun zoomButtonsModeLabel(mode: String): String =
 
 private fun mapLabelSizeLabel(size: String): String =
     when (size) {
-        SettingsRepository.MAP_LABEL_SIZE_SMALL -> "Small (85%)"
-        SettingsRepository.MAP_LABEL_SIZE_LARGE -> "Large (115%)"
-        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> "Extra large (130%)"
+        SettingsRepository.MAP_LABEL_SIZE_SMALL -> "Small (80%)"
+        SettingsRepository.MAP_LABEL_SIZE_LARGE -> "Large (150%)"
+        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> "Extra large (175%)"
         else -> "Default (100%)"
     }
