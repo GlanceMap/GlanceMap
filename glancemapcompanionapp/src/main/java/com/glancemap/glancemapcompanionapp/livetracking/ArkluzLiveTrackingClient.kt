@@ -62,6 +62,8 @@ internal data class ArkluzLocationUpdate(
     val pause: Boolean = false,
     val resume: Boolean = false,
     val dateId: String? = null,
+    val locationDiagnostics: LiveTrackingLocationDiagnostics? = null,
+    val isCatchUp: Boolean = false,
 ) {
     fun asStoredGpsPoint(): ArkluzLocationUpdate =
         copy(
@@ -70,6 +72,13 @@ internal data class ArkluzLocationUpdate(
             pause = false,
             resume = false,
             dateId = null,
+            isCatchUp = false,
+        )
+
+    fun asCatchUpPoint(): ArkluzLocationUpdate =
+        asStoredGpsPoint().copy(
+            gsmSignalPercent = 0,
+            isCatchUp = true,
         )
 }
 
@@ -97,13 +106,19 @@ enum class ArkluzTrackingEndpoint(
 
     companion object {
         val defaultUrl: String = BuildConfig.ARKLUZ_TRACKING_URL.ifBlank { PRODUCTION.url }
-        val defaultEndpoint: ArkluzTrackingEndpoint =
-            entries.firstOrNull { it.url == defaultUrl } ?: PRODUCTION
+
+        fun fromPersistedName(name: String?) = entries.firstOrNull { it.name == name } ?: PRODUCTION
+
+        internal fun resolveUrl(
+            activeSessionUrl: String?,
+            selectedEndpoint: ArkluzTrackingEndpoint,
+        ): String = activeSessionUrl?.trim()?.takeIf(String::isNotBlank) ?: selectedEndpoint.url
     }
 }
 
 internal class ArkluzLiveTrackingClient(
     private val context: Context,
+    private val gsmSignalPercentProvider: () -> Int = { UNKNOWN_GSM_SIGNAL_PERCENT },
 ) {
     private val appContext = context.applicationContext
     private val httpClient =
@@ -368,6 +383,7 @@ internal class ArkluzLiveTrackingClient(
         pause: Boolean = false,
         resume: Boolean = false,
         dateId: String? = null,
+        locationDiagnostics: LiveTrackingLocationDiagnostics? = null,
     ): ArkluzLocationUpdate =
         ArkluzLocationUpdate(
             trackingUrl = settings.trackingUrl.trim().ifBlank { ArkluzTrackingEndpoint.defaultUrl },
@@ -390,6 +406,7 @@ internal class ArkluzLiveTrackingClient(
             pause = pause,
             resume = resume,
             dateId = dateId,
+            locationDiagnostics = locationDiagnostics,
         )
 
     suspend fun sendLocationUpdate(update: ArkluzLocationUpdate): ArkluzServerResult =
@@ -565,7 +582,16 @@ internal class ArkluzLiveTrackingClient(
         return batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
     }
 
-    private fun gsmSignalPercent(): Int = -1
+    private fun gsmSignalPercent(): Int =
+        runCatching { gsmSignalPercentProvider() }
+            .getOrDefault(UNKNOWN_GSM_SIGNAL_PERCENT)
+            .let { value ->
+                if (value < 0) UNKNOWN_GSM_SIGNAL_PERCENT else value.coerceIn(0, 100)
+            }
+
+    private companion object {
+        const val UNKNOWN_GSM_SIGNAL_PERCENT = -1
+    }
 }
 
 private fun LiveTrackingSettings.toDiagnosticRequest(
@@ -588,6 +614,14 @@ private fun ArkluzLocationUpdate.toDiagnosticRequest(): LiveTrackingDiagnosticRe
         stop = stop,
         pause = pause,
         resume = resume,
+        gpsAccuracyMeters = accuracyMeters.takeIf { it.isFinite() && it >= 0f },
+        fixAgeMillis = locationDiagnostics?.fixAgeMillis,
+        distanceFromPreviousMeters = locationDiagnostics?.distanceFromPreviousMeters,
+        impliedSpeedMetersPerSecond = locationDiagnostics?.impliedSpeedMetersPerSecond,
+        locationQualityResult = locationDiagnostics?.qualityResult?.name,
+        locationQualityReason = locationDiagnostics?.qualityReason,
+        gsmSignalPercent = gsmSignalPercent,
+        isCatchUp = isCatchUp,
     )
 
 @Suppress("LongParameterList")
@@ -600,6 +634,14 @@ private fun diagnosticRequestWithRecipients(
     stop: Boolean = false,
     pause: Boolean = false,
     resume: Boolean = false,
+    gpsAccuracyMeters: Float? = null,
+    fixAgeMillis: Long? = null,
+    distanceFromPreviousMeters: Double? = null,
+    impliedSpeedMetersPerSecond: Double? = null,
+    locationQualityResult: String? = null,
+    locationQualityReason: String? = null,
+    gsmSignalPercent: Int? = null,
+    isCatchUp: Boolean = false,
 ): LiveTrackingDiagnosticRequest {
     val alertRecipientValues = recipientValues(alertRecipients)
     return LiveTrackingDiagnosticRequest(
@@ -613,6 +655,14 @@ private fun diagnosticRequestWithRecipients(
         stop = stop,
         pause = pause,
         resume = resume,
+        gpsAccuracyMeters = gpsAccuracyMeters,
+        fixAgeMillis = fixAgeMillis,
+        distanceFromPreviousMeters = distanceFromPreviousMeters,
+        impliedSpeedMetersPerSecond = impliedSpeedMetersPerSecond,
+        locationQualityResult = locationQualityResult,
+        locationQualityReason = locationQualityReason,
+        gsmSignalPercent = gsmSignalPercent,
+        isCatchUp = isCatchUp,
     )
 }
 
