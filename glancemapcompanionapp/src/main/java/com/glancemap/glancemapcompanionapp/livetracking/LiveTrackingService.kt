@@ -304,6 +304,12 @@ class LiveTrackingService : Service() {
                             fix = fix,
                             nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
                             nowEpochMilliseconds = System.currentTimeMillis(),
+                            startupStaleReason =
+                                if (source == LiveTrackingFixSource.CACHED_STARTUP) {
+                                    "stale_startup_cache"
+                                } else {
+                                    "stale_startup_callback"
+                                },
                         ).also { decision ->
                             LiveTrackingDiagnostics.recordLiveTrackingFix(
                                 source = source,

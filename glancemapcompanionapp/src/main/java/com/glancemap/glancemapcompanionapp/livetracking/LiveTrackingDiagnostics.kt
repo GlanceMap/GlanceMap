@@ -185,15 +185,15 @@ internal object LiveTrackingDiagnostics {
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val captureSessionId = PhoneDebugCapture.state.value.sessionId
-        val line =
-            synchronized(fieldTestLock) {
-                val session =
-                    fieldTestSession
-                        ?.takeIf { it.captureSessionId == captureSessionId }
-                        ?: MutableFieldTestSession(captureSessionId = captureSessionId)
-                            .also { fieldTestSession = it }
-                val sequence = ++session.nextFixSequence
-                session.recordFix(source, decision, gsmSignalPercent, queueSize)
+        synchronized(fieldTestLock) {
+            val session =
+                fieldTestSession
+                    ?.takeIf { it.captureSessionId == captureSessionId }
+                    ?: MutableFieldTestSession(captureSessionId = captureSessionId)
+                        .also { fieldTestSession = it }
+            val sequence = ++session.nextFixSequence
+            session.recordFix(decision, gsmSignalPercent, queueSize)
+            val line =
                 buildString {
                     append("fix=").append(sequence)
                     append(" source=").append(source.label)
@@ -217,8 +217,8 @@ internal object LiveTrackingDiagnostics {
                     append(" queue=").append(queueSize ?: "na")
                     append(" mock=").append(isMockLocation ?: "na")
                 }
-            }
-        PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
+            PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
+        }
     }
 
     @Suppress("LongParameterList")
@@ -342,7 +342,6 @@ internal object LiveTrackingDiagnostics {
             )
 
         fun recordFix(
-            source: LiveTrackingFixSource,
             decision: LiveTrackingLocationQualityDecision,
             gsmSignalPercent: Int,
             queueSize: Int?,
@@ -356,8 +355,12 @@ internal object LiveTrackingDiagnostics {
             if (decision.suspectResolution == LiveTrackingSuspectResolution.CONFIRMED) {
                 suspectFixesConfirmed += 1
             }
-            if (source == LiveTrackingFixSource.CACHED_STARTUP &&
-                decision.reason in setOf("stale_startup_cache", "unknown_startup_cache_age")
+            if (decision.reason in
+                setOf(
+                    "stale_startup_cache",
+                    "stale_startup_callback",
+                    "unknown_startup_cache_age",
+                )
             ) {
                 staleStartupRejected += 1
             }

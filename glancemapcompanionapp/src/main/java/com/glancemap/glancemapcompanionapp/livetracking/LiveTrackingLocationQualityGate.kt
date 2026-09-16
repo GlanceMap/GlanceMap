@@ -66,6 +66,10 @@ internal fun LiveTrackingLocationQualityDecision.toDiagnostics(): LiveTrackingLo
 internal class LiveTrackingLocationQualityGate {
     private var lastAcceptedFix: LiveTrackingLocationFix? = null
     private var pendingFix: PendingFix? = null
+    private var freshInitialFixEstablished = false
+
+    internal val hasFreshInitialFix: Boolean
+        get() = freshInitialFixEstablished
 
     // The explicit order keeps stale, invalid, confirmed, and quarantined fixes easy to audit.
     @Suppress("LongMethod", "ReturnCount")
@@ -73,6 +77,7 @@ internal class LiveTrackingLocationQualityGate {
         fix: LiveTrackingLocationFix,
         nowElapsedRealtimeNanos: Long,
         nowEpochMilliseconds: Long,
+        startupStaleReason: String = "stale_startup_callback",
     ): LiveTrackingLocationQualityDecision {
         val ageMillis = liveTrackingLocationAgeMillis(fix, nowElapsedRealtimeNanos, nowEpochMilliseconds)
         if (ageMillis == null) {
@@ -83,10 +88,11 @@ internal class LiveTrackingLocationQualityGate {
                 ageMillis = null,
             )
         }
-        if (ageMillis > MAX_LIVE_TRACKING_FIX_AGE_MILLIS) {
+        val (maxAllowedFixAgeMillis, staleFixReason) = currentFixAgeRule(startupStaleReason)
+        if (ageMillis > maxAllowedFixAgeMillis) {
             return decision(
                 result = LiveTrackingLocationQualityResult.REJECT,
-                reason = "stale_fix",
+                reason = staleFixReason,
                 accuracyMeters = fix.accuracyMeters,
                 ageMillis = ageMillis,
             )
@@ -165,6 +171,13 @@ internal class LiveTrackingLocationQualityGate {
         )
     }
 
+    private fun currentFixAgeRule(startupStaleReason: String): Pair<Long, String> =
+        if (freshInitialFixEstablished) {
+            MAX_LIVE_TRACKING_FIX_AGE_MILLIS to "stale_fix"
+        } else {
+            MAX_STARTUP_LIVE_TRACKING_FIX_AGE_MILLIS to startupStaleReason
+        }
+
     private fun accept(
         fix: LiveTrackingLocationFix,
         ageMillis: Long?,
@@ -172,6 +185,7 @@ internal class LiveTrackingLocationQualityGate {
         metrics: MovementMetrics? = null,
         suspectResolution: LiveTrackingSuspectResolution = LiveTrackingSuspectResolution.NONE,
     ): LiveTrackingLocationQualityDecision {
+        freshInitialFixEstablished = true
         lastAcceptedFix = fix
         pendingFix = null
         return decision(
@@ -306,7 +320,7 @@ internal fun isFreshLiveTrackingCachedLocation(
     nowEpochMilliseconds: Long,
 ): Boolean =
     liveTrackingLocationAgeMillis(fix, nowElapsedRealtimeNanos, nowEpochMilliseconds)
-        ?.let { it <= MAX_STARTUP_CACHED_LOCATION_AGE_MILLIS }
+        ?.let { it <= MAX_STARTUP_LIVE_TRACKING_FIX_AGE_MILLIS }
         ?: false
 
 internal fun Location.toLiveTrackingLocationFix(): LiveTrackingLocationFix =
@@ -365,4 +379,4 @@ private fun distanceMeters(
 
 private const val EARTH_RADIUS_METERS = 6_371_000.0
 private const val NANOS_PER_MILLISECOND = 1_000_000L
-private const val MAX_STARTUP_CACHED_LOCATION_AGE_MILLIS = 30_000L
+private const val MAX_STARTUP_LIVE_TRACKING_FIX_AGE_MILLIS = 30_000L

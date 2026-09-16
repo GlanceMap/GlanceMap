@@ -190,6 +190,22 @@ class LiveTrackingDiagnosticsTest {
             gsmSignalPercent = -1,
             queueSize = 2,
         )
+        LiveTrackingDiagnostics.recordLiveTrackingFix(
+            source = LiveTrackingFixSource.CALLBACK,
+            decision =
+                LiveTrackingLocationQualityDecision(
+                    result = LiveTrackingLocationQualityResult.REJECT,
+                    reason = "stale_startup_callback",
+                    accuracyMeters = 10.0f,
+                    fixAgeMillis = 31_000L,
+                    distanceFromPreviousMeters = null,
+                    impliedSpeedMetersPerSecond = null,
+                ),
+            androidSpeedMetersPerSecond = null,
+            isMockLocation = false,
+            gsmSignalPercent = -1,
+            queueSize = 2,
+        )
         LiveTrackingDiagnostics.recordLiveTrackingTransmission(
             isCatchUp = true,
             fixTimestampEpochMillis = 1_000L,
@@ -207,13 +223,15 @@ class LiveTrackingDiagnosticsTest {
 
         assertTrue(capture.contains("session_start endpoint=development intervalSec=30"))
         assertTrue(capture.contains("fix=1 source=callback"))
+        assertTrue(capture.contains("source=callback ageMs=31000"))
+        assertTrue(capture.contains("reason=stale_startup_callback"))
         assertTrue(capture.contains("androidSpeedReported=true androidSpeedMps=2.0"))
         assertTrue(capture.contains("confirmation=waiting suspectWaiting=true"))
         assertTrue(capture.contains("tx mode=catch_up"))
         assertTrue(capture.contains("gsm_signal=0 queueBefore=2 queueAfter=1 outcome=success"))
-        assertTrue(capture.contains("session_end fixesReceived=4 fixesAccepted=2 fixesSuspect=1 fixesRejected=1"))
-        assertTrue(capture.contains("suspectConfirmed=1 staleStartupRejected=1 positionsQueued=1 catchUpReplayed=1"))
-        assertTrue(capture.contains("maxQueueDepth=3 gsmUnknown=1"))
+        assertTrue(capture.contains("session_end fixesReceived=5 fixesAccepted=2 fixesSuspect=1 fixesRejected=2"))
+        assertTrue(capture.contains("suspectConfirmed=1 staleStartupRejected=2 positionsQueued=1 catchUpReplayed=1"))
+        assertTrue(capture.contains("maxQueueDepth=3 gsmUnknown=2"))
         assertTrue(capture.contains("good:2"))
         assertFalse(capture.contains("latitude"))
         assertFalse(capture.contains("longitude"))

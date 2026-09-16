@@ -125,6 +125,69 @@ class LiveTrackingLocationQualityGateTest {
     }
 
     @Test
+    fun rejectsAStaleFirstCallbackUntilStartupHasAFreshFix() {
+        val gate = gate()
+        val fix = fix(0.0, 0)
+        val elapsedRealtimeNanos = checkNotNull(fix.elapsedRealtimeNanos)
+
+        val decision =
+            gate.evaluate(
+                fix = fix,
+                nowElapsedRealtimeNanos = elapsedRealtimeNanos + 31 * NANOS_PER_SECOND,
+                nowEpochMilliseconds = fix.epochMilliseconds,
+            )
+
+        assertEquals(LiveTrackingLocationQualityResult.REJECT, decision.result)
+        assertEquals("stale_startup_callback", decision.reason)
+        assertEquals(false, gate.hasFreshInitialFix)
+    }
+
+    @Test
+    fun acceptsAFreshCallbackAsTheFirstFixAndEstablishesStartup() {
+        val gate = gate()
+        val fix = fix(0.0, 0)
+
+        val decision = evaluateAtAge(gate, fix, 20_000L)
+
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, decision.result)
+        assertEquals("first_fix", decision.reason)
+        assertEquals(true, gate.hasFreshInitialFix)
+    }
+
+    @Test
+    fun acceptsFreshCachedStartupFixAndUsesNormalLiveAgeAfterwards() {
+        val gate = gate()
+        val cachedFix = fix(0.0, 0)
+        val normalFix = fix(0.0, 60)
+
+        assertEquals(
+            LiveTrackingLocationQualityResult.ACCEPT,
+            evaluateAtAge(gate, cachedFix, 20_000L, "stale_startup_cache").result,
+        )
+        val decision = evaluateAtAge(gate, normalFix, 31_000L)
+        val staleDecision = evaluateAtAge(gate, normalFix, 2 * 60 * 1000L + 1L)
+
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, decision.result)
+        assertEquals("consistent_fix", decision.reason)
+        assertEquals(LiveTrackingLocationQualityResult.REJECT, staleDecision.result)
+        assertEquals("stale_fix", staleDecision.reason)
+    }
+
+    @Test
+    fun serialStartupCandidatesCannotCompeteForTwoFirstFixes() {
+        val gate = gate()
+        val callbackFix = fix(0.0, 0)
+        val cachedFix = fix(0.0, 1)
+
+        val firstDecision = evaluateAtAge(gate, callbackFix, 20_000L)
+        val secondDecision = evaluateAtAge(gate, cachedFix, 1_000L, "stale_startup_cache")
+
+        assertEquals("first_fix", firstDecision.reason)
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, secondDecision.result)
+        assertEquals("consistent_fix", secondDecision.reason)
+    }
+
+    @Test
     fun rejectsAFixWhenItsAgeCannotBeEstablished() {
         val fix =
             LiveTrackingLocationFix(
@@ -155,6 +218,18 @@ class LiveTrackingLocationQualityGateTest {
         fix: LiveTrackingLocationFix,
     ) = gate.evaluate(fix, fix.elapsedRealtimeNanos!!, fix.epochMilliseconds)
 
+    private fun evaluateAtAge(
+        gate: LiveTrackingLocationQualityGate,
+        fix: LiveTrackingLocationFix,
+        ageMillis: Long,
+        startupStaleReason: String = "stale_startup_callback",
+    ) = gate.evaluate(
+        fix = fix,
+        nowElapsedRealtimeNanos = fix.elapsedRealtimeNanos!! + ageMillis * NANOS_PER_MILLISECOND,
+        nowEpochMilliseconds = fix.epochMilliseconds + ageMillis,
+        startupStaleReason = startupStaleReason,
+    )
+
     private fun gate() = LiveTrackingLocationQualityGate()
 
     private fun fix(
@@ -176,5 +251,6 @@ class LiveTrackingLocationQualityGateTest {
         const val BASE_ELAPSED_REALTIME_NANOS = 1_000_000_000L
         const val METERS_PER_DEGREE_AT_EQUATOR = 111_195.0
         const val NANOS_PER_SECOND = 1_000_000_000L
+        const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }
