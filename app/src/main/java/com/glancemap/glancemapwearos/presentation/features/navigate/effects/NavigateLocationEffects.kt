@@ -50,6 +50,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.motion.marke
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.shouldRenderMarkerMotion
 import com.glancemap.glancemapwearos.presentation.features.navigate.navigationMarkerBitmapForTrustState
 import com.glancemap.glancemapwearos.presentation.features.navigate.requestLayerRedrawSafely
+import com.glancemap.glancemapwearos.presentation.features.navigate.resolveLocationMarkerTrustReason
 import com.glancemap.glancemapwearos.presentation.features.navigate.resolveLocationMarkerTrustState
 import com.glancemap.glancemapwearos.presentation.features.navigate.setCenterForNavigationMarker
 import kotlinx.coroutines.channels.Channel
@@ -91,6 +92,7 @@ internal fun rememberNavigateLocationUiState(
     shouldFollowPosition: Boolean,
     screenState: LocationScreenState,
     expectedGpsIntervalMs: Long,
+    markerTrustExpectedGpsIntervalMs: Long,
     isBikeActivityProfile: Boolean,
     navigationMarkerBitmap: AndroidBitmap,
     historicalNavigationMarkerBitmap: AndroidBitmap,
@@ -101,6 +103,10 @@ internal fun rememberNavigateLocationUiState(
     val timingProfile =
         remember(expectedGpsIntervalMs) {
             resolveLocationTimingProfile(expectedGpsIntervalMs)
+        }
+    val markerTrustFreshnessMaxAgeMs =
+        remember(markerTrustExpectedGpsIntervalMs) {
+            resolveLocationTimingProfile(markerTrustExpectedGpsIntervalMs).markerTrustFreshnessMaxAgeMs
         }
     val markerMotionController =
         remember {
@@ -172,6 +178,7 @@ internal fun rememberNavigateLocationUiState(
     var lastInteractiveStaleRefreshStateLabel by remember { mutableStateOf<String?>(null) }
     var lastWakeReacquireStartedAtElapsedMs by remember { mutableLongStateOf(Long.MIN_VALUE) }
     var activeWakeSessionId by remember { mutableLongStateOf(0L) }
+    var previousLoggedMarkerTrustState by remember { mutableStateOf<LocationMarkerTrustState?>(null) }
     var nextWakeSessionId by remember { mutableLongStateOf(0L) }
     var wakeAnchorSeeded by
         remember(shouldTrackLocation, screenState) { mutableStateOf(false) }
@@ -276,29 +283,31 @@ internal fun rememberNavigateLocationUiState(
             }
         selectWakeAnchorSeed(listOfNotNull(cachedAnchor, retainedAnchor, lifecycleRetainedAnchor))
             ?.let { anchor ->
+                val wakeAnchorTrustAnchor =
+                    RetainedLocationAnchor(
+                        latLong = anchor.latLong,
+                        fixElapsedRealtimeMs = anchor.reading.fixElapsedMs,
+                        accuracyM = anchor.reading.accuracyM,
+                        sourceEpoch =
+                            retainedLocationAnchor?.sourceEpoch
+                                ?: locationViewModel.gpsSignalSnapshot.value.sourceEpoch,
+                        sourceModeName = anchor.sourceMode.name,
+                        isAcceptedFix = anchor.isAcceptedFix,
+                    )
+                val wakeAnchorTrustPolicy =
+                    LocationMarkerTrustPolicy(
+                        nowElapsedRealtimeMs = nowElapsedMs,
+                        currentSourceEpoch = indicatorSourceEpoch,
+                        requiresFreshLiveFixAfterSourceChange =
+                        indicatorRequiresFreshLiveFixAfterSourceChange,
+                        freshnessMaxAgeMs = markerTrustFreshnessMaxAgeMs,
+                        hasHardEnvironmentRestriction =
+                            hasHardLocationEnvironmentRestriction(indicatorEnvironmentWarning),
+                    )
                 val wakeAnchorTrustState =
                     resolveLocationMarkerTrustState(
-                        retainedLocationAnchor =
-                            RetainedLocationAnchor(
-                                latLong = anchor.latLong,
-                                fixElapsedRealtimeMs = anchor.reading.fixElapsedMs,
-                                accuracyM = anchor.reading.accuracyM,
-                                sourceEpoch =
-                                    retainedLocationAnchor?.sourceEpoch
-                                        ?: locationViewModel.gpsSignalSnapshot.value.sourceEpoch,
-                                sourceModeName = anchor.sourceMode.name,
-                                isAcceptedFix = anchor.isAcceptedFix,
-                            ),
-                        policy =
-                            LocationMarkerTrustPolicy(
-                                nowElapsedRealtimeMs = nowElapsedMs,
-                                currentSourceEpoch = indicatorSourceEpoch,
-                                requiresFreshLiveFixAfterSourceChange =
-                                indicatorRequiresFreshLiveFixAfterSourceChange,
-                                freshnessMaxAgeMs = timingProfile.indicatorStaleThresholdMs,
-                                hasHardEnvironmentRestriction =
-                                    hasHardLocationEnvironmentRestriction(indicatorEnvironmentWarning),
-                            ),
+                        retainedLocationAnchor = wakeAnchorTrustAnchor,
+                        policy = wakeAnchorTrustPolicy,
                     )
                 if (shouldPublishDisplayedWakeAnchor(anchor, retainedLocationAnchor)) {
                     navigateViewModel.onDisplayedLocationAnchor(
@@ -354,12 +363,26 @@ internal fun rememberNavigateLocationUiState(
                     lastMarkerMotionAdvanceAtElapsedMs = nowElapsedMs
                     mapView.requestLayerRedrawSafely()
                 }
+                val wakeAnchorTrustReason =
+                    resolveLocationMarkerTrustReason(
+                        retainedLocationAnchor = wakeAnchorTrustAnchor,
+                        policy = wakeAnchorTrustPolicy,
+                        trustState = wakeAnchorTrustState,
+                    )
                 DebugTelemetry.log(
                     NAV_MARKER_TELEMETRY_TAG,
                     "warmReturn restored=true source=${anchor.origin.telemetryLabel} " +
                         "ageMs=${(nowElapsedMs - anchor.reading.fixElapsedMs).coerceAtLeast(0L)} " +
                         "accuracyM=${anchor.reading.accuracyM} speedMps=${anchor.reading.speedMps} " +
-                        "predictionContinues=$resumePredictionFromWakeAnchor",
+                        "predictionContinues=$resumePredictionFromWakeAnchor " +
+                        "accepted=${anchor.isAcceptedFix} " +
+                        "sourceEpoch=${wakeAnchorTrustAnchor.sourceEpoch} " +
+                        "currentSourceEpoch=${wakeAnchorTrustPolicy.currentSourceEpoch} " +
+                        "requiresFreshAfterSourceChange=" +
+                        "${wakeAnchorTrustPolicy.requiresFreshLiveFixAfterSourceChange} " +
+                        "trustState=${wakeAnchorTrustState.name} " +
+                        "trustReason=$wakeAnchorTrustReason " +
+                        "freshnessThresholdMs=${wakeAnchorTrustPolicy.freshnessMaxAgeMs}",
                 )
             }
         val wakeReacquireInCooldown =
@@ -517,24 +540,54 @@ internal fun rememberNavigateLocationUiState(
             gpsIndicatorState = gpsIndicatorState,
             watchGpsDegradedWarning = watchGpsDegradedWarning,
         )
+    val markerTrustPolicy =
+        LocationMarkerTrustPolicy(
+            nowElapsedRealtimeMs = gpsIndicatorClockMs,
+            currentSourceEpoch = indicatorSourceEpoch,
+            requiresFreshLiveFixAfterSourceChange =
+            indicatorRequiresFreshLiveFixAfterSourceChange,
+            freshnessMaxAgeMs = markerTrustFreshnessMaxAgeMs,
+            hasHardEnvironmentRestriction =
+                hasHardLocationEnvironmentRestriction(activeEnvironmentWarning),
+        )
     val locationMarkerTrustState =
         if (suppressLocationMarker) {
             LocationMarkerTrustState.NO_POSITION
         } else {
             resolveLocationMarkerTrustState(
                 retainedLocationAnchor = retainedLocationAnchor,
-                policy =
-                    LocationMarkerTrustPolicy(
-                        nowElapsedRealtimeMs = gpsIndicatorClockMs,
-                        currentSourceEpoch = indicatorSourceEpoch,
-                        requiresFreshLiveFixAfterSourceChange =
-                        indicatorRequiresFreshLiveFixAfterSourceChange,
-                        freshnessMaxAgeMs = timingProfile.indicatorStaleThresholdMs,
-                        hasHardEnvironmentRestriction =
-                            hasHardLocationEnvironmentRestriction(activeEnvironmentWarning),
-                    ),
+                policy = markerTrustPolicy,
             )
         }
+
+    LaunchedEffect(locationMarkerTrustState) {
+        val previousState = previousLoggedMarkerTrustState
+        previousLoggedMarkerTrustState = locationMarkerTrustState
+        if (
+            previousState == null ||
+            previousState == locationMarkerTrustState ||
+            !DebugTelemetry.isFullDiagnosticsCaptureEnabled()
+        ) {
+            return@LaunchedEffect
+        }
+        val ageMs =
+            retainedLocationAnchor
+                ?.fixElapsedRealtimeMs
+                ?.takeIf { it > 0L }
+                ?.let { (markerTrustPolicy.nowElapsedRealtimeMs - it).coerceAtLeast(0L) }
+        val markerTrustReason =
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = retainedLocationAnchor,
+                policy = markerTrustPolicy,
+                trustState = locationMarkerTrustState,
+            )
+        DebugTelemetry.log(
+            NAV_MARKER_TELEMETRY_TAG,
+            "markerTrust old=${previousState.name} new=${locationMarkerTrustState.name} " +
+                "reason=$markerTrustReason ageMs=${ageMs ?: "unknown"} " +
+                "thresholdMs=${markerTrustPolicy.freshnessMaxAgeMs}",
+        )
+    }
 
     LaunchedEffect(
         indicatorSourceEpoch,

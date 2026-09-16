@@ -488,6 +488,7 @@ fun NavigateScreen(
                 shouldFollowPosition = shouldFollowPosition,
                 screenState = screenState,
                 expectedGpsIntervalMs = expectedMarkerGpsIntervalMs,
+                markerTrustExpectedGpsIntervalMs = configuredMarkerGpsIntervalMs,
                 isBikeActivityProfile = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 navigationMarkerBitmap = navigationMarkerBitmap,
                 historicalNavigationMarkerBitmap = historicalNavigationMarkerBitmap,

@@ -60,6 +60,29 @@ internal fun resolveLocationMarkerTrustState(
     }
 }
 
+internal fun resolveLocationMarkerTrustReason(
+    retainedLocationAnchor: RetainedLocationAnchor?,
+    policy: LocationMarkerTrustPolicy,
+    trustState: LocationMarkerTrustState,
+): String {
+    val sourceChanged =
+        retainedLocationAnchor?.let { anchor ->
+            anchor.sourceEpoch > 0L &&
+                policy.currentSourceEpoch > 0L &&
+                anchor.sourceEpoch != policy.currentSourceEpoch
+        } == true
+    return when {
+        trustState == LocationMarkerTrustState.NO_POSITION || retainedLocationAnchor == null ->
+            "no_position"
+        policy.hasHardEnvironmentRestriction -> "hard_environment_restriction"
+        sourceChanged -> "source_epoch_mismatch"
+        policy.requiresFreshLiveFixAfterSourceChange -> "requires_fresh_source_fix"
+        !retainedLocationAnchor.isAcceptedFix -> "non_accepted_anchor"
+        trustState == LocationMarkerTrustState.CURRENT -> "fresh_accepted_fix"
+        else -> "stale"
+    }
+}
+
 // Keep the call shape convenient for focused pure tests; production code uses the policy object.
 @Suppress("LongParameterList")
 internal fun resolveLocationMarkerTrustState(

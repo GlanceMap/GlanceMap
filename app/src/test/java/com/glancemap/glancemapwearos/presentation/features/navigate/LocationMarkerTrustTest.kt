@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
+import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import org.junit.Assert.assertEquals
@@ -34,6 +35,67 @@ class LocationMarkerTrustTest {
                 currentSourceEpoch = 2L,
                 requiresFreshLiveFixAfterSourceChange = false,
                 freshnessMaxAgeMs = 15_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun threeSecondCadenceKeepsFiveToSixSecondAcceptedFixCurrent() {
+        val freshnessMaxAgeMs = resolveLocationTimingProfile(3_000L).markerTrustFreshnessMaxAgeMs
+
+        assertEquals(
+            LocationMarkerTrustState.CURRENT,
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 4_000L),
+                nowElapsedRealtimeMs = 9_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = freshnessMaxAgeMs,
+            ),
+        )
+        assertEquals(
+            LocationMarkerTrustState.CURRENT,
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 4_000L),
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = freshnessMaxAgeMs,
+            ),
+        )
+    }
+
+    @Test
+    fun threeSecondCadenceKeepsNineSecondAcceptedFixCurrentInsideResolvedWindow() {
+        val freshnessMaxAgeMs = resolveLocationTimingProfile(3_000L).markerTrustFreshnessMaxAgeMs
+
+        assertEquals(10_000L, freshnessMaxAgeMs)
+        assertEquals(
+            LocationMarkerTrustState.CURRENT,
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 1_000L),
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = freshnessMaxAgeMs,
+            ),
+        )
+    }
+
+    @Test
+    fun temporaryOneSecondBurstDoesNotShortenThreeSecondTrustWindow() {
+        val normalFreshnessMaxAgeMs = resolveLocationTimingProfile(3_000L).markerTrustFreshnessMaxAgeMs
+        val burstFreshnessMaxAgeMs = resolveLocationTimingProfile(1_000L).markerTrustFreshnessMaxAgeMs
+
+        assertEquals(normalFreshnessMaxAgeMs, burstFreshnessMaxAgeMs)
+        assertEquals(
+            LocationMarkerTrustState.CURRENT,
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 1_000L),
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = burstFreshnessMaxAgeMs,
             ),
         )
     }
@@ -95,26 +157,41 @@ class LocationMarkerTrustTest {
     }
 
     @Test
-    fun indicatorCadenceBoundaryControlsMarkerFreshness() {
+    fun markerTrustWindowBoundaryControlsMarkerFreshness() {
+        val freshnessMaxAgeMs = resolveLocationTimingProfile(3_000L).markerTrustFreshnessMaxAgeMs
         val anchor = anchor(fixElapsedRealtimeMs = 1_000L)
         assertEquals(
             LocationMarkerTrustState.CURRENT,
             resolveLocationMarkerTrustState(
                 retainedLocationAnchor = anchor,
-                nowElapsedRealtimeMs = 16_000L,
+                nowElapsedRealtimeMs = 11_000L,
                 currentSourceEpoch = 2L,
                 requiresFreshLiveFixAfterSourceChange = false,
-                freshnessMaxAgeMs = 15_000L,
+                freshnessMaxAgeMs = freshnessMaxAgeMs,
             ),
         )
         assertEquals(
             LocationMarkerTrustState.HISTORICAL,
             resolveLocationMarkerTrustState(
                 retainedLocationAnchor = anchor,
-                nowElapsedRealtimeMs = 16_001L,
+                nowElapsedRealtimeMs = 11_001L,
                 currentSourceEpoch = 2L,
                 requiresFreshLiveFixAfterSourceChange = false,
-                freshnessMaxAgeMs = 15_000L,
+                freshnessMaxAgeMs = freshnessMaxAgeMs,
+            ),
+        )
+    }
+
+    @Test
+    fun sourceEpochMismatchIsHistoricalEvenWhenFixIsWithinFreshnessWindow() {
+        assertEquals(
+            LocationMarkerTrustState.HISTORICAL,
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 9_000L, sourceEpoch = 1L),
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = resolveLocationTimingProfile(3_000L).markerTrustFreshnessMaxAgeMs,
             ),
         )
     }
@@ -294,6 +371,87 @@ class LocationMarkerTrustTest {
                 trustState = LocationMarkerTrustState.NO_POSITION,
                 currentBitmap = "blue",
                 historicalBitmap = "grey",
+            ),
+        )
+    }
+
+    @Test
+    fun markerTrustReasonDescribesFreshnessAndAcceptance() {
+        val currentAnchor = anchor(fixElapsedRealtimeMs = 9_000L, sourceEpoch = 2L)
+        val currentPolicy =
+            LocationMarkerTrustPolicy(
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = 15_000L,
+            )
+
+        assertEquals(
+            "fresh_accepted_fix",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor,
+                policy = currentPolicy,
+                trustState = LocationMarkerTrustState.CURRENT,
+            ),
+        )
+        assertEquals(
+            "stale",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor,
+                policy = currentPolicy.copy(freshnessMaxAgeMs = 500L),
+                trustState = LocationMarkerTrustState.HISTORICAL,
+            ),
+        )
+        assertEquals(
+            "non_accepted_anchor",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor.copy(isAcceptedFix = false),
+                policy = currentPolicy,
+                trustState = LocationMarkerTrustState.HISTORICAL,
+            ),
+        )
+    }
+
+    @Test
+    fun markerTrustReasonDescribesSourceAndEnvironmentRestrictions() {
+        val currentAnchor = anchor(fixElapsedRealtimeMs = 9_000L, sourceEpoch = 2L)
+        val currentPolicy =
+            LocationMarkerTrustPolicy(
+                nowElapsedRealtimeMs = 10_000L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = 15_000L,
+            )
+        assertEquals(
+            "source_epoch_mismatch",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor,
+                policy = currentPolicy.copy(currentSourceEpoch = 3L),
+                trustState = LocationMarkerTrustState.HISTORICAL,
+            ),
+        )
+        assertEquals(
+            "requires_fresh_source_fix",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor,
+                policy = currentPolicy.copy(requiresFreshLiveFixAfterSourceChange = true),
+                trustState = LocationMarkerTrustState.HISTORICAL,
+            ),
+        )
+        assertEquals(
+            "hard_environment_restriction",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = currentAnchor,
+                policy = currentPolicy.copy(hasHardEnvironmentRestriction = true),
+                trustState = LocationMarkerTrustState.HISTORICAL,
+            ),
+        )
+        assertEquals(
+            "no_position",
+            resolveLocationMarkerTrustReason(
+                retainedLocationAnchor = null,
+                policy = currentPolicy,
+                trustState = LocationMarkerTrustState.NO_POSITION,
             ),
         )
     }
