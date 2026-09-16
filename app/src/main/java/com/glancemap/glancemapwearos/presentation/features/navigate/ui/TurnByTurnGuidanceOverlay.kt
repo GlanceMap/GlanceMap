@@ -1016,7 +1016,12 @@ private fun RouteProgressRing(
             )
         val arcSize = Size(side, side)
         drawArc(
-            color = Color.White.copy(alpha = 0.12f),
+            color =
+                if (elevationProgressRingEnabled && routeProgressRingSegments.isNotEmpty() && !offRoute) {
+                    Color(ROUTE_PROGRESS_RING_FALLBACK_GREEN)
+                } else {
+                    Color.White.copy(alpha = 0.12f)
+                },
             startAngle = PROGRESS_ARC_START_DEGREES,
             sweepAngle = PROGRESS_ARC_SWEEP_DEGREES,
             useCenter = false,
