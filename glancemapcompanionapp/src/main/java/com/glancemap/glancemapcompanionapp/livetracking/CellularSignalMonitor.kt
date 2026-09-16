@@ -84,12 +84,20 @@ internal class CellularSignalMonitor(
         val listener =
             legacyListener
                 ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    PhoneStateListener(callbackExecutor)
+                    object : PhoneStateListener(callbackExecutor) {
+                        override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
+                            onSignalStrength(signalStrength)
+                        }
+                    }
                 } else {
                     check(Looper.myLooper() != null) {
                         "Legacy cellular signal monitoring must start on a looper thread"
                     }
-                    PhoneStateListener()
+                    object : PhoneStateListener() {
+                        override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
+                            onSignalStrength(signalStrength)
+                        }
+                    }
                 }.also { legacyListener = it }
         manager.listen(listener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
     }
