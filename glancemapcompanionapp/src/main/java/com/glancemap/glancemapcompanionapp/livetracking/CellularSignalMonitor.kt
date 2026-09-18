@@ -123,9 +123,9 @@ internal class CellularSignalMonitor(
 internal fun Int.toArkluzSignalPercent(): Int =
     when {
         this < 0 -> -1
-        this == 0 -> 0
-        this >= MAX_ANDROID_SIGNAL_LEVEL -> 100
-        else -> (this * 100) / MAX_ANDROID_SIGNAL_LEVEL
+        this == 0 -> 20
+        this == 1 -> 40
+        this == 2 -> 60
+        this == 3 -> 80
+        else -> 100
     }
-
-private const val MAX_ANDROID_SIGNAL_LEVEL = 4
