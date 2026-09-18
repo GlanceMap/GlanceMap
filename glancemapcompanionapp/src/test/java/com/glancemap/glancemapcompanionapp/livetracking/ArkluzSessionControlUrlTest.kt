@@ -40,21 +40,46 @@ class ArkluzSessionControlUrlTest {
         assertEquals("20260622-42", url.queryParameter("date_id"))
     }
 
+    @Test
+    fun catchUpPointAlwaysUsesZeroCellularSignalAndKeepsGpsTime() {
+        val original = update(gsmSignalPercent = 100, altitudeMeters = 1234.5, speedMetersPerSecond = 7.5f)
+        val url = buildArkluzLocationUrl(original.asCatchUpPoint())
+
+        assertEquals("0", url.queryParameter("gsm_signal"))
+        assertEquals(original.latitude.toString(), url.queryParameter("lat"))
+        assertEquals(original.longitude.toString(), url.queryParameter("lon"))
+        assertEquals(original.accuracyMeters.toString(), url.queryParameter("acc"))
+        assertEquals(original.epochMilliseconds.toString(), url.queryParameter("time"))
+        assertEquals(original.altitudeMeters?.let(::formatArkluzAltitudeMeters), url.queryParameter("alt"))
+        assertEquals(original.speedMetersPerSecond.toString(), url.queryParameter("speed"))
+    }
+
+    @Test
+    fun developmentEndpointIsUsedByLocationRequests() {
+        val url = buildArkluzLocationUrl(update(trackingUrl = ArkluzTrackingEndpoint.DEVELOPMENT.url))
+
+        assertEquals("/dev/trk", url.encodedPath)
+    }
+
+    @Suppress("LongParameterList")
     private fun update(
         pause: Boolean = false,
         resume: Boolean = false,
         dateId: String? = null,
         altitudeMeters: Double? = null,
+        speedMetersPerSecond: Float? = null,
+        trackingUrl: String = "https://arkluz.com/trk",
+        gsmSignalPercent: Int = -1,
     ) = ArkluzLocationUpdate(
-        trackingUrl = "https://arkluz.com/trk",
+        trackingUrl = trackingUrl,
         latitude = 45.0,
         longitude = 6.0,
         altitudeMeters = altitudeMeters,
-        speedMetersPerSecond = null,
+        speedMetersPerSecond = speedMetersPerSecond,
         accuracyMeters = 5f,
         epochMilliseconds = 1_750_000_000_000,
         batteryPercent = 80,
-        gsmSignalPercent = -1,
+        gsmSignalPercent = gsmSignalPercent,
         group = "Alpes",
         participantPassword = "secret",
         userName = "André",

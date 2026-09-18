@@ -35,6 +35,7 @@ internal object LiveTrackingPreferences {
     private const val KEY_DRAFT_COMMENTS = "draft_comments"
     private const val KEY_DRAFT_GPX_URI = "draft_gpx_uri"
     private const val KEY_DRAFT_GPX_NAME = "draft_gpx_name"
+    private const val KEY_TRACKING_ENDPOINT = "tracking_endpoint"
     private const val GROUP_PROFILE_PREFIX = "group_profile"
 
     fun load(context: Context): SavedLiveTrackingSettings {
@@ -92,6 +93,24 @@ internal object LiveTrackingPreferences {
             .putString(KEY_DRAFT_COMMENTS, draft.comments)
             .putString(KEY_DRAFT_GPX_URI, draft.gpxUri)
             .putString(KEY_DRAFT_GPX_NAME, draft.gpxName)
+            .apply()
+    }
+
+    fun loadEndpoint(context: Context): ArkluzTrackingEndpoint =
+        ArkluzTrackingEndpoint.fromPersistedName(
+            context
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_TRACKING_ENDPOINT, null),
+        )
+
+    fun saveEndpoint(
+        context: Context,
+        endpoint: ArkluzTrackingEndpoint,
+    ) {
+        context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TRACKING_ENDPOINT, endpoint.name)
             .apply()
     }
 
