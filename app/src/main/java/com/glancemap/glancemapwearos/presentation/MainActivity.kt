@@ -1176,19 +1176,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        ambientState.refreshDeviceInteractive(fallback = true)
+        ambientState.onResume()
         ScreenStateDiagnostics.updateAppForeground(isForeground = true)
         logScreenTelemetry(event = "activity_resume")
     }
 
     override fun onPause() {
-        ambientState.refreshDeviceInteractive(fallback = false)
+        ambientState.onPause()
         ScreenStateDiagnostics.updateAppForeground(isForeground = false)
         logScreenTelemetry(event = "activity_pause")
         super.onPause()
     }
 
     override fun onDestroy() {
+        ambientState.onDestroy()
         runCatching { unregisterReceiver(screenStateReceiver) }
         thermalTelemetry.unregister()
         val appContainer = (application as GlanceMapWearApp).container
