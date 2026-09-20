@@ -16,6 +16,7 @@ internal data class LiveTrackingLocationFix(
     val elapsedRealtimeNanos: Long?,
     val accuracyMeters: Float?,
     val speedMetersPerSecond: Float?,
+    val speedAccuracyMetersPerSecond: Float? = null,
 )
 
 internal enum class LiveTrackingLocationQualityResult {
@@ -31,6 +32,12 @@ internal enum class LiveTrackingSuspectResolution {
     REJECTED,
 }
 
+internal enum class LiveTrackingSpeedEvidence {
+    CORROBORATED,
+    CONTRADICTED,
+    UNAVAILABLE,
+}
+
 internal data class LiveTrackingLocationQualityDecision(
     val result: LiveTrackingLocationQualityResult,
     val reason: String,
@@ -40,6 +47,10 @@ internal data class LiveTrackingLocationQualityDecision(
     val impliedSpeedMetersPerSecond: Double?,
     val timeDeltaFromPreviousAcceptedFixMillis: Long? = null,
     val suspectResolution: LiveTrackingSuspectResolution = LiveTrackingSuspectResolution.NONE,
+    val speedAccuracyMetersPerSecond: Float? = null,
+    val effectiveJumpThresholdMeters: Double? = null,
+    val poorAccuracy: Boolean = false,
+    val speedEvidence: LiveTrackingSpeedEvidence = LiveTrackingSpeedEvidence.UNAVAILABLE,
 )
 
 internal data class LiveTrackingLocationDiagnostics(
@@ -50,6 +61,10 @@ internal data class LiveTrackingLocationDiagnostics(
     val qualityReason: String,
     val timeDeltaFromPreviousAcceptedFixMillis: Long? = null,
     val suspectResolution: LiveTrackingSuspectResolution = LiveTrackingSuspectResolution.NONE,
+    val speedAccuracyMetersPerSecond: Float? = null,
+    val effectiveJumpThresholdMeters: Double? = null,
+    val poorAccuracy: Boolean = false,
+    val speedEvidence: LiveTrackingSpeedEvidence = LiveTrackingSpeedEvidence.UNAVAILABLE,
 )
 
 internal fun LiveTrackingLocationQualityDecision.toDiagnostics(): LiveTrackingLocationDiagnostics =
@@ -61,6 +76,10 @@ internal fun LiveTrackingLocationQualityDecision.toDiagnostics(): LiveTrackingLo
         qualityReason = reason,
         timeDeltaFromPreviousAcceptedFixMillis = timeDeltaFromPreviousAcceptedFixMillis,
         suspectResolution = suspectResolution,
+        speedAccuracyMetersPerSecond = speedAccuracyMetersPerSecond,
+        effectiveJumpThresholdMeters = effectiveJumpThresholdMeters,
+        poorAccuracy = poorAccuracy,
+        speedEvidence = speedEvidence,
     )
 
 internal class LiveTrackingLocationQualityGate {
@@ -240,25 +259,42 @@ internal class LiveTrackingLocationQualityGate {
         val distance = distanceMeters(previous, current)
         val deltaMillis = locationTimestampDeltaMillis(previous, current)
         val impliedSpeed = deltaMillis?.takeIf { it > 0 }?.let { distance / (it / 1000.0) }
+        val speedEvidence =
+            if (impliedSpeed == null || current.speedMetersPerSecond == null) {
+                LiveTrackingSpeedEvidence.UNAVAILABLE
+            } else {
+                val difference = abs(impliedSpeed - current.speedMetersPerSecond)
+                val tolerance = max(MIN_SPEED_DIFFERENCE_METERS_PER_SECOND, impliedSpeed * SPEED_TOLERANCE)
+                when {
+                    difference <= tolerance -> LiveTrackingSpeedEvidence.CORROBORATED
+                    current.speedAccuracyMetersPerSecond != null &&
+                        difference > max(tolerance, current.speedAccuracyMetersPerSecond * 2.0) ->
+                        LiveTrackingSpeedEvidence.CONTRADICTED
+                    else -> LiveTrackingSpeedEvidence.UNAVAILABLE
+                }
+            }
         return MovementMetrics(
             distanceMeters = distance,
             timeDeltaMillis = deltaMillis,
             impliedSpeedMetersPerSecond = impliedSpeed,
-            reportedSpeedMetersPerSecond = current.speedMetersPerSecond,
-            combinedAccuracyMeters =
-                (previous.accuracyMeters ?: 0f).toDouble() + (current.accuracyMeters ?: 0f).toDouble(),
+            speedAccuracyMetersPerSecond = current.speedAccuracyMetersPerSecond,
+            effectiveJumpThresholdMeters = MIN_SUSPICIOUS_JUMP_METERS,
+            poorAccuracy = current.accuracyMeters?.toDouble()?.let { it >= POOR_ACCURACY_METERS } ?: false,
+            speedEvidence = speedEvidence,
         )
     }
 
     @Suppress("ReturnCount")
     private fun MovementMetrics.isSuspicious(): Boolean {
-        val largeJump = distanceMeters >= max(MIN_SUSPICIOUS_JUMP_METERS, combinedAccuracyMeters * 3.0)
+        val largeJump = distanceMeters >= effectiveJumpThresholdMeters
         if (!largeJump) return false
         val speed = impliedSpeedMetersPerSecond ?: return true
-        if (speed < MIN_SUSPICIOUS_SPEED_METERS_PER_SECOND) return false
-        val reportedSpeed = reportedSpeedMetersPerSecond
-        return reportedSpeed == null ||
-            abs(speed - reportedSpeed) > max(MIN_SPEED_DIFFERENCE_METERS_PER_SECOND, speed * SPEED_TOLERANCE)
+        if (speed < MIN_SUSPICIOUS_SPEED_METERS_PER_SECOND &&
+            !(poorAccuracy && speedEvidence != LiveTrackingSpeedEvidence.CORROBORATED)
+        ) {
+            return false
+        }
+        return speedEvidence != LiveTrackingSpeedEvidence.CORROBORATED
     }
 
     @Suppress("LongParameterList")
@@ -279,14 +315,20 @@ internal class LiveTrackingLocationQualityGate {
             impliedSpeedMetersPerSecond = metrics?.impliedSpeedMetersPerSecond,
             timeDeltaFromPreviousAcceptedFixMillis = metrics?.timeDeltaMillis,
             suspectResolution = suspectResolution,
+            speedAccuracyMetersPerSecond = metrics?.speedAccuracyMetersPerSecond,
+            effectiveJumpThresholdMeters = metrics?.effectiveJumpThresholdMeters,
+            poorAccuracy = metrics?.poorAccuracy ?: false,
+            speedEvidence = metrics?.speedEvidence ?: LiveTrackingSpeedEvidence.UNAVAILABLE,
         )
 
     private data class MovementMetrics(
         val distanceMeters: Double,
         val timeDeltaMillis: Long?,
         val impliedSpeedMetersPerSecond: Double?,
-        val reportedSpeedMetersPerSecond: Float?,
-        val combinedAccuracyMeters: Double,
+        val speedAccuracyMetersPerSecond: Float?,
+        val effectiveJumpThresholdMeters: Double,
+        val poorAccuracy: Boolean,
+        val speedEvidence: LiveTrackingSpeedEvidence,
     )
 
     private data class PendingFix(
@@ -298,11 +340,14 @@ internal class LiveTrackingLocationQualityGate {
         // Two minutes keeps delayed cached fixes out of the live stream while allowing normal callback jitter.
         const val MAX_LIVE_TRACKING_FIX_AGE_MILLIS = 2 * 60 * 1000L
 
-        // A jump above 400 m at 8 m/s needs corroborating speed/position evidence.
+        // Accuracy never raises this floor; large jumps need timestamp/speed evidence.
         const val MIN_SUSPICIOUS_JUMP_METERS = 400.0
         const val MIN_SUSPICIOUS_SPEED_METERS_PER_SECOND = 8.0
         const val MIN_SPEED_DIFFERENCE_METERS_PER_SECOND = 5.0
         const val SPEED_TOLERANCE = 0.5
+
+        // This is confidence evidence for large jumps only, never a rejection threshold.
+        const val POOR_ACCURACY_METERS = 100.0
         const val RECOVERY_RADIUS_METERS = 150.0
         const val CONFIRMATION_RADIUS_METERS = 100.0
 
@@ -323,6 +368,17 @@ internal fun isFreshLiveTrackingCachedLocation(
         ?.let { it <= MAX_STARTUP_LIVE_TRACKING_FIX_AGE_MILLIS }
         ?: false
 
+internal fun liveTrackingRescueCooldownRemainingMillis(
+    lastRequestElapsedRealtimeNanos: Long?,
+    nowElapsedRealtimeNanos: Long,
+    cooldownMillis: Long,
+): Long? {
+    val lastRequest = lastRequestElapsedRealtimeNanos ?: return null
+    val elapsedMillis =
+        ((nowElapsedRealtimeNanos - lastRequest).coerceAtLeast(0L) / NANOS_PER_MILLISECOND)
+    return (cooldownMillis - elapsedMillis).takeIf { it > 0L }
+}
+
 internal fun Location.toLiveTrackingLocationFix(): LiveTrackingLocationFix =
     LiveTrackingLocationFix(
         latitude = latitude,
@@ -331,6 +387,10 @@ internal fun Location.toLiveTrackingLocationFix(): LiveTrackingLocationFix =
         elapsedRealtimeNanos = elapsedRealtimeNanos.takeIf { it > 0L },
         accuracyMeters = accuracy.takeIf { hasAccuracy() && it.isFinite() && it >= 0f },
         speedMetersPerSecond = speed.takeIf { hasSpeed() && it.isFinite() && it >= 0f },
+        speedAccuracyMetersPerSecond =
+            speedAccuracyMetersPerSecond.takeIf {
+                hasSpeedAccuracy() && it.isFinite() && it >= 0f
+            },
     )
 
 // The fallback order is intentional: monotonic age wins, wall-clock age is only a fallback.

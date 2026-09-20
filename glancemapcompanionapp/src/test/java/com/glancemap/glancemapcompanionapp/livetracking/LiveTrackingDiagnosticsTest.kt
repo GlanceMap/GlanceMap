@@ -108,6 +108,37 @@ class LiveTrackingDiagnosticsTest {
     }
 
     @Test
+    fun recordsRescueOutcomeAndCooldownWithoutLocationDetails() {
+        PhoneDebugCapture.start()
+
+        recordLiveTrackingRescue(
+            LiveTrackingRescueDiagnostic(
+                requested = true,
+                trigger = "inconsistent_jump",
+                outcome = "returned_previous_area",
+                resultAgeMillis = 120L,
+                accuracyMeters = 350f,
+                speedMetersPerSecond = 4f,
+            ),
+        )
+        recordLiveTrackingRescue(
+            LiveTrackingRescueDiagnostic(
+                requested = false,
+                trigger = "repeated_suspect_area",
+                skippedBecauseCooldown = true,
+            ),
+        )
+
+        val capture = PhoneDebugCapture.snapshot().joinToString("\n")
+
+        assertTrue(capture.contains("rescue requested=true trigger=inconsistent_jump"))
+        assertTrue(capture.contains("resultAgeMs=120 accuracyM=350.0 speedMps=4.0 outcome=returned_previous_area"))
+        assertTrue(capture.contains("rescue requested=false trigger=repeated_suspect_area skippedCooldown=true"))
+        assertFalse(capture.contains("latitude"))
+        assertFalse(capture.contains("longitude"))
+    }
+
+    @Test
     @Suppress("LongMethod")
     fun recordsBoundedFieldTestFixesTransmissionsAndSessionCounters() {
         PhoneDebugCapture.start()
@@ -150,6 +181,10 @@ class LiveTrackingDiagnosticsTest {
                     impliedSpeedMetersPerSecond = 19.2,
                     timeDeltaFromPreviousAcceptedFixMillis = 63_100L,
                     suspectResolution = LiveTrackingSuspectResolution.WAITING,
+                    speedAccuracyMetersPerSecond = 2.0f,
+                    effectiveJumpThresholdMeters = 400.0,
+                    poorAccuracy = true,
+                    speedEvidence = LiveTrackingSpeedEvidence.CONTRADICTED,
                 ),
             androidSpeedMetersPerSecond = 2.0f,
             isMockLocation = false,
@@ -226,6 +261,12 @@ class LiveTrackingDiagnosticsTest {
         assertTrue(capture.contains("source=callback ageMs=31000"))
         assertTrue(capture.contains("reason=stale_startup_callback"))
         assertTrue(capture.contains("androidSpeedReported=true androidSpeedMps=2.0"))
+        assertTrue(
+            capture.contains(
+                "speedAccuracyMps=2.0 jumpThresholdM=400.0 " +
+                    "poorAccuracy=true speedEvidence=contradicted",
+            ),
+        )
         assertTrue(capture.contains("confirmation=waiting suspectWaiting=true"))
         assertTrue(capture.contains("tx mode=catch_up"))
         assertTrue(capture.contains("gsm_signal=0 queueBefore=2 queueAfter=1 outcome=success"))

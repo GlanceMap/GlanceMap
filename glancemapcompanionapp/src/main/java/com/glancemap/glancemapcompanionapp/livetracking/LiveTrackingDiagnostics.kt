@@ -80,6 +80,10 @@ internal data class LiveTrackingDiagnosticRequest(
     val fixAgeMillis: Long? = null,
     val distanceFromPreviousMeters: Double? = null,
     val impliedSpeedMetersPerSecond: Double? = null,
+    val speedAccuracyMetersPerSecond: Float? = null,
+    val effectiveJumpThresholdMeters: Double? = null,
+    val poorAccuracy: Boolean? = null,
+    val speedEvidence: LiveTrackingSpeedEvidence? = null,
     val locationQualityResult: String? = null,
     val locationQualityReason: String? = null,
     val gsmSignalPercent: Int? = null,
@@ -92,6 +96,16 @@ internal data class LiveTrackingDiagnosticEvent(
     val result: LiveTrackingDiagnosticResult,
     val httpCode: Int?,
     val durationMs: Long,
+)
+
+internal data class LiveTrackingRescueDiagnostic(
+    val requested: Boolean,
+    val trigger: String,
+    val skippedBecauseCooldown: Boolean = false,
+    val outcome: String? = null,
+    val resultAgeMillis: Long? = null,
+    val accuracyMeters: Float? = null,
+    val speedMetersPerSecond: Float? = null,
 )
 
 internal object LiveTrackingDiagnostics {
@@ -208,6 +222,12 @@ internal object LiveTrackingDiagnostics {
                         .append(decision.distanceFromPreviousMeters?.let(::formatDiagnosticDecimal) ?: "na")
                     append(" impliedSpeedMps=")
                         .append(decision.impliedSpeedMetersPerSecond?.let(::formatDiagnosticDecimal) ?: "na")
+                    append(" speedAccuracyMps=")
+                        .append(decision.speedAccuracyMetersPerSecond?.let(::formatDiagnosticDecimal) ?: "na")
+                    append(" jumpThresholdM=")
+                        .append(decision.effectiveJumpThresholdMeters?.let(::formatDiagnosticDecimal) ?: "na")
+                    append(" poorAccuracy=").append(decision.poorAccuracy)
+                    append(" speedEvidence=").append(decision.speedEvidence.name.lowercase(Locale.US))
                     append(" decision=").append(decision.result)
                     append(" reason=").append(decision.reason)
                     append(" confirmation=").append(decision.suspectResolution.name.lowercase(Locale.US))
@@ -299,6 +319,10 @@ internal object LiveTrackingDiagnostics {
                     fixAgeMillis = decision.fixAgeMillis,
                     distanceFromPreviousMeters = decision.distanceFromPreviousMeters,
                     impliedSpeedMetersPerSecond = decision.impliedSpeedMetersPerSecond,
+                    speedAccuracyMetersPerSecond = decision.speedAccuracyMetersPerSecond,
+                    effectiveJumpThresholdMeters = decision.effectiveJumpThresholdMeters,
+                    poorAccuracy = decision.poorAccuracy,
+                    speedEvidence = decision.speedEvidence,
                     locationQualityResult = decision.result.name,
                     locationQualityReason = decision.reason,
                     gsmSignalPercent = gsmSignalPercent,
@@ -393,6 +417,22 @@ internal object LiveTrackingDiagnostics {
     }
 }
 
+internal fun recordLiveTrackingRescue(diagnostic: LiveTrackingRescueDiagnostic) {
+    if (!PhoneDebugCapture.isActive()) return
+    PhoneDebugCapture.log(
+        LIVE_TRACKING_CAPTURE_TAG,
+        buildString {
+            append("rescue requested=").append(diagnostic.requested)
+            append(" trigger=").append(diagnostic.trigger)
+            append(" skippedCooldown=").append(diagnostic.skippedBecauseCooldown)
+            append(" resultAgeMs=").append(diagnostic.resultAgeMillis ?: "na")
+            append(" accuracyM=").append(diagnostic.accuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" speedMps=").append(diagnostic.speedMetersPerSecond?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" outcome=").append(diagnostic.outcome ?: "pending")
+        },
+    )
+}
+
 @Composable
 internal fun LiveTrackingDiagnosticsPanel() {
     if (!BuildConfig.DEBUG) return
@@ -477,6 +517,10 @@ internal fun LiveTrackingDiagnosticEvent.toDisplayText(): String {
         request.fixAgeMillis?.let { add("age ${it}ms") }
         request.distanceFromPreviousMeters?.let { add("from previous ${formatDiagnosticDecimal(it)}m") }
         request.impliedSpeedMetersPerSecond?.let { add("implied ${formatDiagnosticDecimal(it)}m/s") }
+        request.speedAccuracyMetersPerSecond?.let { add("speed acc ${formatDiagnosticDecimal(it)}m/s") }
+        request.effectiveJumpThresholdMeters?.let { add("jump threshold ${formatDiagnosticDecimal(it)}m") }
+        request.poorAccuracy?.let { add("poor accuracy $it") }
+        request.speedEvidence?.let { add("speed evidence ${it.name.lowercase()}") }
         request.locationQualityResult?.let { result ->
             add("quality ${result.lowercase()}${request.locationQualityReason?.let { ":$it" }.orEmpty()}")
         }
