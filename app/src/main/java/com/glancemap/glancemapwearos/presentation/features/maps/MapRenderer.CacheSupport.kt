@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import java.io.File
 import java.security.MessageDigest
+import java.util.Locale
 
 internal const val CACHE_ID_PREFIX = "mapcache"
 internal const val CACHE_HASH_BYTES = 8
@@ -112,11 +113,14 @@ internal fun resolveMapRendererDesiredCacheId(
     mapSignature: String?,
     themeSignature: String,
     elevationLabelsMetric: Boolean,
+    labelTextScale: Float,
 ): String {
     val mapPart = mapSignature ?: "MAP:NONE"
     val themePart = themeSignature.ifBlank { "THEME:UNSET" }
     val unitPart = if (elevationLabelsMetric) "UNITS:METRIC" else "UNITS:IMPERIAL"
-    val signature = "$mapPart|$themePart|$unitPart"
+    val labelScalePart =
+        "LABEL_SCALE:${"%.2f".format(Locale.US, mapRendererLayerTextScale(labelTextScale))}"
+    val signature = "$mapPart|$themePart|$unitPart|$labelScalePart"
 
     val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray(Charsets.UTF_8))
     val shortHex =

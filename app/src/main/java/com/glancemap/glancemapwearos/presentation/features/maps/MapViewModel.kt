@@ -253,6 +253,7 @@ class MapViewModel(
     private var latestReliefOverlayEnabled: Boolean = false
     private var latestDemSource: DemSource = DemSource.DEFAULT
     private var latestIsMetric: Boolean = true
+    private var latestMapLabelTextScale: Float = mapLabelTextScale(SettingsRepository.MAP_LABEL_SIZE_DEFAULT)
     private var themeRenderingDeferred: Boolean = false
     private var pendingThemeSelection: ThemeSelection? = null
     private var pendingThemeSelectionShowsIndicator: Boolean = false
@@ -312,6 +313,13 @@ class MapViewModel(
                 } else {
                     rendererConfigApplyPending = true
                 }
+            }.launchIn(viewModelScope)
+
+        settingsRepository.mapLabelSize
+            .distinctUntilChanged()
+            .onEach { size ->
+                latestMapLabelTextScale = mapLabelTextScale(size)
+                mapRenderer?.setMapLabelTextScale(latestMapLabelTextScale)
             }.launchIn(viewModelScope)
 
         settingsRepository.demSource
@@ -695,6 +703,7 @@ class MapViewModel(
             hillshadeTerrainEventJob?.cancel()
             _hillshadeTerrainUnavailableEvent.value = null
             mapRenderer = renderer
+            renderer?.setMapLabelTextScale(latestMapLabelTextScale)
             hillshadeTerrainEventJob =
                 renderer
                     ?.hillshadeTerrainUnavailableEvent
@@ -1571,6 +1580,7 @@ class MapViewModel(
 
         rendererConfigApplyPending = false
         renderer.setElevationLabelUnitsMetric(latestIsMetric)
+        renderer.setMapLabelTextScale(latestMapLabelTextScale)
         return renderer.setThemeConfig(
             themeFile = latestThemeFile,
             mapsforgeThemeName = latestMapsforgeThemeName,

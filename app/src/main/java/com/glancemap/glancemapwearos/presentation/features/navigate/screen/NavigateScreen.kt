@@ -246,6 +246,8 @@ fun NavigateScreen(
             mutableStateOf<RouteToolSession?>(null)
         }
         var poiCreationSelectionActive by rememberSaveable { mutableStateOf(false) }
+        var showPoiCreationChoiceDialog by rememberSaveable { mutableStateOf(false) }
+        var showPoiCoordinateEntryDialog by rememberSaveable { mutableStateOf(false) }
         var completedRouteToolDraft by remember { mutableStateOf<RouteToolSession?>(null) }
         var routeToolExecutionInProgress by remember { mutableStateOf(false) }
         var routeToolExecutionStatus by remember { mutableStateOf<String?>(null) }
@@ -377,6 +379,22 @@ fun NavigateScreen(
                     )
                 AndroidBitmap(bitmap)
             }
+        val historicalNavigationMarkerBitmap =
+            remember(navigationMarkerStyle, navigationMarkerSizePx) {
+                AndroidBitmap(
+                    createNavigationMarkerBitmap(
+                        style = navigationMarkerStyle,
+                        sizePx = navigationMarkerSizePx,
+                        fillColor = NAVIGATION_MARKER_HISTORICAL_ARGB,
+                    ),
+                )
+            }
+        DisposableEffect(navigationMarkerBitmap, historicalNavigationMarkerBitmap) {
+            onDispose {
+                navigationMarkerBitmap.decrementRefCount()
+                historicalNavigationMarkerBitmap.decrementRefCount()
+            }
+        }
 
         NavigateCompassEffects(
             compassViewModel = compassViewModel,
@@ -403,8 +421,8 @@ fun NavigateScreen(
             isAmbient = isAmbient,
             promptForCalibration = promptForCalibration,
             showCalibrationDialog = showCalibrationDialog,
-            onShowCalibrationDialog = { navigateViewModel.showCalibrationDialog() },
-            onHideCalibrationDialog = { navigateViewModel.hideCalibrationDialog() },
+            onShowCalibrationDialog = { navigateViewModel.setCalibrationDialogVisible(true) },
+            onHideCalibrationDialog = { navigateViewModel.setCalibrationDialogVisible(false) },
             onApplyRecalibration = { compassViewModel.recalibrate() },
             onRecalibrationSucceeded = compassUiState.onCalibrationSucceeded,
         )
@@ -472,8 +490,11 @@ fun NavigateScreen(
                 shouldFollowPosition = shouldFollowPosition,
                 screenState = screenState,
                 expectedGpsIntervalMs = expectedMarkerGpsIntervalMs,
+                markerTrustExpectedGpsIntervalMs = configuredMarkerGpsIntervalMs,
                 isBikeActivityProfile = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 navigationMarkerBitmap = navigationMarkerBitmap,
+                historicalNavigationMarkerBitmap = historicalNavigationMarkerBitmap,
+                retainedLocationAnchor = uiState.retainedLocationAnchor,
                 suppressLocationMarker = offlineMode,
                 navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             )
@@ -494,9 +515,7 @@ fun NavigateScreen(
         }
         val rawCurrentLocation by locationViewModel.currentLocation.collectAsState()
         val gpsFixFreshForAccuracyCircle =
-            gpsSignalSnapshot.isLocationAvailable &&
-                gpsSignalSnapshot.lastFixElapsedRealtimeMs > 0L &&
-                gpsSignalSnapshot.lastFixAgeMs in 0..gpsSignalSnapshot.lastFixFreshMaxAgeMs
+            locationUiState.locationMarkerTrustState == LocationMarkerTrustState.CURRENT
         val watchGpsDegradedWarning = locationUiState.watchGpsDegradedWarning
         val gpsEnvironmentWarning = locationUiState.gpsEnvironmentWarning
         val mapAppearanceApplyInProgress by mapViewModel.mapAppearanceApplyInProgress.collectAsState()
@@ -619,6 +638,8 @@ fun NavigateScreen(
             completedRouteToolDraftActive = completedRouteToolDraft != null,
             routeToolExecutionInProgress = routeToolExecutionInProgress,
             routeToolSessionActive = routeToolSession != null,
+            showPoiCreationChoiceDialog = showPoiCreationChoiceDialog,
+            showPoiCoordinateEntryDialog = showPoiCoordinateEntryDialog,
             showCreatedPoiRenameDialog = showCreatedPoiRenameDialog,
             createdPoiRenameInProgress = createdPoiRenameInProgress,
             poiCreationSelectionActive = poiCreationSelectionActive,
@@ -635,6 +656,8 @@ fun NavigateScreen(
                 routeToolCreatePreviewMessage = null
                 routeToolCreatePreviewInProgress = false
             },
+            onDismissPoiCreationChoiceDialog = { showPoiCreationChoiceDialog = false },
+            onDismissPoiCoordinateEntryDialog = { showPoiCoordinateEntryDialog = false },
             onDismissCreatedPoiRename = {
                 showCreatedPoiRenameDialog = false
                 createdPoiPendingRename = null
@@ -687,13 +710,15 @@ fun NavigateScreen(
                 shouldTrackLocation = shouldTrackLocation,
                 locationMarkerLatLong = locationMarker?.latLong,
                 lastKnownLocation = uiState.lastKnownLocation,
+                retainedLocationAnchor = uiState.retainedLocationAnchor,
+                startupMapFallbackState = uiState.startupMapFallbackState,
+                onStartupMapFallbackEvent = navigateViewModel::onStartupMapFallbackEvent,
                 navigateTarget = navigateTarget,
                 pendingPoiFocusTarget = pendingPoiFocusTarget,
                 mapView = mapView,
                 mapViewModel = mapViewModel,
                 selectedMapPath = selectedMapPath,
                 activeGpxDetails = activeGpxDetails,
-                navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             )
         val guidanceRuntime =
             rememberNavigateGuidanceRuntime(
@@ -847,6 +872,14 @@ fun NavigateScreen(
                 showNotificationPermissionDialog = false
                 pendingKeepAppOpen = false
             },
+            showPoiCreationChoiceDialog = showPoiCreationChoiceDialog,
+            showPoiCoordinateEntryDialog = showPoiCoordinateEntryDialog,
+            onDismissPoiCreationChoiceDialog = { showPoiCreationChoiceDialog = false },
+            onOpenPoiCoordinateEntryDialog = {
+                showPoiCreationChoiceDialog = false
+                showPoiCoordinateEntryDialog = true
+            },
+            onDismissPoiCoordinateEntryDialog = { showPoiCoordinateEntryDialog = false },
             showCreatedPoiRenameDialog = showCreatedPoiRenameDialog,
             createdPoiPendingRename = createdPoiPendingRename,
             createdPoiRenameInProgress = createdPoiRenameInProgress,
@@ -958,6 +991,19 @@ fun NavigateScreen(
             },
         )
 
+        val routeProgressRingSegments =
+            remember(
+                turnByTurnGuidanceSession?.trackId,
+                turnByTurnGuidanceSession?.reversed,
+                turnByTurnElevationProgressRingEnabled,
+            ) {
+                if (turnByTurnElevationProgressRingEnabled) {
+                    turnByTurnGuidanceSession?.let(::buildRouteProgressRingSegments).orEmpty()
+                } else {
+                    emptyList()
+                }
+            }
+
         NavigateContent(
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
@@ -1066,7 +1112,10 @@ fun NavigateScreen(
             onShortcutTrayToggle = screenActions.toggleShortcutTray,
             onShortcutTrayDismiss = { shortcutTrayExpanded = false },
             onOpenGpxTools = routeToolActions.openRouteToolsPanel,
-            onStartPoiCreation = routeToolActions.startPoiCreationSelection,
+            onStartPoiCreation = {
+                shortcutTrayExpanded = false
+                showPoiCreationChoiceDialog = true
+            },
             gpsIndicatorState = effectiveGpsIndicatorState,
             gpsEnvironmentWarning = gpsEnvironmentWarning,
             watchGpsDegradedWarning = watchGpsDegradedWarning,
@@ -1079,6 +1128,8 @@ fun NavigateScreen(
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
             turnByTurnCompactPopupEnabled =
                 turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
+            turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+            routeProgressRingSegments = routeProgressRingSegments,
             onTurnByTurnVoiceGuidanceChange = settingsViewModel::setTurnByTurnVoiceGuidanceEnabled,
             guideBackToRouteActive = guidanceRuntime.guideBackToRouteActive,
             showGuideBackPrompt = guidanceRuntime.showGuideBackPrompt,

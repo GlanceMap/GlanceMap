@@ -17,6 +17,7 @@ fun TurnByTurnAdvancedSettingsScreen(
     val offRouteThresholdMeters by viewModel.turnByTurnOffRouteAlertThresholdMeters.collectAsState()
     val offRouteRepeatSeconds by viewModel.turnByTurnOffRouteRepeatSeconds.collectAsState()
     val screenOffBatchingEnabled by viewModel.turnByTurnScreenOffBatchingEnabled.collectAsState()
+    val elevationProgressRingEnabled by viewModel.turnByTurnElevationProgressRingEnabled.collectAsState()
 
     WearSettingsListScreen(horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -78,6 +79,14 @@ fun TurnByTurnAdvancedSettingsScreen(
                     } else {
                         "Normal alert timing"
                     },
+            )
+        }
+        item {
+            SettingsToggleChip(
+                checked = elevationProgressRingEnabled,
+                onCheckedChanged = viewModel::setTurnByTurnElevationProgressRingEnabled,
+                label = "Elevation ring",
+                secondaryLabel = "▲ uphill · ▼ downhill",
             )
         }
     }

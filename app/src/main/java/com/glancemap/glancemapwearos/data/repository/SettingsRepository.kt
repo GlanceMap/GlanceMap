@@ -160,6 +160,11 @@ interface SettingsRepository {
         const val ZOOM_BUTTONS_HIDE_BOTH = "HIDE_BOTH"
         const val ZOOM_BUTTONS_HIDE_PLUS = "HIDE_PLUS"
 
+        const val MAP_LABEL_SIZE_SMALL = "SMALL"
+        const val MAP_LABEL_SIZE_DEFAULT = "DEFAULT"
+        const val MAP_LABEL_SIZE_LARGE = "LARGE"
+        const val MAP_LABEL_SIZE_EXTRA_LARGE = "EXTRA_LARGE"
+
         const val NORTH_REFERENCE_TRUE = "TRUE"
         const val NORTH_REFERENCE_MAGNETIC = "MAGNETIC"
         const val COMPASS_SETTINGS_MODE_AUTOMATIC = "AUTOMATIC"
@@ -185,6 +190,7 @@ interface SettingsRepository {
         const val DEFAULT_TURN_BY_TURN_TURN_ALERTS_MODE = TURN_BY_TURN_TURN_ALERTS_ALL
         const val DEFAULT_TURN_BY_TURN_VOICE_GUIDANCE_ENABLED = false
         const val DEFAULT_TURN_BY_TURN_COMPACT_POPUP_ENABLED = true
+        const val DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED = true
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS = 40
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_REPEAT_SECONDS = 60
         const val DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS = 3
@@ -464,6 +470,10 @@ interface SettingsRepository {
 
     suspend fun setTurnByTurnCompactPopupEnabled(enabled: Boolean)
 
+    val turnByTurnElevationProgressRingEnabled: Flow<Boolean>
+
+    suspend fun setTurnByTurnElevationProgressRingEnabled(enabled: Boolean)
+
     val turnByTurnOffRouteAlertThresholdMeters: Flow<Int>
 
     suspend fun setTurnByTurnOffRouteAlertThresholdMeters(thresholdMeters: Int)
@@ -544,6 +554,10 @@ interface SettingsRepository {
     val mapZoomButtonsMode: Flow<String>
 
     suspend fun setMapZoomButtonsMode(mode: String)
+
+    val mapLabelSize: Flow<String>
+
+    suspend fun setMapLabelSize(size: String)
 
     val gpsAccuracyCircleEnabled: Flow<Boolean>
 

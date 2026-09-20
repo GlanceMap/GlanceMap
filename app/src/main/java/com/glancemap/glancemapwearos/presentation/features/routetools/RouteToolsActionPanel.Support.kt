@@ -4,6 +4,7 @@ package com.glancemap.glancemapwearos.presentation.features.routetools
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,9 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.Add
@@ -27,10 +31,21 @@ import androidx.compose.material.icons.filled.Polyline
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Button
@@ -283,7 +298,7 @@ internal fun RouteActionSelector(
                             RouteCreateMode.COORDINATES ->
                                 options
                                     .copy(createMode = mode)
-                                    .seedCoordinateTarget(coordinateSeed)
+                                    .seedCoordinateEndpoints(coordinateSeed)
 
                             else -> options.copy(createMode = mode)
                         }
@@ -655,13 +670,13 @@ internal enum class CoordinateStep(
     fun next(): CoordinateStep {
         val entries = CoordinateStep.entries
         val currentIndex = entries.indexOf(this)
-        return entries[(currentIndex + 1) % entries.size]
+        return entries[(currentIndex + 1).coerceAtMost(entries.lastIndex)]
     }
 
     fun previous(): CoordinateStep {
         val entries = CoordinateStep.entries
         val currentIndex = entries.indexOf(this)
-        return entries[(currentIndex - 1 + entries.size) % entries.size]
+        return entries[(currentIndex - 1).coerceAtLeast(0)]
     }
 
     companion object {
@@ -669,93 +684,123 @@ internal enum class CoordinateStep(
     }
 }
 
+private enum class CoordinateEntryField(
+    val title: String,
+    val isLatitude: Boolean,
+) {
+    START_LATITUDE("Start latitude", true),
+    START_LONGITUDE("Start longitude", false),
+    DESTINATION_LATITUDE("Destination latitude", true),
+    DESTINATION_LONGITUDE("Destination longitude", false),
+}
+
 @Composable
-internal fun CoordinateEntryDialog(
+@Suppress("LongParameterList", "LongMethod")
+internal fun RouteEndpointEditorDialog(
     visible: Boolean,
-    latitude: Double,
-    longitude: Double,
+    options: RouteToolOptions,
+    coordinateSeed: LatLong?,
+    preflightMessage: String?,
     step: CoordinateStep,
-    hasSeed: Boolean,
-    onLatitudeChange: (Double) -> Unit,
-    onLongitudeChange: (Double) -> Unit,
+    onOptionsChange: (RouteToolOptions) -> Unit,
     onStepChange: (CoordinateStep) -> Unit,
-    onUseSeed: () -> Unit,
+    onCreateRoute: () -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
 ) {
     if (!visible) return
 
+    var editingField by remember(visible) { mutableStateOf<CoordinateEntryField?>(null) }
+    val selectedField = editingField
+    if (selectedField != null) {
+        CoordinateTextEntryDialog(
+            visible = true,
+            title = selectedField.title,
+            initialValue = options.coordinateValue(selectedField)?.let(::formatCoordinateValue).orEmpty(),
+            isLatitude = selectedField.isLatitude,
+            onConfirm = { value ->
+                onOptionsChange(options.withCoordinateValue(selectedField, value))
+                editingField = null
+            },
+            onDismiss = { editingField = null },
+        )
+        return
+    }
+
+    val endpointValidation = options.coordinateEndpointValidationMessage(currentLocation = null)
     WearFormDialog(
         visible = true,
-        title = "Coordinates",
+        title = "Route endpoints",
         onDismiss = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.92f),
     ) { formTokens ->
-        CoordinateValueEditorRow(
-            label = "Lat",
-            value = latitude,
-            onDecrease = { onLatitudeChange(latitude - step.delta) },
-            onIncrease = { onLatitudeChange(latitude + step.delta) },
+        RouteEndpointEditorSection(
+            title = "START",
+            source = options.startEndpointSource,
+            latitude = options.startCoordinateLatitude,
+            longitude = options.startCoordinateLongitude,
+            step = step,
+            onSourceChange = { source ->
+                onOptionsChange(
+                    options.copy(startEndpointSource = source).seedCoordinateEndpoints(coordinateSeed),
+                )
+            },
+            onLatitudeEdit = { editingField = CoordinateEntryField.START_LATITUDE },
+            onLongitudeEdit = { editingField = CoordinateEntryField.START_LONGITUDE },
+            onLatitudeChange = { value ->
+                onOptionsChange(options.copy(startCoordinateLatitude = value.coerceIn(-90.0, 90.0)))
+            },
+            onLongitudeChange = { value ->
+                onOptionsChange(options.copy(startCoordinateLongitude = normalizeLongitude(value)))
+            },
+            onStepChange = onStepChange,
             modifier = formTokens.controlModifier,
         )
-        CoordinateValueEditorRow(
-            label = "Lon",
-            value = longitude,
-            onDecrease = { onLongitudeChange(longitude - step.delta) },
-            onIncrease = { onLongitudeChange(longitude + step.delta) },
+        RouteEndpointEditorSection(
+            title = "DESTINATION",
+            source = options.destinationEndpointSource,
+            latitude = options.destinationCoordinateLatitude,
+            longitude = options.destinationCoordinateLongitude,
+            step = step,
+            onSourceChange = { source ->
+                onOptionsChange(
+                    options.copy(destinationEndpointSource = source).seedCoordinateEndpoints(coordinateSeed),
+                )
+            },
+            onLatitudeEdit = { editingField = CoordinateEntryField.DESTINATION_LATITUDE },
+            onLongitudeEdit = { editingField = CoordinateEntryField.DESTINATION_LONGITUDE },
+            onLatitudeChange = { value ->
+                onOptionsChange(options.copy(destinationCoordinateLatitude = value.coerceIn(-90.0, 90.0)))
+            },
+            onLongitudeChange = { value ->
+                onOptionsChange(options.copy(destinationCoordinateLongitude = normalizeLongitude(value)))
+            },
+            onStepChange = onStepChange,
             modifier = formTokens.controlModifier,
         )
-        Row(
-            modifier = formTokens.controlModifier,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text("Step", style = MaterialTheme.typography.labelMedium)
-                Text(step.label, style = MaterialTheme.typography.bodySmall)
-            }
-            IconButton(
-                onClick = { onStepChange(step.previous()) },
-                colors =
-                    IconButtonDefaults.iconButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        contentColor = Color.White,
-                    ),
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
-            }
-            IconButton(
-                onClick = { onStepChange(step.next()) },
-                colors =
-                    IconButtonDefaults.iconButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        contentColor = Color.White,
-                    ),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase coordinate step")
-            }
+        preflightMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFFFCC80),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
-        if (hasSeed) {
-            Button(
-                onClick = onUseSeed,
-                modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = 0.10f),
-                        contentColor = Color.White,
-                    ),
-            ) {
-                Text("Use map center")
-            }
+        if (endpointValidation != null) {
+            Text(
+                text = endpointValidation,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFFFCC80),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         Button(
-            onClick = onConfirm,
+            onClick = onCreateRoute,
+            enabled = endpointValidation == null,
             modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text("Done")
+            Text("Create route")
         }
         Button(
             onClick = onDismiss,
@@ -766,15 +811,204 @@ internal fun CoordinateEntryDialog(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ),
         ) {
-            Text("Cancel")
+            Text("Back")
         }
     }
 }
 
 @Composable
+@Suppress("LongParameterList")
+private fun RouteEndpointEditorSection(
+    title: String,
+    source: RouteEndpointSource,
+    latitude: Double?,
+    longitude: Double?,
+    step: CoordinateStep,
+    onSourceChange: (RouteEndpointSource) -> Unit,
+    onLatitudeEdit: () -> Unit,
+    onLongitudeEdit: () -> Unit,
+    onLatitudeChange: (Double) -> Unit,
+    onLongitudeChange: (Double) -> Unit,
+    onStepChange: (CoordinateStep) -> Unit,
+    modifier: Modifier,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        textAlign = TextAlign.Center,
+        modifier = modifier,
+    )
+    RouteEndpointSourceSelector(selected = source, onSelected = onSourceChange, modifier = modifier)
+    if (source == RouteEndpointSource.COORDINATES) {
+        CoordinateValueEditorRow(
+            label = "Lat",
+            value = latitude,
+            onEdit = onLatitudeEdit,
+            onDecrease = { latitude?.let { onLatitudeChange(it - step.delta) } },
+            onIncrease = { latitude?.let { onLatitudeChange(it + step.delta) } },
+            modifier = modifier,
+        )
+        CoordinateValueEditorRow(
+            label = "Lon",
+            value = longitude,
+            onEdit = onLongitudeEdit,
+            onDecrease = { longitude?.let { onLongitudeChange(it - step.delta) } },
+            onIncrease = { longitude?.let { onLongitudeChange(it + step.delta) } },
+            modifier = modifier,
+        )
+        CoordinateStepSelector(step = step, onStepChange = onStepChange, modifier = modifier)
+    }
+}
+
+@Composable
+internal fun CoordinateStepSelector(
+    step: CoordinateStep,
+    onStepChange: (CoordinateStep) -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Step ${step.label}", style = MaterialTheme.typography.bodySmall)
+        IconButton(
+            enabled = step != CoordinateStep.ONE_TEN_THOUSANDTH,
+            onClick = { onStepChange(step.next()) },
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.14f),
+                    contentColor = Color.White,
+                ),
+        ) {
+            Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
+        }
+        IconButton(
+            enabled = step != CoordinateStep.TENTH,
+            onClick = { onStepChange(step.previous()) },
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.14f),
+                    contentColor = Color.White,
+                ),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Increase coordinate step")
+        }
+    }
+}
+
+@Composable
+private fun RouteEndpointSourceSelector(
+    selected: RouteEndpointSource,
+    onSelected: (RouteEndpointSource) -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RouteSegmentButton(
+            modifier = Modifier.weight(1f),
+            text = RouteEndpointSource.CURRENT_LOCATION.title,
+            selected = selected == RouteEndpointSource.CURRENT_LOCATION,
+            onClick = { onSelected(RouteEndpointSource.CURRENT_LOCATION) },
+        )
+        RouteSegmentButton(
+            modifier = Modifier.weight(1f),
+            text = RouteEndpointSource.COORDINATES.title,
+            selected = selected == RouteEndpointSource.COORDINATES,
+            onClick = { onSelected(RouteEndpointSource.COORDINATES) },
+        )
+    }
+}
+
+@Composable
+@Suppress("LongParameterList", "LongMethod")
+internal fun CoordinateTextEntryDialog(
+    visible: Boolean,
+    title: String,
+    initialValue: String,
+    isLatitude: Boolean,
+    onConfirm: (Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var draftValue by remember(initialValue) { mutableStateOf(initialValue) }
+    var errorMessage by remember(initialValue) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    WearFormDialog(
+        visible = visible,
+        title = title,
+        onDismiss = onDismiss,
+        backgroundColor = Color.Black.copy(alpha = 0.92f),
+    ) { formTokens ->
+        BasicTextField(
+            value = draftValue,
+            onValueChange = {
+                draftValue = it.take(24)
+                errorMessage = null
+            },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier =
+                formTokens.controlModifier
+                    .focusRequester(focusRequester)
+                    .background(Color(0xFF1F1F1F), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = formTokens.textFieldVerticalPadding),
+        )
+        errorMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Button(
+            onClick = {
+                val parsed = draftValue.trim().toDoubleOrNull()
+                when {
+                    parsed == null || !parsed.isFinite() -> errorMessage = "Enter a number."
+                    isLatitude && parsed !in -90.0..90.0 -> errorMessage = "Latitude: -90 to 90."
+                    else -> onConfirm(if (isLatitude) parsed else normalizeLongitude(parsed))
+                }
+            },
+            modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
+        ) {
+            Text("Apply")
+        }
+        Button(
+            onClick = onDismiss,
+            modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+        ) {
+            Text("Back")
+        }
+    }
+}
+
+@Composable
+@Suppress("LongParameterList")
 internal fun CoordinateValueEditorRow(
     label: String,
-    value: Double,
+    value: Double?,
+    onEdit: () -> Unit,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
     modifier: Modifier = Modifier,
@@ -795,11 +1029,11 @@ internal fun CoordinateValueEditorRow(
             Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
         }
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = onEdit),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(formatCoordinateValue(value), style = MaterialTheme.typography.bodySmall)
+            Text(value?.let(::formatCoordinateValue) ?: "Not set", style = MaterialTheme.typography.bodySmall)
         }
         IconButton(
             onClick = onIncrease,
@@ -849,7 +1083,7 @@ internal fun routeToolsHintText(options: RouteToolOptions): String =
 
         options.toolKind == RouteToolKind.CREATE &&
             options.createMode == RouteCreateMode.COORDINATES -> {
-            "Set the destination coordinates, then create the route."
+            "Set the route endpoints, then create the route."
         }
 
         options.toolKind == RouteToolKind.CREATE &&
@@ -866,24 +1100,24 @@ internal fun routeToolsHintText(options: RouteToolOptions): String =
         }
     }
 
-internal fun RouteToolOptions.seedCoordinateTarget(seed: LatLong?): RouteToolOptions {
-    if (coordinateLatitude != null && coordinateLongitude != null) return this
-    val fallback = seed ?: return this
-    return copy(
-        coordinateLatitude = fallback.latitude,
-        coordinateLongitude = fallback.longitude,
-    )
-}
-
-internal fun RouteToolOptions.coordinatesSummary(): String {
-    val latitude = coordinateLatitude
-    val longitude = coordinateLongitude
-    return if (latitude == null || longitude == null) {
-        "Use map center"
-    } else {
-        formatCoordinateValue(latitude) + ", " + formatCoordinateValue(longitude)
+private fun RouteToolOptions.coordinateValue(field: CoordinateEntryField): Double? =
+    when (field) {
+        CoordinateEntryField.START_LATITUDE -> startCoordinateLatitude
+        CoordinateEntryField.START_LONGITUDE -> startCoordinateLongitude
+        CoordinateEntryField.DESTINATION_LATITUDE -> destinationCoordinateLatitude
+        CoordinateEntryField.DESTINATION_LONGITUDE -> destinationCoordinateLongitude
     }
-}
+
+private fun RouteToolOptions.withCoordinateValue(
+    field: CoordinateEntryField,
+    value: Double,
+): RouteToolOptions =
+    when (field) {
+        CoordinateEntryField.START_LATITUDE -> copy(startCoordinateLatitude = value)
+        CoordinateEntryField.START_LONGITUDE -> copy(startCoordinateLongitude = value)
+        CoordinateEntryField.DESTINATION_LATITUDE -> copy(destinationCoordinateLatitude = value)
+        CoordinateEntryField.DESTINATION_LONGITUDE -> copy(destinationCoordinateLongitude = value)
+    }
 
 internal fun poiSearchSummary(state: PoiSearchUiState): String =
     when {
@@ -897,8 +1131,12 @@ internal fun poiSearchSummary(state: PoiSearchUiState): String =
 internal fun formatCoordinateValue(value: Double): String = String.format("%.5f", value)
 
 internal fun normalizeLongitude(value: Double): Double {
-    var normalized = value
-    while (normalized < -180.0) normalized += 360.0
-    while (normalized > 180.0) normalized -= 360.0
-    return normalized
+    check(value.isFinite()) { "Longitude must be finite" }
+    val remainder = value % 360.0
+    return when {
+        remainder > 180.0 -> remainder - 360.0
+        remainder < -180.0 -> remainder + 360.0
+        remainder == -180.0 && value > 0.0 -> 180.0
+        else -> remainder
+    }
 }

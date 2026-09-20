@@ -11,6 +11,7 @@ import com.glancemap.glancemapwearos.presentation.features.routetools.LoopShapeM
 import com.glancemap.glancemapwearos.presentation.features.routetools.LoopStartMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.LoopTargetMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteCreateMode
+import com.glancemap.glancemapwearos.presentation.features.routetools.RouteEndpointSource
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteModifyMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteSaveBehavior
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolKind
@@ -26,44 +27,8 @@ import kotlin.math.roundToInt
 
 internal val routeToolOptionsSaver: Saver<RouteToolOptions, Any> =
     listSaver(
-        save = { options ->
-            listOf(
-                options.toolKind.name,
-                options.createMode.name,
-                options.modifyMode.name,
-                options.routeStyle.name,
-                options.loopTargetMode.name,
-                options.loopDistanceKm,
-                options.loopDurationMinutes,
-                options.loopShapeMode.name,
-                options.loopStartMode.name,
-                options.coordinateLatitude,
-                options.coordinateLongitude,
-                options.useElevation,
-                options.allowFerries,
-                options.showAdvancedOptions,
-                options.saveBehavior.name,
-            )
-        },
-        restore = { values ->
-            RouteToolOptions(
-                toolKind = RouteToolKind.valueOf(values[0] as String),
-                createMode = RouteCreateMode.valueOf(values[1] as String),
-                modifyMode = RouteModifyMode.valueOf(values[2] as String),
-                routeStyle = routeStylePresetFromSavedName(values[3] as String),
-                loopTargetMode = LoopTargetMode.valueOf(values[4] as String),
-                loopDistanceKm = values[5] as Int,
-                loopDurationMinutes = values[6] as Int,
-                loopShapeMode = LoopShapeMode.valueOf(values[7] as String),
-                loopStartMode = LoopStartMode.valueOf(values[8] as String),
-                coordinateLatitude = values[9] as Double?,
-                coordinateLongitude = values[10] as Double?,
-                useElevation = values[11] as Boolean,
-                allowFerries = values[12] as Boolean,
-                showAdvancedOptions = values[13] as Boolean,
-                saveBehavior = RouteSaveBehavior.valueOf(values[14] as String),
-            ).withVisibleLoopDefaults()
-        },
+        save = { options -> saveRouteToolOptions(options) },
+        restore = { values -> restoreRouteToolOptions(values).withVisibleLoopDefaults() },
     )
 
 internal val routeToolSessionSaver: Saver<RouteToolSession?, Any> =
@@ -72,81 +37,145 @@ internal val routeToolSessionSaver: Saver<RouteToolSession?, Any> =
             if (session == null) {
                 listOf(null)
             } else {
-                listOf(
-                    session.options.toolKind.name,
-                    session.options.createMode.name,
-                    session.options.modifyMode.name,
-                    session.options.routeStyle.name,
-                    session.options.loopTargetMode.name,
-                    session.options.loopDistanceKm,
-                    session.options.loopDurationMinutes,
-                    session.options.loopShapeMode.name,
-                    session.options.loopStartMode.name,
-                    session.options.coordinateLatitude,
-                    session.options.coordinateLongitude,
-                    session.options.useElevation,
-                    session.options.allowFerries,
-                    session.options.showAdvancedOptions,
-                    session.options.saveBehavior.name,
-                    session.pointA?.latitude,
-                    session.pointA?.longitude,
-                    session.pointB?.latitude,
-                    session.pointB?.longitude,
-                    session.destination?.latitude,
-                    session.destination?.longitude,
-                    session.loopCenter?.latitude,
-                    session.loopCenter?.longitude,
-                    ArrayList(session.chainPoints.map { it.latitude }),
-                    ArrayList(session.chainPoints.map { it.longitude }),
-                    session.loopVariationIndex,
-                    session.pointATrackPosition?.segmentIndex,
-                    session.pointATrackPosition?.t,
-                    session.pointBTrackPosition?.segmentIndex,
-                    session.pointBTrackPosition?.t,
-                )
+                saveRouteToolOptions(session.options) +
+                    listOf(
+                        session.pointA?.latitude,
+                        session.pointA?.longitude,
+                        session.pointB?.latitude,
+                        session.pointB?.longitude,
+                        session.destination?.latitude,
+                        session.destination?.longitude,
+                        session.loopCenter?.latitude,
+                        session.loopCenter?.longitude,
+                        ArrayList(session.chainPoints.map { it.latitude }),
+                        ArrayList(session.chainPoints.map { it.longitude }),
+                        session.loopVariationIndex,
+                        session.pointATrackPosition?.segmentIndex,
+                        session.pointATrackPosition?.t,
+                        session.pointBTrackPosition?.segmentIndex,
+                        session.pointBTrackPosition?.t,
+                    )
             }
         },
         restore = { values ->
             if (values.firstOrNull() == null) {
                 null
             } else {
-                val options =
-                    RouteToolOptions(
-                        toolKind = RouteToolKind.valueOf(values[0] as String),
-                        createMode = RouteCreateMode.valueOf(values[1] as String),
-                        modifyMode = RouteModifyMode.valueOf(values[2] as String),
-                        routeStyle = routeStylePresetFromSavedName(values[3] as String),
-                        loopTargetMode = LoopTargetMode.valueOf(values[4] as String),
-                        loopDistanceKm = values[5] as Int,
-                        loopDurationMinutes = values[6] as Int,
-                        loopShapeMode = LoopShapeMode.valueOf(values[7] as String),
-                        loopStartMode = LoopStartMode.valueOf(values[8] as String),
-                        coordinateLatitude = values[9] as Double?,
-                        coordinateLongitude = values[10] as Double?,
-                        useElevation = values[11] as Boolean,
-                        allowFerries = values[12] as Boolean,
-                        showAdvancedOptions = values[13] as Boolean,
-                        saveBehavior = RouteSaveBehavior.valueOf(values[14] as String),
-                    ).withVisibleLoopDefaults()
-                val chainLatitudes = (values[23] as ArrayList<*>).mapNotNull { it as? Double }
-                val chainLongitudes = (values[24] as ArrayList<*>).mapNotNull { it as? Double }
+                val options = restoreRouteToolOptions(values).withVisibleLoopDefaults()
+                val optionValueCount = routeToolOptionsValueCount(values)
+                val pointOffset = optionValueCount
+                val chainLatitudes = savedCoordinateValues(values.getOrNull(pointOffset + 8))
+                val chainLongitudes = savedCoordinateValues(values.getOrNull(pointOffset + 9))
                 RouteToolSession(
                     options = options,
-                    pointA = latLongOrNull(values[15], values[16]),
-                    pointB = latLongOrNull(values[17], values[18]),
-                    pointATrackPosition = trackPositionOrNull(values.getOrNull(26), values.getOrNull(27)),
-                    pointBTrackPosition = trackPositionOrNull(values.getOrNull(28), values.getOrNull(29)),
-                    destination = latLongOrNull(values[19], values[20]),
-                    loopCenter = latLongOrNull(values[21], values[22]),
+                    pointA = latLongOrNull(values.getOrNull(pointOffset), values.getOrNull(pointOffset + 1)),
+                    pointB = latLongOrNull(values.getOrNull(pointOffset + 2), values.getOrNull(pointOffset + 3)),
+                    pointATrackPosition =
+                        trackPositionOrNull(
+                            values.getOrNull(pointOffset + 11),
+                            values.getOrNull(pointOffset + 12),
+                        ),
+                    pointBTrackPosition =
+                        trackPositionOrNull(
+                            values.getOrNull(pointOffset + 13),
+                            values.getOrNull(pointOffset + 14),
+                        ),
+                    destination =
+                        latLongOrNull(
+                            values.getOrNull(pointOffset + 4),
+                            values.getOrNull(pointOffset + 5),
+                        ),
+                    loopCenter =
+                        latLongOrNull(
+                            values.getOrNull(pointOffset + 6),
+                            values.getOrNull(pointOffset + 7),
+                        ),
                     chainPoints =
                         chainLatitudes.zip(chainLongitudes) { lat, lon ->
                             LatLong(lat, lon)
                         },
-                    loopVariationIndex = values.getOrNull(25) as? Int ?: 0,
+                    loopVariationIndex = values.getOrNull(pointOffset + 10) as? Int ?: 0,
                 )
             }
         },
     )
+
+private val saveRouteToolOptions: (RouteToolOptions) -> List<Any?> = { options ->
+    listOf(
+        options.toolKind.name,
+        options.createMode.name,
+        options.modifyMode.name,
+        options.routeStyle.name,
+        options.loopTargetMode.name,
+        options.loopDistanceKm,
+        options.loopDurationMinutes,
+        options.loopShapeMode.name,
+        options.loopStartMode.name,
+        options.startEndpointSource.name,
+        options.startCoordinateLatitude,
+        options.startCoordinateLongitude,
+        options.destinationEndpointSource.name,
+        options.destinationCoordinateLatitude,
+        options.destinationCoordinateLongitude,
+        options.useElevation,
+        options.allowFerries,
+        options.showAdvancedOptions,
+        options.saveBehavior.name,
+    )
+}
+
+private val restoreRouteToolOptions: (List<Any?>) -> RouteToolOptions = { values ->
+    val usesEndpointValues = values.getOrNull(9) is String
+    if (usesEndpointValues) {
+        RouteToolOptions(
+            toolKind = RouteToolKind.valueOf(values[0] as String),
+            createMode = RouteCreateMode.valueOf(values[1] as String),
+            modifyMode = RouteModifyMode.valueOf(values[2] as String),
+            routeStyle = routeStylePresetFromSavedName(values[3] as String),
+            loopTargetMode = LoopTargetMode.valueOf(values[4] as String),
+            loopDistanceKm = values[5] as Int,
+            loopDurationMinutes = values[6] as Int,
+            loopShapeMode = LoopShapeMode.valueOf(values[7] as String),
+            loopStartMode = LoopStartMode.valueOf(values[8] as String),
+            startEndpointSource = RouteEndpointSource.valueOf(values[9] as String),
+            startCoordinateLatitude = values.getOrNull(10) as Double?,
+            startCoordinateLongitude = values.getOrNull(11) as Double?,
+            destinationEndpointSource = RouteEndpointSource.valueOf(values[12] as String),
+            destinationCoordinateLatitude = values.getOrNull(13) as Double?,
+            destinationCoordinateLongitude = values.getOrNull(14) as Double?,
+            useElevation = values[15] as Boolean,
+            allowFerries = values[16] as Boolean,
+            showAdvancedOptions = values[17] as Boolean,
+            saveBehavior = RouteSaveBehavior.valueOf(values[18] as String),
+        )
+    } else {
+        RouteToolOptions(
+            toolKind = RouteToolKind.valueOf(values[0] as String),
+            createMode = RouteCreateMode.valueOf(values[1] as String),
+            modifyMode = RouteModifyMode.valueOf(values[2] as String),
+            routeStyle = routeStylePresetFromSavedName(values[3] as String),
+            loopTargetMode = LoopTargetMode.valueOf(values[4] as String),
+            loopDistanceKm = values[5] as Int,
+            loopDurationMinutes = values[6] as Int,
+            loopShapeMode = LoopShapeMode.valueOf(values[7] as String),
+            loopStartMode = LoopStartMode.valueOf(values[8] as String),
+            destinationCoordinateLatitude = values.getOrNull(9) as Double?,
+            destinationCoordinateLongitude = values.getOrNull(10) as Double?,
+            useElevation = values[11] as Boolean,
+            allowFerries = values[12] as Boolean,
+            showAdvancedOptions = values[13] as Boolean,
+            saveBehavior = RouteSaveBehavior.valueOf(values[14] as String),
+        )
+    }
+}
+
+private val routeToolOptionsValueCount: (List<Any?>) -> Int = { values ->
+    if (values.getOrNull(9) is String) 19 else 15
+}
+
+private val savedCoordinateValues: (Any?) -> List<Double> = { value ->
+    (value as? ArrayList<*>)?.mapNotNull { it as? Double }.orEmpty()
+}
 
 internal fun latLongOrNull(
     lat: Any?,

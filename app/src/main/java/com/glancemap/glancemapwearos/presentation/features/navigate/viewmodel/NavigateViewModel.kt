@@ -50,10 +50,12 @@ class NavigateViewModel(
 
     fun onUserPanStarted() {
         isPanning.value = true
+        onStartupMapFallbackEvent(StartupMapFallbackEvent.CANCELLED)
     }
 
     fun onRecenterRequested() {
         isPanning.value = false
+        onStartupMapFallbackEvent(StartupMapFallbackEvent.CANCELLED)
     }
 
     fun onToggleOrientation() {
@@ -63,8 +65,88 @@ class NavigateViewModel(
         }
     }
 
-    fun onLocationUpdate(latLong: LatLong) {
-        _uiState.update { it.copy(lastKnownLocation = latLong) }
+    fun onAcceptedLocationUpdate(
+        latLong: LatLong,
+        fixElapsedRealtimeMs: Long,
+        accuracyM: Float,
+        sourceEpoch: Long,
+        sourceModeName: String? = null,
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                lastKnownLocation = latLong,
+                retainedLocationAnchor =
+                    RetainedLocationAnchor(
+                        latLong = latLong,
+                        fixElapsedRealtimeMs = fixElapsedRealtimeMs,
+                        accuracyM = accuracyM,
+                        sourceEpoch = sourceEpoch,
+                        sourceModeName = sourceModeName,
+                    ),
+                startupMapFallbackState =
+                    if (state.startupMapFallbackState == StartupMapFallbackState.COMPLETED) {
+                        StartupMapFallbackState.COMPLETED
+                    } else {
+                        StartupMapFallbackState.CANCELLED
+                    },
+            )
+        }
+    }
+
+    fun onDisplayedLocationAnchor(anchor: RetainedLocationAnchor) {
+        _uiState.update { state ->
+            val existing = state.retainedLocationAnchor
+            val nextAnchor =
+                when {
+                    existing == null || existing.fixElapsedRealtimeMs < anchor.fixElapsedRealtimeMs -> anchor
+                    existing.fixElapsedRealtimeMs == anchor.fixElapsedRealtimeMs ->
+                        existing.copy(latLong = anchor.latLong)
+                    else -> existing
+                }
+            state.copy(
+                retainedLocationAnchor = nextAnchor,
+                startupMapFallbackState =
+                    if (state.startupMapFallbackState == StartupMapFallbackState.COMPLETED) {
+                        StartupMapFallbackState.COMPLETED
+                    } else {
+                        StartupMapFallbackState.CANCELLED
+                    },
+            )
+        }
+    }
+
+    fun onRenderedLocationUpdate(latLong: LatLong) {
+        _uiState.update { state ->
+            val anchor = state.retainedLocationAnchor ?: return@update state
+            state.copy(
+                retainedLocationAnchor = anchor.copy(latLong = latLong),
+            )
+        }
+    }
+
+    fun onStartupMapFallbackEvent(event: StartupMapFallbackEvent) {
+        _uiState.update { state ->
+            when (event) {
+                StartupMapFallbackEvent.TIMER_EXPIRED ->
+                    if (state.startupMapFallbackState == StartupMapFallbackState.WAITING) {
+                        state.copy(startupMapFallbackState = StartupMapFallbackState.READY)
+                    } else {
+                        state
+                    }
+                StartupMapFallbackEvent.CENTERING_APPLIED ->
+                    if (state.startupMapFallbackState == StartupMapFallbackState.READY) {
+                        state.copy(startupMapFallbackState = StartupMapFallbackState.COMPLETED)
+                    } else {
+                        state
+                    }
+                StartupMapFallbackEvent.CANCELLED ->
+                    if (state.startupMapFallbackState == StartupMapFallbackState.COMPLETED) {
+                        state
+                    } else {
+                        state.copy(startupMapFallbackState = StartupMapFallbackState.CANCELLED)
+                    }
+            }
+        }
     }
 
     fun initZoom(defaultZoom: Int) {
@@ -77,11 +159,7 @@ class NavigateViewModel(
         _uiState.update { it.copy(currentZoomLevel = newZoom) }
     }
 
-    fun showCalibrationDialog() {
-        _uiState.update { it.copy(showCalibrationDialog = true) }
-    }
-
-    fun hideCalibrationDialog() {
-        _uiState.update { it.copy(showCalibrationDialog = false) }
+    fun setCalibrationDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showCalibrationDialog = visible) }
     }
 }

@@ -8,6 +8,74 @@ import org.mapsforge.core.model.LatLong
 
 class RouteToolPreflightTest {
     @Test
+    fun coordinatesRouteNeedsGpsOnlyForCurrentEndpoints() {
+        assertTrue(
+            RouteToolOptions(
+                createMode = RouteCreateMode.COORDINATES,
+                startEndpointSource = RouteEndpointSource.CURRENT_LOCATION,
+                destinationEndpointSource = RouteEndpointSource.COORDINATES,
+            ).needsCurrentLocationForCreate(),
+        )
+        assertTrue(
+            RouteToolOptions(
+                createMode = RouteCreateMode.COORDINATES,
+                startEndpointSource = RouteEndpointSource.COORDINATES,
+                destinationEndpointSource = RouteEndpointSource.CURRENT_LOCATION,
+            ).needsCurrentLocationForCreate(),
+        )
+        assertFalse(
+            RouteToolOptions(
+                createMode = RouteCreateMode.COORDINATES,
+                startEndpointSource = RouteEndpointSource.COORDINATES,
+                destinationEndpointSource = RouteEndpointSource.COORDINATES,
+            ).needsCurrentLocationForCreate(),
+        )
+    }
+
+    @Test
+    fun coordinatesRouteValidatesMissingAndOutOfRangeValues() {
+        val missing =
+            RouteToolOptions(
+                createMode = RouteCreateMode.COORDINATES,
+                destinationEndpointSource = RouteEndpointSource.COORDINATES,
+            )
+        assertTrue(missing.coordinateEndpointValidationMessage(null).orEmpty().contains("valid destination"))
+
+        val invalid =
+            missing.copy(
+                destinationCoordinateLatitude = 91.0,
+                destinationCoordinateLongitude = 2.0,
+            )
+        assertTrue(invalid.coordinateEndpointValidationMessage(null).orEmpty().contains("valid destination"))
+    }
+
+    @Test
+    fun coordinateValuesSurviveSwitchingEndpointSources() {
+        val entered =
+            RouteToolOptions(
+                createMode = RouteCreateMode.COORDINATES,
+                startEndpointSource = RouteEndpointSource.COORDINATES,
+                startCoordinateLatitude = 48.1,
+                startCoordinateLongitude = 2.2,
+                destinationEndpointSource = RouteEndpointSource.COORDINATES,
+                destinationCoordinateLatitude = 48.3,
+                destinationCoordinateLongitude = 2.4,
+            )
+        val switchedBack =
+            entered
+                .copy(startEndpointSource = RouteEndpointSource.CURRENT_LOCATION)
+                .copy(destinationEndpointSource = RouteEndpointSource.CURRENT_LOCATION)
+                .copy(startEndpointSource = RouteEndpointSource.COORDINATES)
+                .copy(destinationEndpointSource = RouteEndpointSource.COORDINATES)
+                .seedCoordinateEndpoints(seed = LatLong(0.0, 0.0))
+
+        assertTrue(switchedBack.startCoordinateLatitude == 48.1)
+        assertTrue(switchedBack.startCoordinateLongitude == 2.2)
+        assertTrue(switchedBack.destinationCoordinateLatitude == 48.3)
+        assertTrue(switchedBack.destinationCoordinateLongitude == 2.4)
+    }
+
+    @Test
     fun routeToolAcceptsRecentOriginWhenProviderTemporarilyReportsUnavailable() {
         val usable =
             hasUsableRouteToolCurrentLocation(

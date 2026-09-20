@@ -40,7 +40,7 @@ internal enum class RouteCreateMode(
     ),
     COORDINATES(
         title = "Coordinates",
-        summary = "Create a route from current location to entered coordinates.",
+        summary = "Set precise start and destination coordinates.",
     ),
     LOOP_AROUND_HERE(
         title = "Loop route",
@@ -206,6 +206,13 @@ internal enum class LoopStartMode(
     PICK_ON_MAP(title = "Pick on map"),
 }
 
+internal enum class RouteEndpointSource(
+    val title: String,
+) {
+    CURRENT_LOCATION(title = "Current"),
+    COORDINATES(title = "Coordinates"),
+}
+
 internal enum class LoopTargetMode(
     val title: String,
 ) {
@@ -237,8 +244,12 @@ internal data class RouteToolOptions(
     val loopDurationMinutes: Int = 120,
     val loopShapeMode: LoopShapeMode = LoopShapeMode.PREFER_CIRCUIT,
     val loopStartMode: LoopStartMode = LoopStartMode.CURRENT_LOCATION,
-    val coordinateLatitude: Double? = null,
-    val coordinateLongitude: Double? = null,
+    val startEndpointSource: RouteEndpointSource = RouteEndpointSource.CURRENT_LOCATION,
+    val startCoordinateLatitude: Double? = null,
+    val startCoordinateLongitude: Double? = null,
+    val destinationEndpointSource: RouteEndpointSource = RouteEndpointSource.COORDINATES,
+    val destinationCoordinateLatitude: Double? = null,
+    val destinationCoordinateLongitude: Double? = null,
     val useElevation: Boolean = true,
     val allowFerries: Boolean = false,
     val customHikeParams: HikeRouteProfileParams? = null,
@@ -278,6 +289,126 @@ internal data class RouteToolOptions(
 }
 
 internal fun RouteToolOptions.withVisibleLoopDefaults(): RouteToolOptions = copy(loopShapeMode = LoopShapeMode.PREFER_CIRCUIT)
+
+internal data class RouteToolResolvedEndpoints(
+    val origin: LatLong,
+    val destination: LatLong,
+)
+
+internal fun RouteToolOptions.seedCoordinateEndpoints(seed: LatLong?): RouteToolOptions {
+    if (seed == null) return this
+    var seeded = this
+    if (
+        startEndpointSource == RouteEndpointSource.COORDINATES &&
+        startCoordinateLatitude == null &&
+        startCoordinateLongitude == null
+    ) {
+        seeded =
+            seeded.copy(
+                startCoordinateLatitude = seed.latitude,
+                startCoordinateLongitude = seed.longitude,
+            )
+    }
+    if (
+        destinationEndpointSource == RouteEndpointSource.COORDINATES &&
+        destinationCoordinateLatitude == null &&
+        destinationCoordinateLongitude == null
+    ) {
+        seeded =
+            seeded.copy(
+                destinationCoordinateLatitude = seed.latitude,
+                destinationCoordinateLongitude = seed.longitude,
+            )
+    }
+    return seeded
+}
+
+internal fun RouteToolOptions.coordinateEndpointValidationMessage(currentLocation: LatLong?): String? {
+    val endpointMessage =
+        when {
+            startEndpointSource == RouteEndpointSource.CURRENT_LOCATION &&
+                destinationEndpointSource == RouteEndpointSource.CURRENT_LOCATION ->
+                "Choose coordinates for start or destination."
+            startEndpointSource == RouteEndpointSource.COORDINATES &&
+                !isValidRouteToolCoordinate(startCoordinateLatitude, startCoordinateLongitude) ->
+                "Enter valid start coordinates."
+            destinationEndpointSource == RouteEndpointSource.COORDINATES &&
+                !isValidRouteToolCoordinate(destinationCoordinateLatitude, destinationCoordinateLongitude) ->
+                "Enter valid destination coordinates."
+            else -> null
+        }
+    if (endpointMessage != null) return endpointMessage
+
+    val endpoints =
+        listOfNotNull(
+            if (startEndpointSource == RouteEndpointSource.CURRENT_LOCATION) {
+                currentLocation
+            } else {
+                routeToolLatLong(startCoordinateLatitude, startCoordinateLongitude)
+            },
+            if (destinationEndpointSource == RouteEndpointSource.CURRENT_LOCATION) {
+                currentLocation
+            } else {
+                routeToolLatLong(destinationCoordinateLatitude, destinationCoordinateLongitude)
+            },
+        )
+    return if (endpoints.size == 2 && sameRouteToolEndpointLocation(endpoints[0], endpoints[1])) {
+        "Start and destination must be different."
+    } else {
+        null
+    }
+}
+
+internal fun RouteToolOptions.resolveCoordinateEndpoints(currentLocation: LatLong?): RouteToolResolvedEndpoints {
+    require(coordinateEndpointValidationMessage(currentLocation) == null) {
+        coordinateEndpointValidationMessage(currentLocation) ?: "Enter valid route endpoints."
+    }
+    return RouteToolResolvedEndpoints(
+        origin =
+            when (startEndpointSource) {
+                RouteEndpointSource.CURRENT_LOCATION ->
+                    requireNotNull(currentLocation) {
+                        "Wait for a fresh GPS fix before using current location."
+                    }
+                RouteEndpointSource.COORDINATES ->
+                    requireNotNull(routeToolLatLong(startCoordinateLatitude, startCoordinateLongitude)) {
+                        "Enter valid start coordinates."
+                    }
+            },
+        destination =
+            when (destinationEndpointSource) {
+                RouteEndpointSource.CURRENT_LOCATION ->
+                    requireNotNull(currentLocation) {
+                        "Wait for a fresh GPS fix before using current location."
+                    }
+                RouteEndpointSource.COORDINATES ->
+                    requireNotNull(routeToolLatLong(destinationCoordinateLatitude, destinationCoordinateLongitude)) {
+                        "Enter valid destination coordinates."
+                    }
+            },
+    )
+}
+
+internal fun isValidRouteToolCoordinate(
+    latitude: Double?,
+    longitude: Double?,
+): Boolean =
+    latitude != null &&
+        longitude != null &&
+        latitude.isFinite() &&
+        longitude.isFinite() &&
+        latitude in -90.0..90.0 &&
+        longitude in -180.0..180.0
+
+private fun routeToolLatLong(
+    latitude: Double?,
+    longitude: Double?,
+): LatLong? =
+    if (isValidRouteToolCoordinate(latitude, longitude)) {
+        LatLong(latitude!!, longitude!!)
+    } else {
+        null
+    }
 
 internal fun visibleRouteToolCreatePreview(
     session: RouteToolSession?,
@@ -569,6 +700,15 @@ private fun sameRouteToolLocation(
 ): Boolean =
     kotlin.math.abs(a.latitude - b.latitude) < 1e-9 &&
         kotlin.math.abs(a.longitude - b.longitude) < 1e-9
+
+internal fun sameRouteToolEndpointLocation(
+    a: LatLong,
+    b: LatLong,
+): Boolean =
+    kotlin.math.abs(a.latitude - b.latitude) <= ROUTE_TOOL_ENDPOINT_LOCATION_EPSILON_DEGREES &&
+        kotlin.math.abs(a.longitude - b.longitude) <= ROUTE_TOOL_ENDPOINT_LOCATION_EPSILON_DEGREES
+
+internal const val ROUTE_TOOL_ENDPOINT_LOCATION_EPSILON_DEGREES = 0.00001
 
 internal fun routeToolTrackStartPosition(): TrackPosition =
     TrackPosition(

@@ -22,6 +22,7 @@ fun MapDisplaySettingsScreen(
     val showTimeInNavigate by viewModel.showTimeInNavigate.collectAsState()
     val navigateTimeFormat by viewModel.navigateTimeFormat.collectAsState()
     val mapZoomButtonsMode by viewModel.mapZoomButtonsMode.collectAsState()
+    val mapLabelSize by viewModel.mapLabelSize.collectAsState()
     val gpsAccuracyCircleEnabled by viewModel.gpsAccuracyCircleEnabled.collectAsState()
 
     val northIndicatorModes = listOf("ALWAYS", "COMPASS_ONLY", "NORTH_UP_ONLY", "NEVER")
@@ -35,6 +36,13 @@ fun MapDisplaySettingsScreen(
             SettingsRepository.ZOOM_BUTTONS_BOTH,
             SettingsRepository.ZOOM_BUTTONS_HIDE_BOTH,
             SettingsRepository.ZOOM_BUTTONS_HIDE_PLUS,
+        )
+    val mapLabelSizes =
+        listOf(
+            SettingsRepository.MAP_LABEL_SIZE_SMALL,
+            SettingsRepository.MAP_LABEL_SIZE_DEFAULT,
+            SettingsRepository.MAP_LABEL_SIZE_LARGE,
+            SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE,
         )
     val timeFormats =
         listOf(
@@ -56,6 +64,10 @@ fun MapDisplaySettingsScreen(
     val zoomButtonOptions =
         remember {
             zoomButtonModes.map { it to zoomButtonsModeLabel(it) }
+        }
+    val mapLabelSizeOptions =
+        remember {
+            mapLabelSizes.map { it to mapLabelSizeLabel(it) }
         }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -97,6 +109,15 @@ fun MapDisplaySettingsScreen(
                 options = zoomButtonOptions,
                 secondaryLabel = zoomButtonsModeLabel(mapZoomButtonsMode),
                 onSelect = viewModel::setMapZoomButtonsMode,
+            )
+        }
+        item {
+            SettingsOptionPickerRow(
+                label = "Map label size",
+                selectedValue = mapLabelSize,
+                options = mapLabelSizeOptions,
+                secondaryLabel = mapLabelSizeLabel(mapLabelSize),
+                onSelect = viewModel::setMapLabelSize,
             )
         }
         item {
@@ -153,4 +174,12 @@ private fun zoomButtonsModeLabel(mode: String): String =
         SettingsRepository.ZOOM_BUTTONS_HIDE_BOTH -> "Hide + and -"
         SettingsRepository.ZOOM_BUTTONS_HIDE_PLUS -> "Hide + only"
         else -> "Show + and -"
+    }
+
+private fun mapLabelSizeLabel(size: String): String =
+    when (size) {
+        SettingsRepository.MAP_LABEL_SIZE_SMALL -> "Small (80%)"
+        SettingsRepository.MAP_LABEL_SIZE_LARGE -> "Large (150%)"
+        SettingsRepository.MAP_LABEL_SIZE_EXTRA_LARGE -> "Extra large (175%)"
+        else -> "Default (100%)"
     }

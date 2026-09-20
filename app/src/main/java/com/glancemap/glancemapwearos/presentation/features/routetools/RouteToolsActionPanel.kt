@@ -44,8 +44,6 @@ internal fun RouteToolsActionPanel(
 
     var showCoordinateEditor by remember(visible) { mutableStateOf(false) }
     var showPoiSearchDialog by remember(visible) { mutableStateOf(false) }
-    var coordinateDraftLat by remember(visible) { mutableStateOf(0.0) }
-    var coordinateDraftLon by remember(visible) { mutableStateOf(0.0) }
     var coordinateStep by remember(visible) { mutableStateOf(CoordinateStep.ONE_THOUSANDTH) }
     val shouldUsePreflightPopup =
         preflightMessage == "Routing packs missing for selected map" ||
@@ -58,10 +56,8 @@ internal fun RouteToolsActionPanel(
         onStartSelection(session)
     }
     val openCoordinateEditor: (RouteToolOptions) -> Unit = openCoordinateEditor@{ updatedOptions ->
-        val seededOptions = updatedOptions.seedCoordinateTarget(coordinateSeed)
+        val seededOptions = updatedOptions.seedCoordinateEndpoints(coordinateSeed)
         onOptionsChange(seededOptions)
-        coordinateDraftLat = seededOptions.coordinateLatitude ?: 0.0
-        coordinateDraftLon = seededOptions.coordinateLongitude ?: 0.0
         showCoordinateEditor = true
     }
 
@@ -124,36 +120,6 @@ internal fun RouteToolsActionPanel(
                 value = poiSearchSummary(poiSearchState),
                 onClick = { showPoiSearchDialog = true },
             )
-        }
-
-        if (options.toolKind == RouteToolKind.CREATE &&
-            options.createMode == RouteCreateMode.COORDINATES
-        ) {
-            RouteSettingRow(
-                title = "Destination",
-                value = options.coordinatesSummary(),
-                onClick = { openCoordinateEditor(options) },
-            )
-            Button(
-                onClick = {
-                    val seededOptions = options.seedCoordinateTarget(coordinateSeed)
-                    val lat = seededOptions.coordinateLatitude
-                    val lon = seededOptions.coordinateLongitude
-                    if (lat == null || lon == null) {
-                        openCoordinateEditor(seededOptions)
-                    } else {
-                        startSelection(
-                            RouteToolSession(
-                                options = seededOptions,
-                                destination = LatLong(lat, lon),
-                            ),
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Create route")
-            }
         }
 
         if (options.toolKind == RouteToolKind.CREATE &&
@@ -282,32 +248,20 @@ internal fun RouteToolsActionPanel(
         )
     }
 
-    CoordinateEntryDialog(
+    RouteEndpointEditorDialog(
         visible = showCoordinateEditor,
-        latitude = coordinateDraftLat,
-        longitude = coordinateDraftLon,
+        options = options,
+        coordinateSeed = coordinateSeed,
+        preflightMessage = preflightMessage,
         step = coordinateStep,
-        hasSeed = coordinateSeed != null,
-        onLatitudeChange = { coordinateDraftLat = it.coerceIn(-90.0, 90.0) },
-        onLongitudeChange = { coordinateDraftLon = normalizeLongitude(it) },
+        onOptionsChange = onOptionsChange,
         onStepChange = { coordinateStep = it },
-        onUseSeed = {
-            coordinateSeed?.let { seed ->
-                coordinateDraftLat = seed.latitude
-                coordinateDraftLon = seed.longitude
-            }
+        onCreateRoute = {
+            val seededOptions = options.seedCoordinateEndpoints(coordinateSeed)
+            onOptionsChange(seededOptions)
+            startSelection(RouteToolSession(options = seededOptions))
         },
         onDismiss = { showCoordinateEditor = false },
-        onConfirm = {
-            onOptionsChange(
-                options.copy(
-                    createMode = RouteCreateMode.COORDINATES,
-                    coordinateLatitude = coordinateDraftLat,
-                    coordinateLongitude = coordinateDraftLon,
-                ),
-            )
-            showCoordinateEditor = false
-        },
     )
 
     RoutePoiSearchDialog(

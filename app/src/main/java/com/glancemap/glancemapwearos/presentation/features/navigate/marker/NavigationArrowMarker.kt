@@ -7,6 +7,7 @@ import android.graphics.Path
 internal fun drawArrowMarker(
     canvas: Canvas,
     sizePx: Int,
+    fillColor: Int = NAVIGATION_MARKER_BLUE_ARGB,
 ) {
     val size = sizePx.toFloat()
     val center = size * 0.5f
@@ -23,7 +24,7 @@ internal fun drawArrowMarker(
 
     val fillPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = NAVIGATION_MARKER_BLUE_ARGB
+            color = fillColor
             style = Paint.Style.FILL
         }
     val strokePaint =
