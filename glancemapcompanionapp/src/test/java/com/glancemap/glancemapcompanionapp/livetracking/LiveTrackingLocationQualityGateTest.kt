@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.livetracking
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,6 +99,78 @@ class LiveTrackingLocationQualityGateTest {
 
         assertEquals(LiveTrackingLocationQualityResult.SUSPECT, decision.result)
         assertTrue(decision.distanceFromPreviousMeters!! > 900.0)
+    }
+
+    @Test
+    fun poorAccuracyCannotRaiseTheLargeJumpThreshold() {
+        val gate = gate()
+
+        evaluate(gate, fix(0.0, 0, accuracy = 20f))
+        val decision = evaluate(gate, fix(800.0, 15, accuracy = 350f))
+
+        assertEquals(LiveTrackingLocationQualityResult.SUSPECT, decision.result)
+        assertEquals(400.0, decision.effectiveJumpThresholdMeters!!, 0.0)
+        assertTrue(decision.poorAccuracy)
+        assertEquals(LiveTrackingSpeedEvidence.UNAVAILABLE, decision.speedEvidence)
+    }
+
+    @Test
+    fun poorAccuracyWithSmallSpatialMovementIsStillAccepted() {
+        val gate = gate()
+
+        evaluate(gate, fix(0.0, 0, accuracy = 20f))
+        val decision = evaluate(gate, fix(20.0, 15, accuracy = 350f))
+
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, decision.result)
+        assertTrue(decision.poorAccuracy)
+    }
+
+    @Test
+    fun compatibleReportedSpeedCanConfirmLargeMovement() {
+        val gate = gate()
+
+        evaluate(gate, fix(0.0, 0, accuracy = 20f))
+        val decision = evaluate(gate, fix(500.0, 15, accuracy = 350f, speed = 33.3f, speedAccuracy = 4f))
+
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, decision.result)
+        assertEquals(LiveTrackingSpeedEvidence.CORROBORATED, decision.speedEvidence)
+    }
+
+    @Test
+    fun incompatibleReportedSpeedMakesLargeMovementSuspect() {
+        val gate = gate()
+
+        evaluate(gate, fix(0.0, 0, accuracy = 20f))
+        val decision = evaluate(gate, fix(1_000.0, 20, accuracy = 350f, speed = 4f, speedAccuracy = 2f))
+
+        assertEquals(LiveTrackingLocationQualityResult.SUSPECT, decision.result)
+        assertEquals(LiveTrackingSpeedEvidence.CONTRADICTED, decision.speedEvidence)
+    }
+
+    @Test
+    fun rescueCooldownPreventsImmediateRepeatedRequests() {
+        val cooldownMillis = 120_000L
+        val lastRequest = 1_000_000_000L
+
+        assertEquals(
+            cooldownMillis,
+            liveTrackingRescueCooldownRemainingMillis(lastRequest, lastRequest, cooldownMillis),
+        )
+        assertEquals(
+            1_000L,
+            liveTrackingRescueCooldownRemainingMillis(
+                lastRequest,
+                lastRequest + 119_000L * NANOS_PER_MILLISECOND,
+                cooldownMillis,
+            ),
+        )
+        assertFalse(
+            liveTrackingRescueCooldownRemainingMillis(
+                lastRequest,
+                lastRequest + cooldownMillis * NANOS_PER_MILLISECOND,
+                cooldownMillis,
+            ) != null,
+        )
     }
 
     @Test
@@ -237,6 +310,7 @@ class LiveTrackingLocationQualityGateTest {
         seconds: Long,
         accuracy: Float = 5f,
         speed: Float? = null,
+        speedAccuracy: Float? = null,
     ) = LiveTrackingLocationFix(
         latitude = 0.0,
         longitude = longitudeMeters / METERS_PER_DEGREE_AT_EQUATOR,
@@ -244,6 +318,7 @@ class LiveTrackingLocationQualityGateTest {
         elapsedRealtimeNanos = BASE_ELAPSED_REALTIME_NANOS + seconds * NANOS_PER_SECOND,
         accuracyMeters = accuracy,
         speedMetersPerSecond = speed,
+        speedAccuracyMetersPerSecond = speedAccuracy,
     )
 
     private companion object {
