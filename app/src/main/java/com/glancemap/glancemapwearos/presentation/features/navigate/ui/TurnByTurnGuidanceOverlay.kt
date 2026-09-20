@@ -81,7 +81,9 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.R
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
+import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.sin
 
 @Composable
 @Suppress("CyclomaticComplexMethod", "FunctionName", "LongMethod", "LongParameterList")
@@ -1067,6 +1069,19 @@ private fun RouteProgressRing(
                 )
             }
         }
+        val progressAngleRadians =
+            Math.toRadians(
+                (PROGRESS_ARC_START_DEGREES + PROGRESS_ARC_SWEEP_DEGREES * clampedProgress).toDouble(),
+            )
+        drawCircle(
+            color = Color(NAVIGATION_MARKER_BLUE_ARGB),
+            radius = 3.dp.toPx(),
+            center =
+                Offset(
+                    x = topLeft.x + arcSize.width / 2f + cos(progressAngleRadians).toFloat() * arcSize.width / 2f,
+                    y = topLeft.y + arcSize.height / 2f + sin(progressAngleRadians).toFloat() * arcSize.height / 2f,
+                ),
+        )
     }
 }
 
