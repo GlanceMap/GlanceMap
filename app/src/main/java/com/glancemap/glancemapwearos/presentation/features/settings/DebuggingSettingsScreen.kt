@@ -52,6 +52,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnost
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionTelemetry
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalSensorSimulation
@@ -337,6 +338,7 @@ fun DebuggingSettingsScreen(
                     FieldMarkerDiagnostics.clear()
                     GnssDiagnostics.clear()
                     MapHotPathDiagnostics.clear()
+                    TerrainDiagnostics.clear()
                     CrashDiagnosticsStore.clear(context)
                     DiagnosticsExporter.clearExportedFiles(context)
                     exportedDiagnosticsCount = 0

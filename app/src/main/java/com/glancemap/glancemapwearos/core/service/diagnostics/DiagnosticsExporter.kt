@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.BuildConfig
+import com.glancemap.glancemapwearos.core.maps.DemSource
+import com.glancemap.glancemapwearos.core.maps.DemStorageInventoryCapture
+import com.glancemap.glancemapwearos.core.maps.DemStorageInventoryScanner
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveBundleDownloadTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveCompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeBundleDownloadSummarySection
@@ -23,6 +26,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.motion.Marke
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionTelemetry
 import java.io.File
+import java.io.Writer
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -566,6 +570,36 @@ object DiagnosticsExporter {
     private val timestampFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
 
+    private fun Writer.writeTerrainDemInventory(capture: DemStorageInventoryCapture) {
+        appendLine("Terrain DEM Inventory")
+        appendLine("terrainDemInventoryStatus=${capture.status}")
+        capture.errorType?.let { errorType ->
+            appendLine("terrainDemInventoryErrorType=$errorType")
+        }
+        val inventory = capture.inventory
+        if (inventory == null) {
+            appendLine("terrainDemInventorySources=unavailable")
+        } else {
+            inventory.sources.forEach { sourceInventory ->
+                val prefix =
+                    when (sourceInventory.source) {
+                        DemSource.MAPZEN_SKADI_1S -> "dem1Detailed"
+                        DemSource.MAPSFORGE_DEM3 -> "dem3Standard"
+                    }
+                appendLine("${prefix}RenderableFileCount=${sourceInventory.renderableFileCount}")
+                appendLine("${prefix}PartialFileCount=${sourceInventory.partialFileCount}")
+                appendLine("${prefix}MissingMarkerCount=${sourceInventory.missingMarkerCount}")
+                appendLine("${prefix}IgnoredFileCount=${sourceInventory.ignoredFileCount}")
+                appendLine("${prefix}RenderableBytes=${sourceInventory.renderableBytes}")
+                appendLine("${prefix}RenderableBytesSaturated=${sourceInventory.renderableBytesSaturated}")
+                appendLine("${prefix}DepthTruncated=${sourceInventory.depthTruncated}")
+                appendLine("${prefix}FileCountTruncated=${sourceInventory.fileCountTruncated}")
+                appendLine("${prefix}ScanTruncated=${sourceInventory.truncated}")
+            }
+        }
+        appendLine("terrainDemInventoryTruncated=${inventory?.truncated == true}")
+    }
+
     fun export(
         context: Context,
         settings: DiagnosticsSettingsSnapshot,
@@ -657,6 +691,9 @@ object DiagnosticsExporter {
         val mapHotPathSummary = MapHotPathDiagnostics.summary()
         val mapHotPathLines = MapHotPathDiagnostics.snapshotLines()
         val mapHotPathDroppedLines = MapHotPathDiagnostics.droppedLineCount()
+        val terrainDiagnosticsLines = TerrainDiagnostics.snapshotLines()
+        val terrainDiagnosticsDroppedLines = TerrainDiagnostics.droppedLineCount()
+        val terrainDiagnosticsInventoryCapture = DemStorageInventoryScanner.captureSafely(context)
         val gnssLines = GnssDiagnostics.snapshotLines()
         val gnssDroppedLines = GnssDiagnostics.droppedLineCount()
         val gnssInsights = deriveGnssInsights(gnssLines)
@@ -666,6 +703,7 @@ object DiagnosticsExporter {
         val energyTruncated = energyDroppedLines > 0
         val demDownloadTruncated = demDownloadDroppedLines > 0
         val mapHotPathTruncated = mapHotPathDroppedLines > 0
+        val terrainDiagnosticsTruncated = terrainDiagnosticsDroppedLines > 0
         val gnssTruncated = gnssDroppedLines > 0
         val fieldMarkerTruncated = fieldMarkerDroppedLines > 0
         val lastCrash = CrashDiagnosticsStore.read(context)
@@ -1013,6 +1051,10 @@ object DiagnosticsExporter {
             writer.appendLine("mapHotPathBufferMaxLines=${MapHotPathDiagnostics.maxBufferedLines()}")
             writer.appendLine("mapHotPathDroppedLines=$mapHotPathDroppedLines")
             writer.appendLine("mapHotPathTruncated=$mapHotPathTruncated")
+            writer.appendLine("terrainDiagnosticsBufferedLines=${terrainDiagnosticsLines.size}")
+            writer.appendLine("terrainDiagnosticsBufferMaxLines=${TerrainDiagnostics.maxBufferedLines()}")
+            writer.appendLine("terrainDiagnosticsDroppedLines=$terrainDiagnosticsDroppedLines")
+            writer.appendLine("terrainDiagnosticsTruncated=$terrainDiagnosticsTruncated")
             writer.appendLine("gnssBufferedLines=${gnssLines.size}")
             writer.appendLine("gnssBufferMaxLines=${GnssDiagnostics.maxBufferedLines()}")
             writer.appendLine("gnssDroppedLines=$gnssDroppedLines")
@@ -1027,6 +1069,7 @@ object DiagnosticsExporter {
                         energyTruncated ||
                         demDownloadTruncated ||
                         mapHotPathTruncated ||
+                        terrainDiagnosticsTruncated ||
                         gnssTruncated ||
                         fieldMarkerTruncated
                 }",
@@ -2129,6 +2172,15 @@ object DiagnosticsExporter {
             } else {
                 mapHotPathLines.forEach { line -> writer.appendLine(line) }
             }
+            writer.appendLine()
+            writer.appendLine("Terrain Diagnostics")
+            if (terrainDiagnosticsLines.isEmpty()) {
+                writer.appendLine("No terrain diagnostics events captured yet.")
+            } else {
+                terrainDiagnosticsLines.forEach { line -> writer.appendLine(line) }
+            }
+            writer.appendLine()
+            writer.writeTerrainDemInventory(terrainDiagnosticsInventoryCapture)
             writer.appendLine()
             writer.appendLine("Historical Process Exit Reasons")
             writer.appendLine("apiSupported=${historicalExitReasons.apiSupported}")

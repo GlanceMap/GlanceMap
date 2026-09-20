@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
@@ -157,6 +158,16 @@ fun NavigateScreen(
         )
 
     val hillshadeTerrainUnavailableEvent by mapViewModel.hillshadeTerrainUnavailableEvent.collectAsState()
+    LaunchedEffect(hillshadeTerrainUnavailableEvent?.correlationId) {
+        hillshadeTerrainUnavailableEvent?.let { event ->
+            TerrainDiagnostics.record(
+                event = "terrain_popup_shown",
+                detail =
+                    "correlationId=${event.correlationId} map=${event.mapIdentity} " +
+                        "zoom=${event.zoomLevel} missingTiles=${event.missingTileCount}",
+            )
+        }
+    }
     DemSetupBottomSheet(
         visible = hillshadeTerrainUnavailableEvent != null,
         reason = DemSetupReason.HILL_SHADING_VISIBLE_AREA,
