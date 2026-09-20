@@ -997,7 +997,7 @@ private fun GuideBackPromptButton(
 }
 
 @Composable
-@Suppress("FunctionName")
+@Suppress("FunctionName", "LongMethod")
 private fun RouteProgressRing(
     progress: Float?,
     offRoute: Boolean,
