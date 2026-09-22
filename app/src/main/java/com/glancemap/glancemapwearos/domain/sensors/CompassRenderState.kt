@@ -9,6 +9,11 @@ data class CompassRenderState(
     val headingErrorDeg: Float? = null,
     val conservativeHeadingErrorDeg: Float? = null,
     val headingSampleElapsedRealtimeMs: Long? = null,
+    /** Monotonic source measurement time. Callback/publication time is separate below. */
+    val headingSampleArrivalElapsedRealtimeMs: Long? = null,
+    val headingSampleSequenceId: Long? = null,
+    val headingSampleHeldOutput: Boolean = false,
+    val headingProvenance: CompassHeadingProvenance? = null,
     val headingSampleStale: Boolean = false,
     val headingSource: HeadingSource,
     val headingSourceStatus: HeadingSourceStatus,
@@ -29,6 +34,11 @@ data class CompassRenderState(
     val relativeHeadingDeg: Float? = null,
 )
 
+data class CompassHeadingProvenance(
+    val provider: CompassProviderType,
+    val generation: Long,
+)
+
 internal fun initialCompassRenderState(
     providerType: CompassProviderType,
     headingSensorAvailable: Boolean = false,
@@ -42,6 +52,10 @@ internal fun initialCompassRenderState(
         headingErrorDeg = null,
         conservativeHeadingErrorDeg = null,
         headingSampleElapsedRealtimeMs = null,
+        headingSampleArrivalElapsedRealtimeMs = null,
+        headingSampleSequenceId = null,
+        headingSampleHeldOutput = false,
+        headingProvenance = null,
         headingSampleStale = false,
         headingSource = HeadingSource.NONE,
         headingSourceStatus =

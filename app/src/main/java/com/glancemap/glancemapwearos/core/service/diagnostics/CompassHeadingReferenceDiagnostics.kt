@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.GeomagneticField
 import android.location.Location
 import android.os.SystemClock
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.normalize360Deg
@@ -170,6 +171,7 @@ internal object CompassHeadingReferenceDiagnostics {
         }
     }
 
+    @Suppress("LongMethod", "ReturnCount") // Keeps the validated mark capture and rejection path together.
     fun recordReference(referenceHeadingDeg: Float): CompassHeadingReferenceMarkResult {
         if (!_active.value || !isCompassTelemetryCaptureActive()) {
             return CompassHeadingReferenceMarkResult.TEST_INACTIVE
@@ -218,6 +220,14 @@ internal object CompassHeadingReferenceDiagnostics {
         FieldMarkerDiagnostics.recordMarker(
             type = "heading_reference_marker",
             note = "reference_${referenceLabel(referenceHeadingDeg)}",
+        )
+        val provenance = marker.provider.provenance
+        val providerName = provenance?.provider?.name ?: "na"
+        val generation = provenance?.generation ?: "na"
+        CompassDeepTraceDiagnostics.recordMarker(
+            "heading_reference_marker",
+            "reference=${referenceLabel(referenceHeadingDeg)} provider=$providerName generation=$generation",
+            capturedAtElapsedMs,
         )
         DebugTelemetry.log(TAG, marker.toTelemetryLine())
         return CompassHeadingReferenceMarkResult.RECORDED
@@ -274,6 +284,7 @@ internal data class CompassHeadingReferenceProviderSample(
     val integrityState: CompassTrackingState,
     val pitchDeg: Float?,
     val rollDeg: Float?,
+    val provenance: CompassHeadingProvenance? = null,
     val atElapsedMs: Long,
 )
 
@@ -305,6 +316,14 @@ internal enum class CompassHeadingReferenceMarkResult(
         telemetryToken = "provider_stale",
         userMessage = "Waiting for compass — keep Navigate open",
     ),
+    PROVENANCE_UNAVAILABLE(
+        telemetryToken = "provenance_unavailable",
+        userMessage = "Waiting for a matching compass stream",
+    ),
+    PROVENANCE_MISMATCHED(
+        telemetryToken = "provenance_mismatched",
+        userMessage = "Waiting for a matching compass stream",
+    ),
     TARGET_UNAVAILABLE(
         telemetryToken = "target_unavailable",
         userMessage = "Waiting for compass — keep Navigate open",
@@ -334,10 +353,14 @@ internal fun validateHeadingReferenceMark(
             CompassHeadingReferenceMarkResult.PROVIDER_UNUSABLE
         capturedAtElapsedMs - provider.atElapsedMs > MAX_PROVIDER_SAMPLE_AGE_MS ->
             CompassHeadingReferenceMarkResult.PROVIDER_STALE
+        render == null -> CompassHeadingReferenceMarkResult.RENDER_UNAVAILABLE
+        provider.provenance == null || render.provenance == null ->
+            CompassHeadingReferenceMarkResult.PROVENANCE_UNAVAILABLE
+        provider.provenance != render.provenance ->
+            CompassHeadingReferenceMarkResult.PROVENANCE_MISMATCHED
         provider.targetHeadingDeg?.isFinite() != true ->
             CompassHeadingReferenceMarkResult.TARGET_UNAVAILABLE
-        render == null ||
-            !render.targetHeadingDeg.isFinite() ||
+        !render.targetHeadingDeg.isFinite() ||
             !render.renderedHeadingDeg.isFinite() ||
             !render.mapsforgeMapRotationDeg.isFinite() ->
             CompassHeadingReferenceMarkResult.RENDER_UNAVAILABLE
@@ -368,6 +391,7 @@ internal data class CompassHeadingReferenceRenderSample(
     val targetHeadingDeg: Float,
     val renderedHeadingDeg: Float,
     val mapsforgeMapRotationDeg: Float,
+    val provenance: CompassHeadingProvenance? = null,
     val atElapsedMs: Long,
 )
 

@@ -295,6 +295,42 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun fusedMagneticWakeHoldReleasesWhenHealthyFallbackBecomesAuthoritative() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
+
+        assertNull(
+            gate.resolve(
+                renderState = interferenceGoogleFusedState(),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+            ),
+        )
+
+        val fallbackState =
+            initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
+                headingSource = HeadingSource.ROTATION_VECTOR,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_020L,
+                headingSampleStale = false,
+                headingRenderable = true,
+                trackingState = CompassTrackingState.TRACKING,
+                trackingReason = CompassTrackingReason.STABLE,
+            )
+        val target =
+            gate.resolve(
+                renderState = fallbackState,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_020L,
+                nowElapsedMs = 1_030L,
+            )
+
+        assertEquals(180f, target?.headingDeg ?: -1f, 0f)
+        assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
     fun laterInterferenceKeepsDrivingAfterAStableCompassHeadingWasEstablished() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
@@ -700,6 +736,8 @@ class NavigateEffectsSupportTest {
             initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
                 headingSource = HeadingSource.ROTATION_VECTOR,
                 accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingRenderable = true,
             )
 
         assertTrue(shouldDriveCompassFollowMap(state))
@@ -783,6 +821,8 @@ class NavigateEffectsSupportTest {
             initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
                 headingSource = HeadingSource.ROTATION_VECTOR,
                 accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingRenderable = true,
             )
 
         assertTrue(shouldDriveMarkerHeading(state))

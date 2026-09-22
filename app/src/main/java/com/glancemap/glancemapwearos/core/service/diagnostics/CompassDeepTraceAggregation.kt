@@ -1,9 +1,11 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
+import java.util.ArrayDeque
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -30,6 +32,14 @@ internal data class CompassDeepTraceProviderSample(
     val targetHeadingDeg: Float? = null,
     val quarantineActive: Boolean = false,
     val recoveryActive: Boolean = false,
+    val sourceSampleId: Long? = null,
+    val sourceMeasurementAtElapsedMs: Long? = null,
+    val callbackArrivalAtElapsedMs: Long? = null,
+    val processingAtElapsedMs: Long? = null,
+    val measurementDisposition: String? = null,
+    val heldOutput: Boolean = false,
+    val trusted: Boolean = false,
+    val provenance: CompassHeadingProvenance? = null,
     val atElapsedMs: Long,
 )
 
@@ -39,8 +49,134 @@ internal data class CompassDeepTraceRenderSample(
     val mapRotationDeg: Float,
     val continuityActive: Boolean,
     val continuityOffsetDeg: Float,
+    val sourceSampleId: Long? = null,
+    val heldOutput: Boolean = false,
+    val provenance: CompassHeadingProvenance? = null,
     val atElapsedMs: Long,
 )
+
+internal sealed interface CompassDeepTraceEvent {
+    val atElapsedMs: Long
+
+    data class ProviderMeasurement(
+        override val atElapsedMs: Long,
+        val provider: String,
+        val headingDeg: Float,
+        val sourceSampleId: Long?,
+        val sourceMeasurementAtElapsedMs: Long?,
+        val callbackArrivalAtElapsedMs: Long?,
+        val processingAtElapsedMs: Long?,
+        val measurementDisposition: String?,
+        val accuracy: Int,
+        val usable: Boolean,
+        val provenance: CompassHeadingProvenance?,
+    ) : CompassDeepTraceEvent
+
+    data class IntegrityDecision(
+        override val atElapsedMs: Long,
+        val provider: String,
+        val sourceSampleId: Long?,
+        val headingDeg: Float,
+        val liveHeadingErrorDeg: Float?,
+        val conservativeHeadingErrorDeg: Float?,
+        val trackingState: CompassTrackingState?,
+        val trackingReason: CompassTrackingReason?,
+        val relativeHeadingDeg: Float?,
+        val fusedRelativeDisagreementDeg: Float?,
+        val targetHeadingDeg: Float?,
+        val trusted: Boolean,
+        val quarantineActive: Boolean,
+        val recoveryActive: Boolean,
+        val heldOutput: Boolean = false,
+        val provenance: CompassHeadingProvenance?,
+    ) : CompassDeepTraceEvent
+
+    data class Render(
+        override val atElapsedMs: Long,
+        val sourceSampleId: Long?,
+        val targetHeadingDeg: Float,
+        val renderedHeadingDeg: Float,
+        val mapRotationDeg: Float,
+        val heldOutput: Boolean = false,
+        val provenance: CompassHeadingProvenance?,
+    ) : CompassDeepTraceEvent
+
+    data class Telemetry(
+        override val atElapsedMs: Long,
+        val line: String,
+    ) : CompassDeepTraceEvent
+
+    data class Marker(
+        override val atElapsedMs: Long,
+        val type: String,
+        val detail: String,
+    ) : CompassDeepTraceEvent
+
+    data class UiConfidence(
+        override val atElapsedMs: Long,
+        val provider: String,
+        val quality: String,
+        val accuracyColorsEnabled: Boolean,
+        val provenance: CompassHeadingProvenance?,
+    ) : CompassDeepTraceEvent
+}
+
+internal data class CompassDeepTraceEventRecord(
+    val eventId: Long,
+    val event: CompassDeepTraceEvent,
+)
+
+/** Bounded ordered decision history; consecutive identical render records are intentionally coalesced. */
+internal class CompassDeepTraceEventRing(
+    private val capacity: Int,
+) {
+    init {
+        require(capacity > 0)
+    }
+
+    private val records = ArrayDeque<CompassDeepTraceEventRecord>()
+    private var nextEventId = 0L
+
+    var droppedEvents: Int = 0
+        private set
+
+    fun record(event: CompassDeepTraceEvent) {
+        if (shouldCoalesce(event, records.lastOrNull()?.event)) return
+        records.addLast(CompassDeepTraceEventRecord(eventId = ++nextEventId, event = event))
+        while (records.size > capacity) {
+            records.removeFirst()
+            droppedEvents += 1
+        }
+    }
+
+    fun snapshot(): List<CompassDeepTraceEventRecord> = records.toList()
+
+    fun clear() {
+        records.clear()
+        nextEventId = 0L
+        droppedEvents = 0
+    }
+
+    private fun shouldCoalesce(
+        event: CompassDeepTraceEvent,
+        previous: CompassDeepTraceEvent?,
+    ): Boolean =
+        when {
+            event is CompassDeepTraceEvent.Render && previous is CompassDeepTraceEvent.Render ->
+                event.sourceSampleId == previous.sourceSampleId &&
+                    event.targetHeadingDeg == previous.targetHeadingDeg &&
+                    event.renderedHeadingDeg == previous.renderedHeadingDeg &&
+                    event.mapRotationDeg == previous.mapRotationDeg &&
+                    event.heldOutput == previous.heldOutput &&
+                    event.provenance == previous.provenance
+            event is CompassDeepTraceEvent.UiConfidence && previous is CompassDeepTraceEvent.UiConfidence ->
+                event.provider == previous.provider &&
+                    event.quality == previous.quality &&
+                    event.accuracyColorsEnabled == previous.accuracyColorsEnabled &&
+                    event.provenance == previous.provenance
+            else -> false
+        }
+}
 
 internal enum class CompassDeepTraceRawSensor {
     GYROSCOPE,

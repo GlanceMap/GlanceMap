@@ -51,6 +51,8 @@ internal data class FusedAbsoluteHeadingSample(
     val liveErrorDeg: Float?,
     val conservativeErrorDeg: Float?,
     val atElapsedMs: Long,
+    val callbackArrivalAtElapsedMs: Long = atElapsedMs,
+    val sourceSampleId: Long? = null,
 )
 
 internal data class FusedHeadingIntegritySnapshot(
@@ -127,6 +129,8 @@ private data class AbsoluteHeadingEvidence(
     val residualSpreadDeg: Float?,
     val absoluteSpreadDeg: Float?,
     val hardDisagreement: Boolean,
+    val liveAbsoluteConfidence: Boolean,
+    val conservativeAbsoluteConfidence: Boolean?,
     val strongAbsoluteConfidence: Boolean,
     val disagreementDeg: Float?,
     val residualDeg: Float?,
@@ -334,6 +338,7 @@ internal class FusedHeadingIntegrityEngine(
         return buildSnapshot()
     }
 
+    @Suppress("LongMethod") // Keeps the evidence snapshot assembled in one audited decision boundary.
     private fun collectAbsoluteHeadingEvidence(
         sample: FusedAbsoluteHeadingSample,
     ): AbsoluteHeadingEvidence {
@@ -371,7 +376,8 @@ internal class FusedHeadingIntegrityEngine(
         }
 
         val fieldAcceptable = magneticFieldAcceptable()
-        val strongAbsoluteConfidence = hasStrongAbsoluteConfidence(sample)
+        val absoluteConfidence = resolveAbsoluteConfidence(sample)
+        val strongAbsoluteConfidence = absoluteConfidence.strong
         val disagreementEnterDeg = disagreementEnterThresholdDeg(strongAbsoluteConfidence)
         val hardDisagreement =
             when {
@@ -391,6 +397,8 @@ internal class FusedHeadingIntegrityEngine(
             residualSpreadDeg = residualSpreadDeg,
             absoluteSpreadDeg = absoluteSpreadDeg,
             hardDisagreement = hardDisagreement,
+            liveAbsoluteConfidence = absoluteConfidence.live,
+            conservativeAbsoluteConfidence = absoluteConfidence.conservative,
             strongAbsoluteConfidence = strongAbsoluteConfidence,
             disagreementDeg = disagreementDeg,
             residualDeg = movement.residualDeg,
@@ -545,12 +553,27 @@ internal class FusedHeadingIntegrityEngine(
             disagreement != null &&
                 evidence.relativeStepDeg != null &&
                 disagreement >= config.weakConfidenceDisagreementEnterDeg
-        return renderedHeading != null &&
-            renderedDeltaDeg != null &&
-            renderedDeltaDeg >= config.unverifiedHeadingJumpHoldDeg &&
-            !evidence.strongAbsoluteConfidence &&
-            (relativeDisagreement || unsupportedImplausibleStep)
+        val unresolvedQuarantine =
+            quarantineActive &&
+                renderedHeading != null &&
+                !hasCorroboratedCorrection(evidence)
+        return unresolvedQuarantine ||
+            (
+                renderedHeading != null &&
+                    renderedDeltaDeg != null &&
+                    renderedDeltaDeg >= config.unverifiedHeadingJumpHoldDeg &&
+                    !evidence.strongAbsoluteConfidence &&
+                    (relativeDisagreement || unsupportedImplausibleStep)
+            )
     }
+
+    private fun hasCorroboratedCorrection(evidence: AbsoluteHeadingEvidence): Boolean =
+        evidence.absoluteStepDeg != null &&
+            abs(evidence.absoluteStepDeg) >= CORROBORATED_STEP_MIN_DEG &&
+            evidence.relativeStepDeg != null &&
+            abs(evidence.relativeStepDeg) >= CORROBORATED_STEP_MIN_DEG &&
+            evidence.stepDisagreementDeg != null &&
+            !evidence.hardDisagreement
 
     private fun updateTrackingAnchor(evidence: AbsoluteHeadingEvidence) {
         val residualDeg = evidence.residualDeg
@@ -783,13 +806,23 @@ internal class FusedHeadingIntegrityEngine(
             CompassTrackingReason.RECOVERING
         }
 
-    private fun hasStrongAbsoluteConfidence(sample: FusedAbsoluteHeadingSample): Boolean {
-        val liveTrusted = sample.liveErrorDeg?.let { it.isFinite() && it in 0f..config.strongLiveErrorDeg } == true
-        val conservativeTrusted =
-            sample.conservativeErrorDeg?.let {
-                it.isFinite() && it in 0f..config.strongConservativeErrorDeg
+    private fun resolveAbsoluteConfidence(sample: FusedAbsoluteHeadingSample): AbsoluteConfidence {
+        val liveTrusted =
+            sample.liveErrorDeg?.let {
+                it.isFinite() && it in 0f..config.strongLiveErrorDeg
             } == true
-        return liveTrusted || conservativeTrusted
+        val conservative =
+            sample.conservativeErrorDeg?.takeIf { it.isFinite() && it >= 0f }?.let {
+                it <= config.strongConservativeErrorDeg
+            }
+        // A known conservative disagreement invalidates the live estimate for trust and for
+        // high-confidence contradiction thresholds. Missing conservative metadata remains
+        // renderable, but it is never enough to establish strong/trusted output on its own.
+        return AbsoluteConfidence(
+            live = liveTrusted,
+            conservative = conservative,
+            strong = liveTrusted && conservative == true,
+        )
     }
 
     private fun buildSnapshot(): FusedHeadingIntegritySnapshot =
@@ -817,6 +850,12 @@ internal class FusedHeadingIntegrityEngine(
             relativeStepDeg = lastRelativeStepDeg,
         )
 }
+
+private data class AbsoluteConfidence(
+    val live: Boolean,
+    val conservative: Boolean?,
+    val strong: Boolean,
+)
 
 /** Keeps the optional game-RV witness from influencing the heading rendered by Google Fused. */
 private class RelativeHeadingWitnessValidator(
@@ -951,6 +990,7 @@ private fun maxOfNullable(
         else -> maxOf(first, second)
     }
 
+private const val CORROBORATED_STEP_MIN_DEG = 1f
 private const val TRACKING_ANCHOR_ADAPTATION_ALPHA = 0.01f
 private const val MAX_CONTINUITY_STEP_INTERVAL_MS = 250L
 private const val RELATIVE_HISTORY_WINDOW_MS = 1_000L

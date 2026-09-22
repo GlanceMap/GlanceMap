@@ -38,6 +38,9 @@ Source constants file:
 | `GOOGLE_FUSED_TRANSIENT_STOP_GRACE_MS` | `2500 ms` | Keep Google fused warm briefly after entering ambient | Improves quick wake continuity | Low-power mode is applied immediately, then the provider stops |
 | `FUSED_UNUSABLE_HEADING_FALLBACK_MIN_SAMPLES` | `5 samples` | Require repeated unusable Google fused uncertainty before fallback | Avoids publishing streams that report `180 deg` heading uncertainty | May keep SensorManager fallback active when Google fused is unusable |
 | `FUSED_UNUSABLE_HEADING_FALLBACK_MIN_DURATION_MS` | `1200 ms` | Require unusable Google fused state to persist before fallback | Filters startup blips while catching sustained bad fused streams on SM-L505F | Neutral unless fallback stays active |
+| `SENSOR_HEADING_SAMPLE_STALE_MS` | `1500 ms` | Mark SensorManager output stale when its source measurement is too old | Prevents silent fallback output from driving map rotation | Negligible polling cost |
+| `SENSOR_HEADING_FRESHNESS_POLL_MS` | `250 ms` | Poll active fallback freshness between sensor callbacks | Bounds stale-state detection latency without waiting for another event | Small fixed coroutine wakeup while active |
+| `COMPASS_DEEP_TRACE_DECISION_EVENT_CAPACITY` | `2048 events` | Bound ordered provider/integrity/render diagnostics retained per trace session | Preserves recent causal evidence without unbounded memory growth | Memory use is capped and trace is opt-in |
 | `MAG_FIELD_MIN_VALID_UT` | `15 uT` | Lower bound for plausible magnetic field | Detects abnormal environment | Neutral |
 | `MAG_FIELD_MAX_VALID_UT` | `85 uT` | Upper bound for plausible magnetic field | Detects interference/saturation | Neutral |
 | `MAG_FIELD_SPIKE_THRESHOLD_UT` | `18 uT` | Spike detector for sudden interference | Captures abrupt disturbances | Neutral |

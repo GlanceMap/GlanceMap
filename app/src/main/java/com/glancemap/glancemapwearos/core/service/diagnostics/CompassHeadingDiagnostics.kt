@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
+import android.os.SystemClock
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
@@ -53,7 +55,7 @@ internal object CompassHeadingDiagnostics {
      * Records one accepted absolute-provider callback and its integrity-engine decision.
      * This method is safe to call at the full provider rate.
      */
-    @Suppress("LongParameterList")
+    @Suppress("LongParameterList", "LongMethod")
     fun recordEngineSample(
         provider: HeadingSource,
         providerHeadingDeg: Float,
@@ -67,6 +69,12 @@ internal object CompassHeadingDiagnostics {
         northBasis: CompassNorthBasis,
         pitchDeg: Float?,
         rollDeg: Float?,
+        sourceMeasurementAtElapsedMs: Long? = null,
+        callbackArrivalAtElapsedMs: Long? = null,
+        sourceSampleId: Long? = null,
+        measurementDisposition: String? = null,
+        heldOutput: Boolean = false,
+        provenance: CompassHeadingProvenance? = null,
         atElapsedMs: Long,
     ) {
         val previousTargetHeadingDeg = latestWakeProviderSample?.targetHeadingDeg
@@ -106,6 +114,14 @@ internal object CompassHeadingDiagnostics {
                     targetHeadingDeg = snapshot.renderHeadingDeg,
                     quarantineActive = snapshot.quarantineActive,
                     recoveryActive = snapshot.recoveryActive,
+                    sourceSampleId = sourceSampleId,
+                    sourceMeasurementAtElapsedMs = sourceMeasurementAtElapsedMs,
+                    callbackArrivalAtElapsedMs = callbackArrivalAtElapsedMs,
+                    processingAtElapsedMs = SystemClock.elapsedRealtime(),
+                    measurementDisposition = measurementDisposition,
+                    heldOutput = heldOutput,
+                    trusted = snapshot.trusted,
+                    provenance = provenance,
                     atElapsedMs = atElapsedMs,
                 ),
             )
@@ -171,6 +187,7 @@ internal object CompassHeadingDiagnostics {
         renderedHeadingDeg: Float,
         mapRotationDeg: Float,
         atElapsedMs: Long,
+        provenance: CompassHeadingProvenance? = null,
     ) {
         if (isCompassTelemetryCaptureActive()) {
             val previousRenderedHeadingDeg = lastRenderedHeadingDeg
@@ -195,6 +212,7 @@ internal object CompassHeadingDiagnostics {
                 targetHeadingDeg = targetHeadingDeg,
                 renderedHeadingDeg = renderedHeadingDeg,
                 mapsforgeMapRotationDeg = mapRotationDeg,
+                provenance = provenance,
                 atElapsedMs = atElapsedMs,
             ),
         )

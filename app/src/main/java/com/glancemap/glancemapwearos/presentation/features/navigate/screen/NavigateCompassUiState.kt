@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -67,6 +68,7 @@ internal fun rememberNavigateCompassUiState(
         }
 
     val compassRenderState by compassViewModel.renderState.collectAsState()
+    val deepTraceState by CompassDeepTraceDiagnostics.state.collectAsState()
     val compassAccuracy = compassRenderState.accuracy
     val magneticInterference = compassRenderState.magneticInterference
     val liveCompassQualityReading =
@@ -172,8 +174,16 @@ internal fun rememberNavigateCompassUiState(
         if (effectiveCompassConeAccuracyColorsEnabled) {
             displayedCompassQuality
         } else {
-            CompassMarkerQuality.GOOD
+            CompassMarkerQuality.NEUTRAL
         }
+    if (deepTraceState.active) {
+        CompassDeepTraceDiagnostics.recordUiConfidence(
+            provider = compassRenderState.providerType.name.lowercase(),
+            quality = compassConeQuality.name.lowercase(),
+            accuracyColorsEnabled = effectiveCompassConeAccuracyColorsEnabled,
+            provenance = compassRenderState.headingProvenance,
+        )
+    }
     val compassConeHeadingErrorDeg =
         if (
             effectiveCompassConeAccuracyColorsEnabled &&

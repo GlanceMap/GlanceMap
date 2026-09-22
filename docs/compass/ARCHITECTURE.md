@@ -27,6 +27,26 @@ This module owns:
 5. Smoothing and quality logic computes final heading, accuracy, source status, and interference state.
 6. Navigation UI consumes heading and quality state to rotate map/cone behavior.
 
+## Reliability Contracts
+
+- Sensor and Google fused samples carry both monotonic source-measurement time and callback-arrival
+  time. Freshness is based on source time; callback time is diagnostic context only.
+- Fused samples are accepted only when their source timestamps are strictly newer than the last
+  accepted sample. Duplicate and out-of-order callbacks are recorded but cannot refresh freshness,
+  integrity, or rendering.
+- Every published heading carries a sequence identity and provider generation when available.
+  Reference diagnostics reject marks whose provider sample and rendered sample do not share the same
+  provenance.
+- A weak, contradictory fused jump is quarantined. Repeating the same contradictory sample does not
+  release it; a meaningful relative correction must corroborate the provider before the held heading
+  can move.
+- The optional Compass Deep Trace stores a bounded ordered decision-event ring. It records provider
+  timing, integrity decisions, held output, render provenance, and explicit user reports while the
+  trace is active. Consecutive unchanged render records are coalesced.
+
+SensorManager fallback silence becomes stale after the documented source-time window, and stale or
+untrusted fused output cannot drive map-follow rotation or display a green compass-quality state.
+
 ## Ownership
 
 - `CompassManager.kt`

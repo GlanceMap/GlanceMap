@@ -92,6 +92,43 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
+    fun lowLiveButPoorConservativeConfidenceCannotAcceptAStationary180DegreeJump() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(12) {
+            replay.advance(20L)
+            replay.relative(headingDeg = 0f)
+            latest = replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+            assertEquals(0f, requireNotNull(requireNotNull(latest).renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        }
+
+        val snapshot = requireNotNull(latest)
+        assertTrue(snapshot.quarantineActive)
+        assertFalse(snapshot.trusted)
+        assertFalse(snapshot.relativeWitnessSupportsHighRate)
+    }
+
+    @Test
+    fun missingConservativeConfidenceRemainsRenderableButNotTrusted() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val snapshot = replay.absolute(headingDeg = 4f, liveErrorDeg = 8f, conservativeErrorDeg = null)
+
+        assertEquals(
+            4f,
+            requireNotNull(snapshot.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
+        assertTrue(snapshot.renderable)
+        assertFalse(snapshot.trusted)
+    }
+
+    @Test
     fun agreeingWitnessAllowsResponsiveButBoundedFusedCorrection() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 10f)
@@ -148,6 +185,48 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(110f, snapshot.absoluteStepDeg ?: -1f, ANGLE_TOLERANCE_DEG)
         assertEquals(20L, snapshot.absoluteStepIntervalMs)
         assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun repeatedIdenticalWeakBadSamplesRemainHeldWithoutARealCorrection() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val first = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val second = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+        assertEquals(0f, requireNotNull(first.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertEquals(0f, requireNotNull(second.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertTrue(second.quarantineActive)
+        assertFalse(second.trusted)
+    }
+
+    @Test
+    fun corroboratedRelativeCorrectionReleasesAQuarantinedHeading() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val held = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        assertTrue(held.quarantineActive)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 180f)
+        replay.absolute(headingDeg = 180f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val recovered = replay.absolute(headingDeg = 0f)
+
+        assertEquals(0f, requireNotNull(recovered.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertFalse(recovered.quarantineActive)
+        assertTrue(recovered.trusted)
     }
 
     @Test
@@ -256,7 +335,7 @@ class FusedHeadingIntegrityEngineTest {
         fun absolute(
             headingDeg: Float,
             liveErrorDeg: Float = 8f,
-            conservativeErrorDeg: Float = 30f,
+            conservativeErrorDeg: Float? = 30f,
         ): FusedHeadingIntegritySnapshot =
             engine.onAbsoluteHeading(
                 FusedAbsoluteHeadingSample(

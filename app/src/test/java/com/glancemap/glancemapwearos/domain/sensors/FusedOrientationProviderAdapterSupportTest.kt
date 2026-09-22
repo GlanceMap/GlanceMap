@@ -159,6 +159,60 @@ class FusedOrientationProviderAdapterSupportTest {
         )
     }
 
+    @Test
+    fun fusedMeasurementsRequireStrictlyIncreasingSourceTimestamps() {
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 1_001L,
+                previousSourceMeasurementAtElapsedMs = 0L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.DUPLICATE,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 1_001L,
+                previousSourceMeasurementAtElapsedMs = 1_001L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.OUT_OF_ORDER,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                previousSourceMeasurementAtElapsedMs = 1_001L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 1_002L,
+                previousSourceMeasurementAtElapsedMs = 1_001L,
+            ),
+        )
+        assertTrue(
+            isFusedSourceMeasurementStale(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                callbackArrivalAtElapsedMs = 2_500L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.STALE_SOURCE,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_500L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 2_000L,
+                previousSourceMeasurementAtElapsedMs = 1_000L,
+                callbackArrivalAtElapsedMs = 2_500L,
+            ),
+        )
+    }
+
     private fun unusableUpdate(
         nowMs: Long,
         previous: FusedUnusableHeadingUpdate?,
