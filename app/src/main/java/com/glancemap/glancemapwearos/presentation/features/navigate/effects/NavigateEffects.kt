@@ -975,7 +975,8 @@ internal fun shouldDriveCompassFollowMap(renderState: CompassRenderState): Boole
             !renderState.headingSampleStale &&
             renderState.headingRenderable
     } else {
-        renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
+        renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE &&
+            !renderState.headingSampleStale
     }
 }
 
@@ -1226,7 +1227,8 @@ internal fun shouldDriveMarkerHeading(renderState: CompassRenderState): Boolean 
     if (renderState.headingSource == HeadingSource.NONE) return false
     return when (renderState.providerType) {
         CompassProviderType.SENSOR_MANAGER ->
-            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
+            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE &&
+                !renderState.headingSampleStale
         CompassProviderType.GOOGLE_FUSED ->
             renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
                 renderState.headingSampleElapsedRealtimeMs != null &&

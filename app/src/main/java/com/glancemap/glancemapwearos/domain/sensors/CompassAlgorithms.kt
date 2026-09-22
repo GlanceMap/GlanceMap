@@ -50,6 +50,16 @@ internal const val HEADING_NOISE_GOOD_DEG = 3.0f
 internal const val HEADING_NOISE_IMPROVING_DEG = 5.4f
 internal const val HEADING_NOISE_POOR_DEG = 8.8f
 internal const val DISPLAY_ROTATION_SAMPLE_INTERVAL_MS = 250L
+
+// The low-power fallback asks Android for SENSOR_DELAY_NORMAL (~5 Hz). Allow at most two of
+// those periods of source-time skew so independently dispatched accel and mag events still pair,
+// while rejecting vectors separated by multiple physical readings.
+internal const val SENSOR_MAG_ACCEL_PAIR_MAX_SKEW_MS = 400L
+
+// 1.5 s matches the established compass stabilization/fused stale horizon and covers several
+// low-power (~200 ms) deliveries without allowing a silent physical component to persist.
+internal const val SENSOR_MAG_ACCEL_COMPONENT_STALE_MS = 1_500L
+internal const val SENSOR_MAG_ACCEL_FRESHNESS_CHECK_INTERVAL_MS = 250L
 internal const val HEADING_DEBUG_SAMPLE_MS = 10_000L
 internal const val DECLINATION_REFRESH_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000L
 internal const val DECLINATION_REFRESH_MIN_DISTANCE_M = 10_000f

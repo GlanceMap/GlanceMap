@@ -706,6 +706,20 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun staleSensorManagerFallbackCannotDriveMapOrMarker() {
+        val state =
+            initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
+                headingSource = HeadingSource.MAG_ACCEL_FALLBACK,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingSampleStale = true,
+            )
+
+        assertFalse(shouldDriveCompassFollowMap(state))
+        assertFalse(shouldDriveMarkerHeading(state))
+    }
+
+    @Test
     fun compassFollowMapDrivesWhenGoogleFusedSampleIsFresh() {
         val state =
             initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
