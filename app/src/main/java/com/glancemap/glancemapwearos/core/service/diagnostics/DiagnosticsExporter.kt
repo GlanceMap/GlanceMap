@@ -13,6 +13,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeBundle
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeDemDownloadSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGlobalTelemetryProducerVolumeSummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeLineDumpSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeRecordingInstrumentationSummarySection
@@ -936,6 +937,7 @@ object DiagnosticsExporter {
             writer.appendLine("telemetryBufferedFirstAt=${formatCaptureTime(telemetryWindow.firstAtMs)}")
             writer.appendLine("telemetryBufferedLastAt=${formatCaptureTime(telemetryWindow.lastAtMs)}")
             writer.appendLine("telemetryBufferedSpanMs=${formatBufferedSpanMs(telemetryWindow.firstAtMs, telemetryWindow.lastAtMs)}")
+            writer.writeGlobalTelemetryProducerVolumeSummary(captureSession.producerVolumes)
             writer.appendLine("energyBufferedLines=${energyLines.size}")
             writer.appendLine("energyBufferMaxLines=${EnergyDiagnostics.maxBufferedLines()}")
             writer.appendLine("energyDroppedLines=$energyDroppedLines")
@@ -1015,6 +1017,8 @@ object DiagnosticsExporter {
             writer.appendLine("mapHotPathTruncated=$mapHotPathTruncated")
             writer.appendLine("gnssBufferedLines=${gnssLines.size}")
             writer.appendLine("gnssBufferMaxLines=${GnssDiagnostics.maxBufferedLines()}")
+            writer.appendLine("gnssGeneratedLines=${GnssDiagnostics.generatedLineCount()}")
+            writer.appendLine("gnssRetainedLines=${gnssLines.size}")
             writer.appendLine("gnssDroppedLines=$gnssDroppedLines")
             writer.appendLine("gnssTruncated=$gnssTruncated")
             writer.appendLine("fieldMarkerBufferedLines=${fieldMarkerLines.size}")

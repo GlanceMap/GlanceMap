@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.core.service.diagnostics.export
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.DemDownloadSummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
@@ -9,6 +10,18 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingDiagnosti
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingInstrumentationCounters
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
+
+internal fun Appendable.writeGlobalTelemetryProducerVolumeSummary(
+    volumes: List<DebugTelemetry.GlobalTelemetryProducerVolume>,
+) {
+    appendLine("Telemetry Producer Volume")
+    volumes.forEach { volume ->
+        val prefix = "telemetryProducer_${volume.producer.exportKey}"
+        appendLine("${prefix}_generatedLines=${volume.generatedLines}")
+        appendLine("${prefix}_retainedLines=${volume.retainedLines}")
+        appendLine("${prefix}_droppedLines=${volume.droppedLines}")
+    }
+}
 
 internal fun Appendable.writeLineDumpSection(
     title: String,
