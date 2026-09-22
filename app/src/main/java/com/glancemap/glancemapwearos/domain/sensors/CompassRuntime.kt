@@ -22,6 +22,62 @@ internal data class CompassPipelineFlags(
     val usingMagAccelFallback: Boolean,
 )
 
+internal data class CompassSensorRegistrationResult(
+    val headingSensorRegistered: Boolean = false,
+    val rotationVectorRegistered: Boolean = false,
+    val accelerometerRegistered: Boolean = false,
+    val magnetometerRegistered: Boolean = false,
+) {
+    fun isOperational(pipeline: HeadingPipeline): Boolean =
+        when (pipeline) {
+            HeadingPipeline.HEADING_SENSOR -> headingSensorRegistered
+            HeadingPipeline.ROTATION_VECTOR -> rotationVectorRegistered
+            HeadingPipeline.MAG_ACCEL_FALLBACK -> accelerometerRegistered && magnetometerRegistered
+            HeadingPipeline.NONE -> false
+        }
+}
+
+internal data class SensorMagAccelComponentSample(
+    val sourceTimestampElapsedRealtimeMs: Long? = null,
+    val registrationGeneration: Long? = null,
+)
+
+internal data class SensorMagAccelPairState(
+    val accelerometer: SensorMagAccelComponentSample = SensorMagAccelComponentSample(),
+    val magnetometer: SensorMagAccelComponentSample = SensorMagAccelComponentSample(),
+)
+
+internal enum class SensorMagAccelComponent {
+    ACCELEROMETER,
+    MAGNETOMETER,
+}
+
+internal enum class SensorMagAccelPairReason(
+    val telemetryToken: String,
+) {
+    ACCEPTED("accepted"),
+    ACCELEROMETER_MISSING("accelerometer_missing"),
+    MAGNETOMETER_MISSING("magnetometer_missing"),
+    ACCELEROMETER_GENERATION_MISMATCH("accelerometer_generation_mismatch"),
+    MAGNETOMETER_GENERATION_MISMATCH("magnetometer_generation_mismatch"),
+    ACCELEROMETER_STALE("accelerometer_stale"),
+    MAGNETOMETER_STALE("magnetometer_stale"),
+    EXCESSIVE_SKEW("excessive_skew"),
+}
+
+internal data class SensorMagAccelPairValidity(
+    val reason: SensorMagAccelPairReason,
+    val accelerometerSourceTimestampElapsedRealtimeMs: Long?,
+    val magnetometerSourceTimestampElapsedRealtimeMs: Long?,
+    val accelerometerAgeMs: Long?,
+    val magnetometerAgeMs: Long?,
+    val pairAgeMs: Long?,
+    val pairSkewMs: Long?,
+) {
+    val accepted: Boolean
+        get() = reason == SensorMagAccelPairReason.ACCEPTED
+}
+
 internal data class CompassRegistrationResetState(
     val headingRelockUntilElapsedMs: Long,
     val magneticInterferenceStartupGraceUntilElapsedMs: Long,
@@ -195,6 +251,99 @@ internal fun shouldReuseSensorCallbackHandler(
     callbackThreadStopping: Boolean,
 ): Boolean = callbackThreadAlive && !callbackThreadStopping
 
+internal fun updateSensorMagAccelPairState(
+    state: SensorMagAccelPairState,
+    component: SensorMagAccelComponent,
+    sourceTimestampElapsedRealtimeMs: Long?,
+    registrationGeneration: Long,
+): SensorMagAccelPairState {
+    val sample =
+        SensorMagAccelComponentSample(
+            sourceTimestampElapsedRealtimeMs = sourceTimestampElapsedRealtimeMs,
+            registrationGeneration = registrationGeneration,
+        )
+    return when (component) {
+        SensorMagAccelComponent.ACCELEROMETER -> state.copy(accelerometer = sample)
+        SensorMagAccelComponent.MAGNETOMETER -> state.copy(magnetometer = sample)
+    }
+}
+
+// Each branch is a distinct, externally reported safety rejection; collapsing them obscures the
+// trace reason needed to diagnose stale or cross-generation physical samples.
+@Suppress("CyclomaticComplexMethod")
+internal fun validateSensorMagAccelPair(
+    state: SensorMagAccelPairState,
+    nowElapsedRealtimeMs: Long,
+    registrationGeneration: Long,
+    maxComponentAgeMs: Long = SENSOR_MAG_ACCEL_COMPONENT_STALE_MS,
+    maxPairSkewMs: Long = SENSOR_MAG_ACCEL_PAIR_MAX_SKEW_MS,
+): SensorMagAccelPairValidity {
+    val accelerometerTimestamp = state.accelerometer.sourceTimestampElapsedRealtimeMs
+    val magnetometerTimestamp = state.magnetometer.sourceTimestampElapsedRealtimeMs
+    val accelerometerAgeMs = accelerometerTimestamp?.let { (nowElapsedRealtimeMs - it).coerceAtLeast(0L) }
+    val magnetometerAgeMs = magnetometerTimestamp?.let { (nowElapsedRealtimeMs - it).coerceAtLeast(0L) }
+    val pairAgeMs =
+        if (accelerometerAgeMs != null && magnetometerAgeMs != null) {
+            maxOf(accelerometerAgeMs, magnetometerAgeMs)
+        } else {
+            null
+        }
+    val pairSkewMs =
+        if (accelerometerTimestamp != null && magnetometerTimestamp != null) {
+            abs(accelerometerTimestamp - magnetometerTimestamp)
+        } else {
+            null
+        }
+    val reason =
+        when {
+            accelerometerTimestamp == null -> SensorMagAccelPairReason.ACCELEROMETER_MISSING
+            magnetometerTimestamp == null -> SensorMagAccelPairReason.MAGNETOMETER_MISSING
+            state.accelerometer.registrationGeneration != registrationGeneration ->
+                SensorMagAccelPairReason.ACCELEROMETER_GENERATION_MISMATCH
+            state.magnetometer.registrationGeneration != registrationGeneration ->
+                SensorMagAccelPairReason.MAGNETOMETER_GENERATION_MISMATCH
+            accelerometerAgeMs?.let { it >= maxComponentAgeMs } == true ->
+                SensorMagAccelPairReason.ACCELEROMETER_STALE
+            magnetometerAgeMs?.let { it >= maxComponentAgeMs } == true ->
+                SensorMagAccelPairReason.MAGNETOMETER_STALE
+            pairSkewMs != null && pairSkewMs > maxPairSkewMs ->
+                SensorMagAccelPairReason.EXCESSIVE_SKEW
+            else -> SensorMagAccelPairReason.ACCEPTED
+        }
+    return SensorMagAccelPairValidity(
+        reason = reason,
+        accelerometerSourceTimestampElapsedRealtimeMs = accelerometerTimestamp,
+        magnetometerSourceTimestampElapsedRealtimeMs = magnetometerTimestamp,
+        accelerometerAgeMs = accelerometerAgeMs,
+        magnetometerAgeMs = magnetometerAgeMs,
+        pairAgeMs = pairAgeMs,
+        pairSkewMs = pairSkewMs,
+    )
+}
+
+internal fun buildSensorMagAccelPairTrace(
+    registrationGeneration: Long,
+    validity: SensorMagAccelPairValidity,
+): String =
+    "sensor_mag_accel_pair generation=$registrationGeneration " +
+        "accepted=${validity.accepted} reason=${validity.reason.telemetryToken} " +
+        "accelAtMs=${validity.accelerometerSourceTimestampElapsedRealtimeMs ?: "na"} " +
+        "magAtMs=${validity.magnetometerSourceTimestampElapsedRealtimeMs ?: "na"} " +
+        "pairAgeMs=${validity.pairAgeMs ?: "na"} pairSkewMs=${validity.pairSkewMs ?: "na"}"
+
+internal fun buildCompassSensorRegistrationTrace(
+    registrationGeneration: Long,
+    pipeline: HeadingPipeline,
+    result: CompassSensorRegistrationResult,
+): String =
+    "sensor_registration generation=$registrationGeneration pipeline=${pipeline.name} " +
+        "heading=${result.headingSensorRegistered} rotVec=${result.rotationVectorRegistered} " +
+        "accel=${result.accelerometerRegistered} mag=${result.magnetometerRegistered} " +
+        "operational=${result.isOperational(pipeline)}"
+
+// This directly mirrors Android's three listener-registration contracts, including optional
+// diagnostic magnetometer registration for the heading and rotation-vector pipelines.
+@Suppress("CyclomaticComplexMethod")
 internal fun registerCompassSensors(
     sensorManager: SensorManager,
     listener: SensorEventListener,
@@ -206,32 +355,51 @@ internal fun registerCompassSensors(
     rotationVector: Sensor?,
     magnetometer: Sensor?,
     accelerometer: Sensor?,
-) {
-    when (pipeline) {
-        HeadingPipeline.HEADING_SENSOR -> {
-            headingSensor?.let {
-                sensorManager.registerListener(listener, it, headingRate, callbackHandler)
+): CompassSensorRegistrationResult {
+    val result =
+        when (pipeline) {
+            HeadingPipeline.HEADING_SENSOR -> {
+                CompassSensorRegistrationResult(
+                    headingSensorRegistered =
+                        headingSensor?.let {
+                            sensorManager.registerListener(listener, it, headingRate, callbackHandler)
+                        } ?: false,
+                    magnetometerRegistered =
+                        magnetometer?.let {
+                            sensorManager.registerListener(listener, it, accuracyRate, callbackHandler)
+                        } ?: false,
+                )
             }
-            magnetometer?.let {
-                sensorManager.registerListener(listener, it, accuracyRate, callbackHandler)
+            HeadingPipeline.ROTATION_VECTOR -> {
+                CompassSensorRegistrationResult(
+                    rotationVectorRegistered =
+                        rotationVector?.let {
+                            sensorManager.registerListener(listener, it, headingRate, callbackHandler)
+                        } ?: false,
+                    magnetometerRegistered =
+                        magnetometer?.let {
+                            sensorManager.registerListener(listener, it, accuracyRate, callbackHandler)
+                        } ?: false,
+                )
             }
+            HeadingPipeline.MAG_ACCEL_FALLBACK -> {
+                if (accelerometer != null && magnetometer != null) {
+                    CompassSensorRegistrationResult(
+                        accelerometerRegistered =
+                            sensorManager.registerListener(listener, accelerometer, headingRate, callbackHandler),
+                        magnetometerRegistered =
+                            sensorManager.registerListener(listener, magnetometer, headingRate, callbackHandler),
+                    )
+                } else {
+                    CompassSensorRegistrationResult()
+                }
+            }
+            HeadingPipeline.NONE -> CompassSensorRegistrationResult()
         }
-        HeadingPipeline.ROTATION_VECTOR -> {
-            rotationVector?.let {
-                sensorManager.registerListener(listener, it, headingRate, callbackHandler)
-            }
-            magnetometer?.let {
-                sensorManager.registerListener(listener, it, accuracyRate, callbackHandler)
-            }
-        }
-        HeadingPipeline.MAG_ACCEL_FALLBACK -> {
-            if (accelerometer != null && magnetometer != null) {
-                sensorManager.registerListener(listener, accelerometer, headingRate, callbackHandler)
-                sensorManager.registerListener(listener, magnetometer, headingRate, callbackHandler)
-            }
-        }
-        HeadingPipeline.NONE -> Unit
+    if (pipeline != HeadingPipeline.NONE && !result.isOperational(pipeline)) {
+        sensorManager.unregisterListener(listener)
     }
+    return result
 }
 
 internal fun resolveSensorReportedAccuracy(

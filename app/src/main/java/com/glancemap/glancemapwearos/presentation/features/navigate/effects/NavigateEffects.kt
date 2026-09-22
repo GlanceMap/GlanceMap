@@ -1311,7 +1311,8 @@ internal fun shouldDriveMarkerHeading(
     }
     return when (renderState.providerType) {
         CompassProviderType.SENSOR_MANAGER ->
-            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
+            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE &&
+                !renderState.headingSampleStale
         CompassProviderType.GOOGLE_FUSED ->
             renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
                 renderState.headingSampleElapsedRealtimeMs != null &&

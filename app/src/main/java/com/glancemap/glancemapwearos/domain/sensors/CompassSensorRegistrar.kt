@@ -29,7 +29,7 @@ internal class CompassSensorRegistrar(
         callbackHandler: Handler,
         pipeline: HeadingPipeline,
         rateMode: SensorRateMode,
-    ) {
+    ): CompassSensorRegistrationResult =
         registerCompassSensors(
             sensorManager = sensorManager,
             listener = listener,
@@ -42,7 +42,6 @@ internal class CompassSensorRegistrar(
             magnetometer = magnetometer,
             accelerometer = accelerometer,
         )
-    }
 
     fun unregister(listener: SensorEventListener) {
         sensorManager.unregisterListener(listener)
