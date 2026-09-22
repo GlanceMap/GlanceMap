@@ -93,6 +93,11 @@ internal fun describeHillshadeLayerTelemetry(
         else -> HillshadeLayerTelemetry("none", retained = false, replaced = false, cleared = false)
     }
 
+internal fun shouldShowVisibleHillshadeTerrainUnavailable(
+    mapRequiredTileIds: Set<String>?,
+    visibleTileIds: Set<String>,
+): Boolean = mapRequiredTileIds.isNullOrEmpty() || visibleTileIds.any(mapRequiredTileIds::contains)
+
 class MapRenderer(
     private val context: Context,
     private val mapView: MapView,
@@ -1538,18 +1543,13 @@ class MapRenderer(
                                     }
                             },
                             onTerrainUnavailable = { candidate, zoomLevel, terrainCoverage ->
-                                if (hillshadeLayer === candidate) {
-                                    publishHillshadeTerrainUnavailable(
-                                        HillshadeTerrainUnavailableRequest(
-                                            mapFile = mapFile,
-                                            zoomLevel = zoomLevel,
-                                            missingTileCount = terrainCoverage.missingTileCount,
-                                            areaKey = terrainCoverage.diagnosticKey,
-                                            reason = "visible_coverage_missing",
-                                            coverage = terrainCoverage,
-                                        ),
-                                    )
-                                }
+                                publishVisibleHillshadeTerrainUnavailableIfRelevant(
+                                    layer = candidate,
+                                    mapFile = mapFile,
+                                    zoomLevel = zoomLevel,
+                                    mapRequiredTileIds = requiredDemTileIds,
+                                    terrainCoverage = terrainCoverage,
+                                )
                             },
                             onFirstVisibleTile = ::handleFirstVisibleHillshadeTile,
                         ),
@@ -1583,6 +1583,33 @@ class MapRenderer(
             status = "created",
             hadExistingLayer = hadExistingLayer,
         )
+    }
+
+    private fun publishVisibleHillshadeTerrainUnavailableIfRelevant(
+        layer: FirstVisibleHillshadeTileRendererLayer,
+        mapFile: File,
+        zoomLevel: Byte,
+        mapRequiredTileIds: Set<String>?,
+        terrainCoverage: VisibleHillshadeTerrainCoverage,
+    ) {
+        if (
+            hillshadeLayer === layer &&
+            shouldShowVisibleHillshadeTerrainUnavailable(
+                mapRequiredTileIds = mapRequiredTileIds,
+                visibleTileIds = terrainCoverage.requiredTileIds,
+            )
+        ) {
+            publishHillshadeTerrainUnavailable(
+                HillshadeTerrainUnavailableRequest(
+                    mapFile = mapFile,
+                    zoomLevel = zoomLevel,
+                    missingTileCount = terrainCoverage.missingTileCount,
+                    areaKey = terrainCoverage.diagnosticKey,
+                    reason = "visible_coverage_missing",
+                    coverage = terrainCoverage,
+                ),
+            )
+        }
     }
 
     private fun recordHillshadeLayerDecision(

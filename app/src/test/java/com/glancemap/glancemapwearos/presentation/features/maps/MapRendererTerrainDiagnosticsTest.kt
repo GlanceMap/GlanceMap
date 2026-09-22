@@ -67,4 +67,26 @@ class MapRendererTerrainDiagnosticsTest {
         assertTrue(cleared.cleared)
         assertFalse(cleared.replaced)
     }
+
+    @Test
+    fun visibleTerrainUnavailableIsIgnoredOutsideTheSelectedMapArea() {
+        assertFalse(
+            shouldShowVisibleHillshadeTerrainUnavailable(
+                mapRequiredTileIds = setOf("N43E011"),
+                visibleTileIds = setOf("N00E000", "N00W001", "S01E000", "S01W001"),
+            ),
+        )
+        assertTrue(
+            shouldShowVisibleHillshadeTerrainUnavailable(
+                mapRequiredTileIds = setOf("N43E011"),
+                visibleTileIds = setOf("N43E011"),
+            ),
+        )
+        assertTrue(
+            shouldShowVisibleHillshadeTerrainUnavailable(
+                mapRequiredTileIds = null,
+                visibleTileIds = setOf("N00E000"),
+            ),
+        )
+    }
 }
