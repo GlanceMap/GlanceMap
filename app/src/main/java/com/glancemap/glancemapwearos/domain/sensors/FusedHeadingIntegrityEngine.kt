@@ -179,6 +179,10 @@ internal class FusedHeadingIntegrityEngine(
     private var lastResidualSpreadDeg: Float? = null
     private var lastRecoveryCorrectionDeg = 0f
     private var quarantinedAbsoluteHeadingDeg: Float? = null
+
+    // This is the last map-safe heading, captured once when an F3 quarantine starts. It must
+    // never follow later suspect absolute samples, because it is the stationary recovery target.
+    private var quarantineAnchorHeadingDeg: Float? = null
     private var lastAbsoluteStepDeg: Float? = null
     private var lastAbsoluteStepIntervalMs: Long? = null
     private var lastRelativeStepDeg: Float? = null
@@ -210,6 +214,7 @@ internal class FusedHeadingIntegrityEngine(
         lastResidualSpreadDeg = null
         lastRecoveryCorrectionDeg = 0f
         quarantinedAbsoluteHeadingDeg = null
+        quarantineAnchorHeadingDeg = null
         lastAbsoluteStepDeg = null
         lastAbsoluteStepIntervalMs = null
         lastRelativeStepDeg = null
@@ -330,6 +335,7 @@ internal class FusedHeadingIntegrityEngine(
         trusted =
             state == CompassTrackingState.TRACKING &&
             !recoveryActive &&
+            !quarantineActive &&
             evidence.fieldAcceptable &&
             evidence.strongAbsoluteConfidence
         lastDisagreementDeg = evidence.disagreementDeg
@@ -502,6 +508,7 @@ internal class FusedHeadingIntegrityEngine(
         recoveryActive = false
         quarantineActive = false
         quarantinedAbsoluteHeadingDeg = null
+        quarantineAnchorHeadingDeg = null
         return 0f
     }
 
@@ -513,12 +520,26 @@ internal class FusedHeadingIntegrityEngine(
             )
             renderHeadingDeg = moveTowardFusedHeading(evidence)
             0f
+        } else if (returnsToQuarantineAnchor(evidence)) {
+            // A corrected absolute provider can return to the established map-safe heading while
+            // the watch stays still. Do not require a relative turn for that recovery path.
+            updateTrackingAnchor(evidence)
+            reason = CompassTrackingReason.STABLE
+            recoveryActive = false
+            quarantineActive = false
+            quarantinedAbsoluteHeadingDeg = null
+            quarantineAnchorHeadingDeg = null
+            resetUnverifiedFastTurnEvidence()
+            0f
         } else if (shouldHoldUnverifiedHeadingJump(evidence)) {
             // A weak Google estimate must not turn one unconfirmed provider jump into a visible
             // map spin. Hold only the suspect samples; the next coherent sample resumes normally.
             reason = CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT
             trusted = false
             recoveryActive = false
+            if (!quarantineActive) {
+                quarantineAnchorHeadingDeg = renderHeadingDeg
+            }
             quarantineActive = true
             quarantinedAbsoluteHeadingDeg = evidence.absoluteHeadingDeg
             resetUnverifiedFastTurnEvidence()
@@ -530,8 +551,16 @@ internal class FusedHeadingIntegrityEngine(
             recoveryActive = false
             quarantineActive = false
             quarantinedAbsoluteHeadingDeg = null
+            quarantineAnchorHeadingDeg = null
             0f
         }
+
+    private fun returnsToQuarantineAnchor(evidence: AbsoluteHeadingEvidence): Boolean {
+        val anchorHeadingDeg = quarantineAnchorHeadingDeg ?: return false
+        return quarantineActive &&
+            abs(shortestAngleDiffDeg(evidence.absoluteHeadingDeg, anchorHeadingDeg)) <=
+            config.trackingDisagreementExitDeg
+    }
 
     private fun shouldHoldUnverifiedHeadingJump(evidence: AbsoluteHeadingEvidence): Boolean {
         val renderedHeading = renderHeadingDeg
@@ -724,6 +753,7 @@ internal class FusedHeadingIntegrityEngine(
         quarantineActive = true
         trusted = false
         quarantinedAbsoluteHeadingDeg = quarantinedHeadingDeg
+        quarantineAnchorHeadingDeg = null
         residualWindow.clear()
         absoluteWindow.clear()
     }

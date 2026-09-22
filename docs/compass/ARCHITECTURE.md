@@ -32,20 +32,27 @@ This module owns:
 - Sensor and Google fused samples carry both monotonic source-measurement time and callback-arrival
   time. Freshness is based on source time; callback time is diagnostic context only.
 - Fused samples are accepted only when their source timestamps are strictly newer than the last
-  accepted sample. Duplicate and out-of-order callbacks are recorded but cannot refresh freshness,
-  integrity, or rendering.
+  accepted sample, are not stale, and are not in the future of callback elapsed time. Duplicate,
+  out-of-order, stale, and future callbacks are recorded but cannot refresh freshness, integrity,
+  or rendering. An accepted sample expires at its source time plus the stale window.
 - Every published heading carries a sequence identity and provider generation when available.
   Reference diagnostics reject marks whose provider sample and rendered sample do not share the same
   provenance.
 - A weak, contradictory fused jump is quarantined. Repeating the same contradictory sample does not
   release it; a meaningful relative correction must corroborate the provider before the held heading
-  can move.
+  can move. A corrected provider may also clear quarantine by returning near the preserved
+  pre-quarantine heading while the watch is stationary; quarantine is never trusted.
 - The optional Compass Deep Trace stores a bounded ordered decision-event ring. It records provider
   timing, integrity decisions, held output, render provenance, and explicit user reports while the
-  trace is active. Consecutive unchanged render records are coalesced.
+  trace is active. Consecutive unchanged render records are coalesced. The first `heading_looks_wrong`
+  marker in a trace session preserves the currently retained pre-history plus a bounded two-second
+  post-marker tail for export, even after the live ring rotates.
 
-SensorManager fallback silence becomes stale after the documented source-time window, and stale or
-untrusted fused output cannot drive map-follow rotation or display a green compass-quality state.
+SensorManager fallback silence becomes stale after the documented source-time window. Stale output
+cannot drive map-follow rotation. Severe F3 contradictions are held by the integrity engine before
+navigation sees them, while fresh renderable degraded or untrusted Fused output may still drive
+bounded map-follow motion; UI confidence communicates that uncertainty and never presents Fused
+output as green.
 
 ## Ownership
 

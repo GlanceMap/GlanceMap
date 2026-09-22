@@ -213,6 +213,106 @@ class FusedOrientationProviderAdapterSupportTest {
         )
     }
 
+    @Test
+    fun fusedSourceFreshnessUsesTheStrictSourceDeadlineAtEveryBoundary() {
+        val sourceAtElapsedMs = 1_000L
+
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = sourceAtElapsedMs,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 1_000L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = sourceAtElapsedMs,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_400L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.ACCEPTED,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = sourceAtElapsedMs,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_499L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.STALE_SOURCE,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = sourceAtElapsedMs,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_500L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.STALE_SOURCE,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = sourceAtElapsedMs,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_501L,
+            ),
+        )
+        assertEquals(
+            FusedMeasurementOrder.FUTURE_SOURCE,
+            classifyFusedMeasurementTimestamp(
+                sourceMeasurementAtElapsedMs = 2_501L,
+                previousSourceMeasurementAtElapsedMs = 0L,
+                callbackArrivalAtElapsedMs = 2_500L,
+            ),
+        )
+    }
+
+    @Test
+    fun nearStaleTimeoutUsesRemainingBudgetAndReadsTheNewestSourceAtExpiry() {
+        assertEquals(
+            100L,
+            fusedSourceFreshnessRemainingMs(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                nowElapsedMs = 2_400L,
+            ),
+        )
+        assertEquals(
+            1L,
+            fusedSourceFreshnessRemainingMs(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                nowElapsedMs = 2_499L,
+            ),
+        )
+        assertEquals(
+            0L,
+            fusedSourceFreshnessRemainingMs(
+                sourceMeasurementAtElapsedMs = 1_000L,
+                nowElapsedMs = 2_500L,
+            ),
+        )
+
+        // A's timer runs at 2500 ms, but the adapter reads B (source 2450 ms) as authoritative.
+        assertEquals(
+            1_450L,
+            fusedSourceFreshnessRemainingMs(
+                sourceMeasurementAtElapsedMs = 2_450L,
+                nowElapsedMs = 2_500L,
+            ),
+        )
+        assertTrue(
+            isFusedHeadingSampleFresh(
+                sourceMeasurementAtElapsedMs = 2_450L,
+                nowElapsedMs = 2_500L,
+            ),
+        )
+        assertFalse(
+            isFusedHeadingSampleFresh(
+                sourceMeasurementAtElapsedMs = 2_501L,
+                nowElapsedMs = 2_500L,
+            ),
+        )
+    }
+
     private fun unusableUpdate(
         nowMs: Long,
         previous: FusedUnusableHeadingUpdate?,

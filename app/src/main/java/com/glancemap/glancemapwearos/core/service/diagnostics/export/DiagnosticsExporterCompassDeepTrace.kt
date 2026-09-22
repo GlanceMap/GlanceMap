@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.core.service.diagnostics.export
 import com.glancemap.glancemapwearos.core.service.diagnostics.COMPASS_DEEP_TRACE_SCHEMA_VERSION
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceEvent
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceEventRecord
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceIncidentSnapshot
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceSnapshot
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.CompassTelemetryInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.TelemetryFormatters
@@ -22,12 +23,14 @@ internal fun Appendable.writeCompassDeepTraceSection(
     appendLine("droppedAggregateLines=${snapshot.droppedLines}")
     appendLine("decisionEventCount=${snapshot.events.size}")
     appendLine("droppedDecisionEvents=${snapshot.droppedEvents}")
+    appendLine("preservedIncident=${snapshot.incident != null}")
     appendLine("lastStopReason=${snapshot.lastStopReason ?: "na"}")
-    if (snapshot.lines.isEmpty() && snapshot.events.isEmpty()) {
+    if (snapshot.lines.isEmpty() && snapshot.events.isEmpty() && snapshot.incident == null) {
         appendLine("No compass deep trace captured.")
     } else {
         eventSummary?.let { writeCompassDeepTraceEventSummary(it) }
         headingSummary?.let { writeCompassHeadingTelemetrySummary(it) }
+        snapshot.incident?.let(::writeCompassDeepTraceIncident)
         if (snapshot.events.isNotEmpty()) {
             appendLine("Compass Deep Trace Decision Events")
             snapshot.events.forEach { event ->
@@ -38,6 +41,23 @@ internal fun Appendable.writeCompassDeepTraceSection(
             appendLine("Compass Deep Trace Aggregates")
             snapshot.lines.forEach(::appendLine)
         }
+    }
+}
+
+private fun Appendable.writeCompassDeepTraceIncident(incident: CompassDeepTraceIncidentSnapshot) {
+    appendLine("Compass Deep Trace Preserved Incident")
+    appendLine("preMarkerEventCount=${incident.preMarkerEvents.size}")
+    appendLine("markerAndPostEventCount=${incident.markerAndPostEvents.size}")
+    appendLine("preMarkerLiveRingDroppedEvents=${incident.preMarkerLiveRingDroppedEvents}")
+    appendLine("droppedIncidentPostEvents=${incident.droppedPostEvents}")
+    appendLine("incidentPostTailComplete=${incident.postTailComplete}")
+    appendLine("Compass Deep Trace Incident Pre-Marker Events")
+    incident.preMarkerEvents.forEach { event ->
+        appendLine("incident_pre ${event.toCompassDeepTraceLine()}")
+    }
+    appendLine("Compass Deep Trace Incident Marker And Post-Marker Events")
+    incident.markerAndPostEvents.forEach { event ->
+        appendLine("incident_post ${event.toCompassDeepTraceLine()}")
     }
 }
 

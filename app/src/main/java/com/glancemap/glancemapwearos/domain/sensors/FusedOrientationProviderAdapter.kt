@@ -194,16 +194,21 @@ internal class FusedOrientationProviderAdapter(
             if (!started || _useFallbackProvider.value) return@Runnable
             val sampleAtElapsedMs = lastConfirmedFusedSampleElapsedRealtimeMs
             if (sampleAtElapsedMs <= 0L) return@Runnable
-            val sampleAgeMs =
-                (SystemClock.elapsedRealtime() - sampleAtElapsedMs).coerceAtLeast(0L)
-            if (sampleAgeMs < FUSED_ORIENTATION_SAMPLE_STALE_MS) {
+            val nowElapsedMs = SystemClock.elapsedRealtime()
+            val remainingFreshnessMs =
+                fusedSourceFreshnessRemainingMs(
+                    sourceMeasurementAtElapsedMs = sampleAtElapsedMs,
+                    nowElapsedMs = nowElapsedMs,
+                )
+            if (remainingFreshnessMs > 0L) {
                 fusedFreshnessCheckScheduled = true
                 callbackHandler?.postDelayed(
                     fusedSampleFreshnessRunnable,
-                    FUSED_ORIENTATION_SAMPLE_STALE_MS - sampleAgeMs,
+                    remainingFreshnessMs,
                 )
                 return@Runnable
             }
+            val sampleAgeMs = (nowElapsedMs - sampleAtElapsedMs).coerceAtLeast(0L)
             _headingSampleStale.value = true
             if (fusedStaleRecoveryAttempted) {
                 _accuracy.value = SensorManager.SENSOR_STATUS_UNRELIABLE
@@ -694,7 +699,7 @@ internal class FusedOrientationProviderAdapter(
         val sampleAtElapsedMs =
             (orientation.elapsedRealtimeNs / NANOS_PER_MILLISECOND)
                 .takeIf { it > 0L } ?: arrivalElapsedMs
-        val measurementOrder =
+        val initialMeasurementOrder =
             classifyFusedMeasurementTimestamp(
                 sourceMeasurementAtElapsedMs = sampleAtElapsedMs,
                 previousSourceMeasurementAtElapsedMs = lastAcceptedFusedSourceMeasurementAtElapsedMs,
@@ -738,6 +743,18 @@ internal class FusedOrientationProviderAdapter(
             mappedAccuracy = mappedAccuracy,
         )
 
+        // The callback can spend its final millisecond in diagnostics. Re-check at the boundary
+        // before it can update integrity or publish a source-time-expired heading.
+        val measurementOrder =
+            if (initialMeasurementOrder == FusedMeasurementOrder.ACCEPTED) {
+                classifyFusedMeasurementTimestamp(
+                    sourceMeasurementAtElapsedMs = sampleAtElapsedMs,
+                    previousSourceMeasurementAtElapsedMs = lastAcceptedFusedSourceMeasurementAtElapsedMs,
+                    callbackArrivalAtElapsedMs = SystemClock.elapsedRealtime(),
+                )
+            } else {
+                initialMeasurementOrder
+            }
         if (measurementOrder != FusedMeasurementOrder.ACCEPTED) {
             recordHeadingEngineSample(
                 absoluteHeadingDeg = absoluteHeadingDeg,
@@ -989,26 +1006,28 @@ internal class FusedOrientationProviderAdapter(
                 ),
             atElapsedMs = atElapsedMs,
         )
-        CompassHeadingReferenceDiagnostics.recordProvider(
-            sample =
-                CompassHeadingReferenceProviderSample(
-                    googleFusedHeadingDeg = absoluteHeadingDeg,
-                    targetHeadingDeg = snapshot.renderHeadingDeg,
-                    usable = usable,
-                    northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
-                    magneticFieldUt = snapshot.magneticFieldUt,
-                    integrityState = snapshot.state,
-                    pitchDeg = tilt?.pitchDeg,
-                    rollDeg = tilt?.rollDeg,
-                    provenance =
-                        CompassHeadingProvenance(
-                            provider = providerType,
-                            generation = dispatchedOrientationRequestGeneration,
-                        ),
-                    atElapsedMs = sourceMeasurementAtElapsedMs,
-                ),
-            declinationLocation = fallbackDeclinationLocation,
-        )
+        if (usable) {
+            CompassHeadingReferenceDiagnostics.recordProvider(
+                sample =
+                    CompassHeadingReferenceProviderSample(
+                        googleFusedHeadingDeg = absoluteHeadingDeg,
+                        targetHeadingDeg = snapshot.renderHeadingDeg,
+                        usable = true,
+                        northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
+                        magneticFieldUt = snapshot.magneticFieldUt,
+                        integrityState = snapshot.state,
+                        pitchDeg = tilt?.pitchDeg,
+                        rollDeg = tilt?.rollDeg,
+                        provenance =
+                            CompassHeadingProvenance(
+                                provider = providerType,
+                                generation = dispatchedOrientationRequestGeneration,
+                            ),
+                        atElapsedMs = sourceMeasurementAtElapsedMs,
+                    ),
+                declinationLocation = fallbackDeclinationLocation,
+            )
+        }
     }
 
     private fun fusedAttitudeTilt(attitude: FloatArray): FusedAttitudeTilt? {
@@ -1042,6 +1061,16 @@ internal class FusedOrientationProviderAdapter(
     private fun publishFusedHeadingIfDue(
         publication: FusedHeadingPublication,
     ) {
+        if (
+            isFusedSourceMeasurementStale(
+                sourceMeasurementAtElapsedMs = publication.sourceMeasurementAtElapsedMs,
+                callbackArrivalAtElapsedMs = SystemClock.elapsedRealtime(),
+            )
+        ) {
+            _headingSampleStale.value = true
+            publishOwnRenderState()
+            return
+        }
         val activeTurn =
             !lowPowerMode &&
                 activeTurnPublicationTracker.active
@@ -1290,10 +1319,19 @@ internal class FusedOrientationProviderAdapter(
             lastConfirmedFusedSampleElapsedRealtimeMs == sampleAtElapsedMs &&
             !fusedFreshnessCheckScheduled
         ) {
+            val remainingFreshnessMs =
+                fusedSourceFreshnessRemainingMs(
+                    sourceMeasurementAtElapsedMs = sampleAtElapsedMs,
+                    nowElapsedMs = SystemClock.elapsedRealtime(),
+                )
+            if (remainingFreshnessMs <= 0L) {
+                fusedSampleFreshnessRunnable.run()
+                return
+            }
             fusedFreshnessCheckScheduled = true
             handler.postDelayed(
                 fusedSampleFreshnessRunnable,
-                FUSED_ORIENTATION_SAMPLE_STALE_MS,
+                remainingFreshnessMs,
             )
         }
     }
@@ -1509,6 +1547,7 @@ internal enum class FusedMeasurementOrder(
     DUPLICATE("duplicate_source_timestamp"),
     OUT_OF_ORDER("out_of_order_source_timestamp"),
     STALE_SOURCE("stale_source_measurement"),
+    FUTURE_SOURCE("future_source_measurement"),
 }
 
 internal fun isFusedSourceMeasurementStale(
@@ -1517,11 +1556,34 @@ internal fun isFusedSourceMeasurementStale(
     maxAgeMs: Long = FUSED_ORIENTATION_SAMPLE_STALE_MS,
 ): Boolean = callbackArrivalAtElapsedMs >= sourceMeasurementAtElapsedMs + maxAgeMs
 
+internal fun fusedSourceFreshnessRemainingMs(
+    sourceMeasurementAtElapsedMs: Long,
+    nowElapsedMs: Long,
+    maxAgeMs: Long = FUSED_ORIENTATION_SAMPLE_STALE_MS,
+): Long = (sourceMeasurementAtElapsedMs + maxAgeMs - nowElapsedMs).coerceAtLeast(0L)
+
+internal fun isFusedHeadingSampleFresh(
+    sourceMeasurementAtElapsedMs: Long?,
+    nowElapsedMs: Long,
+): Boolean =
+    sourceMeasurementAtElapsedMs != null &&
+        sourceMeasurementAtElapsedMs <= nowElapsedMs &&
+        !isFusedSourceMeasurementStale(
+            sourceMeasurementAtElapsedMs = sourceMeasurementAtElapsedMs,
+            callbackArrivalAtElapsedMs = nowElapsedMs,
+        )
+
 internal fun classifyFusedMeasurementTimestamp(
     sourceMeasurementAtElapsedMs: Long,
     previousSourceMeasurementAtElapsedMs: Long,
     callbackArrivalAtElapsedMs: Long? = null,
 ): FusedMeasurementOrder {
+    if (
+        callbackArrivalAtElapsedMs != null &&
+        sourceMeasurementAtElapsedMs > callbackArrivalAtElapsedMs
+    ) {
+        return FusedMeasurementOrder.FUTURE_SOURCE
+    }
     val timestampOrder =
         when {
             previousSourceMeasurementAtElapsedMs <= 0L -> FusedMeasurementOrder.ACCEPTED
@@ -1579,7 +1641,7 @@ private const val FUSED_ORIENTATION_HIGH_POWER_SAMPLING_MICROS = 20_000L // 50 H
 private const val FUSED_ORIENTATION_LOW_POWER_SAMPLING_MICROS = 200_000L // 5 Hz
 private const val NANOS_PER_MILLISECOND = 1_000_000L
 private const val FUSED_INVALID_HEADING_ERROR_DEG = 180f
-private const val FUSED_ORIENTATION_SAMPLE_STALE_MS = 1_500L
+internal const val FUSED_ORIENTATION_SAMPLE_STALE_MS = 1_500L
 private const val FUSED_STALE_RECOVERY_HEALTHY_RESET_MS = 5_000L
 private const val FUSED_PERF_LOG_WINDOW_MS = 5_000L
 private const val FUSED_NORMAL_PUBLISH_MIN_INTERVAL_MS = 40L // 25 Hz

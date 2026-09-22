@@ -7,6 +7,7 @@ import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -73,7 +74,7 @@ class CompassDeepTraceAggregationTest {
         )
 
         assertTrue(output.contains("Compass Deep Trace"))
-        assertTrue(output.contains("schemaVersion=3"))
+        assertTrue(output.contains("schemaVersion=4"))
         assertTrue(output.contains("aggregateWindowCount=2"))
         assertTrue(output.contains("lastStopReason=manual"))
         assertEquals(1, output.lines().count { it.startsWith("window index=") })
@@ -103,6 +104,93 @@ class CompassDeepTraceAggregationTest {
         assertTrue(records[0].event is CompassDeepTraceEvent.Render)
         assertTrue(records[1].event is CompassDeepTraceEvent.Marker)
         assertEquals(1, ring.droppedEvents)
+    }
+
+    @Test
+    fun preservedIncidentKeepsPreMarkerHistoryAndBoundedPostTailAfterLiveRingRotates() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(CompassDeepTraceEvent.Telemetry(atElapsedMs = 1_000L, line = "before_one"))
+        ring.record(CompassDeepTraceEvent.Telemetry(atElapsedMs = 1_001L, line = "before_two"))
+        ring.record(CompassDeepTraceEvent.Telemetry(atElapsedMs = 1_002L, line = "before_three"))
+        val capture =
+            CompassDeepTraceIncidentCapture(
+                preMarkerEvents = ring.snapshot(),
+                preMarkerLiveRingDroppedEvents = ring.droppedEvents,
+                postTailEndsAtElapsedMs = 3_000L,
+                postEventCapacity = 2,
+            )
+
+        val marker =
+            requireNotNull(
+                ring.record(
+                    CompassDeepTraceEvent.Marker(
+                        atElapsedMs = 1_003L,
+                        type = "heading_looks_wrong",
+                        detail = "manual",
+                    ),
+                ),
+            )
+        capture.record(marker)
+        val post = requireNotNull(ring.record(CompassDeepTraceEvent.Telemetry(1_004L, "after")))
+        capture.record(post)
+        capture.record(requireNotNull(ring.record(CompassDeepTraceEvent.Telemetry(1_005L, "dropped"))))
+
+        repeat(4) { index ->
+            ring.record(CompassDeepTraceEvent.Telemetry(2_000L + index, "live_$index"))
+        }
+
+        assertFalse(
+            capture.record(
+                requireNotNull(ring.record(CompassDeepTraceEvent.Telemetry(3_001L, "too_late"))),
+            ),
+        )
+        val incident = capture.snapshot(postTailComplete = true)
+
+        assertEquals(listOf(2L, 3L), incident.preMarkerEvents.map { it.eventId })
+        assertEquals(listOf(4L, 5L), incident.markerAndPostEvents.map { it.eventId })
+        assertEquals(1, incident.preMarkerLiveRingDroppedEvents)
+        assertEquals(1, incident.droppedPostEvents)
+        assertTrue(incident.postTailComplete)
+    }
+
+    @Test
+    fun exportSectionLabelsTheFrozenIncidentPreHistoryMarkerAndPostTail() {
+        val output = StringBuilder()
+        val marker =
+            CompassDeepTraceEventRecord(
+                eventId = 2L,
+                event = CompassDeepTraceEvent.Marker(1_010L, "heading_looks_wrong", "manual"),
+            )
+
+        output.writeCompassDeepTraceSection(
+            CompassDeepTraceSnapshot(
+                active = false,
+                sessionCount = 1,
+                windowCount = 0,
+                droppedLines = 0,
+                lastStopReason = "export",
+                lines = emptyList(),
+                incident =
+                    CompassDeepTraceIncidentSnapshot(
+                        preMarkerEvents =
+                            listOf(
+                                CompassDeepTraceEventRecord(
+                                    eventId = 1L,
+                                    event = CompassDeepTraceEvent.Telemetry(1_000L, "before"),
+                                ),
+                            ),
+                        markerAndPostEvents = listOf(marker),
+                        preMarkerLiveRingDroppedEvents = 0,
+                        droppedPostEvents = 0,
+                        postTailComplete = true,
+                    ),
+            ),
+        )
+
+        assertTrue(output.contains("Compass Deep Trace Preserved Incident"))
+        assertTrue(output.contains("incident_pre trace_event id=1"))
+        assertTrue(output.contains("incident_post trace_event id=2 type=marker"))
+        assertTrue(output.contains("incidentPostTailComplete=true"))
     }
 
     @Test

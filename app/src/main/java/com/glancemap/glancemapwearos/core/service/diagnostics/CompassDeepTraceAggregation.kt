@@ -126,6 +126,46 @@ internal data class CompassDeepTraceEventRecord(
     val event: CompassDeepTraceEvent,
 )
 
+internal data class CompassDeepTraceIncidentSnapshot(
+    val preMarkerEvents: List<CompassDeepTraceEventRecord>,
+    val markerAndPostEvents: List<CompassDeepTraceEventRecord>,
+    val preMarkerLiveRingDroppedEvents: Int,
+    val droppedPostEvents: Int,
+    val postTailComplete: Boolean,
+)
+
+/** One bounded, first-marker incident keeps a reproducible failure exportable after live rollover. */
+internal class CompassDeepTraceIncidentCapture(
+    private val preMarkerEvents: List<CompassDeepTraceEventRecord>,
+    private val preMarkerLiveRingDroppedEvents: Int,
+    private val postTailEndsAtElapsedMs: Long,
+    private val postEventCapacity: Int,
+) {
+    private val markerAndPostEvents = ArrayDeque<CompassDeepTraceEventRecord>()
+    private var droppedPostEvents = 0
+
+    fun postTailEndsAtElapsedMs(): Long = postTailEndsAtElapsedMs
+
+    fun record(record: CompassDeepTraceEventRecord): Boolean {
+        if (record.event.atElapsedMs > postTailEndsAtElapsedMs) return false
+        if (markerAndPostEvents.size < postEventCapacity) {
+            markerAndPostEvents.addLast(record)
+        } else {
+            droppedPostEvents += 1
+        }
+        return true
+    }
+
+    fun snapshot(postTailComplete: Boolean): CompassDeepTraceIncidentSnapshot =
+        CompassDeepTraceIncidentSnapshot(
+            preMarkerEvents = preMarkerEvents,
+            markerAndPostEvents = markerAndPostEvents.toList(),
+            preMarkerLiveRingDroppedEvents = preMarkerLiveRingDroppedEvents,
+            droppedPostEvents = droppedPostEvents,
+            postTailComplete = postTailComplete,
+        )
+}
+
 /** Bounded ordered decision history; consecutive identical render records are intentionally coalesced. */
 internal class CompassDeepTraceEventRing(
     private val capacity: Int,
@@ -140,13 +180,15 @@ internal class CompassDeepTraceEventRing(
     var droppedEvents: Int = 0
         private set
 
-    fun record(event: CompassDeepTraceEvent) {
-        if (shouldCoalesce(event, records.lastOrNull()?.event)) return
-        records.addLast(CompassDeepTraceEventRecord(eventId = ++nextEventId, event = event))
+    fun record(event: CompassDeepTraceEvent): CompassDeepTraceEventRecord? {
+        if (shouldCoalesce(event, records.lastOrNull()?.event)) return null
+        val record = CompassDeepTraceEventRecord(eventId = ++nextEventId, event = event)
+        records.addLast(record)
         while (records.size > capacity) {
             records.removeFirst()
             droppedEvents += 1
         }
+        return record
     }
 
     fun snapshot(): List<CompassDeepTraceEventRecord> = records.toList()

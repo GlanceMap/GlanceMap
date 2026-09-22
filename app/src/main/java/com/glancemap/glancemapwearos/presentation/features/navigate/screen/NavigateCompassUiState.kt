@@ -17,6 +17,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDi
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingSourceMode
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -38,6 +39,13 @@ internal data class NavigateCompassUiState(
     val coneHeadingErrorDeg: Float?,
     val lastCalibrationConfirmedAtMs: Long,
     val onCalibrationSucceeded: () -> Unit,
+)
+
+internal data class CompassUiConfidenceTraceKey(
+    val providerType: CompassProviderType,
+    val coneQuality: CompassMarkerQuality,
+    val accuracyColorsEnabled: Boolean,
+    val provenance: CompassHeadingProvenance?,
 )
 
 @Composable
@@ -176,13 +184,22 @@ internal fun rememberNavigateCompassUiState(
         } else {
             CompassMarkerQuality.NEUTRAL
         }
-    if (deepTraceState.active) {
-        CompassDeepTraceDiagnostics.recordUiConfidence(
-            provider = compassRenderState.providerType.name.lowercase(),
-            quality = compassConeQuality.name.lowercase(),
+    val uiConfidenceTraceKey =
+        CompassUiConfidenceTraceKey(
+            providerType = compassRenderState.providerType,
+            coneQuality = compassConeQuality,
             accuracyColorsEnabled = effectiveCompassConeAccuracyColorsEnabled,
             provenance = compassRenderState.headingProvenance,
         )
+    LaunchedEffect(deepTraceState.active, uiConfidenceTraceKey) {
+        if (deepTraceState.active) {
+            CompassDeepTraceDiagnostics.recordUiConfidence(
+                provider = uiConfidenceTraceKey.providerType.name.lowercase(),
+                quality = uiConfidenceTraceKey.coneQuality.name.lowercase(),
+                accuracyColorsEnabled = uiConfidenceTraceKey.accuracyColorsEnabled,
+                provenance = uiConfidenceTraceKey.provenance,
+            )
+        }
     }
     val compassConeHeadingErrorDeg =
         if (

@@ -207,6 +207,94 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
+    fun stationaryReturnToThePreservedAnchorClearsQuarantineWithoutATurn() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val held = replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+        assertTrue(held.quarantineActive)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val recovered = replay.absolute(headingDeg = 0f)
+
+        assertEquals(0f, requireNotNull(recovered.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertFalse(recovered.quarantineActive)
+        assertTrue(recovered.trusted)
+    }
+
+    @Test
+    fun circularJitterNearThePreservedAnchorDoesNotKeepQuarantineActive() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+
+        listOf(2f, 359f, 1f, 3f).forEach { headingDeg ->
+            replay.advance(20L)
+            replay.relative(headingDeg = 0f)
+            val snapshot = replay.absolute(headingDeg = headingDeg)
+
+            assertFalse(snapshot.quarantineActive)
+            assertFalse(snapshot.quarantineActive && snapshot.trusted)
+        }
+    }
+
+    @Test
+    fun stationaryReturnRecoversAfterContradictionsSuppressAndExpireTheWitness() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        var held: FusedHeadingIntegritySnapshot? = null
+        repeat(12) {
+            replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(headingDeg = 0f)
+            held = replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+        }
+        assertTrue(requireNotNull(held).relativeWitnessSuppressed)
+
+        replay.advance(400L)
+        replay.magnetic(42f)
+        val recovered = replay.absolute(headingDeg = 0f)
+
+        assertFalse(recovered.quarantineActive)
+        assertFalse(recovered.quarantineActive && recovered.trusted)
+        assertEquals(0f, requireNotNull(recovered.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun corroboratedPhysicalTurnStillReleasesQuarantineAtTheVerifiedRate() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 90f)
+        val intermediate = replay.absolute(headingDeg = 90f)
+        assertTrue(intermediate.quarantineActive)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 180f)
+        val recovered = replay.absolute(headingDeg = 180f)
+
+        assertFalse(recovered.quarantineActive)
+        assertTrue(recovered.relativeWitnessSupportsHighRate)
+        assertEquals(
+            MAX_VERIFIED_20_MS_CORRECTION_DEG,
+            kotlin.math.abs(shortestAngleDiffDeg(requireNotNull(recovered.renderHeadingDeg), 0f)),
+            ANGLE_TOLERANCE_DEG,
+        )
+    }
+
+    @Test
     fun corroboratedRelativeCorrectionReleasesAQuarantinedHeading() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 0f)
