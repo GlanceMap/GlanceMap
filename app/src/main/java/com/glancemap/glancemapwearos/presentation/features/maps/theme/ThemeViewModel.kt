@@ -654,10 +654,17 @@ class ThemeViewModel(
                     DEM_NO_INTERNET_MESSAGE
                 else -> summary
             }
+        val hasUnfinishedTiles = failed > 0 || missing > 0 || remaining > 0
+        val completionStatus =
+            if (!networkUnavailable && !hasUnfinishedTiles) {
+                "ready"
+            } else {
+                "partial"
+            }
         DemDownloadDiagnostics.record(
             event = "complete",
             detail =
-                "status=${if (failed == 0 && !networkUnavailable) "ready" else "partial"} " +
+                "status=$completionStatus " +
                     "total=${tileIds.size} processed=$processedTiles downloaded=$downloaded skipped=$skipped " +
                     "missing=$missing failed=$failed remaining=$remaining networkUnavailable=$networkUnavailable " +
                     "message=${finalMessage.demDiagValue()}",
@@ -673,24 +680,6 @@ class ThemeViewModel(
             statusMessage = finalMessage,
         )
     }
-
-    private fun buildDemSummaryMessage(
-        downloaded: Int,
-        skipped: Int,
-        missing: Int,
-        failed: Int,
-        remaining: Int,
-    ): String =
-        when {
-            failed == 0 && (downloaded > 0 || skipped > 0 || missing > 0) ->
-                "DEM download successful."
-            downloaded == 0 && skipped == 0 && failed > 0 ->
-                "DEM download failed."
-            remaining > 0 ->
-                "DEM download incomplete. Retry to finish."
-            else ->
-                "DEM download incomplete."
-        }
 
     fun setDemSource(source: DemSource) {
         viewModelScope.launch {
@@ -861,6 +850,28 @@ class ThemeViewModel(
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }
+
+internal fun buildDemSummaryMessage(
+    downloaded: Int,
+    skipped: Int,
+    missing: Int,
+    failed: Int,
+    remaining: Int,
+): String =
+    when {
+        remaining > 0 ->
+            "DEM download incomplete. Retry to finish."
+        missing > 0 && failed > 0 ->
+            "DEM download incomplete: $missing unavailable, $failed failed."
+        missing > 0 ->
+            "DEM download incomplete: $missing unavailable."
+        failed > 0 ->
+            "DEM download incomplete: $failed failed."
+        downloaded > 0 || skipped > 0 ->
+            "DEM download successful."
+        else ->
+            "DEM download incomplete."
+    }
 
 internal fun String.demDiagValue(): String =
     replace(Regex("\\s+"), "_")
