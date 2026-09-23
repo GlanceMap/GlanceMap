@@ -113,6 +113,11 @@
             android:exported="false" />
 
         <service
+            android:name=".core.service.ChannelTransferForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <service
             android:name=".presentation.features.download.OamDownloadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />

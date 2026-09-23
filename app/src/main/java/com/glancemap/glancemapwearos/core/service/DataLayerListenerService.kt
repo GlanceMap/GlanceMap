@@ -14,10 +14,15 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
-import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelClientStrategy
+import com.glancemap.glancemapwearos.core.service.transfer.contract.TransferConstants
+import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelTransferAdmissionGate
+import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelTransferHandoff
+import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelTransferHandoffRegistry
 import com.glancemap.glancemapwearos.core.service.transfer.datalayer.DataLayerHandlers
+import com.glancemap.glancemapwearos.core.service.transfer.datalayer.parseChannelPath
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.glancemapwearos.core.service.transfer.notifications.foregroundStartFailureDetail
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.ForegroundTransferSessionOwner
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockManager
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferTerminalOutcome
@@ -26,6 +31,7 @@ import com.glancemap.glancemapwearos.data.repository.WatchDataLayerRepository
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
+import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -49,9 +55,8 @@ class DataLayerListenerService : WearableListenerService() {
     private val notificationHelper by lazy { NotificationHelper(this) }
     private val dataLayerRepository by lazy { WatchDataLayerRepository(this) }
 
-    private val channelReceiver = ChannelClientStrategy()
-
     private val transferMutex get() = transferSessionState.transferMutex
+    private val channelAdmissionGate by lazy { ChannelTransferAdmissionGate(transferMutex) }
 
     private val fileOps by lazy { WatchFileOps(app) }
 
@@ -61,7 +66,6 @@ class DataLayerListenerService : WearableListenerService() {
             notificationHelper = notificationHelper,
             fileOps = fileOps,
             transferMutex = transferMutex,
-            channelReceiver = channelReceiver,
             sessionState = transferSessionState,
             sendStatus = dataLayerRepository::sendStatus,
             sendAck = dataLayerRepository::sendAck,
@@ -105,9 +109,59 @@ class DataLayerListenerService : WearableListenerService() {
             recordFullDataLayerEvent(type = "ChannelOpened", path = channel.path)
         }
         ScreenOffActivityDiagnostics.dataLayer.recordChannelOpened()
+        if (channel.path.startsWith(TransferConstants.CHANNEL_PREFIX)) {
+            parseChannelPath(channel.path)?.first?.let { transferId ->
+                val handoff =
+                    ChannelTransferHandoff(
+                        channel = channel,
+                        expectedChecksum = handlers.popChannelChecksum(transferId),
+                    )
+                if (!ChannelTransferHandoffRegistry.offer(transferId, handoff)) {
+                    sendChannelHandoffFailure(channel, transferId, "CHANNEL_HANDOFF_ALREADY_PENDING")
+                } else {
+                    startChannelTransfer(channel, transferId, channel.nodeId)
+                }
+            }
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught") // Android start APIs use API-level-specific RuntimeException subclasses.
+    private fun startChannelTransfer(
+        channel: ChannelClient.Channel,
+        transferId: String,
+        sourceNodeId: String,
+    ) {
         app.applicationScope.launch(Dispatchers.IO) {
-            runCatching { handlers.handleChannelOpened(channel) }
-                .onFailure { Log.e(TAG, "Channel handler failed: ${it.message}", it) }
+            val admissionOwner = channelAdmissionGate.acquire()
+            if (!ChannelTransferHandoffRegistry.offerAdmission(transferId, admissionOwner)) {
+                channelAdmissionGate.release(admissionOwner)
+                ChannelTransferHandoffRegistry.remove(transferId)
+                sendChannelHandoffFailure(channel, transferId, "CHANNEL_HANDOFF_ADMISSION_FAILED")
+                return@launch
+            }
+            try {
+                ChannelTransferForegroundService.startTransfer(this@DataLayerListenerService, transferId, sourceNodeId)
+                TransferDiagnostics.log("Channel", "event=handoff_started id=$transferId")
+            } catch (error: RuntimeException) {
+                ChannelTransferHandoffRegistry.removeAdmission(transferId)
+                channelAdmissionGate.release(admissionOwner)
+                ChannelTransferHandoffRegistry.remove(transferId)
+                val detail = foregroundStartFailureDetail(error.javaClass.name, Build.VERSION.SDK_INT, error.message)
+                TransferDiagnostics.error("Channel", "event=handoff_failed id=$transferId detail=$detail", error)
+                sendChannelHandoffFailure(channel, transferId, detail)
+            }
+        }
+    }
+
+    private fun sendChannelHandoffFailure(
+        channel: ChannelClient.Channel,
+        transferId: String,
+        detail: String,
+    ) {
+        runCatching { Wearable.getChannelClient(this).close(channel) }
+        app.applicationScope.launch(Dispatchers.IO) {
+            runCatching { dataLayerRepository.sendAck(channel.nodeId, transferId, "ERROR", detail) }
+                .onFailure { Log.e(TAG, "Channel handoff ACK failed: ${it.message}", it) }
         }
     }
 
