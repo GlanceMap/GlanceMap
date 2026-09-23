@@ -21,6 +21,24 @@ internal enum class TurnHapticAlertTrigger(
     CROSSING("crossing"),
 }
 
+internal enum class TurnHapticTrackerState(
+    val telemetryValue: String,
+) {
+    ACTIVE("active"),
+    TERMINAL("terminal"),
+}
+
+internal data class TurnHapticObservationSnapshot(
+    val instructionKey: String?,
+    val instructionIndex: Int?,
+    val projectedRouteProgressMeters: Double?,
+    val distanceToInstructionMeters: Double?,
+    val speedMps: Float?,
+    val fixTimestampMs: Long?,
+    val gpsDeliveryIntervalMs: Long?,
+    val alertDistanceMeters: Double?,
+)
+
 internal data class TurnHapticAlertSample(
     val routeKey: String,
     val active: Boolean,
@@ -34,6 +52,7 @@ internal data class TurnHapticAlertSample(
     val gpsDeliveryIntervalMs: Long,
     val hapticsEnabled: Boolean,
     val turnAlertsMode: String,
+    val fixTimestampMs: Long? = null,
 )
 
 internal data class TurnHapticAlertEvent(
@@ -46,10 +65,15 @@ internal data class TurnHapticAlertEvent(
     val previousDistanceMeters: Double? = null,
     val overshootMeters: Double? = null,
     val reason: String? = null,
-    val speedMps: Float?,
-    val activityProfile: String,
-    val turnAlertsMode: String,
-    val gpsDeliveryIntervalMs: Long,
+    val previousObservation: TurnHapticObservationSnapshot?,
+    val currentObservation: TurnHapticObservationSnapshot,
+    val recoveryDistanceMeters: Double? = null,
+    val currentActivityProfile: String,
+    val currentTurnAlertsMode: String,
+    val currentGuidanceMode: GuidanceMode,
+    val currentGuidanceActive: Boolean,
+    val currentOffRoute: Boolean,
+    val terminalTrackerState: TurnHapticTrackerState = TurnHapticTrackerState.ACTIVE,
 )
 
 internal class TurnHapticAlertTracker {
@@ -104,6 +128,7 @@ internal class TurnHapticAlertTracker {
                     outcome = block.outcome,
                     trigger = TurnHapticAlertTrigger.CROSSING,
                     reason = block.reason,
+                    sample = sample,
                 )
             routeProgressMeters != null ->
                 eligibleCrossingEvent(
@@ -141,6 +166,8 @@ internal class TurnHapticAlertTracker {
                     trigger = TurnHapticAlertTrigger.CROSSING,
                     overshootMeters = overshootMeters,
                     reason = "next_turn_due",
+                    recoveryDistanceMeters = recoveryDistanceMeters,
+                    sample = sample,
                 )
             overshootMeters <= recoveryDistanceMeters ->
                 crossedObservation.event(
@@ -148,6 +175,8 @@ internal class TurnHapticAlertTracker {
                     trigger = TurnHapticAlertTrigger.CROSSING,
                     overshootMeters = overshootMeters,
                     reason = "gps_crossing_recovery",
+                    recoveryDistanceMeters = recoveryDistanceMeters,
+                    sample = sample,
                 )
             else ->
                 crossedObservation.event(
@@ -155,6 +184,8 @@ internal class TurnHapticAlertTracker {
                     trigger = TurnHapticAlertTrigger.CROSSING,
                     overshootMeters = overshootMeters,
                     reason = "recovery_too_late",
+                    recoveryDistanceMeters = recoveryDistanceMeters,
+                    sample = sample,
                 )
         }
     }
@@ -172,6 +203,7 @@ internal class TurnHapticAlertTracker {
                     outcome = block?.outcome ?: TurnHapticAlertOutcome.FIRED,
                     trigger = TurnHapticAlertTrigger.WINDOW,
                     reason = block?.reason,
+                    sample = sample,
                 )
             }
 
@@ -198,7 +230,14 @@ internal class TurnHapticAlertTracker {
         if (event.outcome == TurnHapticAlertOutcome.FIRED || event.outcome == TurnHapticAlertOutcome.MISSED_WINDOW) {
             terminalInstructionKeys += event.instructionKey
         }
-        return event
+        return event.copy(
+            terminalTrackerState =
+                if (event.instructionKey in terminalInstructionKeys) {
+                    TurnHapticTrackerState.TERMINAL
+                } else {
+                    TurnHapticTrackerState.ACTIVE
+                },
+        )
     }
 
     private fun reset() {
@@ -213,7 +252,9 @@ private data class TurnHapticObservation(
     val instruction: RouteInstruction,
     val distanceMeters: Double,
     val alertDistanceMeters: Double,
+    val projectedRouteProgressMeters: Double?,
     val speedMps: Float?,
+    val fixTimestampMs: Long?,
     val activityProfile: String,
     val turnAlertsMode: String,
     val gpsDeliveryIntervalMs: Long,
@@ -235,6 +276,8 @@ private data class TurnHapticObservation(
         trigger: TurnHapticAlertTrigger,
         overshootMeters: Double? = null,
         reason: String? = null,
+        recoveryDistanceMeters: Double? = null,
+        sample: TurnHapticAlertSample,
     ): TurnHapticAlertEvent =
         TurnHapticAlertEvent(
             instructionKey = instructionKey,
@@ -246,10 +289,26 @@ private data class TurnHapticObservation(
             previousDistanceMeters = distanceMeters.takeIf { trigger == TurnHapticAlertTrigger.CROSSING },
             overshootMeters = overshootMeters,
             reason = reason,
+            previousObservation = snapshot().takeIf { trigger == TurnHapticAlertTrigger.CROSSING },
+            currentObservation = sample.toSnapshot(),
+            recoveryDistanceMeters = recoveryDistanceMeters,
+            currentActivityProfile = sample.activityProfile,
+            currentTurnAlertsMode = sample.turnAlertsMode,
+            currentGuidanceMode = sample.mode,
+            currentGuidanceActive = sample.active,
+            currentOffRoute = sample.offRoute,
+        )
+
+    fun snapshot(): TurnHapticObservationSnapshot =
+        TurnHapticObservationSnapshot(
+            instructionKey = instructionKey,
+            instructionIndex = instruction.trackPointIndex,
+            projectedRouteProgressMeters = projectedRouteProgressMeters,
+            distanceToInstructionMeters = distanceMeters,
             speedMps = speedMps,
-            activityProfile = activityProfile,
-            turnAlertsMode = turnAlertsMode,
-            gpsDeliveryIntervalMs = gpsDeliveryIntervalMs,
+            fixTimestampMs = fixTimestampMs,
+            gpsDeliveryIntervalMs = gpsDeliveryIntervalMs.takeIf { it > 0L },
+            alertDistanceMeters = alertDistanceMeters,
         )
 }
 
@@ -273,7 +332,9 @@ private fun TurnHapticAlertSample.toObservation(): TurnHapticObservation? {
             instruction = currentInstruction,
             distanceMeters = distanceMeters,
             alertDistanceMeters = alertDistanceMeters,
+            projectedRouteProgressMeters = distanceFromStartMeters?.takeIf(Double::isFinite),
             speedMps = speedMps,
+            fixTimestampMs = fixTimestampMs?.takeIf { it > 0L },
             activityProfile = activityProfile,
             turnAlertsMode = turnAlertsMode,
             gpsDeliveryIntervalMs = gpsDeliveryIntervalMs,
@@ -283,7 +344,78 @@ private fun TurnHapticAlertSample.toObservation(): TurnHapticObservation? {
     }
 }
 
+private fun TurnHapticAlertSample.toSnapshot(): TurnHapticObservationSnapshot =
+    TurnHapticObservationSnapshot(
+        instructionKey = instruction?.instructionKey(routeKey),
+        instructionIndex = instruction?.trackPointIndex,
+        projectedRouteProgressMeters = distanceFromStartMeters?.takeIf(Double::isFinite),
+        distanceToInstructionMeters = distanceToInstructionMeters?.takeIf(Double::isFinite),
+        speedMps = speedMps?.takeIf(Float::isFinite),
+        fixTimestampMs = fixTimestampMs?.takeIf { it > 0L },
+        gpsDeliveryIntervalMs = gpsDeliveryIntervalMs.takeIf { it > 0L },
+        alertDistanceMeters =
+            turnHapticDistanceMeters(
+                speedMps = speedMps,
+                activityProfile = activityProfile,
+                gpsDeliveryIntervalMs = gpsDeliveryIntervalMs,
+            ),
+    )
+
 private fun RouteInstruction.instructionKey(routeKey: String): String = "$routeKey:$trackPointIndex:$command"
+
+internal fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): String =
+    buildString {
+        if (outcome == TurnHapticAlertOutcome.FIRED) append("haptic=turn ")
+        append("turnAlert=${outcome.telemetryValue} ")
+        append("trigger=${trigger?.telemetryValue ?: "na"} ")
+        append("command=${instruction.command} index=${instruction.trackPointIndex} ")
+        append("previousInstructionKey=${previousObservation?.instructionKey ?: "na"} ")
+        append("previousInstructionIndex=${previousObservation?.instructionIndex ?: "na"} ")
+        append("previousProgressM=${previousObservation?.projectedRouteProgressMeters.formatTelemetryNumber()} ")
+        append("previousDistanceToInstructionM=${previousObservation?.distanceToInstructionMeters.formatTelemetryNumber()} ")
+        append("previousAlertDistanceM=${previousObservation?.alertDistanceMeters.formatTelemetryNumber()} ")
+        append("previousSpeedMps=${previousObservation?.speedMps.formatTelemetrySpeed()} ")
+        append("previousFixTimestampMs=${previousObservation?.fixTimestampMs ?: "na"} ")
+        append("previousGpsDeliveryIntervalMs=${previousObservation?.gpsDeliveryIntervalMs ?: "na"} ")
+        append("currentInstructionKey=${currentObservation.instructionKey ?: "na"} ")
+        append("currentInstructionIndex=${currentObservation.instructionIndex ?: "na"} ")
+        append("currentProgressM=${currentObservation.projectedRouteProgressMeters.formatTelemetryNumber()} ")
+        append("currentDistanceToInstructionM=${currentObservation.distanceToInstructionMeters.formatTelemetryNumber()} ")
+        append("currentAlertDistanceM=${currentObservation.alertDistanceMeters.formatTelemetryNumber()} ")
+        append("currentSpeedMps=${currentObservation.speedMps.formatTelemetrySpeed()} ")
+        append("currentFixTimestampMs=${currentObservation.fixTimestampMs ?: "na"} ")
+        append("currentGpsDeliveryIntervalMs=${currentObservation.gpsDeliveryIntervalMs ?: "na"} ")
+        append("effectiveGpsRequestIntervalMs=${currentObservation.gpsDeliveryIntervalMs ?: "na"} ")
+        append("configuredGpsRequestIntervalMs=na callbackArrivalIntervalMs=na ")
+        append("fixTimestampSpacingMs=${fixTimestampSpacingMs() ?: "na"} ")
+        append("recoveryDistanceM=${recoveryDistanceMeters.formatTelemetryNumber()} ")
+        append("terminalState=${terminalTrackerState.telemetryValue} ")
+        append(
+            "reason=${reason ?: "na"} guidanceMode=${currentGuidanceMode.name} " +
+                "guidanceActive=$currentGuidanceActive offRoute=$currentOffRoute " +
+                "turnMode=$currentTurnAlertsMode profile=$currentActivityProfile " +
+                "screenState=na projectionSegmentIndex=na projectionContinuity=na " +
+                "vibratorAvailable=$vibratorAvailable",
+        )
+    }
+
+private fun TurnHapticAlertEvent.fixTimestampSpacingMs(): Long? {
+    val previousTimestamp = previousObservation?.fixTimestampMs ?: return null
+    val currentTimestamp = currentObservation.fixTimestampMs ?: return null
+    return currentTimestamp - previousTimestamp
+}
+
+private fun Double?.formatTelemetryNumber(): String =
+    this
+        ?.takeIf(Double::isFinite)
+        ?.let { String.format(java.util.Locale.US, "%.1f", it) }
+        ?: "na"
+
+private fun Float?.formatTelemetrySpeed(): String =
+    this
+        ?.takeIf(Float::isFinite)
+        ?.let { String.format(java.util.Locale.US, "%.1f", it) }
+        ?: "na"
 
 internal fun shouldAlertForTurn(
     mode: String,
