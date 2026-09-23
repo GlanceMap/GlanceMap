@@ -930,25 +930,14 @@ class DownloadViewModel(
     }
 
     private fun watchForWifiRecovery(initialState: OamDownloadNetworkState): AutoCloseable {
-        var observedWithoutValidatedWifi = !initialState.isValidatedWifi
-        var reconnectRequested = false
-        return networkMonitor.watchNetworkState { state ->
-            when {
-                !state.isValidatedWifi -> {
-                    observedWithoutValidatedWifi = true
-                    reconnectRequested = false
-                }
-                observedWithoutValidatedWifi && !reconnectRequested -> {
-                    reconnectRequested = true
-                    observedWithoutValidatedWifi = false
-                    DebugTelemetry.log(
-                        OAM_DOWNLOAD_TELEMETRY_TAG,
-                        "event=auto_reconnect_request reason=wifi_recovered ${state.telemetryFields}",
-                    )
-                    downloader.abortActiveDownloads(reason = "wifi_recovered")
-                }
+        val observer =
+            OamDownloadNetworkRecoveryObserver(initialState) { state ->
+                DebugTelemetry.log(
+                    OAM_DOWNLOAD_TELEMETRY_TAG,
+                    "event=wifi_recovered ${state.telemetryFields}",
+                )
             }
-        }
+        return networkMonitor.watchNetworkState(observer::onChanged)
     }
 
     private companion object {
