@@ -49,7 +49,6 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
-import java.util.Collections
 import java.util.Locale
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
@@ -129,7 +128,9 @@ class OamBundleDownloader(
     private val bundleStore: OamBundleStore = OamBundleStore(context),
 ) {
     private val downloadDir: File by lazy { context.getDir("oam_downloads", Context.MODE_PRIVATE) }
-    private val activeConnections = Collections.synchronizedSet(mutableSetOf<HttpURLConnection>())
+    private val activeConnectionRegistry = OamActiveConnectionRegistry()
+    private val activeConnections: MutableSet<HttpURLConnection>
+        get() = activeConnectionRegistry.connections
     private val refugesInfoImporter by lazy {
         RefugesInfoPoiImporter(
             context = context,
@@ -285,14 +286,12 @@ class OamBundleDownloader(
         }
 
     fun abortActiveDownloads(reason: String = "manual") {
-        val connections = synchronized(activeConnections) { activeConnections.toList() }
+        val connectionCount = synchronized(activeConnections) { activeConnections.size }
         DebugTelemetry.log(
             OAM_DOWNLOAD_TELEMETRY_TAG,
-            "event=abort_active_downloads reason=$reason activeConnections=${connections.size}",
+            "event=abort_active_downloads reason=$reason activeConnections=$connectionCount",
         )
-        connections.forEach { connection ->
-            runCatching { connection.disconnect() }
-        }
+        activeConnectionRegistry.abortAll()
     }
 
     suspend fun deletePartialDownloads(
@@ -1287,7 +1286,7 @@ class OamBundleDownloader(
                     setRequestProperty("Accept-Encoding", "identity")
                     setRequestProperty("User-Agent", USER_AGENT)
                 }
-            activeConnections += connection
+            activeConnections.add(connection)
             try {
                 val code = connection.responseCode
                 if (code !in 200..399) {
@@ -1304,7 +1303,7 @@ class OamBundleDownloader(
                     contentLengthBytes = connection.contentLengthLong.takeIf { it > 0L },
                 )
             } finally {
-                activeConnections -= connection
+                activeConnections.remove(connection)
                 connection.disconnect()
             }
         }
@@ -1330,19 +1329,20 @@ class OamBundleDownloader(
             val partFile = File(dir, ".$safeName.part")
             var resumeOffset = partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
             var restartCount = 0
-            var ioRetryCount = 0
+            val retryBudget = OamDownloadRetryBudget(MAX_IO_RETRIES)
             val downloadStartedAtMs = System.currentTimeMillis()
             var lastSpeedSampleAtMs = downloadStartedAtMs
             var lastSpeedSampleBytes = resumeOffset
 
             while (true) {
                 coroutineContext.ensureActive()
+                val attemptStartOffset = resumeOffset
                 val connection =
                     openConnection(
                         url = url,
                         resumeOffset = resumeOffset,
                     )
-                activeConnections += connection
+                activeConnections.add(connection)
                 try {
                     val code = connection.responseCode
                     val append =
@@ -1501,11 +1501,23 @@ class OamBundleDownloader(
                     )
                     return@withContext finalFile
                 } catch (error: IOException) {
-                    resumeOffset = partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
-                    if (error.isHttpResponseError() || ioRetryCount >= MAX_IO_RETRIES) {
+                    val resumeOffsetAfterFailure =
+                        partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
+                    if (error.isHttpResponseError()) {
                         throw error
                     }
-                    ioRetryCount += 1
+                    if (!retryBudget.shouldRetry(attemptStartOffset, resumeOffsetAfterFailure)) {
+                        throw IOException(
+                            oamNoProgressFailureMessage(
+                                fileName = safeName,
+                                maxRetries = MAX_IO_RETRIES,
+                                offset = resumeOffsetAfterFailure,
+                                error = error,
+                            ),
+                            error,
+                        )
+                    }
+                    resumeOffset = resumeOffsetAfterFailure
                     onProgress(
                         OamDownloadProgress(
                             phase = "RECONNECTING",
@@ -1526,10 +1538,10 @@ class OamBundleDownloader(
                                 elapsedMs = System.currentTimeMillis() - lastSpeedSampleAtMs,
                             ),
                     )
-                    delay(IO_RETRY_DELAY_MS * ioRetryCount)
+                    delay(IO_RETRY_DELAY_MS * retryBudget.currentRetryCount().coerceAtLeast(1))
                     continue
                 } finally {
-                    activeConnections -= connection
+                    activeConnections.remove(connection)
                     connection.disconnect()
                 }
             }
