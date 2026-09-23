@@ -36,6 +36,46 @@ internal fun cappedHttpRetryDelayMs(
     remainingBudgetMs: Long,
 ): Long = minOf(normalDelayMs, remainingBudgetMs.coerceAtLeast(0L))
 
+internal fun httpStartupRemainingBudgetMs(
+    startupComplete: Boolean,
+    startupDeadlineElapsedMs: Long?,
+    nowElapsedMs: Long,
+): Long? =
+    if (startupComplete) {
+        null
+    } else {
+        startupDeadlineElapsedMs?.let { remainingHttpStartupBudget(it, nowElapsedMs) }
+    }
+
+internal fun nextHttpConnectDeadlineElapsedMs(
+    startupComplete: Boolean,
+    startupDeadlineElapsedMs: Long?,
+    nowElapsedMs: Long,
+    retryWindowMs: Long,
+): Long =
+    if (startupComplete) {
+        nowElapsedMs + retryWindowMs
+    } else {
+        startupDeadlineElapsedMs?.let { minOf(it, nowElapsedMs + retryWindowMs) }
+            ?: (nowElapsedMs + retryWindowMs)
+    }
+
+internal fun httpFailureEventName(
+    startupComplete: Boolean,
+): String =
+    when {
+        startupComplete -> "http_recovery_failure"
+        else -> "http_startup_failure"
+    }
+
+internal fun httpRangeHeader(
+    resumeOffsetBytes: Long,
+): String? =
+    when {
+        resumeOffsetBytes > 0L -> "bytes=$resumeOffsetBytes-"
+        else -> null
+    }
+
 internal data class HttpTransferReceiveResult(
     val sha256: String?,
     val fullFileSizeBytes: Long,
