@@ -67,6 +67,48 @@ class ThemeViewModelDemSupportTest {
     }
 
     @Test
+    fun demSummaryReportsUnavailableTilesAsIncomplete() {
+        assertEquals(
+            "DEM download incomplete: 4 unavailable.",
+            buildDemSummaryMessage(
+                downloaded = 48,
+                skipped = 2,
+                missing = 4,
+                failed = 0,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun demSummaryReportsCompleteSelectedSourceDownloadAsSuccessful() {
+        assertEquals(
+            "DEM download successful.",
+            buildDemSummaryMessage(
+                downloaded = 48,
+                skipped = 2,
+                missing = 0,
+                failed = 0,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun demSummaryReportsFailedTilesAsIncomplete() {
+        assertEquals(
+            "DEM download incomplete: 1 failed.",
+            buildDemSummaryMessage(
+                downloaded = 1,
+                skipped = 0,
+                missing = 0,
+                failed = 1,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
     fun socketTimeoutIsNotMarkedOfflineWhenInternetIsAvailable() {
         val networkUnavailable =
             classifyDemFailureAsNetworkUnavailable(

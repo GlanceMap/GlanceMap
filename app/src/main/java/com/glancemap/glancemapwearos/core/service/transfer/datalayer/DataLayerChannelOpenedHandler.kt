@@ -4,7 +4,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
-import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
+import com.glancemap.glancemapwearos.core.service.ChannelTransferForegroundService
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
@@ -18,24 +18,24 @@ import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import java.util.Locale
 
+@Suppress("LongParameterList") // Existing transfer seams stay explicit to preserve the handler's behavior.
 internal class DataLayerChannelOpenedHandler(
-    private val service: DataLayerListenerService,
+    private val service: ChannelTransferForegroundService,
     private val notificationHelper: NotificationHelper,
     private val fileOps: WatchFileOps,
     private val transferMutex: Mutex,
     private val channelReceiver: ChannelClientStrategy,
     private val sendAck: suspend (sourceNodeId: String, transferId: String, status: String, detail: String) -> Unit,
-    private val popChannelChecksum: (transferId: String) -> String? = { null },
+    private val expectedChecksum: String? = null,
+    private val admissionOwner: Any? = null,
 ) {
-    // Keep channel validation, foreground ownership, and cleanup in one mutex scope.
+    // Keep channel validation, serialization, and cleanup in one admitted transfer scope.
     @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     suspend fun handleChannelOpened(channel: ChannelClient.Channel) {
         if (!channel.path.startsWith(TransferConstants.CHANNEL_PREFIX)) return
@@ -51,7 +51,6 @@ internal class DataLayerChannelOpenedHandler(
         val fileName = fileOps.sanitizeFileName(parsed.second)
         val notificationId = transferId.hashCode()
 
-        val expectedChecksum = popChannelChecksum(transferId)
         val metadata =
             ReceiverMetadata(
                 transferId = transferId,
@@ -70,7 +69,7 @@ internal class DataLayerChannelOpenedHandler(
             "Open id=$transferId file=$fileName",
         )
 
-        transferMutex.withLock {
+        withTransferLock {
             if (fileOps.fileBlocksIncomingTransfer(fileName)) {
                 val msg = "FILE_EXISTS:$fileName"
                 TransferDiagnostics.warn("Channel", "Target file already exists id=$transferId file=$fileName")
@@ -85,36 +84,16 @@ internal class DataLayerChannelOpenedHandler(
                             )
                         }
                 }
-                return
+                return@withTransferLock
             }
 
             val wakeLock = service.acquireWakeLock("GlanceMap::ChannelTransfer", TransferConstants.WAKELOCK_MAX_MS)
             service.releasePrewarmWakeLock("channel_transfer_start:$fileName")
             var transferStarted = false
-            var foregroundStarted = false
-            var foregroundStopped = false
             var receiverStarted = false
             var terminalAck: TerminalAck? = null
 
             try {
-                service.beginForegroundTransfer(
-                    transferId = metadata.transferId,
-                    fileName = metadata.fileName,
-                    sourceNodeId = metadata.sourceNodeId,
-                    notificationId = metadata.notificationId,
-                    job = requireNotNull(currentCoroutineContext()[Job]),
-                )
-                TransferDiagnostics.log(
-                    "Channel",
-                    "event=fgs_start_attempt id=${metadata.transferId} file=${metadata.fileName} " +
-                        "size=${metadata.totalSize} fgsType=dataSync",
-                )
-                notificationHelper.startForeground(metadata.notificationId, metadata.fileName, "Receiving (Bluetooth)…")
-                foregroundStarted = true
-                TransferDiagnostics.log(
-                    "Channel",
-                    "event=fgs_start_success id=${metadata.transferId} file=${metadata.fileName}",
-                )
                 service.onTransferStarted()
                 transferStarted = true
                 val startMs = SystemClock.elapsedRealtime()
@@ -178,10 +157,10 @@ internal class DataLayerChannelOpenedHandler(
                     "event=commit_complete transferId=${metadata.transferId} commitSucceeded=true",
                 )
 
-                if (!service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.DONE)) return@withLock
+                val terminalClaimed =
+                    service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.DONE)
+                if (!terminalClaimed) return@withTransferLock
                 terminalAck = TerminalAck(status = "DONE", detail = "")
-                notificationHelper.stopForeground(metadata.notificationId)
-                foregroundStopped = true
                 notificationHelper.showCompletion(metadata.notificationId, metadata.fileName, "Saved ✓")
                 val sizeMiB = lastBytesCopied / (1024.0 * 1024.0)
                 val speedMiBps = if (durationMs > 0) sizeMiB / (durationMs / 1000.0) else 0.0
@@ -217,9 +196,6 @@ internal class DataLayerChannelOpenedHandler(
                 )
                 if (service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.ERROR)) {
                     terminalAck = TerminalAck(status = "ERROR", detail = detail)
-                    if (foregroundStarted && !foregroundStopped) {
-                        runCatching { notificationHelper.stopForeground(metadata.notificationId) }
-                    }
                     notificationHelper.showError(metadata.notificationId, metadata.fileName, "Failed: $detail")
                     EnergyDiagnostics.recordEvent(
                         reason = "channel_transfer_error",
@@ -227,13 +203,6 @@ internal class DataLayerChannelOpenedHandler(
                     )
                 }
             } finally {
-                if (
-                    foregroundStarted &&
-                    !foregroundStopped &&
-                    service.foregroundTransferOutcome(metadata.transferId) != TransferTerminalOutcome.TIMEOUT
-                ) {
-                    runCatching { notificationHelper.stopForeground(metadata.notificationId) }
-                }
                 if (!receiverStarted) {
                     runCatching { Wearable.getChannelClient(service).close(channel).await() }
                 }
@@ -273,13 +242,12 @@ internal class DataLayerChannelOpenedHandler(
         }
     }
 
-    private fun parseChannelPath(path: String): Pair<String, String>? {
-        val parts = path.split('/').filter { it.isNotBlank() }
-        if (parts.size < 4) return null
-        val transferId = parts[2]
-        val safeName = parts[3]
-        return transferId to Uri.decode(safeName)
-    }
+    private suspend fun <T> withTransferLock(block: suspend () -> T): T =
+        if (admissionOwner == null) {
+            transferMutex.withLock { block() }
+        } else {
+            block()
+        }
 
     private companion object {
         const val TAG = "DataLayerChOpen"
@@ -289,4 +257,12 @@ internal class DataLayerChannelOpenedHandler(
         val status: String,
         val detail: String,
     )
+}
+
+internal fun parseChannelPath(path: String): Pair<String, String>? {
+    val parts = path.split('/').filter { it.isNotBlank() }
+    if (parts.size < 4) return null
+    val transferId = parts[2]
+    val safeName = parts[3]
+    return transferId to Uri.decode(safeName)
 }
