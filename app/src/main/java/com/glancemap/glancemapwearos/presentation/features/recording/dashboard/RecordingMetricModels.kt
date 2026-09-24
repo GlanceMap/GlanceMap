@@ -11,6 +11,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.totalDescent
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.fastestContinuousSegmentSpeedMps
 import com.glancemap.glancemapwearos.presentation.features.recording.recordingDisplayDistanceMeters
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import java.text.DecimalFormat
@@ -290,9 +291,7 @@ internal fun buildRecordingDashboardSnapshot(
             } else {
                 null
             },
-        fastestSpeedMps =
-            recordedStatistics.fastestRecordedSpeedMps
-                ?: displayCurrentSpeedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 },
+        fastestSpeedMps = recordedStatistics.fastestRecordedSpeedMps,
         externalDistanceMeters = state.externalDistanceMeters,
         gpsAccuracyMeters = currentPoint?.accuracyMeters ?: lastRecordedPoint?.accuracyMeters,
         pointCount = state.points.size,
@@ -337,10 +336,7 @@ internal fun buildRecordingDashboardStatistics(
 ): RecordingDashboardStatistics {
     RecordingScreenOffDiagnostics.recordDashboardAggregateBuild(points.size)
     val canonicalProfile = buildRecordingCanonicalProfile(points)
-    val fastestRecordedSpeedMps =
-        points
-            .mapNotNull { point -> point.speedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } }
-            .maxOrNull()
+    val fastestRecordedSpeedMps = points.fastestContinuousSegmentSpeedMps()
     return RecordingDashboardStatistics(
         elevationGainMeters = canonicalProfile?.totalAscent ?: 0.0,
         elevationLossMeters = canonicalProfile?.totalDescent ?: 0.0,

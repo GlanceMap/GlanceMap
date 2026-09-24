@@ -99,6 +99,7 @@ data class RecordedTraceSummary(
     val currentSpeedMps: Float?,
     val averageSpeedMps: Double?,
     val fastestSpeedMps: Double?,
+    val fastestSpeedMethod: String? = null,
     val gpsAccuracyMeters: Float?,
     val pointCount: Int,
     val gpsActiveDurationSeconds: Double,
@@ -167,6 +168,9 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     }
     summary.fastestSpeedMps?.takeIf { it.isFinite() && it >= 0.0 }?.let {
         textTag("gmap:fastestSpeedMps", formatDouble(it))
+    }
+    summary.fastestSpeedMethod?.takeIf { it.isNotBlank() }?.let {
+        textTag("gmap:fastestSpeedMethod", it)
     }
     summary.gpsAccuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.let {
         textTag("gmap:gpsAccuracyMeters", formatFloat(it))
@@ -262,7 +266,7 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val pressureHpa = point.barometricPressureHpa?.takeIf { it.isFinite() && it > 0.0 }
     val segmentStartReason =
         point.segmentStartReason
-            ?.takeIf { point.startsNewSegment && it.isNotBlank() }
+            ?.takeIf { it.isNotBlank() }
     val extensionValues =
         listOf(
             accuracyMeters,

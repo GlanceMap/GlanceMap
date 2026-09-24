@@ -13,7 +13,7 @@ import kotlin.math.pow
 
 class RecordingMaxSpeedInvestigationTest {
     @Test
-    fun isolatedProviderSpeedSpikeCurrentlyDefinesMaximum() {
+    fun isolatedProviderSpeedSpikeCannotDefineMaximum() {
         val points =
             listOf(
                 point(xMeters = 0.0, timeMillis = 0L, speedMps = 1.5f),
@@ -23,7 +23,7 @@ class RecordingMaxSpeedInvestigationTest {
 
         val statistics = buildStatistics(points)
 
-        assertEquals(18.0, statistics.fastestRecordedSpeedMps ?: -1.0, 0.0)
+        assertEquals(1.5, statistics.fastestRecordedSpeedMps ?: -1.0, 0.05)
         assertEquals(listOf(1.5, 1.5), adjacentGeometricSpeeds(points, index = 1).map { it.round(1) })
         assertFalse(isGeometricallyCorroborated(points, index = 1))
     }
@@ -40,7 +40,7 @@ class RecordingMaxSpeedInvestigationTest {
 
         val statistics = buildStatistics(points)
 
-        assertEquals(6.5, statistics.fastestRecordedSpeedMps ?: -1.0, 0.0)
+        assertEquals(6.5, statistics.fastestRecordedSpeedMps ?: -1.0, 0.05)
         assertTrue(points.count { it.speedMps?.let { speed -> speed >= 6.0f } == true } >= 3)
         assertTrue(isGeometricallyCorroborated(points, index = 2))
     }
@@ -118,7 +118,7 @@ class RecordingMaxSpeedInvestigationTest {
         adjacentGeometricSpeeds(points, index = 2).forEach { speed ->
             assertEquals(2.0, speed, 0.05)
         }
-        assertEquals(2.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.0)
+        assertEquals(2.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.05)
     }
 
     @Test
@@ -132,7 +132,7 @@ class RecordingMaxSpeedInvestigationTest {
                 point(xMeters = 12.0, timeMillis = 12_000L, speedMps = 3.0f),
             )
 
-        assertEquals(3.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.0)
+        assertEquals(1.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.05)
     }
 
     @Test
@@ -144,7 +144,7 @@ class RecordingMaxSpeedInvestigationTest {
                 point(xMeters = 8.0, timeMillis = 13_000L, speedMps = 0.5f),
             )
 
-        assertEquals(12.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.0)
+        assertEquals(1.0, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.05)
         assertTrue(adjacentGeometricSpeeds(points, index = 1).all { it < 1.5 })
         assertFalse(isGeometricallyCorroborated(points, index = 1))
     }
@@ -166,7 +166,7 @@ class RecordingMaxSpeedInvestigationTest {
 
         assertEquals(20.0, rawSegmentSpeed(points[0], points[1]) ?: -1.0, 0.05)
         assertEquals(listOf(1.5), adjacentGeometricSpeeds(points, index = 1).map { it.round(1) })
-        assertFalse(isGeometricallyCorroborated(points, index = 1))
+        assertEquals(1.5, buildStatistics(points).fastestRecordedSpeedMps ?: -1.0, 0.05)
     }
 
     @Test
@@ -182,12 +182,12 @@ class RecordingMaxSpeedInvestigationTest {
         assertEquals(
             8.0,
             buildStatistics(points, SettingsRepository.ACTIVITY_PROFILE_HIKE).fastestRecordedSpeedMps ?: -1.0,
-            0.0,
+            0.05,
         )
         assertEquals(
             8.0,
             buildStatistics(points, SettingsRepository.ACTIVITY_PROFILE_BIKE).fastestRecordedSpeedMps ?: -1.0,
-            0.0,
+            0.05,
         )
         assertTrue(isGeometricallyCorroborated(points, index = 2))
     }

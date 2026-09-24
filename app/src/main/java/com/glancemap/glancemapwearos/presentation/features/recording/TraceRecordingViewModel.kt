@@ -2778,6 +2778,7 @@ private fun RecordingDashboardSnapshot.toRecordedTraceSummary(
         currentSpeedMps = currentSpeedMps,
         averageSpeedMps = averageSpeedMps,
         fastestSpeedMps = fastestSpeedMps,
+        fastestSpeedMethod = FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1,
         gpsAccuracyMeters = gpsAccuracyMeters,
         pointCount = pointCount,
         gpsActiveDurationSeconds = gpsActiveDurationSeconds,

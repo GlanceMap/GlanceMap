@@ -17,12 +17,14 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Gpx
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionSource
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
+import com.glancemap.glancemapwearos.presentation.features.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1
 import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ACCURACY_INTERPRETATION_RAW
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingElevationProvider
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingCalorieEstimate
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.estimateRecordingCalories
+import com.glancemap.glancemapwearos.presentation.features.recording.fastestContinuousSegmentSpeedMps
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolKind
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolModifyPreview
@@ -754,7 +756,7 @@ class GpxViewModel(
             currentElevationMeters = lastPoint?.elevation,
             currentSpeedMps = lastPoint?.speedMps ?: points.lastSegmentSpeedMps(),
             averageSpeedMps = averageSpeedMps,
-            fastestSpeedMps = points.fastestSpeedMps(),
+            fastestSpeedMps = points.fastestContinuousSegmentSpeedMps(),
             gpsAccuracyMeters = points.lastMappedNotNull { it.accuracyMeters },
             pointCount = points.size,
             gpsActiveDurationSeconds = durationSeconds ?: 0.0,
@@ -830,7 +832,12 @@ class GpxViewModel(
                     ?: duration
                         .takeIf { it > 0.0 }
                         ?.let { distance / it },
-            fastestSpeedMps = fastestSpeedMps ?: fallbackPoints.fastestSpeedMps(),
+            fastestSpeedMps =
+                resolveImportedFastestSpeedMps(
+                    recomputedSpeedMps = fallbackPoints.fastestContinuousSegmentSpeedMps(),
+                    persistedSpeedMps = fastestSpeedMps,
+                    persistedMethod = fastestSpeedMethod,
+                ),
             gpsAccuracyMeters = gpsAccuracyMeters ?: fallbackPoints.lastMappedNotNull { it.accuracyMeters },
             pointCount = pointCount ?: fallbackPoints.size,
             gpsActiveDurationSeconds = gpsActiveDurationSeconds ?: duration,
@@ -1838,9 +1845,17 @@ private fun List<TrackPoint>.lastSegmentSpeedMps(): Float? {
     return (distanceMeters / elapsedSeconds).toFloat().takeIf { it.isFinite() && it >= 0f }
 }
 
-private fun List<TrackPoint>.fastestSpeedMps(): Double? =
-    mapNotNull { point -> point.speedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } }
-        .maxOrNull()
+internal fun resolveImportedFastestSpeedMps(
+    recomputedSpeedMps: Double?,
+    persistedSpeedMps: Double?,
+    persistedMethod: String?,
+): Double? =
+    recomputedSpeedMps
+        ?: persistedSpeedMps?.takeIf {
+            persistedMethod == FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1 &&
+                it.isFinite() &&
+                it > 0.0
+        }
 
 private fun List<TrackPoint>.averageHeartRateBpm(): Int? {
     val values = mapNotNull { point -> point.heartRateBpm?.takeIf { it > 0 } }
@@ -1885,6 +1900,8 @@ private fun List<TrackPoint>.toRecordedTracePoints(): List<RecordedTracePoint> =
             effectiveAccuracyMeters = point.effectiveAccuracyMeters ?: point.accuracyMeters,
             accuracyInterpretation = point.accuracyInterpretation ?: RECORDING_ACCURACY_INTERPRETATION_RAW,
             speedMps = point.speedMps,
+            startsNewSegment = point.startsNewSegment,
+            segmentStartReason = point.segmentStartReason,
             heartRateBpm = point.heartRateBpm,
             stepCount = point.stepCount,
             cadenceSpm = point.cadenceSpm,
