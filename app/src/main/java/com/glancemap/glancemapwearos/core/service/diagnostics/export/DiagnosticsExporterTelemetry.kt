@@ -397,6 +397,7 @@ internal fun deriveTelemetryInsights(
     var recordingSmoothedPointCount: Int? = null
     var recordingSmoothedAdjustmentMeters: String? = null
     var recordingMaxSmoothedAdjustmentMeters: String? = null
+    var recordingDistanceDiagnosticsScope: String? = null
     var recordingDistanceActivityMeters: String? = null
     var recordingDistanceWatchGpsRawGeometryMeters: String? = null
     var recordingDistanceContinuityCappedMeters: String? = null
@@ -407,7 +408,7 @@ internal fun deriveTelemetryInsights(
     var recordingDistanceAcceptedPointCount: Int? = null
     var recordingDistanceSegmentCount: Int? = null
     var recordingDistanceSegmentBoundaryCount: Int? = null
-    var recordingDistanceGpsGapRecoverySegmentCount: Int? = null
+    var recordingDistanceContinuityRecoverySegmentCount: Int? = null
     var recordingDistanceSmoothingMode: String? = null
     var recordingDistanceSmoothedAdjustmentMeters: String? = null
     var recordingDistanceSmoothedPointCount: Int? = null
@@ -775,6 +776,9 @@ internal fun deriveTelemetryInsights(
                 }
             }
             if (extractTokenValue(line, "event=") == "distance_comparison") {
+                extractTokenValue(line, "diagnosticsScope=")?.let {
+                    recordingDistanceDiagnosticsScope = it
+                }
                 extractTokenValue(line, "activityDistanceMeters=")?.let {
                     recordingDistanceActivityMeters = it
                 }
@@ -805,8 +809,8 @@ internal fun deriveTelemetryInsights(
                 parseIntToken(line, "segmentBoundaryCount=")?.let {
                     recordingDistanceSegmentBoundaryCount = it
                 }
-                parseIntToken(line, "gpsGapRecoverySegmentCount=")?.let {
-                    recordingDistanceGpsGapRecoverySegmentCount = it
+                parseIntToken(line, "continuityRecoverySegmentCount=")?.let {
+                    recordingDistanceContinuityRecoverySegmentCount = it
                 }
                 extractTokenValue(line, "trackSmoothingMode=")?.let {
                     recordingDistanceSmoothingMode = it
@@ -1613,6 +1617,7 @@ internal fun deriveTelemetryInsights(
             )
         insights.recordingDistanceComparison =
             RecordingDistanceComparisonInsights(
+                diagnosticsScope = recordingDistanceDiagnosticsScope,
                 activityDistanceMeters = recordingDistanceActivityMeters,
                 watchGpsRawGeometryMeters = recordingDistanceWatchGpsRawGeometryMeters,
                 continuityCappedMeters = recordingDistanceContinuityCappedMeters,
@@ -1623,7 +1628,7 @@ internal fun deriveTelemetryInsights(
                 acceptedPointCount = recordingDistanceAcceptedPointCount,
                 segmentCount = recordingDistanceSegmentCount,
                 segmentBoundaryCount = recordingDistanceSegmentBoundaryCount,
-                gpsGapRecoverySegmentCount = recordingDistanceGpsGapRecoverySegmentCount,
+                continuityRecoverySegmentCount = recordingDistanceContinuityRecoverySegmentCount,
                 smoothingMode = recordingDistanceSmoothingMode,
                 smoothedAdjustmentMeters = recordingDistanceSmoothedAdjustmentMeters,
                 smoothedPointCount = recordingDistanceSmoothedPointCount,

@@ -126,6 +126,7 @@ object DiagnosticsExporter {
     )
 
     internal data class RecordingDistanceComparisonInsights(
+        val diagnosticsScope: String? = null,
         val activityDistanceMeters: String? = null,
         val watchGpsRawGeometryMeters: String? = null,
         val continuityCappedMeters: String? = null,
@@ -136,7 +137,7 @@ object DiagnosticsExporter {
         val acceptedPointCount: Int? = null,
         val segmentCount: Int? = null,
         val segmentBoundaryCount: Int? = null,
-        val gpsGapRecoverySegmentCount: Int? = null,
+        val continuityRecoverySegmentCount: Int? = null,
         val smoothingMode: String? = null,
         val smoothedAdjustmentMeters: String? = null,
         val smoothedPointCount: Int? = null,
@@ -1475,6 +1476,11 @@ object DiagnosticsExporter {
                 }",
             )
             writer.appendLine(
+                "recordingDistanceDiagnosticsScope=${
+                    telemetryInsights.recordingDistanceComparison.diagnosticsScope ?: "na"
+                }",
+            )
+            writer.appendLine(
                 "recordingActivityDistanceMeters=${
                     telemetryInsights.recordingDistanceComparison.activityDistanceMeters ?: "na"
                 }",
@@ -1525,8 +1531,8 @@ object DiagnosticsExporter {
                 }",
             )
             writer.appendLine(
-                "recordingDistanceGpsGapRecoverySegmentCount=${
-                    telemetryInsights.recordingDistanceComparison.gpsGapRecoverySegmentCount?.toString() ?: "na"
+                "recordingDistanceContinuityRecoverySegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityRecoverySegmentCount?.toString() ?: "na"
                 }",
             )
             writer.appendLine(

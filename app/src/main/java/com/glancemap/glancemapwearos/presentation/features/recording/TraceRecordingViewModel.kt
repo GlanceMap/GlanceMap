@@ -1816,6 +1816,7 @@ class TraceRecordingViewModel(
                     stepCount = recoveredStepCount,
                     message = "REC recovered",
                 )
+            recordingDistanceDiagnostics.markPostRecoveryPartial()
             rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
             syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
@@ -2459,7 +2460,8 @@ class TraceRecordingViewModel(
     ): String {
         val segmentBoundaryCount = state.points.drop(1).count { it.startsNewSegment }
         val segmentCount = if (state.points.isEmpty()) 0 else segmentBoundaryCount + 1
-        return "activityDistanceMeters=${comparison.activityDistanceMeters.formatTelemetry(2)} " +
+        return "diagnosticsScope=${comparison.diagnosticsScope} " +
+            "activityDistanceMeters=${comparison.activityDistanceMeters.formatTelemetry(2)} " +
             "watchGpsRawGeometryMeters=${comparison.watchGpsRawGeometryMeters.formatTelemetry(2)} " +
             "continuityCappedMeters=${comparison.continuityCappedMeters.formatTelemetry(2)} " +
             "continuityCapCount=${comparison.continuityCapCount} " +
@@ -2469,7 +2471,7 @@ class TraceRecordingViewModel(
             "acceptedPointCount=${state.points.size} " +
             "segmentCount=$segmentCount " +
             "segmentBoundaryCount=$segmentBoundaryCount " +
-            "gpsGapRecoverySegmentCount=${comparison.gpsGapRecoverySegmentCount} " +
+            "continuityRecoverySegmentCount=${comparison.continuityRecoverySegmentCount} " +
             "trackSmoothingMode=${state.trackSmoothingMode} " +
             "smoothedAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(2)} " +
             "smoothedPointCount=$smoothedPointCount " +

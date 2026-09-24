@@ -298,7 +298,8 @@ class DiagnosticsExporterTelemetryTest {
                     "continuityCappedMeters=7.60 continuityCapCount=1 " +
                     "canonicalGeometryMeters=100.00 activityMinusCanonicalMeters=2.40 " +
                     "activityVsCanonicalPercent=2.40 acceptedPointCount=8 segmentCount=2 " +
-                    "segmentBoundaryCount=1 gpsGapRecoverySegmentCount=1 " +
+                    "segmentBoundaryCount=1 continuityRecoverySegmentCount=1 " +
+                    "diagnosticsScope=post_recovery_partial " +
                     "trackSmoothingMode=ADAPTIVE smoothedAdjustmentMeters=3.20 " +
                     "smoothedPointCount=4 trajectoryGapResetCount=1 trajectoryBarrierCount=2",
             )
@@ -310,6 +311,7 @@ class DiagnosticsExporterTelemetryTest {
             )
 
         val comparison = insights.recordingDistanceComparison
+        assertEquals("post_recovery_partial", comparison.diagnosticsScope)
         assertEquals("102.40", comparison.activityDistanceMeters)
         assertEquals("110.00", comparison.watchGpsRawGeometryMeters)
         assertEquals("7.60", comparison.continuityCappedMeters)
@@ -320,7 +322,7 @@ class DiagnosticsExporterTelemetryTest {
         assertEquals(8, comparison.acceptedPointCount)
         assertEquals(2, comparison.segmentCount)
         assertEquals(1, comparison.segmentBoundaryCount)
-        assertEquals(1, comparison.gpsGapRecoverySegmentCount)
+        assertEquals(1, comparison.continuityRecoverySegmentCount)
         assertEquals("ADAPTIVE", comparison.smoothingMode)
         assertEquals("3.20", comparison.smoothedAdjustmentMeters)
         assertEquals(4, comparison.smoothedPointCount)

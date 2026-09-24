@@ -23,6 +23,7 @@ class RecordingDistanceDiagnosticsTest {
                 canonicalPoints = points,
             )
 
+        assertEquals(RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_FULL_SESSION, comparison.diagnosticsScope)
         assertEquals(activityDistance, comparison.canonicalGeometryMeters, 0.01)
         assertEquals(0.0, comparison.activityMinusCanonicalMeters, 0.01)
         assertEquals(0.0, comparison.activityVsCanonicalPercent ?: Double.NaN, 0.01)
@@ -61,7 +62,7 @@ class RecordingDistanceDiagnosticsTest {
             diagnostics.record(segment, estimate(segment))
         }
 
-        assertTrue(diagnostics.gpsGapRecoverySegmentCount >= 1)
+        assertTrue(diagnostics.continuityRecoverySegmentCount >= 1)
         assertTrue(diagnostics.continuityCapCount >= 1)
         assertTrue(diagnostics.continuityCappedMeters > 0.0)
         assertTrue(diagnostics.watchGpsRawGeometryMeters > diagnostics.continuityCappedMeters)
@@ -112,6 +113,24 @@ class RecordingDistanceDiagnosticsTest {
 
         assertEquals(0.0, comparison.canonicalGeometryMeters, 0.0)
         assertNull(comparison.activityVsCanonicalPercent)
+    }
+
+    @Test
+    fun recoveredSessionMarksSupportingDiagnosticsAsPostRecoveryPartial() {
+        val diagnostics = RecordingDistanceDiagnostics()
+        diagnostics.markPostRecoveryPartial()
+        val points = listOf(point(0.0), point(10.0))
+
+        val comparison =
+            buildRecordingDistanceComparison(
+                activityDistanceMeters = 123.0,
+                diagnostics = diagnostics,
+                canonicalPoints = points,
+            )
+
+        assertEquals(RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_POST_RECOVERY_PARTIAL, comparison.diagnosticsScope)
+        assertEquals(123.0 - comparison.canonicalGeometryMeters, comparison.activityMinusCanonicalMeters, 0.0)
+        assertEquals(0, comparison.continuityRecoverySegmentCount)
     }
 
     @Test
