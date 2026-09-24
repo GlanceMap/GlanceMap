@@ -54,6 +54,7 @@ internal fun TurnByTurnGuidanceHapticEffect(
         state.alertSessionKey,
         state.alertGpsDeliveryIntervalMs,
         currentSpeedMps,
+        currentFixTimestampMs,
         activityProfile,
         hapticsEnabled,
         turnAlertsMode,

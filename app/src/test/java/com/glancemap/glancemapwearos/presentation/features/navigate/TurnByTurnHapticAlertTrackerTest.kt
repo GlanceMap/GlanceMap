@@ -204,6 +204,7 @@ class TurnByTurnHapticAlertTrackerTest {
         assertTrue(telemetry.contains("currentSpeedMps=4.2"))
         assertTrue(telemetry.contains("previousGpsDeliveryIntervalMs=2500"))
         assertTrue(telemetry.contains("currentGpsDeliveryIntervalMs=7000"))
+        assertTrue(telemetry.contains("effectiveGpsRequestIntervalMs=na"))
         assertTrue(telemetry.contains("previousFixTimestampMs=1000"))
         assertTrue(telemetry.contains("currentFixTimestampMs=5500"))
         assertTrue(telemetry.contains("fixTimestampSpacingMs=4500"))

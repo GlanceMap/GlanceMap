@@ -385,7 +385,7 @@ internal fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): 
         append("currentSpeedMps=${currentObservation.speedMps.formatTelemetrySpeed()} ")
         append("currentFixTimestampMs=${currentObservation.fixTimestampMs ?: "na"} ")
         append("currentGpsDeliveryIntervalMs=${currentObservation.gpsDeliveryIntervalMs ?: "na"} ")
-        append("effectiveGpsRequestIntervalMs=${currentObservation.gpsDeliveryIntervalMs ?: "na"} ")
+        append("effectiveGpsRequestIntervalMs=na ")
         append("configuredGpsRequestIntervalMs=na callbackArrivalIntervalMs=na ")
         append("fixTimestampSpacingMs=${fixTimestampSpacingMs() ?: "na"} ")
         append("recoveryDistanceM=${recoveryDistanceMeters.formatTelemetryNumber()} ")
