@@ -248,6 +248,11 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
 
 private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val accuracyMeters = point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }
+    val effectiveAccuracyMeters = point.effectiveAccuracyMeters?.takeIf { it.isFinite() && it >= 0f }
+    val accuracyInterpretation =
+        point.accuracyInterpretation.takeIf {
+            (accuracyMeters != null || effectiveAccuracyMeters != null) && it.isNotBlank()
+        }
     val speedMps = point.speedMps?.takeIf { it.isFinite() && it >= 0f }
     val elevationSource = point.elevationSource?.takeIf { it.isNotBlank() }
     val heartRateBpm = point.heartRateBpm?.takeIf { it > 0 }
@@ -261,6 +266,8 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val extensionValues =
         listOf(
             accuracyMeters,
+            effectiveAccuracyMeters,
+            accuracyInterpretation,
             speedMps,
             elevationSource,
             heartRateBpm,
@@ -277,6 +284,12 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     textTag("extensions") {
         accuracyMeters?.let {
             textTag("gmap:accuracyMeters", formatFloat(it))
+        }
+        effectiveAccuracyMeters?.let {
+            textTag("gmap:effectiveAccuracyMeters", formatFloat(it))
+        }
+        accuracyInterpretation?.let {
+            textTag("gmap:accuracyInterpretation", it)
         }
         speedMps?.let {
             textTag("gmap:speedMps", formatFloat(it))

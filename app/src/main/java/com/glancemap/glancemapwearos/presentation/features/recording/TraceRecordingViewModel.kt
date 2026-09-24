@@ -587,11 +587,12 @@ class TraceRecordingViewModel(
         }
         val previousRecordedPoint = _uiState.value.points.lastOrNull()
         val watchGpsAccuracyFloorActive = isKnownWatchGpsAccuracyFloorActive(livePoint.accuracyMeters)
-        val filterAccuracyMeters =
-            resolveRecordingFilterAccuracyMeters(
+        val accuracyProvenance =
+            resolveRecordingAccuracyProvenance(
                 rawAccuracyMeters = livePoint.accuracyMeters,
                 knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
             )
+        val filterAccuracyMeters = accuracyProvenance.effectiveAccuracyMeters
         val previousFilterAccuracyMeters =
             resolveRecordingFilterAccuracyMeters(
                 rawAccuracyMeters = previousRecordedPoint?.accuracyMeters,
@@ -907,6 +908,8 @@ class TraceRecordingViewModel(
                         timeMillis = timeMillis,
                         accuracyMeters = accuracyMeters,
                         speedMps = speedMps,
+                        effectiveAccuracyMeters = accuracyProvenance.effectiveAccuracyMeters,
+                        accuracyInterpretation = accuracyProvenance.interpretation,
                         elevationSource = fusedElevation.elevationSource,
                         heartRateBpm = sensorMetrics?.heartRateBpm,
                         stepCount = sensorMetrics?.stepCount,

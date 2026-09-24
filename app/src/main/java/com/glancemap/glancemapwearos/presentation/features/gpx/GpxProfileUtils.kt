@@ -225,6 +225,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var currentHasTimestamp = false
     var currentTimestampMillis: Long? = null
     var currentAccuracyMeters: Float? = null
+    var currentEffectiveAccuracyMeters: Float? = null
+    var currentAccuracyInterpretation: String? = null
     var currentSpeedMps: Float? = null
     var currentHeartRateBpm: Int? = null
     var currentStepCount: Int? = null
@@ -385,6 +387,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentHasTimestamp = false
                                 currentTimestampMillis = null
                                 currentAccuracyMeters = null
+                                currentEffectiveAccuracyMeters = null
+                                currentAccuracyInterpretation = null
                                 currentSpeedMps = null
                                 currentHeartRateBpm = null
                                 currentStepCount = null
@@ -435,6 +439,17 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                             "accuracyMeters" -> {
                                 if (inGeometryPoint) {
                                     currentAccuracyMeters = parser.nextText()?.trim()?.toFloatOrNull()
+                                }
+                            }
+                            "effectiveAccuracyMeters" -> {
+                                if (inGeometryPoint) {
+                                    currentEffectiveAccuracyMeters = parser.nextText()?.trim()?.toFloatOrNull()
+                                }
+                            }
+                            "accuracyInterpretation" -> {
+                                if (inGeometryPoint) {
+                                    currentAccuracyInterpretation =
+                                        parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
                                 }
                             }
                             "speedMps" -> {
@@ -523,6 +538,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                                 hasTimestamp = currentHasTimestamp,
                                                 timeMillis = currentTimestampMillis,
                                                 accuracyMeters = currentAccuracyMeters,
+                                                effectiveAccuracyMeters = currentEffectiveAccuracyMeters,
+                                                accuracyInterpretation = currentAccuracyInterpretation,
                                                 speedMps = currentSpeedMps,
                                                 heartRateBpm = currentHeartRateBpm,
                                                 stepCount = currentStepCount,
@@ -579,6 +596,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentHasTimestamp = false
                                 currentTimestampMillis = null
                                 currentAccuracyMeters = null
+                                currentEffectiveAccuracyMeters = null
+                                currentAccuracyInterpretation = null
                                 currentSpeedMps = null
                                 currentHeartRateBpm = null
                                 currentStepCount = null

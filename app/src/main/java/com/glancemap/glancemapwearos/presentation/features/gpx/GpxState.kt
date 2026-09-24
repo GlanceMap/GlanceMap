@@ -59,6 +59,8 @@ data class TrackPoint(
     val hasTimestamp: Boolean = false,
     val timeMillis: Long? = null,
     val accuracyMeters: Float? = null,
+    val effectiveAccuracyMeters: Float? = null,
+    val accuracyInterpretation: String? = null,
     val speedMps: Float? = null,
     val heartRateBpm: Int? = null,
     val stepCount: Int? = null,

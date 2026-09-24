@@ -17,6 +17,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Gpx
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionSource
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
+import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ACCURACY_INTERPRETATION_RAW
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingElevationProvider
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingCalorieEstimate
@@ -1881,6 +1882,8 @@ private fun List<TrackPoint>.toRecordedTracePoints(): List<RecordedTracePoint> =
             elevationMeters = point.elevation,
             timeMillis = timeMillis,
             accuracyMeters = point.accuracyMeters,
+            effectiveAccuracyMeters = point.effectiveAccuracyMeters ?: point.accuracyMeters,
+            accuracyInterpretation = point.accuracyInterpretation ?: RECORDING_ACCURACY_INTERPRETATION_RAW,
             speedMps = point.speedMps,
             heartRateBpm = point.heartRateBpm,
             stepCount = point.stepCount,

@@ -9,6 +9,8 @@ data class RecordedTracePoint(
     val timeMillis: Long,
     val accuracyMeters: Float?,
     val speedMps: Float?,
+    val effectiveAccuracyMeters: Float? = accuracyMeters,
+    val accuracyInterpretation: String = RECORDING_ACCURACY_INTERPRETATION_RAW,
     val elevationSource: String? = null,
     val heartRateBpm: Int? = null,
     val stepCount: Int? = null,
@@ -20,6 +22,10 @@ data class RecordedTracePoint(
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
 )
+
+internal const val RECORDING_ACCURACY_INTERPRETATION_RAW = "raw"
+internal const val RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS =
+    "suspect_constant_watch_gps"
 
 internal object RecordingSegmentStartReason {
     const val MANUAL_PAUSE = "MANUAL_PAUSE"
