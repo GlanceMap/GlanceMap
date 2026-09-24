@@ -6,6 +6,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporte
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.FixGapBuckets
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.GnssInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.ObservedFixQualitySummary
+import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingDistanceComparisonInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingPointDensityInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingSmartTrackInsights
 import com.glancemap.glancemapwearos.core.service.diagnostics.DiagnosticsExporter.RecordingTrackFilterInsights
@@ -396,6 +397,22 @@ internal fun deriveTelemetryInsights(
     var recordingSmoothedPointCount: Int? = null
     var recordingSmoothedAdjustmentMeters: String? = null
     var recordingMaxSmoothedAdjustmentMeters: String? = null
+    var recordingDistanceActivityMeters: String? = null
+    var recordingDistanceWatchGpsRawGeometryMeters: String? = null
+    var recordingDistanceContinuityCappedMeters: String? = null
+    var recordingDistanceContinuityCapCount: Int? = null
+    var recordingDistanceCanonicalGeometryMeters: String? = null
+    var recordingDistanceActivityMinusCanonicalMeters: String? = null
+    var recordingDistanceActivityVsCanonicalPercent: String? = null
+    var recordingDistanceAcceptedPointCount: Int? = null
+    var recordingDistanceSegmentCount: Int? = null
+    var recordingDistanceSegmentBoundaryCount: Int? = null
+    var recordingDistanceGpsGapRecoverySegmentCount: Int? = null
+    var recordingDistanceSmoothingMode: String? = null
+    var recordingDistanceSmoothedAdjustmentMeters: String? = null
+    var recordingDistanceSmoothedPointCount: Int? = null
+    var recordingDistanceTrajectoryGapResetCount: Int? = null
+    var recordingDistanceTrajectoryBarrierCount: Int? = null
     val recordingSmartTrack = RecordingSmartTrackInsightsAccumulator()
     val recordingPointDensity = RecordingPointDensityInsightsAccumulator()
     var recordingLastSkippedIntervalElapsedMs: Long? = null
@@ -755,6 +772,56 @@ internal fun deriveTelemetryInsights(
                 }
                 parseIntToken(line, "summaryDistanceMeters=")?.takeIf { it >= 0 }?.let {
                     recordingSavedGpxSummaryDistanceMeters = it
+                }
+            }
+            if (extractTokenValue(line, "event=") == "distance_comparison") {
+                extractTokenValue(line, "activityDistanceMeters=")?.let {
+                    recordingDistanceActivityMeters = it
+                }
+                extractTokenValue(line, "watchGpsRawGeometryMeters=")?.let {
+                    recordingDistanceWatchGpsRawGeometryMeters = it
+                }
+                extractTokenValue(line, "continuityCappedMeters=")?.let {
+                    recordingDistanceContinuityCappedMeters = it
+                }
+                parseIntToken(line, "continuityCapCount=")?.let {
+                    recordingDistanceContinuityCapCount = it
+                }
+                extractTokenValue(line, "canonicalGeometryMeters=")?.let {
+                    recordingDistanceCanonicalGeometryMeters = it
+                }
+                extractTokenValue(line, "activityMinusCanonicalMeters=")?.let {
+                    recordingDistanceActivityMinusCanonicalMeters = it
+                }
+                extractTokenValue(line, "activityVsCanonicalPercent=")?.let {
+                    recordingDistanceActivityVsCanonicalPercent = it
+                }
+                parseIntToken(line, "acceptedPointCount=")?.let {
+                    recordingDistanceAcceptedPointCount = it
+                }
+                parseIntToken(line, "segmentCount=")?.let {
+                    recordingDistanceSegmentCount = it
+                }
+                parseIntToken(line, "segmentBoundaryCount=")?.let {
+                    recordingDistanceSegmentBoundaryCount = it
+                }
+                parseIntToken(line, "gpsGapRecoverySegmentCount=")?.let {
+                    recordingDistanceGpsGapRecoverySegmentCount = it
+                }
+                extractTokenValue(line, "trackSmoothingMode=")?.let {
+                    recordingDistanceSmoothingMode = it
+                }
+                extractTokenValue(line, "smoothedAdjustmentMeters=")?.let {
+                    recordingDistanceSmoothedAdjustmentMeters = it
+                }
+                parseIntToken(line, "smoothedPointCount=")?.let {
+                    recordingDistanceSmoothedPointCount = it
+                }
+                parseIntToken(line, "trajectoryGapResetCount=")?.let {
+                    recordingDistanceTrajectoryGapResetCount = it
+                }
+                parseIntToken(line, "trajectoryBarrierCount=")?.let {
+                    recordingDistanceTrajectoryBarrierCount = it
                 }
             }
             extractTokenValue(line, "lastUiAction=")?.takeIf { it.isNotBlank() && it != "na" }?.let {
@@ -1543,6 +1610,25 @@ internal fun deriveTelemetryInsights(
                 maxSmoothedAdjustmentMeters = recordingMaxSmoothedAdjustmentMeters,
                 smartTrack = recordingSmartTrack.snapshot(),
                 pointDensity = recordingPointDensity.snapshot(),
+            )
+        insights.recordingDistanceComparison =
+            RecordingDistanceComparisonInsights(
+                activityDistanceMeters = recordingDistanceActivityMeters,
+                watchGpsRawGeometryMeters = recordingDistanceWatchGpsRawGeometryMeters,
+                continuityCappedMeters = recordingDistanceContinuityCappedMeters,
+                continuityCapCount = recordingDistanceContinuityCapCount,
+                canonicalGeometryMeters = recordingDistanceCanonicalGeometryMeters,
+                activityMinusCanonicalMeters = recordingDistanceActivityMinusCanonicalMeters,
+                activityVsCanonicalPercent = recordingDistanceActivityVsCanonicalPercent,
+                acceptedPointCount = recordingDistanceAcceptedPointCount,
+                segmentCount = recordingDistanceSegmentCount,
+                segmentBoundaryCount = recordingDistanceSegmentBoundaryCount,
+                gpsGapRecoverySegmentCount = recordingDistanceGpsGapRecoverySegmentCount,
+                smoothingMode = recordingDistanceSmoothingMode,
+                smoothedAdjustmentMeters = recordingDistanceSmoothedAdjustmentMeters,
+                smoothedPointCount = recordingDistanceSmoothedPointCount,
+                trajectoryGapResetCount = recordingDistanceTrajectoryGapResetCount,
+                trajectoryBarrierCount = recordingDistanceTrajectoryBarrierCount,
             )
     }
 }

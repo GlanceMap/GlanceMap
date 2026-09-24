@@ -168,6 +168,9 @@ class TraceRecordingViewModel(
     private var straightDriftCorrectedPointCount = 0
     private var continuityDistanceCapCount = 0
     private var continuityDistanceSuppressedMeters = 0.0
+    private val recordingDistanceDiagnostics = RecordingDistanceDiagnostics()
+    private var trajectoryGapResetCount = 0
+    private var trajectoryBarrierCount = 0
     private val hybridElevationFilter = RecordingHybridElevationFilter()
     private var hybridElevationPointCount = 0
     private var hybridPressureDeltaMeters = 0.0
@@ -941,6 +944,8 @@ class TraceRecordingViewModel(
                                 sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
                             ),
                     )
+                trajectoryGapResetCount += canonicalAppend.trajectoryDiagnostics.gapResetCount
+                trajectoryBarrierCount += canonicalAppend.trajectoryDiagnostics.barrierCount
                 if (canonicalAppend.adjustedPointCount > 0) {
                     smoothedPointCount += canonicalAppend.adjustedPointCount
                     smoothedAdjustmentMeters += canonicalAppend.adjustmentMeters
@@ -989,6 +994,9 @@ class TraceRecordingViewModel(
                             ),
                         )
                     } ?: RecordingDistanceEstimate(distanceMeters = 0.0, capped = false)
+                distanceSegment?.let { segment ->
+                    recordingDistanceDiagnostics.record(segment = segment, estimate = distanceEstimate)
+                }
                 val addedDistance = distanceEstimate.distanceMeters
                 if (distanceEstimate.capped) {
                     continuityDistanceCapCount += 1
@@ -1515,6 +1523,11 @@ class TraceRecordingViewModel(
                         sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
                     ),
             )
+        smoothedPointCount += finalized.adjustedPointCount
+        smoothedAdjustmentMeters += finalized.adjustmentMeters
+        maxSmoothedAdjustmentMeters = maxOf(maxSmoothedAdjustmentMeters, finalized.maximumAdjustmentMeters)
+        trajectoryGapResetCount += finalized.trajectoryDiagnostics.gapResetCount
+        trajectoryBarrierCount += finalized.trajectoryDiagnostics.barrierCount
         return state.copy(points = finalized.points)
     }
 
@@ -1531,6 +1544,7 @@ class TraceRecordingViewModel(
                     isContinuityRecovery = segment.isContinuityRecovery,
                 ),
             )
+        recordingDistanceDiagnostics.record(segment = segment, estimate = estimate)
         return state.copy(distanceMeters = (state.distanceMeters + estimate.distanceMeters).coerceAtLeast(0.0))
     }
 
@@ -1558,6 +1572,12 @@ class TraceRecordingViewModel(
         val activeState = _uiState.value
         if (!activeState.active || activeState.saving) return
         val state = finalizeSavedRecordingGeometry(flushWatchGpsDistanceGeometry(activeState))
+        val distanceComparison =
+            buildRecordingDistanceComparison(
+                activityDistanceMeters = state.distanceMeters,
+                diagnostics = recordingDistanceDiagnostics,
+                canonicalPoints = state.points,
+            )
         _uiState.value = state
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
@@ -1682,6 +1702,14 @@ class TraceRecordingViewModel(
                 _uiState.value = TraceRecordingUiState(message = "REC saved")
                 syncRecordingProgressVibrationTimer()
                 draftPersistMutex.withLock { draftStore.clear() }
+                DebugTelemetry.log(
+                    "TraceRecording",
+                    "event=distance_comparison " +
+                        recordingDistanceComparisonTokens(
+                            state = state,
+                            comparison = distanceComparison,
+                        ),
+                )
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=save_success ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
@@ -1960,6 +1988,9 @@ class TraceRecordingViewModel(
         straightDriftCorrectedPointCount = 0
         continuityDistanceCapCount = 0
         continuityDistanceSuppressedMeters = 0.0
+        recordingDistanceDiagnostics.reset()
+        trajectoryGapResetCount = 0
+        trajectoryBarrierCount = 0
         hybridElevationFilter.reset()
         hybridElevationPointCount = 0
         hybridPressureDeltaMeters = 0.0
@@ -2420,6 +2451,30 @@ class TraceRecordingViewModel(
         acceptedAccuracyCount += 1
         acceptedAccuracyMinMeters = minOf(acceptedAccuracyMinMeters ?: accuracy, accuracy)
         acceptedAccuracyMaxMeters = maxOf(acceptedAccuracyMaxMeters ?: accuracy, accuracy)
+    }
+
+    private fun recordingDistanceComparisonTokens(
+        state: TraceRecordingUiState,
+        comparison: RecordingDistanceComparison,
+    ): String {
+        val segmentBoundaryCount = state.points.drop(1).count { it.startsNewSegment }
+        val segmentCount = if (state.points.isEmpty()) 0 else segmentBoundaryCount + 1
+        return "activityDistanceMeters=${comparison.activityDistanceMeters.formatTelemetry(2)} " +
+            "watchGpsRawGeometryMeters=${comparison.watchGpsRawGeometryMeters.formatTelemetry(2)} " +
+            "continuityCappedMeters=${comparison.continuityCappedMeters.formatTelemetry(2)} " +
+            "continuityCapCount=${comparison.continuityCapCount} " +
+            "canonicalGeometryMeters=${comparison.canonicalGeometryMeters.formatTelemetry(2)} " +
+            "activityMinusCanonicalMeters=${comparison.activityMinusCanonicalMeters.formatTelemetry(2)} " +
+            "activityVsCanonicalPercent=${comparison.activityVsCanonicalPercent?.formatTelemetry(2) ?: "na"} " +
+            "acceptedPointCount=${state.points.size} " +
+            "segmentCount=$segmentCount " +
+            "segmentBoundaryCount=$segmentBoundaryCount " +
+            "gpsGapRecoverySegmentCount=${comparison.gpsGapRecoverySegmentCount} " +
+            "trackSmoothingMode=${state.trackSmoothingMode} " +
+            "smoothedAdjustmentMeters=${smoothedAdjustmentMeters.formatTelemetry(2)} " +
+            "smoothedPointCount=$smoothedPointCount " +
+            "trajectoryGapResetCount=$trajectoryGapResetCount " +
+            "trajectoryBarrierCount=$trajectoryBarrierCount"
     }
 
     private fun recordingSummaryTokens(

@@ -125,6 +125,25 @@ object DiagnosticsExporter {
         val pointDensity: RecordingPointDensityInsights = RecordingPointDensityInsights(),
     )
 
+    internal data class RecordingDistanceComparisonInsights(
+        val activityDistanceMeters: String? = null,
+        val watchGpsRawGeometryMeters: String? = null,
+        val continuityCappedMeters: String? = null,
+        val continuityCapCount: Int? = null,
+        val canonicalGeometryMeters: String? = null,
+        val activityMinusCanonicalMeters: String? = null,
+        val activityVsCanonicalPercent: String? = null,
+        val acceptedPointCount: Int? = null,
+        val segmentCount: Int? = null,
+        val segmentBoundaryCount: Int? = null,
+        val gpsGapRecoverySegmentCount: Int? = null,
+        val smoothingMode: String? = null,
+        val smoothedAdjustmentMeters: String? = null,
+        val smoothedPointCount: Int? = null,
+        val trajectoryGapResetCount: Int? = null,
+        val trajectoryBarrierCount: Int? = null,
+    )
+
     internal data class RecordingPointDensityInsights(
         val callbackReceivedCount: Int? = null,
         val usableCallbackCount: Int? = null,
@@ -424,6 +443,7 @@ object DiagnosticsExporter {
         var turnByTurnTurnAlertOffRouteCount: Int = 0
         var turnByTurnTurnAlertMissedWindowCount: Int = 0
         var recordingTrackFilter: RecordingTrackFilterInsights = RecordingTrackFilterInsights()
+        var recordingDistanceComparison: RecordingDistanceComparisonInsights = RecordingDistanceComparisonInsights()
         var recordingGapEndpointDistanceSampleCount: Int = 0
         var recordingGapEndpointDistanceAvgMeters: Float? = null
         var recordingGapEndpointDistanceMaxMeters: Float? = null
@@ -1452,6 +1472,86 @@ object DiagnosticsExporter {
             writer.appendLine(
                 "recordingSavedGpxSummaryDistanceMeters=${
                     telemetryInsights.recordingSavedGpxSummaryDistanceMeters?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityDistanceMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityDistanceMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingWatchGpsRawGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.watchGpsRawGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCappedMeters=${
+                    telemetryInsights.recordingDistanceComparison.continuityCappedMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCapCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityCapCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingCanonicalGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.canonicalGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityMinusCanonicalMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityMinusCanonicalMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityVsCanonicalPercent=${
+                    telemetryInsights.recordingDistanceComparison.activityVsCanonicalPercent ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceAcceptedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.acceptedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentBoundaryCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentBoundaryCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceGpsGapRecoverySegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.gpsGapRecoverySegmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothingMode=${
+                    telemetryInsights.recordingDistanceComparison.smoothingMode ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedAdjustmentMeters=${
+                    telemetryInsights.recordingDistanceComparison.smoothedAdjustmentMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.smoothedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryGapResetCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryGapResetCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryBarrierCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryBarrierCount?.toString() ?: "na"
                 }",
             )
             writer.appendLine(
