@@ -435,20 +435,21 @@ private fun recordingTrajectoryGapResetMillis(
         .coerceAtMost(policy.maximumGapResetMillis)
 
 @Suppress("LoopWithTooManyJumpStatements", "ReturnCount")
-private fun recordingTrajectoryTailStartIndex(
+internal fun recordingTrajectoryTailStartIndex(
     points: List<RecordedTracePoint>,
     options: RecordingPointSmoothingOptions,
 ): Int {
     if (points.isEmpty()) return 0
-    val firstUnfinalizedIndex = points.indexOfFirst { point -> !point.trajectoryFinalized }
-    if (firstUnfinalizedIndex < 0) return points.size
+    if (points.last().trajectoryFinalized) return points.size
     val policy = recordingTrajectoryPolicy(options.activityProfile)
     val newest = points.last()
     val context = recordingTrajectoryTailContext(policy, options)
     var startIndex = points.lastIndex
     var travelledMeters = 0.0
     var pointCount = 1
-    while (startIndex > firstUnfinalizedIndex && pointCount < context.maximumPointCount) {
+    // Ordinary non-OFF appends maintain a finalized prefix and a provisional suffix, so walking
+    // backward reaches the same tail without scanning the finalized recording history.
+    while (startIndex > 0 && pointCount < context.maximumPointCount) {
         val current = points[startIndex]
         val previous = points[startIndex - 1]
         if (current.startsNewSegment || previous.trajectoryFinalized) break
@@ -502,7 +503,17 @@ private fun finalizeRecordingTrajectoryPoints(
         )
     }
     val policy = recordingTrajectoryPolicy(options.activityProfile)
-    val barriers = recordingTrajectoryTurnBarriers(sourcePoints, options, policy)
+    val barriers =
+        recordingTrajectoryTurnBarriers(
+            points = sourcePoints,
+            options = options,
+            centerRange =
+                recordingTrajectoryRelevantBarrierCenterRange(
+                    firstFinalizeIndex = firstFinalizeIndex,
+                    endFinalizeExclusive = endFinalizeExclusive,
+                    options = options,
+                ),
+        )
     val revisedPoints = sourcePoints.toMutableList()
     var adjustedPointCount = 0
     var totalAdjustmentMeters = 0.0
@@ -645,17 +656,53 @@ private fun finalizeRecordingTrajectoryPoints(
     )
 }
 
-private fun recordingTrajectoryTurnBarriers(
+/**
+ * Finds turn barriers only where they can affect the points being finalized. A fit can inspect
+ * the configured points on either side, a guarded turn reaches [RecordingTrajectoryPolicy.barrierGuardPoints],
+ * and detour validation reaches its bounded interior plus direction-confirmation points. Direction
+ * evidence still reads the unchanged full [points] list, so each retained centre has its original
+ * incoming and outgoing context.
+ */
+internal fun recordingTrajectoryRelevantBarrierCenterRange(
+    firstFinalizeIndex: Int,
+    endFinalizeExclusive: Int,
+    options: RecordingPointSmoothingOptions,
+): IntRange {
+    val policy = recordingTrajectoryPolicy(options.activityProfile)
+    val fitContext = recordingTrajectoryFitContext(policy, options)
+    val backwardFitPoints = (fitContext.maximumPointCount - 1) / 2
+    val forwardFitPoints = fitContext.maximumPointCount - 1 - backwardFitPoints
+    val leadingMargin =
+        maxOf(
+            backwardFitPoints,
+            policy.barrierGuardPoints,
+            RECORDING_TRAJECTORY_MAX_DETOUR_INTERIOR_POINTS,
+        )
+    val trailingMargin =
+        maxOf(
+            forwardFitPoints,
+            policy.barrierGuardPoints,
+            RECORDING_TRAJECTORY_MAX_DETOUR_INTERIOR_POINTS + policy.minimumDirectionLegCount,
+        )
+    return (firstFinalizeIndex - leadingMargin)..(endFinalizeExclusive - 1 + trailingMargin)
+}
+
+internal fun recordingTrajectoryTurnBarriers(
     points: List<RecordedTracePoint>,
     options: RecordingPointSmoothingOptions,
-    policy: RecordingTrajectoryPolicy,
+    centerRange: IntRange = 2..(points.lastIndex - 2),
 ): Set<Int> {
     if (points.size < 5) return emptySet()
+    val firstCenter = maxOf(2, centerRange.first)
+    val lastCenter = minOf(points.lastIndex - 2, centerRange.last)
     val barriers = mutableSetOf<Int>()
-    for (index in 2..points.lastIndex - 2) {
-        val turn = recordingTrajectoryTurnEvidence(points, index, options, policy) ?: continue
-        if (turn.turnDegrees >= policy.barrierTurnDegrees) {
-            barriers += index
+    if (firstCenter <= lastCenter) {
+        val policy = recordingTrajectoryPolicy(options.activityProfile)
+        for (index in firstCenter..lastCenter) {
+            val turn = recordingTrajectoryTurnEvidence(points, index, options, policy) ?: continue
+            if (turn.turnDegrees >= policy.barrierTurnDegrees) {
+                barriers += index
+            }
         }
     }
     return barriers
