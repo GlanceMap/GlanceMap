@@ -249,7 +249,9 @@ fun DownloadScreen(
             WearScreenSize.MEDIUM -> 17.dp
             WearScreenSize.SMALL -> 16.dp
         }
-    val bottomActionBottomPadding = 0.dp
+    val bottomActionBottomPadding =
+        adaptive.dialogVerticalPadding + if (adaptive.isRound) 42.dp else 0.dp
+    val bottomActionWidthFraction = if (adaptive.isRound) 0.86f else 1f
     val bottomActionVisualOffsetY =
         when (screenSize) {
             WearScreenSize.LARGE -> (-6).dp
@@ -644,6 +646,7 @@ fun DownloadScreen(
                                     !uiState.isCheckingUpdates,
                             height = actionButtonHeight,
                             iconSize = actionButtonIconSize,
+                            widthFraction = bottomActionWidthFraction,
                             onClick = viewModel::checkSelectedBundlesForRefresh,
                         )
                     }
@@ -886,6 +889,7 @@ private fun DownloadActionButton(
     enabled: Boolean,
     height: Dp,
     iconSize: Dp,
+    widthFraction: Float = 1f,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = MaterialTheme.colorScheme.onPrimary,
     onClick: () -> Unit,
@@ -895,7 +899,7 @@ private fun DownloadActionButton(
         enabled = enabled,
         modifier =
             Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(widthFraction)
                 .height(height),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
         colors =
@@ -1004,9 +1008,9 @@ private fun InstalledBundleRow(
 
 private fun refreshSelectionButtonLabel(selectedCount: Int): String =
     if (selectedCount > 0) {
-        "Check for update ($selectedCount)"
+        "Check updates ($selectedCount)"
     } else {
-        "Check for update"
+        "Check updates"
     }
 
 private fun installedBundleSubtitle(bundle: OamInstalledBundle): String =
