@@ -39,6 +39,8 @@ data class TraceRecordingUiState(
     val active: Boolean = false,
     val paused: Boolean = false,
     val autoPaused: Boolean = false,
+    val recordingAutoPauseEnabled: Boolean =
+        SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
     val saving: Boolean = false,
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val trackSmoothingMode: String = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE,
@@ -76,6 +78,20 @@ data class TraceRecordingUiState(
 ) {
     val pointCount: Int get() = points.size
 }
+
+internal fun TraceRecordingUiState.isPausedForAutoResumeMonitoring(
+    autoPauseEnabled: Boolean,
+): Boolean = active && paused && (autoPaused || autoPauseEnabled)
+
+internal fun autoResumeSegmentStartReason(
+    autoPaused: Boolean,
+    hasRecordedPoints: Boolean,
+): String? =
+    when {
+        !hasRecordedPoints -> null
+        autoPaused -> RecordingSegmentStartReason.AUTO_PAUSE
+        else -> RecordingSegmentStartReason.MANUAL_PAUSE
+    }
 
 /**
  * State needed by high-level navigation and recording controls.

@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.core.service.location.policy
 
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,6 +96,40 @@ class NavigationRuntimeDemandTest {
             )
 
         assertEquals(NavigationRuntimeDemandReason.RECORDING_GUIDANCE, demand.reason)
+    }
+
+    @Test
+    fun manuallyPausedRecordingUsesAutoPauseDemandOnlyWhenEnabled() {
+        val pausedState = TraceRecordingUiState(active = true, paused = true)
+        val monitoring = pausedState.isPausedForAutoResumeMonitoring(autoPauseEnabled = true)
+        val monitoringDemand =
+            demand(
+                isNavigateScreen = false,
+                screenState = LocationScreenState.SCREEN_OFF,
+                isScreenResumed = false,
+                recordingActive = pausedState.active,
+                recordingPaused = pausedState.paused && !monitoring,
+                recordingAutoPaused = monitoring,
+            )
+
+        assertTrue(monitoringDemand.trackingEnabled)
+        assertTrue(monitoringDemand.backgroundGpsEnabled)
+        assertEquals(NavigationRuntimeDemandReason.RECORDING_AUTO_PAUSED, monitoringDemand.reason)
+
+        val fullyPaused = pausedState.isPausedForAutoResumeMonitoring(autoPauseEnabled = false)
+        val pausedDemand =
+            demand(
+                isNavigateScreen = false,
+                screenState = LocationScreenState.SCREEN_OFF,
+                isScreenResumed = false,
+                recordingActive = pausedState.active,
+                recordingPaused = pausedState.paused && !fullyPaused,
+                recordingAutoPaused = fullyPaused,
+            )
+
+        assertFalse(pausedDemand.trackingEnabled)
+        assertFalse(pausedDemand.backgroundGpsEnabled)
+        assertEquals(NavigationRuntimeDemandReason.IDLE, pausedDemand.reason)
     }
 
     @Test

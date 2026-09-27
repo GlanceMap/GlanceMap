@@ -361,6 +361,7 @@ fun DownloadScreen(
     )
     RefreshBundleDialog(
         check = uiState.refreshPrompt,
+        selection = uiState.selection,
         onConfirm = viewModel::confirmRefreshBundle,
         onDismiss = viewModel::dismissRefreshPrompt,
     )

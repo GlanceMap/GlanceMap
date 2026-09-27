@@ -51,6 +51,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScre
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
+import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
@@ -254,7 +255,9 @@ class MainActivity : ComponentActivity() {
                     } else {
                         turnByTurnScreenOnGpsEnabled
                     }
-                val recordingRuntimePaused = traceRecordingState.paused && !traceRecordingState.autoPaused
+                val recordingMonitoringForAutoResume =
+                    traceRecordingState.isPausedForAutoResumeMonitoring(traceRecordingState.recordingAutoPauseEnabled)
+                val recordingRuntimePaused = traceRecordingState.paused && !recordingMonitoringForAutoResume
                 var suppressNavigateTime by remember { mutableStateOf(false) }
                 var recordingDashboardExpandRequestToken by remember { mutableLongStateOf(0L) }
                 var recordingActionPromptRequestToken by remember { mutableLongStateOf(0L) }
@@ -277,7 +280,7 @@ class MainActivity : ComponentActivity() {
                     activityOwnsRuntime,
                     traceRecordingState.active,
                     recordingRuntimePaused,
-                    traceRecordingState.autoPaused,
+                    recordingMonitoringForAutoResume,
                     recordingGpsEnabled,
                     turnByTurnGuidanceSession,
                     turnByTurnGuidancePaused,
@@ -300,7 +303,7 @@ class MainActivity : ComponentActivity() {
                                 generalGpsInAmbient = gpsInAmbientMode,
                                 recordingActive = traceRecordingState.active,
                                 recordingPaused = recordingRuntimePaused,
-                                recordingAutoPaused = traceRecordingState.autoPaused,
+                                recordingAutoPaused = recordingMonitoringForAutoResume,
                                 recordingGpsEnabled = recordingGpsEnabled,
                                 turnByTurnActive = turnByTurnGuidanceSession != null,
                                 turnByTurnPaused = turnByTurnGuidancePaused,
@@ -1239,6 +1242,8 @@ class MainActivity : ComponentActivity() {
             } else {
                 destroyTurnByTurnScreenOnGpsEnabled
             }
+        val recordingMonitoringForAutoResume =
+            traceRecordingState.isPausedForAutoResumeMonitoring(traceRecordingState.recordingAutoPauseEnabled)
         val runtimeDemand =
             navigationRuntimeDemand(
                 NavigationRuntimeInputs(
@@ -1249,8 +1254,8 @@ class MainActivity : ComponentActivity() {
                     offlineMode = appContainer.settingsViewModel.offlineMode.value,
                     generalGpsInAmbient = appContainer.settingsViewModel.gpsInAmbientMode.value,
                     recordingActive = traceRecordingState.active,
-                    recordingPaused = traceRecordingState.paused && !traceRecordingState.autoPaused,
-                    recordingAutoPaused = traceRecordingState.autoPaused,
+                    recordingPaused = traceRecordingState.paused && !recordingMonitoringForAutoResume,
+                    recordingAutoPaused = recordingMonitoringForAutoResume,
                     recordingGpsEnabled = destroyRecordingGpsEnabled,
                     turnByTurnActive = appContainer.gpxViewModel.turnByTurnGuidanceSession.value != null,
                     turnByTurnPaused = appContainer.gpxViewModel.turnByTurnGuidancePaused.value,

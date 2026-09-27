@@ -108,6 +108,7 @@ data class OamBundleUpdateCheck(
 
 data class OamBundleRefreshSummary(
     val checks: List<OamBundleUpdateCheck>,
+    val selection: OamDownloadSelection? = null,
 ) {
     val totalCount: Int
         get() = checks.size
@@ -125,14 +126,32 @@ data class OamBundleRefreshSummary(
         get() = checks.count { it.status == OamBundleUpdateStatus.UNKNOWN }
 
     val checksToRefresh: List<OamBundleUpdateCheck>
+        get() = checksToRefreshOrUpdates(selection)
+
+    val selectedAdditionCount: Int
         get() =
-            checks.filter {
-                it.status == OamBundleUpdateStatus.UPDATE_AVAILABLE ||
-                    it.status == OamBundleUpdateStatus.REPAIR_NEEDED
-            }
+            selection?.let { currentSelection ->
+                checks.count {
+                    it.status == OamBundleUpdateStatus.UP_TO_DATE &&
+                        it.hasSelectedAdditions(currentSelection)
+                }
+            } ?: 0
+
+    fun checksToRefresh(currentSelection: OamDownloadSelection): List<OamBundleUpdateCheck> =
+        checks.filter { check ->
+            check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE ||
+                check.status == OamBundleUpdateStatus.REPAIR_NEEDED ||
+                (check.status == OamBundleUpdateStatus.UP_TO_DATE && check.hasSelectedAdditions(currentSelection))
+        }
 
     val bundlesToRefresh: List<OamInstalledBundle>
         get() = checksToRefresh.map { it.bundle }
+
+    private fun checksToRefreshOrUpdates(currentSelection: OamDownloadSelection?): List<OamBundleUpdateCheck> =
+        currentSelection?.let(::checksToRefresh) ?: checks.filter { check ->
+            check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE ||
+                check.status == OamBundleUpdateStatus.REPAIR_NEEDED
+        }
 }
 
 internal data class OamBundleRefreshForces(
@@ -161,6 +180,20 @@ internal fun OamBundleUpdateCheck.refreshForces(area: OamDownloadArea): OamBundl
                 .toSet(),
     )
 }
+
+internal fun OamBundleUpdateCheck.hasSelectedAdditions(
+    selection: OamDownloadSelection,
+): Boolean = bundle.missingComponentsFor(selection).canDownload
+
+internal fun OamInstalledBundle.missingComponentsFor(selection: OamDownloadSelection): OamDownloadSelection =
+    OamDownloadSelection(
+        includeMap = selection.includeMap && mapFileName == null,
+        includePoi = selection.includePoi && poiFileName == null,
+        includeRouting = selection.includeRouting && routingFileNames.isEmpty(),
+        includeDem = selection.includeDem && demTileIds.isEmpty(),
+        demSource = selection.demSource,
+        includeRefugesInfo = selection.includeRefugesInfo && refugesInfoFileName == null,
+    )
 
 internal fun oamRemoteFileName(url: String): String =
     runCatching { File(URI(url).path).name }

@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -196,8 +197,14 @@ class TraceRecordingViewModel(
             .onEach { sampleIntervalSeconds = it }
             .launchIn(viewModelScope)
         settingsRepository.recordingAutoPauseMode
-            .onEach { recordingAutoPauseMode = it }
-            .launchIn(viewModelScope)
+            .onEach { mode ->
+                recordingAutoPauseMode = mode
+                _uiState.update {
+                    it.copy(
+                        recordingAutoPauseEnabled = mode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
+                    )
+                }
+            }.launchIn(viewModelScope)
         settingsRepository.recordingTrackSmoothingMode
             .onEach { nextMode ->
                 recordingTrackSmoothingMode = nextMode
@@ -475,6 +482,8 @@ class TraceRecordingViewModel(
             TraceRecordingUiState(
                 active = true,
                 paused = false,
+                recordingAutoPauseEnabled =
+                    recordingAutoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
                 activityProfile = activityProfile,
                 trackSmoothingMode = recordingTrackSmoothingMode,
                 startedAtMillis = now,
@@ -515,7 +524,9 @@ class TraceRecordingViewModel(
                 callbackElapsedMs = callbackElapsedMs,
                 significantGapMs = recordingGapTelemetryThresholdMillis(),
             )
-        if (state.paused && !state.autoPaused) {
+        val pausedForAutoResumeMonitoring =
+            state.isPausedForAutoResumeMonitoring(state.recordingAutoPauseEnabled)
+        if (state.paused && !pausedForAutoResumeMonitoring) {
             skippedPausedCount += 1
             return null
         }
@@ -543,7 +554,7 @@ class TraceRecordingViewModel(
         // Batches retain each fix's monotonic timestamp. Using delivery time here would make
         // every point in the batch look simultaneous and discard all but the first one.
         val sampleElapsedMs = callbackElapsedMs
-        if (state.paused && state.autoPaused) {
+        if (pausedForAutoResumeMonitoring) {
             if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
                 return null
@@ -1797,6 +1808,8 @@ class TraceRecordingViewModel(
                     active = true,
                     paused = draft.paused,
                     autoPaused = draft.autoPaused,
+                    recordingAutoPauseEnabled =
+                        recordingAutoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
                     saving = false,
                     activityProfile = draft.activityProfile.toRecordingActivityProfile(activityProfile),
                     trackSmoothingMode = draft.trackSmoothingMode.toRecordingTrackSmoothingMode(),
@@ -2064,9 +2077,13 @@ class TraceRecordingViewModel(
         nowElapsedMs: Long,
     ): Boolean {
         val state = _uiState.value
-        if (!state.active || !state.paused || !state.autoPaused || state.saving) return false
+        if (!state.isPausedForAutoResumeMonitoring(state.recordingAutoPauseEnabled) ||
+            state.saving
+        ) {
+            return false
+        }
         val previousPoint = state.points.lastOrNull()
-        if (!isAutoPauseEnabledForCurrentProfile()) {
+        if (!isAutoPauseEnabledForCurrentProfile() && state.autoPaused) {
             autoResumeRecording(
                 state = state,
                 livePoint = livePoint,
@@ -2121,7 +2138,10 @@ class TraceRecordingViewModel(
         recentLiveCallbackIntervalsMs.clear()
         pendingGpsDeliveryGapMillis = 0L
         pendingSegmentStartReason =
-            RecordingSegmentStartReason.AUTO_PAUSE.takeIf { state.points.isNotEmpty() }
+            autoResumeSegmentStartReason(
+                autoPaused = state.autoPaused,
+                hasRecordedPoints = state.points.isNotEmpty(),
+            )
         recordingMovementConfidenceGate.reset()
         recordingFixQualityGate.reset()
         recordingPointCaptureExpectation.resume(
@@ -2157,7 +2177,7 @@ class TraceRecordingViewModel(
         autoPauseMovingSinceElapsedMs = null
     }
 
-    private fun isAutoPauseEnabledForCurrentProfile(): Boolean = recordingAutoPauseMode == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
+    private fun isAutoPauseEnabledForCurrentProfile(): Boolean = _uiState.value.recordingAutoPauseEnabled
 
     private fun hasReliableAutoPauseFix(livePoint: RecordedTracePoint): Boolean {
         val accuracy =
