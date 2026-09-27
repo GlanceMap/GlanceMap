@@ -293,6 +293,8 @@ class TurnByTurnHapticAlertTrackerTest {
         )
     }
 
+    // Named defaults make each crossing scenario explicit without a mutable test fixture.
+    @Suppress("LongParameterList")
     private fun sample(
         instruction: RouteInstruction,
         progressMeters: Double,

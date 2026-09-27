@@ -17,6 +17,11 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
+/**
+ * Keeps the related Compose lifecycles together so turn, arrival, and off-route alerts share
+ * the same route-scoped tracker state. Splitting this orchestration changes cancellation timing.
+ */
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "FunctionNaming")
 @Composable
 internal fun TurnByTurnGuidanceHapticEffect(
     context: Context,

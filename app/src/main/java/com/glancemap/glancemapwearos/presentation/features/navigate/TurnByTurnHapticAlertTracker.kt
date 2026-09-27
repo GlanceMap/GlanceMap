@@ -271,6 +271,8 @@ private data class TurnHapticObservation(
         return instructionChanged && !insideWindow && crossedInstruction
     }
 
+    // The arguments remain separate to mirror the crossing-decision telemetry exactly.
+    @Suppress("LongParameterList")
     fun event(
         outcome: TurnHapticAlertOutcome,
         trigger: TurnHapticAlertTrigger,
@@ -372,7 +374,11 @@ internal fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): 
         append("previousInstructionKey=${previousObservation?.instructionKey ?: "na"} ")
         append("previousInstructionIndex=${previousObservation?.instructionIndex ?: "na"} ")
         append("previousProgressM=${previousObservation?.projectedRouteProgressMeters.formatTelemetryNumber()} ")
-        append("previousDistanceToInstructionM=${previousObservation?.distanceToInstructionMeters.formatTelemetryNumber()} ")
+        append(
+            "previousDistanceToInstructionM=${
+                previousObservation?.distanceToInstructionMeters.formatTelemetryNumber()
+            } ",
+        )
         append("previousAlertDistanceM=${previousObservation?.alertDistanceMeters.formatTelemetryNumber()} ")
         append("previousSpeedMps=${previousObservation?.speedMps.formatTelemetrySpeed()} ")
         append("previousFixTimestampMs=${previousObservation?.fixTimestampMs ?: "na"} ")
@@ -380,7 +386,11 @@ internal fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): 
         append("currentInstructionKey=${currentObservation.instructionKey ?: "na"} ")
         append("currentInstructionIndex=${currentObservation.instructionIndex ?: "na"} ")
         append("currentProgressM=${currentObservation.projectedRouteProgressMeters.formatTelemetryNumber()} ")
-        append("currentDistanceToInstructionM=${currentObservation.distanceToInstructionMeters.formatTelemetryNumber()} ")
+        append(
+            "currentDistanceToInstructionM=${
+                currentObservation.distanceToInstructionMeters.formatTelemetryNumber()
+            } ",
+        )
         append("currentAlertDistanceM=${currentObservation.alertDistanceMeters.formatTelemetryNumber()} ")
         append("currentSpeedMps=${currentObservation.speedMps.formatTelemetrySpeed()} ")
         append("currentFixTimestampMs=${currentObservation.fixTimestampMs ?: "na"} ")
@@ -399,11 +409,10 @@ internal fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): 
         )
     }
 
-private fun TurnHapticAlertEvent.fixTimestampSpacingMs(): Long? {
-    val previousTimestamp = previousObservation?.fixTimestampMs ?: return null
-    val currentTimestamp = currentObservation.fixTimestampMs ?: return null
-    return currentTimestamp - previousTimestamp
-}
+private fun TurnHapticAlertEvent.fixTimestampSpacingMs(): Long? =
+    previousObservation?.fixTimestampMs?.let { previousTimestamp ->
+        currentObservation.fixTimestampMs?.minus(previousTimestamp)
+    }
 
 private fun Double?.formatTelemetryNumber(): String =
     this

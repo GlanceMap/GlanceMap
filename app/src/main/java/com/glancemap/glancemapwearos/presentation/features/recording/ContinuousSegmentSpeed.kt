@@ -19,21 +19,32 @@ internal data class ContinuousSpeedSample(
 internal fun calculateFastestContinuousSegmentSpeedMps(samples: List<ContinuousSpeedSample>): Double? {
     var fastestSpeedMps: Double? = null
     for (index in 1..samples.lastIndex) {
-        val previous = samples[index - 1]
-        val current = samples[index]
-        if (current.startsNewSegment || !current.segmentStartReason.isNullOrBlank()) continue
-        val previousTimeMillis = previous.timeMillis ?: continue
-        val currentTimeMillis = current.timeMillis ?: continue
-        val elapsedMillis = currentTimeMillis - previousTimeMillis
-        if (elapsedMillis <= 0L) continue
-        val distanceMeters = haversineMeters(previous.latLong, current.latLong)
-        if (!distanceMeters.isFinite()) continue
-        val speedMps = distanceMeters / (elapsedMillis / 1_000.0)
-        if (speedMps.isFinite() && speedMps > 0.0 && (fastestSpeedMps == null || speedMps > fastestSpeedMps)) {
-            fastestSpeedMps = speedMps
+        continuousSegmentSpeedMps(samples[index - 1], samples[index])?.let { speedMps ->
+            fastestSpeedMps = maxOf(fastestSpeedMps ?: speedMps, speedMps)
         }
     }
     return fastestSpeedMps
+}
+
+private fun continuousSegmentSpeedMps(
+    previous: ContinuousSpeedSample,
+    current: ContinuousSpeedSample,
+): Double? {
+    val elapsedMillis =
+        if (current.startsNewSegment || !current.segmentStartReason.isNullOrBlank()) {
+            null
+        } else {
+            previous.timeMillis?.let { previousTimeMillis ->
+                current.timeMillis?.minus(previousTimeMillis)
+            }
+        }
+    return elapsedMillis
+        ?.takeIf { it > 0L }
+        ?.let { validElapsedMillis ->
+            haversineMeters(previous.latLong, current.latLong)
+                .takeIf(Double::isFinite)
+                ?.div(validElapsedMillis / 1_000.0)
+        }?.takeIf { it.isFinite() && it > 0.0 }
 }
 
 @JvmName("fastestRecordedTraceSegmentSpeedMps")

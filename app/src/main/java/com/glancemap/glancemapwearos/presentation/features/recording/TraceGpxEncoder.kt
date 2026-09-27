@@ -138,6 +138,8 @@ private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceS
     writeRecordingSensorSummary(summary)
 }
 
+// Optional fields directly mirror the stable GPX summary schema; extracting them risks omissions.
+@Suppress("CyclomaticComplexMethod")
 private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSummary) {
     summary.activityProfile?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:activityProfile", it)
@@ -250,6 +252,8 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     }
 }
 
+// Optional fields directly mirror the stable per-point GPX schema; keep their ordering together.
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val accuracyMeters = point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }
     val effectiveAccuracyMeters = point.effectiveAccuracyMeters?.takeIf { it.isFinite() && it >= 0f }

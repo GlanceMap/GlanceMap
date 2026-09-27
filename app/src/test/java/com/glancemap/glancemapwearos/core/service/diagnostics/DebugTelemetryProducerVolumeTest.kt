@@ -137,7 +137,9 @@ class DebugTelemetryProducerVolumeTest {
     @Test
     fun gnssRingReportsGeneratedRetainedAndDroppedCounts() {
         DebugTelemetry.setEnabledFromLocationService(true)
-        repeat(1_201) { runCatching { GnssDiagnostics.recordEvent(event = "test") } }
+        repeat(1_201) {
+            runCatching { GnssDiagnostics.recordEvent(event = "test") }
+        }
 
         assertEquals(1_201L, GnssDiagnostics.generatedLineCount())
         assertEquals(GnssDiagnostics.maxBufferedLines(), GnssDiagnostics.snapshotLines().size)
@@ -148,5 +150,7 @@ class DebugTelemetryProducerVolumeTest {
         runCatching { DebugTelemetry.log(tag, "event=test") }
     }
 
+    // Keep the direct snapshot assertion compact; Ktlint requires this expression-body layout.
+    @Suppress("MaxLineLength")
     private fun volumesByProducer() = DebugTelemetry.captureSessionSnapshot().producerVolumes.associateBy { it.producer }
 }
