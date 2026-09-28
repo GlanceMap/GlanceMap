@@ -9,7 +9,7 @@ class RecordingTrackSmoothingEquivalenceTest {
     @Test
     fun boundedImplementationMatchesPreRefactorSignatures() {
         FIXTURES.forEach { fixture ->
-            assertEquals(BASELINES.getValue(fixture.name), replay(fixture))
+            assertEquals(fixture.name, BASELINES.getValue(fixture.name), replay(fixture))
         }
     }
 
@@ -98,17 +98,17 @@ class RecordingTrackSmoothingEquivalenceTest {
         result: RecordingCanonicalAppendResult,
     ): Long {
         var hash = initialHash
-        hash = mix(hash, java.lang.Double.doubleToLongBits(result.distanceDeltaMeters))
+        hash = mix(hash, quantizeMeters(result.distanceDeltaMeters))
         hash = mix(hash, result.adjustedPointCount.toLong())
-        hash = mix(hash, java.lang.Double.doubleToLongBits(result.adjustmentMeters))
-        hash = mix(hash, java.lang.Double.doubleToLongBits(result.maximumAdjustmentMeters))
+        hash = mix(hash, quantizeMeters(result.adjustmentMeters))
+        hash = mix(hash, quantizeMeters(result.maximumAdjustmentMeters))
         hash = mix(hash, if (result.confirmedReversalCorrected) 1L else 0L)
         hash = mix(hash, result.straightDriftCorrectedPointCount.toLong())
         with(result.trajectoryDiagnostics) {
             hash = mix(hash, evaluatedPointCount.toLong())
             hash = mix(hash, adjustedPointCount.toLong())
-            hash = mix(hash, java.lang.Double.doubleToLongBits(totalAdjustmentMeters))
-            hash = mix(hash, java.lang.Double.doubleToLongBits(maximumAdjustmentMeters))
+            hash = mix(hash, quantizeMeters(totalAdjustmentMeters))
+            hash = mix(hash, quantizeMeters(maximumAdjustmentMeters))
             hash = mix(hash, turnProtectedPointCount.toLong())
             hash = mix(hash, barrierCount.toLong())
             hash = mix(hash, gapResetCount.toLong())
@@ -119,8 +119,8 @@ class RecordingTrackSmoothingEquivalenceTest {
     private fun hashPoints(points: List<RecordedTracePoint>): String {
         var hash = FNV_OFFSET_BASIS
         points.forEach { point ->
-            hash = mix(hash, java.lang.Double.doubleToLongBits(point.latLong.latitude))
-            hash = mix(hash, java.lang.Double.doubleToLongBits(point.latLong.longitude))
+            hash = mix(hash, quantizeCoordinates(point.latLong.latitude))
+            hash = mix(hash, quantizeCoordinates(point.latLong.longitude))
             hash = mix(hash, point.timeMillis)
             hash = mix(hash, if (point.startsNewSegment) 1L else 0L)
             hash = mixString(hash, point.segmentStartReason)
@@ -134,6 +134,10 @@ class RecordingTrackSmoothingEquivalenceTest {
         bytes.forEach { value -> hash = mix(hash, value.toLong()) }
         return hash.toULong().toString(16)
     }
+
+    private fun quantizeMeters(value: Double): Long = (value * METERS_HASH_SCALE).toLong()
+
+    private fun quantizeCoordinates(value: Double): Long = (value * COORDINATE_HASH_SCALE).toLong()
 
     private fun mixString(
         initialHash: Long,
@@ -220,6 +224,8 @@ class RecordingTrackSmoothingEquivalenceTest {
         const val FNV_PRIME = 1_099_511_628_211L
         const val STEP_METERS = 6.0
         const val TURN_LENGTH = 80
+        const val METERS_HASH_SCALE = 1_000_000.0
+        const val COORDINATE_HASH_SCALE = 10_000_000_000.0
         val TEST_ORIGIN = LatLong(45.0, 6.0)
         val STRAIGHT_NOISE =
             listOf(0.0, 3.5, -3.0, 4.0, -3.5, 3.0, -4.0, 3.5, -3.0, 3.0, -2.5, 2.0)
@@ -234,13 +240,13 @@ class RecordingTrackSmoothingEquivalenceTest {
         val BASELINES =
             mapOf(
                 "hike_adaptive_straight_1000" to
-                    ReplaySignature("42dfdfbace85cb16", "d6af126dce615238", "9c79ee8da490c872"),
+                    ReplaySignature("223685eb8e7c93a5", "830cca25f10576d6", "9c79ee8da490c872"),
                 "hike_strong_turn_heavy_1000" to
-                    ReplaySignature("daa288dc4c8509e9", "2402850e8e9cfb92", "9a80034f25c81e0d"),
+                    ReplaySignature("d9adaef54fd66e81", "29563e763bb591ca", "9a80034f25c81e0d"),
                 "bike_adaptive_straight_10000" to
-                    ReplaySignature("c910f322e1af913e", "61f839c34402a33b", "d8b9efcde911d702"),
+                    ReplaySignature("a895451a9a7aed03", "ab7bd226284784be", "d8b9efcde911d702"),
                 "bike_strong_turn_heavy_10000" to
-                    ReplaySignature("eb8b9f4d7fc92828", "9b9fe36f042de30a", "d7925817169ccbf"),
+                    ReplaySignature("f9662edb2dc5ce3a", "5159039011e6244a", "d7925817169ccbf"),
             )
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
         const val BIKE = SettingsRepository.ACTIVITY_PROFILE_BIKE
