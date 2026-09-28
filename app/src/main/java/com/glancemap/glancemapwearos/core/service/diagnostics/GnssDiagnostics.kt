@@ -13,6 +13,7 @@ internal object GnssDiagnostics {
 
     private val lock = Any()
     private val lines = ArrayDeque<String>()
+    private var generatedLines: Long = 0L
     private var droppedLines: Int = 0
     private var lastStatusLoggedElapsedMs: Long = 0L
     private val tsFormatter: DateTimeFormatter =
@@ -23,6 +24,7 @@ internal object GnssDiagnostics {
     fun clear() {
         synchronized(lock) {
             lines.clear()
+            generatedLines = 0L
             droppedLines = 0
             lastStatusLoggedElapsedMs = 0L
         }
@@ -31,6 +33,8 @@ internal object GnssDiagnostics {
     fun snapshotLines(): List<String> = synchronized(lock) { lines.toList() }
 
     fun droppedLineCount(): Int = synchronized(lock) { droppedLines }
+
+    fun generatedLineCount(): Long = synchronized(lock) { generatedLines }
 
     fun maxBufferedLines(): Int = MAX_LINES
 
@@ -114,6 +118,7 @@ internal object GnssDiagnostics {
         val line = "${tsFormatter.format(Instant.ofEpochMilli(nowEpochMs))} $payload"
         synchronized(lock) {
             lines.addLast(line)
+            generatedLines += 1L
             while (lines.size > MAX_LINES) {
                 lines.removeFirst()
                 droppedLines += 1

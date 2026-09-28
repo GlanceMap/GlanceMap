@@ -24,6 +24,7 @@ internal class ForegroundTransferSessionOwner {
         sourceNodeId: String,
         notificationId: Int,
         job: Job,
+        terminalState: TransferTerminalState = TransferTerminalState(transferId),
     ): Session {
         val session =
             Session(
@@ -33,6 +34,7 @@ internal class ForegroundTransferSessionOwner {
                 sourceNodeId = sourceNodeId,
                 notificationId = notificationId,
                 job = job,
+                terminalState = terminalState,
             )
         sessionsByStartId[startId] = session
         return session

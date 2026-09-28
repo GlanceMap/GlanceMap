@@ -200,6 +200,7 @@ internal fun DownloadNetworkWarningDialog(
 @Composable
 internal fun RefreshBundleDialog(
     check: OamBundleUpdateCheck?,
+    selection: OamDownloadSelection,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -208,21 +209,23 @@ internal fun RefreshBundleDialog(
     val repairNeeded = check.status == OamBundleUpdateStatus.REPAIR_NEEDED
     val updateAvailable = check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE
     val upToDate = check.status == OamBundleUpdateStatus.UP_TO_DATE
+    val hasSelectedAdditions = check.hasSelectedAdditions(selection)
     WearActionDialog(
         visible = true,
         title =
             when {
                 repairNeeded -> "Repair needed"
                 updateAvailable -> "Update available"
+                upToDate && hasSelectedAdditions -> "Components available"
                 upToDate -> "Already up to date"
                 check.checkedFileCount == 0 -> "Update info missing"
                 else -> "Check incomplete"
             },
-        message = refreshBundleDialogText(check),
-        confirmText = if (upToDate) "OK" else "Refresh",
-        onConfirm = if (upToDate) onDismiss else onConfirm,
+        message = refreshBundleDialogText(check, selection),
+        confirmText = if (upToDate) "Add selected" else "Refresh",
+        onConfirm = if (upToDate && !hasSelectedAdditions) onDismiss else onConfirm,
         onDismissRequest = onDismiss,
-        dismissText = if (upToDate) null else "Cancel",
+        dismissText = if (upToDate && !hasSelectedAdditions) null else "Cancel",
     )
 }
 
@@ -235,25 +238,36 @@ internal fun RefreshBundleSummaryDialog(
     if (summary == null) return
 
     val refreshCount = summary.bundlesToRefresh.size
-    val hasUpdates = refreshCount > 0
+    val hasRemoteRefresh = summary.updateAvailableCount > 0 || summary.repairNeededCount > 0
+    val hasSelectedAdditions = summary.selectedAdditionCount > 0
+    val hasRefreshWork = refreshCount > 0
     WearActionDialog(
         visible = true,
         title =
             when {
                 summary.repairNeededCount > 0 -> "Repair bundles?"
-                hasUpdates -> "Refresh bundles?"
+                hasRemoteRefresh -> "Refresh bundles?"
+                hasSelectedAdditions -> "Add selected components?"
                 summary.unknownCount > 0 -> "Check incomplete"
                 else -> "All up to date"
             },
         message = refreshSummaryDialogText(summary),
-        confirmText = if (hasUpdates) "Refresh $refreshCount" else "OK",
-        onConfirm = if (hasUpdates) onConfirm else onDismiss,
+        confirmText =
+            when {
+                hasRemoteRefresh -> "Refresh $refreshCount"
+                hasSelectedAdditions -> "Add $refreshCount"
+                else -> "OK"
+            },
+        onConfirm = if (hasRefreshWork) onConfirm else onDismiss,
         onDismissRequest = onDismiss,
-        dismissText = if (hasUpdates) "Cancel" else null,
+        dismissText = if (hasRefreshWork) "Cancel" else null,
     )
 }
 
-private fun refreshBundleDialogText(check: OamBundleUpdateCheck): String =
+private fun refreshBundleDialogText(
+    check: OamBundleUpdateCheck,
+    selection: OamDownloadSelection,
+): String =
     when (check.status) {
         OamBundleUpdateStatus.REPAIR_NEEDED ->
             buildString {
@@ -267,6 +281,7 @@ private fun refreshBundleDialogText(check: OamBundleUpdateCheck): String =
                     }
                 }
                 append("\n\nRefresh will download only the affected parts.")
+                appendSelectedAdditions(check, selection)
             }
         OamBundleUpdateStatus.UPDATE_AVAILABLE ->
             buildString {
@@ -281,6 +296,7 @@ private fun refreshBundleDialogText(check: OamBundleUpdateCheck): String =
                     }
                 }
                 append("\n\nExisting files will be replaced after the download completes.")
+                appendSelectedAdditions(check, selection)
             }
         OamBundleUpdateStatus.UNKNOWN ->
             if (check.checkedFileCount == 0) {
@@ -290,8 +306,26 @@ private fun refreshBundleDialogText(check: OamBundleUpdateCheck): String =
                 "Some files for ${check.bundle.areaLabel} could not be checked.\n\n" +
                     "Refresh anyway?"
             }
-        OamBundleUpdateStatus.UP_TO_DATE -> "${check.bundle.areaLabel} is already up to date."
+        OamBundleUpdateStatus.UP_TO_DATE ->
+            if (check.hasSelectedAdditions(selection)) {
+                "${check.bundle.areaLabel} is up to date, but selected settings include missing components: " +
+                    "${check.bundle.missingComponentsFor(selection).label()}.\n\nAdd them without replacing " +
+                    "healthy existing files?"
+            } else {
+                "${check.bundle.areaLabel} is already up to date."
+            }
     }
+
+private fun StringBuilder.appendSelectedAdditions(
+    check: OamBundleUpdateCheck,
+    selection: OamDownloadSelection,
+) {
+    if (check.hasSelectedAdditions(selection)) {
+        append("\n\nSelected settings will also add: ")
+        append(check.bundle.missingComponentsFor(selection).label())
+        append(".")
+    }
+}
 
 private fun refreshSummaryDialogText(summary: OamBundleRefreshSummary): String =
     when {
@@ -307,6 +341,9 @@ private fun refreshSummaryDialogText(summary: OamBundleRefreshSummary): String =
                 if (summary.unknownCount > 0) {
                     append("\n${summary.unknownCount} check incomplete")
                 }
+                if (summary.selectedAdditionCount > 0) {
+                    append("\n${summary.selectedAdditionCount} can add selected components")
+                }
                 if (summary.upToDateCount > 0) {
                     append("\n${summary.upToDateCount} up to date")
                 }
@@ -319,8 +356,14 @@ private fun refreshSummaryDialogText(summary: OamBundleRefreshSummary): String =
                 if (summary.upToDateCount > 0) {
                     append("\n${summary.upToDateCount} up to date")
                 }
+                if (summary.selectedAdditionCount > 0) {
+                    append("\n${summary.selectedAdditionCount} can add selected components")
+                }
                 append("\n\nNo confirmed updates were found.")
             }
+        summary.selectedAdditionCount > 0 ->
+            "${summary.totalCount} selected bundle(s) are up to date.\n\n" +
+                "Add selected components to ${summary.selectedAdditionCount} bundle(s)?"
         else -> "${summary.totalCount} selected bundle(s) are up to date."
     }
 

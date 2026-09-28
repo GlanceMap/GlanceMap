@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.maps
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -167,6 +168,24 @@ class MapsforgeHillshadeDemFolderTest {
         assertEquals(1, coverage.missingTileCount)
         assertEquals(2, coverage.availableTileCount)
         assertTrue(coverage.hasAnyTerrain)
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun visibleCoverageReportsNoTerrainWhenNeitherSourceCoversTiles() {
+        val root = Files.createTempDirectory("hillshade-no-coverage").toFile()
+        val detailed = File(root, "dem1").apply { mkdirs() }
+        val standard = File(root, "dem3").apply { mkdirs() }
+
+        val coverage =
+            resolveVisibleHillshadeTerrainCoverage(
+                demRootDirs = listOf(detailed, standard),
+                requiredTileIds = setOf("N46E006"),
+            )
+
+        assertEquals(0, coverage.availableTileCount)
+        assertEquals(1, coverage.missingTileCount)
+        assertFalse(coverage.hasAnyTerrain)
         root.deleteRecursively()
     }
 

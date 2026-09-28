@@ -91,6 +91,36 @@ private val MAP_DATA_ICON_SIZE = 15.dp
 private val MAP_ROUTING_BADGE_SLOT_WIDTH = 22.dp
 private val MAP_DEM_BADGE_SLOT_WIDTH = 22.dp
 
+internal enum class DemMapBadgeState {
+    DOWNLOADING,
+    READY,
+    PARTIAL,
+    UNAVAILABLE,
+}
+
+internal fun demMapBadgeState(
+    mapFile: MapFileState,
+    isDemDownloadingForThisMap: Boolean,
+): DemMapBadgeState =
+    when {
+        isDemDownloadingForThisMap -> DemMapBadgeState.DOWNLOADING
+        mapFile.demReady -> DemMapBadgeState.READY
+        mapFile.demCoverageKnown && mapFile.demAvailableTiles > 0 -> DemMapBadgeState.PARTIAL
+        else -> DemMapBadgeState.UNAVAILABLE
+    }
+
+internal fun isDemMapBadgeEnabled(
+    badgeState: DemMapBadgeState,
+    isDemDownloadRunning: Boolean,
+): Boolean =
+    when (badgeState) {
+        DemMapBadgeState.DOWNLOADING -> true
+        DemMapBadgeState.READY -> false
+        DemMapBadgeState.PARTIAL,
+        DemMapBadgeState.UNAVAILABLE,
+        -> !isDemDownloadRunning
+    }
+
 @Composable
 fun MapsScreen(
     navController: NavHostController,
@@ -113,7 +143,6 @@ fun MapsScreen(
     var isDeleteMode by remember { mutableStateOf(false) }
     var isRenameMode by remember { mutableStateOf(false) }
     var visibleDemStatusMessage by remember { mutableStateOf("") }
-    var manualDemStatusMessageId by remember { mutableStateOf(0) }
     var lastShownDemCompletionAt by remember { mutableStateOf(demDownloadState.lastCompletedAtMillis) }
     var showDemNetworkErrorDialog by remember { mutableStateOf(false) }
     var demNetworkErrorMessage by remember { mutableStateOf("") }
@@ -277,14 +306,6 @@ fun MapsScreen(
         visibleDemStatusMessage = message
         delay(5_000L)
         visibleDemStatusMessage = ""
-    }
-    LaunchedEffect(manualDemStatusMessageId) {
-        if (manualDemStatusMessageId <= 0) return@LaunchedEffect
-        val message = visibleDemStatusMessage
-        delay(2_500L)
-        if (visibleDemStatusMessage == message) {
-            visibleDemStatusMessage = ""
-        }
     }
 
     fun dismissHelpDialog() {
@@ -790,10 +811,6 @@ fun MapsScreen(
                             isDemDownloadingForThisMap =
                                 demDownloadState.isDownloading &&
                                     demDownloadState.activeMapPath == mapFile.path,
-                            onDemAlreadyDownloaded = {
-                                visibleDemStatusMessage = "Elevation already downloaded."
-                                manualDemStatusMessageId += 1
-                            },
                             onDownloadDem = {
                                 themeViewModel.downloadDemForMap(mapFile.path)
                             },
@@ -984,7 +1001,6 @@ private fun MapItem(
     rowSpacing: Dp,
     isDemDownloadRunning: Boolean,
     isDemDownloadingForThisMap: Boolean,
-    onDemAlreadyDownloaded: () -> Unit,
     onDownloadDem: () -> Unit,
     onCancelDemDownload: () -> Unit,
 ) {
@@ -1040,11 +1056,17 @@ private fun MapItem(
                 )
             }
         } else {
+            val demBadgeState =
+                demMapBadgeState(
+                    mapFile = mapFile,
+                    isDemDownloadingForThisMap = isDemDownloadingForThisMap,
+                )
             val demIconTint =
-                when {
-                    isDemDownloadingForThisMap -> Color(0xFF6EC8FF)
-                    mapFile.demReady -> Color(0xFF76E36A)
-                    else -> Color(0xFF8E8E8E)
+                when (demBadgeState) {
+                    DemMapBadgeState.DOWNLOADING -> Color(0xFF6EC8FF)
+                    DemMapBadgeState.READY -> Color(0xFF76E36A)
+                    DemMapBadgeState.PARTIAL -> Color(0xFFFFC857)
+                    DemMapBadgeState.UNAVAILABLE -> Color(0xFF8E8E8E)
                 }
             val routingIconTint =
                 when {
@@ -1067,23 +1089,27 @@ private fun MapItem(
                 ) {
                     CompactIconHitTargetButton(
                         onClick = {
-                            if (isDemDownloadingForThisMap) {
-                                onCancelDemDownload()
-                            } else if (mapFile.demReady) {
-                                onDemAlreadyDownloaded()
-                            } else if (!isDemDownloadRunning) {
-                                onDownloadDem()
+                            when (demBadgeState) {
+                                DemMapBadgeState.DOWNLOADING -> onCancelDemDownload()
+                                DemMapBadgeState.READY -> Unit
+                                DemMapBadgeState.PARTIAL,
+                                DemMapBadgeState.UNAVAILABLE,
+                                -> if (!isDemDownloadRunning) onDownloadDem()
                             }
                         },
-                        enabled = !isDemDownloadRunning || isDemDownloadingForThisMap,
+                        enabled =
+                            isDemMapBadgeEnabled(
+                                badgeState = demBadgeState,
+                                isDemDownloadRunning = isDemDownloadRunning,
+                            ),
                         visualSize = MAP_DATA_BADGE_SIZE,
                         containerColor = Color.Black.copy(alpha = 0.72f),
                         contentColor = demIconTint,
                         disabledContainerColor = Color.Black.copy(alpha = 0.42f),
-                        disabledContentColor = demIconTint.copy(alpha = 0.6f),
+                        disabledContentColor = demIconTint,
                     ) {
-                        when {
-                            isDemDownloadingForThisMap -> {
+                        when (demBadgeState) {
+                            DemMapBadgeState.DOWNLOADING -> {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Cancel elevation download",
@@ -1091,7 +1117,7 @@ private fun MapItem(
                                 )
                             }
 
-                            mapFile.demReady -> {
+                            DemMapBadgeState.READY -> {
                                 Icon(
                                     imageVector = Icons.Default.Landscape,
                                     contentDescription = "DEM downloaded",
@@ -1099,10 +1125,17 @@ private fun MapItem(
                                 )
                             }
 
-                            else -> {
+                            DemMapBadgeState.PARTIAL,
+                            DemMapBadgeState.UNAVAILABLE,
+                            -> {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_dem_download),
-                                    contentDescription = "Download DEM",
+                                    contentDescription =
+                                        if (demBadgeState == DemMapBadgeState.PARTIAL) {
+                                            "Download remaining DEM"
+                                        } else {
+                                            "Download DEM"
+                                        },
                                     modifier = Modifier.size(MAP_DATA_ICON_SIZE),
                                 )
                             }

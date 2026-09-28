@@ -17,11 +17,17 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
+/**
+ * Keeps the related Compose lifecycles together so turn, arrival, and off-route alerts share
+ * the same route-scoped tracker state. Splitting this orchestration changes cancellation timing.
+ */
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "FunctionNaming")
 @Composable
 internal fun TurnByTurnGuidanceHapticEffect(
     context: Context,
     state: TurnByTurnGuidanceState,
     currentSpeedMps: Float?,
+    currentFixTimestampMs: Long? = null,
     activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     hapticsEnabled: Boolean,
     turnAlertsMode: String,
@@ -53,6 +59,7 @@ internal fun TurnByTurnGuidanceHapticEffect(
         state.alertSessionKey,
         state.alertGpsDeliveryIntervalMs,
         currentSpeedMps,
+        currentFixTimestampMs,
         activityProfile,
         hapticsEnabled,
         turnAlertsMode,
@@ -72,6 +79,7 @@ internal fun TurnByTurnGuidanceHapticEffect(
                     gpsDeliveryIntervalMs = gpsDeliveryIntervalMs,
                     hapticsEnabled = hapticsEnabled,
                     turnAlertsMode = turnAlertsMode,
+                    fixTimestampMs = currentFixTimestampMs,
                 ),
             )
         events.forEach { event ->
@@ -146,30 +154,6 @@ internal fun TurnByTurnGuidanceHapticEffect(
         vibrator?.vibrate(BACK_ON_ROUTE_ALERT_EFFECT)
     }
 }
-
-private fun TurnHapticAlertEvent.telemetryMessage(vibratorAvailable: Boolean): String =
-    buildString {
-        if (outcome == TurnHapticAlertOutcome.FIRED) append("haptic=turn ")
-        append("turnAlert=${outcome.telemetryValue} ")
-        append("trigger=${trigger?.telemetryValue ?: "na"} ")
-        append("command=${instruction.command} index=${instruction.trackPointIndex} ")
-        append("distanceM=${distanceMeters.toInt()} alertDistanceM=${alertDistanceMeters.toInt()} ")
-        append("previousDistanceM=${previousDistanceMeters?.toInt() ?: "na"} ")
-        append("overshootM=${overshootMeters?.toInt() ?: "na"} ")
-        append("gpsIntervalMs=$gpsDeliveryIntervalMs ")
-        append(
-            "speedMps=${
-                speedMps
-                    ?.takeIf { it.isFinite() }
-                    ?.let { String.format(java.util.Locale.US, "%.1f", it) }
-                    ?: "na"
-            } ",
-        )
-        append(
-            "reason=${reason ?: "na"} turnMode=$turnAlertsMode profile=$activityProfile " +
-                "vibratorAvailable=$vibratorAvailable",
-        )
-    }
 
 private fun turnAlertEffect(command: RouteInstructionCommand): VibrationEffect =
     when (command) {

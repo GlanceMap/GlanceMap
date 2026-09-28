@@ -7,12 +7,16 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.BuildConfig
+import com.glancemap.glancemapwearos.core.maps.DemSource
+import com.glancemap.glancemapwearos.core.maps.DemStorageInventoryCapture
+import com.glancemap.glancemapwearos.core.maps.DemStorageInventoryScanner
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveBundleDownloadTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.deriveCompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeBundleDownloadSummarySection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeDemDownloadSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGlobalTelemetryProducerVolumeSummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeLineDumpSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeRecordingInstrumentationSummarySection
@@ -23,6 +27,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.motion.Marke
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.motion.MarkerMotionTelemetry
 import java.io.File
+import java.io.Writer
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -118,6 +123,26 @@ object DiagnosticsExporter {
         val maxSmoothedAdjustmentMeters: String? = null,
         val smartTrack: RecordingSmartTrackInsights = RecordingSmartTrackInsights(),
         val pointDensity: RecordingPointDensityInsights = RecordingPointDensityInsights(),
+    )
+
+    internal data class RecordingDistanceComparisonInsights(
+        val diagnosticsScope: String? = null,
+        val activityDistanceMeters: String? = null,
+        val watchGpsRawGeometryMeters: String? = null,
+        val continuityCappedMeters: String? = null,
+        val continuityCapCount: Int? = null,
+        val canonicalGeometryMeters: String? = null,
+        val activityMinusCanonicalMeters: String? = null,
+        val activityVsCanonicalPercent: String? = null,
+        val acceptedPointCount: Int? = null,
+        val segmentCount: Int? = null,
+        val segmentBoundaryCount: Int? = null,
+        val continuityRecoverySegmentCount: Int? = null,
+        val smoothingMode: String? = null,
+        val smoothedAdjustmentMeters: String? = null,
+        val smoothedPointCount: Int? = null,
+        val trajectoryGapResetCount: Int? = null,
+        val trajectoryBarrierCount: Int? = null,
     )
 
     internal data class RecordingPointDensityInsights(
@@ -419,6 +444,7 @@ object DiagnosticsExporter {
         var turnByTurnTurnAlertOffRouteCount: Int = 0
         var turnByTurnTurnAlertMissedWindowCount: Int = 0
         var recordingTrackFilter: RecordingTrackFilterInsights = RecordingTrackFilterInsights()
+        var recordingDistanceComparison: RecordingDistanceComparisonInsights = RecordingDistanceComparisonInsights()
         var recordingGapEndpointDistanceSampleCount: Int = 0
         var recordingGapEndpointDistanceAvgMeters: Float? = null
         var recordingGapEndpointDistanceMaxMeters: Float? = null
@@ -566,6 +592,36 @@ object DiagnosticsExporter {
     private val timestampFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
 
+    private fun Writer.writeTerrainDemInventory(capture: DemStorageInventoryCapture) {
+        appendLine("Terrain DEM Inventory")
+        appendLine("terrainDemInventoryStatus=${capture.status}")
+        capture.errorType?.let { errorType ->
+            appendLine("terrainDemInventoryErrorType=$errorType")
+        }
+        val inventory = capture.inventory
+        if (inventory == null) {
+            appendLine("terrainDemInventorySources=unavailable")
+        } else {
+            inventory.sources.forEach { sourceInventory ->
+                val prefix =
+                    when (sourceInventory.source) {
+                        DemSource.MAPZEN_SKADI_1S -> "dem1Detailed"
+                        DemSource.MAPSFORGE_DEM3 -> "dem3Standard"
+                    }
+                appendLine("${prefix}RenderableFileCount=${sourceInventory.renderableFileCount}")
+                appendLine("${prefix}PartialFileCount=${sourceInventory.partialFileCount}")
+                appendLine("${prefix}MissingMarkerCount=${sourceInventory.missingMarkerCount}")
+                appendLine("${prefix}IgnoredFileCount=${sourceInventory.ignoredFileCount}")
+                appendLine("${prefix}RenderableBytes=${sourceInventory.renderableBytes}")
+                appendLine("${prefix}RenderableBytesSaturated=${sourceInventory.renderableBytesSaturated}")
+                appendLine("${prefix}DepthTruncated=${sourceInventory.depthTruncated}")
+                appendLine("${prefix}FileCountTruncated=${sourceInventory.fileCountTruncated}")
+                appendLine("${prefix}ScanTruncated=${sourceInventory.truncated}")
+            }
+        }
+        appendLine("terrainDemInventoryTruncated=${inventory?.truncated == true}")
+    }
+
     fun export(
         context: Context,
         settings: DiagnosticsSettingsSnapshot,
@@ -657,6 +713,9 @@ object DiagnosticsExporter {
         val mapHotPathSummary = MapHotPathDiagnostics.summary()
         val mapHotPathLines = MapHotPathDiagnostics.snapshotLines()
         val mapHotPathDroppedLines = MapHotPathDiagnostics.droppedLineCount()
+        val terrainDiagnosticsLines = TerrainDiagnostics.snapshotLines()
+        val terrainDiagnosticsDroppedLines = TerrainDiagnostics.droppedLineCount()
+        val terrainDiagnosticsInventoryCapture = DemStorageInventoryScanner.captureSafely(context)
         val gnssLines = GnssDiagnostics.snapshotLines()
         val gnssDroppedLines = GnssDiagnostics.droppedLineCount()
         val gnssInsights = deriveGnssInsights(gnssLines)
@@ -666,6 +725,7 @@ object DiagnosticsExporter {
         val energyTruncated = energyDroppedLines > 0
         val demDownloadTruncated = demDownloadDroppedLines > 0
         val mapHotPathTruncated = mapHotPathDroppedLines > 0
+        val terrainDiagnosticsTruncated = terrainDiagnosticsDroppedLines > 0
         val gnssTruncated = gnssDroppedLines > 0
         val fieldMarkerTruncated = fieldMarkerDroppedLines > 0
         val lastCrash = CrashDiagnosticsStore.read(context)
@@ -936,6 +996,7 @@ object DiagnosticsExporter {
             writer.appendLine("telemetryBufferedFirstAt=${formatCaptureTime(telemetryWindow.firstAtMs)}")
             writer.appendLine("telemetryBufferedLastAt=${formatCaptureTime(telemetryWindow.lastAtMs)}")
             writer.appendLine("telemetryBufferedSpanMs=${formatBufferedSpanMs(telemetryWindow.firstAtMs, telemetryWindow.lastAtMs)}")
+            writer.writeGlobalTelemetryProducerVolumeSummary(captureSession.producerVolumes)
             writer.appendLine("energyBufferedLines=${energyLines.size}")
             writer.appendLine("energyBufferMaxLines=${EnergyDiagnostics.maxBufferedLines()}")
             writer.appendLine("energyDroppedLines=$energyDroppedLines")
@@ -1013,8 +1074,14 @@ object DiagnosticsExporter {
             writer.appendLine("mapHotPathBufferMaxLines=${MapHotPathDiagnostics.maxBufferedLines()}")
             writer.appendLine("mapHotPathDroppedLines=$mapHotPathDroppedLines")
             writer.appendLine("mapHotPathTruncated=$mapHotPathTruncated")
+            writer.appendLine("terrainDiagnosticsBufferedLines=${terrainDiagnosticsLines.size}")
+            writer.appendLine("terrainDiagnosticsBufferMaxLines=${TerrainDiagnostics.maxBufferedLines()}")
+            writer.appendLine("terrainDiagnosticsDroppedLines=$terrainDiagnosticsDroppedLines")
+            writer.appendLine("terrainDiagnosticsTruncated=$terrainDiagnosticsTruncated")
             writer.appendLine("gnssBufferedLines=${gnssLines.size}")
             writer.appendLine("gnssBufferMaxLines=${GnssDiagnostics.maxBufferedLines()}")
+            writer.appendLine("gnssGeneratedLines=${GnssDiagnostics.generatedLineCount()}")
+            writer.appendLine("gnssRetainedLines=${gnssLines.size}")
             writer.appendLine("gnssDroppedLines=$gnssDroppedLines")
             writer.appendLine("gnssTruncated=$gnssTruncated")
             writer.appendLine("fieldMarkerBufferedLines=${fieldMarkerLines.size}")
@@ -1027,6 +1094,7 @@ object DiagnosticsExporter {
                         energyTruncated ||
                         demDownloadTruncated ||
                         mapHotPathTruncated ||
+                        terrainDiagnosticsTruncated ||
                         gnssTruncated ||
                         fieldMarkerTruncated
                 }",
@@ -1405,6 +1473,91 @@ object DiagnosticsExporter {
             writer.appendLine(
                 "recordingSavedGpxSummaryDistanceMeters=${
                     telemetryInsights.recordingSavedGpxSummaryDistanceMeters?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceDiagnosticsScope=${
+                    telemetryInsights.recordingDistanceComparison.diagnosticsScope ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityDistanceMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityDistanceMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingWatchGpsRawGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.watchGpsRawGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCappedMeters=${
+                    telemetryInsights.recordingDistanceComparison.continuityCappedMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCapCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityCapCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingCanonicalGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.canonicalGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityMinusCanonicalMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityMinusCanonicalMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityVsCanonicalPercent=${
+                    telemetryInsights.recordingDistanceComparison.activityVsCanonicalPercent ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceAcceptedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.acceptedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentBoundaryCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentBoundaryCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceContinuityRecoverySegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityRecoverySegmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothingMode=${
+                    telemetryInsights.recordingDistanceComparison.smoothingMode ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedAdjustmentMeters=${
+                    telemetryInsights.recordingDistanceComparison.smoothedAdjustmentMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.smoothedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryGapResetCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryGapResetCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryBarrierCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryBarrierCount?.toString() ?: "na"
                 }",
             )
             writer.appendLine(
@@ -2129,6 +2282,15 @@ object DiagnosticsExporter {
             } else {
                 mapHotPathLines.forEach { line -> writer.appendLine(line) }
             }
+            writer.appendLine()
+            writer.appendLine("Terrain Diagnostics")
+            if (terrainDiagnosticsLines.isEmpty()) {
+                writer.appendLine("No terrain diagnostics events captured yet.")
+            } else {
+                terrainDiagnosticsLines.forEach { line -> writer.appendLine(line) }
+            }
+            writer.appendLine()
+            writer.writeTerrainDemInventory(terrainDiagnosticsInventoryCapture)
             writer.appendLine()
             writer.appendLine("Historical Process Exit Reasons")
             writer.appendLine("apiSupported=${historicalExitReasons.apiSupported}")

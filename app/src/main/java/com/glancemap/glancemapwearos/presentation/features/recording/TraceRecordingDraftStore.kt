@@ -137,12 +137,21 @@ private object TraceRecordingDraftJson {
     private fun JSONObject.toRecordedTracePoint(): RecordedTracePoint? {
         val latLong = LatLong(getDouble("lat"), getDouble("lon"))
         val timeMillis = optLong("timeMillis", 0L).takeIf { it > 0L } ?: return null
+        val rawAccuracyMeters = optionalFloat("accuracyMeters")
+        val accuracyProvenance =
+            restoreRecordingAccuracyProvenance(
+                rawAccuracyMeters = rawAccuracyMeters,
+                effectiveAccuracyMeters = optionalFloat("effectiveAccuracyMeters"),
+                accuracyInterpretation = optionalString("accuracyInterpretation"),
+            )
         return RecordedTracePoint(
             latLong = latLong,
             elevationMeters = optionalDouble("elevationMeters"),
             timeMillis = timeMillis,
-            accuracyMeters = optionalFloat("accuracyMeters"),
+            accuracyMeters = rawAccuracyMeters,
             speedMps = optionalFloat("speedMps"),
+            effectiveAccuracyMeters = accuracyProvenance.effectiveAccuracyMeters,
+            accuracyInterpretation = accuracyProvenance.interpretation,
             elevationSource = optionalString("elevationSource"),
             heartRateBpm = optionalInt("heartRateBpm"),
             stepCount = optionalInt("stepCount"),
@@ -155,6 +164,16 @@ private object TraceRecordingDraftJson {
         )
     }
 }
+
+internal fun restoreRecordingAccuracyProvenance(
+    rawAccuracyMeters: Float?,
+    effectiveAccuracyMeters: Float?,
+    accuracyInterpretation: String?,
+): RecordingAccuracyProvenance =
+    RecordingAccuracyProvenance(
+        effectiveAccuracyMeters = effectiveAccuracyMeters ?: rawAccuracyMeters,
+        interpretation = accuracyInterpretation?.takeIf { it.isNotBlank() } ?: RECORDING_ACCURACY_INTERPRETATION_RAW,
+    )
 
 data class TraceRecordingDraft(
     val active: Boolean,
@@ -186,6 +205,8 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("timeMillis", timeMillis)
         .put("accuracyMeters", accuracyMeters ?: JSONObject.NULL)
         .put("speedMps", speedMps ?: JSONObject.NULL)
+        .put("effectiveAccuracyMeters", effectiveAccuracyMeters ?: JSONObject.NULL)
+        .put("accuracyInterpretation", accuracyInterpretation)
         .put("elevationSource", elevationSource ?: JSONObject.NULL)
         .put("heartRateBpm", heartRateBpm ?: JSONObject.NULL)
         .put("stepCount", stepCount ?: JSONObject.NULL)

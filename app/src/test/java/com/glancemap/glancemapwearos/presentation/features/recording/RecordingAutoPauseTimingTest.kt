@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordingAutoPauseTimingTest {
@@ -140,5 +142,29 @@ class RecordingAutoPauseTimingTest {
             0L,
             autoPauseAddedMillisAtResume(restored, confirmationMillis = 100_000L, movingDurationMillis = 8_000L),
         )
+    }
+
+    @Test
+    fun pausedRecordingMonitoringDependsOnAutoPauseSettingOrPauseOrigin() {
+        val manuallyPaused = TraceRecordingUiState(active = true, paused = true)
+        val automaticallyPaused = manuallyPaused.copy(autoPaused = true)
+
+        assertTrue(manuallyPaused.isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
+        assertFalse(manuallyPaused.isPausedForAutoResumeMonitoring(autoPauseEnabled = false))
+        assertTrue(automaticallyPaused.isPausedForAutoResumeMonitoring(autoPauseEnabled = false))
+        assertFalse(manuallyPaused.copy(active = false).isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
+    }
+
+    @Test
+    fun automaticResumeKeepsPauseOriginForSegmentStart() {
+        assertEquals(
+            RecordingSegmentStartReason.MANUAL_PAUSE,
+            autoResumeSegmentStartReason(autoPaused = false, hasRecordedPoints = true),
+        )
+        assertEquals(
+            RecordingSegmentStartReason.AUTO_PAUSE,
+            autoResumeSegmentStartReason(autoPaused = true, hasRecordedPoints = true),
+        )
+        assertEquals(null, autoResumeSegmentStartReason(autoPaused = false, hasRecordedPoints = false))
     }
 }

@@ -25,6 +25,36 @@ internal fun resolveRecordingFilterAccuracyMeters(
     )
 }
 
+internal data class RecordingAccuracyProvenance(
+    val effectiveAccuracyMeters: Float?,
+    val interpretation: String,
+)
+
+internal fun resolveRecordingAccuracyProvenance(
+    rawAccuracyMeters: Float?,
+    knownWatchGpsAccuracyFloorActive: Boolean,
+): RecordingAccuracyProvenance {
+    val effectiveAccuracyMeters =
+        resolveRecordingFilterAccuracyMeters(
+            rawAccuracyMeters = rawAccuracyMeters,
+            knownWatchGpsAccuracyFloorActive = knownWatchGpsAccuracyFloorActive,
+        )
+    val interpretation =
+        if (
+            knownWatchGpsAccuracyFloorActive &&
+            isKnownWatchGpsAccuracyFloor(rawAccuracyMeters) &&
+            effectiveAccuracyMeters != rawAccuracyMeters
+        ) {
+            RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS
+        } else {
+            RECORDING_ACCURACY_INTERPRETATION_RAW
+        }
+    return RecordingAccuracyProvenance(
+        effectiveAccuracyMeters = effectiveAccuracyMeters,
+        interpretation = interpretation,
+    )
+}
+
 internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?) = platformWatchGpsAccuracyFloor(accuracyMeters)
 
 internal data class RecordingFixSample(

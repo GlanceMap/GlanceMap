@@ -4,16 +4,15 @@ import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferSessionState
 import com.glancemap.glancemapwearos.core.service.transfer.storage.WatchFileOps
-import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import kotlinx.coroutines.sync.Mutex
 
+@Suppress("LongParameterList") // Existing handler dependencies are kept explicit at the Data Layer boundary.
 internal class DataLayerHandlers(
     private val service: DataLayerListenerService,
     private val notificationHelper: NotificationHelper,
     private val fileOps: WatchFileOps,
     private val transferMutex: Mutex,
-    private val channelReceiver: ChannelClientStrategy,
     private val sessionState: TransferSessionState,
     private val sendStatus: suspend (sourceNodeId: String, transferId: String, phase: String, detail: String) -> Unit,
     private val sendAck: suspend (sourceNodeId: String, transferId: String, status: String, detail: String) -> Unit,
@@ -31,22 +30,9 @@ internal class DataLayerHandlers(
             sendMessage = sendMessage,
         )
 
-    private val channelOpenedHandler =
-        DataLayerChannelOpenedHandler(
-            service = service,
-            notificationHelper = notificationHelper,
-            fileOps = fileOps,
-            transferMutex = transferMutex,
-            channelReceiver = channelReceiver,
-            sendAck = sendAck,
-            popChannelChecksum = messageHandler::popChannelChecksum,
-        )
-
     fun handleMessage(messageEvent: MessageEvent) {
         messageHandler.handleMessage(messageEvent)
     }
 
-    suspend fun handleChannelOpened(channel: ChannelClient.Channel) {
-        channelOpenedHandler.handleChannelOpened(channel)
-    }
+    fun popChannelChecksum(transferId: String): String? = messageHandler.popChannelChecksum(transferId)
 }

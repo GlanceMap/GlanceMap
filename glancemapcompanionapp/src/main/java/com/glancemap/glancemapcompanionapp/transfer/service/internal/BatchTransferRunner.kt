@@ -449,7 +449,11 @@ internal class BatchTransferRunner(
 
                 val progressReporter: (Float, String) -> Unit = { fileProg, text ->
                     val p = fileProg.coerceIn(0f, 1f)
-                    uiUpdater.update(p, "$prefix\n$text")
+                    uiUpdater.update(
+                        p,
+                        "$prefix\n$text",
+                        isActiveTransferProgress = text.startsWith("HTTP:"),
+                    )
                 }
                 var result: TransferResult
                 var fileAttemptCount = 0

@@ -21,6 +21,9 @@ internal data class BundleDownloadTelemetrySummary(
     val demSources: Set<String> = emptySet(),
     val demCompletedCount: Int = 0,
     val demDownloadedTileCount: Int = 0,
+    val demReusedTileCount: Int = 0,
+    val demKnownUnavailableTileCount: Int = 0,
+    val demNew404TileCount: Int = 0,
     val demReadyTileCount: Int = 0,
     val demUnavailableTileCount: Int = 0,
     val demReadyBytes: Long = 0L,
@@ -72,6 +75,10 @@ internal fun deriveBundleDownloadTelemetrySummary(lines: List<String>): BundleDo
                         demCompletedCount = summary.demCompletedCount + 1,
                         demDownloadedTileCount =
                             summary.demDownloadedTileCount + line.telemetryInt("downloaded"),
+                        demReusedTileCount = summary.demReusedTileCount + line.telemetryInt("reused"),
+                        demKnownUnavailableTileCount =
+                            summary.demKnownUnavailableTileCount + line.telemetryInt("knownUnavailable"),
+                        demNew404TileCount = summary.demNew404TileCount + line.telemetryInt("new404"),
                         demReadyTileCount = summary.demReadyTileCount + line.telemetryInt("ready"),
                         demUnavailableTileCount =
                             summary.demUnavailableTileCount + line.telemetryInt("unavailable"),

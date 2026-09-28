@@ -124,9 +124,11 @@ internal class HttpTransferConnectionLoop(
         try {
             var startupComplete = startupDeadlineElapsedMs == null
             var connectDeadlineMs =
-                minOf(
-                    SystemClock.elapsedRealtime() + connectRetryWindowMs,
-                    startupDeadlineElapsedMs ?: Long.MAX_VALUE,
+                nextHttpConnectDeadlineElapsedMs(
+                    startupComplete = startupComplete,
+                    startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                    nowElapsedMs = SystemClock.elapsedRealtime(),
+                    retryWindowMs = connectRetryWindowMs,
                 )
             var currentRetryBudgetMs = connectRetryWindowMs
             var lastError: Throwable? = null
@@ -156,9 +158,11 @@ internal class HttpTransferConnectionLoop(
 
                 try {
                     val startupRemainingMs =
-                        startupDeadlineElapsedMs?.let {
-                            remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
-                        }
+                        httpStartupRemainingBudgetMs(
+                            startupComplete = startupComplete,
+                            startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                            nowElapsedMs = SystemClock.elapsedRealtime(),
+                        )
                     val attemptTimeoutMs =
                         startupRemainingMs?.let {
                             cappedHttpTimeoutMs(connectTimeoutMs.toLong(), it)
@@ -201,9 +205,7 @@ internal class HttpTransferConnectionLoop(
                                 setRequestProperty(TransferDataLayerContract.HTTP_AUTH_HEADER, it)
                             }
 
-                            if (desiredOffset > 0L) {
-                                setRequestProperty("Range", "bytes=$desiredOffset-")
-                            }
+                            httpRangeHeader(desiredOffset)?.let { setRequestProperty("Range", it) }
                         }
                     conn = connection
 
@@ -432,9 +434,11 @@ internal class HttpTransferConnectionLoop(
 
                     if (currentWifi == null) {
                         val startupRemainingMs =
-                            startupDeadlineElapsedMs?.let {
-                                remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
-                            }
+                            httpStartupRemainingBudgetMs(
+                                startupComplete = startupComplete,
+                                startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                                nowElapsedMs = SystemClock.elapsedRealtime(),
+                            )
                         if (startupRemainingMs != null && startupRemainingMs <= 0L) {
                             throw IOException("HTTP startup budget exhausted before the first request", e)
                         }
@@ -483,10 +487,12 @@ internal class HttpTransferConnectionLoop(
                         attempt = 0
                         // Start a fresh connection window once Wi-Fi is back.
                         connectDeadlineMs =
-                            startupDeadlineElapsedMs?.let {
-                                minOf(it, SystemClock.elapsedRealtime() + connectRetryWindowMs)
-                            }
-                                ?: (SystemClock.elapsedRealtime() + connectRetryWindowMs)
+                            nextHttpConnectDeadlineElapsedMs(
+                                startupComplete = startupComplete,
+                                startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                                nowElapsedMs = SystemClock.elapsedRealtime(),
+                                retryWindowMs = if (startupComplete) currentRetryBudgetMs else connectRetryWindowMs,
+                            )
                         currentRetryBudgetMs =
                             if (desiredOffset > 0L) {
                                 networkPauseTimeoutMs
@@ -507,7 +513,7 @@ internal class HttpTransferConnectionLoop(
                             "Refreshing Wi-Fi binding file=${metadata.fileName} partialBytes=$desiredOffset attempt=$attempt",
                         )
                         val refreshTimeoutMs: Long? =
-                            if (startupDeadlineElapsedMs != null) {
+                            if (!startupComplete && startupDeadlineElapsedMs != null) {
                                 cappedHttpTimeoutMs(
                                     REFRESH_BIND_TIMEOUT_MS,
                                     remainingHttpStartupBudget(startupDeadlineElapsedMs, SystemClock.elapsedRealtime()),
@@ -520,13 +526,13 @@ internal class HttpTransferConnectionLoop(
                                 networkSession.acquireWifi(
                                     timeoutMs = it,
                                     transferId = metadata.transferId,
-                                    startupDeadlineElapsedMs = startupDeadlineElapsedMs,
+                                    startupDeadlineElapsedMs = startupDeadlineElapsedMs.takeIf { !startupComplete },
                                 )
                             } ?: currentWifi
                         activeWifi = reboundWifi
                         networkSession.bindToNetwork(reboundWifi)
                         val probeTimeoutMs: Int? =
-                            if (startupDeadlineElapsedMs != null) {
+                            if (!startupComplete && startupDeadlineElapsedMs != null) {
                                 cappedHttpTimeoutMs(
                                     PROBE_TIMEOUT_MS.toLong(),
                                     remainingHttpStartupBudget(startupDeadlineElapsedMs, SystemClock.elapsedRealtime()),
@@ -560,12 +566,14 @@ internal class HttpTransferConnectionLoop(
                     Log.w(TAG, "HTTP failed (${e.message}). Retrying...")
                     val backoff = (connectRetryDelayMs * attempt).coerceAtMost(3_000L)
                     val delayMs =
-                        startupDeadlineElapsedMs?.let {
+                        if (!startupComplete && startupDeadlineElapsedMs != null) {
                             cappedHttpRetryDelayMs(
                                 backoff,
-                                remainingHttpStartupBudget(it, SystemClock.elapsedRealtime()),
+                                remainingHttpStartupBudget(startupDeadlineElapsedMs, SystemClock.elapsedRealtime()),
                             )
-                        } ?: backoff
+                        } else {
+                            backoff
+                        }
                     if (delayMs > 0L) delay(delayMs)
                 }
             }
@@ -575,15 +583,20 @@ internal class HttpTransferConnectionLoop(
                 "HTTP connect window exhausted file=${metadata.fileName} partialBytes=$desiredOffset " +
                     "budgetMs=$currentRetryBudgetMs lastError=${lastError?.message}",
             )
+            val failureEvent = httpFailureEventName(startupComplete)
             val remainingBudgetMs =
-                startupDeadlineElapsedMs?.let {
-                    remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
-                } ?: "na"
+                if (startupComplete) {
+                    (connectDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                } else {
+                    startupDeadlineElapsedMs?.let {
+                        remainingHttpStartupBudget(it, SystemClock.elapsedRealtime())
+                    } ?: "na"
+                }
             TransferDiagnostics.error(
                 "HttpConn",
-                "event=http_startup_failure transferId=${metadata.transferId} file=${metadata.fileName} " +
+                "event=$failureEvent transferId=${metadata.transferId} file=${metadata.fileName} " +
                     "startupElapsedMs=${SystemClock.elapsedRealtime() - startupStartElapsedMs} " +
-                    "startupFailurePhase=${if (startupComplete) "connection" else "file_request"} " +
+                    "failurePhase=${if (startupComplete) "recovery" else "file_request"} " +
                     "remainingBudgetMs=$remainingBudgetMs " +
                     "failureReason=connect_window_exhausted partialBytes=$desiredOffset " +
                     "reconnectCount=$reconnectCount currentRetryBudgetMs=$currentRetryBudgetMs",
@@ -593,7 +606,7 @@ internal class HttpTransferConnectionLoop(
                 if (!startupComplete) {
                     "HTTP startup budget exhausted before the first request. Last error: ${lastError?.message}"
                 } else {
-                    "Failed to connect to phone HTTP server within ${currentRetryBudgetMs}ms. Last error: ${lastError?.message}"
+                    "HTTP recovery window exhausted after ${currentRetryBudgetMs}ms. Last error: ${lastError?.message}"
                 }
             throw IOException(failureMessage, lastError)
         } finally {

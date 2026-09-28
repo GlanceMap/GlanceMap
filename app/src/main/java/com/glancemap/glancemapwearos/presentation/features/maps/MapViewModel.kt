@@ -20,6 +20,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentBounds
 import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
@@ -707,8 +708,17 @@ class MapViewModel(
             hillshadeTerrainEventJob =
                 renderer
                     ?.hillshadeTerrainUnavailableEvent
-                    ?.onEach { event -> _hillshadeTerrainUnavailableEvent.value = event }
-                    ?.launchIn(viewModelScope)
+                    ?.onEach { event ->
+                        _hillshadeTerrainUnavailableEvent.value = event
+                        event?.let {
+                            TerrainDiagnostics.record(
+                                event = "terrain_unavailable_forwarded",
+                                detail =
+                                    "correlationId=${it.correlationId} map=${it.mapIdentity} " +
+                                        "zoom=${it.zoomLevel} missingTiles=${it.missingTileCount}",
+                            )
+                        }
+                    }?.launchIn(viewModelScope)
         }
         applyRendererConfigIfReady()
         schedulePendingRendererWorkIfReady()

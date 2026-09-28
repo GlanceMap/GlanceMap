@@ -389,6 +389,7 @@ internal fun rememberNavigateGuidanceRuntime(
         context = context,
         state = state,
         currentSpeedMps = rawCurrentLocation?.speed,
+        currentFixTimestampMs = rawCurrentLocation?.time,
         activityProfile = activityProfile,
         hapticsEnabled = hapticsEnabled,
         turnAlertsMode = turnAlertsMode,
