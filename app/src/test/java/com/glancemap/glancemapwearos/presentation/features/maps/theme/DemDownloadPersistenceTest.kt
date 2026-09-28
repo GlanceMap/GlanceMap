@@ -69,6 +69,7 @@ class DemDownloadPersistenceTest {
         resumeOffset: Long,
     ): DemDownloadContext =
         DemDownloadContext(
+            sourceId = "mapsforge_dem3",
             url = "https://example.test/N46E006.hgt.zip",
             target = File(dir, "N46E006.hgt.zip"),
             part = File(dir, ".N46E006.hgt.zip.part"),

@@ -8,6 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 
 internal data class DemDownloadContext(
+    val sourceId: String,
     val url: String,
     val target: File,
     val part: File,
@@ -22,6 +23,7 @@ internal data class DemDownloadResponse(
 )
 
 internal data class DemDownloadRequest(
+    val sourceId: String,
     val url: String,
     val target: File,
     val demRoot: File,
@@ -33,7 +35,12 @@ internal fun downloadDemFile(
     onConnectionOpened: (HttpURLConnection) -> Unit = {},
     onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit = { _, _ -> },
 ) {
-    val context = buildDemDownloadContext(url = request.url, target = request.target)
+    val context =
+        buildDemDownloadContext(
+            sourceId = request.sourceId,
+            url = request.url,
+            target = request.target,
+        )
     recordResumeAttempt(context)
     val connection = openDemConnection(context = context, userAgent = request.userAgent)
     onConnectionOpened(connection)
@@ -55,11 +62,13 @@ internal fun downloadDemFile(
 }
 
 private fun buildDemDownloadContext(
+    sourceId: String,
     url: String,
     target: File,
 ): DemDownloadContext {
     val part = File(target.parentFile, ".${target.name}.part")
     return DemDownloadContext(
+        sourceId = sourceId,
         url = url,
         target = target,
         part = part,
@@ -77,7 +86,7 @@ private fun recordResumeAttempt(context: DemDownloadContext) {
     DemDownloadDiagnostics.record(
         event = "tile_resume_attempt",
         detail =
-            "tile=${context.tileName} partialBytes=${context.resumeOffset} " +
+            "source=${context.sourceId} tile=${context.tileName} partialBytes=${context.resumeOffset} " +
                 "url=${context.url.demDiagValue()}",
     )
 }
@@ -136,7 +145,9 @@ private fun markDemTileMissing(
     context.part.delete()
     DemDownloadDiagnostics.record(
         event = "tile_http",
-        detail = "tile=${context.tileName} code=404 action=missing url=${context.url.demDiagValue()}",
+        detail =
+            "source=${context.sourceId} tile=${context.tileName} code=404 action=missing " +
+                "url=${context.url.demDiagValue()}",
     )
     createMissingDemMarker(target = context.target, demRoot = demRoot)
     throw FileNotFoundException("HTTP 404 for ${context.url}")
@@ -148,7 +159,7 @@ private fun rejectDemResumeIfNeeded(context: DemDownloadContext) {
     DemDownloadDiagnostics.record(
         event = "tile_resume_rejected",
         detail =
-            "tile=${context.tileName} code=$HTTP_REQUESTED_RANGE_NOT_SATISFIABLE " +
+            "source=${context.sourceId} tile=${context.tileName} code=$HTTP_REQUESTED_RANGE_NOT_SATISFIABLE " +
                 "partialBytes=${context.resumeOffset} url=${context.url.demDiagValue()}",
     )
     throw DemResumeRejectedException("DEM server rejected partial resume for ${context.url}")
@@ -160,7 +171,9 @@ private fun recordDemHttpFailure(
 ) {
     DemDownloadDiagnostics.record(
         event = "tile_http",
-        detail = "tile=${context.tileName} code=$code action=fail url=${context.url.demDiagValue()}",
+        detail =
+            "source=${context.sourceId} tile=${context.tileName} code=$code action=fail " +
+                "url=${context.url.demDiagValue()}",
     )
     throw IOException("HTTP $code for ${context.url}")
 }
@@ -169,7 +182,7 @@ private fun recordDemResumeRestart(context: DemDownloadContext) {
     DemDownloadDiagnostics.record(
         event = "tile_resume_restart",
         detail =
-            "tile=${context.tileName} reason=range_ignored " +
+            "source=${context.sourceId} tile=${context.tileName} reason=range_ignored " +
                 "partialBytes=${context.resumeOffset} url=${context.url.demDiagValue()}",
     )
 }

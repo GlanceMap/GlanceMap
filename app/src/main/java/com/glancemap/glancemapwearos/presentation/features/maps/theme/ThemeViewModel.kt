@@ -5,6 +5,8 @@ package com.glancemap.glancemapwearos.presentation.features.maps.theme
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -13,6 +15,7 @@ import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DemDownloadDiagnostics
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockManager
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
@@ -125,6 +128,7 @@ class ThemeViewModel(
         private const val DEM_TILE_RETRY_BASE_DELAY_MS = 1_500L
         private const val DEM_INTERNET_WAIT_TIMEOUT_MS = 8_000L
         private const val DEM_INTERNET_RECHECK_MS = 500L
+        private const val DEM_DOWNLOAD_WAKE_LOCK_TIMEOUT_MS = 6L * 60L * 60L * 1_000L
     }
 
     private val appContext: Context = context.applicationContext
@@ -132,6 +136,9 @@ class ThemeViewModel(
     private val _demDownloadUiState = MutableStateFlow(DemDownloadUiState())
     val demDownloadUiState: StateFlow<DemDownloadUiState> = _demDownloadUiState.asStateFlow()
     private var demDownloadJob: Job? = null
+    private val demDownloadLockManager by lazy { TransferLockManager(appContext) }
+    private var demDownloadWakeLock: PowerManager.WakeLock? = null
+    private var demDownloadWifiLock: WifiManager.WifiLock? = null
 
     @Volatile
     private var activeDemConnection: HttpURLConnection? = null
@@ -379,10 +386,12 @@ class ThemeViewModel(
                         _demDownloadUiState.value.copy(
                             statusMessage = "Reading map area...",
                         )
+                    val source = settingsRepository.demSource.first()
+                    acquireDemDownloadKeepAlive(source)
 
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            downloadDemForMapInternal(selectedMapFile)
+                            downloadDemForMapInternal(selectedMapFile, source)
                         }
                     }.onSuccess { result ->
                         _demDownloadUiState.value =
@@ -431,6 +440,7 @@ class ThemeViewModel(
                     }
                 } finally {
                     activeDemConnection = null
+                    releaseDemDownloadKeepAlive()
                     demDownloadJob = null
                 }
             }
@@ -482,7 +492,12 @@ class ThemeViewModel(
             )
         }
 
-    private suspend fun downloadDemForMapInternal(selectedMapFile: File): DemDownloadResult {
+    // This is the validated per-tile state machine; extracting it purely for Detekt would obscure its boundaries.
+    @Suppress("CyclomaticComplexMethod")
+    private suspend fun downloadDemForMapInternal(
+        selectedMapFile: File,
+        source: DemSource,
+    ): DemDownloadResult {
         val tileIds =
             Dem3CoverageUtils
                 .requiredTileIdsForMap(selectedMapFile)
@@ -490,7 +505,9 @@ class ThemeViewModel(
                 ?: run {
                     DemDownloadDiagnostics.record(
                         event = "complete",
-                        detail = "status=map_area_failed path=${selectedMapFile.absolutePath.demDiagValue()}",
+                        detail =
+                            "source=${source.id} status=map_area_failed " +
+                                "path=${selectedMapFile.absolutePath.demDiagValue()}",
                     )
                     return DemDownloadResult(
                         totalTiles = 0,
@@ -507,14 +524,16 @@ class ThemeViewModel(
         DemDownloadDiagnostics.record(
             event = "start",
             detail =
-                "path=${selectedMapFile.absolutePath.demDiagValue()} totalTiles=${tileIds.size} " +
+                "source=${source.id} path=${selectedMapFile.absolutePath.demDiagValue()} totalTiles=${tileIds.size} " +
                     "firstTile=${tileIds.firstOrNull().orEmpty()} lastTile=${tileIds.lastOrNull().orEmpty()}",
         )
 
         if (tileIds.isEmpty()) {
             DemDownloadDiagnostics.record(
                 event = "complete",
-                detail = "status=no_tiles path=${selectedMapFile.absolutePath.demDiagValue()}",
+                detail =
+                    "source=${source.id} status=no_tiles " +
+                        "path=${selectedMapFile.absolutePath.demDiagValue()}",
             )
             return DemDownloadResult(
                 totalTiles = 0,
@@ -528,7 +547,6 @@ class ThemeViewModel(
             )
         }
 
-        val source = demSource.value
         val outputRoot = getDemOutputRoot(source)
         outputRoot.mkdirs()
 
@@ -583,7 +601,9 @@ class ThemeViewModel(
                     )
                     DemDownloadDiagnostics.record(
                         event = "tile_skipped",
-                        detail = "tile=$tileId index=$processed total=${tileIds.size} reason=already_valid",
+                        detail =
+                            "source=${source.id} tile=$tileId index=$processed total=${tileIds.size} " +
+                                "reason=already_valid",
                     )
                     continue
                 }
@@ -601,7 +621,9 @@ class ThemeViewModel(
                 )
                 DemDownloadDiagnostics.record(
                     event = "tile_missing",
-                    detail = "tile=$tileId index=$processed total=${tileIds.size} reason=upstream_404_marked",
+                    detail =
+                        "source=${source.id} tile=$tileId index=$processed total=${tileIds.size} " +
+                            "reason=upstream_404_marked",
                 )
                 continue
             }
@@ -621,20 +643,22 @@ class ThemeViewModel(
                 downloaded += 1
                 DemDownloadDiagnostics.record(
                     event = "tile_downloaded",
-                    detail = "tile=$tileId index=$processed total=${tileIds.size}",
+                    detail = "source=${source.id} tile=$tileId index=$processed total=${tileIds.size}",
                 )
             } else if (outcome.missingUpstream) {
                 missing += 1
                 DemDownloadDiagnostics.record(
                     event = "tile_missing",
-                    detail = "tile=$tileId index=$processed total=${tileIds.size} reason=upstream_404",
+                    detail =
+                        "source=${source.id} tile=$tileId index=$processed total=${tileIds.size} " +
+                            "reason=upstream_404",
                 )
             } else {
                 failed += 1
                 DemDownloadDiagnostics.record(
                     event = "tile_failed",
                     detail =
-                        "tile=$tileId index=$processed total=${tileIds.size} " +
+                        "source=${source.id} tile=$tileId index=$processed total=${tileIds.size} " +
                             "networkUnavailable=${outcome.networkUnavailable}",
                 )
                 networkUnavailable = outcome.networkUnavailable
@@ -681,7 +705,7 @@ class ThemeViewModel(
         DemDownloadDiagnostics.record(
             event = "complete",
             detail =
-                "status=$completionStatus " +
+                "source=${source.id} status=$completionStatus " +
                     "total=${tileIds.size} processed=$processedTiles downloaded=$downloaded skipped=$skipped " +
                     "missing=$missing failed=$failed remaining=$remaining networkUnavailable=$networkUnavailable " +
                     "message=${finalMessage.demDiagValue()}",
@@ -705,6 +729,44 @@ class ThemeViewModel(
     }
 
     private fun getDemOutputRoot(source: DemSource): File = Dem3CoverageUtils.demRootDir(appContext, source)
+
+    private fun acquireDemDownloadKeepAlive(source: DemSource) {
+        demDownloadWakeLock =
+            runCatching {
+                demDownloadLockManager.acquireWakeLock(
+                    tag = "GlanceMap:StandaloneDemDownload",
+                    timeoutMs = DEM_DOWNLOAD_WAKE_LOCK_TIMEOUT_MS,
+                )
+            }.getOrNull()
+        demDownloadWifiLock =
+            runCatching {
+                demDownloadLockManager.acquireWifiLock("GlanceMap:StandaloneDemDownloadWifi")
+            }.getOrNull()
+        DemDownloadDiagnostics.record(
+            event = "keepalive_acquired",
+            detail =
+                "source=${source.id} partialWakeLock=${demDownloadWakeLock?.isHeld == true} " +
+                    "wifiLock=${demDownloadWifiLock?.isHeld == true}",
+        )
+    }
+
+    private fun releaseDemDownloadKeepAlive() {
+        val wakeLock = demDownloadWakeLock
+        val wifiLock = demDownloadWifiLock
+        val wakeLockWasHeld = wakeLock?.isHeld == true
+        val wifiLockWasHeld = wifiLock?.isHeld == true
+        demDownloadWakeLock = null
+        demDownloadWifiLock = null
+        wakeLock?.let { runCatching { demDownloadLockManager.releaseWakeLock(it) } }
+        wifiLock?.let { runCatching { demDownloadLockManager.releaseWifiLock(it) } }
+        if (wakeLock != null || wifiLock != null) {
+            DemDownloadDiagnostics.record(
+                event = "keepalive_released",
+                detail =
+                    "partialWakeLock=$wakeLockWasHeld wifiLock=$wifiLockWasHeld",
+            )
+        }
+    }
 
     private fun publishCompletedDemTile(
         processedTiles: Int,
@@ -775,6 +837,7 @@ class ThemeViewModel(
                     downloadDemFile(
                         request =
                             DemDownloadRequest(
+                                sourceId = source.id,
                                 url = url,
                                 target = target,
                                 demRoot = getDemOutputRoot(source),
@@ -805,7 +868,7 @@ class ThemeViewModel(
                 DemDownloadDiagnostics.record(
                     event = "tile_attempt_failed",
                     detail =
-                        "processed=$processed total=$total attempt=$attemptNumber " +
+                        "source=${source.id} processed=$processed total=$total attempt=$attemptNumber " +
                             "error=${error.javaClass.simpleName} message=${error.message.orEmpty().demDiagValue()}",
                 )
             }

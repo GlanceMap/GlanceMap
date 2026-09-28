@@ -296,7 +296,11 @@ internal fun Appendable.writeDemDownloadSections(
     appendLine("droppedLines=${demDownloadSummary.droppedLineCount}")
     appendLine("truncated=$demDownloadTruncated")
     appendLine("startedCount=${demDownloadSummary.startedCount}")
-    appendLine("completedCount=${demDownloadSummary.completedCount}")
+    appendLine("terminalCount=${demDownloadSummary.terminalCount}")
+    appendLine("readyCount=${demDownloadSummary.readyCount}")
+    appendLine("completeWithUnavailableCount=${demDownloadSummary.completeWithUnavailableCount}")
+    appendLine("partialCount=${demDownloadSummary.partialCount}")
+    appendLine("terminalFailureCount=${demDownloadSummary.terminalFailureCount}")
     appendLine("downloadedCount=${demDownloadSummary.downloadedCount}")
     appendLine("skippedCount=${demDownloadSummary.skippedCount}")
     appendLine("missingCount=${demDownloadSummary.missingCount}")
@@ -307,6 +311,13 @@ internal fun Appendable.writeDemDownloadSections(
     appendLine("networkUnavailableCount=${demDownloadSummary.networkUnavailableCount}")
     appendLine("activityState=${demDownloadSummary.activityState}")
     appendLine("diagnosticContext=${demDownloadSummary.diagnosticContext}")
+    demDownloadSummary.terminalSummariesBySource.forEach { source ->
+        appendLine(
+            "source[${source.sourceId}]=terminal=${source.terminalCount} ready=${source.readyCount} " +
+                "completeWithUnavailable=${source.completeWithUnavailableCount} partial=${source.partialCount} " +
+                "terminalFailure=${source.terminalFailureCount}",
+        )
+    }
     writeLineDumpSection(
         title = "DEM Download Events",
         emptyMessage = "No DEM download events captured yet.",
