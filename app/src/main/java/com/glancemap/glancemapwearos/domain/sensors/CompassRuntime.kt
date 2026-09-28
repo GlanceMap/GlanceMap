@@ -60,6 +60,8 @@ internal enum class SensorMagAccelPairReason(
     MAGNETOMETER_MISSING("magnetometer_missing"),
     ACCELEROMETER_GENERATION_MISMATCH("accelerometer_generation_mismatch"),
     MAGNETOMETER_GENERATION_MISMATCH("magnetometer_generation_mismatch"),
+    ACCELEROMETER_FUTURE("accelerometer_future"),
+    MAGNETOMETER_FUTURE("magnetometer_future"),
     ACCELEROMETER_STALE("accelerometer_stale"),
     MAGNETOMETER_STALE("magnetometer_stale"),
     EXCESSIVE_SKEW("excessive_skew"),
@@ -280,8 +282,8 @@ internal fun validateSensorMagAccelPair(
 ): SensorMagAccelPairValidity {
     val accelerometerTimestamp = state.accelerometer.sourceTimestampElapsedRealtimeMs
     val magnetometerTimestamp = state.magnetometer.sourceTimestampElapsedRealtimeMs
-    val accelerometerAgeMs = accelerometerTimestamp?.let { (nowElapsedRealtimeMs - it).coerceAtLeast(0L) }
-    val magnetometerAgeMs = magnetometerTimestamp?.let { (nowElapsedRealtimeMs - it).coerceAtLeast(0L) }
+    val accelerometerAgeMs = accelerometerTimestamp?.let { nowElapsedRealtimeMs - it }
+    val magnetometerAgeMs = magnetometerTimestamp?.let { nowElapsedRealtimeMs - it }
     val pairAgeMs =
         if (accelerometerAgeMs != null && magnetometerAgeMs != null) {
             maxOf(accelerometerAgeMs, magnetometerAgeMs)
@@ -302,6 +304,10 @@ internal fun validateSensorMagAccelPair(
                 SensorMagAccelPairReason.ACCELEROMETER_GENERATION_MISMATCH
             state.magnetometer.registrationGeneration != registrationGeneration ->
                 SensorMagAccelPairReason.MAGNETOMETER_GENERATION_MISMATCH
+            accelerometerTimestamp > nowElapsedRealtimeMs ->
+                SensorMagAccelPairReason.ACCELEROMETER_FUTURE
+            magnetometerTimestamp > nowElapsedRealtimeMs ->
+                SensorMagAccelPairReason.MAGNETOMETER_FUTURE
             accelerometerAgeMs?.let { it >= maxComponentAgeMs } == true ->
                 SensorMagAccelPairReason.ACCELEROMETER_STALE
             magnetometerAgeMs?.let { it >= maxComponentAgeMs } == true ->

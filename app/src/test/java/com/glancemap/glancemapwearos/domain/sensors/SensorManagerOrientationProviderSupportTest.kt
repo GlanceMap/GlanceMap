@@ -155,6 +155,45 @@ class SensorManagerOrientationProviderSupportTest {
     }
 
     @Test
+    fun futureAccelerometerCannotPairWithCurrentMagnetometer() {
+        val validity =
+            validateSensorMagAccelPair(
+                state = pairState(accelerometerAtMs = 10_001L, magnetometerAtMs = 10_000L),
+                nowElapsedRealtimeMs = 10_000L,
+                registrationGeneration = 7L,
+            )
+
+        assertFalse(validity.accepted)
+        assertEquals(SensorMagAccelPairReason.ACCELEROMETER_FUTURE, validity.reason)
+    }
+
+    @Test
+    fun currentAccelerometerCannotPairWithFutureMagnetometer() {
+        val validity =
+            validateSensorMagAccelPair(
+                state = pairState(accelerometerAtMs = 10_000L, magnetometerAtMs = 10_001L),
+                nowElapsedRealtimeMs = 10_000L,
+                registrationGeneration = 7L,
+            )
+
+        assertFalse(validity.accepted)
+        assertEquals(SensorMagAccelPairReason.MAGNETOMETER_FUTURE, validity.reason)
+    }
+
+    @Test
+    fun componentsAtCurrentElapsedRealtimeRemainValid() {
+        val validity =
+            validateSensorMagAccelPair(
+                state = pairState(accelerometerAtMs = 10_000L, magnetometerAtMs = 10_000L),
+                nowElapsedRealtimeMs = 10_000L,
+                registrationGeneration = 7L,
+            )
+
+        assertTrue(validity.accepted)
+        assertEquals(SensorMagAccelPairReason.ACCEPTED, validity.reason)
+    }
+
+    @Test
     fun freshAccelerometerCannotPairWithStaleMagnetometer() {
         val validity =
             validateSensorMagAccelPair(
