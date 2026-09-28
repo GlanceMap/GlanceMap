@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import com.glancemap.glancemapwearos.core.maps.DemSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -78,6 +79,130 @@ class OamBundleRefreshSummaryTest {
     }
 
     @Test
+    fun refreshSelectionUnionsInstalledAndCurrentlyEnabledComponents() {
+        val bundle = installedBundle(areaId = "area")
+        val selection =
+            OamDownloadSelection(
+                includeMap = true,
+                includePoi = true,
+                includeRouting = true,
+                includeDem = true,
+                demSource = DemSource.MAPZEN_SKADI_1S,
+                includeRefugesInfo = true,
+            )
+
+        val refreshSelection = bundle.toDownloadSelection(selection)
+
+        assertEquals(selection, refreshSelection)
+        assertEquals(selection.copy(includeMap = false), bundle.missingComponentsFor(selection))
+    }
+
+    @Test
+    fun refreshKeepsInstalledComponentsAndDemSourceWhenTogglesAreOff() {
+        val bundle =
+            installedBundle(
+                areaId = "area",
+                routingFileNames = listOf("E5_N45.rd5"),
+                demSource = DemSource.MAPZEN_SKADI_1S,
+                demTileIds = listOf("N45E006"),
+            ).copy(
+                poiFileName = "area.poi",
+                refugesInfoFileName = "area.refuges-info.poi",
+            )
+
+        val refreshSelection =
+            bundle.toDownloadSelection(
+                OamDownloadSelection(
+                    includeMap = false,
+                    includePoi = false,
+                    includeRouting = false,
+                    includeDem = false,
+                    demSource = DemSource.MAPZEN_SKADI_1S,
+                    includeRefugesInfo = false,
+                ),
+            )
+
+        assertEquals(true, refreshSelection.includeMap)
+        assertEquals(true, refreshSelection.includePoi)
+        assertEquals(true, refreshSelection.includeRouting)
+        assertEquals(true, refreshSelection.includeDem)
+        assertEquals(true, refreshSelection.includeRefugesInfo)
+        assertEquals(DemSource.MAPZEN_SKADI_1S, refreshSelection.demSource)
+    }
+
+    @Test
+    fun upToDateBundleWithMissingEnabledComponentsIsRefreshableWithoutRemoteChange() {
+        val bundle = installedBundle(areaId = "map-only")
+        val selection =
+            OamDownloadSelection(
+                includeMap = true,
+                includePoi = true,
+                includeRouting = true,
+                includeDem = true,
+                includeRefugesInfo = true,
+            )
+        val check = updateCheck(bundle, OamBundleUpdateStatus.UP_TO_DATE)
+
+        val summary = OamBundleRefreshSummary(checks = listOf(check), selection = selection)
+
+        assertEquals(listOf(bundle), summary.bundlesToRefresh)
+        assertEquals(1, summary.selectedAdditionCount)
+        assertEquals(emptyList<String>(), check.changedFileNames)
+        assertEquals(OamBundleUpdateStatus.UP_TO_DATE, check.status)
+        assertEquals(emptyList<OamBundleUpdateCheck>(), OamBundleRefreshSummary(listOf(check)).checksToRefresh)
+    }
+
+    @Test
+    fun selectedAdditionsDoNotForceHealthyExistingFiles() {
+        val bundle = installedBundle(areaId = "map-only")
+        val forces =
+            OamBundleUpdateCheck(
+                bundle = bundle,
+                status = OamBundleUpdateStatus.UP_TO_DATE,
+                checkedFileCount = 1,
+            ).refreshForces(area())
+
+        assertEquals(false, forces.forceMap)
+        assertEquals(false, forces.forcePoi)
+        assertEquals(false, forces.forceRefugesInfo)
+        assertEquals(emptySet<String>(), forces.forceRoutingFileNames)
+        assertEquals(emptySet<String>(), forces.forceDemTileIds)
+    }
+
+    @Test
+    fun multiBundleRefreshIncludesUpdatesAndSelectedAdditions() {
+        val additionBundle = installedBundle(areaId = "addition")
+        val updateBundle = installedBundle(areaId = "update")
+        val selection = OamDownloadSelection(includeMap = true, includePoi = true)
+        val updateCheck =
+            OamBundleUpdateCheck(
+                bundle = updateBundle,
+                status = OamBundleUpdateStatus.UPDATE_AVAILABLE,
+                checkedFileCount = 1,
+                changedFileNames = listOf("update.poi.zip"),
+            )
+
+        val summary =
+            OamBundleRefreshSummary(
+                checks =
+                    listOf(
+                        updateCheck,
+                        updateCheck.copy(
+                            bundle = additionBundle,
+                            status = OamBundleUpdateStatus.UP_TO_DATE,
+                            changedFileNames = emptyList(),
+                        ),
+                    ),
+                selection = selection,
+            )
+
+        assertEquals(2, summary.bundlesToRefresh.size)
+        assertEquals(1, summary.updateAvailableCount)
+        assertEquals(1, summary.selectedAdditionCount)
+        assertEquals(emptyList<String>(), summary.checks[1].changedFileNames)
+    }
+
+    @Test
     fun remoteMetadataIgnoresChangedEtagWhenContentLengthMatches() {
         val previous = remoteMetadata(entityTag = "\"old\"", lastModifiedMillis = 1L, contentLengthBytes = 100L)
         val current = remoteMetadata(entityTag = "\"new\"", lastModifiedMillis = 2L, contentLengthBytes = 100L)
@@ -132,6 +257,7 @@ class OamBundleRefreshSummaryTest {
     private fun installedBundle(
         areaId: String,
         routingFileNames: List<String> = emptyList(),
+        demSource: DemSource = DemSource.DEFAULT,
         demTileIds: List<String> = emptyList(),
     ): OamInstalledBundle =
         OamInstalledBundle(
@@ -141,6 +267,7 @@ class OamBundleRefreshSummaryTest {
             mapFileName = "$areaId.map",
             poiFileName = null,
             routingFileNames = routingFileNames,
+            demSource = demSource,
             demTileIds = demTileIds,
             installedAtMillis = 1L,
         )

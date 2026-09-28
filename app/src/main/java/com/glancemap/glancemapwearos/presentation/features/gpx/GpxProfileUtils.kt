@@ -49,6 +49,7 @@ internal data class GpxActivitySummary(
     val currentSpeedMps: Float?,
     val averageSpeedMps: Double?,
     val fastestSpeedMps: Double?,
+    val fastestSpeedMethod: String?,
     val gpsAccuracyMeters: Float?,
     val pointCount: Int?,
     val gpsActiveDurationSeconds: Double?,
@@ -193,6 +194,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var summaryCurrentSpeedMps: Float? = null
     var summaryAverageSpeedMps: Double? = null
     var summaryFastestSpeedMps: Double? = null
+    var summaryFastestSpeedMethod: String? = null
     var summaryGpsAccuracyMeters: Float? = null
     var summaryPointCount: Int? = null
     var summaryGpsActiveDurationSeconds: Double? = null
@@ -225,12 +227,15 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var currentHasTimestamp = false
     var currentTimestampMillis: Long? = null
     var currentAccuracyMeters: Float? = null
+    var currentEffectiveAccuracyMeters: Float? = null
+    var currentAccuracyInterpretation: String? = null
     var currentSpeedMps: Float? = null
     var currentHeartRateBpm: Int? = null
     var currentStepCount: Int? = null
     var currentCadenceSpm: Int? = null
     var currentPowerWatts: Int? = null
     var currentPressureHpa: Double? = null
+    var currentSegmentStartReason: String? = null
     var currentDesc: String? = null
     var currentSym: String? = null
     var currentBrouterVoiceHint: String? = null
@@ -313,6 +318,11 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                             "fastestSpeedMps" -> {
                                 if (inMetadataExtensions) summaryFastestSpeedMps = parser.nextTextDouble()
                             }
+                            "fastestSpeedMethod" -> {
+                                if (inMetadataExtensions) {
+                                    summaryFastestSpeedMethod = parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
+                                }
+                            }
                             "gpsAccuracyMeters" -> {
                                 if (inMetadataExtensions) summaryGpsAccuracyMeters = parser.nextTextFloat()
                             }
@@ -385,12 +395,15 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentHasTimestamp = false
                                 currentTimestampMillis = null
                                 currentAccuracyMeters = null
+                                currentEffectiveAccuracyMeters = null
+                                currentAccuracyInterpretation = null
                                 currentSpeedMps = null
                                 currentHeartRateBpm = null
                                 currentStepCount = null
                                 currentCadenceSpm = null
                                 currentPowerWatts = null
                                 currentPressureHpa = null
+                                currentSegmentStartReason = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null
@@ -437,9 +450,25 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                     currentAccuracyMeters = parser.nextText()?.trim()?.toFloatOrNull()
                                 }
                             }
+                            "effectiveAccuracyMeters" -> {
+                                if (inGeometryPoint) {
+                                    currentEffectiveAccuracyMeters = parser.nextText()?.trim()?.toFloatOrNull()
+                                }
+                            }
+                            "accuracyInterpretation" -> {
+                                if (inGeometryPoint) {
+                                    currentAccuracyInterpretation =
+                                        parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
+                                }
+                            }
                             "speedMps" -> {
                                 if (inGeometryPoint) {
                                     currentSpeedMps = parser.nextText()?.trim()?.toFloatOrNull()
+                                }
+                            }
+                            "segmentStartReason" -> {
+                                if (inGeometryPoint) {
+                                    currentSegmentStartReason = parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
                                 }
                             }
                             "heartRateBpm" -> {
@@ -520,9 +549,12 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                                 latLong = latLong,
                                                 elevation = currentElevation,
                                                 startsNewSegment = currentStartsNewSegment,
+                                                segmentStartReason = currentSegmentStartReason,
                                                 hasTimestamp = currentHasTimestamp,
                                                 timeMillis = currentTimestampMillis,
                                                 accuracyMeters = currentAccuracyMeters,
+                                                effectiveAccuracyMeters = currentEffectiveAccuracyMeters,
+                                                accuracyInterpretation = currentAccuracyInterpretation,
                                                 speedMps = currentSpeedMps,
                                                 heartRateBpm = currentHeartRateBpm,
                                                 stepCount = currentStepCount,
@@ -579,12 +611,15 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentHasTimestamp = false
                                 currentTimestampMillis = null
                                 currentAccuracyMeters = null
+                                currentEffectiveAccuracyMeters = null
+                                currentAccuracyInterpretation = null
                                 currentSpeedMps = null
                                 currentHeartRateBpm = null
                                 currentStepCount = null
                                 currentCadenceSpm = null
                                 currentPowerWatts = null
                                 currentPressureHpa = null
+                                currentSegmentStartReason = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null
@@ -623,6 +658,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                     currentSpeedMps = summaryCurrentSpeedMps,
                     averageSpeedMps = summaryAverageSpeedMps,
                     fastestSpeedMps = summaryFastestSpeedMps,
+                    fastestSpeedMethod = summaryFastestSpeedMethod,
                     gpsAccuracyMeters = summaryGpsAccuracyMeters,
                     pointCount = summaryPointCount,
                     gpsActiveDurationSeconds = summaryGpsActiveDurationSeconds,
@@ -672,6 +708,7 @@ private fun buildGpxActivitySummary(
     currentSpeedMps: Float?,
     averageSpeedMps: Double?,
     fastestSpeedMps: Double?,
+    fastestSpeedMethod: String?,
     gpsAccuracyMeters: Float?,
     pointCount: Int?,
     gpsActiveDurationSeconds: Double?,
@@ -716,6 +753,7 @@ private fun buildGpxActivitySummary(
         currentSpeedMps = currentSpeedMps,
         averageSpeedMps = averageSpeedMps,
         fastestSpeedMps = fastestSpeedMps,
+        fastestSpeedMethod = fastestSpeedMethod,
         gpsAccuracyMeters = gpsAccuracyMeters,
         pointCount = pointCount,
         gpsActiveDurationSeconds = gpsActiveDurationSeconds,

@@ -16,6 +16,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeBundle
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeDemDownloadSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeEnergyByModeSummarySection
+import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGlobalTelemetryProducerVolumeSummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeGnssSections
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeLineDumpSection
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeRecordingInstrumentationSummarySection
@@ -122,6 +123,26 @@ object DiagnosticsExporter {
         val maxSmoothedAdjustmentMeters: String? = null,
         val smartTrack: RecordingSmartTrackInsights = RecordingSmartTrackInsights(),
         val pointDensity: RecordingPointDensityInsights = RecordingPointDensityInsights(),
+    )
+
+    internal data class RecordingDistanceComparisonInsights(
+        val diagnosticsScope: String? = null,
+        val activityDistanceMeters: String? = null,
+        val watchGpsRawGeometryMeters: String? = null,
+        val continuityCappedMeters: String? = null,
+        val continuityCapCount: Int? = null,
+        val canonicalGeometryMeters: String? = null,
+        val activityMinusCanonicalMeters: String? = null,
+        val activityVsCanonicalPercent: String? = null,
+        val acceptedPointCount: Int? = null,
+        val segmentCount: Int? = null,
+        val segmentBoundaryCount: Int? = null,
+        val continuityRecoverySegmentCount: Int? = null,
+        val smoothingMode: String? = null,
+        val smoothedAdjustmentMeters: String? = null,
+        val smoothedPointCount: Int? = null,
+        val trajectoryGapResetCount: Int? = null,
+        val trajectoryBarrierCount: Int? = null,
     )
 
     internal data class RecordingPointDensityInsights(
@@ -423,6 +444,7 @@ object DiagnosticsExporter {
         var turnByTurnTurnAlertOffRouteCount: Int = 0
         var turnByTurnTurnAlertMissedWindowCount: Int = 0
         var recordingTrackFilter: RecordingTrackFilterInsights = RecordingTrackFilterInsights()
+        var recordingDistanceComparison: RecordingDistanceComparisonInsights = RecordingDistanceComparisonInsights()
         var recordingGapEndpointDistanceSampleCount: Int = 0
         var recordingGapEndpointDistanceAvgMeters: Float? = null
         var recordingGapEndpointDistanceMaxMeters: Float? = null
@@ -974,6 +996,7 @@ object DiagnosticsExporter {
             writer.appendLine("telemetryBufferedFirstAt=${formatCaptureTime(telemetryWindow.firstAtMs)}")
             writer.appendLine("telemetryBufferedLastAt=${formatCaptureTime(telemetryWindow.lastAtMs)}")
             writer.appendLine("telemetryBufferedSpanMs=${formatBufferedSpanMs(telemetryWindow.firstAtMs, telemetryWindow.lastAtMs)}")
+            writer.writeGlobalTelemetryProducerVolumeSummary(captureSession.producerVolumes)
             writer.appendLine("energyBufferedLines=${energyLines.size}")
             writer.appendLine("energyBufferMaxLines=${EnergyDiagnostics.maxBufferedLines()}")
             writer.appendLine("energyDroppedLines=$energyDroppedLines")
@@ -1057,6 +1080,8 @@ object DiagnosticsExporter {
             writer.appendLine("terrainDiagnosticsTruncated=$terrainDiagnosticsTruncated")
             writer.appendLine("gnssBufferedLines=${gnssLines.size}")
             writer.appendLine("gnssBufferMaxLines=${GnssDiagnostics.maxBufferedLines()}")
+            writer.appendLine("gnssGeneratedLines=${GnssDiagnostics.generatedLineCount()}")
+            writer.appendLine("gnssRetainedLines=${gnssLines.size}")
             writer.appendLine("gnssDroppedLines=$gnssDroppedLines")
             writer.appendLine("gnssTruncated=$gnssTruncated")
             writer.appendLine("fieldMarkerBufferedLines=${fieldMarkerLines.size}")
@@ -1448,6 +1473,91 @@ object DiagnosticsExporter {
             writer.appendLine(
                 "recordingSavedGpxSummaryDistanceMeters=${
                     telemetryInsights.recordingSavedGpxSummaryDistanceMeters?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceDiagnosticsScope=${
+                    telemetryInsights.recordingDistanceComparison.diagnosticsScope ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityDistanceMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityDistanceMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingWatchGpsRawGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.watchGpsRawGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCappedMeters=${
+                    telemetryInsights.recordingDistanceComparison.continuityCappedMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingContinuityCapCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityCapCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingCanonicalGeometryMeters=${
+                    telemetryInsights.recordingDistanceComparison.canonicalGeometryMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityMinusCanonicalMeters=${
+                    telemetryInsights.recordingDistanceComparison.activityMinusCanonicalMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingActivityVsCanonicalPercent=${
+                    telemetryInsights.recordingDistanceComparison.activityVsCanonicalPercent ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceAcceptedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.acceptedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSegmentBoundaryCount=${
+                    telemetryInsights.recordingDistanceComparison.segmentBoundaryCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceContinuityRecoverySegmentCount=${
+                    telemetryInsights.recordingDistanceComparison.continuityRecoverySegmentCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothingMode=${
+                    telemetryInsights.recordingDistanceComparison.smoothingMode ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedAdjustmentMeters=${
+                    telemetryInsights.recordingDistanceComparison.smoothedAdjustmentMeters ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceSmoothedPointCount=${
+                    telemetryInsights.recordingDistanceComparison.smoothedPointCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryGapResetCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryGapResetCount?.toString() ?: "na"
+                }",
+            )
+            writer.appendLine(
+                "recordingDistanceTrajectoryBarrierCount=${
+                    telemetryInsights.recordingDistanceComparison.trajectoryBarrierCount?.toString() ?: "na"
                 }",
             )
             writer.appendLine(

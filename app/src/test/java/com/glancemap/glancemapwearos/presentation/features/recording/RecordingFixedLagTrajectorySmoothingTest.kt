@@ -173,6 +173,79 @@ class RecordingFixedLagTrajectorySmoothingTest {
     }
 
     @Test
+    fun effectiveTenSecondContinuityCadenceKeepsTwentySecondGapContinuous() {
+        val replayed =
+            replay(
+                raw =
+                    listOf(
+                        point(0.0, 0.0, 0L),
+                        point(10.0, 0.0, 10_000L),
+                        point(30.0, 0.0, 30_000L),
+                    ),
+                mode = ADAPTIVE,
+                sampleIntervalSeconds = 3,
+                trajectoryContinuityIntervalSeconds = 10,
+            )
+
+        assertEquals(0, replayed.diagnostics.gapResetCount)
+    }
+
+    @Test
+    fun explicitSegmentStartRemainsHardBoundaryAtEffectiveCadence() {
+        val replayed =
+            replay(
+                raw =
+                    listOf(
+                        point(0.0, 0.0, 0L),
+                        point(10.0, 0.0, 10_000L),
+                        point(20.0, 0.0, 20_000L).copy(startsNewSegment = true),
+                    ),
+                mode = ADAPTIVE,
+                sampleIntervalSeconds = 3,
+                trajectoryContinuityIntervalSeconds = 10,
+            )
+
+        assertEquals(0, replayed.diagnostics.gapResetCount)
+        assertTrue(replayed.points.last().startsNewSegment)
+    }
+
+    @Test
+    fun fortySecondSavedPointGapResetsAtEffectiveTenSecondCadence() {
+        val replayed =
+            replay(
+                raw =
+                    listOf(
+                        point(0.0, 0.0, 0L),
+                        point(10.0, 0.0, 10_000L),
+                        point(50.0, 0.0, 50_000L),
+                    ),
+                mode = ADAPTIVE,
+                sampleIntervalSeconds = 3,
+                trajectoryContinuityIntervalSeconds = 10,
+            )
+
+        assertEquals(1, replayed.diagnostics.gapResetCount)
+    }
+
+    @Test
+    fun continuityCadenceDefaultsToSampleCadence() {
+        val defaultOptions =
+            RecordingPointSmoothingOptions(
+                mode = ADAPTIVE,
+                activityProfile = HIKE,
+                sampleIntervalSeconds = 3,
+            )
+        val explicitOptions =
+            options(
+                mode = ADAPTIVE,
+                sampleIntervalSeconds = 3,
+                trajectoryContinuityIntervalSeconds = 3,
+            )
+
+        assertEquals(defaultOptions, explicitOptions)
+    }
+
+    @Test
     fun gpsGapSegmentBoundaryFlushesTheTailWithoutFittingAcrossIt() {
         val raw =
             listOf(
@@ -253,12 +326,14 @@ class RecordingFixedLagTrajectorySmoothingTest {
         activityProfile: String = HIKE,
         mode: String,
         sampleIntervalSeconds: Int = 3,
+        trajectoryContinuityIntervalSeconds: Int = sampleIntervalSeconds,
     ): ReplayResult {
         val options =
             options(
                 mode = mode,
                 activityProfile = activityProfile,
                 sampleIntervalSeconds = sampleIntervalSeconds,
+                trajectoryContinuityIntervalSeconds = trajectoryContinuityIntervalSeconds,
             )
         var points = emptyList<RecordedTracePoint>()
         var diagnostics = RecordingTrajectorySmoothingDiagnostics()
@@ -278,10 +353,12 @@ class RecordingFixedLagTrajectorySmoothingTest {
         mode: String,
         activityProfile: String = HIKE,
         sampleIntervalSeconds: Int,
+        trajectoryContinuityIntervalSeconds: Int = sampleIntervalSeconds,
     ) = RecordingPointSmoothingOptions(
         mode = mode,
         activityProfile = activityProfile,
         sampleIntervalSeconds = sampleIntervalSeconds,
+        trajectoryContinuityIntervalSeconds = trajectoryContinuityIntervalSeconds,
     )
 
     private fun noisyStraightTrack(): List<RecordedTracePoint> =

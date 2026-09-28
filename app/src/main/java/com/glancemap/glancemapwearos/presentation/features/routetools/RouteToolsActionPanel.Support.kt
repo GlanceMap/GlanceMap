@@ -959,7 +959,7 @@ internal fun CoordinateTextEntryDialog(
             },
             singleLine = true,
             textStyle = TextStyle(color = Color.White, textAlign = TextAlign.Center),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             modifier =
                 formTokens.controlModifier

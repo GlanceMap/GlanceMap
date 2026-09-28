@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation
 
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
@@ -26,11 +28,20 @@ internal class WearAmbientState(
         private set
     var deviceHasLowBitAmbient by mutableStateOf(false)
         private set
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val pauseReconciliation =
+        PauseScreenStateReconciliation(
+            scheduleDelayed = { delayMs, action ->
+                mainHandler.postDelayed({ action() }, delayMs)
+            },
+            reconcile = { refreshDeviceInteractive(fallback = false) },
+        )
     val observer =
         AmbientLifecycleObserver(
             activity,
             object : AmbientLifecycleObserver.AmbientLifecycleCallback {
                 override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
+                    pauseReconciliation.invalidate()
                     burnInProtectionRequired = ambientDetails.burnInProtectionRequired
                     deviceHasLowBitAmbient = ambientDetails.deviceHasLowBitAmbient
                     isAmbient = true
@@ -40,6 +51,7 @@ internal class WearAmbientState(
                 }
 
                 override fun onExitAmbient() {
+                    pauseReconciliation.invalidate()
                     isAmbient = false
                     burnInProtectionRequired = false
                     deviceHasLowBitAmbient = false
@@ -62,7 +74,22 @@ internal class WearAmbientState(
         )
     }
 
+    fun onPause() {
+        refreshDeviceInteractive(fallback = false)
+        pauseReconciliation.schedule()
+    }
+
+    fun onResume() {
+        pauseReconciliation.invalidate()
+        refreshDeviceInteractive(fallback = true)
+    }
+
     fun onScreenStateChanged(action: String?) {
+        pauseReconciliation.invalidate()
         refreshDeviceInteractive(fallback = action != Intent.ACTION_SCREEN_OFF)
+    }
+
+    fun onDestroy() {
+        pauseReconciliation.invalidate()
     }
 }

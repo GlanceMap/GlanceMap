@@ -99,6 +99,7 @@ data class RecordedTraceSummary(
     val currentSpeedMps: Float?,
     val averageSpeedMps: Double?,
     val fastestSpeedMps: Double?,
+    val fastestSpeedMethod: String? = null,
     val gpsAccuracyMeters: Float?,
     val pointCount: Int,
     val gpsActiveDurationSeconds: Double,
@@ -137,6 +138,8 @@ private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceS
     writeRecordingSensorSummary(summary)
 }
 
+// Optional fields directly mirror the stable GPX summary schema; extracting them risks omissions.
+@Suppress("CyclomaticComplexMethod")
 private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSummary) {
     summary.activityProfile?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:activityProfile", it)
@@ -167,6 +170,9 @@ private fun StringWriter.writeRecordingMotionSummary(summary: RecordedTraceSumma
     }
     summary.fastestSpeedMps?.takeIf { it.isFinite() && it >= 0.0 }?.let {
         textTag("gmap:fastestSpeedMps", formatDouble(it))
+    }
+    summary.fastestSpeedMethod?.takeIf { it.isNotBlank() }?.let {
+        textTag("gmap:fastestSpeedMethod", it)
     }
     summary.gpsAccuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.let {
         textTag("gmap:gpsAccuracyMeters", formatFloat(it))
@@ -246,8 +252,15 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     }
 }
 
+// Optional fields directly mirror the stable per-point GPX schema; keep their ordering together.
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val accuracyMeters = point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }
+    val effectiveAccuracyMeters = point.effectiveAccuracyMeters?.takeIf { it.isFinite() && it >= 0f }
+    val accuracyInterpretation =
+        point.accuracyInterpretation.takeIf {
+            (accuracyMeters != null || effectiveAccuracyMeters != null) && it.isNotBlank()
+        }
     val speedMps = point.speedMps?.takeIf { it.isFinite() && it >= 0f }
     val elevationSource = point.elevationSource?.takeIf { it.isNotBlank() }
     val heartRateBpm = point.heartRateBpm?.takeIf { it > 0 }
@@ -257,10 +270,12 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     val pressureHpa = point.barometricPressureHpa?.takeIf { it.isFinite() && it > 0.0 }
     val segmentStartReason =
         point.segmentStartReason
-            ?.takeIf { point.startsNewSegment && it.isNotBlank() }
+            ?.takeIf { it.isNotBlank() }
     val extensionValues =
         listOf(
             accuracyMeters,
+            effectiveAccuracyMeters,
+            accuracyInterpretation,
             speedMps,
             elevationSource,
             heartRateBpm,
@@ -277,6 +292,12 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
     textTag("extensions") {
         accuracyMeters?.let {
             textTag("gmap:accuracyMeters", formatFloat(it))
+        }
+        effectiveAccuracyMeters?.let {
+            textTag("gmap:effectiveAccuracyMeters", formatFloat(it))
+        }
+        accuracyInterpretation?.let {
+            textTag("gmap:accuracyInterpretation", it)
         }
         speedMps?.let {
             textTag("gmap:speedMps", formatFloat(it))

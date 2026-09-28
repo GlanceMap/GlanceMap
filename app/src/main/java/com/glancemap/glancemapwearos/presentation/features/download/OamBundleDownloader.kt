@@ -55,6 +55,7 @@ import java.util.zip.ZipInputStream
 import kotlin.coroutines.coroutineContext
 
 private const val OAM_REMOTE_BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
+private const val DEM_TELEMETRY_SAMPLE_LIMIT = 5
 
 data class OamDownloadProgress(
     val phase: String,
@@ -69,13 +70,78 @@ private data class RoutingSegmentDownloadResult(
     val available: Boolean = true,
 )
 
-private data class DemTileDownloadResult(
+internal enum class DemTileDownloadOutcome {
+    DOWNLOADED,
+    REUSED,
+    KNOWN_UNAVAILABLE,
+    NEW_404,
+}
+
+internal data class DemTileDownloadResult(
     val tileId: String,
     val stored: Boolean,
     val downloaded: Boolean = false,
     val available: Boolean = true,
     val bytesStored: Long = 0L,
+    val outcome: DemTileDownloadOutcome =
+        if (downloaded) DemTileDownloadOutcome.DOWNLOADED else DemTileDownloadOutcome.REUSED,
 )
+
+internal fun demCompleteTelemetryLine(
+    areaId: String,
+    sourceId: String,
+    requiredTileCount: Int,
+    tileResults: List<DemTileDownloadResult>,
+    bytes: Long,
+    durationMs: Long,
+): String {
+    val knownUnavailableTiles =
+        tileResults.filter { it.outcome == DemTileDownloadOutcome.KNOWN_UNAVAILABLE }.map { it.tileId }
+    val new404Tiles = tileResults.filter { it.outcome == DemTileDownloadOutcome.NEW_404 }.map { it.tileId }
+    val downloaded = tileResults.count { it.outcome == DemTileDownloadOutcome.DOWNLOADED }
+    val reused = tileResults.count { it.outcome == DemTileDownloadOutcome.REUSED }
+    val knownUnavailable = knownUnavailableTiles.size
+    val new404 = new404Tiles.size
+    return buildString {
+        append(
+            "event=dem_complete area=$areaId source=$sourceId tiles=$requiredTileCount " +
+                "downloaded=$downloaded reused=$reused knownUnavailable=$knownUnavailable " +
+                "new404=$new404 ready=${downloaded + reused} unavailable=${knownUnavailable + new404} " +
+                "bytes=$bytes durationMs=$durationMs",
+        )
+        appendDemTileSamples(
+            name = "knownUnavailableTiles",
+            tileIds = knownUnavailableTiles,
+            moreName = "moreKnownUnavailable",
+        )
+        appendDemTileSamples(
+            name = "new404Tiles",
+            tileIds = new404Tiles,
+            moreName = "moreNew404",
+        )
+    }
+}
+
+internal fun demFailedTelemetryLine(
+    areaId: String,
+    sourceId: String,
+    tileId: String,
+    error: Throwable,
+): String =
+    "event=dem_failed area=$areaId source=$sourceId tile=$tileId " +
+        "errorType=${error.javaClass.simpleName.ifBlank { "Unknown" }} error=${error.demTelemetryMessage()}"
+
+private fun StringBuilder.appendDemTileSamples(
+    name: String,
+    tileIds: List<String>,
+    moreName: String,
+) {
+    if (tileIds.isEmpty()) return
+    append(" $name=${tileIds.take(DEM_TELEMETRY_SAMPLE_LIMIT).joinToString(",")}")
+    if (tileIds.size > DEM_TELEMETRY_SAMPLE_LIMIT) {
+        append(" $moreName=${tileIds.size - DEM_TELEMETRY_SAMPLE_LIMIT}")
+    }
+}
 
 internal data class RemoteFileRequest(
     val url: String,
@@ -641,7 +707,7 @@ class OamBundleDownloader(
                             val safeTileId = tileId.uppercase(Locale.ROOT)
                             val forceDownload = forceDemTiles || safeTileId in forceDemTileIds
                             val targetFile = demTileTargetFile(safeTileId, selection.demSource)
-                            val localFileAvailable = isDemTileStored(safeTileId, targetFile)
+                            val localFileAvailable = isDemTileStored(safeTileId, targetFile, selection.demSource)
                             val tileRequest = demRemoteFileRequest(tileId, selection.demSource)
                             if (
                                 shouldFetchRemoteMetadataBeforeDownload(
@@ -653,6 +719,7 @@ class OamBundleDownloader(
                             }
                             progressArbiter.runNetwork { networkProgress ->
                                 downloadDemTile(
+                                    areaId = area.id,
                                     tileId = safeTileId,
                                     source = selection.demSource,
                                     forceDownload = forceDownload,
@@ -673,12 +740,14 @@ class OamBundleDownloader(
                         }
                     DebugTelemetry.log(
                         OAM_DOWNLOAD_TELEMETRY_TAG,
-                        "event=dem_complete area=${area.id} source=${selection.demSource.id} " +
-                            "tiles=${requiredTiles.size} downloaded=${tileResults.count { it.downloaded }} " +
-                            "ready=${tileResults.count { it.available }} " +
-                            "unavailable=${tileResults.count { !it.available }} " +
-                            "bytes=${tileResults.sumOf { it.bytesStored }} " +
-                            "durationMs=${System.currentTimeMillis() - demStartedAtMs}",
+                        demCompleteTelemetryLine(
+                            areaId = area.id,
+                            sourceId = selection.demSource.id,
+                            requiredTileCount = requiredTiles.size,
+                            tileResults = tileResults,
+                            bytes = tileResults.sumOf { it.bytesStored },
+                            durationMs = System.currentTimeMillis() - demStartedAtMs,
+                        ),
                     )
                     downloadedDemTileIds =
                         (downloadedDemTileIds + tileResults.filter { it.stored }.map { it.tileId })
@@ -1095,6 +1164,7 @@ class OamBundleDownloader(
     }
 
     private suspend fun downloadDemTile(
+        areaId: String,
         tileId: String,
         source: DemSource,
         forceDownload: Boolean,
@@ -1106,21 +1176,25 @@ class OamBundleDownloader(
         if (forceDownload) {
             deleteDemPartial(safeTileId, source)
         }
-        if (!forceDownload && isDemTileStored(safeTileId, targetFile)) {
-            onProgress(
-                OamDownloadProgress(
-                    phase = "READY",
-                    detail = "$safeTileId DEM",
-                    bytesDone = targetFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L,
-                    totalBytes = targetFile.takeIf { it.exists() }?.length()?.takeIf { it > 0L },
-                ),
-            )
-            return DemTileDownloadResult(
-                tileId = safeTileId,
-                stored = true,
-                available = targetFile.isFile,
-                bytesStored = targetFile.takeIf { it.isFile }?.length()?.coerceAtLeast(0L) ?: 0L,
-            )
+        if (!forceDownload) {
+            val storedOutcome = demTileStoredOutcome(safeTileId, targetFile, source)
+            if (storedOutcome != null) {
+                onProgress(
+                    OamDownloadProgress(
+                        phase = "READY",
+                        detail = "$safeTileId DEM",
+                        bytesDone = targetFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L,
+                        totalBytes = targetFile.takeIf { it.exists() }?.length()?.takeIf { it > 0L },
+                    ),
+                )
+                return DemTileDownloadResult(
+                    tileId = safeTileId,
+                    stored = true,
+                    available = targetFile.isFile,
+                    bytesStored = targetFile.takeIf { it.isFile }?.length()?.coerceAtLeast(0L) ?: 0L,
+                    outcome = storedOutcome,
+                )
+            }
         }
 
         val request = demRemoteFileRequest(safeTileId, source)
@@ -1149,6 +1223,7 @@ class OamBundleDownloader(
                     stored = true,
                     downloaded = true,
                     bytesStored = file.length().coerceAtLeast(0L),
+                    outcome = DemTileDownloadOutcome.DOWNLOADED,
                 )
             }.getOrElse { error ->
                 if (error.isHttpNotFound()) {
@@ -1175,8 +1250,18 @@ class OamBundleDownloader(
                         tileId = safeTileId,
                         stored = true,
                         available = false,
+                        outcome = DemTileDownloadOutcome.NEW_404,
                     )
                 } else {
+                    DebugTelemetry.log(
+                        OAM_DOWNLOAD_TELEMETRY_TAG,
+                        demFailedTelemetryLine(
+                            areaId = areaId,
+                            sourceId = source.id,
+                            tileId = safeTileId,
+                            error = error,
+                        ),
+                    )
                     throw error
                 }
             }
@@ -1186,15 +1271,19 @@ class OamBundleDownloader(
     private fun isDemTileStored(
         tileId: String,
         targetFile: File,
-    ): Boolean {
-        val demRoot = targetFile.parentFile?.parentFile ?: Dem3CoverageUtils.demRootDir(context)
+        source: DemSource,
+    ): Boolean = demTileStoredOutcome(tileId, targetFile, source) != null
+
+    private fun demTileStoredOutcome(
+        tileId: String,
+        targetFile: File,
+        source: DemSource,
+    ): DemTileDownloadOutcome? {
         if (targetFile.exists() && targetFile.isFile && runCatching { validateDemTileFile(targetFile) }.isSuccess) {
-            clearMissingDemMarkers(tileId, demRoot)
-            return true
+            clearMissingDemMarkers(tileId, source)
+            return DemTileDownloadOutcome.REUSED
         }
-        return Dem3CoverageUtils
-            .missingTileMarkerCandidates(demRoot = demRoot, tileId = tileId)
-            .any { it.exists() && it.isFile }
+        return DemTileDownloadOutcome.KNOWN_UNAVAILABLE.takeIf { isKnownMissingDemTile(tileId, source) }
     }
 
     private fun deleteDemPartial(
@@ -1850,6 +1939,14 @@ internal fun OamRemoteFileMetadata.compareWith(other: OamRemoteFileMetadata): Re
     }
 
 private fun Throwable.isHttpNotFound(): Boolean = message?.contains("HTTP 404", ignoreCase = true) == true
+
+private fun Throwable.demTelemetryMessage(): String =
+    (message ?: "na")
+        .replace(Regex("https?://\\S+"), "url")
+        .replace(Regex("\\s+"), "_")
+        .replace(Regex("[^A-Za-z0-9._:-]"), "_")
+        .take(120)
+        .ifBlank { "na" }
 
 private fun Throwable.isHttpResponseError(): Boolean = message?.startsWith("HTTP ", ignoreCase = true) == true
 
