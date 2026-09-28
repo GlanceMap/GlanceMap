@@ -953,6 +953,11 @@ class TraceRecordingViewModel(
                                 mode = currentState.trackSmoothingMode,
                                 activityProfile = currentState.activityProfile,
                                 sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
+                                trajectoryContinuityIntervalSeconds =
+                                    recordingTrajectoryContinuityIntervalSeconds(
+                                        effectiveIntervalMs = latestEffectiveRecordingSamplingIntervalMs,
+                                        fallbackSeconds = effectiveSampleIntervalSeconds(),
+                                    ),
                             ),
                     )
                 trajectoryGapResetCount += canonicalAppend.trajectoryDiagnostics.gapResetCount
@@ -1532,6 +1537,11 @@ class TraceRecordingViewModel(
                         mode = state.trackSmoothingMode,
                         activityProfile = state.activityProfile,
                         sampleIntervalSeconds = effectiveSampleIntervalSeconds(),
+                        trajectoryContinuityIntervalSeconds =
+                            recordingTrajectoryContinuityIntervalSeconds(
+                                effectiveIntervalMs = latestEffectiveRecordingSamplingIntervalMs,
+                                fallbackSeconds = effectiveSampleIntervalSeconds(),
+                            ),
                     ),
             )
         smoothedPointCount += finalized.adjustedPointCount
@@ -2781,6 +2791,20 @@ class TraceRecordingViewModel(
     private fun recordingActivityProfile(): String = _uiState.value.activityProfile
 
     private fun effectiveSampleIntervalSeconds(): Int = sampleIntervalSeconds.takeIf { it > 0 } ?: SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
+}
+
+internal fun recordingTrajectoryContinuityIntervalSeconds(
+    effectiveIntervalMs: Long,
+    fallbackSeconds: Int = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+): Int {
+    val fallback = fallbackSeconds.takeIf { it > 0 } ?: SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
+    return if (effectiveIntervalMs > 0L) {
+        (((effectiveIntervalMs - 1L) / 1_000L) + 1L)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+    } else {
+        fallback
+    }
 }
 
 private fun RecordingDashboardSnapshot.toRecordedTraceSummary(

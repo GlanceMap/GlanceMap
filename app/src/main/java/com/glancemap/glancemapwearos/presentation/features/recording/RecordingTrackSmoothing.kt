@@ -20,6 +20,7 @@ internal data class RecordingPointSmoothingOptions(
     val mode: String,
     val activityProfile: String,
     val sampleIntervalSeconds: Int = SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+    val trajectoryContinuityIntervalSeconds: Int = sampleIntervalSeconds,
 )
 
 /**
@@ -431,7 +432,7 @@ private fun recordingTrajectoryGapResetMillis(
     policy: RecordingTrajectoryPolicy,
     options: RecordingPointSmoothingOptions,
 ): Long =
-    maxOf(policy.minimumGapResetMillis, options.sampleIntervalSeconds.coerceAtLeast(1) * 3_000L)
+    maxOf(policy.minimumGapResetMillis, options.trajectoryContinuityIntervalSeconds.coerceAtLeast(1) * 3_000L)
         .coerceAtMost(policy.maximumGapResetMillis)
 
 @Suppress("LoopWithTooManyJumpStatements", "ReturnCount")
