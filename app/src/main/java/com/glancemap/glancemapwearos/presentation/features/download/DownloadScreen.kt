@@ -249,9 +249,9 @@ fun DownloadScreen(
             WearScreenSize.MEDIUM -> 17.dp
             WearScreenSize.SMALL -> 16.dp
         }
-    val bottomActionBottomPadding =
-        adaptive.dialogVerticalPadding + if (adaptive.isRound) 42.dp else 0.dp
-    val bottomActionWidthFraction = if (adaptive.isRound) 0.86f else 1f
+    val refreshActionBottomPadding =
+        adaptive.dialogVerticalPadding + if (adaptive.isRound) 24.dp else 0.dp
+    val refreshActionWidthFraction = if (adaptive.isRound) 0.64f else 0.8f
     val bottomActionVisualOffsetY =
         when (screenSize) {
             WearScreenSize.LARGE -> (-6).dp
@@ -595,9 +595,8 @@ fun DownloadScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(pickerDownloadButtonSize + bottomActionBottomPadding)
-                            .padding(horizontal = listHorizontalPadding)
-                            .padding(bottom = bottomActionBottomPadding),
+                            .height(pickerDownloadButtonSize)
+                            .padding(horizontal = listHorizontalPadding),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (uiState.selectedAreaIds.isNotEmpty()) {
@@ -631,13 +630,13 @@ fun DownloadScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = listHorizontalPadding)
-                                .padding(bottom = bottomActionBottomPadding),
+                                .padding(bottom = refreshActionBottomPadding),
                         contentAlignment = Alignment.Center,
                     ) {
                         DownloadActionButton(
                             label =
                                 if (uiState.isCheckingUpdates) {
-                                    "Checking updates..."
+                                    "Checking…"
                                 } else {
                                     refreshSelectionButtonLabel(uiState.selectedRefreshBundleIds.size)
                                 },
@@ -647,7 +646,7 @@ fun DownloadScreen(
                                     !uiState.isCheckingUpdates,
                             height = actionButtonHeight,
                             iconSize = actionButtonIconSize,
-                            widthFraction = bottomActionWidthFraction,
+                            widthFraction = refreshActionWidthFraction,
                             onClick = viewModel::checkSelectedBundlesForRefresh,
                         )
                     }
@@ -655,8 +654,7 @@ fun DownloadScreen(
                     Box(
                         modifier =
                             Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = bottomActionBottomPadding),
+                                .fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
                         Row(
@@ -1009,9 +1007,9 @@ private fun InstalledBundleRow(
 
 private fun refreshSelectionButtonLabel(selectedCount: Int): String =
     if (selectedCount > 0) {
-        "Check updates ($selectedCount)"
+        "Check ($selectedCount)"
     } else {
-        "Check updates"
+        "Check"
     }
 
 private fun installedBundleSubtitle(bundle: OamInstalledBundle): String =
