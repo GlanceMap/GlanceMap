@@ -69,26 +69,10 @@ internal class BatchTransferRunner(
 
     @Volatile private var currentFileNameInternal: String? = null
 
-    fun loadFilesFromUris(
-        ctx: Context,
-        uris: List<Uri>,
+    fun loadSelectedFiles(
+        supportedItems: List<FileItem>,
+        skippedCount: Int,
     ) {
-        if (uris.isEmpty()) {
-            clearSelectedFiles(clearStatusMessage = true)
-            return
-        }
-
-        val supportedItems =
-            uris.mapNotNull { uri ->
-                val details = TransferUtils.getTransferFileDetails(ctx, uri) ?: return@mapNotNull null
-                val (rawName, size) = details
-                val name = rawName.ifBlank { "file.bin" }
-                if (!isSupportedTransferFileName(name)) return@mapNotNull null
-                FileItem(uri = uri, displayName = name, size = size)
-            }
-
-        val skippedCount = (uris.size - supportedItems.size).coerceAtLeast(0)
-
         if (supportedItems.isEmpty()) {
             clearSelectedFiles(statusMessage = "No compatible files selected (.gpx, .map, .poi, .rd5, .hgt, .hgt.gz).")
             return
