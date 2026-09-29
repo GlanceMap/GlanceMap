@@ -177,13 +177,16 @@ internal fun rememberNavigateCompassUiState(
     val showCompassConeOverlay = navigationMarkerStyle == NavigationMarkerStyle.DOT
     val effectiveCompassConeAccuracyColorsEnabled =
         compassConeAccuracyColorsEnabled &&
-            selectedCompassProviderType == CompassProviderType.SENSOR_MANAGER
+            selectedCompassProviderType == CompassProviderType.SENSOR_MANAGER &&
+            compassRenderState.providerType == CompassProviderType.SENSOR_MANAGER
     val compassConeQuality =
-        if (effectiveCompassConeAccuracyColorsEnabled) {
-            displayedCompassQuality
-        } else {
-            CompassMarkerQuality.GOOD
-        }
+        resolveCompassConeQuality(
+            selectedProviderType = selectedCompassProviderType,
+            renderProviderType = compassRenderState.providerType,
+            accuracyColorsEnabled = compassConeAccuracyColorsEnabled,
+            displayedSensorQuality = displayedCompassQuality,
+            honestQuality = liveCompassQualityReading.quality,
+        )
     val uiConfidenceTraceKey =
         CompassUiConfidenceTraceKey(
             providerType = compassRenderState.providerType,
@@ -265,3 +268,19 @@ internal fun rememberNavigateCompassUiState(
         },
     )
 }
+
+internal fun resolveCompassConeQuality(
+    selectedProviderType: CompassProviderType,
+    renderProviderType: CompassProviderType,
+    accuracyColorsEnabled: Boolean,
+    displayedSensorQuality: CompassMarkerQuality,
+    honestQuality: CompassMarkerQuality?,
+): CompassMarkerQuality =
+    if (
+        selectedProviderType == CompassProviderType.SENSOR_MANAGER &&
+        renderProviderType == CompassProviderType.SENSOR_MANAGER
+    ) {
+        if (accuracyColorsEnabled) displayedSensorQuality else CompassMarkerQuality.GOOD
+    } else {
+        honestQuality ?: CompassMarkerQuality.NEUTRAL
+    }

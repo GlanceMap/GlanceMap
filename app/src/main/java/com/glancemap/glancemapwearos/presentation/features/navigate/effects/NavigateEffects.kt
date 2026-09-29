@@ -1002,12 +1002,7 @@ internal fun shouldDriveCompassFollowMap(
     nowElapsedMs: Long? = null,
 ): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
-    if (
-        renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
-        renderState.unresolvedIndependentDisagreement
-    ) {
-        return false
-    }
+    if (hasUnresolvedFusedDisagreement(renderState)) return false
     val hasFreshRenderableSample =
         renderState.headingSampleElapsedRealtimeMs != null &&
             !renderState.headingSampleStale &&
@@ -1314,6 +1309,7 @@ internal fun shouldDriveMarkerHeading(
     nowElapsedMs: Long? = null,
 ): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
+    if (hasUnresolvedFusedDisagreement(renderState)) return false
     val missingSensorSample =
         renderState.headingSampleElapsedRealtimeMs == null ||
             renderState.headingSampleStale ||
@@ -1355,17 +1351,19 @@ internal fun shouldSeedCompassFollowMapWithCachedHeading(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
 ): Boolean =
-    hasRecentGoogleFusedCachedHeading(
-        renderState = renderState,
-        nowElapsedMs = nowElapsedMs,
-        maxAgeMs = GOOGLE_FUSED_CACHED_HEADING_SEED_MAX_AGE_MS,
-    )
+    !hasUnresolvedFusedDisagreement(renderState) &&
+        hasRecentGoogleFusedCachedHeading(
+            renderState = renderState,
+            nowElapsedMs = nowElapsedMs,
+            maxAgeMs = GOOGLE_FUSED_CACHED_HEADING_SEED_MAX_AGE_MS,
+        )
 
 internal fun shouldSeedNorthUpMarkerWithCachedHeading(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
 ): Boolean =
-    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+    !hasUnresolvedFusedDisagreement(renderState) &&
+        renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
         hasRecentGoogleFusedCachedHeading(
             renderState = renderState,
             nowElapsedMs = nowElapsedMs,
@@ -1390,6 +1388,10 @@ internal fun resolveNavigateInitialRenderedHeadingDeg(
 }
 
 private fun normalize360(deg: Float): Float = (deg % 360f + 360f) % 360f
+
+private fun hasUnresolvedFusedDisagreement(renderState: CompassRenderState): Boolean =
+    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+        renderState.unresolvedIndependentDisagreement
 
 internal fun shouldPublishRenderedCompassUiState(
     nowElapsedMs: Long,

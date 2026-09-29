@@ -879,7 +879,7 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
-    fun unresolvedIndependentDisagreementBlocksOnlyTheFusedMapFollowPath() {
+    fun unresolvedIndependentDisagreementBlocksFusedMapAndMarkerPaths() {
         val ordinaryUntrusted =
             readyGoogleFusedState().copy(
                 accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
@@ -889,7 +889,8 @@ class NavigateEffectsSupportTest {
 
         assertTrue(shouldDriveCompassFollowMap(ordinaryUntrusted, nowElapsedMs = 1_100L))
         assertFalse(shouldDriveCompassFollowMap(unresolved, nowElapsedMs = 1_100L))
-        assertTrue(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
+        assertFalse(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
+        assertFalse(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, unresolved, nowElapsedMs = 1_100L))
     }
 
     @Test
@@ -957,6 +958,39 @@ class NavigateEffectsSupportTest {
 
         assertTrue(
             shouldSeedNorthUpMarkerWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun unresolvedIndependentDisagreementBlocksCachedFusedHeadingSeeds() {
+        val state =
+            initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
+                headingDeg = 182f,
+                accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingSampleElapsedRealtimeMs = 10_000L,
+                headingSampleStale = true,
+                headingSource = HeadingSource.NONE,
+                unresolvedIndependentDisagreement = true,
+            )
+
+        assertFalse(
+            shouldSeedCompassFollowMapWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+        assertFalse(
+            shouldSeedNorthUpMarkerWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+        assertEquals(
+            0f,
+            resolveNavigateInitialRenderedHeadingDeg(
                 renderState = state,
                 nowElapsedMs = 25_000L,
             ),
