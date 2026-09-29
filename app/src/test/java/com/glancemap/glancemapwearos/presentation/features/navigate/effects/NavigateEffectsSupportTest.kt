@@ -879,6 +879,20 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun unresolvedIndependentDisagreementBlocksOnlyTheFusedMapFollowPath() {
+        val ordinaryUntrusted =
+            readyGoogleFusedState().copy(
+                accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingTrusted = false,
+            )
+        val unresolved = ordinaryUntrusted.copy(unresolvedIndependentDisagreement = true)
+
+        assertTrue(shouldDriveCompassFollowMap(ordinaryUntrusted, nowElapsedMs = 1_100L))
+        assertFalse(shouldDriveCompassFollowMap(unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
+    }
+
+    @Test
     fun northUpMarkerDrivesWhenSensorManagerHeadingIsReady() {
         val state =
             initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(

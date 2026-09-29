@@ -1002,6 +1002,12 @@ internal fun shouldDriveCompassFollowMap(
     nowElapsedMs: Long? = null,
 ): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
+    if (
+        renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+        renderState.unresolvedIndependentDisagreement
+    ) {
+        return false
+    }
     val hasFreshRenderableSample =
         renderState.headingSampleElapsedRealtimeMs != null &&
             !renderState.headingSampleStale &&
@@ -1127,7 +1133,13 @@ internal class NavigateRotationSettleGate {
         currentDisplayedHeadingDeg: Float? = null,
     ): NavigationRotationTarget? {
         if (!shouldDriveCompassFollowMap(renderState, nowElapsedMs) || !compassHeadingDeg.isFinite()) {
-            hold("await_usable_heading")
+            hold(
+                if (renderState.unresolvedIndependentDisagreement) {
+                    "unresolved_independent_disagreement"
+                } else {
+                    "await_usable_heading"
+                },
+            )
             return null
         }
         val heading = normalize360(compassHeadingDeg)

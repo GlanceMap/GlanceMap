@@ -27,6 +27,7 @@ internal data class CompassDeepTraceProviderSample(
     val relativeWitnessAvailable: Boolean = false,
     val relativeWitnessSuppressed: Boolean = false,
     val relativeWitnessSupportsHighRate: Boolean = false,
+    val unresolvedIndependentDisagreement: Boolean = false,
     val relativeHorizontalProjection: Float? = null,
     val fusedRelativeDisagreementDeg: Float? = null,
     val targetHeadingDeg: Float? = null,
@@ -87,6 +88,9 @@ internal sealed interface CompassDeepTraceEvent {
         val trusted: Boolean,
         val quarantineActive: Boolean,
         val recoveryActive: Boolean,
+        val relativeWitnessAvailable: Boolean = false,
+        val relativeWitnessSuppressed: Boolean = false,
+        val unresolvedIndependentDisagreement: Boolean = false,
         val heldOutput: Boolean = false,
         val provenance: CompassHeadingProvenance?,
     ) : CompassDeepTraceEvent
@@ -226,6 +230,7 @@ internal enum class CompassDeepTraceRawSensor {
     MAGNETOMETER,
 }
 
+@Suppress("TooManyFunctions") // Keeps the bounded trace aggregation and serialization in one audited owner.
 internal class CompassDeepTraceWindowAccumulator(
     val startedAtElapsedMs: Long,
 ) {
@@ -256,6 +261,7 @@ internal class CompassDeepTraceWindowAccumulator(
     private val magneticQualityCounts = IntArray(CompassMagneticQuality.entries.size)
     private var quarantineProviderSamples = 0
     private var recoveryProviderSamples = 0
+    private var unresolvedIndependentDisagreementSamples = 0
     private val relativeWitness = RelativeWitnessTraceStats()
     private var lastTrackingReason: CompassTrackingReason? = null
     private var lastNorthBasis: CompassNorthBasis? = null
@@ -289,6 +295,10 @@ internal class CompassDeepTraceWindowAccumulator(
         if (sample.accuracy in providerAccuracyCounts.indices) {
             providerAccuracyCounts[sample.accuracy] += 1
         }
+        recordProviderIntegrity(sample)
+    }
+
+    private fun recordProviderIntegrity(sample: CompassDeepTraceProviderSample) {
         sample.relativeHeadingDeg?.let { relativeHeading.add(it, sample.atElapsedMs) }
         sample.relativeHorizontalProjection?.let(relativeHorizontalProjection::add)
         sample.fusedRelativeDisagreementDeg?.let(fusedRelativeDisagreement::add)
@@ -297,6 +307,7 @@ internal class CompassDeepTraceWindowAccumulator(
         sample.magneticQuality?.let { magneticQualityCounts[it.ordinal] += 1 }
         if (sample.quarantineActive) quarantineProviderSamples += 1
         if (sample.recoveryActive) recoveryProviderSamples += 1
+        if (sample.unresolvedIndependentDisagreement) unresolvedIndependentDisagreementSamples += 1
         relativeWitness.record(sample)
         lastTrackingReason = sample.trackingReason ?: lastTrackingReason
         lastNorthBasis = sample.northBasis ?: lastNorthBasis
@@ -423,6 +434,8 @@ internal class CompassDeepTraceWindowAccumulator(
             .append(magneticQualityCounts[CompassMagneticQuality.INTERFERENCE.ordinal])
         append(" quarantineProviderSamples=").append(quarantineProviderSamples)
         append(" recoveryProviderSamples=").append(recoveryProviderSamples)
+        append(" unresolvedIndependentDisagreementSamples=")
+            .append(unresolvedIndependentDisagreementSamples)
         append(" lastTrackingReason=").append(lastTrackingReason?.telemetryToken ?: "na")
         append(" lastNorthBasis=").append(lastNorthBasis?.telemetryToken ?: "na")
         append(" fusedLastHeadingDeg=").append(fusedHeading.latest.formatTrace(1))

@@ -109,6 +109,7 @@ internal object CompassHeadingDiagnostics {
                     relativeWitnessAvailable = snapshot.relativeWitnessAvailable,
                     relativeWitnessSuppressed = snapshot.relativeWitnessSuppressed,
                     relativeWitnessSupportsHighRate = snapshot.relativeWitnessSupportsHighRate,
+                    unresolvedIndependentDisagreement = snapshot.unresolvedIndependentDisagreement,
                     relativeHorizontalProjection = snapshot.relativeHorizontalProjection,
                     fusedRelativeDisagreementDeg = snapshot.absoluteRelativeDisagreementDeg,
                     targetHeadingDeg = snapshot.renderHeadingDeg,
@@ -312,6 +313,7 @@ internal object CompassHeadingDiagnostics {
             when {
                 snapshot.quarantineActive -> "quarantined"
                 snapshot.state == CompassTrackingState.DEGRADED -> "degraded"
+                snapshot.unresolvedIndependentDisagreement -> "unresolved_independent_disagreement"
                 snapshot.relativeWitnessSuppressed -> "accepted_without_witness"
                 else -> "accepted_with_witness"
             }
@@ -326,6 +328,7 @@ internal object CompassHeadingDiagnostics {
             "rollDeg=${rollDeg.formatOrNa(1)} " +
             "relativeStepDeg=${snapshot.relativeStepDeg.formatOrNa(1)} " +
             "relativeWitnessSuppressed=${snapshot.relativeWitnessSuppressed} " +
+            "unresolvedIndependentDisagreement=${snapshot.unresolvedIndependentDisagreement} " +
             "projection=${snapshot.relativeHorizontalProjection.formatOrNa(2)} " +
             "targetStepDeg=${targetStepDeg.formatOrNa(1)} " +
             "renderStepDeg=${lastRenderedStepDeg.formatOrNa(1)} " +
@@ -352,6 +355,7 @@ internal object CompassHeadingDiagnostics {
         private var relativeWitnessAvailableSamples = 0
         private var relativeWitnessSuppressedSamples = 0
         private var relativeWitnessHighRateSamples = 0
+        private var unresolvedIndependentDisagreementSamples = 0
         private var provider = HeadingSource.NONE
         private var northBasis = CompassNorthBasis.UNKNOWN
         private var lastReason = CompassTrackingReason.STARTUP
@@ -389,6 +393,9 @@ internal object CompassHeadingDiagnostics {
             if (snapshot.relativeWitnessAvailable) relativeWitnessAvailableSamples += 1
             if (snapshot.relativeWitnessSuppressed) relativeWitnessSuppressedSamples += 1
             if (snapshot.relativeWitnessSupportsHighRate) relativeWitnessHighRateSamples += 1
+            if (snapshot.unresolvedIndependentDisagreement) {
+                unresolvedIndependentDisagreementSamples += 1
+            }
             this.provider = provider
             this.northBasis = northBasis
             lastReason = snapshot.reason
@@ -436,6 +443,8 @@ internal object CompassHeadingDiagnostics {
                 append(" relativeWitnessAvailableSamples=").append(relativeWitnessAvailableSamples)
                 append(" relativeWitnessSuppressedSamples=").append(relativeWitnessSuppressedSamples)
                 append(" relativeWitnessHighRateSamples=").append(relativeWitnessHighRateSamples)
+                append(" unresolvedIndependentDisagreementSamples=")
+                    .append(unresolvedIndependentDisagreementSamples)
                 append(" relativeProjectionAvg=").append(relativeProjection.average.formatOrNa(2))
                 append(" relativeProjectionMin=").append(relativeProjection.minimum.formatOrNa(2))
                 append(" acquiringSamples=").append(stateCounts[CompassTrackingState.ACQUIRING.ordinal])
@@ -516,6 +525,7 @@ private data class TransitionSnapshot(
     val magneticQuality: CompassMagneticQuality,
     val relativeWitnessAvailable: Boolean,
     val relativeWitnessSuppressed: Boolean,
+    val unresolvedIndependentDisagreement: Boolean,
     val quarantineActive: Boolean,
     val recoveryActive: Boolean,
 )
@@ -672,6 +682,7 @@ private fun FusedHeadingIntegritySnapshot.toTransitionSnapshot(northBasis: Compa
         magneticQuality = magneticQuality,
         relativeWitnessAvailable = relativeWitnessAvailable,
         relativeWitnessSuppressed = relativeWitnessSuppressed,
+        unresolvedIndependentDisagreement = unresolvedIndependentDisagreement,
         quarantineActive = quarantineActive,
         recoveryActive = recoveryActive,
     )
@@ -687,11 +698,15 @@ private fun relativeWitnessTransitionLine(
     val suppressionChanged =
         previous == null ||
             previous.relativeWitnessSuppressed != current.relativeWitnessSuppressed
-    val witnessChanged = availabilityChanged || suppressionChanged
+    val unresolvedChanged =
+        previous == null ||
+            previous.unresolvedIndependentDisagreement != current.unresolvedIndependentDisagreement
+    val witnessChanged = availabilityChanged || suppressionChanged || unresolvedChanged
     return if (witnessChanged) {
         "heading_engine witness transition " +
             "available=${current.relativeWitnessAvailable} " +
             "suppressed=${current.relativeWitnessSuppressed} " +
+            "unresolvedIndependentDisagreement=${current.unresolvedIndependentDisagreement} " +
             "projection=${snapshot.relativeHorizontalProjection.formatOrNa(2)} " +
             "disagreementDeg=${snapshot.absoluteRelativeDisagreementDeg.formatOrNa(1)}"
     } else {

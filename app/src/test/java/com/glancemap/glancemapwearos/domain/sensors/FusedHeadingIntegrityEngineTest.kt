@@ -87,8 +87,17 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT, snapshot.reason)
         assertTrue(snapshot.quarantineActive)
         assertTrue(snapshot.relativeWitnessSuppressed)
-        assertFalse(snapshot.relativeWitnessAvailable)
+        assertTrue(snapshot.relativeWitnessAvailable)
         assertFalse(snapshot.relativeWitnessSupportsHighRate)
+        assertTrue(snapshot.unresolvedIndependentDisagreement)
+
+        replay.advance(20L)
+        val sampledAfterSuppression = replay.relative(headingDeg = 12f)
+
+        assertEquals(12f, requireNotNull(sampledAfterSuppression.relativeHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertTrue(sampledAfterSuppression.relativeWitnessAvailable)
+        assertTrue(sampledAfterSuppression.relativeWitnessSuppressed)
+        assertFalse(sampledAfterSuppression.relativeWitnessSupportsHighRate)
     }
 
     @Test
@@ -245,7 +254,7 @@ class FusedHeadingIntegrityEngineTest {
     }
 
     @Test
-    fun stationaryReturnRecoversAfterContradictionsSuppressAndExpireTheWitness() {
+    fun stationaryReturnKeepsTheUnresolvedDisagreementAfterWitnessSuppression() {
         val replay = Replay(integrityEngine())
         replay.acquireStableHeading(headingDeg = 0f)
 
@@ -263,8 +272,85 @@ class FusedHeadingIntegrityEngineTest {
         val recovered = replay.absolute(headingDeg = 0f)
 
         assertFalse(recovered.quarantineActive)
-        assertFalse(recovered.quarantineActive && recovered.trusted)
+        assertTrue(recovered.unresolvedIndependentDisagreement)
+        assertFalse(recovered.trusted)
         assertEquals(0f, requireNotNull(recovered.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun strongFusedSamplesCannotSelfCertifyAfterWitnessSuppression() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        suppressRelativeWitness(replay)
+
+        val unresolvedSnapshots =
+            buildList {
+                repeat(12) {
+                    replay.advance(100L)
+                    replay.magnetic(42f)
+                    replay.relative(headingDeg = 0f)
+                    add(replay.absolute(headingDeg = 180f, liveErrorDeg = 4f, conservativeErrorDeg = 10f))
+                }
+            }
+        val latest = unresolvedSnapshots.last()
+
+        assertEquals(CompassMagneticQuality.GOOD, latest.magneticQuality)
+        assertTrue(latest.unresolvedIndependentDisagreement)
+        assertTrue(latest.relativeWitnessSuppressed)
+        assertFalse(latest.trusted)
+        assertTrue(unresolvedSnapshots.all { !it.unresolvedIndependentDisagreement || !it.trusted })
+    }
+
+    @Test
+    fun anchorReturnDoesNotClearUnresolvedDisagreementBeforeAnotherBadHeading() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        suppressRelativeWitness(replay)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val anchorReturn = replay.absolute(headingDeg = 0f)
+        assertFalse(anchorReturn.quarantineActive)
+        assertTrue(anchorReturn.unresolvedIndependentDisagreement)
+        assertFalse(anchorReturn.trusted)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val secondBadHeading = replay.absolute(headingDeg = 180f, liveErrorDeg = 4f, conservativeErrorDeg = 10f)
+
+        assertTrue(secondBadHeading.unresolvedIndependentDisagreement)
+        assertFalse(secondBadHeading.trusted)
+    }
+
+    @Test
+    fun coherentPhysicalTurnRebaselinesAndRestoresTrustAfterWitnessSuppression() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        suppressRelativeWitness(replay)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 0f)
+
+        var latest: FusedHeadingIntegritySnapshot? = null
+        listOf(30f, 60f, 90f, 120f, 150f, 180f, 180f, 180f).forEach { headingDeg ->
+            replay.advance(150L)
+            replay.magnetic(42f)
+            replay.relative(headingDeg)
+            latest = replay.absolute(headingDeg)
+        }
+
+        val rebaselined = requireNotNull(latest)
+        assertFalse(rebaselined.unresolvedIndependentDisagreement)
+        assertFalse(rebaselined.relativeWitnessSuppressed)
+        assertTrue(rebaselined.relativeWitnessAvailable)
+        assertTrue(rebaselined.trusted)
+
+        replay.advance(20L)
+        replay.relative(headingDeg = 90f)
+        val counterClockwiseTurn = replay.absolute(headingDeg = 90f)
+        assertTrue(counterClockwiseTurn.trusted)
+        assertTrue(counterClockwiseTurn.relativeWitnessSupportsHighRate)
     }
 
     @Test
@@ -394,6 +480,17 @@ class FusedHeadingIntegrityEngineTest {
             relativeSensorAvailable = true,
             magnetometerAvailable = true,
         )
+
+    private fun suppressRelativeWitness(replay: Replay): FusedHeadingIntegritySnapshot {
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(12) {
+            replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(headingDeg = 0f)
+            latest = replay.absolute(headingDeg = 180f, liveErrorDeg = 8f, conservativeErrorDeg = 180f)
+        }
+        return requireNotNull(latest)
+    }
 
     private class Replay(
         private val engine: FusedHeadingIntegrityEngine,

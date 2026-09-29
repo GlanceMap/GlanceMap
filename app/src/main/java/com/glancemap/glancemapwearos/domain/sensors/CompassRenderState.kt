@@ -27,6 +27,8 @@ data class CompassRenderState(
     val magneticQuality: CompassMagneticQuality = CompassMagneticQuality.UNKNOWN,
     val magneticFieldUt: Float? = null,
     val quarantineActive: Boolean = false,
+    /** Independent heading contradiction that still needs fresh corroborated re-baselining. */
+    val unresolvedIndependentDisagreement: Boolean = false,
     /**
      * Relative game-rotation heading used only to validate a compass turn. It has no north
      * reference and must never be rendered as the map heading.

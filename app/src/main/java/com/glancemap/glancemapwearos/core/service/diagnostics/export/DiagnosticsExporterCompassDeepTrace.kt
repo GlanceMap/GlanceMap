@@ -97,6 +97,10 @@ private fun CompassDeepTraceEventRecord.toCompassDeepTraceLine(): String =
                 append(" trusted=").append(value.trusted)
                 append(" quarantine=").append(value.quarantineActive)
                 append(" recovery=").append(value.recoveryActive)
+                append(" relativeWitnessAvailable=").append(value.relativeWitnessAvailable)
+                append(" relativeWitnessSuppressed=").append(value.relativeWitnessSuppressed)
+                append(" unresolvedIndependentDisagreement=")
+                    .append(value.unresolvedIndependentDisagreement)
                 append(" heldOutput=").append(value.heldOutput)
                 append(" provenance=").append(value.provenance.traceToken())
             }

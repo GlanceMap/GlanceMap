@@ -67,6 +67,7 @@ internal data class FusedHeadingIntegritySnapshot(
     val relativeWitnessAvailable: Boolean,
     val relativeWitnessSuppressed: Boolean,
     val relativeWitnessSupportsHighRate: Boolean,
+    val unresolvedIndependentDisagreement: Boolean,
     val relativeHorizontalProjection: Float?,
     val absoluteRelativeDisagreementDeg: Float?,
     val residualSpreadDeg: Float?,
@@ -175,6 +176,8 @@ internal class FusedHeadingIntegrityEngine(
     private var recoveryActive = false
     private var quarantineActive = false
     private var trusted = false
+    private var unresolvedIndependentDisagreement = false
+    private var unresolvedRebaselineSawCorroboratedTurn = false
     private var lastDisagreementDeg: Float? = null
     private var lastResidualSpreadDeg: Float? = null
     private var lastRecoveryCorrectionDeg = 0f
@@ -210,6 +213,8 @@ internal class FusedHeadingIntegrityEngine(
         recoveryActive = false
         quarantineActive = false
         trusted = false
+        unresolvedIndependentDisagreement = false
+        unresolvedRebaselineSawCorroboratedTurn = false
         lastDisagreementDeg = null
         lastResidualSpreadDeg = null
         lastRecoveryCorrectionDeg = 0f
@@ -324,18 +329,25 @@ internal class FusedHeadingIntegrityEngine(
         }
 
         val evidence = collectAbsoluteHeadingEvidence(sample)
+        val witnessWasSuppressed = relativeWitnessValidator.suppressed
         relativeWitnessValidator.update(evidence)
+        if (!witnessWasSuppressed && relativeWitnessValidator.suppressed) {
+            beginUnresolvedIndependentDisagreement()
+        }
         val correction =
             when (state) {
                 CompassTrackingState.ACQUIRING -> updateWhileAcquiring(evidence)
                 CompassTrackingState.TRACKING -> updateWhileTracking(evidence)
                 CompassTrackingState.DEGRADED -> updateWhileDegraded(evidence)
             }
+        observeUnresolvedRebaselineEvidence(evidence)
+        resolveUnresolvedIndependentDisagreementIfReady(evidence)
 
         trusted =
             state == CompassTrackingState.TRACKING &&
             !recoveryActive &&
             !quarantineActive &&
+            !unresolvedIndependentDisagreement &&
             evidence.fieldAcceptable &&
             evidence.strongAbsoluteConfidence
         lastDisagreementDeg = evidence.disagreementDeg
@@ -604,6 +616,62 @@ internal class FusedHeadingIntegrityEngine(
             evidence.stepDisagreementDeg != null &&
             !evidence.hardDisagreement
 
+    private fun beginUnresolvedIndependentDisagreement() {
+        // The suppression threshold establishes a material independent contradiction. Start the
+        // recovery evidence window after that boundary so old absolute or relative history cannot
+        // silently re-authorize either source.
+        unresolvedIndependentDisagreement = true
+        unresolvedRebaselineSawCorroboratedTurn = false
+        trackingResidualAnchorDeg = null
+        residualWindow.clear()
+        absoluteWindow.clear()
+    }
+
+    private fun observeUnresolvedRebaselineEvidence(evidence: AbsoluteHeadingEvidence) {
+        if (
+            unresolvedIndependentDisagreement &&
+            !unresolvedRebaselineSawCorroboratedTurn &&
+            hasCorroboratedCorrection(evidence)
+        ) {
+            unresolvedRebaselineSawCorroboratedTurn = true
+            // Begin the fresh baseline at the first corroborated physical turn, excluding every
+            // earlier post-suppression sample whose absolute source is still unresolved.
+            residualWindow.clear()
+            absoluteWindow.clear()
+            appendEvidence(
+                absoluteHeadingDeg = evidence.absoluteHeadingDeg,
+                residualDeg = evidence.residualDeg,
+                atElapsedMs = evidence.atElapsedMs,
+            )
+        }
+    }
+
+    private fun resolveUnresolvedIndependentDisagreementIfReady(evidence: AbsoluteHeadingEvidence) {
+        if (!canResolveUnresolvedIndependentDisagreement(evidence)) return
+        val rebaselineReady =
+            residualWindow.size >= config.acquisitionMinimumSamples &&
+                windowAgeMs(residualWindow, evidence.atElapsedMs) >= config.recoveryEvidenceWindowMs &&
+                circularWindowSpreadDeg(residualWindow)?.let {
+                    it <= config.recoveryResidualSpreadDeg
+                } == true
+        if (!rebaselineReady) return
+
+        unresolvedIndependentDisagreement = false
+        unresolvedRebaselineSawCorroboratedTurn = false
+        trackingResidualAnchorDeg = residualWindow.lastOrNull()?.valueDeg
+        relativeWitnessValidator.rebaseline()
+    }
+
+    private fun canResolveUnresolvedIndependentDisagreement(evidence: AbsoluteHeadingEvidence): Boolean =
+        when {
+            !unresolvedIndependentDisagreement -> false
+            !unresolvedRebaselineSawCorroboratedTurn -> false
+            state != CompassTrackingState.TRACKING -> false
+            !evidence.fieldAcceptable -> false
+            evidence.hardDisagreement -> false
+            else -> freshRelativeHeading(evidence.atElapsedMs) != null
+        }
+
     private fun updateTrackingAnchor(evidence: AbsoluteHeadingEvidence) {
         val residualDeg = evidence.residualDeg
         val disagreementDeg = evidence.disagreementDeg
@@ -868,6 +936,7 @@ internal class FusedHeadingIntegrityEngine(
             relativeWitnessAvailable = relativeWitnessValidator.available,
             relativeWitnessSuppressed = relativeWitnessValidator.suppressed,
             relativeWitnessSupportsHighRate = relativeWitnessValidator.supportsHighRate,
+            unresolvedIndependentDisagreement = unresolvedIndependentDisagreement,
             relativeHorizontalProjection = relativeWitnessValidator.horizontalProjection,
             absoluteRelativeDisagreementDeg = lastDisagreementDeg,
             residualSpreadDeg = lastResidualSpreadDeg ?: circularWindowSpreadDeg(residualWindow),
@@ -887,7 +956,11 @@ private data class AbsoluteConfidence(
     val strong: Boolean,
 )
 
-/** Keeps the optional game-RV witness from influencing the heading rendered by Google Fused. */
+/**
+ * Keeps the optional game-RV witness from influencing the heading rendered by Google Fused.
+ * Availability means samples are still arriving; suppression makes those samples non-controlling
+ * until fresh corroborated evidence re-baselines the witness.
+ */
 private class RelativeHeadingWitnessValidator(
     private val config: FusedHeadingIntegrityConfig,
 ) {
@@ -914,7 +987,7 @@ private class RelativeHeadingWitnessValidator(
 
     fun onHeading(horizontalProjection: Float) {
         this.horizontalProjection = horizontalProjection.takeIf(Float::isFinite)
-        available = !suppressed
+        available = true
     }
 
     fun onUnavailable(horizontalProjection: Float) {
@@ -933,8 +1006,14 @@ private class RelativeHeadingWitnessValidator(
     }
 
     private fun markSuppressed() {
-        available = false
         supportsHighRate = false
+    }
+
+    fun rebaseline() {
+        suppressed = false
+        supportsHighRate = false
+        disagreementSamples = 0
+        firstDisagreementAtElapsedMs = 0L
     }
 
     private fun clearTurnValidation() {

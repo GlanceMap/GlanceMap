@@ -259,6 +259,9 @@ class CompassDeepTraceAggregationTest {
                 trusted = false,
                 quarantineActive = true,
                 recoveryActive = false,
+                relativeWitnessAvailable = true,
+                relativeWitnessSuppressed = true,
+                unresolvedIndependentDisagreement = true,
                 heldOutput = true,
                 provenance = null,
             )
@@ -309,6 +312,9 @@ class CompassDeepTraceAggregationTest {
         assertTrue(decisionIndex < renderIndex)
         assertTrue(renderIndex < uiIndex)
         assertTrue(output.indexOf("Compass Deep Trace Aggregates") > uiIndex)
+        assertTrue(output.contains("relativeWitnessAvailable=true"))
+        assertTrue(output.contains("relativeWitnessSuppressed=true"))
+        assertTrue(output.contains("unresolvedIndependentDisagreement=true"))
     }
 
     @Test
@@ -327,6 +333,25 @@ class CompassDeepTraceAggregationTest {
 
         assertTrue(line.contains("fusedStepMaxDeg=10.0"))
         assertTrue(line.contains("sensorManagerStepMaxDeg=10.0"))
+    }
+
+    @Test
+    fun aggregatesAnActiveNonControllingWitnessAndUnresolvedDisagreement() {
+        val accumulator = CompassDeepTraceWindowAccumulator(startedAtElapsedMs = 1_000L)
+        accumulator.recordProvider(
+            providerSample(headingDeg = 180f, atElapsedMs = 1_000L).copy(
+                relativeWitnessAvailable = true,
+                relativeWitnessSuppressed = true,
+                unresolvedIndependentDisagreement = true,
+            ),
+        )
+
+        val line = accumulator.toTelemetryLine(index = 1, endedAtElapsedMs = 2_000L)
+
+        assertTrue(line.contains("relativeSamples=1"))
+        assertTrue(line.contains("relativeWitnessAvailableSamples=1"))
+        assertTrue(line.contains("relativeWitnessSuppressedSamples=1"))
+        assertTrue(line.contains("unresolvedIndependentDisagreementSamples=1"))
     }
 
     private fun providerSample(
