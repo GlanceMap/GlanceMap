@@ -38,6 +38,29 @@ class NavigationRuntimeDemandTest {
     }
 
     @Test
+    fun elevationProfileTemporarilyTracksOnlyWhileInteractive() {
+        val interactive =
+            demand(
+                isNavigateScreen = false,
+                gpxElevationProfileOpen = true,
+            )
+        val screenOff =
+            demand(
+                isNavigateScreen = false,
+                screenState = LocationScreenState.SCREEN_OFF,
+                isScreenResumed = false,
+                gpxElevationProfileOpen = true,
+            )
+
+        assertTrue(interactive.trackingEnabled)
+        assertFalse(interactive.backgroundGpsEnabled)
+        assertEquals(NavigationRuntimeDemandReason.GPX_ELEVATION_PROFILE, interactive.reason)
+        assertFalse(screenOff.trackingEnabled)
+        assertFalse(screenOff.backgroundGpsEnabled)
+        assertEquals(NavigationRuntimeDemandReason.IDLE, screenOff.reason)
+    }
+
+    @Test
     fun recordingActiveForcesTrackingAndBackgroundGps() {
         val demand =
             demand(
@@ -309,6 +332,7 @@ class NavigationRuntimeDemandTest {
         turnByTurnPaused: Boolean = false,
         turnByTurnGpsEnabled: Boolean = true,
         turnByTurnGpsInAmbient: Boolean = false,
+        gpxElevationProfileOpen: Boolean = false,
     ): NavigationRuntimeDemand =
         navigationRuntimeDemand(
             NavigationRuntimeInputs(
@@ -326,6 +350,7 @@ class NavigationRuntimeDemandTest {
                 turnByTurnPaused = turnByTurnPaused,
                 turnByTurnGpsEnabled = turnByTurnGpsEnabled,
                 turnByTurnGpsInAmbient = turnByTurnGpsInAmbient,
+                gpxElevationProfileOpen = gpxElevationProfileOpen,
             ),
         )
 }

@@ -71,6 +71,7 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.R
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.moveLabelAfter
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetricsForSnapshot
+import com.glancemap.glancemapwearos.presentation.features.navigate.LocationViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
@@ -129,10 +130,13 @@ private enum class GpxListMode(
     }
 }
 
+// Existing GPX actions share list-mode and dialog state; splitting them risks changing their established interactions.
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "FunctionNaming")
 @Composable
 fun GpxScreen(
     navController: NavHostController,
     gpxViewModel: GpxViewModel,
+    locationViewModel: LocationViewModel,
     isMetric: Boolean,
     autoStartRecordingWithGuidance: Boolean = false,
     recordingActiveOrSaving: Boolean = false,
@@ -144,7 +148,10 @@ fun GpxScreen(
     val lastVisitedGpxListPage by gpxViewModel.lastVisitedGpxListPage.collectAsState()
     val turnByTurnGuidanceSession by gpxViewModel.turnByTurnGuidanceSession.collectAsState()
     val elevationProfileUiState by gpxViewModel.elevationProfileUiState.collectAsState()
+    val elevationProfileLocationMarker by gpxViewModel.elevationProfileLocationMarker.collectAsState()
     val exportUiState by gpxViewModel.exportUiState.collectAsState()
+    val currentLocation by locationViewModel.currentLocation.collectAsState()
+    val gpsSignalSnapshot by locationViewModel.gpsSignalSnapshot.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
     var isSendMode by remember { mutableStateOf(false) }
@@ -177,6 +184,24 @@ fun GpxScreen(
                 }
             }
         }
+
+    LaunchedEffect(elevationProfileUiState?.trackPath) {
+        if (elevationProfileUiState != null) {
+            locationViewModel.requestImmediateLocation(source = "ui_gpx_elevation_profile")
+        }
+    }
+    LaunchedEffect(
+        elevationProfileUiState?.trackPath,
+        currentLocation,
+        gpsSignalSnapshot.lastFixFresh,
+    ) {
+        if (elevationProfileUiState != null) {
+            gpxViewModel.updateElevationProfileLocation(
+                location = currentLocation,
+                hasFreshFix = gpsSignalSnapshot.lastFixFresh,
+            )
+        }
+    }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val helpPrefs =
@@ -487,6 +512,7 @@ fun GpxScreen(
         elevationProfileUiState?.let { profile ->
             GpxElevationProfileDialog(
                 profile = profile,
+                locationMarker = elevationProfileLocationMarker,
                 isMetric = isMetric,
                 onDismiss = gpxViewModel::dismissElevationProfile,
             )

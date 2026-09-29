@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.location.Location
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,7 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerRequest
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.data.repository.GpxExportRepository
 import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
@@ -131,6 +133,9 @@ class GpxViewModel(
     private val _elevationProfileUiState = MutableStateFlow<GpxElevationProfileUiState?>(null)
     val elevationProfileUiState: StateFlow<GpxElevationProfileUiState?> =
         _elevationProfileUiState.asStateFlow()
+    private val _elevationProfileLocationMarker = MutableStateFlow<ElevationProfileLocationMarker?>(null)
+    val elevationProfileLocationMarker: StateFlow<ElevationProfileLocationMarker?> =
+        _elevationProfileLocationMarker.asStateFlow()
 
     private val _exportUiState = MutableStateFlow(GpxExportUiState())
     val exportUiState: StateFlow<GpxExportUiState> = _exportUiState.asStateFlow()
@@ -151,6 +156,7 @@ class GpxViewModel(
     private var bPos: TrackPosition? = null
     private var selectingB: Boolean = false
     private var selectBTimeoutJob: Job? = null
+    private var elevationProfileLocationJob: Job? = null
 
     // ✅ Delay popup so user sees the yellow dot first
     private var popupDelayJob: Job? = null
@@ -1366,6 +1372,10 @@ class GpxViewModel(
     }
 
     fun showElevationProfile(path: String) {
+        if (_elevationProfileUiState.value?.trackPath != path) {
+            elevationProfileLocationJob?.cancel()
+            _elevationProfileLocationMarker.value = null
+        }
         viewModelScope.launch {
             val uiState =
                 withContext(Dispatchers.IO) {
@@ -1412,7 +1422,52 @@ class GpxViewModel(
     }
 
     fun dismissElevationProfile() {
+        elevationProfileLocationJob?.cancel()
+        _elevationProfileLocationMarker.value = null
         _elevationProfileUiState.value = null
+    }
+
+    fun updateElevationProfileLocation(
+        location: Location?,
+        hasFreshFix: Boolean,
+    ) {
+        val trackPath = _elevationProfileUiState.value?.trackPath
+        elevationProfileLocationJob?.cancel()
+        val usableLocation =
+            location?.takeIf { candidate ->
+                hasFreshFix && LocationFixPolicy.hasValidCoordinates(candidate)
+            }
+        if (trackPath == null || usableLocation == null) {
+            _elevationProfileLocationMarker.value = null
+            return
+        }
+
+        val currentLocation = LatLong(usableLocation.latitude, usableLocation.longitude)
+        val accuracyMeters = usableLocation.accuracy
+        elevationProfileLocationJob =
+            viewModelScope.launch {
+                val marker =
+                    withContext(Dispatchers.IO) {
+                        val file = File(trackPath)
+                        if (!file.exists()) {
+                            null
+                        } else {
+                            elevationProfileLocationMarker(
+                                profile =
+                                    getOrBuildProfile(
+                                        path = trackPath,
+                                        file = file,
+                                        sig = sigOf(file),
+                                    ),
+                                currentLocation = currentLocation,
+                                accuracyMeters = accuracyMeters,
+                            )
+                        }
+                    }
+                if (_elevationProfileUiState.value?.trackPath == trackPath) {
+                    _elevationProfileLocationMarker.value = marker
+                }
+            }
     }
 
     private suspend fun updateActiveGpxDetails(

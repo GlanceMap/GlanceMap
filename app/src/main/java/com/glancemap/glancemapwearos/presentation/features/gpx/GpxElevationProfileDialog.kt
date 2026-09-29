@@ -177,9 +177,12 @@ private fun rememberElevationProfileDialogSizing(): ElevationProfileDialogSizing
     }
 }
 
+// Existing dialog state intentionally keeps zoom, selection, and touch handling in one composable.
+@Suppress("LongMethod", "CyclomaticComplexMethod", "FunctionNaming")
 @Composable
 fun GpxElevationProfileDialog(
     profile: GpxElevationProfileUiState,
+    locationMarker: ElevationProfileLocationMarker?,
     isMetric: Boolean,
     onDismiss: () -> Unit,
 ) {
@@ -396,6 +399,7 @@ fun GpxElevationProfileDialog(
                         ElevationProfileChart(
                             samples = samples,
                             selectedIndex = selectedIndex,
+                            locationDistanceMeters = locationMarker?.distance,
                             onSelectIndex = { selectedIndex = it },
                             viewport = viewport,
                             plotTopInset = sizing.chartTopInset,

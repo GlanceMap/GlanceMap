@@ -146,6 +146,7 @@ class MainActivity : ComponentActivity() {
                 appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
             val turnByTurnGuidancePaused by appContainer.gpxViewModel.turnByTurnGuidancePaused.collectAsState()
+            val gpxElevationProfileUiState by appContainer.gpxViewModel.elevationProfileUiState.collectAsState()
             val gpsInAmbientMode by appContainer.settingsViewModel.gpsInAmbientMode.collectAsState(initial = false)
             val offlineMode by appContainer.settingsViewModel.offlineMode.collectAsState(initial = false)
             val recordingDashboardMetricSlots by appContainer.settingsViewModel.recordingDashboardMetricSlots.collectAsState()
@@ -287,6 +288,7 @@ class MainActivity : ComponentActivity() {
                     turnByTurnGpsEnabled,
                     gpsInAmbientMode,
                     turnByTurnScreenOffGpsEnabled,
+                    gpxElevationProfileUiState,
                     offlineMode,
                     activityLocationScreenState,
                     locationPermissionGranted,
@@ -309,6 +311,8 @@ class MainActivity : ComponentActivity() {
                                 turnByTurnPaused = turnByTurnGuidancePaused,
                                 turnByTurnGpsEnabled = turnByTurnGpsEnabled,
                                 turnByTurnGpsInAmbient = turnByTurnScreenOffGpsEnabled,
+                                gpxElevationProfileOpen =
+                                    routeLabel == WatchRoutes.GPX && gpxElevationProfileUiState != null,
                             ),
                         )
                     appContainer.locationViewModel.syncRuntimeState(
@@ -448,6 +452,7 @@ class MainActivity : ComponentActivity() {
                                 GpxScreen(
                                     navController = navController,
                                     gpxViewModel = appContainer.gpxViewModel,
+                                    locationViewModel = appContainer.locationViewModel,
                                     isMetric = isMetric,
                                     autoStartRecordingWithGuidance = recordingStartWithTurnByTurn,
                                     recordingActiveOrSaving = traceRecordingState.active || traceRecordingState.saving,

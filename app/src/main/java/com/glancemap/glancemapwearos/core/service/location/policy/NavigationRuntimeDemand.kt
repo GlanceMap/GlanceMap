@@ -25,6 +25,7 @@ data class NavigationRuntimeInputs(
     val turnByTurnPaused: Boolean,
     val turnByTurnGpsEnabled: Boolean,
     val turnByTurnGpsInAmbient: Boolean,
+    val gpxElevationProfileOpen: Boolean = false,
 )
 
 private data class ActiveRuntimeDemand(
@@ -36,6 +37,7 @@ private data class ActiveRuntimeDemand(
     val backgroundGpsMode: Boolean,
     val navigateVisible: Boolean,
     val guidanceOutsideNavigate: Boolean,
+    val elevationProfileVisible: Boolean,
 )
 
 fun navigationRuntimeDemand(inputs: NavigationRuntimeInputs): NavigationRuntimeDemand =
@@ -53,7 +55,8 @@ private fun activeNavigationRuntimeDemand(inputs: NavigationRuntimeInputs): Navi
         demand.navigateVisible ||
             demand.backgroundGpsMode ||
             demand.recording ||
-            demand.guidanceOutsideNavigate
+            demand.guidanceOutsideNavigate ||
+            demand.elevationProfileVisible
 
     return NavigationRuntimeDemand(
         trackingEnabled = trackingEnabled,
@@ -74,6 +77,7 @@ private fun NavigationRuntimeInputs.activeDemand(): ActiveRuntimeDemand {
     val backgroundGpsModeActive = backgroundGpsEnabled && screenState.isNonInteractive
     val navigateVisibleDemand = isNavigateScreen && isScreenResumed && screenState.isInteractive
     val guidanceOutsideNavigateDemand = !isNavigateScreen && guidanceBackgroundDemand
+    val elevationProfileVisibleDemand = elevationProfileVisible()
     return ActiveRuntimeDemand(
         recording = recordingDemand,
         guidance = guidanceDemand,
@@ -83,8 +87,12 @@ private fun NavigationRuntimeInputs.activeDemand(): ActiveRuntimeDemand {
         backgroundGpsMode = backgroundGpsModeActive,
         navigateVisible = navigateVisibleDemand,
         guidanceOutsideNavigate = guidanceOutsideNavigateDemand,
+        elevationProfileVisible = elevationProfileVisibleDemand,
     )
 }
+
+private fun NavigationRuntimeInputs.elevationProfileVisible(): Boolean =
+    gpxElevationProfileOpen && isScreenResumed && screenState.isInteractive
 
 private fun ActiveRuntimeDemand.reason(recordingAutoPaused: Boolean): String =
     if (recording) {
@@ -104,6 +112,7 @@ private fun ActiveRuntimeDemand.nonRecordingReason(): String =
         backgroundGpsMode && generalBackground -> NavigationRuntimeDemandReason.GENERAL_AMBIENT
         guidance && navigateVisible -> NavigationRuntimeDemandReason.GUIDANCE_VISIBLE
         navigateVisible -> NavigationRuntimeDemandReason.NAVIGATE_VISIBLE
+        elevationProfileVisible -> NavigationRuntimeDemandReason.GPX_ELEVATION_PROFILE
         else -> NavigationRuntimeDemandReason.IDLE
     }
 
@@ -116,6 +125,7 @@ object NavigationRuntimeDemandReason {
     const val GUIDANCE_AMBIENT = "guidance_ambient"
     const val GUIDANCE_BACKGROUND = "guidance_background"
     const val GUIDANCE_VISIBLE = "guidance_visible"
+    const val GPX_ELEVATION_PROFILE = "gpx_elevation_profile"
     const val RECORDING = "recording"
     const val RECORDING_AUTO_PAUSED = "recording_auto_paused"
     const val RECORDING_GUIDANCE = "recording_guidance"
