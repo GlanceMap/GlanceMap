@@ -40,6 +40,7 @@ import com.glancemap.glancemapwearos.core.service.location.policy.navigationRunt
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.resolveCompassHardwareCapability
 import com.glancemap.glancemapwearos.domain.sensors.shouldShowCompassHardwareUnavailableNotice
+import com.glancemap.glancemapwearos.presentation.WatchAppRatingPrompt
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadScreen
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadSettingsScreen
@@ -1062,6 +1063,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 compassHardwareUnavailableNotice()
+                WatchAppRatingPrompt()
                 WearActionDialog(
                     visible = recordingStartWarning != null,
                     title = "External sensors unavailable",

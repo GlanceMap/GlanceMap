@@ -448,6 +448,19 @@ class SettingsViewModel(
             settingsRepository.setTurnByTurnCompactPopupEnabled(enabled)
         }
 
+    val turnByTurnMapProgressEnabled: StateFlow<Boolean> =
+        settingsRepository.turnByTurnMapProgressEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED,
+            )
+
+    fun setTurnByTurnMapProgressEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setTurnByTurnMapProgressEnabled(enabled)
+        }
+
     val turnByTurnElevationProgressRingEnabled: StateFlow<Boolean> =
         settingsRepository.turnByTurnElevationProgressRingEnabled
             .stateIn(

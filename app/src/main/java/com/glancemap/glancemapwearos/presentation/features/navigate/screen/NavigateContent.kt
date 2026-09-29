@@ -165,6 +165,7 @@ internal fun NavigateContent(
     turnByTurnGuidancePaused: Boolean,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
+    turnByTurnMapProgressEnabled: Boolean,
     turnByTurnElevationProgressRingEnabled: Boolean,
     routeProgressRingSegments: List<RouteProgressRingSegment>,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
@@ -1043,6 +1044,7 @@ internal fun NavigateContent(
                     turnByTurnGuidancePaused = turnByTurnGuidancePaused,
                     turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
                     turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+                    turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
                     turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
                     routeProgressRingSegments = routeProgressRingSegments,
                     onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
@@ -1079,6 +1081,8 @@ internal fun NavigateContent(
                 recordingPaused = traceRecordingState.paused,
                 recordingSaving = traceRecordingState.saving,
                 guidanceActive = turnByTurnGuidanceState.active,
+                guidanceSessionActive =
+                    turnByTurnGuidanceState.active || turnByTurnGuidancePaused,
                 onTap = onRecordingTimeTap,
                 onLongPress = onRecordingTimeLongPress,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -1158,6 +1162,7 @@ private fun CenteredNavigateTimeChip(
     recordingPaused: Boolean,
     recordingSaving: Boolean,
     guidanceActive: Boolean,
+    guidanceSessionActive: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1199,10 +1204,15 @@ private fun CenteredNavigateTimeChip(
             .padding(top = 4.dp)
             .width(128.dp)
             .height(48.dp)
+    val tapEnabled =
+        shouldEnableNavigateTimeChipTap(
+            recordingActive = recordingActive,
+            guidanceSessionActive = guidanceSessionActive,
+        )
     Box(
         modifier =
-            if (recordingActive) {
-                baseModifier.pointerInput(onTap, onLongPress) {
+            if (tapEnabled) {
+                baseModifier.pointerInput(onTap, onLongPress, recordingActive) {
                     detectTapGestures(
                         onPress = {
                             DebugTelemetry.log(
@@ -1215,10 +1225,18 @@ private fun CenteredNavigateTimeChip(
                             DebugTelemetry.log("TraceRecording", "event=time_chip_touch_up action=tap")
                             onTap()
                         },
-                        onLongPress = {
-                            DebugTelemetry.log("TraceRecording", "event=time_chip_touch_up action=long_press")
-                            onLongPress()
-                        },
+                        onLongPress =
+                            if (recordingActive) {
+                                {
+                                    DebugTelemetry.log(
+                                        "TraceRecording",
+                                        "event=time_chip_touch_up action=long_press",
+                                    )
+                                    onLongPress()
+                                }
+                            } else {
+                                null
+                            },
                     )
                 }
             } else {
@@ -1276,6 +1294,11 @@ internal fun shouldRunNavigateTimeChipClock(
     isScreenInteractive: Boolean,
     showTime: Boolean,
 ): Boolean = visible && isScreenInteractive && showTime
+
+internal fun shouldEnableNavigateTimeChipTap(
+    recordingActive: Boolean,
+    guidanceSessionActive: Boolean,
+): Boolean = recordingActive || guidanceSessionActive
 
 internal fun shouldEnterPanningAfterDoubleTap(
     center: LatLong?,

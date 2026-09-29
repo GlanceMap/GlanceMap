@@ -150,6 +150,8 @@ class SettingsRepositoryImpl private constructor(
             booleanPreferencesKey("turn_by_turn_off_route_alerts_enabled")
         val TURN_BY_TURN_COMPACT_POPUP_ENABLED =
             booleanPreferencesKey("turn_by_turn_compact_popup_enabled")
+        val TURN_BY_TURN_MAP_PROGRESS_ENABLED =
+            booleanPreferencesKey("turn_by_turn_map_progress_enabled")
         val TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED =
             booleanPreferencesKey("turn_by_turn_elevation_progress_ring_enabled")
         val TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS =
@@ -883,6 +885,16 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setTurnByTurnCompactPopupEnabled(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_COMPACT_POPUP_ENABLED] = enabled }
+    }
+
+    override val turnByTurnMapProgressEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.TURN_BY_TURN_MAP_PROGRESS_ENABLED]
+                ?: SettingsRepository.DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED
+        }
+
+    override suspend fun setTurnByTurnMapProgressEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_MAP_PROGRESS_ENABLED] = enabled }
     }
 
     override val turnByTurnElevationProgressRingEnabled: Flow<Boolean> =

@@ -45,6 +45,28 @@ class NavigateVisualWorkPolicyTest {
     }
 
     @Test
+    fun navigateTimeChipTapIsEnabledForRecordingOrTurnByTurnSessions() {
+        assertTrue(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = true,
+                guidanceSessionActive = false,
+            ),
+        )
+        assertTrue(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = false,
+                guidanceSessionActive = true,
+            ),
+        )
+        assertFalse(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = false,
+                guidanceSessionActive = false,
+            ),
+        )
+    }
+
+    @Test
     fun orientationVisualLoopRunsOnlyForInteractiveFollowModes() {
         assertTrue(
             shouldRunOrientationVisualLoop(

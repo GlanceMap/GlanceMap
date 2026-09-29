@@ -22,6 +22,7 @@ fun TurnByTurnSettingsScreen(
     val voiceGuidanceEnabled by viewModel.turnByTurnVoiceGuidanceEnabled.collectAsState()
     val offRouteAlertsEnabled by viewModel.turnByTurnOffRouteAlertsEnabled.collectAsState()
     val compactPopupEnabled by viewModel.turnByTurnCompactPopupEnabled.collectAsState()
+    val mapProgressEnabled by viewModel.turnByTurnMapProgressEnabled.collectAsState()
     var showInfoDialog by remember { mutableStateOf(false) }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -47,6 +48,19 @@ fun TurnByTurnSettingsScreen(
                         "Show TBT chip on the map"
                     } else {
                         "Hide TBT chip on the map"
+                    },
+            )
+        }
+        item {
+            SettingsToggleChip(
+                checked = mapProgressEnabled,
+                onCheckedChanged = viewModel::setTurnByTurnMapProgressEnabled,
+                label = "Map distance and time",
+                secondaryLabel =
+                    if (mapProgressEnabled) {
+                        "Show remaining route details"
+                    } else {
+                        "Keep route details in TBT view"
                     },
             )
         }

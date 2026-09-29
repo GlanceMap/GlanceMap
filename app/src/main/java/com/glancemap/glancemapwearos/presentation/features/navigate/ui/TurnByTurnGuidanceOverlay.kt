@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -681,6 +682,58 @@ internal fun GuidanceRemainingArc(
         }
     }
 }
+
+internal data class GuidanceMapRemainingDisplayState(
+    val enabled: Boolean,
+    val guidanceActive: Boolean,
+    val paused: Boolean,
+    val offRoute: Boolean,
+    val guideBackToRouteActive: Boolean,
+    val suppressed: Boolean,
+)
+
+@Composable
+@Suppress("FunctionName")
+internal fun BoxScope.GuidanceMapRemainingOverlay(
+    state: TurnByTurnGuidanceState,
+    displayState: GuidanceMapRemainingDisplayState,
+    isMetric: Boolean,
+) {
+    if (
+        !shouldShowGuidanceMapRemainingDetails(displayState) ||
+        state.distanceRemainingMeters == null
+    ) {
+        return
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.74f),
+                        ),
+                    ),
+        )
+        GuidanceRemainingArc(
+            remainingMeters = state.distanceRemainingMeters,
+            estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+            isMetric = isMetric,
+        )
+    }
+}
+
+internal fun shouldShowGuidanceMapRemainingDetails(
+    displayState: GuidanceMapRemainingDisplayState,
+): Boolean =
+    displayState.enabled &&
+        (displayState.guidanceActive || displayState.paused) &&
+        (!displayState.offRoute || displayState.guideBackToRouteActive) &&
+        !displayState.suppressed
 
 @Composable
 @Suppress("FunctionName", "LongParameterList")

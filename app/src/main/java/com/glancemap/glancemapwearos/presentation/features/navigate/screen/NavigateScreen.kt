@@ -1139,6 +1139,7 @@ fun NavigateScreen(
             turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
             turnByTurnCompactPopupEnabled =
                 turnByTurnCompactPopupEnabled && !showRouteToolsPanel,
+            turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
             turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
             routeProgressRingSegments = routeProgressRingSegments,
             onTurnByTurnVoiceGuidanceChange = settingsViewModel::setTurnByTurnVoiceGuidanceEnabled,

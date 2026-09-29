@@ -154,6 +154,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     turnByTurnGuidancePaused: Boolean,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
+    turnByTurnMapProgressEnabled: Boolean,
     turnByTurnElevationProgressRingEnabled: Boolean,
     routeProgressRingSegments: List<RouteProgressRingSegment>,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
@@ -496,6 +497,24 @@ internal fun BoxScope.NavigateOverlaysLayer(
             },
         )
     }
+
+    GuidanceMapRemainingOverlay(
+        state = turnByTurnGuidanceState,
+        displayState =
+            GuidanceMapRemainingDisplayState(
+                enabled = turnByTurnMapProgressEnabled,
+                guidanceActive = turnByTurnGuidanceState.active,
+                paused = turnByTurnGuidancePaused,
+                offRoute = turnByTurnGuidanceState.offRoute,
+                guideBackToRouteActive = guideBackToRouteActive,
+                suppressed =
+                    poiTapMessage != null ||
+                        turnByTurnFullScreenExpanded ||
+                        recordingDashboardFullScreenExpanded ||
+                        combinedGuidanceRecordingFullScreenExpanded,
+            ),
+        isMetric = isMetric,
+    )
 
     NavModeButtonOverlay(
         mapView = mapView,

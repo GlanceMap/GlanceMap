@@ -66,12 +66,12 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.navigate.LocationViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingRecapMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingRecapMetricsGrid
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.moveLabelAfter
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetricsForSnapshot
-import com.glancemap.glancemapwearos.presentation.features.navigate.LocationViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog

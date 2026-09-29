@@ -92,7 +92,9 @@ private fun NavigationRuntimeInputs.activeDemand(): ActiveRuntimeDemand {
 }
 
 private fun NavigationRuntimeInputs.elevationProfileVisible(): Boolean =
-    gpxElevationProfileOpen && isScreenResumed && screenState.isInteractive
+    gpxElevationProfileOpen &&
+        isScreenResumed &&
+        screenState.isInteractive
 
 private fun ActiveRuntimeDemand.reason(recordingAutoPaused: Boolean): String =
     if (recording) {
