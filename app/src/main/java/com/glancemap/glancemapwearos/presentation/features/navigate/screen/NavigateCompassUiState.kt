@@ -182,7 +182,7 @@ internal fun rememberNavigateCompassUiState(
         if (effectiveCompassConeAccuracyColorsEnabled) {
             displayedCompassQuality
         } else {
-            CompassMarkerQuality.NEUTRAL
+            CompassMarkerQuality.GOOD
         }
     val uiConfidenceTraceKey =
         CompassUiConfidenceTraceKey(
