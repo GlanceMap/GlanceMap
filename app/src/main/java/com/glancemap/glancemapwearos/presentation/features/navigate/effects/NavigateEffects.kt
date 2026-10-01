@@ -1002,7 +1002,6 @@ internal fun shouldDriveCompassFollowMap(
     nowElapsedMs: Long? = null,
 ): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
-    if (hasUnresolvedFusedDisagreement(renderState)) return false
     val hasFreshRenderableSample =
         renderState.headingSampleElapsedRealtimeMs != null &&
             !renderState.headingSampleStale &&
@@ -1309,7 +1308,6 @@ internal fun shouldDriveMarkerHeading(
     nowElapsedMs: Long? = null,
 ): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
-    if (hasUnresolvedFusedDisagreement(renderState)) return false
     val missingSensorSample =
         renderState.headingSampleElapsedRealtimeMs == null ||
             renderState.headingSampleStale ||

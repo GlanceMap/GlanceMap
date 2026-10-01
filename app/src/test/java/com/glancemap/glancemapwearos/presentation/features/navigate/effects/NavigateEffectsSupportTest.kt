@@ -879,7 +879,7 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
-    fun unresolvedIndependentDisagreementBlocksFusedMapAndMarkerPaths() {
+    fun unresolvedIndependentDisagreementUsesTheBoundedFusedMapAndMarkerPaths() {
         val ordinaryUntrusted =
             readyGoogleFusedState().copy(
                 accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
@@ -888,9 +888,9 @@ class NavigateEffectsSupportTest {
         val unresolved = ordinaryUntrusted.copy(unresolvedIndependentDisagreement = true)
 
         assertTrue(shouldDriveCompassFollowMap(ordinaryUntrusted, nowElapsedMs = 1_100L))
-        assertFalse(shouldDriveCompassFollowMap(unresolved, nowElapsedMs = 1_100L))
-        assertFalse(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
-        assertFalse(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveCompassFollowMap(unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, unresolved, nowElapsedMs = 1_100L))
     }
 
     @Test
