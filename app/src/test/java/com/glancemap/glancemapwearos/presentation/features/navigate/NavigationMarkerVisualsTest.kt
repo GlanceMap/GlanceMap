@@ -19,7 +19,6 @@ class NavigationMarkerVisualsTest {
                 renderProviderType = CompassProviderType.SENSOR_MANAGER,
                 accuracyColorsEnabled = true,
                 displayedSensorQuality = CompassMarkerQuality.GOOD,
-                honestQuality = CompassMarkerQuality.UNRELIABLE,
             ),
         )
     }
@@ -33,7 +32,6 @@ class NavigationMarkerVisualsTest {
                 renderProviderType = CompassProviderType.SENSOR_MANAGER,
                 accuracyColorsEnabled = true,
                 displayedSensorQuality = CompassMarkerQuality.LOW,
-                honestQuality = CompassMarkerQuality.GOOD,
             ),
         )
     }
@@ -47,13 +45,12 @@ class NavigationMarkerVisualsTest {
                 renderProviderType = CompassProviderType.SENSOR_MANAGER,
                 accuracyColorsEnabled = false,
                 displayedSensorQuality = CompassMarkerQuality.UNRELIABLE,
-                honestQuality = CompassMarkerQuality.UNRELIABLE,
             ),
         )
     }
 
     @Test
-    fun trustedFusedHeadingUsesHonestGoodQuality() {
+    fun googleFusedKeepsGreenCone() {
         assertEquals(
             CompassMarkerQuality.GOOD,
             resolveCompassConeQuality(
@@ -61,49 +58,19 @@ class NavigationMarkerVisualsTest {
                 renderProviderType = CompassProviderType.GOOGLE_FUSED,
                 accuracyColorsEnabled = false,
                 displayedSensorQuality = CompassMarkerQuality.UNRELIABLE,
-                honestQuality = CompassMarkerQuality.GOOD,
             ),
         )
     }
 
     @Test
-    fun untrustedFusedHeadingCannotBeManufacturedAsGood() {
-        assertNotEquals(
+    fun googleFusedFallbackKeepsGreenCone() {
+        assertEquals(
             CompassMarkerQuality.GOOD,
             resolveCompassConeQuality(
                 selectedProviderType = CompassProviderType.GOOGLE_FUSED,
-                renderProviderType = CompassProviderType.GOOGLE_FUSED,
-                accuracyColorsEnabled = false,
+                renderProviderType = CompassProviderType.SENSOR_MANAGER,
+                accuracyColorsEnabled = true,
                 displayedSensorQuality = CompassMarkerQuality.GOOD,
-                honestQuality = CompassMarkerQuality.MEDIUM,
-            ),
-        )
-    }
-
-    @Test
-    fun selectedFusedProviderUsingSensorFallbackStaysNeutral() {
-        val fallbackState =
-            initialCompassRenderState(CompassProviderType.GOOGLE_FUSED).copy(
-                headingSource = HeadingSource.ROTATION_VECTOR,
-                headingSampleElapsedRealtimeMs = 1_000L,
-                headingRenderable = true,
-            )
-
-        val honestQuality =
-            compassQualityReadingFromRenderState(
-                renderState = fallbackState,
-                nowElapsedMs = 1_100L,
-            ).quality
-
-        assertEquals(null, honestQuality)
-        assertEquals(
-            CompassMarkerQuality.NEUTRAL,
-            resolveCompassConeQuality(
-                selectedProviderType = CompassProviderType.GOOGLE_FUSED,
-                renderProviderType = fallbackState.providerType,
-                accuracyColorsEnabled = false,
-                displayedSensorQuality = CompassMarkerQuality.GOOD,
-                honestQuality = honestQuality,
             ),
         )
     }
