@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import android.graphics.Rect
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -77,6 +78,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.model.common.Observer
+import kotlin.math.floor
+import kotlin.math.log2
 
 @Suppress(
     "CyclomaticComplexMethod",
@@ -383,6 +386,52 @@ internal fun NavigateContent(
                 ?.toInt() ?: return false
         return applyMapZoomTarget(current + step, inputSource)
     }
+
+    val latestApplyMapZoomStep =
+        rememberUpdatedState<(Int, String) -> Boolean> { step, inputSource ->
+            applyMapZoomStep(step, inputSource)
+        }
+    val pinchZoomOutFallbackDetector =
+        remember(mapView) {
+            mapView?.let { currentMapView ->
+                ScaleGestureDetector(
+                    context,
+                    object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                        var scaleFactor = 1f
+                        var startZoom = 0
+
+                        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                            scaleFactor = 1f
+                            startZoom =
+                                currentMapView.model.mapViewPosition.zoomLevel
+                                    .toInt()
+                            return true
+                        }
+
+                        override fun onScale(detector: ScaleGestureDetector): Boolean {
+                            scaleFactor *= detector.scaleFactor
+                            return true
+                        }
+
+                        override fun onScaleEnd(detector: ScaleGestureDetector) {
+                            val zoomOutStep = pinchZoomOutStep(scaleFactor)
+                            if (zoomOutStep == 0) return
+                            currentMapView.post {
+                                val zoomUnchanged =
+                                    currentMapView.model.mapViewPosition.zoomLevel
+                                        .toInt() == startZoom
+                                if (latestMapPinchZoomEnabled.value && zoomUnchanged) {
+                                    latestApplyMapZoomStep.value(
+                                        zoomOutStep,
+                                        "pinch_zoom_out_fallback",
+                                    )
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
 
     fun enqueueCrownZoomStep(step: Int): Boolean {
         val currentMapView = mapView ?: return false
@@ -825,6 +874,10 @@ internal fun NavigateContent(
                                             return@setOnTouchListener true
                                         }
 
+                                        if (latestMapPinchZoomEnabled.value) {
+                                            pinchZoomOutFallbackDetector?.onTouchEvent(event)
+                                        }
+
                                         doubleTapGestureDetector.onTouchEvent(event)
                                         if (latestMapLongPressEnabled.value) {
                                             gestureDetector.onTouchEvent(event)
@@ -1170,6 +1223,15 @@ internal fun shouldSuppressMultiTouchMapGesture(
     pinchZoomEnabled: Boolean,
     isMultiTouchGesture: Boolean,
 ): Boolean = isMultiTouchGesture && !pinchZoomEnabled
+
+internal fun pinchZoomOutStep(scaleFactor: Float): Int =
+    if (scaleFactor.isFinite() && scaleFactor < 1f) {
+        floor(log2(scaleFactor.toDouble()))
+            .toInt()
+            .coerceAtMost(-1)
+    } else {
+        0
+    }
 
 internal fun shouldOpenMapLongPressActions(
     actionsEnabled: Boolean,

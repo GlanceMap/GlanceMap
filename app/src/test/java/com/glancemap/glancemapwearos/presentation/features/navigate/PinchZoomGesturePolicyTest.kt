@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,5 +24,17 @@ class PinchZoomGesturePolicyTest {
                 isMultiTouchGesture = true,
             ),
         )
+    }
+
+    @Test
+    fun `pinch in produces an unzoom step`() {
+        assertEquals(-1, pinchZoomOutStep(0.8f))
+        assertEquals(-2, pinchZoomOutStep(0.25f))
+    }
+
+    @Test
+    fun `pinch out and invalid scale produce no unzoom step`() {
+        assertEquals(0, pinchZoomOutStep(1.2f))
+        assertEquals(0, pinchZoomOutStep(Float.NaN))
     }
 }
