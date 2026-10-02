@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -67,6 +66,7 @@ import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.basicCurvedText
+import androidx.wear.compose.foundation.curvedComposable
 import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
@@ -706,8 +706,6 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     state: TurnByTurnGuidanceState,
     displayState: GuidanceMapRemainingDisplayState,
     isMetric: Boolean,
-    navButtonBottomPadding: Dp,
-    navButtonSize: Dp,
 ) {
     if (
         !shouldShowGuidanceMapRemainingDetails(displayState) ||
@@ -715,18 +713,11 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     ) {
         return
     }
-    Box(
-        modifier =
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = navButtonBottomPadding + navButtonSize + 8.dp),
-    ) {
-        GuidanceMapRemainingPills(
-            remainingMeters = state.distanceRemainingMeters,
-            estimatedRemainingSeconds = state.estimatedRemainingSeconds,
-            isMetric = isMetric,
-        )
-    }
+    GuidanceMapRemainingPills(
+        remainingMeters = state.distanceRemainingMeters,
+        estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+        isMetric = isMetric,
+    )
 }
 
 @Composable
@@ -739,12 +730,29 @@ private fun GuidanceMapRemainingPills(
     val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
     val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
     cappedFontScale(maxFontScale = 1.15f) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        GuidanceMapRemainingPill(anchor = 112f, label = distance)
+        duration?.let { GuidanceMapRemainingPill(anchor = 68f, label = it) }
+    }
+}
+
+@Composable
+@Suppress("FunctionName")
+private fun GuidanceMapRemainingPill(
+    anchor: Float,
+    label: String,
+) {
+    CurvedLayout(
+        modifier = Modifier.fillMaxSize(),
+        anchor = anchor,
+        anchorType = AnchorType.Center,
+        angularDirection = CurvedDirection.Angular.Reversed,
+    ) {
+        curvedComposable(
+            modifier = CurvedModifier.padding(ArcPaddingValues(outer = 10.dp)),
+            rotationLocked = true,
         ) {
             Text(
-                text = distance,
+                text = label,
                 modifier =
                     Modifier
                         .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(12.dp))
@@ -753,18 +761,6 @@ private fun GuidanceMapRemainingPills(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
             )
-            duration?.let {
-                Text(
-                    text = it,
-                    modifier =
-                        Modifier
-                            .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 7.dp, vertical = 3.dp),
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
         }
     }
 }

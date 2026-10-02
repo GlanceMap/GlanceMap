@@ -514,8 +514,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
                         combinedGuidanceRecordingFullScreenExpanded,
             ),
         isMetric = isMetric,
-        navButtonBottomPadding = navButtonBottomPadding,
-        navButtonSize = navButtonSize,
     )
 
     NavModeButtonOverlay(
