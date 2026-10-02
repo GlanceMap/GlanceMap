@@ -65,7 +65,6 @@ import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
-import androidx.wear.compose.foundation.background as curvedBackground
 import androidx.wear.compose.foundation.basicCurvedText
 import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Icon
@@ -85,6 +84,7 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import androidx.wear.compose.foundation.background as curvedBackground
 
 @Composable
 @Suppress("CyclomaticComplexMethod", "FunctionName", "LongMethod", "LongParameterList")
@@ -635,21 +635,26 @@ private fun ExpandedGuidanceOverlay(
     }
 }
 
+internal data class GuidanceRemainingArcLayout(
+    val distanceAnchor: Float = 105f,
+    val durationAnchor: Float = 75f,
+    val labelModifier: CurvedModifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+)
+
 @Composable
+@Suppress("FunctionName")
 internal fun GuidanceRemainingArc(
     remainingMeters: Double?,
     estimatedRemainingSeconds: Long?,
     isMetric: Boolean,
-    distanceAnchor: Float = 105f,
-    durationAnchor: Float = 75f,
-    labelModifier: CurvedModifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+    layout: GuidanceRemainingArcLayout = GuidanceRemainingArcLayout(),
 ) {
     val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
     val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
     cappedFontScale(maxFontScale = 1.15f) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = distanceAnchor,
+            anchor = layout.distanceAnchor,
             anchorType = AnchorType.Center,
             angularDirection = CurvedDirection.Angular.Reversed,
         ) {
@@ -661,13 +666,13 @@ internal fun GuidanceRemainingArc(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     ),
-                modifier = labelModifier,
+                modifier = layout.labelModifier,
             )
         }
         duration?.let {
             CurvedLayout(
                 modifier = Modifier.fillMaxSize(),
-                anchor = durationAnchor,
+                anchor = layout.durationAnchor,
                 anchorType = AnchorType.Center,
                 angularDirection = CurvedDirection.Angular.Reversed,
             ) {
@@ -679,7 +684,7 @@ internal fun GuidanceRemainingArc(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                    modifier = labelModifier,
+                    modifier = layout.labelModifier,
                 )
             }
         }
@@ -712,12 +717,15 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
         remainingMeters = state.distanceRemainingMeters,
         estimatedRemainingSeconds = state.estimatedRemainingSeconds,
         isMetric = isMetric,
-        distanceAnchor = 112f,
-        durationAnchor = 68f,
-        labelModifier =
-            CurvedModifier
-                .curvedBackground(Color.Black.copy(alpha = 0.78f), cap = StrokeCap.Round)
-                .padding(outer = 2.dp, inner = 2.dp, before = 5.dp, after = 5.dp),
+        layout =
+            GuidanceRemainingArcLayout(
+                distanceAnchor = 112f,
+                durationAnchor = 68f,
+                labelModifier =
+                    CurvedModifier
+                        .curvedBackground(Color.Black.copy(alpha = 0.78f), cap = StrokeCap.Round)
+                        .padding(outer = 2.dp, inner = 2.dp, before = 5.dp, after = 5.dp),
+            ),
     )
 }
 

@@ -1220,11 +1220,11 @@ fun NavigateScreen(
                         isGpxInspectionEnabled && gpxViewModel.inspectMapLongPress(latLong)
                     if (
                         requestId == mapLongPressRequestId &&
-                            shouldOpenMapLongPressActions(
-                                actionsEnabled = poiMapLongPressActionsEnabled,
-                                gpxInspectionHandled = gpxInspectionHandled,
-                                selectingGpxPointB = selectingPointBAtPress,
-                            )
+                        shouldOpenMapLongPressActions(
+                            actionsEnabled = poiMapLongPressActionsEnabled,
+                            gpxInspectionHandled = gpxInspectionHandled,
+                            selectingGpxPointB = selectingPointBAtPress,
+                        )
                     ) {
                         mapLongPressTarget = latLong
                     }
