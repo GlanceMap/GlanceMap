@@ -55,13 +55,8 @@ fun TurnByTurnSettingsScreen(
             SettingsToggleChip(
                 checked = mapProgressEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnMapProgressEnabled,
-                label = "Map distance and time",
-                secondaryLabel =
-                    if (mapProgressEnabled) {
-                        "Show remaining route details"
-                    } else {
-                        "Keep route details in TBT view"
-                    },
+                label = "Show on map",
+                secondaryLabel = "Remaining distance & time",
             )
         }
         item {
