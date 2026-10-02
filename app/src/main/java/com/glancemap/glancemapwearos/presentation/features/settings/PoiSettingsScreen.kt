@@ -98,7 +98,7 @@ fun PoiSettingsScreen(
             SettingsToggleChip(
                 checked = poiMapLongPressActionsEnabled,
                 onCheckedChanged = viewModel::setPoiMapLongPressActionsEnabled,
-                label = "Map long-press actions",
+                label = "Long press action",
                 secondaryLabel =
                     if (poiMapLongPressActionsEnabled) {
                         "Create POI or route"
