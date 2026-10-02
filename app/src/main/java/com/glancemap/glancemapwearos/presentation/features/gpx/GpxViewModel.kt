@@ -1609,10 +1609,10 @@ class GpxViewModel(
     // Inspection API
     // -------------------------------------------------------------------------
 
-    fun onMapLongPress(press: LatLong) {
-        viewModelScope.launch(Dispatchers.Default) {
+    suspend fun inspectMapLongPress(press: LatLong): Boolean =
+        withContext(Dispatchers.Default) {
             val tracks = activeGpxDetails.value
-            if (tracks.isEmpty()) return@launch
+            if (tracks.isEmpty()) return@withContext false
 
             val allowedTrackId = if (selectingB) aPos?.trackId else null
 
@@ -1622,13 +1622,13 @@ class GpxViewModel(
                     tracks = tracks,
                     profileProvider = { id -> cachedProfile(id) },
                     allowedTrackId = allowedTrackId,
-                ) ?: return@launch
+                ) ?: return@withContext false
 
             val pos = found.pos
             val snapped = found.snapped
             val distToLineMeters = found.distanceToLineMeters
 
-            if (distToLineMeters > pressThresholdMeters) return@launch
+            if (distToLineMeters > pressThresholdMeters) return@withContext false
 
             // Cancel any pending delayed popup (A or AB)
             popupDelayJob?.cancel()
@@ -1649,7 +1649,7 @@ class GpxViewModel(
                         publishA(pos.trackId, pos)
                     }
             } else {
-                val a = aPos ?: return@launch
+                val a = aPos ?: return@withContext false
                 selectingB = false
                 _selectingPointB.value = false
                 selectBTimeoutJob?.cancel()
@@ -1663,8 +1663,8 @@ class GpxViewModel(
                         publishAB(a.trackId, a, pos)
                     }
             }
+            true
         }
-    }
 
     fun startSelectingB() {
         val a = aPos ?: return

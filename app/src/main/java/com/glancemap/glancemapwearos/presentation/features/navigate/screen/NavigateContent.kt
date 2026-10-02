@@ -160,6 +160,7 @@ internal fun NavigateContent(
     watchGpsDegradedWarning: Boolean,
     isOfflineMode: Boolean,
     isGpxInspectionEnabled: Boolean,
+    poiMapLongPressActionsEnabled: Boolean,
     selectingGpxPointB: Boolean,
     onCancelSelectingGpxPointB: () -> Unit,
     turnByTurnGuidanceState: TurnByTurnGuidanceState,
@@ -208,7 +209,7 @@ internal fun NavigateContent(
     onSaveReshapePreview: () -> Unit,
     onCrosshairSelectionPickHere: ((LatLong) -> Unit)? = null,
     onCancelCrosshairSelection: (() -> Unit)? = null,
-    onInspectTrack: (LatLong) -> Unit,
+    onMapLongPress: (LatLong) -> Unit,
     visiblePoiMarkers: List<PoiOverlayMarker>,
     poiFocusTarget: PoiNavigateTarget?,
     onPoiFocusTargetConsumed: () -> Unit,
@@ -270,10 +271,17 @@ internal fun NavigateContent(
     val northIndicatorIconSize = sizing.northIndicatorIconSize
     val latestNavMode = rememberUpdatedState(navMode)
     val latestOnUserPanStarted = rememberUpdatedState(onUserPanStarted)
-    val latestOnInspectTrack = rememberUpdatedState(onInspectTrack)
+    val latestOnMapLongPress = rememberUpdatedState(onMapLongPress)
     val latestInspectionEnabled =
         rememberUpdatedState(
             isGpxInspectionEnabled &&
+                routeToolSession == null &&
+                !crosshairSelectionActive &&
+                !reshapePreviewInspectMode,
+        )
+    val latestMapLongPressEnabled =
+        rememberUpdatedState(
+            (isGpxInspectionEnabled || (poiMapLongPressActionsEnabled && !selectingGpxPointB)) &&
                 routeToolSession == null &&
                 !crosshairSelectionActive &&
                 !reshapePreviewInspectMode,
@@ -445,6 +453,7 @@ internal fun NavigateContent(
                     override fun onDown(e: MotionEvent): Boolean = true
 
                     override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                        if (!latestInspectionEnabled.value) return false
                         val mv = latestMapView.value ?: return false
                         val anchor = mv.resolveNavigationMarkerScreenAnchor(latestNavigationMarkerAnchorMode.value)
                         val (x, y) =
@@ -482,7 +491,7 @@ internal fun NavigateContent(
                     }
 
                     override fun onLongPress(e: MotionEvent) {
-                        if (!latestInspectionEnabled.value) return
+                        if (!latestMapLongPressEnabled.value) return
                         val mv = latestMapView.value ?: return
                         val anchor = mv.resolveNavigationMarkerScreenAnchor(latestNavigationMarkerAnchorMode.value)
                         val (x, y) =
@@ -497,7 +506,7 @@ internal fun NavigateContent(
                             runCatching {
                                 mv.mapViewProjection.fromPixels(x, y)
                             }.getOrNull() ?: return
-                        latestOnInspectTrack.value(ll)
+                        latestOnMapLongPress.value(ll)
                     }
                 },
             )
@@ -817,7 +826,7 @@ internal fun NavigateContent(
                                         }
 
                                         doubleTapGestureDetector.onTouchEvent(event)
-                                        if (latestInspectionEnabled.value) {
+                                        if (latestMapLongPressEnabled.value) {
                                             gestureDetector.onTouchEvent(event)
                                         }
 
@@ -1161,6 +1170,12 @@ internal fun shouldSuppressMultiTouchMapGesture(
     pinchZoomEnabled: Boolean,
     isMultiTouchGesture: Boolean,
 ): Boolean = isMultiTouchGesture && !pinchZoomEnabled
+
+internal fun shouldOpenMapLongPressActions(
+    actionsEnabled: Boolean,
+    gpxInspectionHandled: Boolean,
+    selectingGpxPointB: Boolean,
+): Boolean = actionsEnabled && !gpxInspectionHandled && !selectingGpxPointB
 
 // Stateless Compose renderer: its direct UI inputs preserve the visible clock, status, and gestures.
 @Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")

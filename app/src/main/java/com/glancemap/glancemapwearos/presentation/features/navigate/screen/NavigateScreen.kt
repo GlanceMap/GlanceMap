@@ -8,6 +8,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -259,6 +260,8 @@ fun NavigateScreen(
         var poiCreationSelectionActive by rememberSaveable { mutableStateOf(false) }
         var showPoiCreationChoiceDialog by rememberSaveable { mutableStateOf(false) }
         var showPoiCoordinateEntryDialog by rememberSaveable { mutableStateOf(false) }
+        var mapLongPressTarget by remember { mutableStateOf<LatLong?>(null) }
+        var mapLongPressRequestId by remember { mutableLongStateOf(0L) }
         var completedRouteToolDraft by remember { mutableStateOf<RouteToolSession?>(null) }
         var routeToolExecutionInProgress by remember { mutableStateOf(false) }
         var routeToolExecutionStatus by remember { mutableStateOf<String?>(null) }
@@ -891,6 +894,16 @@ fun NavigateScreen(
                 showPoiCoordinateEntryDialog = true
             },
             onDismissPoiCoordinateEntryDialog = { showPoiCoordinateEntryDialog = false },
+            mapLongPressTarget = mapLongPressTarget,
+            onCreatePoiAtMapLongPress = { target ->
+                mapLongPressTarget = null
+                routeToolActions.savePoiAt(target)
+            },
+            onCreateRouteAtMapLongPress = { target ->
+                mapLongPressTarget = null
+                routeToolActions.createRouteToCoordinate(target)
+            },
+            onDismissMapLongPressActions = { mapLongPressTarget = null },
             showCreatedPoiRenameDialog = showCreatedPoiRenameDialog,
             createdPoiPendingRename = createdPoiPendingRename,
             createdPoiRenameInProgress = createdPoiRenameInProgress,
@@ -1133,6 +1146,7 @@ fun NavigateScreen(
             watchGpsDegradedWarning = watchGpsDegradedWarning,
             isOfflineMode = offlineMode,
             isGpxInspectionEnabled = isGpxInspectionEnabled,
+            poiMapLongPressActionsEnabled = poiMapLongPressActionsEnabled,
             selectingGpxPointB = selectingGpxPointB,
             onCancelSelectingGpxPointB = { gpxViewModel.cancelSelectingB() },
             turnByTurnGuidanceState = guidanceRuntime.state,
@@ -1198,7 +1212,24 @@ fun NavigateScreen(
             },
             onCrosshairSelectionPickHere = routeToolActions.savePoiAt,
             onCancelCrosshairSelection = { poiCreationSelectionActive = false },
-            onInspectTrack = { latLong -> gpxViewModel.onMapLongPress(latLong) },
+            onMapLongPress = { latLong ->
+                val requestId = ++mapLongPressRequestId
+                val selectingPointBAtPress = selectingGpxPointB
+                scope.launch {
+                    val gpxInspectionHandled =
+                        isGpxInspectionEnabled && gpxViewModel.inspectMapLongPress(latLong)
+                    if (
+                        requestId == mapLongPressRequestId &&
+                            shouldOpenMapLongPressActions(
+                                actionsEnabled = poiMapLongPressActionsEnabled,
+                                gpxInspectionHandled = gpxInspectionHandled,
+                                selectingGpxPointB = selectingPointBAtPress,
+                            )
+                    ) {
+                        mapLongPressTarget = latLong
+                    }
+                }
+            },
             visiblePoiMarkers = visiblePoiMarkers,
             poiFocusTarget = pendingPoiFocusTarget,
             onPoiFocusTargetConsumed = { pendingPoiFocusTarget = null },

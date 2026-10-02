@@ -55,6 +55,7 @@ internal data class NavigateSettingsState(
     val backButtonExitsNavigation: Boolean,
     val poiIconSizePx: Int,
     val poiMarkerStyle: String,
+    val poiMapLongPressActionsEnabled: Boolean,
     val poiPopupTimeoutSeconds: Int,
     val poiPopupManualCloseOnly: Boolean,
     val recordingDashboardMetricSlots: List<String>,
@@ -160,6 +161,9 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val backButtonExitsNavigation by settingsViewModel.backButtonExitsNavigation.collectAsState()
     val poiIconSizePx by settingsViewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by settingsViewModel.poiMarkerStyle.collectAsState()
+    val poiMapLongPressActionsEnabled by settingsViewModel.poiMapLongPressActionsEnabled.collectAsState(
+        initial = SettingsRepository.DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED,
+    )
     val poiPopupTimeoutSeconds by settingsViewModel.poiPopupTimeoutSeconds.collectAsState(
         initial = SettingsRepository.POI_POPUP_TIMEOUT_DEFAULT_SECONDS,
     )
@@ -235,6 +239,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         backButtonExitsNavigation = backButtonExitsNavigation,
         poiIconSizePx = poiIconSizePx,
         poiMarkerStyle = poiMarkerStyle,
+        poiMapLongPressActionsEnabled = poiMapLongPressActionsEnabled,
         poiPopupTimeoutSeconds = poiPopupTimeoutSeconds,
         poiPopupManualCloseOnly = poiPopupManualCloseOnly,
         recordingDashboardMetricSlots = recordingDashboardMetricSlots,

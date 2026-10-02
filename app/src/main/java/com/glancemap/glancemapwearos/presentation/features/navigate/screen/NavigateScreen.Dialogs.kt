@@ -71,6 +71,10 @@ internal fun NavigateScreenDialogsHost(
     onDismissPoiCreationChoiceDialog: () -> Unit,
     onOpenPoiCoordinateEntryDialog: () -> Unit,
     onDismissPoiCoordinateEntryDialog: () -> Unit,
+    mapLongPressTarget: LatLong?,
+    onCreatePoiAtMapLongPress: (LatLong) -> Unit,
+    onCreateRouteAtMapLongPress: (LatLong) -> Unit,
+    onDismissMapLongPressActions: () -> Unit,
     showCreatedPoiRenameDialog: Boolean,
     createdPoiPendingRename: UserPoiRecord?,
     createdPoiRenameInProgress: Boolean,
@@ -143,6 +147,13 @@ internal fun NavigateScreenDialogsHost(
             routeToolActions.savePoiAt(coordinate)
         },
         onDismiss = onDismissPoiCoordinateEntryDialog,
+    )
+
+    MapLongPressActionDialog(
+        target = mapLongPressTarget,
+        onCreatePoi = onCreatePoiAtMapLongPress,
+        onCreateRoute = onCreateRouteAtMapLongPress,
+        onDismiss = onDismissMapLongPressActions,
     )
 
     NavigateCreatedPoiRenameDialog(
@@ -313,6 +324,38 @@ private fun PoiCreationChoiceDialog(
                 WearActionDialogButton(
                     text = "Coordinates",
                     onClick = onCoordinates,
+                ),
+                WearActionDialogButton(
+                    text = "Cancel",
+                    onClick = onDismiss,
+                    role = WearActionButtonRole.Secondary,
+                ),
+            ),
+    ) {}
+}
+
+@Composable
+@Suppress("FunctionNaming")
+private fun MapLongPressActionDialog(
+    target: LatLong?,
+    onCreatePoi: (LatLong) -> Unit,
+    onCreateRoute: (LatLong) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val point = target ?: return
+    WearActionDialog(
+        visible = true,
+        title = "Map point",
+        onDismissRequest = onDismiss,
+        buttons =
+            listOf(
+                WearActionDialogButton(
+                    text = "Create POI",
+                    onClick = { onCreatePoi(point) },
+                ),
+                WearActionDialogButton(
+                    text = "Create route",
+                    onClick = { onCreateRoute(point) },
                 ),
                 WearActionDialogButton(
                     text = "Cancel",

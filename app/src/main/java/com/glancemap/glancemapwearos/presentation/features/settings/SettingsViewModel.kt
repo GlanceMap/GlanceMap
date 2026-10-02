@@ -1331,6 +1331,19 @@ class SettingsViewModel(
             settingsRepository.setPoiTapToCenterEnabled(enabled)
         }
 
+    val poiMapLongPressActionsEnabled: StateFlow<Boolean> =
+        settingsRepository.poiMapLongPressActionsEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED,
+            )
+
+    fun setPoiMapLongPressActionsEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setPoiMapLongPressActionsEnabled(enabled)
+        }
+
     val linkGpxWaypointPoiFolders: StateFlow<Boolean> =
         settingsRepository.linkGpxWaypointPoiFolders
             .stateIn(

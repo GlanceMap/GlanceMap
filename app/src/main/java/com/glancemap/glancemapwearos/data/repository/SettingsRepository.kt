@@ -294,6 +294,7 @@ interface SettingsRepository {
         const val POI_ICON_SIZE_DEFAULT_PX = POI_ICON_SIZE_MEDIUM_PX
         const val POI_MARKER_STYLE_BADGE = "BADGE"
         const val POI_MARKER_STYLE_THEME_ICON = "THEME_ICON"
+        const val DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED = false
 
         const val POI_POPUP_TIMEOUT_DEFAULT_SECONDS = 5
         const val POI_POPUP_TIMEOUT_MIN_SECONDS = 1
@@ -791,6 +792,10 @@ interface SettingsRepository {
     val poiTapToCenterEnabled: Flow<Boolean>
 
     suspend fun setPoiTapToCenterEnabled(enabled: Boolean)
+
+    val poiMapLongPressActionsEnabled: Flow<Boolean>
+
+    suspend fun setPoiMapLongPressActionsEnabled(enabled: Boolean)
 
     val linkGpxWaypointPoiFolders: Flow<Boolean>
 
