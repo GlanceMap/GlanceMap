@@ -127,6 +127,34 @@ class NavigateVisualWorkPolicyTest {
     }
 
     @Test
+    fun liveElevationSampleTelemetryRecordsOnlyAvailabilityTransitions() {
+        assertTrue(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = null,
+                sampledMeters = 180.0,
+            ),
+        )
+        assertFalse(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = true,
+                sampledMeters = 181.0,
+            ),
+        )
+        assertTrue(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = true,
+                sampledMeters = null,
+            ),
+        )
+        assertFalse(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = false,
+                sampledMeters = null,
+            ),
+        )
+    }
+
+    @Test
     fun screenOffStopsOverlayRefreshWithoutDisablingFullDiagnostics() {
         EnergyDiagnostics.configure(captureActive = true, fullDiagnostics = true)
         try {

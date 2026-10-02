@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.IntSize
 import com.glancemap.glancemapwearos.core.maps.mapZoomScaleStepsMeters
 import com.glancemap.glancemapwearos.core.maps.nearestMetricScaleStepIndex
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
@@ -54,6 +55,7 @@ internal fun rememberNavigateLiveHudState(
     var showScaleBar by remember { mutableStateOf(false) }
     var liveElevationLabel by remember(mapHolder, isMetric) { mutableStateOf<String?>(null) }
     var liveDistanceLabel by remember(isMetric) { mutableStateOf<String?>(null) }
+    var lastRecordedElevationAvailability by remember(mapHolder) { mutableStateOf<Boolean?>(null) }
 
     val preferredScaleMeters =
         preferredScaleMetersForZoomLevel(
@@ -168,6 +170,18 @@ internal fun rememberNavigateLiveHudState(
                                 lon = elevationCenter.longitude,
                             )
                         }
+                    if (
+                        liveElevationSampleAvailabilityChanged(
+                            previousAvailable = lastRecordedElevationAvailability,
+                            sampledMeters = sampledMeters,
+                        )
+                    ) {
+                        lastRecordedElevationAvailability = sampledMeters != null
+                        TerrainDiagnostics.record(
+                            event = "live_elevation_sample",
+                            detail = "status=${if (sampledMeters != null) "available" else "missing"}",
+                        )
+                    }
                     liveElevationLabel = sampledMeters?.let { meters ->
                         val (value, unit) = UnitFormatter.formatElevation(meters, isMetric)
                         "$value $unit"
@@ -219,6 +233,11 @@ internal fun shouldPollNavigateLiveHud(
         screenState.isInteractive &&
         navMode == NavMode.PANNING &&
         (liveElevationEnabled || liveDistanceEnabled)
+
+internal fun liveElevationSampleAvailabilityChanged(
+    previousAvailable: Boolean?,
+    sampledMeters: Double?,
+): Boolean = previousAvailable != (sampledMeters != null)
 
 internal fun preferredScaleMetersForZoomLevel(
     currentZoomLevel: Int,
