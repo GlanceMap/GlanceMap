@@ -66,7 +66,6 @@ import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.basicCurvedText
-import androidx.wear.compose.foundation.curvedComposable
 import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
@@ -713,56 +712,11 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     ) {
         return
     }
-    GuidanceMapRemainingPills(
+    GuidanceRemainingArc(
         remainingMeters = state.distanceRemainingMeters,
         estimatedRemainingSeconds = state.estimatedRemainingSeconds,
         isMetric = isMetric,
     )
-}
-
-@Composable
-@Suppress("FunctionName")
-private fun GuidanceMapRemainingPills(
-    remainingMeters: Double?,
-    estimatedRemainingSeconds: Long?,
-    isMetric: Boolean,
-) {
-    val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
-    val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
-    cappedFontScale(maxFontScale = 1.15f) {
-        GuidanceMapRemainingPill(anchor = 112f, label = distance)
-        duration?.let { GuidanceMapRemainingPill(anchor = 68f, label = it) }
-    }
-}
-
-@Composable
-@Suppress("FunctionName")
-private fun GuidanceMapRemainingPill(
-    anchor: Float,
-    label: String,
-) {
-    CurvedLayout(
-        modifier = Modifier.fillMaxSize(),
-        anchor = anchor,
-        anchorType = AnchorType.Center,
-        angularDirection = CurvedDirection.Angular.Reversed,
-    ) {
-        curvedComposable(
-            modifier = CurvedModifier.padding(ArcPaddingValues(outer = 10.dp)),
-            rotationLocked = true,
-        ) {
-            Text(
-                text = label,
-                modifier =
-                    Modifier
-                        .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
 }
 
 internal fun shouldShowGuidanceMapRemainingDetails(
