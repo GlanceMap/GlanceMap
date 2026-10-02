@@ -6,9 +6,9 @@ import android.os.SystemClock
 import android.view.WindowManager
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -226,9 +226,13 @@ internal fun computeCompassRotationVectorUpdate(
             previousUncertaintyDeg = previousUncertaintyDeg,
             values = values,
         )
+    val uncertaintyAccuracy =
+        headingAccuracyFromUncertainty(update.uncertaintyDeg)
+    val effectiveSensorAccuracy =
+        if (update.uncertaintyDeg.isFinite()) uncertaintyAccuracy else sensorAccuracy
     val combinedAccuracy =
         combineCompassAccuracy(
-            sensorAccuracy = sensorAccuracy,
+            sensorAccuracy = effectiveSensorAccuracy,
             inferredAccuracy = inferredAccuracy,
             usingRotationVector = usingRotationVector || usingHeadingSensor,
             hasMagneticInterference = hasMagneticInterference,
@@ -349,15 +353,20 @@ internal fun resolveCompassManagerHeadingPipeline(
     )
 }
 
+@Suppress(
+    "LongMethod",
+    "CyclomaticComplexMethod",
+    "LongParameterList",
+) // Preserve the audited smoothing orchestration and callback contract.
 internal fun launchCompassSmoothingJob(
     scope: CoroutineScope,
-    rawHeadingFlow: MutableStateFlow<Float?>,
+    rawHeadingFlow: SharedFlow<SensorRawHeadingSample>,
     settleWindowMs: Long,
     getStartAtMs: () -> Long,
     getHeadingRelockUntilElapsedMs: () -> Long,
     consumeResetSmoothingRequested: () -> Boolean,
     getDisplayedHeading: () -> Float,
-    publishDisplayedHeading: (Float) -> Unit,
+    publishDisplayedHeading: (Float, SensorRawHeadingSample) -> Unit,
     getPendingBootstrapRawSamplesToIgnore: () -> Int,
     setPendingBootstrapRawSamplesToIgnore: (Int) -> Unit,
     getPendingStartupBogusSamplesToIgnore: () -> Int,
@@ -371,7 +380,7 @@ internal fun launchCompassSmoothingJob(
     updateInferredHeadingAccuracy: (Int) -> Unit,
     logDiagnostics: (String) -> Unit,
 ): Job {
-    return scope.launch {
+    return scope.launch(start = CoroutineStart.UNDISPATCHED) {
         var smoothedHeading = 0f
         var hasInit = false
         var resumedWithPreviousHeading = false
@@ -387,8 +396,7 @@ internal fun launchCompassSmoothingJob(
         var reanchorBlendActive = false
 
         rawHeadingFlow
-            .filterNotNull()
-            .collect { rawHeading ->
+            .collect { rawSample ->
                 val now = SystemClock.elapsedRealtime()
                 val settling = (now - getStartAtMs()) < settleWindowMs
                 val inRelock = now < getHeadingRelockUntilElapsedMs()
@@ -421,11 +429,11 @@ internal fun launchCompassSmoothingJob(
                         )
                         return false
                     }
-                    publishDisplayedHeading(candidateHeading)
+                    publishDisplayedHeading(candidateHeading, rawSample)
                     return true
                 }
 
-                val raw = normalize360Deg(rawHeading)
+                val raw = normalize360Deg(rawSample.headingDeg)
 
                 if (consumeResetSmoothingRequested()) {
                     val displayedHeading = getDisplayedHeading()
@@ -695,8 +703,10 @@ internal fun launchCompassSmoothingJob(
                     if (convergenceAlpha > 0f) {
                         smoothedHeading =
                             normalize360Deg(smoothedHeading + convergenceAlpha * diff)
-                        publishHeadingCandidate(smoothedHeading)
                     }
+                    // Equal-angle sensor events are still fresh measurements. Keep publication
+                    // identity independent from numeric heading movement.
+                    publishHeadingCandidate(smoothedHeading)
                     return@collect
                 }
 

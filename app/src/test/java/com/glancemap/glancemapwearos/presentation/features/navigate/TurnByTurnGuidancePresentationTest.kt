@@ -122,6 +122,45 @@ class TurnByTurnGuidancePresentationTest {
     }
 
     @Test
+    fun mapRemainingDetailsRequireAnEnabledOnRouteGuidanceSession() {
+        val visible =
+            GuidanceMapRemainingDisplayState(
+                enabled = true,
+                guidanceActive = true,
+                paused = false,
+                offRoute = false,
+                guideBackToRouteActive = false,
+                suppressed = false,
+            )
+        assertTrue(
+            shouldShowGuidanceMapRemainingDetails(visible),
+        )
+        assertTrue(
+            shouldShowGuidanceMapRemainingDetails(
+                visible.copy(
+                    guidanceActive = false,
+                    paused = true,
+                ),
+            ),
+        )
+        assertFalse(
+            shouldShowGuidanceMapRemainingDetails(
+                visible.copy(enabled = false),
+            ),
+        )
+        assertFalse(
+            shouldShowGuidanceMapRemainingDetails(
+                visible.copy(offRoute = true),
+            ),
+        )
+        assertFalse(
+            shouldShowGuidanceMapRemainingDetails(
+                visible.copy(suppressed = true),
+            ),
+        )
+    }
+
+    @Test
     fun voiceContinueStraightPromptOnlySpeaksForMeaningfulStraightSections() {
         assertTrue(shouldSpeakContinueStraightPrompt(state(distanceMeters = 600.0)))
         assertFalse(shouldSpeakContinueStraightPrompt(state(distanceMeters = 300.0)))

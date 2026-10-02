@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,16 +23,21 @@ internal data class CompassDeepTraceSnapshot(
     val droppedLines: Int,
     val lastStopReason: String?,
     val lines: List<String>,
+    val events: List<CompassDeepTraceEventRecord> = emptyList(),
+    val droppedEvents: Int = 0,
+    val incident: CompassDeepTraceIncidentSnapshot? = null,
 )
 
 internal object CompassDeepTraceDiagnostics {
     private const val TAG = "CompassDeepTrace"
     private const val MAX_BUFFERED_LINES = 720
     private const val WINDOW_DURATION_MS = 5_000L
-
     private val lock = Any()
     private val _state = MutableStateFlow(CompassDeepTraceState())
     private val lines = ArrayDeque<String>()
+    private val eventRing = CompassDeepTraceEventRing(COMPASS_DEEP_TRACE_DECISION_EVENT_CAPACITY)
+    private var incidentCapture: CompassDeepTraceIncidentCapture? = null
+    private var preservedIncident: CompassDeepTraceIncidentSnapshot? = null
     private var droppedLines = 0
     private var sessionCount = 0
     private var windowCount = 0
@@ -54,6 +60,9 @@ internal object CompassDeepTraceDiagnostics {
         synchronized(lock) {
             if (_state.value.active) return false
             sessionCount += 1
+            eventRing.clear()
+            incidentCapture = null
+            preservedIncident = null
             activeSessionStartWindowCount = windowCount
             currentWindow = CompassDeepTraceWindowAccumulator(startedAtElapsedMs = nowElapsedMs)
             registration =
@@ -69,11 +78,14 @@ internal object CompassDeepTraceDiagnostics {
             startLine =
                 "session_start schemaVersion=$COMPASS_DEEP_TRACE_SCHEMA_VERSION " +
                 "id=$sessionCount atMs=$nowEpochMs autoStop=false " +
-                "windowMs=$WINDOW_DURATION_MS bufferLines=$MAX_BUFFERED_LINES sensorPeriodUs=40000"
+                "windowMs=$WINDOW_DURATION_MS bufferLines=$MAX_BUFFERED_LINES " +
+                "decisionEventCapacity=$COMPASS_DEEP_TRACE_DECISION_EVENT_CAPACITY sensorPeriodUs=40000"
             appendLineLocked(startLine)
             val registeredSensors = registration.registeredSensors
             inventoryLine = "session_sensors id=$sessionCount registered=${registeredSensors.ifEmpty { "none" }}"
             appendLineLocked(inventoryLine)
+            recordEventLocked(CompassDeepTraceEvent.Telemetry(nowElapsedMs, startLine))
+            recordEventLocked(CompassDeepTraceEvent.Telemetry(nowElapsedMs, inventoryLine))
         }
 
         Log.d(TAG, startLine)
@@ -96,10 +108,20 @@ internal object CompassDeepTraceDiagnostics {
                     "windows=${windowCount - activeSessionStartWindowCount}"
             appendLineLocked(stopLine)
             completedLines += stopLine
+            recordEventLocked(
+                CompassDeepTraceEvent.Telemetry(
+                    atElapsedMs = SystemClock.elapsedRealtime(),
+                    line = stopLine,
+                ),
+            )
             registration = sensorRegistration
             sensorRegistration = null
             currentWindow = null
             gyroHistory.clear()
+            freezeIncidentLocked(
+                postTailComplete =
+                    SystemClock.elapsedRealtime() >= incidentPostTailDeadlineOrMax(),
+            )
             _state.value = CompassDeepTraceState(lastStopReason = reason)
         }
         registration?.stop()
@@ -110,6 +132,9 @@ internal object CompassDeepTraceDiagnostics {
         stop(reason = "cleared")
         synchronized(lock) {
             lines.clear()
+            eventRing.clear()
+            incidentCapture = null
+            preservedIncident = null
             droppedLines = 0
             sessionCount = 0
             windowCount = 0
@@ -121,16 +146,124 @@ internal object CompassDeepTraceDiagnostics {
 
     fun recordProviderSample(sample: CompassDeepTraceProviderSample) {
         recordAt(sample.atElapsedMs) { it.recordProvider(sample) }
+        synchronized(lock) {
+            if (!_state.value.active) return
+            recordEventLocked(
+                CompassDeepTraceEvent.ProviderMeasurement(
+                    atElapsedMs = sample.atElapsedMs,
+                    provider = sample.provider,
+                    headingDeg = sample.headingDeg,
+                    sourceSampleId = sample.sourceSampleId,
+                    sourceMeasurementAtElapsedMs = sample.sourceMeasurementAtElapsedMs,
+                    callbackArrivalAtElapsedMs = sample.callbackArrivalAtElapsedMs,
+                    processingAtElapsedMs = sample.processingAtElapsedMs,
+                    measurementDisposition = sample.measurementDisposition,
+                    accuracy = sample.accuracy,
+                    usable = sample.usable,
+                    provenance = sample.provenance,
+                ),
+            )
+            recordEventLocked(
+                CompassDeepTraceEvent.IntegrityDecision(
+                    atElapsedMs = sample.atElapsedMs,
+                    provider = sample.provider,
+                    sourceSampleId = sample.sourceSampleId,
+                    headingDeg = sample.headingDeg,
+                    liveHeadingErrorDeg = sample.liveHeadingErrorDeg,
+                    conservativeHeadingErrorDeg = sample.conservativeHeadingErrorDeg,
+                    trackingState = sample.trackingState,
+                    trackingReason = sample.trackingReason,
+                    relativeHeadingDeg = sample.relativeHeadingDeg,
+                    fusedRelativeDisagreementDeg = sample.fusedRelativeDisagreementDeg,
+                    targetHeadingDeg = sample.targetHeadingDeg,
+                    trusted = sample.trusted,
+                    quarantineActive = sample.quarantineActive,
+                    recoveryActive = sample.recoveryActive,
+                    relativeWitnessAvailable = sample.relativeWitnessAvailable,
+                    relativeWitnessSuppressed = sample.relativeWitnessSuppressed,
+                    unresolvedIndependentDisagreement = sample.unresolvedIndependentDisagreement,
+                    heldOutput = sample.heldOutput,
+                    provenance = sample.provenance,
+                ),
+            )
+        }
     }
 
     fun recordRenderSample(sample: CompassDeepTraceRenderSample) {
         recordAt(sample.atElapsedMs) { it.recordRender(sample) }
+        synchronized(lock) {
+            if (!_state.value.active) return
+            recordEventLocked(
+                CompassDeepTraceEvent.Render(
+                    atElapsedMs = sample.atElapsedMs,
+                    sourceSampleId = sample.sourceSampleId,
+                    targetHeadingDeg = sample.targetHeadingDeg,
+                    renderedHeadingDeg = sample.renderedHeadingDeg,
+                    mapRotationDeg = sample.mapRotationDeg,
+                    heldOutput = sample.heldOutput,
+                    provenance = sample.provenance,
+                ),
+            )
+        }
     }
 
     /** Stores compass lifecycle and integrity events while the optional trace is active. */
     fun recordTelemetryLine(line: String) {
         synchronized(lock) {
-            if (_state.value.active) appendLineLocked(line)
+            if (_state.value.active) {
+                appendLineLocked(line)
+                recordEventLocked(
+                    CompassDeepTraceEvent.Telemetry(
+                        atElapsedMs = SystemClock.elapsedRealtime(),
+                        line = line,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun recordMarker(
+        type: String,
+        detail: String = "",
+        atElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        synchronized(lock) {
+            if (!_state.value.active) return
+            if (
+                type == HEADING_LOOKS_WRONG_MARKER &&
+                incidentCapture == null &&
+                preservedIncident == null
+            ) {
+                incidentCapture =
+                    CompassDeepTraceIncidentCapture(
+                        preMarkerEvents = eventRing.snapshot(),
+                        preMarkerLiveRingDroppedEvents = eventRing.droppedEvents,
+                        postTailEndsAtElapsedMs = atElapsedMs + COMPASS_DEEP_TRACE_INCIDENT_POST_TAIL_MS,
+                        postEventCapacity = COMPASS_DEEP_TRACE_INCIDENT_POST_EVENT_CAPACITY,
+                    )
+            }
+            recordEventLocked(CompassDeepTraceEvent.Marker(atElapsedMs, type, detail))
+        }
+    }
+
+    fun recordUiConfidence(
+        provider: String,
+        quality: String,
+        accuracyColorsEnabled: Boolean,
+        provenance: CompassHeadingProvenance?,
+        atElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        synchronized(lock) {
+            if (!_state.value.active) return
+            recordEventLocked(
+                CompassDeepTraceEvent.UiConfidence(
+                    atElapsedMs = atElapsedMs,
+                    provider = provider,
+                    quality = quality,
+                    accuracyColorsEnabled = accuracyColorsEnabled,
+                    provenance = provenance,
+                ),
+            )
         }
     }
 
@@ -158,6 +291,12 @@ internal object CompassDeepTraceDiagnostics {
 
     fun snapshot(): CompassDeepTraceSnapshot =
         synchronized(lock) {
+            if (
+                incidentCapture != null &&
+                SystemClock.elapsedRealtime() >= incidentPostTailDeadlineOrMax()
+            ) {
+                freezeIncidentLocked(postTailComplete = true)
+            }
             CompassDeepTraceSnapshot(
                 active = _state.value.active,
                 sessionCount = sessionCount,
@@ -165,8 +304,27 @@ internal object CompassDeepTraceDiagnostics {
                 droppedLines = droppedLines,
                 lastStopReason = _state.value.lastStopReason,
                 lines = lines.toList(),
+                events = eventRing.snapshot(),
+                droppedEvents = eventRing.droppedEvents,
+                incident = preservedIncident,
             )
         }
+
+    private fun recordEventLocked(event: CompassDeepTraceEvent) {
+        val record = eventRing.record(event) ?: return
+        val capture = incidentCapture ?: return
+        if (!capture.record(record)) {
+            freezeIncidentLocked(postTailComplete = true)
+        }
+    }
+
+    private fun freezeIncidentLocked(postTailComplete: Boolean) {
+        val capture = incidentCapture ?: return
+        preservedIncident = capture.snapshot(postTailComplete = postTailComplete)
+        incidentCapture = null
+    }
+
+    private fun incidentPostTailDeadlineOrMax(): Long = incidentCapture?.postTailEndsAtElapsedMs() ?: Long.MAX_VALUE
 
     private fun recordAt(
         atElapsedMs: Long,
@@ -247,5 +405,9 @@ private data class CompassDeepTraceGyroSample(
     val magnitudeRadPerSec: Float,
 )
 
-internal const val COMPASS_DEEP_TRACE_SCHEMA_VERSION = 2
+internal const val COMPASS_DEEP_TRACE_SCHEMA_VERSION = 4
+internal const val COMPASS_DEEP_TRACE_DECISION_EVENT_CAPACITY = 2_048
+private const val HEADING_LOOKS_WRONG_MARKER = "heading_looks_wrong"
+private const val COMPASS_DEEP_TRACE_INCIDENT_POST_TAIL_MS = 2_000L
+private const val COMPASS_DEEP_TRACE_INCIDENT_POST_EVENT_CAPACITY = 512
 private const val GYRO_HISTORY_MS = 3_000L

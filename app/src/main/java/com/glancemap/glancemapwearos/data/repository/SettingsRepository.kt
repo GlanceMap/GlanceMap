@@ -190,6 +190,7 @@ interface SettingsRepository {
         const val DEFAULT_TURN_BY_TURN_TURN_ALERTS_MODE = TURN_BY_TURN_TURN_ALERTS_ALL
         const val DEFAULT_TURN_BY_TURN_VOICE_GUIDANCE_ENABLED = false
         const val DEFAULT_TURN_BY_TURN_COMPACT_POPUP_ENABLED = true
+        const val DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED = false
         const val DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED = true
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS = 40
         const val DEFAULT_TURN_BY_TURN_OFF_ROUTE_REPEAT_SECONDS = 60
@@ -293,6 +294,7 @@ interface SettingsRepository {
         const val POI_ICON_SIZE_DEFAULT_PX = POI_ICON_SIZE_MEDIUM_PX
         const val POI_MARKER_STYLE_BADGE = "BADGE"
         const val POI_MARKER_STYLE_THEME_ICON = "THEME_ICON"
+        const val DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED = false
 
         const val POI_POPUP_TIMEOUT_DEFAULT_SECONDS = 5
         const val POI_POPUP_TIMEOUT_MIN_SECONDS = 1
@@ -301,6 +303,7 @@ interface SettingsRepository {
         const val DEFAULT_MAP_ZOOM_DEFAULT_SCALE_METERS = 200
         const val DEFAULT_MAP_ZOOM_MIN_SCALE_METERS = 200_000
         const val DEFAULT_MAP_ZOOM_MAX_SCALE_METERS = 20
+        const val DEFAULT_MAP_PINCH_ZOOM_ENABLED = false
     }
 
     val gpsInterval: Flow<Long>
@@ -470,6 +473,10 @@ interface SettingsRepository {
 
     suspend fun setTurnByTurnCompactPopupEnabled(enabled: Boolean)
 
+    val turnByTurnMapProgressEnabled: Flow<Boolean>
+
+    suspend fun setTurnByTurnMapProgressEnabled(enabled: Boolean)
+
     val turnByTurnElevationProgressRingEnabled: Flow<Boolean>
 
     suspend fun setTurnByTurnElevationProgressRingEnabled(enabled: Boolean)
@@ -628,6 +635,10 @@ interface SettingsRepository {
 
     suspend fun setCrownZoomEnabled(enabled: Boolean)
 
+    val mapPinchZoomEnabled: Flow<Boolean>
+
+    suspend fun setMapPinchZoomEnabled(enabled: Boolean)
+
     val crownZoomInverted: Flow<Boolean>
 
     suspend fun setCrownZoomInverted(inverted: Boolean)
@@ -781,6 +792,10 @@ interface SettingsRepository {
     val poiTapToCenterEnabled: Flow<Boolean>
 
     suspend fun setPoiTapToCenterEnabled(enabled: Boolean)
+
+    val poiMapLongPressActionsEnabled: Flow<Boolean>
+
+    suspend fun setPoiMapLongPressActionsEnabled(enabled: Boolean)
 
     val linkGpxWaypointPoiFolders: Flow<Boolean>
 

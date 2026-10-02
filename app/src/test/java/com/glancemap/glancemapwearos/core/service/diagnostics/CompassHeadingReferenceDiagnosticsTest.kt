@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -174,6 +176,51 @@ class CompassHeadingReferenceDiagnosticsTest {
     }
 
     @Test
+    fun `reference mark requires the same provider generation as the rendered sample`() {
+        val marker = marker(referenceHeadingDeg = 90f, providerHeadingDeg = 93f, renderedHeadingDeg = 91f)
+
+        val generationMismatch =
+            validateHeadingReferenceMark(
+                active = true,
+                provider = marker.provider,
+                render =
+                    marker.render.copy(
+                        provenance =
+                            CompassHeadingProvenance(
+                                provider = CompassProviderType.GOOGLE_FUSED,
+                                generation = 2L,
+                            ),
+                    ),
+                capturedAtElapsedMs = 1_100L,
+            )
+        val providerMismatch =
+            validateHeadingReferenceMark(
+                active = true,
+                provider = marker.provider,
+                render =
+                    marker.render.copy(
+                        provenance =
+                            CompassHeadingProvenance(
+                                provider = CompassProviderType.SENSOR_MANAGER,
+                                generation = 1L,
+                            ),
+                    ),
+                capturedAtElapsedMs = 1_100L,
+            )
+        val provenanceUnavailable =
+            validateHeadingReferenceMark(
+                active = true,
+                provider = marker.provider.copy(provenance = null),
+                render = marker.render,
+                capturedAtElapsedMs = 1_100L,
+            )
+
+        assertEquals(CompassHeadingReferenceMarkResult.PROVENANCE_MISMATCHED, generationMismatch)
+        assertEquals(CompassHeadingReferenceMarkResult.PROVENANCE_MISMATCHED, providerMismatch)
+        assertEquals(CompassHeadingReferenceMarkResult.PROVENANCE_UNAVAILABLE, provenanceUnavailable)
+    }
+
+    @Test
     fun `stationary but aligned render remains a valid reference mark`() {
         val marker = marker(referenceHeadingDeg = 0f, providerHeadingDeg = 2f, renderedHeadingDeg = 1f)
 
@@ -288,6 +335,11 @@ class CompassHeadingReferenceDiagnosticsTest {
                 integrityState = CompassTrackingState.TRACKING,
                 pitchDeg = 0f,
                 rollDeg = 0f,
+                provenance =
+                    CompassHeadingProvenance(
+                        provider = CompassProviderType.GOOGLE_FUSED,
+                        generation = 1L,
+                    ),
                 atElapsedMs = 1_000L,
             ),
         render =
@@ -295,6 +347,11 @@ class CompassHeadingReferenceDiagnosticsTest {
                 targetHeadingDeg = providerHeadingDeg,
                 renderedHeadingDeg = renderedHeadingDeg,
                 mapsforgeMapRotationDeg = -renderedHeadingDeg,
+                provenance =
+                    CompassHeadingProvenance(
+                        provider = CompassProviderType.GOOGLE_FUSED,
+                        generation = 1L,
+                    ),
                 atElapsedMs = 1_000L,
             ),
         capturedAtElapsedMs = 1_010L,

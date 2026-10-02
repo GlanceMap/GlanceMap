@@ -16,6 +16,7 @@ internal enum class NavigationMarkerStyle {
 }
 
 internal enum class CompassMarkerQuality {
+    NEUTRAL,
     UNRELIABLE,
     LOW,
     MEDIUM,
@@ -47,55 +48,60 @@ internal fun compassMarkerQualityFromAccuracy(accuracy: Int): CompassMarkerQuali
 
 internal fun compassMarkerQualityFromHeadingError(headingErrorDeg: Float): CompassMarkerQuality = compassMarkerQualityFromAccuracy(headingAccuracyFromUncertainty(headingErrorDeg))
 
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 internal fun compassQualityReadingFromRenderState(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
-): CompassQualityReading =
-    when (renderState.providerType) {
-        CompassProviderType.GOOGLE_FUSED -> {
-            val headingErrorDeg = renderState.headingErrorDeg?.takeIf { it.isFinite() && it >= 0f }
-            val conservativeHeadingErrorDeg =
-                renderState.conservativeHeadingErrorDeg?.takeIf { it.isFinite() && it >= 0f }
-            val sampleAgeMs =
-                renderState.headingSampleElapsedRealtimeMs?.let { sampleAtMs ->
-                    (nowElapsedMs - sampleAtMs).coerceAtLeast(0L)
-                }
-            val hasQualitySample =
-                renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
-                    headingErrorDeg != null &&
-                    renderState.headingSampleElapsedRealtimeMs != null
-            val quality =
-                when {
-                    !hasQualitySample -> null
-                    renderState.headingSampleStale -> CompassMarkerQuality.UNRELIABLE
-                    else -> compassMarkerQualityFromHeadingError(headingErrorDeg)
-                }
-            CompassQualityReading(
-                hasQualitySample = hasQualitySample,
-                quality = quality,
-                headingErrorDeg = headingErrorDeg,
-                conservativeHeadingErrorDeg = conservativeHeadingErrorDeg,
-                sampleAgeMs = sampleAgeMs,
-                isStale = renderState.headingSampleStale,
-            )
+): CompassQualityReading {
+    val headingErrorDeg = renderState.headingErrorDeg?.takeIf { it.isFinite() && it >= 0f }
+    val conservativeHeadingErrorDeg =
+        renderState.conservativeHeadingErrorDeg?.takeIf { it.isFinite() && it >= 0f }
+    val sampleAgeMs =
+        renderState.headingSampleElapsedRealtimeMs?.let { sampleAtMs ->
+            (nowElapsedMs - sampleAtMs).coerceAtLeast(0L)
         }
-
-        CompassProviderType.SENSOR_MANAGER -> {
-            val hasQualitySample = renderState.headingSource != HeadingSource.NONE
-            CompassQualityReading(
-                hasQualitySample = hasQualitySample,
-                quality =
-                    if (hasQualitySample) {
-                        compassMarkerQualityFromAccuracy(renderState.accuracy)
-                    } else {
-                        null
-                    },
-            )
+    val hasQualitySample =
+        renderState.headingSampleElapsedRealtimeMs != null &&
+            when (renderState.providerType) {
+                CompassProviderType.GOOGLE_FUSED -> renderState.headingSource == HeadingSource.FUSED_ORIENTATION
+                CompassProviderType.SENSOR_MANAGER -> renderState.headingSource != HeadingSource.NONE
+            }
+    val quality =
+        when {
+            !hasQualitySample -> null
+            renderState.headingSampleStale || !renderState.headingRenderable ->
+                CompassMarkerQuality.UNRELIABLE
+            renderState.providerType == CompassProviderType.SENSOR_MANAGER ->
+                compassMarkerQualityFromAccuracy(renderState.accuracy)
+            else -> {
+                val uncertaintyQuality =
+                    headingErrorDeg?.let(::compassMarkerQualityFromHeadingError)
+                        ?: compassMarkerQualityFromAccuracy(renderState.accuracy)
+                if (renderState.headingTrusted) {
+                    uncertaintyQuality
+                } else {
+                    when (uncertaintyQuality) {
+                        CompassMarkerQuality.GOOD,
+                        CompassMarkerQuality.MEDIUM,
+                        -> CompassMarkerQuality.MEDIUM
+                        else -> uncertaintyQuality
+                    }
+                }
+            }
         }
-    }
+    return CompassQualityReading(
+        hasQualitySample = hasQualitySample,
+        quality = quality,
+        headingErrorDeg = headingErrorDeg,
+        conservativeHeadingErrorDeg = conservativeHeadingErrorDeg,
+        sampleAgeMs = sampleAgeMs,
+        isStale = renderState.headingSampleStale,
+    )
+}
 
 internal fun coneColorArgbForQuality(quality: CompassMarkerQuality): Int =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> 0xFF8E8E93.toInt()
         // Keep green reserved for the most trustworthy heading state. If the cone is not green,
         // users should read it as "heading may be off, be careful."
         CompassMarkerQuality.GOOD -> 0xFF34C759.toInt()
@@ -106,6 +112,7 @@ internal fun coneColorArgbForQuality(quality: CompassMarkerQuality): Int =
 
 internal fun coneSizeScaleForQuality(quality: CompassMarkerQuality): Pair<Float, Float> =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> 1.00f to 1.00f
         CompassMarkerQuality.GOOD -> 1.00f to 1.00f
         CompassMarkerQuality.MEDIUM -> 1.00f to 1.20f
         CompassMarkerQuality.LOW -> 1.00f to 1.45f

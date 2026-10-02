@@ -39,7 +39,6 @@ internal class FusedOrientationIntegritySensorMonitor(
     fun start(
         handler: Handler,
         lowPower: Boolean,
-        enableRelativeWitness: Boolean,
         onRelativeHeading: (RelativeHeadingWitness, Long) -> Unit,
         onMagneticField: (Float, Long) -> Unit,
     ) {
@@ -51,7 +50,7 @@ internal class FusedOrientationIntegritySensorMonitor(
         val magneticPeriodUs =
             if (lowPower) INTEGRITY_LOW_POWER_PERIOD_US else INTEGRITY_MAGNETIC_PERIOD_US
         val relativeRegistered =
-            gameRotationVector?.takeIf { enableRelativeWitness }?.let { sensor ->
+            gameRotationVector?.let { sensor ->
                 sensorManager.registerListener(this, sensor, relativePeriodUs, handler)
             } == true
         val magneticRegistered =
@@ -61,15 +60,6 @@ internal class FusedOrientationIntegritySensorMonitor(
         gameRotationVectorRegistered = relativeRegistered
         magnetometerRegistered = magneticRegistered
         started = gameRotationVectorRegistered || magnetometerRegistered
-    }
-
-    /** Stops the high-rate relative witness while preserving the low-rate magnetic integrity feed. */
-    fun disableRelativeHeading(): Boolean {
-        if (!gameRotationVectorRegistered) return false
-        gameRotationVector?.let { sensor -> sensorManager.unregisterListener(this, sensor) }
-        gameRotationVectorRegistered = false
-        onRelativeHeading = null
-        return true
     }
 
     fun stop() {

@@ -238,6 +238,7 @@ internal fun applyCompassStartupWarmupGuard(
 
 internal fun compassMarkerQualityRank(quality: CompassMarkerQuality): Int =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> 0
         CompassMarkerQuality.UNRELIABLE -> 0
         CompassMarkerQuality.LOW -> 1
         CompassMarkerQuality.MEDIUM -> 2

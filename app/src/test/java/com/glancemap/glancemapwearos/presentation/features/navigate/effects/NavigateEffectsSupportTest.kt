@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.hardware.SensorManager
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -11,6 +12,7 @@ import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import com.glancemap.glancemapwearos.domain.sensors.shortestAngleDiffDeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -198,13 +200,44 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun heldFusedWakeOutputDoesNotReleaseUntilAnUnheldSampleArrives() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
+
+        assertNull(
+            gate.resolve(
+                renderState =
+                    readyGoogleFusedState().copy(
+                        headingSampleElapsedRealtimeMs = 1_050L,
+                        headingSampleHeldOutput = true,
+                    ),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_700L,
+            ),
+        )
+
+        val target =
+            gate.resolve(
+                renderState = readyGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_710L),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_710L,
+                nowElapsedMs = 1_710L,
+            )
+
+        assertEquals(180f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+        assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
     fun coldCompassFollowWithGoodMagneticStateKeepsTheExistingImmediateStart() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
 
         val target =
             gate.resolve(
-                renderState = stableMagneticGoogleFusedState(),
+                renderState = stableMagneticGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_001L),
                 compassHeadingDeg = 121f,
                 headingSampleElapsedRealtimeMs = 1_001L,
                 nowElapsedMs = 1_010L,
@@ -219,7 +252,7 @@ class NavigateEffectsSupportTest {
     fun coldInterferenceDoesNotReplaceTheExistingVisibleCompassAnchor() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
-        val interference = interferenceGoogleFusedState()
+        val interference = interferenceGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_001L)
 
         assertTrue(shouldHoldCompassFollowStartupForMagneticInterference(interference))
         assertNull(
@@ -249,7 +282,7 @@ class NavigateEffectsSupportTest {
 
         assertNull(
             gate.resolve(
-                renderState = interferenceGoogleFusedState(),
+                renderState = interferenceGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_001L),
                 compassHeadingDeg = 121f,
                 headingSampleElapsedRealtimeMs = 1_001L,
                 nowElapsedMs = 1_010L,
@@ -265,7 +298,7 @@ class NavigateEffectsSupportTest {
 
         assertNull(
             gate.resolve(
-                renderState = interferenceGoogleFusedState(),
+                renderState = interferenceGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_001L),
                 compassHeadingDeg = 121f,
                 headingSampleElapsedRealtimeMs = 1_001L,
                 nowElapsedMs = 1_010L,
@@ -274,7 +307,9 @@ class NavigateEffectsSupportTest {
         )
         assertNull(
             gate.resolve(
-                renderState = stableTrackingState(readyGoogleFusedState()),
+                renderState =
+                    stableTrackingState(readyGoogleFusedState())
+                        .copy(headingSampleElapsedRealtimeMs = 1_500L),
                 compassHeadingDeg = 121f,
                 headingSampleElapsedRealtimeMs = 1_500L,
                 nowElapsedMs = 1_510L,
@@ -283,7 +318,7 @@ class NavigateEffectsSupportTest {
         )
         val target =
             gate.resolve(
-                renderState = stableMagneticGoogleFusedState(),
+                renderState = stableMagneticGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 2_001L),
                 compassHeadingDeg = 121f,
                 headingSampleElapsedRealtimeMs = 2_001L,
                 nowElapsedMs = 2_010L,
@@ -295,6 +330,42 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun fusedMagneticWakeHoldReleasesWhenHealthyFallbackBecomesAuthoritative() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
+
+        assertNull(
+            gate.resolve(
+                renderState = interferenceGoogleFusedState(),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_001L,
+                nowElapsedMs = 1_010L,
+            ),
+        )
+
+        val fallbackState =
+            initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
+                headingSource = HeadingSource.ROTATION_VECTOR,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_020L,
+                headingSampleStale = false,
+                headingRenderable = true,
+                trackingState = CompassTrackingState.TRACKING,
+                trackingReason = CompassTrackingReason.STABLE,
+            )
+        val target =
+            gate.resolve(
+                renderState = fallbackState,
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_020L,
+                nowElapsedMs = 1_030L,
+            )
+
+        assertEquals(180f, target?.headingDeg ?: -1f, 0f)
+        assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
     fun laterInterferenceKeepsDrivingAfterAStableCompassHeadingWasEstablished() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)
@@ -303,7 +374,7 @@ class NavigateEffectsSupportTest {
             90f,
             gate
                 .resolve(
-                    renderState = stableMagneticGoogleFusedState(),
+                    renderState = stableMagneticGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_001L),
                     compassHeadingDeg = 90f,
                     headingSampleElapsedRealtimeMs = 1_001L,
                     nowElapsedMs = 1_010L,
@@ -549,7 +620,9 @@ class NavigateEffectsSupportTest {
             300f,
             gate
                 .resolve(
-                    renderState = stableTrackingState(readyGoogleFusedState()),
+                    renderState =
+                        stableTrackingState(readyGoogleFusedState())
+                            .copy(headingSampleElapsedRealtimeMs = 1_021L),
                     compassHeadingDeg = 300f,
                     headingSampleElapsedRealtimeMs = 1_021L,
                     nowElapsedMs = 1_030L,
@@ -583,7 +656,7 @@ class NavigateEffectsSupportTest {
                 magneticQuality = CompassMagneticQuality.GOOD,
             )
 
-        assertTrue(shouldUseResponsiveCompassMapRotation(state))
+        assertTrue(shouldUseResponsiveCompassMapRotation(state, nowElapsedMs = 1_100L))
         assertEquals(
             20f,
             resolveHeadingAnimationDelta(
@@ -616,7 +689,7 @@ class NavigateEffectsSupportTest {
                 magneticQuality = CompassMagneticQuality.RECOVERING,
             )
 
-        assertFalse(shouldUseResponsiveCompassMapRotation(state))
+        assertFalse(shouldUseResponsiveCompassMapRotation(state, nowElapsedMs = 1_100L))
         assertEquals(
             10f,
             resolveHeadingAnimationDelta(
@@ -695,14 +768,73 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun mapAndMarkerSynchronouslyRejectAnExpiredFusedSourceEvenBeforeTheTimeoutPublishesStale() {
+        val state =
+            initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
+                headingSource = HeadingSource.FUSED_ORIENTATION,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingSampleStale = false,
+                headingRenderable = true,
+            )
+
+        assertTrue(shouldDriveCompassFollowMap(state, nowElapsedMs = 2_499L))
+        assertTrue(shouldDriveMarkerHeading(state, nowElapsedMs = 2_499L))
+        assertFalse(shouldDriveCompassFollowMap(state, nowElapsedMs = 2_500L))
+        assertFalse(shouldDriveMarkerHeading(state, nowElapsedMs = 2_500L))
+    }
+
+    @Test
+    fun uiConfidenceTraceKeyIgnoresUnrelatedRecompositionStateButTracksVisibleConfidence() {
+        val unchanged =
+            CompassUiConfidenceTraceKey(
+                providerType = CompassProviderType.GOOGLE_FUSED,
+                coneQuality = CompassMarkerQuality.NEUTRAL,
+                accuracyColorsEnabled = false,
+                provenance = CompassHeadingProvenance(CompassProviderType.GOOGLE_FUSED, 3L),
+            )
+
+        assertEquals(unchanged, unchanged.copy())
+        assertNotEquals(
+            unchanged,
+            unchanged.copy(
+                coneQuality = CompassMarkerQuality.MEDIUM,
+                accuracyColorsEnabled = true,
+            ),
+        )
+        assertNotEquals(
+            unchanged,
+            unchanged.copy(
+                provenance = CompassHeadingProvenance(CompassProviderType.GOOGLE_FUSED, 4L),
+            ),
+        )
+    }
+
+    @Test
     fun compassFollowMapDrivesWhenSensorManagerHeadingIsReady() {
         val state =
             initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
                 headingSource = HeadingSource.ROTATION_VECTOR,
                 accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingRenderable = true,
             )
 
-        assertTrue(shouldDriveCompassFollowMap(state))
+        assertTrue(shouldDriveCompassFollowMap(state, nowElapsedMs = 1_100L))
+    }
+
+    @Test
+    fun staleSensorManagerFallbackCannotDriveMapOrMarker() {
+        val state =
+            initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
+                headingSource = HeadingSource.MAG_ACCEL_FALLBACK,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingSampleStale = true,
+            )
+
+        assertFalse(shouldDriveCompassFollowMap(state))
+        assertFalse(shouldDriveMarkerHeading(state))
     }
 
     @Test
@@ -716,7 +848,7 @@ class NavigateEffectsSupportTest {
                 headingRenderable = true,
             )
 
-        assertTrue(shouldDriveCompassFollowMap(state))
+        assertTrue(shouldDriveCompassFollowMap(state, nowElapsedMs = 1_100L))
     }
 
     @Test
@@ -758,8 +890,8 @@ class NavigateEffectsSupportTest {
                 headingRenderable = true,
             )
 
-        assertTrue(shouldDriveMarkerHeading(state))
-        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, state))
+        assertTrue(shouldDriveMarkerHeading(state, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, state, nowElapsedMs = 1_100L))
     }
 
     @Test
@@ -773,8 +905,23 @@ class NavigateEffectsSupportTest {
                 headingRenderable = true,
             )
 
-        assertTrue(shouldDriveCompassFollowMap(state))
-        assertTrue(shouldDriveMarkerHeading(state))
+        assertTrue(shouldDriveCompassFollowMap(state, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveMarkerHeading(state, nowElapsedMs = 1_100L))
+    }
+
+    @Test
+    fun unresolvedIndependentDisagreementUsesTheBoundedFusedMapAndMarkerPaths() {
+        val ordinaryUntrusted =
+            readyGoogleFusedState().copy(
+                accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingTrusted = false,
+            )
+        val unresolved = ordinaryUntrusted.copy(unresolvedIndependentDisagreement = true)
+
+        assertTrue(shouldDriveCompassFollowMap(ordinaryUntrusted, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveCompassFollowMap(unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveMarkerHeading(unresolved, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, unresolved, nowElapsedMs = 1_100L))
     }
 
     @Test
@@ -783,10 +930,12 @@ class NavigateEffectsSupportTest {
             initialCompassRenderState(providerType = CompassProviderType.SENSOR_MANAGER).copy(
                 headingSource = HeadingSource.ROTATION_VECTOR,
                 accuracy = SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                headingSampleElapsedRealtimeMs = 1_000L,
+                headingRenderable = true,
             )
 
-        assertTrue(shouldDriveMarkerHeading(state))
-        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, state))
+        assertTrue(shouldDriveMarkerHeading(state, nowElapsedMs = 1_100L))
+        assertTrue(shouldDriveHeadingForNavMode(NavMode.NORTH_UP_FOLLOW, state, nowElapsedMs = 1_100L))
     }
 
     @Test
@@ -840,6 +989,39 @@ class NavigateEffectsSupportTest {
 
         assertTrue(
             shouldSeedNorthUpMarkerWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun unresolvedIndependentDisagreementBlocksCachedFusedHeadingSeeds() {
+        val state =
+            initialCompassRenderState(providerType = CompassProviderType.GOOGLE_FUSED).copy(
+                headingDeg = 182f,
+                accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingSampleElapsedRealtimeMs = 10_000L,
+                headingSampleStale = true,
+                headingSource = HeadingSource.NONE,
+                unresolvedIndependentDisagreement = true,
+            )
+
+        assertFalse(
+            shouldSeedCompassFollowMapWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+        assertFalse(
+            shouldSeedNorthUpMarkerWithCachedHeading(
+                renderState = state,
+                nowElapsedMs = 25_000L,
+            ),
+        )
+        assertEquals(
+            0f,
+            resolveNavigateInitialRenderedHeadingDeg(
                 renderState = state,
                 nowElapsedMs = 25_000L,
             ),

@@ -23,10 +23,12 @@ internal fun findClosestTrackPosition(
         if (allowedTrackId != null && track.id != allowedTrackId) continue
 
         val profile = profileProvider(track.id) ?: continue
-        val pts = profile.points
-        if (pts.size < 2) continue
-
-        val pick = nearestSegmentPickMercator(press, track.id, pts)
+        val pick =
+            findClosestTrackPosition(
+                press = press,
+                trackId = track.id,
+                profile = profile,
+            ) ?: continue
         if (pick.distanceToLineMeters < bestDist) {
             bestDist = pick.distanceToLineMeters
             best = pick
@@ -35,6 +37,15 @@ internal fun findClosestTrackPosition(
 
     return best
 }
+
+internal fun findClosestTrackPosition(
+    press: LatLong,
+    trackId: String,
+    profile: TrackProfile,
+): ClosestTrackPick? =
+    profile.points
+        .takeIf { it.size >= 2 }
+        ?.let { points -> nearestSegmentPickMercator(press, trackId, points) }
 
 /**
  * Nearest-point computation in Mapsforge Mercator pixel space.

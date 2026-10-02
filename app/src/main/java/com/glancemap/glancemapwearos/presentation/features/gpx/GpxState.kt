@@ -126,6 +126,10 @@ data class ElevationSample(
     val cumulativeDurationSec: Double?,
 )
 
+data class ElevationProfileLocationMarker(
+    val distance: Double,
+)
+
 data class GpxElevationProfileUiState(
     val trackPath: String,
     val trackTitle: String,

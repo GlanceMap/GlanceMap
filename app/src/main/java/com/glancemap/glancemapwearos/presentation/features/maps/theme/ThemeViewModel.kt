@@ -76,6 +76,12 @@ data class DemMapReadiness(
     val hasAnyTerrain: Boolean,
     val selectedSource: DemSource,
     val usesFallbackTerrain: Boolean,
+    val requiredTiles: Int,
+    val availableTiles: Int,
+    val isCoverageKnown: Boolean,
+    val selectedAvailableTiles: Int,
+    val selectedCoverageKnown: Boolean,
+    val fallbackAvailableTiles: Int,
 )
 
 internal fun demDownloadProgressPercent(
@@ -471,6 +477,12 @@ class ThemeViewModel(
                         hasAnyTerrain = false,
                         selectedSource = selectedSource,
                         usesFallbackTerrain = false,
+                        requiredTiles = 0,
+                        availableTiles = 0,
+                        isCoverageKnown = false,
+                        selectedAvailableTiles = 0,
+                        selectedCoverageKnown = false,
+                        fallbackAvailableTiles = 0,
                     )
             val selectedCoverage =
                 Dem3CoverageUtils.coverageForMap(
@@ -489,6 +501,13 @@ class ThemeViewModel(
                 hasAnyTerrain = runtimeCoverage.availableTiles > 0,
                 selectedSource = selectedSource,
                 usesFallbackTerrain = runtimeCoverage.isReady && !selectedCoverage.isReady,
+                requiredTiles = runtimeCoverage.requiredTiles,
+                availableTiles = runtimeCoverage.availableTiles,
+                isCoverageKnown = runtimeCoverage.isCoverageKnown,
+                selectedAvailableTiles = selectedCoverage.availableTiles,
+                selectedCoverageKnown = selectedCoverage.isCoverageKnown,
+                fallbackAvailableTiles =
+                    (runtimeCoverage.availableTiles - selectedCoverage.availableTiles).coerceAtLeast(0),
             )
         }
 

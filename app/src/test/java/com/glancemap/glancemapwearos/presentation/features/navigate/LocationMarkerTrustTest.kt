@@ -376,6 +376,28 @@ class LocationMarkerTrustTest {
     }
 
     @Test
+    fun staleWakeAnchorUsesHistoricalNavigationMarker() {
+        val wakeAnchorTrustState =
+            resolveLocationMarkerTrustState(
+                retainedLocationAnchor = anchor(fixElapsedRealtimeMs = 0L),
+                nowElapsedRealtimeMs = 110_654L,
+                currentSourceEpoch = 2L,
+                requiresFreshLiveFixAfterSourceChange = false,
+                freshnessMaxAgeMs = 10_000L,
+            )
+
+        assertEquals(LocationMarkerTrustState.HISTORICAL, wakeAnchorTrustState)
+        assertEquals(
+            "grey",
+            navigationMarkerBitmapForTrustState(
+                trustState = wakeAnchorTrustState,
+                currentBitmap = "blue",
+                historicalBitmap = "grey",
+            ),
+        )
+    }
+
+    @Test
     fun markerTrustReasonDescribesFreshnessAndAcceptance() {
         val currentAnchor = anchor(fixElapsedRealtimeMs = 9_000L, sourceEpoch = 2L)
         val currentPolicy =

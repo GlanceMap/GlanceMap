@@ -448,6 +448,19 @@ class SettingsViewModel(
             settingsRepository.setTurnByTurnCompactPopupEnabled(enabled)
         }
 
+    val turnByTurnMapProgressEnabled: StateFlow<Boolean> =
+        settingsRepository.turnByTurnMapProgressEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED,
+            )
+
+    fun setTurnByTurnMapProgressEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setTurnByTurnMapProgressEnabled(enabled)
+        }
+
     val turnByTurnElevationProgressRingEnabled: StateFlow<Boolean> =
         settingsRepository.turnByTurnElevationProgressRingEnabled
             .stateIn(
@@ -817,6 +830,19 @@ class SettingsViewModel(
     fun setCrownZoomEnabled(enabled: Boolean) =
         viewModelScope.launch {
             settingsRepository.setCrownZoomEnabled(enabled)
+        }
+
+    val mapPinchZoomEnabled: StateFlow<Boolean> =
+        settingsRepository.mapPinchZoomEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED,
+            )
+
+    fun setMapPinchZoomEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setMapPinchZoomEnabled(enabled)
         }
 
     val crownZoomInverted: StateFlow<Boolean> =
@@ -1303,6 +1329,19 @@ class SettingsViewModel(
     fun setPoiTapToCenterEnabled(enabled: Boolean) =
         viewModelScope.launch {
             settingsRepository.setPoiTapToCenterEnabled(enabled)
+        }
+
+    val poiMapLongPressActionsEnabled: StateFlow<Boolean> =
+        settingsRepository.poiMapLongPressActionsEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED,
+            )
+
+    fun setPoiMapLongPressActionsEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setPoiMapLongPressActionsEnabled(enabled)
         }
 
     val linkGpxWaypointPoiFolders: StateFlow<Boolean> =

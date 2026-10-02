@@ -634,18 +634,26 @@ private fun ExpandedGuidanceOverlay(
     }
 }
 
+internal data class GuidanceRemainingArcLayout(
+    val distanceAnchor: Float = 105f,
+    val durationAnchor: Float = 75f,
+    val labelModifier: CurvedModifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+)
+
 @Composable
+@Suppress("FunctionName")
 internal fun GuidanceRemainingArc(
     remainingMeters: Double?,
     estimatedRemainingSeconds: Long?,
     isMetric: Boolean,
+    layout: GuidanceRemainingArcLayout = GuidanceRemainingArcLayout(),
 ) {
     val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
     val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
     cappedFontScale(maxFontScale = 1.15f) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 105f,
+            anchor = layout.distanceAnchor,
             anchorType = AnchorType.Center,
             angularDirection = CurvedDirection.Angular.Reversed,
         ) {
@@ -657,13 +665,13 @@ internal fun GuidanceRemainingArc(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     ),
-                modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+                modifier = layout.labelModifier,
             )
         }
         duration?.let {
             CurvedLayout(
                 modifier = Modifier.fillMaxSize(),
-                anchor = 75f,
+                anchor = layout.durationAnchor,
                 anchorType = AnchorType.Center,
                 angularDirection = CurvedDirection.Angular.Reversed,
             ) {
@@ -675,12 +683,49 @@ internal fun GuidanceRemainingArc(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                    modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+                    modifier = layout.labelModifier,
                 )
             }
         }
     }
 }
+
+internal data class GuidanceMapRemainingDisplayState(
+    val enabled: Boolean,
+    val guidanceActive: Boolean,
+    val paused: Boolean,
+    val offRoute: Boolean,
+    val guideBackToRouteActive: Boolean,
+    val suppressed: Boolean,
+)
+
+@Composable
+@Suppress("FunctionName")
+internal fun BoxScope.GuidanceMapRemainingOverlay(
+    state: TurnByTurnGuidanceState,
+    displayState: GuidanceMapRemainingDisplayState,
+    isMetric: Boolean,
+) {
+    if (
+        !shouldShowGuidanceMapRemainingDetails(displayState) ||
+        state.distanceRemainingMeters == null
+    ) {
+        return
+    }
+    GuidanceRemainingArc(
+        remainingMeters = state.distanceRemainingMeters,
+        estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+        isMetric = isMetric,
+    )
+}
+
+internal fun shouldShowGuidanceMapRemainingDetails(
+    displayState: GuidanceMapRemainingDisplayState,
+): Boolean =
+    displayState.enabled &&
+        (displayState.guidanceActive || displayState.paused) &&
+        (!displayState.offRoute || displayState.guideBackToRouteActive) &&
+        !displayState.suppressed
 
 @Composable
 @Suppress("FunctionName", "LongParameterList")

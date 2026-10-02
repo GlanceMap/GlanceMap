@@ -42,6 +42,7 @@ internal data class NavigateRouteToolActions(
     val startRouteToolSelection: (RouteToolSession) -> Unit,
     val undoRouteToolPoint: () -> Unit,
     val createRouteToPoi: (PoiOverlayMarker) -> Unit,
+    val createRouteToCoordinate: (LatLong) -> Unit,
     val executeCreateDraft: (RouteToolSession, Boolean) -> Unit,
     val saveCreatePreview: () -> Unit,
     val refreshLoopPreview: () -> Unit,
@@ -626,7 +627,7 @@ internal fun rememberNavigateRouteToolActions(
         previewCreateDraft(updated, current)
     }
 
-    fun createDirectPoiRouteSession(marker: PoiOverlayMarker): RouteToolSession {
+    fun createDirectRouteSession(destination: LatLong): RouteToolSession {
         val createOptions =
             latestRouteToolOptions.value
                 .copy(
@@ -636,11 +637,14 @@ internal fun rememberNavigateRouteToolActions(
         setRouteToolOptions(createOptions)
         return RouteToolSession(
             options = createOptions,
-            destination = LatLong(marker.lat, marker.lon),
+            destination = destination,
         )
     }
 
-    fun createRouteToPoi(marker: PoiOverlayMarker) {
+    fun createRouteToDestination(
+        destination: LatLong,
+        freshLocationSource: String,
+    ) {
         pendingDirectPoiRoute.value = null
         triggerHaptic()
         setShortcutTrayExpanded(false)
@@ -653,7 +657,7 @@ internal fun rememberNavigateRouteToolActions(
         clearRouteToolPreviewState()
         val currentLocation = latestRecenterTarget.value
         val gpsSignal = latestGpsSignalSnapshot.value
-        val session = createDirectPoiRouteSession(marker)
+        val session = createDirectRouteSession(destination)
         val preflight =
             preflightRouteToolStart(
                 session = session,
@@ -681,7 +685,7 @@ internal fun rememberNavigateRouteToolActions(
                 )
             preflight.shouldRequestFreshLocation -> {
                 pendingDirectPoiRoute.value = session
-                locationViewModel.requestImmediateLocation(source = "ui_poi_to_here")
+                locationViewModel.requestImmediateLocation(source = freshLocationSource)
                 Toast.makeText(context, "Waiting for GPS", Toast.LENGTH_SHORT).show()
             }
             else -> {
@@ -689,6 +693,20 @@ internal fun rememberNavigateRouteToolActions(
                 setShowRouteToolsPanel(true)
             }
         }
+    }
+
+    fun createRouteToPoi(marker: PoiOverlayMarker) {
+        createRouteToDestination(
+            destination = LatLong(marker.lat, marker.lon),
+            freshLocationSource = "ui_poi_to_here",
+        )
+    }
+
+    fun createRouteToCoordinate(destination: LatLong) {
+        createRouteToDestination(
+            destination = destination,
+            freshLocationSource = "ui_map_long_press_to_here",
+        )
     }
 
     fun executeCreateDraft(
@@ -870,6 +888,7 @@ internal fun rememberNavigateRouteToolActions(
         startRouteToolSelection = { session -> startRouteToolSelection(session) },
         undoRouteToolPoint = ::undoRouteToolPoint,
         createRouteToPoi = ::createRouteToPoi,
+        createRouteToCoordinate = ::createRouteToCoordinate,
         executeCreateDraft = ::executeCreateDraft,
         saveCreatePreview = ::saveCreatePreview,
         refreshLoopPreview = ::refreshLoopPreview,

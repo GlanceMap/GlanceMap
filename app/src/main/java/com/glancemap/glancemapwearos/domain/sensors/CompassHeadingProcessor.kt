@@ -2,18 +2,19 @@ package com.glancemap.glancemapwearos.domain.sensors
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 internal class CompassHeadingProcessor {
+    @Suppress("LongParameterList") // This adapter intentionally forwards the existing smoothing callbacks.
     fun launch(
         scope: CoroutineScope,
-        rawHeadingFlow: MutableStateFlow<Float?>,
+        rawHeadingFlow: SharedFlow<SensorRawHeadingSample>,
         settleWindowMs: Long,
         getStartAtMs: () -> Long,
         getHeadingRelockUntilElapsedMs: () -> Long,
         consumeResetSmoothingRequested: () -> Boolean,
         getDisplayedHeading: () -> Float,
-        publishDisplayedHeading: (Float) -> Unit,
+        publishDisplayedHeading: (Float, SensorRawHeadingSample) -> Unit,
         getPendingBootstrapRawSamplesToIgnore: () -> Int,
         setPendingBootstrapRawSamplesToIgnore: (Int) -> Unit,
         getPendingStartupBogusSamplesToIgnore: () -> Int,

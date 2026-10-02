@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
@@ -127,6 +128,13 @@ internal fun reportCompassIssueNow(
             "magneticFieldUt=${renderState.magneticFieldUt.formatDebugOrNa(1)} " +
             "quarantine=${renderState.quarantineActive} " +
             "display=${compassDisplayedHeadingDebugState(renderState, renderedHeadingDeg)}",
+    )
+    CompassDeepTraceDiagnostics.recordMarker(
+        type = "heading_looks_wrong",
+        detail =
+            "provider=${renderState.providerType.name} source=${renderState.headingSource.telemetryToken} " +
+                "target=${renderState.headingDeg.formatDebug(1)} rendered=${renderedHeadingDeg.formatDebug(1)}",
+        atElapsedMs = nowElapsedMs,
     )
 }
 

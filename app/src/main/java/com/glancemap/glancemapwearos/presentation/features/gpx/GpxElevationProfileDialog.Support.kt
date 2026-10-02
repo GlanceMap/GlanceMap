@@ -232,10 +232,13 @@ internal fun ElevationLeftScale(
     }
 }
 
+// Existing chart gesture and rendering state is intentionally co-located so their coordinate system stays aligned.
+@Suppress("LongParameterList", "LongMethod", "FunctionNaming")
 @Composable
 internal fun ElevationProfileChart(
     samples: List<ElevationSample>,
     selectedIndex: Int,
+    locationDistanceMeters: Double?,
     onSelectIndex: (Int) -> Unit,
     viewport: ElevationViewport,
     plotTopInset: Dp,
@@ -373,6 +376,19 @@ internal fun ElevationProfileChart(
 
         val selectedVisibleIndex = (selectedIndex - drawingRange.first).coerceIn(0, points.lastIndex)
         val cursorPoint = points[selectedVisibleIndex]
+        val locationPoint =
+            locationDistanceMeters
+                ?.takeIf { distance -> distance.isFinite() && distance in minDistance..maxDistance }
+                ?.let { distance ->
+                    elevationAtDistance(samples = samples, distance = distance)?.let { elevation ->
+                        Offset(
+                            x = (((distance - minDistance) / distanceRange).toFloat()) * size.width,
+                            y =
+                                plotBottomY -
+                                    (((elevation - minElevation) / elevationRange).toFloat() * plotHeight),
+                        )
+                    }
+                }
         val axisTickColor = Color.White.copy(alpha = 0.84f)
         drawLine(
             color = Color.White.copy(alpha = 0.56f),
@@ -404,7 +420,51 @@ internal fun ElevationProfileChart(
             radius = 2.2.dp.toPx(),
             center = cursorPoint,
         )
+        locationPoint?.let { point ->
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.84f),
+                radius = 5.4.dp.toPx(),
+                center = point,
+            )
+            drawCircle(
+                color = Color.White,
+                radius = 4.2.dp.toPx(),
+                center = point,
+            )
+            drawCircle(
+                color = Color(0xFF0A84FF),
+                radius = 3.1.dp.toPx(),
+                center = point,
+            )
+        }
     }
+}
+
+internal fun elevationAtDistance(
+    samples: List<ElevationSample>,
+    distance: Double,
+): Double? =
+    when {
+        samples.isEmpty() || !distance.isFinite() -> null
+        else -> {
+            val afterIndex = samples.indexOfFirst { sample -> sample.distance >= distance }
+            when {
+                afterIndex <= 0 -> samples.first().elevation
+                afterIndex < 0 -> samples.last().elevation
+                else -> interpolateElevation(samples[afterIndex - 1], samples[afterIndex], distance)
+            }
+        }
+    }
+
+private fun interpolateElevation(
+    before: ElevationSample,
+    after: ElevationSample,
+    distance: Double,
+): Double {
+    val span = after.distance - before.distance
+    if (span <= 0.0) return after.elevation
+    val fraction = ((distance - before.distance) / span).coerceIn(0.0, 1.0)
+    return before.elevation + (after.elevation - before.elevation) * fraction
 }
 
 private fun classifySegment(

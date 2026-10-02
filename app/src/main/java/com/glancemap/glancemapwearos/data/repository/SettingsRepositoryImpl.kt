@@ -150,6 +150,8 @@ class SettingsRepositoryImpl private constructor(
             booleanPreferencesKey("turn_by_turn_off_route_alerts_enabled")
         val TURN_BY_TURN_COMPACT_POPUP_ENABLED =
             booleanPreferencesKey("turn_by_turn_compact_popup_enabled")
+        val TURN_BY_TURN_MAP_PROGRESS_ENABLED =
+            booleanPreferencesKey("turn_by_turn_map_progress_enabled")
         val TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED =
             booleanPreferencesKey("turn_by_turn_elevation_progress_ring_enabled")
         val TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS =
@@ -202,6 +204,7 @@ class SettingsRepositoryImpl private constructor(
         val OFFLINE_MODE = booleanPreferencesKey("offline_mode")
         val DEM_SOURCE = stringPreferencesKey("dem_source")
         val CROWN_ZOOM_ENABLED = booleanPreferencesKey("crown_zoom_enabled")
+        val MAP_PINCH_ZOOM_ENABLED = booleanPreferencesKey("map_pinch_zoom_enabled")
         val CROWN_ZOOM_INVERTED = booleanPreferencesKey("crown_zoom_inverted")
         val GPX_TRACK_COLOR = intPreferencesKey("gpx_track_color")
         val GPX_TRACK_COLOR_MODE = stringPreferencesKey("gpx_track_color_mode")
@@ -248,6 +251,7 @@ class SettingsRepositoryImpl private constructor(
         val POI_ICON_SIZE_PX = intPreferencesKey("poi_icon_size_px")
         val POI_MARKER_STYLE = stringPreferencesKey("poi_marker_style")
         val POI_TAP_TO_CENTER_ENABLED = booleanPreferencesKey("poi_tap_to_center_enabled")
+        val POI_MAP_LONG_PRESS_ACTIONS_ENABLED = booleanPreferencesKey("poi_map_long_press_actions_enabled")
         val LINK_GPX_WAYPOINT_POI_FOLDERS = booleanPreferencesKey("link_gpx_waypoint_poi_folders")
         val POI_POPUP_TIMEOUT_SECONDS = intPreferencesKey("poi_popup_timeout_seconds")
         val POI_POPUP_MANUAL_CLOSE_ONLY = booleanPreferencesKey("poi_popup_manual_close_only")
@@ -885,6 +889,16 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_COMPACT_POPUP_ENABLED] = enabled }
     }
 
+    override val turnByTurnMapProgressEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.TURN_BY_TURN_MAP_PROGRESS_ENABLED]
+                ?: SettingsRepository.DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED
+        }
+
+    override suspend fun setTurnByTurnMapProgressEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.TURN_BY_TURN_MAP_PROGRESS_ENABLED] = enabled }
+    }
+
     override val turnByTurnElevationProgressRingEnabled: Flow<Boolean> =
         context.dataStore.data.map {
             it[PrefKeys.TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED]
@@ -1499,6 +1513,15 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit { it[PrefKeys.CROWN_ZOOM_ENABLED] = enabled }
     }
 
+    override val mapPinchZoomEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.MAP_PINCH_ZOOM_ENABLED] ?: SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED
+        }
+
+    override suspend fun setMapPinchZoomEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.MAP_PINCH_ZOOM_ENABLED] = enabled }
+    }
+
     override val crownZoomInverted: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.CROWN_ZOOM_INVERTED] ?: true }
 
     override suspend fun setCrownZoomInverted(inverted: Boolean) {
@@ -1928,6 +1951,16 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setPoiTapToCenterEnabled(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.POI_TAP_TO_CENTER_ENABLED] = enabled }
+    }
+
+    override val poiMapLongPressActionsEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.POI_MAP_LONG_PRESS_ACTIONS_ENABLED]
+                ?: SettingsRepository.DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED
+        }
+
+    override suspend fun setPoiMapLongPressActionsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.POI_MAP_LONG_PRESS_ACTIONS_ENABLED] = enabled }
     }
 
     override val linkGpxWaypointPoiFolders: Flow<Boolean> =

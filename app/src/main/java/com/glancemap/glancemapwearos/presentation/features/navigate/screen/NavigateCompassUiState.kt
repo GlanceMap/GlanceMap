@@ -13,9 +13,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingSourceMode
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -37,6 +39,13 @@ internal data class NavigateCompassUiState(
     val coneHeadingErrorDeg: Float?,
     val lastCalibrationConfirmedAtMs: Long,
     val onCalibrationSucceeded: () -> Unit,
+)
+
+internal data class CompassUiConfidenceTraceKey(
+    val providerType: CompassProviderType,
+    val coneQuality: CompassMarkerQuality,
+    val accuracyColorsEnabled: Boolean,
+    val provenance: CompassHeadingProvenance?,
 )
 
 @Composable
@@ -67,6 +76,7 @@ internal fun rememberNavigateCompassUiState(
         }
 
     val compassRenderState by compassViewModel.renderState.collectAsState()
+    val deepTraceState by CompassDeepTraceDiagnostics.state.collectAsState()
     val compassAccuracy = compassRenderState.accuracy
     val magneticInterference = compassRenderState.magneticInterference
     val liveCompassQualityReading =
@@ -167,13 +177,32 @@ internal fun rememberNavigateCompassUiState(
     val showCompassConeOverlay = navigationMarkerStyle == NavigationMarkerStyle.DOT
     val effectiveCompassConeAccuracyColorsEnabled =
         compassConeAccuracyColorsEnabled &&
-            selectedCompassProviderType == CompassProviderType.SENSOR_MANAGER
+            selectedCompassProviderType == CompassProviderType.SENSOR_MANAGER &&
+            compassRenderState.providerType == CompassProviderType.SENSOR_MANAGER
     val compassConeQuality =
-        if (effectiveCompassConeAccuracyColorsEnabled) {
-            displayedCompassQuality
-        } else {
-            CompassMarkerQuality.GOOD
+        resolveCompassConeQuality(
+            selectedProviderType = selectedCompassProviderType,
+            renderProviderType = compassRenderState.providerType,
+            accuracyColorsEnabled = compassConeAccuracyColorsEnabled,
+            displayedSensorQuality = displayedCompassQuality,
+        )
+    val uiConfidenceTraceKey =
+        CompassUiConfidenceTraceKey(
+            providerType = compassRenderState.providerType,
+            coneQuality = compassConeQuality,
+            accuracyColorsEnabled = effectiveCompassConeAccuracyColorsEnabled,
+            provenance = compassRenderState.headingProvenance,
+        )
+    LaunchedEffect(deepTraceState.active, uiConfidenceTraceKey) {
+        if (deepTraceState.active) {
+            CompassDeepTraceDiagnostics.recordUiConfidence(
+                provider = uiConfidenceTraceKey.providerType.name.lowercase(),
+                quality = uiConfidenceTraceKey.coneQuality.name.lowercase(),
+                accuracyColorsEnabled = uiConfidenceTraceKey.accuracyColorsEnabled,
+                provenance = uiConfidenceTraceKey.provenance,
+            )
         }
+    }
     val compassConeHeadingErrorDeg =
         if (
             effectiveCompassConeAccuracyColorsEnabled &&
@@ -238,3 +267,18 @@ internal fun rememberNavigateCompassUiState(
         },
     )
 }
+
+internal fun resolveCompassConeQuality(
+    selectedProviderType: CompassProviderType,
+    renderProviderType: CompassProviderType,
+    accuracyColorsEnabled: Boolean,
+    displayedSensorQuality: CompassMarkerQuality,
+): CompassMarkerQuality =
+    if (
+        selectedProviderType == CompassProviderType.SENSOR_MANAGER &&
+        renderProviderType == CompassProviderType.SENSOR_MANAGER
+    ) {
+        if (accuracyColorsEnabled) displayedSensorQuality else CompassMarkerQuality.GOOD
+    } else {
+        CompassMarkerQuality.GOOD
+    }

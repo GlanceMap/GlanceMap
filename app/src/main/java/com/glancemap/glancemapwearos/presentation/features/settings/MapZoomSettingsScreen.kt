@@ -33,6 +33,7 @@ fun MapZoomSettingsScreen(
 ) {
     val listTokens = rememberSettingsListTokens()
     val crownZoomEnabled by viewModel.crownZoomEnabled.collectAsState()
+    val mapPinchZoomEnabled by viewModel.mapPinchZoomEnabled.collectAsState()
     val crownZoomInverted by viewModel.crownZoomInverted.collectAsState()
     val zoomDefaultScaleMeters by viewModel.mapZoomDefaultScaleMeters.collectAsState()
     val zoomMinScaleMeters by viewModel.mapZoomMinScaleMeters.collectAsState()
@@ -49,6 +50,14 @@ fun MapZoomSettingsScreen(
                 onCheckedChanged = { viewModel.setCrownZoomEnabled(it) },
                 label = "Crown zoom",
                 secondaryLabel = if (crownZoomEnabled) "Enabled" else "Disabled",
+            )
+        }
+        item {
+            SettingsToggleChip(
+                checked = mapPinchZoomEnabled,
+                onCheckedChanged = { viewModel.setMapPinchZoomEnabled(it) },
+                label = "Pinch to zoom",
+                secondaryLabel = if (mapPinchZoomEnabled) "Enabled" else "Disabled",
             )
         }
         if (crownZoomEnabled) {

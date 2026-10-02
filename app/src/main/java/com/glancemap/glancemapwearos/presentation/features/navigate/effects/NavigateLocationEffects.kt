@@ -340,17 +340,19 @@ internal fun rememberNavigateLocationUiState(
                 lastRenderedMarkerLatLong = anchor.latLong
                 wakeAnchorSeeded = true
                 if (!latestSuppressLocationMarker.value) {
+                    val wakeMarkerBitmap =
+                        navigationMarkerBitmapForTrustState(
+                            trustState = wakeAnchorTrustState,
+                            currentBitmap = navigationMarkerBitmap,
+                            historicalBitmap = historicalNavigationMarkerBitmap,
+                        )
                     val existingMarker = locationMarker
                     if (existingMarker == null) {
                         removeAllRotatableMarkers(mapView)
                         locationMarker =
                             RotatableMarker(
                                 anchor.latLong,
-                                navigationMarkerBitmapForTrustState(
-                                    trustState = wakeAnchorTrustState,
-                                    currentBitmap = navigationMarkerBitmap,
-                                    historicalBitmap = historicalNavigationMarkerBitmap,
-                                ),
+                                wakeMarkerBitmap,
                                 -navigationMarkerBitmap.width / 2,
                                 -navigationMarkerBitmap.height / 2,
                             ).also { marker ->
@@ -358,6 +360,7 @@ internal fun rememberNavigateLocationUiState(
                             }
                     } else {
                         existingMarker.latLong = anchor.latLong
+                        existingMarker.setBitmap(wakeMarkerBitmap)
                     }
                     lastMarkerVisualUpdateAtElapsedMs = nowElapsedMs
                     lastMarkerMotionAdvanceAtElapsedMs = nowElapsedMs
