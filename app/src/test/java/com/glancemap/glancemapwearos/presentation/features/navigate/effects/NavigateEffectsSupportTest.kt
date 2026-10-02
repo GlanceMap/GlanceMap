@@ -200,6 +200,37 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
+    fun heldFusedWakeOutputDoesNotReleaseUntilAnUnheldSampleArrives() {
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 0f)
+
+        assertNull(
+            gate.resolve(
+                renderState =
+                    readyGoogleFusedState().copy(
+                        headingSampleElapsedRealtimeMs = 1_050L,
+                        headingSampleHeldOutput = true,
+                    ),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_050L,
+                nowElapsedMs = 1_700L,
+            ),
+        )
+
+        val target =
+            gate.resolve(
+                renderState = readyGoogleFusedState().copy(headingSampleElapsedRealtimeMs = 1_710L),
+                compassHeadingDeg = 180f,
+                headingSampleElapsedRealtimeMs = 1_710L,
+                nowElapsedMs = 1_710L,
+            )
+
+        assertEquals(180f, target?.headingDeg ?: -1f, 0f)
+        assertEquals(10f, target?.maxVisualStepDeg ?: -1f, 0f)
+        assertTrue(target?.recordsWakeReleaseStep == true)
+    }
+
+    @Test
     fun coldCompassFollowWithGoodMagneticStateKeepsTheExistingImmediateStart() {
         val gate = NavigateRotationSettleGate()
         gate.beginWakeSession(nowElapsedMs = 1_000L, heldHeadingDeg = 85f, coldStart = true)

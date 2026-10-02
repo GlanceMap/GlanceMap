@@ -1144,6 +1144,13 @@ internal class NavigateRotationSettleGate {
                 recordsWakeReleaseStep = pendingRelease != null,
             )
         }
+        if (
+            renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+            renderState.headingSampleHeldOutput
+        ) {
+            hold("await_unheld_fused_output")
+            return null
+        }
         val provenanceMatches =
             magneticRecoveryProvenance == null ||
                 renderState.headingProvenance == magneticRecoveryProvenance
