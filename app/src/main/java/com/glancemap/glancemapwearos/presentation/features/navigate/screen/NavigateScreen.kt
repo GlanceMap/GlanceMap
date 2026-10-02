@@ -1033,6 +1033,7 @@ fun NavigateScreen(
             zoomMinScaleMeters = zoomMinScaleMeters,
             zoomMaxScaleMeters = zoomMaxScaleMeters,
             crownZoomEnabled = crownZoomEnabled,
+            mapPinchZoomEnabled = mapPinchZoomEnabled,
             crownZoomInverted = crownZoomInverted,
             mapZoomButtonsMode = mapZoomButtonsMode,
             northIndicatorMode = northIndicatorMode,

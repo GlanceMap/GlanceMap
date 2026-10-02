@@ -204,6 +204,7 @@ class SettingsRepositoryImpl private constructor(
         val OFFLINE_MODE = booleanPreferencesKey("offline_mode")
         val DEM_SOURCE = stringPreferencesKey("dem_source")
         val CROWN_ZOOM_ENABLED = booleanPreferencesKey("crown_zoom_enabled")
+        val MAP_PINCH_ZOOM_ENABLED = booleanPreferencesKey("map_pinch_zoom_enabled")
         val CROWN_ZOOM_INVERTED = booleanPreferencesKey("crown_zoom_inverted")
         val GPX_TRACK_COLOR = intPreferencesKey("gpx_track_color")
         val GPX_TRACK_COLOR_MODE = stringPreferencesKey("gpx_track_color_mode")
@@ -1509,6 +1510,15 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setCrownZoomEnabled(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.CROWN_ZOOM_ENABLED] = enabled }
+    }
+
+    override val mapPinchZoomEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.MAP_PINCH_ZOOM_ENABLED] ?: SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED
+        }
+
+    override suspend fun setMapPinchZoomEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.MAP_PINCH_ZOOM_ENABLED] = enabled }
     }
 
     override val crownZoomInverted: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.CROWN_ZOOM_INVERTED] ?: true }

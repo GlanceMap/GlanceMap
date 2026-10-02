@@ -103,6 +103,7 @@ internal fun NavigateContent(
     zoomMinScaleMeters: Int,
     zoomMaxScaleMeters: Int,
     crownZoomEnabled: Boolean,
+    mapPinchZoomEnabled: Boolean,
     crownZoomInverted: Boolean,
     mapZoomButtonsMode: String,
     northIndicatorMode: String,
@@ -286,6 +287,7 @@ internal fun NavigateContent(
     val latestVisiblePoiMarkers = rememberUpdatedState(visiblePoiMarkers)
     val latestLastKnownLocation = rememberUpdatedState(lastKnownLocation)
     val latestNavigationMarkerAnchorMode = rememberUpdatedState(navigationMarkerAnchorMode)
+    val latestMapPinchZoomEnabled = rememberUpdatedState(mapPinchZoomEnabled)
     var rotaryScrollAccumulator by remember(mapView, crownZoomEnabled, crownZoomInverted) {
         mutableStateOf(0f)
     }
@@ -769,10 +771,15 @@ internal fun NavigateContent(
                                             isMultiTouchGestureSuppressed = false
                                             MapLayerMutationCoordinator.setGestureActive(mapView, true)
                                         }
-                                        if (
+                                        val isMultiTouchGesture =
                                             event.pointerCount > 1 ||
-                                            event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
-                                            event.actionMasked == MotionEvent.ACTION_POINTER_UP
+                                                event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+                                                event.actionMasked == MotionEvent.ACTION_POINTER_UP
+                                        if (
+                                            shouldSuppressMultiTouchMapGesture(
+                                                pinchZoomEnabled = latestMapPinchZoomEnabled.value,
+                                                isMultiTouchGesture = isMultiTouchGesture,
+                                            )
                                         ) {
                                             if (!isMultiTouchGestureSuppressed) {
                                                 if (
@@ -1149,6 +1156,11 @@ internal fun NavigateContent(
         }
     }
 }
+
+internal fun shouldSuppressMultiTouchMapGesture(
+    pinchZoomEnabled: Boolean,
+    isMultiTouchGesture: Boolean,
+): Boolean = isMultiTouchGesture && !pinchZoomEnabled
 
 // Stateless Compose renderer: its direct UI inputs preserve the visible clock, status, and gestures.
 @Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")

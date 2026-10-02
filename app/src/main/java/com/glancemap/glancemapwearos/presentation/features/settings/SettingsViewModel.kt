@@ -832,6 +832,19 @@ class SettingsViewModel(
             settingsRepository.setCrownZoomEnabled(enabled)
         }
 
+    val mapPinchZoomEnabled: StateFlow<Boolean> =
+        settingsRepository.mapPinchZoomEnabled
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED,
+            )
+
+    fun setMapPinchZoomEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setMapPinchZoomEnabled(enabled)
+        }
+
     val crownZoomInverted: StateFlow<Boolean> =
         settingsRepository.crownZoomInverted
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)

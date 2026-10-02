@@ -38,6 +38,7 @@ internal data class NavigateSettingsState(
     val turnByTurnRouteStartBehavior: String,
     val turnByTurnReverseSuggestionMode: String,
     val crownZoomEnabled: Boolean,
+    val mapPinchZoomEnabled: Boolean,
     val crownZoomInverted: Boolean,
     val navigateTimeFormat: String,
     val mapZoomButtonsMode: String,
@@ -137,6 +138,9 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         initial = SettingsRepository.TURN_BY_TURN_REVERSE_SUGGESTION_ASK,
     )
     val crownZoomEnabled by settingsViewModel.crownZoomEnabled.collectAsState(initial = true)
+    val mapPinchZoomEnabled by settingsViewModel.mapPinchZoomEnabled.collectAsState(
+        initial = SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED,
+    )
     val crownZoomInverted by settingsViewModel.crownZoomInverted.collectAsState(initial = true)
     val navigateTimeFormat by settingsViewModel.navigateTimeFormat.collectAsState()
     val mapZoomButtonsMode by settingsViewModel.mapZoomButtonsMode.collectAsState()
@@ -214,6 +218,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         turnByTurnRouteStartBehavior = turnByTurnRouteStartBehavior,
         turnByTurnReverseSuggestionMode = turnByTurnReverseSuggestionMode,
         crownZoomEnabled = crownZoomEnabled,
+        mapPinchZoomEnabled = mapPinchZoomEnabled,
         crownZoomInverted = crownZoomInverted,
         navigateTimeFormat = navigateTimeFormat,
         mapZoomButtonsMode = mapZoomButtonsMode,

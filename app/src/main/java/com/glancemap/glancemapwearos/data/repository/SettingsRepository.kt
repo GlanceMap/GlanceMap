@@ -302,6 +302,7 @@ interface SettingsRepository {
         const val DEFAULT_MAP_ZOOM_DEFAULT_SCALE_METERS = 200
         const val DEFAULT_MAP_ZOOM_MIN_SCALE_METERS = 200_000
         const val DEFAULT_MAP_ZOOM_MAX_SCALE_METERS = 20
+        const val DEFAULT_MAP_PINCH_ZOOM_ENABLED = false
     }
 
     val gpsInterval: Flow<Long>
@@ -632,6 +633,10 @@ interface SettingsRepository {
     val crownZoomEnabled: Flow<Boolean>
 
     suspend fun setCrownZoomEnabled(enabled: Boolean)
+
+    val mapPinchZoomEnabled: Flow<Boolean>
+
+    suspend fun setMapPinchZoomEnabled(enabled: Boolean)
 
     val crownZoomInverted: Flow<Boolean>
 
