@@ -204,6 +204,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
             0.dp
         }
     val suppressLiveMetricsForPoi = poiTapMessage != null
+    val suppressCompactGuidancePopup =
+        shouldSuppressCompactGuidancePopup(
+            navMode = navMode,
+            liveElevationEnabled = liveElevationEnabled,
+            shortcutTrayExpanded = shortcutTrayExpanded,
+        )
     val hasTurnByTurnDecisionPrompt = startDecisionPrompt != null || showGuideBackPrompt
     val combinedGuidanceRecordingActive =
         traceRecordingState.active &&
@@ -551,7 +557,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
-        compactPopupSuppressed = shortcutTrayExpanded,
+        compactPopupSuppressed = suppressCompactGuidancePopup,
         suppressed =
             poiTapMessage != null ||
                 recordingDashboardFullScreenExpanded ||
@@ -615,7 +621,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         expandRequestToken = recordingDashboardExpandRequestToken,
         actionPromptRequestToken = recordingActionPromptRequestToken,
         compactPopupEnabled = turnByTurnCompactPopupEnabled,
-        compactPopupSuppressed = shortcutTrayExpanded,
+        compactPopupSuppressed = suppressCompactGuidancePopup,
         isScreenInteractive = isScreenInteractive,
         suppressed =
             poiTapMessage != null ||
@@ -637,6 +643,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
         },
     )
 }
+
+internal fun shouldSuppressCompactGuidancePopup(
+    navMode: NavMode,
+    liveElevationEnabled: Boolean,
+    shortcutTrayExpanded: Boolean,
+): Boolean = shortcutTrayExpanded || (navMode == NavMode.PANNING && liveElevationEnabled)
 
 internal fun shouldRunPanningDistanceGuideProjection(
     isScreenInteractive: Boolean,
