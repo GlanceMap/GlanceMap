@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -65,6 +66,7 @@ import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.background
 import androidx.wear.compose.foundation.basicCurvedText
 import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Icon
@@ -705,6 +707,7 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     state: TurnByTurnGuidanceState,
     displayState: GuidanceMapRemainingDisplayState,
     isMetric: Boolean,
+    edgePadding: Dp,
 ) {
     if (
         !shouldShowGuidanceMapRemainingDetails(displayState) ||
@@ -716,6 +719,16 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
         remainingMeters = state.distanceRemainingMeters,
         estimatedRemainingSeconds = state.estimatedRemainingSeconds,
         isMetric = isMetric,
+        layout =
+            GuidanceRemainingArcLayout(
+                distanceAnchor = 115f,
+                durationAnchor = 65f,
+                labelModifier =
+                    CurvedModifier
+                        .padding(ArcPaddingValues(outer = edgePadding))
+                        .background(Color.Black.copy(alpha = 0.94f), cap = StrokeCap.Round)
+                        .padding(radial = 2.dp, angular = 3.dp),
+            ),
     )
 }
 
