@@ -721,8 +721,8 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
         isMetric = isMetric,
         layout =
             GuidanceRemainingArcLayout(
-                distanceAnchor = 110f,
-                durationAnchor = 70f,
+                distanceAnchor = 115f,
+                durationAnchor = 65f,
                 labelModifier =
                     CurvedModifier
                         .padding(ArcPaddingValues(outer = edgePadding))
