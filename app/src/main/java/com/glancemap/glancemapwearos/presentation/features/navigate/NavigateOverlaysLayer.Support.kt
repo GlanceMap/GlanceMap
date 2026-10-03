@@ -287,7 +287,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = navButtonBottomPadding + navButtonSize + navButtonBottomPadding)
+                        .padding(bottom = navButtonBottomPadding + navButtonSize + navButtonBottomPadding + 3.dp)
                         .background(Color.Black.copy(alpha = 0.90f), RoundedCornerShape(7.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
