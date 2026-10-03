@@ -53,10 +53,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -639,6 +641,8 @@ private fun ExpandedGuidanceOverlay(
 internal data class GuidanceRemainingArcLayout(
     val distanceAnchor: Float = 105f,
     val durationAnchor: Float = 75f,
+    val distanceAnchorType: AnchorType = AnchorType.Center,
+    val durationAnchorType: AnchorType = AnchorType.Center,
     val labelModifier: CurvedModifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
 )
 
@@ -656,7 +660,7 @@ internal fun GuidanceRemainingArc(
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
             anchor = layout.distanceAnchor,
-            anchorType = AnchorType.Center,
+            anchorType = layout.distanceAnchorType,
             angularDirection = CurvedDirection.Angular.Reversed,
         ) {
             basicCurvedText(
@@ -674,7 +678,7 @@ internal fun GuidanceRemainingArc(
             CurvedLayout(
                 modifier = Modifier.fillMaxSize(),
                 anchor = layout.durationAnchor,
-                anchorType = AnchorType.Center,
+                anchorType = layout.durationAnchorType,
                 angularDirection = CurvedDirection.Angular.Reversed,
             ) {
                 basicCurvedText(
@@ -715,19 +719,22 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     ) {
         return
     }
+    val rightToLeft = LocalLayoutDirection.current == LayoutDirection.Rtl
     GuidanceRemainingArc(
         remainingMeters = state.distanceRemainingMeters,
         estimatedRemainingSeconds = state.estimatedRemainingSeconds,
         isMetric = isMetric,
         layout =
             GuidanceRemainingArcLayout(
-                distanceAnchor = 115f,
-                durationAnchor = 65f,
+                distanceAnchor = 110f,
+                durationAnchor = 70f,
+                distanceAnchorType = if (rightToLeft) AnchorType.Start else AnchorType.End,
+                durationAnchorType = if (rightToLeft) AnchorType.End else AnchorType.Start,
                 labelModifier =
                     CurvedModifier
                         .padding(ArcPaddingValues(outer = edgePadding))
                         .background(Color.Black.copy(alpha = 0.94f), cap = StrokeCap.Round)
-                        .padding(radial = 2.dp, angular = 3.dp),
+                        .padding(radial = 1.dp, angular = 1.dp),
             ),
     )
 }
