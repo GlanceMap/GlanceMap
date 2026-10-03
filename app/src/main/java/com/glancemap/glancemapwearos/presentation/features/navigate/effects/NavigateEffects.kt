@@ -27,6 +27,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
@@ -35,6 +36,7 @@ import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.HeadingTurnRateHysteresis
 import com.glancemap.glancemapwearos.domain.sensors.hasRecentGoogleFusedCachedHeading
+import com.glancemap.glancemapwearos.domain.sensors.isFusedHeadingSampleFresh
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import kotlinx.coroutines.flow.StateFlow
@@ -269,7 +271,12 @@ fun NavigationOrientationEffect(
     ) {
         val renderStateNow = renderStateFlow.value
         val headingNow = normalize360(renderStateNow.headingDeg)
-        val shouldDriveHeadingNow = shouldDriveHeadingForNavMode(navMode, renderStateNow)
+        val shouldDriveHeadingNow =
+            shouldDriveHeadingForNavMode(
+                navMode = navMode,
+                renderState = renderStateNow,
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+            )
         val mapOrientationWasInitialized = hasInitializedMapOrientation(mv)
         val shouldSeedCachedHeading =
             when (navMode) {
@@ -393,7 +400,12 @@ fun NavigationOrientationEffect(
                         atElapsedMs = SystemClock.elapsedRealtime(),
                     )
                 }
-                val canDriveHeading = shouldDriveHeadingForNavMode(navMode, state)
+                val canDriveHeading =
+                    shouldDriveHeadingForNavMode(
+                        navMode = navMode,
+                        renderState = state,
+                        nowElapsedMs = SystemClock.elapsedRealtime(),
+                    )
                 if (!canDriveHeading) {
                     headingTurnTracker.reset()
                     activeHeadingTurn = false
@@ -443,7 +455,13 @@ fun NavigationOrientationEffect(
                             )
 
                         NavMode.NORTH_UP_FOLLOW ->
-                            if (shouldDriveHeadingForNavMode(navMode, latestRenderState)) {
+                            if (
+                                shouldDriveHeadingForNavMode(
+                                    navMode = navMode,
+                                    renderState = latestRenderState,
+                                    nowElapsedMs = nowElapsedMs,
+                                )
+                            ) {
                                 NavigationRotationTarget(
                                     headingDeg = liveTarget,
                                 )
@@ -458,7 +476,11 @@ fun NavigationOrientationEffect(
                 }
                 CompassRenderPerfTelemetry.recordFrame(navMode)
                 val diff = angleDeltaDeg(headingTarget.headingDeg, current)
-                val responsiveRotation = shouldUseResponsiveCompassMapRotation(latestRenderState)
+                val responsiveRotation =
+                    shouldUseResponsiveCompassMapRotation(
+                        renderState = latestRenderState,
+                        nowElapsedMs = nowElapsedMs,
+                    )
                 if (abs(diff) < HEADING_ANIMATION_DONE_DEG) {
                     val mapCatchupDeltaDeg =
                         if (navMode == NavMode.COMPASS_FOLLOW) {
@@ -481,6 +503,9 @@ fun NavigationOrientationEffect(
                                     mapRotationDeg = displayedMapRot.floatValue,
                                     continuityActive = false,
                                     continuityOffsetDeg = 0f,
+                                    sourceSampleId = latestRenderState.headingSampleSequenceId,
+                                    heldOutput = latestRenderState.headingSampleHeldOutput,
+                                    provenance = latestRenderState.headingProvenance,
                                     atElapsedMs = nowElapsedMs,
                                 ),
                             )
@@ -489,6 +514,7 @@ fun NavigationOrientationEffect(
                             targetHeadingDeg = headingTarget.headingDeg,
                             renderedHeadingDeg = current,
                             mapRotationDeg = displayedMapRot.floatValue,
+                            provenance = latestRenderState.headingProvenance,
                             atElapsedMs = nowElapsedMs,
                         )
                         requestMapRedraw()
@@ -550,6 +576,9 @@ fun NavigationOrientationEffect(
                             mapRotationDeg = displayedMapRot.floatValue,
                             continuityActive = false,
                             continuityOffsetDeg = 0f,
+                            sourceSampleId = latestRenderState.headingSampleSequenceId,
+                            heldOutput = latestRenderState.headingSampleHeldOutput,
+                            provenance = latestRenderState.headingProvenance,
                             atElapsedMs = nowElapsedMs,
                         ),
                     )
@@ -558,6 +587,7 @@ fun NavigationOrientationEffect(
                     targetHeadingDeg = headingTarget.headingDeg,
                     renderedHeadingDeg = next,
                     mapRotationDeg = displayedMapRot.floatValue,
+                    provenance = latestRenderState.headingProvenance,
                     atElapsedMs = nowElapsedMs,
                 )
                 requestMapRedraw()
@@ -967,16 +997,36 @@ private fun angleDeltaDeg(
     return d
 }
 
-internal fun shouldDriveCompassFollowMap(renderState: CompassRenderState): Boolean {
+internal fun shouldDriveCompassFollowMap(
+    renderState: CompassRenderState,
+    nowElapsedMs: Long? = null,
+): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
-    return if (renderState.providerType == CompassProviderType.GOOGLE_FUSED) {
-        renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
-            renderState.headingSampleElapsedRealtimeMs != null &&
+    val hasFreshRenderableSample =
+        renderState.headingSampleElapsedRealtimeMs != null &&
             !renderState.headingSampleStale &&
+            (
+                renderState.providerType != CompassProviderType.GOOGLE_FUSED ||
+                    nowElapsedMs == null ||
+                    isFusedHeadingSampleFresh(
+                        sourceMeasurementAtElapsedMs = renderState.headingSampleElapsedRealtimeMs,
+                        nowElapsedMs = nowElapsedMs,
+                    )
+            ) &&
             renderState.headingRenderable
-    } else {
-        renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
+    val degradedFused =
+        renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+            renderState.accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE
+    if (degradedFused) {
+        return renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
+            hasFreshRenderableSample
     }
+    val validFusedSource =
+        renderState.providerType != CompassProviderType.GOOGLE_FUSED ||
+            renderState.headingSource == HeadingSource.FUSED_ORIENTATION
+    return hasFreshRenderableSample &&
+        renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE &&
+        validFusedSource
 }
 
 internal fun shouldRunOrientationVisualLoop(
@@ -1002,8 +1052,11 @@ internal fun hasStableMagneticCompassHeading(renderState: CompassRenderState): B
 
 internal fun shouldUseWakeContinuityAnchor(navMode: NavMode): Boolean = navMode == NavMode.COMPASS_FOLLOW
 
-internal fun shouldUseResponsiveCompassMapRotation(renderState: CompassRenderState): Boolean =
-    shouldDriveCompassFollowMap(renderState) &&
+internal fun shouldUseResponsiveCompassMapRotation(
+    renderState: CompassRenderState,
+    nowElapsedMs: Long? = null,
+): Boolean =
+    shouldDriveCompassFollowMap(renderState, nowElapsedMs) &&
         renderState.magneticQuality == CompassMagneticQuality.GOOD &&
         !renderState.magneticInterference &&
         (
@@ -1022,6 +1075,8 @@ internal class NavigateRotationSettleGate {
     private var requirePostStableHeading = false
     private var stableTrackingObservedAtElapsedMs = Long.MIN_VALUE
     private var magneticRecoveryRequired = false
+    private var magneticRecoveryProvider: CompassProviderType? = null
+    private var magneticRecoveryProvenance: CompassHeadingProvenance? = null
     private var settled = false
     private var lastHoldReason: String? = null
     private var releaseVisualCapUntilElapsedMs = Long.MIN_VALUE
@@ -1042,6 +1097,8 @@ internal class NavigateRotationSettleGate {
         this.requirePostStableHeading = requirePostStableHeading
         stableTrackingObservedAtElapsedMs = Long.MIN_VALUE
         magneticRecoveryRequired = false
+        magneticRecoveryProvider = null
+        magneticRecoveryProvenance = null
         settled = false
         lastHoldReason = null
         releaseVisualCapUntilElapsedMs = Long.MIN_VALUE
@@ -1069,8 +1126,14 @@ internal class NavigateRotationSettleGate {
         nowElapsedMs: Long,
         currentDisplayedHeadingDeg: Float? = null,
     ): NavigationRotationTarget? {
-        if (!shouldDriveCompassFollowMap(renderState) || !compassHeadingDeg.isFinite()) {
-            hold("await_usable_heading")
+        if (!shouldDriveCompassFollowMap(renderState, nowElapsedMs) || !compassHeadingDeg.isFinite()) {
+            hold(
+                if (renderState.unresolvedIndependentDisagreement) {
+                    "unresolved_independent_disagreement"
+                } else {
+                    "await_usable_heading"
+                },
+            )
             return null
         }
         val heading = normalize360(compassHeadingDeg)
@@ -1081,8 +1144,32 @@ internal class NavigateRotationSettleGate {
                 recordsWakeReleaseStep = pendingRelease != null,
             )
         }
+        if (
+            renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+            renderState.headingSampleHeldOutput
+        ) {
+            hold("await_unheld_fused_output")
+            return null
+        }
+        val provenanceMatches =
+            magneticRecoveryProvenance == null ||
+                renderState.headingProvenance == magneticRecoveryProvenance
+        val recoveryAppliesToCurrentStream =
+            magneticRecoveryRequired &&
+                magneticRecoveryProvider == renderState.providerType &&
+                provenanceMatches
+        if (magneticRecoveryRequired && !recoveryAppliesToCurrentStream) {
+            // A recovery obligation belongs to the provider/session that created it. A healthy
+            // fallback is a new authoritative stream with its own freshness contract.
+            magneticRecoveryRequired = false
+            magneticRecoveryProvider = null
+            magneticRecoveryProvenance = null
+            log("rotation_settle recovery_rebound provider=${renderState.providerType.name}")
+        }
         if (shouldHoldCompassFollowStartupForMagneticInterference(renderState)) {
             magneticRecoveryRequired = true
+            magneticRecoveryProvider = renderState.providerType
+            magneticRecoveryProvenance = renderState.headingProvenance
             currentDisplayedHeadingDeg?.takeIf(Float::isFinite)?.let {
                 heldHeadingDeg = normalize360(it)
             }
@@ -1222,15 +1309,34 @@ internal data class NavigationRotationTarget(
     val recordsWakeReleaseStep: Boolean = false,
 )
 
-internal fun shouldDriveMarkerHeading(renderState: CompassRenderState): Boolean {
+@Suppress("ComplexCondition")
+internal fun shouldDriveMarkerHeading(
+    renderState: CompassRenderState,
+    nowElapsedMs: Long? = null,
+): Boolean {
     if (renderState.headingSource == HeadingSource.NONE) return false
+    val missingSensorSample =
+        renderState.headingSampleElapsedRealtimeMs == null ||
+            renderState.headingSampleStale ||
+            !renderState.headingRenderable
+    if (renderState.providerType == CompassProviderType.SENSOR_MANAGER && missingSensorSample) {
+        return false
+    }
     return when (renderState.providerType) {
         CompassProviderType.SENSOR_MANAGER ->
-            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE
+            renderState.accuracy != SensorManager.SENSOR_STATUS_UNRELIABLE &&
+                !renderState.headingSampleStale
         CompassProviderType.GOOGLE_FUSED ->
             renderState.headingSource == HeadingSource.FUSED_ORIENTATION &&
                 renderState.headingSampleElapsedRealtimeMs != null &&
                 !renderState.headingSampleStale &&
+                (
+                    nowElapsedMs == null ||
+                        isFusedHeadingSampleFresh(
+                            sourceMeasurementAtElapsedMs = renderState.headingSampleElapsedRealtimeMs,
+                            nowElapsedMs = nowElapsedMs,
+                        )
+                ) &&
                 renderState.headingRenderable
     }
 }
@@ -1238,10 +1344,11 @@ internal fun shouldDriveMarkerHeading(renderState: CompassRenderState): Boolean 
 internal fun shouldDriveHeadingForNavMode(
     navMode: NavMode,
     renderState: CompassRenderState,
+    nowElapsedMs: Long? = null,
 ): Boolean =
     when (navMode) {
-        NavMode.COMPASS_FOLLOW -> shouldDriveCompassFollowMap(renderState)
-        NavMode.NORTH_UP_FOLLOW -> shouldDriveMarkerHeading(renderState)
+        NavMode.COMPASS_FOLLOW -> shouldDriveCompassFollowMap(renderState, nowElapsedMs)
+        NavMode.NORTH_UP_FOLLOW -> shouldDriveMarkerHeading(renderState, nowElapsedMs)
         NavMode.PANNING -> false
     }
 
@@ -1249,17 +1356,19 @@ internal fun shouldSeedCompassFollowMapWithCachedHeading(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
 ): Boolean =
-    hasRecentGoogleFusedCachedHeading(
-        renderState = renderState,
-        nowElapsedMs = nowElapsedMs,
-        maxAgeMs = GOOGLE_FUSED_CACHED_HEADING_SEED_MAX_AGE_MS,
-    )
+    !hasUnresolvedFusedDisagreement(renderState) &&
+        hasRecentGoogleFusedCachedHeading(
+            renderState = renderState,
+            nowElapsedMs = nowElapsedMs,
+            maxAgeMs = GOOGLE_FUSED_CACHED_HEADING_SEED_MAX_AGE_MS,
+        )
 
 internal fun shouldSeedNorthUpMarkerWithCachedHeading(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
 ): Boolean =
-    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+    !hasUnresolvedFusedDisagreement(renderState) &&
+        renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
         hasRecentGoogleFusedCachedHeading(
             renderState = renderState,
             nowElapsedMs = nowElapsedMs,
@@ -1269,19 +1378,25 @@ internal fun shouldSeedNorthUpMarkerWithCachedHeading(
 internal fun resolveNavigateInitialRenderedHeadingDeg(
     renderState: CompassRenderState,
     nowElapsedMs: Long,
-): Float =
-    if (
-        shouldDriveCompassFollowMap(renderState) ||
-        shouldDriveMarkerHeading(renderState) ||
+): Float {
+    val hasLiveHeading =
+        shouldDriveCompassFollowMap(renderState, nowElapsedMs) ||
+            shouldDriveMarkerHeading(renderState, nowElapsedMs)
+    val hasCachedHeading =
         shouldSeedCompassFollowMapWithCachedHeading(renderState, nowElapsedMs) ||
-        shouldSeedNorthUpMarkerWithCachedHeading(renderState, nowElapsedMs)
-    ) {
+            shouldSeedNorthUpMarkerWithCachedHeading(renderState, nowElapsedMs)
+    return if (hasLiveHeading || hasCachedHeading) {
         normalize360(renderState.headingDeg)
     } else {
         0f
     }
+}
 
 private fun normalize360(deg: Float): Float = (deg % 360f + 360f) % 360f
+
+private fun hasUnresolvedFusedDisagreement(renderState: CompassRenderState): Boolean =
+    renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+        renderState.unresolvedIndependentDisagreement
 
 internal fun shouldPublishRenderedCompassUiState(
     nowElapsedMs: Long,

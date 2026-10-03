@@ -76,11 +76,17 @@ internal fun zoomBucketFor(zoom: Int): Int =
         else -> 1
     }
 
-internal fun buildTrackLodLevels(points: List<TrackPoint>): TrackLodLevels {
-    val signature = latLongListSignature(points)
+internal fun buildTrackLodLevels(
+    points: List<TrackPoint>,
+): TrackLodLevels = buildTrackLodLevels(points, trackContentSignature(points))
+
+internal fun buildTrackLodLevels(
+    points: List<TrackPoint>,
+    sourceSignature: Long,
+): TrackLodLevels {
     if (points.size <= 64) {
         return TrackLodLevels(
-            sourceSignature = signature,
+            sourceSignature = sourceSignature,
             low = points,
             medium = points,
             full = points,
@@ -90,11 +96,23 @@ internal fun buildTrackLodLevels(points: List<TrackPoint>): TrackLodLevels {
     val low = simplifyTrackSegments(points, toleranceMeters = 24.0)
     val medium = simplifyTrackSegments(points, toleranceMeters = 8.0)
     return TrackLodLevels(
-        sourceSignature = signature,
+        sourceSignature = sourceSignature,
         low = low,
         medium = medium,
         full = points,
     )
+}
+
+internal fun getOrBuildTrackLodLevels(
+    trackId: String,
+    points: List<TrackPoint>,
+    cachedById: Map<String, TrackLodLevels>,
+    build: (List<TrackPoint>, Long) -> TrackLodLevels = ::buildTrackLodLevels,
+): TrackLodLevels {
+    val signature = trackContentSignature(points)
+    return cachedById[trackId]
+        ?.takeIf { cached -> cached.sourceSignature == signature }
+        ?: build(points, signature)
 }
 
 internal fun List<TrackPoint>.latLongs(): List<LatLong> = map { it.latLong }
@@ -483,7 +501,7 @@ private fun projectedViewportBounds(
     )
 }
 
-private fun latLongListSignature(points: List<TrackPoint>): Long {
+internal fun trackContentSignature(points: List<TrackPoint>): Long {
     var h = 1_469_598_103_934_665_603L
     val prime = 1_099_511_628_211L
     points.forEach { point ->

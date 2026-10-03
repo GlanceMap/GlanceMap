@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.core.service.location.model
 
 internal data class LocationTimingProfile(
     val intervalMs: Long,
+    val markerTrustFreshnessMaxAgeMs: Long,
     val markerPredictionFreshnessMaxAgeMs: Long,
     val indicatorStaleThresholdMs: Long,
     val uiImmediateSkipMaxAgeMs: Long,
@@ -21,6 +22,7 @@ internal data class LocationTimingProfile(
 
 internal fun resolveLocationTimingProfile(gpsIntervalMs: Long): LocationTimingProfile {
     val intervalMs = gpsIntervalMs.coerceAtLeast(MIN_INTERVAL_MS)
+    val markerTrustFreshnessMaxAgeMs = resolveMarkerTrustFreshnessMaxAgeMs(intervalMs)
     val markerPredictionFreshnessMaxAgeMs =
         (
             intervalMs + maxOf(MARKER_PREDICTION_MIN_GRACE_MS, intervalMs / 2L)
@@ -57,6 +59,7 @@ internal fun resolveLocationTimingProfile(gpsIntervalMs: Long): LocationTimingPr
 
     return LocationTimingProfile(
         intervalMs = intervalMs,
+        markerTrustFreshnessMaxAgeMs = markerTrustFreshnessMaxAgeMs,
         markerPredictionFreshnessMaxAgeMs = markerPredictionFreshnessMaxAgeMs,
         indicatorStaleThresholdMs = expectedFixLatenessMaxAgeMs,
         uiImmediateSkipMaxAgeMs = expectedFixLatenessMaxAgeMs,
@@ -75,7 +78,21 @@ internal fun resolveLocationTimingProfile(gpsIntervalMs: Long): LocationTimingPr
     )
 }
 
+internal fun resolveMarkerTrustFreshnessMaxAgeMs(gpsIntervalMs: Long): Long {
+    val intervalMs = gpsIntervalMs.coerceAtLeast(MIN_INTERVAL_MS)
+    val intervalTripleMs =
+        intervalMs.coerceAtMost(MARKER_TRUST_MAX_FRESHNESS_MAX_AGE_MS / MARKER_TRUST_INTERVAL_MULTIPLIER) *
+            MARKER_TRUST_INTERVAL_MULTIPLIER
+    return intervalTripleMs.coerceIn(
+        MARKER_TRUST_MIN_FRESHNESS_MAX_AGE_MS,
+        MARKER_TRUST_MAX_FRESHNESS_MAX_AGE_MS,
+    )
+}
+
 private const val MIN_INTERVAL_MS = 1_000L
+private const val MARKER_TRUST_INTERVAL_MULTIPLIER = 3L
+private const val MARKER_TRUST_MIN_FRESHNESS_MAX_AGE_MS = 10_000L
+private const val MARKER_TRUST_MAX_FRESHNESS_MAX_AGE_MS = 30_000L
 private const val MARKER_PREDICTION_MIN_GRACE_MS = 500L
 private const val MARKER_PREDICTION_MIN_FRESHNESS_MAX_AGE_MS = 1_500L
 private const val MARKER_PREDICTION_MAX_FRESHNESS_MAX_AGE_MS = 12_000L

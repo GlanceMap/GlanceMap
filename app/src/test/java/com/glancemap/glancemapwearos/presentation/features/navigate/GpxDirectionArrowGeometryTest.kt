@@ -2,6 +2,8 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.BoundingBox
@@ -307,6 +309,138 @@ class GpxDirectionArrowGeometryTest {
                 0.0,
             )
         }
+    }
+
+    @Test
+    fun changingTrackWidthReusesLodGeometry() =
+        assertAppearanceChangeDoesNotBuild { appearance ->
+            appearance.copy(width = appearance.width + 1f)
+        }
+
+    @Test
+    fun changingTrackOpacityReusesLodGeometry() =
+        assertAppearanceChangeDoesNotBuild { appearance ->
+            appearance.copy(opacityPercent = 40)
+        }
+
+    @Test
+    fun changingElevationColorModeReusesLodGeometry() =
+        assertAppearanceChangeDoesNotBuild { appearance ->
+            appearance.copy(useElevationColors = true)
+        }
+
+    @Test
+    fun changingDirectionArrowVisibilityReusesLodGeometry() =
+        assertAppearanceChangeDoesNotBuild { appearance ->
+            appearance.copy(showDirectionArrows = true)
+        }
+
+    @Test
+    fun changingTrackCoordinatesRebuildsLodGeometry() {
+        val points = geometryTestPoints()
+        val builder = CountingTrackLodBuilder()
+        val initial = builder.getOrBuild(TRACK_ID, points)
+        val changedPoints =
+            points.toMutableList().apply {
+                this[40] = this[40].copy(latLong = LatLong(45.01, 6.01))
+            }
+
+        val updated = builder.getOrBuild(TRACK_ID, changedPoints, mapOf(TRACK_ID to initial))
+
+        assertTrue(initial !== updated)
+        assertEquals(2, builder.buildCount)
+    }
+
+    @Test
+    fun changingSegmentBoundariesRebuildsLodGeometry() {
+        val points = geometryTestPoints()
+        val builder = CountingTrackLodBuilder()
+        val initial = builder.getOrBuild(TRACK_ID, points)
+        val changedPoints =
+            points.toMutableList().apply {
+                this[40] = this[40].copy(startsNewSegment = true)
+            }
+
+        val updated = builder.getOrBuild(TRACK_ID, changedPoints, mapOf(TRACK_ID to initial))
+
+        assertTrue(initial !== updated)
+        assertEquals(2, builder.buildCount)
+    }
+
+    @Test
+    fun changingElevationRepresentedByExistingSignatureRebuildsLodGeometry() {
+        val points = geometryTestPoints()
+        val builder = CountingTrackLodBuilder()
+        val initial = builder.getOrBuild(TRACK_ID, points)
+        val changedPoints =
+            points.toMutableList().apply {
+                this[40] = this[40].copy(elevation = 123.0)
+            }
+
+        val updated = builder.getOrBuild(TRACK_ID, changedPoints, mapOf(TRACK_ID to initial))
+
+        assertTrue(initial !== updated)
+        assertEquals(2, builder.buildCount)
+    }
+
+    @Test
+    fun sameGeometryForDifferentTrackIdBuildsSeparateLodEntry() {
+        val points = geometryTestPoints()
+        val builder = CountingTrackLodBuilder()
+        val initial = builder.getOrBuild(TRACK_ID, points)
+
+        val separateTrack = builder.getOrBuild("other-track", points, mapOf(TRACK_ID to initial))
+
+        assertTrue(initial !== separateTrack)
+        assertEquals(2, builder.buildCount)
+    }
+
+    private fun assertAppearanceChangeDoesNotBuild(change: (TrackAppearance) -> TrackAppearance) {
+        val appearance =
+            TrackAppearance(
+                width = 3f,
+                opacityPercent = 100,
+                useElevationColors = false,
+                showDirectionArrows = false,
+            )
+        val changedAppearance = change(appearance)
+        assertNotEquals(appearance, changedAppearance)
+
+        val points = geometryTestPoints()
+        val builder = CountingTrackLodBuilder()
+        val initial = builder.getOrBuild(TRACK_ID, points)
+        val updated = builder.getOrBuild(TRACK_ID, points, mapOf(TRACK_ID to initial))
+
+        assertSame(initial, updated)
+        assertEquals(1, builder.buildCount)
+    }
+
+    private fun geometryTestPoints(): List<TrackPoint> = (0..80).map { trackPoint(45.0, 6.0 + it * 0.00001) }
+
+    private data class TrackAppearance(
+        val width: Float,
+        val opacityPercent: Int,
+        val useElevationColors: Boolean,
+        val showDirectionArrows: Boolean,
+    )
+
+    private class CountingTrackLodBuilder {
+        var buildCount = 0
+            private set
+
+        fun getOrBuild(
+            trackId: String,
+            points: List<TrackPoint>,
+            cachedById: Map<String, TrackLodLevels> = emptyMap(),
+        ): TrackLodLevels =
+            getOrBuildTrackLodLevels(trackId, points, cachedById) { buildPoints, signature ->
+                buildCount += 1
+                buildTrackLodLevels(buildPoints, signature)
+            }
+    }
+
+    private companion object {
+        const val TRACK_ID = "track"
     }
 
     private fun trackPoint(

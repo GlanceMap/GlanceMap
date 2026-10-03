@@ -6,6 +6,7 @@ import android.graphics.Paint
 internal fun drawDotMarkerBitmap(
     canvas: Canvas,
     sizePx: Int,
+    fillColor: Int = NAVIGATION_MARKER_BLUE_ARGB,
 ) {
     val center = sizePx / 2f
     val radius = sizePx * 0.23f
@@ -17,7 +18,7 @@ internal fun drawDotMarkerBitmap(
         }
     val fillPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = NAVIGATION_MARKER_BLUE_ARGB
+            color = fillColor
             style = Paint.Style.FILL
         }
     val strokePaint =

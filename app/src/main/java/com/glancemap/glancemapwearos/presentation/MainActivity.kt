@@ -40,6 +40,7 @@ import com.glancemap.glancemapwearos.core.service.location.policy.navigationRunt
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.resolveCompassHardwareCapability
 import com.glancemap.glancemapwearos.domain.sensors.shouldShowCompassHardwareUnavailableNotice
+import com.glancemap.glancemapwearos.presentation.WatchAppRatingPrompt
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadScreen
 import com.glancemap.glancemapwearos.presentation.features.download.DownloadSettingsScreen
@@ -51,6 +52,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScre
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
+import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.DebuggingSettingsScreen
@@ -145,6 +147,7 @@ class MainActivity : ComponentActivity() {
                 appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
             val turnByTurnGuidancePaused by appContainer.gpxViewModel.turnByTurnGuidancePaused.collectAsState()
+            val gpxElevationProfileUiState by appContainer.gpxViewModel.elevationProfileUiState.collectAsState()
             val gpsInAmbientMode by appContainer.settingsViewModel.gpsInAmbientMode.collectAsState(initial = false)
             val offlineMode by appContainer.settingsViewModel.offlineMode.collectAsState(initial = false)
             val recordingDashboardMetricSlots by appContainer.settingsViewModel.recordingDashboardMetricSlots.collectAsState()
@@ -254,7 +257,9 @@ class MainActivity : ComponentActivity() {
                     } else {
                         turnByTurnScreenOnGpsEnabled
                     }
-                val recordingRuntimePaused = traceRecordingState.paused && !traceRecordingState.autoPaused
+                val recordingMonitoringForAutoResume =
+                    traceRecordingState.isPausedForAutoResumeMonitoring(traceRecordingState.recordingAutoPauseEnabled)
+                val recordingRuntimePaused = traceRecordingState.paused && !recordingMonitoringForAutoResume
                 var suppressNavigateTime by remember { mutableStateOf(false) }
                 var recordingDashboardExpandRequestToken by remember { mutableLongStateOf(0L) }
                 var recordingActionPromptRequestToken by remember { mutableLongStateOf(0L) }
@@ -277,13 +282,14 @@ class MainActivity : ComponentActivity() {
                     activityOwnsRuntime,
                     traceRecordingState.active,
                     recordingRuntimePaused,
-                    traceRecordingState.autoPaused,
+                    recordingMonitoringForAutoResume,
                     recordingGpsEnabled,
                     turnByTurnGuidanceSession,
                     turnByTurnGuidancePaused,
                     turnByTurnGpsEnabled,
                     gpsInAmbientMode,
                     turnByTurnScreenOffGpsEnabled,
+                    gpxElevationProfileUiState,
                     offlineMode,
                     activityLocationScreenState,
                     locationPermissionGranted,
@@ -300,12 +306,14 @@ class MainActivity : ComponentActivity() {
                                 generalGpsInAmbient = gpsInAmbientMode,
                                 recordingActive = traceRecordingState.active,
                                 recordingPaused = recordingRuntimePaused,
-                                recordingAutoPaused = traceRecordingState.autoPaused,
+                                recordingAutoPaused = recordingMonitoringForAutoResume,
                                 recordingGpsEnabled = recordingGpsEnabled,
                                 turnByTurnActive = turnByTurnGuidanceSession != null,
                                 turnByTurnPaused = turnByTurnGuidancePaused,
                                 turnByTurnGpsEnabled = turnByTurnGpsEnabled,
                                 turnByTurnGpsInAmbient = turnByTurnScreenOffGpsEnabled,
+                                gpxElevationProfileOpen =
+                                    routeLabel == WatchRoutes.GPX && gpxElevationProfileUiState != null,
                             ),
                         )
                     appContainer.locationViewModel.syncRuntimeState(
@@ -445,6 +453,7 @@ class MainActivity : ComponentActivity() {
                                 GpxScreen(
                                     navController = navController,
                                     gpxViewModel = appContainer.gpxViewModel,
+                                    locationViewModel = appContainer.locationViewModel,
                                     isMetric = isMetric,
                                     autoStartRecordingWithGuidance = recordingStartWithTurnByTurn,
                                     recordingActiveOrSaving = traceRecordingState.active || traceRecordingState.saving,
@@ -1054,6 +1063,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 compassHardwareUnavailableNotice()
+                WatchAppRatingPrompt()
                 WearActionDialog(
                     visible = recordingStartWarning != null,
                     title = "External sensors unavailable",
@@ -1176,19 +1186,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        ambientState.refreshDeviceInteractive(fallback = true)
+        ambientState.onResume()
         ScreenStateDiagnostics.updateAppForeground(isForeground = true)
         logScreenTelemetry(event = "activity_resume")
     }
 
     override fun onPause() {
-        ambientState.refreshDeviceInteractive(fallback = false)
+        ambientState.onPause()
         ScreenStateDiagnostics.updateAppForeground(isForeground = false)
         logScreenTelemetry(event = "activity_pause")
         super.onPause()
     }
 
     override fun onDestroy() {
+        ambientState.onDestroy()
         runCatching { unregisterReceiver(screenStateReceiver) }
         thermalTelemetry.unregister()
         val appContainer = (application as GlanceMapWearApp).container
@@ -1238,6 +1249,8 @@ class MainActivity : ComponentActivity() {
             } else {
                 destroyTurnByTurnScreenOnGpsEnabled
             }
+        val recordingMonitoringForAutoResume =
+            traceRecordingState.isPausedForAutoResumeMonitoring(traceRecordingState.recordingAutoPauseEnabled)
         val runtimeDemand =
             navigationRuntimeDemand(
                 NavigationRuntimeInputs(
@@ -1248,8 +1261,8 @@ class MainActivity : ComponentActivity() {
                     offlineMode = appContainer.settingsViewModel.offlineMode.value,
                     generalGpsInAmbient = appContainer.settingsViewModel.gpsInAmbientMode.value,
                     recordingActive = traceRecordingState.active,
-                    recordingPaused = traceRecordingState.paused && !traceRecordingState.autoPaused,
-                    recordingAutoPaused = traceRecordingState.autoPaused,
+                    recordingPaused = traceRecordingState.paused && !recordingMonitoringForAutoResume,
+                    recordingAutoPaused = recordingMonitoringForAutoResume,
                     recordingGpsEnabled = destroyRecordingGpsEnabled,
                     turnByTurnActive = appContainer.gpxViewModel.turnByTurnGuidanceSession.value != null,
                     turnByTurnPaused = appContainer.gpxViewModel.turnByTurnGuidancePaused.value,

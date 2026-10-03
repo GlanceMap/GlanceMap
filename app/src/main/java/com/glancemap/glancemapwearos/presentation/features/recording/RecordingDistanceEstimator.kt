@@ -144,6 +144,86 @@ internal data class RecordingDistanceEstimate(
     val maximumTrustedMeters: Double? = null,
 )
 
+internal class RecordingDistanceDiagnostics {
+    var diagnosticsScope: String = RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_FULL_SESSION
+        private set
+    var watchGpsRawGeometryMeters: Double = 0.0
+        private set
+    var continuityCappedMeters: Double = 0.0
+        private set
+    var continuityCapCount: Int = 0
+        private set
+    var continuityRecoverySegmentCount: Int = 0
+        private set
+
+    fun record(
+        segment: RecordingWatchGpsDistanceSegment,
+        estimate: RecordingDistanceEstimate,
+    ) {
+        watchGpsRawGeometryMeters += segment.geometricDeltaMeters.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+        if (segment.isContinuityRecovery) {
+            continuityRecoverySegmentCount += 1
+        }
+        if (estimate.capped) {
+            continuityCapCount += 1
+            continuityCappedMeters +=
+                (segment.geometricDeltaMeters - estimate.distanceMeters)
+                    .takeIf { it.isFinite() && it >= 0.0 }
+                    ?: 0.0
+        }
+    }
+
+    fun reset() {
+        diagnosticsScope = RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_FULL_SESSION
+        watchGpsRawGeometryMeters = 0.0
+        continuityCappedMeters = 0.0
+        continuityCapCount = 0
+        continuityRecoverySegmentCount = 0
+    }
+
+    fun markPostRecoveryPartial() {
+        diagnosticsScope = RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_POST_RECOVERY_PARTIAL
+    }
+}
+
+internal data class RecordingDistanceComparison(
+    val diagnosticsScope: String,
+    val activityDistanceMeters: Double,
+    val watchGpsRawGeometryMeters: Double,
+    val continuityCappedMeters: Double,
+    val continuityCapCount: Int,
+    val continuityRecoverySegmentCount: Int,
+    val canonicalGeometryMeters: Double,
+    val activityMinusCanonicalMeters: Double,
+    val activityVsCanonicalPercent: Double?,
+)
+
+internal fun buildRecordingDistanceComparison(
+    activityDistanceMeters: Double,
+    diagnostics: RecordingDistanceDiagnostics,
+    canonicalPoints: List<RecordedTracePoint>,
+): RecordingDistanceComparison {
+    val canonicalGeometryMeters = recordingCanonicalPathDistance(canonicalPoints)
+    val activityMinusCanonicalMeters = activityDistanceMeters - canonicalGeometryMeters
+    return RecordingDistanceComparison(
+        diagnosticsScope = diagnostics.diagnosticsScope,
+        activityDistanceMeters = activityDistanceMeters,
+        watchGpsRawGeometryMeters = diagnostics.watchGpsRawGeometryMeters,
+        continuityCappedMeters = diagnostics.continuityCappedMeters,
+        continuityCapCount = diagnostics.continuityCapCount,
+        continuityRecoverySegmentCount = diagnostics.continuityRecoverySegmentCount,
+        canonicalGeometryMeters = canonicalGeometryMeters,
+        activityMinusCanonicalMeters = activityMinusCanonicalMeters,
+        activityVsCanonicalPercent =
+            canonicalGeometryMeters
+                .takeIf { it.isFinite() && it > 0.0 }
+                ?.let { activityMinusCanonicalMeters / it * 100.0 },
+    )
+}
+
+internal const val RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_FULL_SESSION = "full_session"
+internal const val RECORDING_DISTANCE_DIAGNOSTICS_SCOPE_POST_RECOVERY_PARTIAL = "post_recovery_partial"
+
 internal data class RecordingDistanceInput(
     val geometricDeltaMeters: Double,
     val previous: RecordedTracePoint?,

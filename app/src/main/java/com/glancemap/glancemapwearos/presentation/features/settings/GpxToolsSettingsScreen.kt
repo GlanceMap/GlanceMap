@@ -279,8 +279,9 @@ private val sacScaleOptions =
         4 to "T4 alpine",
     )
 
+@Suppress("FunctionName")
 @Composable
-private fun GpxSettingsShortcutChip(
+internal fun GpxSettingsShortcutChip(
     onClick: () -> Unit,
 ) {
     AdaptiveSettingsShortcutChip(

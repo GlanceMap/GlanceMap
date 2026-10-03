@@ -1,6 +1,5 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
-import android.graphics.Color
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
 import org.mapsforge.core.graphics.Style
 import org.mapsforge.core.model.LatLong
@@ -76,13 +75,10 @@ internal fun buildElevationTrackSegments(
 internal fun classifyElevationSegment(
     from: TrackPoint,
     to: TrackPoint,
-): GpxElevationSegmentType {
-    val gradePercent =
-        elevationGradePercent(
-            from = from,
-            to = to,
-        )
-    return when {
+): GpxElevationSegmentType = classifyElevationGradePercent(elevationGradePercent(from = from, to = to))
+
+internal fun classifyElevationGradePercent(gradePercent: Double?): GpxElevationSegmentType =
+    when {
         gradePercent == null -> GpxElevationSegmentType.FLAT
         gradePercent >= 8.0 -> GpxElevationSegmentType.CLIMB
         gradePercent >= 2.0 -> GpxElevationSegmentType.UPHILL
@@ -90,7 +86,6 @@ internal fun classifyElevationSegment(
         gradePercent <= -2.0 -> GpxElevationSegmentType.DOWNHILL
         else -> GpxElevationSegmentType.FLAT
     }
-}
 
 private fun elevationGradePercent(
     from: TrackPoint,
@@ -120,11 +115,11 @@ private fun elevationGradePercent(
 
 internal fun elevationSegmentColor(type: GpxElevationSegmentType): Int =
     when (type) {
-        GpxElevationSegmentType.FLAT -> Color.rgb(217, 227, 234)
-        GpxElevationSegmentType.UPHILL -> Color.rgb(255, 200, 87)
-        GpxElevationSegmentType.CLIMB -> Color.rgb(255, 138, 60)
-        GpxElevationSegmentType.DOWNHILL -> Color.rgb(115, 194, 251)
-        GpxElevationSegmentType.DESCENT -> Color.rgb(59, 130, 246)
+        GpxElevationSegmentType.FLAT -> 0xFFD9E3EA.toInt()
+        GpxElevationSegmentType.UPHILL -> 0xFFFFC857.toInt()
+        GpxElevationSegmentType.CLIMB -> 0xFFFF8A3C.toInt()
+        GpxElevationSegmentType.DOWNHILL -> 0xFF73C2FB.toInt()
+        GpxElevationSegmentType.DESCENT -> 0xFF3B82F6.toInt()
     }
 
 internal fun createGpxTrackPaint(

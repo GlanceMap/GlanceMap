@@ -418,7 +418,12 @@ class DownloadViewModel(
                         it.copy(
                             bundleHealthByAreaId = updatedHealth,
                             isCheckingUpdates = false,
-                            statusMessage = "${bundle.areaLabel} is up to date",
+                            statusMessage =
+                                if (check.hasSelectedAdditions(it.selection)) {
+                                    "Selected components available"
+                                } else {
+                                    "${bundle.areaLabel} is up to date"
+                                },
                             errorMessage = null,
                             refreshPrompt = check,
                             networkWarningMessage = null,
@@ -450,6 +455,12 @@ class DownloadViewModel(
 
     fun confirmRefreshBundle() {
         val check = _uiState.value.refreshPrompt ?: return
+        if (check.status == OamBundleUpdateStatus.UP_TO_DATE &&
+            !check.hasSelectedAdditions(_uiState.value.selection)
+        ) {
+            _uiState.update { it.copy(refreshPrompt = null) }
+            return
+        }
         _uiState.update { it.copy(refreshPrompt = null) }
         refreshBundlesInternal(listOf(check.toRefreshRequest()), allowNonWifi = false)
     }
@@ -523,7 +534,7 @@ class DownloadViewModel(
                             )
                         }
                 }
-            val summary = OamBundleRefreshSummary(checks)
+            val summary = OamBundleRefreshSummary(checks = checks, selection = _uiState.value.selection)
             _uiState.update {
                 val updatedHealth =
                     it.bundleHealthByAreaId +
@@ -538,8 +549,10 @@ class DownloadViewModel(
                         when {
                             summary.repairNeededCount > 0 ->
                                 "${summary.repairNeededCount} bundle(s) need repair"
-                            summary.bundlesToRefresh.isNotEmpty() ->
+                            summary.updateAvailableCount > 0 ->
                                 "${summary.bundlesToRefresh.size} bundle(s) need refresh"
+                            summary.selectedAdditionCount > 0 ->
+                                "${summary.selectedAdditionCount} bundle(s) can add selected components"
                             summary.unknownCount > 0 -> "Update check incomplete"
                             else -> "Selected bundles are up to date"
                         },
@@ -555,10 +568,10 @@ class DownloadViewModel(
     }
 
     fun confirmRefreshSelectedBundles() {
+        val state = _uiState.value
         val requests =
-            _uiState.value
-                .refreshSummaryPrompt
-                ?.checksToRefresh
+            state.refreshSummaryPrompt
+                ?.checksToRefresh(state.selection)
                 ?.map { it.toRefreshRequest() }
                 .orEmpty()
         _uiState.update {
@@ -632,7 +645,7 @@ class DownloadViewModel(
                     RefreshTarget(
                         bundle = request.bundle,
                         area = area,
-                        selection = request.bundle.toDownloadSelection(),
+                        selection = request.bundle.toDownloadSelection(_uiState.value.selection),
                         forces = request.forces(area),
                     )
                 }
@@ -930,25 +943,14 @@ class DownloadViewModel(
     }
 
     private fun watchForWifiRecovery(initialState: OamDownloadNetworkState): AutoCloseable {
-        var observedWithoutValidatedWifi = !initialState.isValidatedWifi
-        var reconnectRequested = false
-        return networkMonitor.watchNetworkState { state ->
-            when {
-                !state.isValidatedWifi -> {
-                    observedWithoutValidatedWifi = true
-                    reconnectRequested = false
-                }
-                observedWithoutValidatedWifi && !reconnectRequested -> {
-                    reconnectRequested = true
-                    observedWithoutValidatedWifi = false
-                    DebugTelemetry.log(
-                        OAM_DOWNLOAD_TELEMETRY_TAG,
-                        "event=auto_reconnect_request reason=wifi_recovered ${state.telemetryFields}",
-                    )
-                    downloader.abortActiveDownloads(reason = "wifi_recovered")
-                }
+        val observer =
+            OamDownloadNetworkRecoveryObserver(initialState) { state ->
+                DebugTelemetry.log(
+                    OAM_DOWNLOAD_TELEMETRY_TAG,
+                    "event=wifi_recovered ${state.telemetryFields}",
+                )
             }
-        }
+        return networkMonitor.watchNetworkState(observer::onChanged)
     }
 
     private companion object {
@@ -994,12 +996,12 @@ private fun OamBundleUpdateCheck.toRefreshRequest(): BundleRefreshRequest =
         repairFileNames = repairFileNames.toSet(),
     )
 
-private fun OamInstalledBundle.toDownloadSelection(): OamDownloadSelection =
+internal fun OamInstalledBundle.toDownloadSelection(currentSelection: OamDownloadSelection): OamDownloadSelection =
     OamDownloadSelection(
-        includeMap = mapFileName != null,
-        includePoi = poiFileName != null,
-        includeRouting = routingFileNames.isNotEmpty(),
-        includeDem = demTileIds.isNotEmpty(),
-        demSource = demSource,
-        includeRefugesInfo = refugesInfoFileName != null,
+        includeMap = mapFileName != null || currentSelection.includeMap,
+        includePoi = poiFileName != null || currentSelection.includePoi,
+        includeRouting = routingFileNames.isNotEmpty() || currentSelection.includeRouting,
+        includeDem = demTileIds.isNotEmpty() || currentSelection.includeDem,
+        demSource = if (demTileIds.isNotEmpty()) demSource else currentSelection.demSource,
+        includeRefugesInfo = refugesInfoFileName != null || currentSelection.includeRefugesInfo,
     )

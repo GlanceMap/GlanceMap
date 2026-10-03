@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.location.Location
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,26 +9,30 @@ import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerRequest
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.data.repository.GpxExportRepository
 import com.glancemap.glancemapwearos.data.repository.GpxRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GpxGuidanceSession
-import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GpxGuidanceTuning
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionSource
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
+import com.glancemap.glancemapwearos.presentation.features.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1
+import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ACCURACY_INTERPRETATION_RAW
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingElevationProvider
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingCalorieEstimate
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.estimateRecordingCalories
+import com.glancemap.glancemapwearos.presentation.features.recording.fastestContinuousSegmentSpeedMps
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolKind
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolModifyPreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSaveResult
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,6 +62,39 @@ private data class GpxGuidanceBuildResult(
     val warningMessage: String? = null,
     val guidanceMode: String = "exact_gpx",
 )
+
+internal fun buildTurnByTurnGuidanceSessionFromProfile(
+    trackId: String,
+    trackTitle: String,
+    profile: TrackProfile,
+    startReached: Boolean,
+    reversed: Boolean,
+): GpxGuidanceSession {
+    val guidanceProfile =
+        if (reversed) {
+            buildProfile(
+                sig = profile.sig,
+                pts = reverseTrackPointsForProfile(profile.points),
+                elevationFilterConfig = profile.elevationFilterConfig,
+            )
+        } else {
+            profile
+        }
+    val session =
+        buildGpxGuidanceSession(
+            trackId = trackId,
+            trackTitle = trackTitle,
+            trackPoints = guidanceProfile.points,
+            startReached = startReached,
+            reversed = reversed,
+            cumulativeDistancesMeters = guidanceProfile.cumDist.toList(),
+        )
+    val hasUsableElevation = guidanceProfile.points.count { it.elevation?.isFinite() == true } >= 2
+    return session.copy(
+        cumulativeAscentMeters = guidanceProfile.cumAscent.toList().takeIf { hasUsableElevation } ?: emptyList(),
+        cumulativeDescentMeters = guidanceProfile.cumDescent.toList().takeIf { hasUsableElevation } ?: emptyList(),
+    )
+}
 
 data class GpxRouteServices(
     val planner: RoutePlanner,
@@ -96,6 +134,9 @@ class GpxViewModel(
     private val _elevationProfileUiState = MutableStateFlow<GpxElevationProfileUiState?>(null)
     val elevationProfileUiState: StateFlow<GpxElevationProfileUiState?> =
         _elevationProfileUiState.asStateFlow()
+    private val _elevationProfileLocationMarker = MutableStateFlow<ElevationProfileLocationMarker?>(null)
+    val elevationProfileLocationMarker: StateFlow<ElevationProfileLocationMarker?> =
+        _elevationProfileLocationMarker.asStateFlow()
 
     private val _exportUiState = MutableStateFlow(GpxExportUiState())
     val exportUiState: StateFlow<GpxExportUiState> = _exportUiState.asStateFlow()
@@ -116,6 +157,7 @@ class GpxViewModel(
     private var bPos: TrackPosition? = null
     private var selectingB: Boolean = false
     private var selectBTimeoutJob: Job? = null
+    private var elevationProfileLocationJob: Job? = null
 
     // ✅ Delay popup so user sees the yellow dot first
     private var popupDelayJob: Job? = null
@@ -154,6 +196,20 @@ class GpxViewModel(
     private val etaCache = LinkedHashMap<String, CachedEta>(16, 0.75f, true)
     private val cacheLock = Any()
     private var reloadGeneration = 0L
+    private var hasObservedInitialActivePaths = false
+    private val initialGpxLoadCompleted = CompletableDeferred<Unit>()
+    private var openEtaRefreshJob: Job? = null
+    private val reloadCoordinator =
+        GpxReloadCoordinator(
+            scope = viewModelScope,
+            reload = ::reloadFromDisk,
+            onFailure = { error ->
+                DebugTelemetry.log(
+                    "GpxViewModel",
+                    "reload failed type=${error.javaClass.simpleName}",
+                )
+            },
+        )
 
     private val maxMetaCacheEntries = 128
     private val maxProfileCacheEntries = 24
@@ -239,8 +295,7 @@ class GpxViewModel(
             etaModelConfig = config
             clearEtaProjectionCache()
 
-            reloadFromDisk()
-            refreshOpenEtaUi()
+            requestGpxReloadAndRefreshOpenEtaUi()
         }.launchIn(viewModelScope)
 
         combine(
@@ -263,8 +318,7 @@ class GpxViewModel(
             elevationFilterConfig = config
             clearProfileMetadataCaches()
 
-            reloadFromDisk()
-            refreshOpenEtaUi()
+            requestGpxReloadAndRefreshOpenEtaUi()
         }.launchIn(viewModelScope)
 
         combine(
@@ -295,20 +349,23 @@ class GpxViewModel(
             activeActivityProfile = profileWeights.activityProfile
             clearMetadataCache()
 
-            reloadFromDisk()
+            requestGpxReload()
         }.launchIn(viewModelScope)
 
         viewModelScope.launch {
-            reloadFromDisk()
+            initialGpxLoadCompleted.await()
             restoreTurnByTurnGuidanceSession()
         }
 
         gpxRepository
             .getActiveGpxFiles()
             .onEach { activePaths ->
-                val files = gpxRepository.listGpxFiles()
-                loadAndProcessGpxFiles(files, activePaths)
+                val isInitial = !hasObservedInitialActivePaths
+                hasObservedInitialActivePaths = true
+                val reloadId = reloadCoordinator.request()
+                reloadCoordinator.await(reloadId)
                 syncLinkedGpxWaypointPoiFolders(activePaths)
+                if (isInitial) initialGpxLoadCompleted.complete(Unit)
             }.launchIn(viewModelScope)
 
         settingsRepository.linkGpxWaypointPoiFolders
@@ -324,12 +381,12 @@ class GpxViewModel(
             }.launchIn(viewModelScope)
 
         syncManager.gpxSyncRequest
-            .onEach { reloadFromDisk() }
+            .onEach { requestGpxReload() }
             .launchIn(viewModelScope)
     }
 
     fun loadGpxFiles() {
-        viewModelScope.launch { reloadFromDisk() }
+        requestGpxReload()
     }
 
     fun setLastVisitedGpxListPage(page: String) {
@@ -472,20 +529,59 @@ class GpxViewModel(
 
     suspend fun clearDerivedCaches() {
         clearAllGpxCaches()
-        reloadFromDisk()
+        reloadGpxFilesAndWait()
         refreshOpenEtaUi()
     }
 
-    private suspend fun reloadFromDisk() {
-        val files = gpxRepository.listGpxFiles()
-        val activePaths = gpxRepository.getActiveGpxFiles().first()
-        loadAndProcessGpxFiles(files, activePaths)
+    private fun requestGpxReload(): Long? {
+        if (!hasObservedInitialActivePaths) return null
+        return reloadCoordinator.request()
     }
 
+    private fun requestGpxReloadAndRefreshOpenEtaUi() {
+        val reloadId = requestGpxReload()
+        openEtaRefreshJob?.cancel()
+        openEtaRefreshJob =
+            viewModelScope.launch {
+                if (reloadId == null) {
+                    initialGpxLoadCompleted.await()
+                } else {
+                    reloadCoordinator.await(reloadId)
+                }
+                refreshOpenEtaUi()
+            }
+    }
+
+    private suspend fun reloadGpxFilesAndWait() {
+        val reloadId = requestGpxReload()
+        if (reloadId == null) {
+            initialGpxLoadCompleted.await()
+        } else {
+            reloadCoordinator.await(reloadId)
+        }
+    }
+
+    // Each guard avoids another filesystem read when a newer reload request has superseded this one.
+    @Suppress("ReturnCount")
+    private suspend fun reloadFromDisk(requestId: Long) {
+        if (!reloadCoordinator.isCurrent(requestId)) return
+        val files = gpxRepository.listGpxFiles()
+        if (!reloadCoordinator.isCurrent(requestId)) return
+        val activePaths = gpxRepository.getActiveGpxFiles().first()
+        if (!reloadCoordinator.isCurrent(requestId)) return
+        loadAndProcessGpxFiles(files, activePaths, requestId)
+    }
+
+    // Keep the validated per-file metadata/profile orchestration intact; the reload request guard
+    // only adds safe boundaries around this pipeline, so splitting it would make the data flow
+    // harder to verify without reducing work.
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private suspend fun loadAndProcessGpxFiles(
         files: List<File>,
         activePaths: Set<String>,
+        requestId: Long,
     ) {
+        if (!reloadCoordinator.isCurrent(requestId)) return
         val reloadId = beginReloadGeneration()
         val existingPaths = files.asSequence().map { it.absolutePath }.toSet()
         pruneCachesToExistingPaths(existingPaths)
@@ -494,125 +590,133 @@ class GpxViewModel(
 
         val fileStates =
             withContext(Dispatchers.IO) {
-                files.map { file ->
-                    val path = file.absolutePath
-                    val sig = sigOf(file)
+                processFilesUntilCurrent(
+                    files = files,
+                    isCurrent = { reloadCoordinator.isCurrent(requestId) },
+                    processFile = { file ->
+                        val path = file.absolutePath
+                        val sig = sigOf(file)
 
-                    val cachedMeta = cachedMeta(path, sig)
-                    val cachedProfile =
-                        cachedProfile(
-                            path = path,
-                            sig = sig,
-                            elevationConfig = filterConfig,
-                        )
-
-                    val parsed =
-                        if (cachedMeta != null && cachedProfile != null) {
-                            null
-                        } else {
-                            parseGpxData(file)
-                        }
-                    val profile =
-                        cachedProfile ?: buildProfile(
-                            sig = sig,
-                            pts = parsed?.points ?: emptyList(),
-                            elevationFilterConfig = filterConfig,
-                        ).also { created ->
-                            if (isCurrentReloadGeneration(reloadId)) {
-                                putProfileCache(path, created)
-                            }
-                        }
-                    val isActivity =
-                        cachedMeta?.isActivity
-                            ?: parsed?.isActivity
-                            ?: file.name.startsWith("Recording-", ignoreCase = true)
-                    val activityProfile =
-                        if (isActivity) {
-                            recoverActivityDemProfileIfNeeded(
+                        val cachedMeta = cachedMeta(path, sig)
+                        val cachedProfile =
+                            cachedProfile(
+                                path = path,
                                 sig = sig,
-                                profile = profile,
-                                parsed = parsed,
+                                elevationConfig = filterConfig,
                             )
-                        } else {
-                            profile
-                        }
-                    val activitySummary =
-                        when {
-                            !isActivity -> null
-                            cachedMeta?.activitySummary?.hasElevationData == true -> cachedMeta.activitySummary
-                            parsed != null ->
-                                buildSavedActivitySummary(
-                                    profile = activityProfile,
-                                    parsed = parsed,
-                                )
-                            cachedMeta?.activitySummary != null ->
-                                cachedMeta.activitySummary.withRecoveredElevationIfAvailable(activityProfile)
-                            else -> null
-                        }
-                    val recordingActivityProfile =
-                        if (isActivity) {
-                            parsed?.activitySummary?.activityProfile?.resolvedActivityProfile()
-                                ?: cachedMeta?.activityProfile
-                                ?: SettingsRepository.ACTIVITY_PROFILE_HIKE
-                        } else {
-                            null
-                        }
-                    val canonicalMeta =
-                        CachedMeta(
-                            sig = sig,
-                            title = cachedMeta?.title ?: parsed?.title,
-                            distance =
-                                activitySummary?.distanceMeters?.takeIf { it > 0.0 }
-                                    ?: profile.totalDistance.takeIf { it > 0.0 }
-                                    ?: parsed?.totalDistance
-                                    ?: 0.0,
-                            elevationGain = activityProfile.totalAscent,
-                            elevationLoss = activityProfile.totalDescent,
-                            isActivity = isActivity,
-                            activityProfile = recordingActivityProfile,
-                            activityDurationSec = cachedMeta?.activityDurationSec ?: parsed?.activityDurationSec,
-                            activitySummary = activitySummary,
-                        )
-                    val meta =
-                        if (cachedMeta == canonicalMeta) {
-                            cachedMeta
-                        } else {
-                            canonicalMeta.also { created ->
+
+                        val parsed =
+                            if (cachedMeta != null && cachedProfile != null) {
+                                null
+                            } else {
+                                parseGpxData(file)
+                            }
+                        val profile =
+                            cachedProfile ?: buildProfile(
+                                sig = sig,
+                                pts = parsed?.points ?: emptyList(),
+                                elevationFilterConfig = filterConfig,
+                            ).also { created ->
                                 if (isCurrentReloadGeneration(reloadId)) {
-                                    putMetaCache(path, created)
+                                    putProfileCache(path, created)
                                 }
                             }
-                        }
+                        val isActivity =
+                            cachedMeta?.isActivity
+                                ?: parsed?.isActivity
+                                ?: file.name.startsWith("Recording-", ignoreCase = true)
+                        val activityProfile =
+                            if (isActivity) {
+                                recoverActivityDemProfileIfNeeded(
+                                    sig = sig,
+                                    profile = profile,
+                                    parsed = parsed,
+                                )
+                            } else {
+                                profile
+                            }
+                        val activitySummary =
+                            when {
+                                !isActivity -> null
+                                cachedMeta?.activitySummary?.hasElevationData == true -> cachedMeta.activitySummary
+                                parsed != null ->
+                                    buildSavedActivitySummary(
+                                        profile = activityProfile,
+                                        parsed = parsed,
+                                    )
+                                cachedMeta?.activitySummary != null ->
+                                    cachedMeta.activitySummary.withRecoveredElevationIfAvailable(activityProfile)
+                                else -> null
+                            }
+                        val recordingActivityProfile =
+                            if (isActivity) {
+                                parsed?.activitySummary?.activityProfile?.resolvedActivityProfile()
+                                    ?: cachedMeta?.activityProfile
+                                    ?: SettingsRepository.ACTIVITY_PROFILE_HIKE
+                            } else {
+                                null
+                            }
+                        val canonicalMeta =
+                            CachedMeta(
+                                sig = sig,
+                                title = cachedMeta?.title ?: parsed?.title,
+                                distance =
+                                    activitySummary?.distanceMeters?.takeIf { it > 0.0 }
+                                        ?: profile.totalDistance.takeIf { it > 0.0 }
+                                        ?: parsed?.totalDistance
+                                        ?: 0.0,
+                                elevationGain = activityProfile.totalAscent,
+                                elevationLoss = activityProfile.totalDescent,
+                                isActivity = isActivity,
+                                activityProfile = recordingActivityProfile,
+                                activityDurationSec = cachedMeta?.activityDurationSec ?: parsed?.activityDurationSec,
+                                activitySummary = activitySummary,
+                            )
+                        val meta =
+                            if (cachedMeta == canonicalMeta) {
+                                cachedMeta
+                            } else {
+                                canonicalMeta.also { created ->
+                                    if (isCurrentReloadGeneration(reloadId)) {
+                                        putMetaCache(path, created)
+                                    }
+                                }
+                            }
 
-                    val etaSeconds =
-                        getOrBuildEtaProjection(
+                        val etaSeconds =
+                            getOrBuildEtaProjection(
+                                path = path,
+                                sig = sig,
+                                profile = profile,
+                                modelConfig = etaConfig,
+                                cacheGeneration = reloadId,
+                            )?.totalSeconds
+
+                        GpxFileState(
+                            name =
+                                normalizeUserFacingGpxText(file.nameWithoutExtension)
+                                    ?: file.nameWithoutExtension,
                             path = path,
-                            sig = sig,
-                            profile = profile,
-                            modelConfig = etaConfig,
-                            cacheGeneration = reloadId,
-                        )?.totalSeconds
-
-                    GpxFileState(
-                        name =
-                            normalizeUserFacingGpxText(file.nameWithoutExtension)
-                                ?: file.nameWithoutExtension,
-                        path = path,
-                        title = meta.title,
-                        distance = meta.distance,
-                        elevationGain = meta.elevationGain,
-                        elevationLoss = meta.elevationLoss,
-                        estimatedDurationSec = etaSeconds,
-                        isActive = path in activePaths,
-                        isActivity = meta.isActivity,
-                        activityProfile = meta.activityProfile,
-                        activityDurationSec = meta.activityDurationSec,
-                        activitySummary = meta.activitySummary,
-                    )
-                }
+                            title = meta.title,
+                            distance = meta.distance,
+                            elevationGain = meta.elevationGain,
+                            elevationLoss = meta.elevationLoss,
+                            estimatedDurationSec = etaSeconds,
+                            isActive = path in activePaths,
+                            isActivity = meta.isActivity,
+                            activityProfile = meta.activityProfile,
+                            activityDurationSec = meta.activityDurationSec,
+                            activitySummary = meta.activitySummary,
+                        )
+                    },
+                )
             }
 
-        if (!isCurrentReloadGeneration(reloadId)) {
+        if (
+            fileStates == null ||
+            !reloadCoordinator.isCurrent(requestId) ||
+            !isCurrentReloadGeneration(reloadId)
+        ) {
             DebugTelemetry.log(
                 "GpxViewModel",
                 "reload skipped stale generation=$reloadId files=${files.size}",
@@ -721,7 +825,7 @@ class GpxViewModel(
             currentElevationMeters = lastPoint?.elevation,
             currentSpeedMps = lastPoint?.speedMps ?: points.lastSegmentSpeedMps(),
             averageSpeedMps = averageSpeedMps,
-            fastestSpeedMps = points.fastestSpeedMps(),
+            fastestSpeedMps = points.fastestContinuousSegmentSpeedMps(),
             gpsAccuracyMeters = points.lastMappedNotNull { it.accuracyMeters },
             pointCount = points.size,
             gpsActiveDurationSeconds = durationSeconds ?: 0.0,
@@ -797,7 +901,12 @@ class GpxViewModel(
                     ?: duration
                         .takeIf { it > 0.0 }
                         ?.let { distance / it },
-            fastestSpeedMps = fastestSpeedMps ?: fallbackPoints.fastestSpeedMps(),
+            fastestSpeedMps =
+                resolveImportedFastestSpeedMps(
+                    recomputedSpeedMps = fallbackPoints.fastestContinuousSegmentSpeedMps(),
+                    persistedSpeedMps = fastestSpeedMps,
+                    persistedMethod = fastestSpeedMethod,
+                ),
             gpsAccuracyMeters = gpsAccuracyMeters ?: fallbackPoints.lastMappedNotNull { it.accuracyMeters },
             pointCount = pointCount ?: fallbackPoints.size,
             gpsActiveDurationSeconds = gpsActiveDurationSeconds ?: duration,
@@ -1145,22 +1254,14 @@ class GpxViewModel(
             _gpxFiles.value.firstOrNull { it.path == absolutePath }?.displayTitle
                 ?: normalizeUserFacingGpxText(file.nameWithoutExtension)
                 ?: file.nameWithoutExtension
-        val basePoints =
-            if (reversed) {
-                profile.points.asReversed()
-            } else {
-                profile.points
-            }
-
         return GpxGuidanceBuildResult(
             session =
-                buildGpxGuidanceSession(
+                buildTurnByTurnGuidanceSessionFromProfile(
                     trackId = absolutePath,
                     trackTitle = if (reversed) "$displayTitle reverse" else displayTitle,
-                    trackPoints = basePoints,
+                    profile = profile,
                     startReached = startReached,
                     reversed = reversed,
-                    tuning = GpxGuidanceTuning(),
                 ),
         )
     }
@@ -1190,7 +1291,7 @@ class GpxViewModel(
             if (_turnByTurnGuidanceSession.value?.trackId == path) stopTurnByTurnGuidance()
             if (aPos?.trackId == path) dismissInspection()
             if (_elevationProfileUiState.value?.trackPath == path) dismissElevationProfile()
-            reloadFromDisk()
+            reloadGpxFilesAndWait()
         }
     }
 
@@ -1227,7 +1328,7 @@ class GpxViewModel(
                 if (_turnByTurnGuidanceSession.value?.trackId == filePath) stopTurnByTurnGuidance()
                 if (aPos?.trackId == filePath) dismissInspection()
                 if (_elevationProfileUiState.value?.trackPath == filePath) dismissElevationProfile()
-                reloadFromDisk()
+                reloadGpxFilesAndWait()
             }
             onComplete(result.map { })
         }
@@ -1334,6 +1435,10 @@ class GpxViewModel(
     }
 
     fun showElevationProfile(path: String) {
+        if (_elevationProfileUiState.value?.trackPath != path) {
+            elevationProfileLocationJob?.cancel()
+            _elevationProfileLocationMarker.value = null
+        }
         viewModelScope.launch {
             val uiState =
                 withContext(Dispatchers.IO) {
@@ -1380,7 +1485,52 @@ class GpxViewModel(
     }
 
     fun dismissElevationProfile() {
+        elevationProfileLocationJob?.cancel()
+        _elevationProfileLocationMarker.value = null
         _elevationProfileUiState.value = null
+    }
+
+    fun updateElevationProfileLocation(
+        location: Location?,
+        hasFreshFix: Boolean,
+    ) {
+        val trackPath = _elevationProfileUiState.value?.trackPath
+        elevationProfileLocationJob?.cancel()
+        val usableLocation =
+            location?.takeIf { candidate ->
+                hasFreshFix && LocationFixPolicy.hasValidCoordinates(candidate)
+            }
+        if (trackPath == null || usableLocation == null) {
+            _elevationProfileLocationMarker.value = null
+            return
+        }
+
+        val currentLocation = LatLong(usableLocation.latitude, usableLocation.longitude)
+        val accuracyMeters = usableLocation.accuracy
+        elevationProfileLocationJob =
+            viewModelScope.launch {
+                val marker =
+                    withContext(Dispatchers.IO) {
+                        val file = File(trackPath)
+                        if (!file.exists()) {
+                            null
+                        } else {
+                            elevationProfileLocationMarker(
+                                profile =
+                                    getOrBuildProfile(
+                                        path = trackPath,
+                                        file = file,
+                                        sig = sigOf(file),
+                                    ),
+                                currentLocation = currentLocation,
+                                accuracyMeters = accuracyMeters,
+                            )
+                        }
+                    }
+                if (_elevationProfileUiState.value?.trackPath == trackPath) {
+                    _elevationProfileLocationMarker.value = marker
+                }
+            }
     }
 
     private suspend fun updateActiveGpxDetails(
@@ -1522,10 +1672,10 @@ class GpxViewModel(
     // Inspection API
     // -------------------------------------------------------------------------
 
-    fun onMapLongPress(press: LatLong) {
-        viewModelScope.launch(Dispatchers.Default) {
+    suspend fun inspectMapLongPress(press: LatLong): Boolean =
+        withContext(Dispatchers.Default) {
             val tracks = activeGpxDetails.value
-            if (tracks.isEmpty()) return@launch
+            if (tracks.isEmpty()) return@withContext false
 
             val allowedTrackId = if (selectingB) aPos?.trackId else null
 
@@ -1535,13 +1685,13 @@ class GpxViewModel(
                     tracks = tracks,
                     profileProvider = { id -> cachedProfile(id) },
                     allowedTrackId = allowedTrackId,
-                ) ?: return@launch
+                ) ?: return@withContext false
 
             val pos = found.pos
             val snapped = found.snapped
             val distToLineMeters = found.distanceToLineMeters
 
-            if (distToLineMeters > pressThresholdMeters) return@launch
+            if (distToLineMeters > pressThresholdMeters) return@withContext false
 
             // Cancel any pending delayed popup (A or AB)
             popupDelayJob?.cancel()
@@ -1562,7 +1712,7 @@ class GpxViewModel(
                         publishA(pos.trackId, pos)
                     }
             } else {
-                val a = aPos ?: return@launch
+                val a = aPos ?: return@withContext false
                 selectingB = false
                 _selectingPointB.value = false
                 selectBTimeoutJob?.cancel()
@@ -1576,8 +1726,8 @@ class GpxViewModel(
                         publishAB(a.trackId, a, pos)
                     }
             }
+            true
         }
-    }
 
     fun startSelectingB() {
         val a = aPos ?: return
@@ -1648,7 +1798,7 @@ class GpxViewModel(
             if (result.isSuccess) {
                 clearAllGpxCaches()
                 dismissInspection()
-                reloadFromDisk()
+                reloadGpxFilesAndWait()
                 onComplete(result)
             } else {
                 onComplete(result)
@@ -1721,7 +1871,7 @@ class GpxViewModel(
                 clearAllGpxCaches()
                 dismissInspection()
                 onComplete(result)
-                launch { reloadFromDisk() }
+                requestGpxReload()
             } else {
                 onComplete(result)
             }
@@ -1742,7 +1892,7 @@ class GpxViewModel(
                 clearAllGpxCaches()
                 if (aPos?.trackId == filePath) dismissInspection()
                 if (_elevationProfileUiState.value?.trackPath == filePath) dismissElevationProfile()
-                reloadFromDisk()
+                reloadGpxFilesAndWait()
             }
             onComplete(result)
         }
@@ -1813,9 +1963,17 @@ private fun List<TrackPoint>.lastSegmentSpeedMps(): Float? {
     return (distanceMeters / elapsedSeconds).toFloat().takeIf { it.isFinite() && it >= 0f }
 }
 
-private fun List<TrackPoint>.fastestSpeedMps(): Double? =
-    mapNotNull { point -> point.speedMps?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } }
-        .maxOrNull()
+internal fun resolveImportedFastestSpeedMps(
+    recomputedSpeedMps: Double?,
+    persistedSpeedMps: Double?,
+    persistedMethod: String?,
+): Double? =
+    recomputedSpeedMps
+        ?: persistedSpeedMps?.takeIf {
+            persistedMethod == FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1 &&
+                it.isFinite() &&
+                it > 0.0
+        }
 
 private fun List<TrackPoint>.averageHeartRateBpm(): Int? {
     val values = mapNotNull { point -> point.heartRateBpm?.takeIf { it > 0 } }
@@ -1857,7 +2015,11 @@ private fun List<TrackPoint>.toRecordedTracePoints(): List<RecordedTracePoint> =
             elevationMeters = point.elevation,
             timeMillis = timeMillis,
             accuracyMeters = point.accuracyMeters,
+            effectiveAccuracyMeters = point.effectiveAccuracyMeters ?: point.accuracyMeters,
+            accuracyInterpretation = point.accuracyInterpretation ?: RECORDING_ACCURACY_INTERPRETATION_RAW,
             speedMps = point.speedMps,
+            startsNewSegment = point.startsNewSegment,
+            segmentStartReason = point.segmentStartReason,
             heartRateBpm = point.heartRateBpm,
             stepCount = point.stepCount,
             cadenceSpm = point.cadenceSpm,

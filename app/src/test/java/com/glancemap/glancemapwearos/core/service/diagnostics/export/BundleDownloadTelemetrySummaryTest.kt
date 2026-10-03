@@ -15,7 +15,8 @@ class BundleDownloadTelemetrySummaryTest {
                     "07-14 19:20:03.000 [OamDownload] event=dem_plan source=mapzen_skadi_1s tiles=506 large=true",
                     "07-14 20:00:00.000 [OamDownload] event=download_complete label=DEM bytes=7000",
                     "07-14 20:00:01.000 [OamDownload] event=dem_complete source=mapzen_skadi_1s " +
-                        "tiles=506 downloaded=500 ready=504 unavailable=2 bytes=3500000 durationMs=2323412",
+                        "tiles=506 downloaded=500 reused=4 knownUnavailable=1 new404=1 " +
+                        "ready=504 unavailable=2 bytes=3500000 durationMs=2323412",
                     "07-14 20:00:02.000 [OamDownload] event=progress_throttle_summary owner=service " +
                         "requested=8000 emitted=1200 suppressed=6800",
                     "07-14 20:00:03.000 [OamDownload] event=foreground_keepalive_acquired " +
@@ -37,6 +38,9 @@ class BundleDownloadTelemetrySummaryTest {
         assertEquals(1, summary.largeDetailedDemPlanCount)
         assertEquals(setOf("mapzen_skadi_1s"), summary.demSources)
         assertEquals(500, summary.demDownloadedTileCount)
+        assertEquals(4, summary.demReusedTileCount)
+        assertEquals(1, summary.demKnownUnavailableTileCount)
+        assertEquals(1, summary.demNew404TileCount)
         assertEquals(504, summary.demReadyTileCount)
         assertEquals(2, summary.demUnavailableTileCount)
         assertEquals(3_500_000L, summary.demReadyBytes)

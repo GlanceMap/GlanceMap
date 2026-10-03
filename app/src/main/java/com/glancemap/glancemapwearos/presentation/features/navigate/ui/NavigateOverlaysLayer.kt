@@ -154,6 +154,9 @@ internal fun BoxScope.NavigateOverlaysLayer(
     turnByTurnGuidancePaused: Boolean,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
+    turnByTurnMapProgressEnabled: Boolean,
+    turnByTurnElevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
     turnByTurnFullScreenExpanded: Boolean,
     recordingDashboardFullScreenExpanded: Boolean,
@@ -201,7 +204,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
             0.dp
         }
     val suppressLiveMetricsForPoi = poiTapMessage != null
-    val suppressGuidanceForPanning = navMode == NavMode.PANNING
     val hasTurnByTurnDecisionPrompt = startDecisionPrompt != null || showGuideBackPrompt
     val combinedGuidanceRecordingActive =
         traceRecordingState.active &&
@@ -304,6 +306,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
 
     PanningLiveMetricsOverlay(
         navMode = navMode,
+        screenSize = screenSize,
         liveElevationEnabled = liveElevationEnabled && !suppressLiveMetricsForPoi,
         liveElevationLabel = liveElevationLabel,
         liveDistanceEnabled = liveDistanceEnabled && !suppressLiveMetricsForPoi,
@@ -495,6 +498,24 @@ internal fun BoxScope.NavigateOverlaysLayer(
         )
     }
 
+    GuidanceMapRemainingOverlay(
+        state = turnByTurnGuidanceState,
+        displayState =
+            GuidanceMapRemainingDisplayState(
+                enabled = turnByTurnMapProgressEnabled,
+                guidanceActive = turnByTurnGuidanceState.active,
+                paused = turnByTurnGuidancePaused,
+                offRoute = turnByTurnGuidanceState.offRoute,
+                guideBackToRouteActive = guideBackToRouteActive,
+                suppressed =
+                    poiTapMessage != null ||
+                        turnByTurnFullScreenExpanded ||
+                        recordingDashboardFullScreenExpanded ||
+                        combinedGuidanceRecordingFullScreenExpanded,
+            ),
+        isMetric = isMetric,
+    )
+
     NavModeButtonOverlay(
         mapView = mapView,
         navMode = navMode,
@@ -518,6 +539,8 @@ internal fun BoxScope.NavigateOverlaysLayer(
         paused = turnByTurnGuidancePaused,
         dashboardMetricSlots = turnByTurnDashboardMetricSlots,
         voiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
+        elevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+        routeProgressRingSegments = routeProgressRingSegments,
         screenSize = screenSize,
         isMetric = isMetric,
         compassHeadingDeg = compassHeadingDeg,
@@ -530,7 +553,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
         compactPopupSuppressed = shortcutTrayExpanded,
         suppressed =
             poiTapMessage != null ||
-                suppressGuidanceForPanning ||
                 recordingDashboardFullScreenExpanded ||
                 combinedGuidanceRecordingActive,
         onPause = onPauseTurnByTurnGuidance,
@@ -579,6 +601,8 @@ internal fun BoxScope.NavigateOverlaysLayer(
         traceRecordingViewModel = traceRecordingViewModel,
         metricSlots = recordingDashboardMetricSlots,
         guidanceMetricSlots = turnByTurnDashboardMetricSlots,
+        elevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+        routeProgressRingSegments = routeProgressRingSegments,
         userWeightKg = userWeightKg,
         backpackWeightKg = backpackWeightKg,
         bikeWeightKg = bikeWeightKg,
@@ -594,7 +618,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
         isScreenInteractive = isScreenInteractive,
         suppressed =
             poiTapMessage != null ||
-                suppressGuidanceForPanning ||
                 !combinedGuidanceRecordingActive,
         onPauseGuidance = onPauseTurnByTurnGuidance,
         onResumeGuidance = onResumeTurnByTurnGuidance,

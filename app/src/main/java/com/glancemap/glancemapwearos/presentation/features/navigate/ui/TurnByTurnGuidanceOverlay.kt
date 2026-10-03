@@ -81,9 +81,12 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.R
 import com.glancemap.glancemapwearos.presentation.features.settings.OptionPickerDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
+import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.sin
 
 @Composable
+@Suppress("CyclomaticComplexMethod", "FunctionName", "LongMethod", "LongParameterList")
 internal fun BoxScope.TurnByTurnGuidanceOverlay(
     state: TurnByTurnGuidanceState,
     paused: Boolean,
@@ -99,6 +102,8 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     actionPromptRequestToken: Long,
     compactPopupEnabled: Boolean,
     compactPopupSuppressed: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     suppressed: Boolean = false,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -240,6 +245,8 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                         state = state,
                         isMetric = isMetric,
                         showDetails = !state.offRoute || guideBackToRouteActive,
+                        elevationProgressRingEnabled = elevationProgressRingEnabled,
+                        routeProgressRingSegments = routeProgressRingSegments,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (expandedPageIndex == 0) {
@@ -627,18 +634,26 @@ private fun ExpandedGuidanceOverlay(
     }
 }
 
+internal data class GuidanceRemainingArcLayout(
+    val distanceAnchor: Float = 105f,
+    val durationAnchor: Float = 75f,
+    val labelModifier: CurvedModifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+)
+
 @Composable
+@Suppress("FunctionName")
 internal fun GuidanceRemainingArc(
     remainingMeters: Double?,
     estimatedRemainingSeconds: Long?,
     isMetric: Boolean,
+    layout: GuidanceRemainingArcLayout = GuidanceRemainingArcLayout(),
 ) {
     val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
     val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
     cappedFontScale(maxFontScale = 1.15f) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 105f,
+            anchor = layout.distanceAnchor,
             anchorType = AnchorType.Center,
             angularDirection = CurvedDirection.Angular.Reversed,
         ) {
@@ -650,13 +665,13 @@ internal fun GuidanceRemainingArc(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     ),
-                modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+                modifier = layout.labelModifier,
             )
         }
         duration?.let {
             CurvedLayout(
                 modifier = Modifier.fillMaxSize(),
-                anchor = 75f,
+                anchor = layout.durationAnchor,
                 anchorType = AnchorType.Center,
                 angularDirection = CurvedDirection.Angular.Reversed,
             ) {
@@ -668,24 +683,66 @@ internal fun GuidanceRemainingArc(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                    modifier = CurvedModifier.padding(ArcPaddingValues(outer = 8.dp)),
+                    modifier = layout.labelModifier,
                 )
             }
         }
     }
 }
 
+internal data class GuidanceMapRemainingDisplayState(
+    val enabled: Boolean,
+    val guidanceActive: Boolean,
+    val paused: Boolean,
+    val offRoute: Boolean,
+    val guideBackToRouteActive: Boolean,
+    val suppressed: Boolean,
+)
+
 @Composable
+@Suppress("FunctionName")
+internal fun BoxScope.GuidanceMapRemainingOverlay(
+    state: TurnByTurnGuidanceState,
+    displayState: GuidanceMapRemainingDisplayState,
+    isMetric: Boolean,
+) {
+    if (
+        !shouldShowGuidanceMapRemainingDetails(displayState) ||
+        state.distanceRemainingMeters == null
+    ) {
+        return
+    }
+    GuidanceRemainingArc(
+        remainingMeters = state.distanceRemainingMeters,
+        estimatedRemainingSeconds = state.estimatedRemainingSeconds,
+        isMetric = isMetric,
+    )
+}
+
+internal fun shouldShowGuidanceMapRemainingDetails(
+    displayState: GuidanceMapRemainingDisplayState,
+): Boolean =
+    displayState.enabled &&
+        (displayState.guidanceActive || displayState.paused) &&
+        (!displayState.offRoute || displayState.guideBackToRouteActive) &&
+        !displayState.suppressed
+
+@Composable
+@Suppress("FunctionName", "LongParameterList")
 internal fun GuidanceRouteProgressChrome(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
     showDetails: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
         RouteProgressRing(
             progress = state.routeProgressFraction,
             offRoute = state.offRoute,
+            elevationProgressRingEnabled = elevationProgressRingEnabled,
+            routeProgressRingSegments = routeProgressRingSegments,
             modifier = Modifier.fillMaxSize().zIndex(0f),
         )
         if (showDetails) {
@@ -985,13 +1042,15 @@ private fun GuideBackPromptButton(
 }
 
 @Composable
+@Suppress("FunctionName", "LongMethod")
 private fun RouteProgressRing(
     progress: Float?,
     offRoute: Boolean,
+    elevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     modifier: Modifier = Modifier,
 ) {
     val clampedProgress = progress?.coerceIn(0f, 1f) ?: return
-    val progressColor = if (offRoute) OFF_ROUTE_AMBER else MaterialTheme.colorScheme.primary
     Canvas(modifier = modifier) {
         val strokeWidth = 3.dp.toPx()
         val inset = strokeWidth / 2f + 3.dp.toPx()
@@ -1012,17 +1071,62 @@ private fun RouteProgressRing(
             size = arcSize,
             style = Stroke(width = strokeWidth),
         )
-        if (clampedProgress > 0f) {
-            drawArc(
-                color = progressColor,
-                startAngle = PROGRESS_ARC_START_DEGREES,
-                sweepAngle = PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
+        if (offRoute || !elevationProgressRingEnabled || routeProgressRingSegments.isEmpty()) {
+            if (clampedProgress > 0f) {
+                drawArc(
+                    color = if (offRoute) OFF_ROUTE_AMBER else Color(ROUTE_PROGRESS_RING_FALLBACK_GREEN),
+                    startAngle = PROGRESS_ARC_START_DEGREES,
+                    sweepAngle = PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+            }
+        } else {
+            if (clampedProgress > 0f) {
+                drawArc(
+                    color = Color(ROUTE_PROGRESS_RING_FALLBACK_GREEN),
+                    startAngle = PROGRESS_ARC_START_DEGREES,
+                    sweepAngle = PROGRESS_ARC_SWEEP_DEGREES * clampedProgress,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+            }
+            clipUpcomingRouteProgressRingSegments(
+                segments = routeProgressRingSegments,
+                progress = clampedProgress,
+            ).forEach { segment ->
+                drawArc(
+                    color = Color(segment.color),
+                    startAngle =
+                        PROGRESS_ARC_START_DEGREES +
+                            PROGRESS_ARC_SWEEP_DEGREES * segment.startFraction,
+                    sweepAngle =
+                        PROGRESS_ARC_SWEEP_DEGREES *
+                            (segment.endFraction - segment.startFraction),
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+            }
         }
+        val progressAngleRadians =
+            Math.toRadians(
+                (PROGRESS_ARC_START_DEGREES + PROGRESS_ARC_SWEEP_DEGREES * clampedProgress).toDouble(),
+            )
+        drawCircle(
+            color = Color(NAVIGATION_MARKER_BLUE_ARGB),
+            radius = 3.dp.toPx(),
+            center =
+                Offset(
+                    x = topLeft.x + arcSize.width / 2f + cos(progressAngleRadians).toFloat() * arcSize.width / 2f,
+                    y = topLeft.y + arcSize.height / 2f + sin(progressAngleRadians).toFloat() * arcSize.height / 2f,
+                ),
+        )
     }
 }
 

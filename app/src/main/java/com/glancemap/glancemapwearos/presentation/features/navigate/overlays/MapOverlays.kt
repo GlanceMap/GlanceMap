@@ -704,6 +704,7 @@ private fun GpxAndInspectionOverlayEffect(
     val startMarkersById = remember(mapView) { mutableMapOf<String, Marker>() }
     val endMarkersById = remember(mapView) { mutableMapOf<String, Marker>() }
     val lodById = remember(mapView) { mutableMapOf<String, TrackLodLevels>() }
+    val trackLodCacheById = remember(mapView) { mutableMapOf<String, TrackLodLevels>() }
     val displayedLodBucketById = remember(mapView) { mutableMapOf<String, Int>() }
     val previewPolyline =
         remember(mapView) {
@@ -856,12 +857,22 @@ private fun GpxAndInspectionOverlayEffect(
         gpxTrackDirectionArrowsEnabled,
     ) {
         val wantedIds = activeGpxDetails.map { it.id }.toSet()
+        val cachedLodsById = trackLodCacheById.toMap()
         val computedLodById =
             withContext(Dispatchers.Default) {
                 activeGpxDetails.associate { details ->
-                    details.id to buildTrackLodLevels(details.trackPoints)
+                    details.id to
+                        getOrBuildTrackLodLevels(
+                            trackId = details.id,
+                            points = details.trackPoints,
+                            cachedById = cachedLodsById,
+                        )
                 }
             }
+
+        // Layer mutations can wait for gesture idle, so publish reusable geometry first.
+        trackLodCacheById.clear()
+        trackLodCacheById.putAll(computedLodById)
 
         mapView.mutateLayers { layers ->
             var changed = false
@@ -1120,6 +1131,7 @@ private fun GpxAndInspectionOverlayEffect(
                 endMarkersById.clear()
                 directionArrowLayer.trackLods = emptyMap()
                 lodById.clear()
+                trackLodCacheById.clear()
                 displayedLodBucketById.clear()
                 previewPolyline.latLongs.clear()
                 markerAHolder[0] = null

@@ -25,18 +25,32 @@ internal class UiProgressUpdater(
     fun update(
         progress: Float,
         text: String,
+        isActiveTransferProgress: Boolean = false,
     ) {
         val p = progress.coerceIn(0f, 1f)
         val pInt = (p * 100).roundToInt().coerceIn(0, 100)
+        val mayClearReconnectPause =
+            clearsReconnectPauseOnActiveTransferProgress(uiState.value, isActiveTransferProgress)
 
-        if (!shouldUpdateUi(pInt, text)) return
+        if (!mayClearReconnectPause && !shouldUpdateUi(pInt, text)) return
 
         lastUiUpdateMs = SystemClock.elapsedRealtime()
         lastUiProgressInt = pInt
         lastUiText = text
 
+        uiState.update { state ->
+            val clearsReconnectPause =
+                clearsReconnectPauseOnActiveTransferProgress(state, isActiveTransferProgress)
+            state.copy(
+                isPaused = if (clearsReconnectPause) false else state.isPaused,
+                canResume = if (clearsReconnectPause) false else state.canResume,
+                pauseReason = if (clearsReconnectPause) "" else state.pauseReason,
+                progress = p,
+                progressText = text,
+                statusMessage = text,
+            )
+        }
         val paused = uiState.value.isPaused
-        uiState.update { it.copy(progress = p, progressText = text, statusMessage = text) }
         notificationHelper.updateProgress(pInt, text, paused)
     }
 
@@ -54,3 +68,8 @@ internal class UiProgressUpdater(
         return textChanged || timeOk || progressOk
     }
 }
+
+internal fun clearsReconnectPauseOnActiveTransferProgress(
+    state: FileTransferUiState,
+    isActiveTransferProgress: Boolean,
+): Boolean = isActiveTransferProgress && state.isPaused && !state.canResume

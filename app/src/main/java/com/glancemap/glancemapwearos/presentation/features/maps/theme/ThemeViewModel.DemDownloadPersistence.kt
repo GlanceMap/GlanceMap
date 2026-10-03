@@ -77,7 +77,8 @@ internal fun recordSavedDemTile(
     DemDownloadDiagnostics.record(
         event = "tile_saved",
         detail =
-            "tile=${context.tileName} code=${response.code} bytes=${context.target.length()} " +
+            "source=${context.sourceId} tile=${context.tileName} code=${response.code} " +
+                "bytes=${context.target.length()} " +
                 "resumedFromBytes=$resumedFromBytes",
     )
 }
@@ -108,7 +109,7 @@ private fun requireCompleteDemPart(
     DemDownloadDiagnostics.record(
         event = "tile_incomplete",
         detail =
-            "tile=${context.tileName} expectedBytes=$expectedTotalBytes " +
+            "source=${context.sourceId} tile=${context.tileName} expectedBytes=$expectedTotalBytes " +
                 "actualBytes=${context.part.length()}",
     )
     throw IOException("INCOMPLETE_DEM_TILE: expected=$expectedTotalBytes got=${context.part.length()}")
@@ -121,7 +122,7 @@ private fun recordDemValidationFailure(
     DemDownloadDiagnostics.record(
         event = "tile_validation_failed",
         detail =
-            "tile=${context.tileName} bytes=${context.target.length()} " +
+            "source=${context.sourceId} tile=${context.tileName} bytes=${context.target.length()} " +
                 "error=${error.javaClass.simpleName} message=${error.message.orEmpty().demDiagValue()}",
     )
 }

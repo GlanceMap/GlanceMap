@@ -45,6 +45,28 @@ class NavigateVisualWorkPolicyTest {
     }
 
     @Test
+    fun navigateTimeChipTapIsEnabledForRecordingOrTurnByTurnSessions() {
+        assertTrue(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = true,
+                guidanceSessionActive = false,
+            ),
+        )
+        assertTrue(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = false,
+                guidanceSessionActive = true,
+            ),
+        )
+        assertFalse(
+            shouldEnableNavigateTimeChipTap(
+                recordingActive = false,
+                guidanceSessionActive = false,
+            ),
+        )
+    }
+
+    @Test
     fun orientationVisualLoopRunsOnlyForInteractiveFollowModes() {
         assertTrue(
             shouldRunOrientationVisualLoop(
@@ -100,6 +122,34 @@ class NavigateVisualWorkPolicyTest {
                 navMode = NavMode.PANNING,
                 liveElevationEnabled = true,
                 liveDistanceEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun liveElevationSampleTelemetryRecordsOnlyAvailabilityTransitions() {
+        assertTrue(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = null,
+                sampledMeters = 180.0,
+            ),
+        )
+        assertFalse(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = true,
+                sampledMeters = 181.0,
+            ),
+        )
+        assertTrue(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = true,
+                sampledMeters = null,
+            ),
+        )
+        assertFalse(
+            liveElevationSampleAvailabilityChanged(
+                previousAvailable = false,
+                sampledMeters = null,
             ),
         )
     }

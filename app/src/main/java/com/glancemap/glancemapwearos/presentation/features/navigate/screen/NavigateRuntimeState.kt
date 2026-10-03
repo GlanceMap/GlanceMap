@@ -10,6 +10,7 @@ import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRunt
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeInputs
 import com.glancemap.glancemapwearos.core.service.location.policy.navigationRuntimeDemand
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 
 internal data class NavigateRuntimeState(
     val screenState: LocationScreenState,
@@ -55,7 +56,9 @@ internal fun rememberNavigateRuntimeState(
         } else {
             turnByTurnScreenOnGpsEnabled
         }
-    val recordingRuntimePaused = traceRecordingState.paused && !traceRecordingState.autoPaused
+    val recordingMonitoringForAutoResume =
+        traceRecordingState.isPausedForAutoResumeMonitoring(traceRecordingState.recordingAutoPauseEnabled)
+    val recordingRuntimePaused = traceRecordingState.paused && !recordingMonitoringForAutoResume
     val runtimeDemand =
         navigationRuntimeDemand(
             NavigationRuntimeInputs(
@@ -67,7 +70,7 @@ internal fun rememberNavigateRuntimeState(
                 generalGpsInAmbient = generalGpsInAmbient,
                 recordingActive = traceRecordingState.active,
                 recordingPaused = recordingRuntimePaused,
-                recordingAutoPaused = traceRecordingState.autoPaused,
+                recordingAutoPaused = recordingMonitoringForAutoResume,
                 recordingGpsEnabled = recordingGpsEnabled,
                 turnByTurnActive = turnByTurnActive,
                 turnByTurnPaused = turnByTurnPaused,

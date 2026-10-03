@@ -29,6 +29,8 @@ internal data class NavigateSettingsState(
     val turnByTurnTurnAlertsMode: String,
     val turnByTurnOffRouteAlertsEnabled: Boolean,
     val turnByTurnCompactPopupEnabled: Boolean,
+    val turnByTurnMapProgressEnabled: Boolean,
+    val turnByTurnElevationProgressRingEnabled: Boolean,
     val turnByTurnOffRouteThresholdMeters: Int,
     val turnByTurnOffRouteRepeatSeconds: Int,
     val turnByTurnGpsInAmbient: Boolean,
@@ -36,6 +38,7 @@ internal data class NavigateSettingsState(
     val turnByTurnRouteStartBehavior: String,
     val turnByTurnReverseSuggestionMode: String,
     val crownZoomEnabled: Boolean,
+    val mapPinchZoomEnabled: Boolean,
     val crownZoomInverted: Boolean,
     val navigateTimeFormat: String,
     val mapZoomButtonsMode: String,
@@ -52,6 +55,7 @@ internal data class NavigateSettingsState(
     val backButtonExitsNavigation: Boolean,
     val poiIconSizePx: Int,
     val poiMarkerStyle: String,
+    val poiMapLongPressActionsEnabled: Boolean,
     val poiPopupTimeoutSeconds: Int,
     val poiPopupManualCloseOnly: Boolean,
     val recordingDashboardMetricSlots: List<String>,
@@ -109,6 +113,13 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val turnByTurnCompactPopupEnabled by settingsViewModel.turnByTurnCompactPopupEnabled.collectAsState(
         initial = SettingsRepository.DEFAULT_TURN_BY_TURN_COMPACT_POPUP_ENABLED,
     )
+    val turnByTurnMapProgressEnabled by settingsViewModel.turnByTurnMapProgressEnabled.collectAsState(
+        initial = SettingsRepository.DEFAULT_TURN_BY_TURN_MAP_PROGRESS_ENABLED,
+    )
+    val turnByTurnElevationProgressRingEnabled by
+        settingsViewModel.turnByTurnElevationProgressRingEnabled.collectAsState(
+            initial = SettingsRepository.DEFAULT_TURN_BY_TURN_ELEVATION_PROGRESS_RING_ENABLED,
+        )
     val turnByTurnOffRouteThresholdMeters by settingsViewModel.turnByTurnOffRouteAlertThresholdMeters.collectAsState(
         initial = SettingsRepository.DEFAULT_TURN_BY_TURN_OFF_ROUTE_ALERT_THRESHOLD_METERS,
     )
@@ -128,6 +139,9 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         initial = SettingsRepository.TURN_BY_TURN_REVERSE_SUGGESTION_ASK,
     )
     val crownZoomEnabled by settingsViewModel.crownZoomEnabled.collectAsState(initial = true)
+    val mapPinchZoomEnabled by settingsViewModel.mapPinchZoomEnabled.collectAsState(
+        initial = SettingsRepository.DEFAULT_MAP_PINCH_ZOOM_ENABLED,
+    )
     val crownZoomInverted by settingsViewModel.crownZoomInverted.collectAsState(initial = true)
     val navigateTimeFormat by settingsViewModel.navigateTimeFormat.collectAsState()
     val mapZoomButtonsMode by settingsViewModel.mapZoomButtonsMode.collectAsState()
@@ -147,6 +161,9 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val backButtonExitsNavigation by settingsViewModel.backButtonExitsNavigation.collectAsState()
     val poiIconSizePx by settingsViewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by settingsViewModel.poiMarkerStyle.collectAsState()
+    val poiMapLongPressActionsEnabled by settingsViewModel.poiMapLongPressActionsEnabled.collectAsState(
+        initial = SettingsRepository.DEFAULT_POI_MAP_LONG_PRESS_ACTIONS_ENABLED,
+    )
     val poiPopupTimeoutSeconds by settingsViewModel.poiPopupTimeoutSeconds.collectAsState(
         initial = SettingsRepository.POI_POPUP_TIMEOUT_DEFAULT_SECONDS,
     )
@@ -196,6 +213,8 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         turnByTurnTurnAlertsMode = turnByTurnTurnAlertsMode,
         turnByTurnOffRouteAlertsEnabled = turnByTurnOffRouteAlertsEnabled,
         turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+        turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
+        turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
         turnByTurnOffRouteThresholdMeters = turnByTurnOffRouteThresholdMeters,
         turnByTurnOffRouteRepeatSeconds = turnByTurnOffRouteRepeatSeconds,
         turnByTurnGpsInAmbient = turnByTurnGpsInAmbient,
@@ -203,6 +222,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         turnByTurnRouteStartBehavior = turnByTurnRouteStartBehavior,
         turnByTurnReverseSuggestionMode = turnByTurnReverseSuggestionMode,
         crownZoomEnabled = crownZoomEnabled,
+        mapPinchZoomEnabled = mapPinchZoomEnabled,
         crownZoomInverted = crownZoomInverted,
         navigateTimeFormat = navigateTimeFormat,
         mapZoomButtonsMode = mapZoomButtonsMode,
@@ -219,6 +239,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         backButtonExitsNavigation = backButtonExitsNavigation,
         poiIconSizePx = poiIconSizePx,
         poiMarkerStyle = poiMarkerStyle,
+        poiMapLongPressActionsEnabled = poiMapLongPressActionsEnabled,
         poiPopupTimeoutSeconds = poiPopupTimeoutSeconds,
         poiPopupManualCloseOnly = poiPopupManualCloseOnly,
         recordingDashboardMetricSlots = recordingDashboardMetricSlots,

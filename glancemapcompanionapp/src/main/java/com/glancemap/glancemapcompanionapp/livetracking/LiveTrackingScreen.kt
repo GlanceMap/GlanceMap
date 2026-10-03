@@ -107,8 +107,10 @@ fun LiveTrackingScreen(
     var unsupportedSmsRecipientsOnStart by remember { mutableStateOf<List<String>?>(null) }
     var stuckAlarmMinutes by remember { mutableStateOf(savedSettings.stuckAlarmMinutes) }
     var comments by remember { mutableStateOf(savedDraft.comments) }
-    var trackingEndpoint by remember { mutableStateOf(ArkluzTrackingEndpoint.defaultEndpoint) }
+    var trackingEndpoint by remember(context) { mutableStateOf(LiveTrackingPreferences.loadEndpoint(context)) }
     var updateIntervalSeconds by remember { mutableStateOf(savedSettings.updateIntervalSeconds) }
+    val activeSessionTrackingUrl = LiveTrackingActiveSessionStore.load(context)?.settings?.trackingUrl
+    val effectiveTrackingUrl = ArkluzTrackingEndpoint.resolveUrl(activeSessionTrackingUrl, trackingEndpoint)
     var selectedGpxUri by remember {
         mutableStateOf(savedDraft.gpxUri.takeIf(String::isNotBlank)?.let(Uri::parse))
     }
@@ -258,7 +260,7 @@ fun LiveTrackingScreen(
         recordedTrackDownloadStatusMessage = "Downloading recorded GPX"
         val downloadSettings =
             LiveTrackingSettings(
-                trackingUrl = trackingEndpoint.url,
+                trackingUrl = effectiveTrackingUrl,
                 updateIntervalSeconds = updateIntervalSeconds,
                 group = group,
                 participantPassword = participantPassword,
@@ -319,7 +321,7 @@ fun LiveTrackingScreen(
         coroutineScope.launch {
             runCatching {
                 ArkluzLiveTrackingClient(context).checkSmsSupport(
-                    trackingUrl = trackingEndpoint.url,
+                    trackingUrl = effectiveTrackingUrl,
                     phoneNumber = recipient.value,
                 )
             }.onSuccess { support ->
@@ -469,10 +471,11 @@ fun LiveTrackingScreen(
                 selectedGpxName,
                 planSent,
                 trackingEndpoint,
+                effectiveTrackingUrl,
                 updateIntervalSeconds,
             ) {
                 LiveTrackingSettings(
-                    trackingUrl = trackingEndpoint.url,
+                    trackingUrl = effectiveTrackingUrl,
                     updateIntervalSeconds = updateIntervalSeconds,
                     group = group,
                     participantPassword = participantPassword,
@@ -495,9 +498,9 @@ fun LiveTrackingScreen(
                 )
             }
         val groupTrackUrl =
-            remember(group, followerPassword, userName, trackingEndpoint) {
+            remember(group, followerPassword, userName, effectiveTrackingUrl) {
                 arkluzTrackUrl(
-                    baseUrl = trackingEndpoint.url,
+                    baseUrl = effectiveTrackingUrl,
                     group = group,
                     followerPassword = followerPassword,
                     user = null,
@@ -505,9 +508,9 @@ fun LiveTrackingScreen(
                 )
             }
         val userTrackUrl =
-            remember(group, followerPassword, userName, trackingEndpoint) {
+            remember(group, followerPassword, userName, effectiveTrackingUrl) {
                 arkluzTrackUrl(
-                    baseUrl = trackingEndpoint.url,
+                    baseUrl = effectiveTrackingUrl,
                     group = group,
                     followerPassword = followerPassword,
                     user = userName,
@@ -565,7 +568,7 @@ fun LiveTrackingScreen(
             val client = ArkluzLiveTrackingClient(context)
             return smsAlertRecipients(recipients).filter { phoneNumber ->
                 client.checkSmsSupport(
-                    trackingUrl = trackingEndpoint.url,
+                    trackingUrl = effectiveTrackingUrl,
                     phoneNumber = phoneNumber,
                 ) == ArkluzSmsSupport.UNSUPPORTED
             }
@@ -834,7 +837,7 @@ fun LiveTrackingScreen(
             }
         }
 
-        LaunchedEffect(page, isConnected, alertRecipients, trackingEndpoint) {
+        LaunchedEffect(page, isConnected, alertRecipients, effectiveTrackingUrl) {
             if (page != LiveTrackingPage.SETUP || !isConnected) return@LaunchedEffect
             val phoneNumbers = smsAlertRecipients(alertRecipients)
             if (phoneNumbers.isEmpty()) {
@@ -845,7 +848,7 @@ fun LiveTrackingScreen(
                 val client = ArkluzLiveTrackingClient(context)
                 phoneNumbers.filter { phoneNumber ->
                     client.checkSmsSupport(
-                        trackingUrl = trackingEndpoint.url,
+                        trackingUrl = effectiveTrackingUrl,
                         phoneNumber = phoneNumber,
                     ) == ArkluzSmsSupport.UNSUPPORTED
                 }
@@ -916,6 +919,18 @@ fun LiveTrackingScreen(
                         },
                         onOpenGuide = onOpenQuickGuide,
                         isConnected = isConnected,
+                        isDevelopmentEndpoint = effectiveTrackingUrl == ArkluzTrackingEndpoint.DEVELOPMENT.url,
+                        onToggleEndpoint = {
+                            if (!sessionState.isTracking && activeSessionTrackingUrl == null) {
+                                trackingEndpoint =
+                                    if (trackingEndpoint == ArkluzTrackingEndpoint.DEVELOPMENT) {
+                                        ArkluzTrackingEndpoint.PRODUCTION
+                                    } else {
+                                        ArkluzTrackingEndpoint.DEVELOPMENT
+                                    }
+                                LiveTrackingPreferences.saveEndpoint(context, trackingEndpoint)
+                            }
+                        },
                         group = group,
                         hasSelectedGpx = selectedGpxUri != null,
                         selectedGpxName = selectedGpxName,

@@ -95,21 +95,17 @@ internal fun RouteToolSession.toRoutePlannerRequest(
                 customHikeParams = options.customHikeParams,
             )
 
-        RouteCreateMode.COORDINATES ->
+        RouteCreateMode.COORDINATES -> {
+            val endpoints = options.resolveCoordinateEndpoints(currentLocation)
             RoutePlannerRequest(
-                origin =
-                    requireNotNull(currentLocation) {
-                        "Wait for a fresh GPS fix before creating a route from current location."
-                    },
-                destination =
-                    requireNotNull(coordinatesDestination()) {
-                        "Enter destination coordinates first."
-                    },
+                origin = endpoints.origin,
+                destination = endpoints.destination,
                 preset = options.routeStyle.toPlannerPreset(),
                 useElevation = options.useElevation,
                 allowFerries = options.allowFerries,
                 customHikeParams = options.customHikeParams,
             )
+        }
 
         RouteCreateMode.LOOP_AROUND_HERE -> {
             throw IllegalArgumentException("Loop creation uses the round-trip planner.")
@@ -170,14 +166,6 @@ internal fun RouteStylePreset.toPlannerPreset(): RoutePlannerPreset =
         RouteStylePreset.BIKE_GRAVEL -> RoutePlannerPreset.BIKE_GRAVEL
         RouteStylePreset.BIKE_MTB -> RoutePlannerPreset.BIKE_MTB
     }
-
-private fun RouteToolSession.coordinatesDestination(): LatLong? =
-    destination
-        ?: options.coordinateLatitude?.let { latitude ->
-            options.coordinateLongitude?.let { longitude ->
-                LatLong(latitude, longitude)
-            }
-        }
 
 private fun RouteToolOptions.resolvedLoopDistanceMeters(etaModelConfig: GpxEtaModelConfig?): Int {
     val distanceKm =

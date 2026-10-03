@@ -20,6 +20,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentBounds
 import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
@@ -253,6 +254,7 @@ class MapViewModel(
     private var latestReliefOverlayEnabled: Boolean = false
     private var latestDemSource: DemSource = DemSource.DEFAULT
     private var latestIsMetric: Boolean = true
+    private var latestMapLabelTextScale: Float = mapLabelTextScale(SettingsRepository.MAP_LABEL_SIZE_DEFAULT)
     private var themeRenderingDeferred: Boolean = false
     private var pendingThemeSelection: ThemeSelection? = null
     private var pendingThemeSelectionShowsIndicator: Boolean = false
@@ -312,6 +314,13 @@ class MapViewModel(
                 } else {
                     rendererConfigApplyPending = true
                 }
+            }.launchIn(viewModelScope)
+
+        settingsRepository.mapLabelSize
+            .distinctUntilChanged()
+            .onEach { size ->
+                latestMapLabelTextScale = mapLabelTextScale(size)
+                mapRenderer?.setMapLabelTextScale(latestMapLabelTextScale)
             }.launchIn(viewModelScope)
 
         settingsRepository.demSource
@@ -695,11 +704,21 @@ class MapViewModel(
             hillshadeTerrainEventJob?.cancel()
             _hillshadeTerrainUnavailableEvent.value = null
             mapRenderer = renderer
+            renderer?.setMapLabelTextScale(latestMapLabelTextScale)
             hillshadeTerrainEventJob =
                 renderer
                     ?.hillshadeTerrainUnavailableEvent
-                    ?.onEach { event -> _hillshadeTerrainUnavailableEvent.value = event }
-                    ?.launchIn(viewModelScope)
+                    ?.onEach { event ->
+                        _hillshadeTerrainUnavailableEvent.value = event
+                        event?.let {
+                            TerrainDiagnostics.record(
+                                event = "terrain_unavailable_forwarded",
+                                detail =
+                                    "correlationId=${it.correlationId} map=${it.mapIdentity} " +
+                                        "zoom=${it.zoomLevel} missingTiles=${it.missingTileCount}",
+                            )
+                        }
+                    }?.launchIn(viewModelScope)
         }
         applyRendererConfigIfReady()
         schedulePendingRendererWorkIfReady()
@@ -1571,6 +1590,7 @@ class MapViewModel(
 
         rendererConfigApplyPending = false
         renderer.setElevationLabelUnitsMetric(latestIsMetric)
+        renderer.setMapLabelTextScale(latestMapLabelTextScale)
         return renderer.setThemeConfig(
             themeFile = latestThemeFile,
             mapsforgeThemeName = latestMapsforgeThemeName,

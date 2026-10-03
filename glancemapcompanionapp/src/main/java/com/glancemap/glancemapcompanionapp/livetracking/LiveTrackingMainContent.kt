@@ -7,6 +7,7 @@
 
 package com.glancemap.glancemapcompanionapp.livetracking
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -59,6 +60,8 @@ internal fun ColumnScope.MainTrackingContent(
     onOpenSetup: () -> Unit,
     onOpenGuide: () -> Unit,
     isConnected: Boolean,
+    isDevelopmentEndpoint: Boolean,
+    onToggleEndpoint: () -> Unit,
     group: String,
     hasSelectedGpx: Boolean,
     selectedGpxName: String,
@@ -98,6 +101,7 @@ internal fun ColumnScope.MainTrackingContent(
     val context = LocalContext.current
     val isArkluzNotificationPending = sessionState.status.contains("Arkluz notification pending")
     var showArkluzPendingWarning by remember { mutableStateOf(false) }
+    var headerTapCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(isArkluzNotificationPending) {
         if (isArkluzNotificationPending) {
@@ -105,6 +109,15 @@ internal fun ColumnScope.MainTrackingContent(
             showArkluzPendingWarning = true
         } else {
             showArkluzPendingWarning = false
+        }
+    }
+
+    fun onHeaderTap() {
+        if (sessionState.isTracking) return
+        headerTapCount += 1
+        if (headerTapCount == ARKLUZ_ENDPOINT_TOGGLE_TAPS) {
+            headerTapCount = 0
+            onToggleEndpoint()
         }
     }
 
@@ -129,7 +142,14 @@ internal fun ColumnScope.MainTrackingContent(
         }
         Spacer(modifier = Modifier.size(adaptive.helpIconButtonSize))
         Text(
-            text = stringResource(R.string.live_tracking_title),
+            text =
+                stringResource(
+                    if (isDevelopmentEndpoint) {
+                        R.string.live_tracking_title_development
+                    } else {
+                        R.string.live_tracking_title
+                    },
+                ),
             style =
                 if (isCompactScreen) {
                     MaterialTheme.typography.titleSmall
@@ -139,7 +159,7 @@ internal fun ColumnScope.MainTrackingContent(
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = ::onHeaderTap),
         )
         FilledTonalIconButton(
             onClick = onOpenGuide,
@@ -493,6 +513,7 @@ internal fun ColumnScope.MainTrackingContent(
 }
 
 private const val ARKLUZ_PENDING_WARNING_DELAY_MS = 1_000L
+private const val ARKLUZ_ENDPOINT_TOGGLE_TAPS = 10
 
 @Composable
 private fun TrackLinkRow(

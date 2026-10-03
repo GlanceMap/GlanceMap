@@ -9,6 +9,8 @@ data class RecordedTracePoint(
     val timeMillis: Long,
     val accuracyMeters: Float?,
     val speedMps: Float?,
+    val effectiveAccuracyMeters: Float? = accuracyMeters,
+    val accuracyInterpretation: String = RECORDING_ACCURACY_INTERPRETATION_RAW,
     val elevationSource: String? = null,
     val heartRateBpm: Int? = null,
     val stepCount: Int? = null,
@@ -20,6 +22,10 @@ data class RecordedTracePoint(
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
 )
+
+internal const val RECORDING_ACCURACY_INTERPRETATION_RAW = "raw"
+internal const val RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS =
+    "suspect_constant_watch_gps"
 
 internal object RecordingSegmentStartReason {
     const val MANUAL_PAUSE = "MANUAL_PAUSE"
@@ -33,6 +39,8 @@ data class TraceRecordingUiState(
     val active: Boolean = false,
     val paused: Boolean = false,
     val autoPaused: Boolean = false,
+    val recordingAutoPauseEnabled: Boolean =
+        SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE == SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
     val saving: Boolean = false,
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val trackSmoothingMode: String = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE,
@@ -70,6 +78,20 @@ data class TraceRecordingUiState(
 ) {
     val pointCount: Int get() = points.size
 }
+
+internal fun TraceRecordingUiState.isPausedForAutoResumeMonitoring(
+    autoPauseEnabled: Boolean,
+): Boolean = active && paused && (autoPaused || autoPauseEnabled)
+
+internal fun autoResumeSegmentStartReason(
+    autoPaused: Boolean,
+    hasRecordedPoints: Boolean,
+): String? =
+    when {
+        !hasRecordedPoints -> null
+        autoPaused -> RecordingSegmentStartReason.AUTO_PAUSE
+        else -> RecordingSegmentStartReason.MANUAL_PAUSE
+    }
 
 /**
  * State needed by high-level navigation and recording controls.

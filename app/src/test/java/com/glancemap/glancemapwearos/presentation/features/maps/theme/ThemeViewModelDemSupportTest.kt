@@ -67,6 +67,62 @@ class ThemeViewModelDemSupportTest {
     }
 
     @Test
+    fun demSummaryReportsUpstreamUnavailableTilesAsCompleteWithPartialCoverage() {
+        assertEquals(
+            "DEM download complete: 4 upstream tiles unavailable.",
+            buildDemSummaryMessage(
+                downloaded = 48,
+                skipped = 2,
+                missing = 4,
+                failed = 0,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun markedUnavailableTileDoesNotNeedAnotherNetworkRequest() {
+        val root = Files.createTempDirectory("dem-unavailable-marker").toFile()
+        File(root, "N46/N46E006.hgt.missing").apply {
+            parentFile?.mkdirs()
+            writeText("missing_upstream")
+        }
+
+        assertTrue(isDemTileMarkedUnavailable(root, "N46E006"))
+        assertFalse(isDemTileMarkedUnavailable(root, "N46E007"))
+
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun demSummaryReportsCompleteSelectedSourceDownloadAsSuccessful() {
+        assertEquals(
+            "DEM download successful.",
+            buildDemSummaryMessage(
+                downloaded = 48,
+                skipped = 2,
+                missing = 0,
+                failed = 0,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun demSummaryReportsFailedTilesAsIncomplete() {
+        assertEquals(
+            "DEM download incomplete: 1 failed.",
+            buildDemSummaryMessage(
+                downloaded = 1,
+                skipped = 0,
+                missing = 0,
+                failed = 1,
+                remaining = 0,
+            ),
+        )
+    }
+
+    @Test
     fun socketTimeoutIsNotMarkedOfflineWhenInternetIsAvailable() {
         val networkUnavailable =
             classifyDemFailureAsNetworkUnavailable(

@@ -41,6 +41,15 @@ internal fun RouteToolSession.preflightStart(
         }
     }
 
+    if (options.toolKind == RouteToolKind.CREATE && options.createMode == RouteCreateMode.COORDINATES) {
+        options.coordinateEndpointValidationMessage(currentLocation)?.let { message ->
+            return RouteToolPreflightResult(
+                canStart = false,
+                message = message,
+            )
+        }
+    }
+
     if (options.toolKind != RouteToolKind.CREATE ||
         !options.needsCurrentLocationForCreate()
     ) {
@@ -55,7 +64,7 @@ internal fun RouteToolSession.preflightStart(
                     RouteCreateMode.CURRENT_TO_HERE -> "To here needs GPS"
                     RouteCreateMode.MULTI_POINT_CHAIN -> "This action needs GPS"
                     RouteCreateMode.SEARCH -> "Search needs GPS"
-                    RouteCreateMode.COORDINATES -> "Coordinates needs GPS"
+                    RouteCreateMode.COORDINATES -> "Current endpoint needs GPS"
                     RouteCreateMode.LOOP_AROUND_HERE -> "Loop route needs GPS"
                     else -> "This action needs GPS"
                 },
@@ -138,13 +147,16 @@ private fun routingCoveragePreflight(
     }
 }
 
-private fun RouteToolOptions.needsCurrentLocationForCreate(): Boolean {
+internal fun RouteToolOptions.needsCurrentLocationForCreate(): Boolean {
     if (toolKind != RouteToolKind.CREATE) return false
     return when (createMode) {
         RouteCreateMode.CURRENT_TO_HERE,
         RouteCreateMode.SEARCH,
-        RouteCreateMode.COORDINATES,
         -> true
+
+        RouteCreateMode.COORDINATES ->
+            startEndpointSource == RouteEndpointSource.CURRENT_LOCATION ||
+                destinationEndpointSource == RouteEndpointSource.CURRENT_LOCATION
 
         RouteCreateMode.LOOP_AROUND_HERE -> loopStartMode == LoopStartMode.CURRENT_LOCATION
         else -> false

@@ -1,7 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.transfer.datalayer
 
 import android.util.Log
-import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
+import com.glancemap.glancemapwearos.core.service.ChannelTransferForegroundService
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.google.android.gms.wearable.ChannelClient
@@ -18,7 +18,7 @@ class ChannelClientStrategy {
     }
 
     suspend fun receiveFromChannel(
-        service: DataLayerListenerService,
+        service: ChannelTransferForegroundService,
         channel: ChannelClient.Channel,
         metadata: ReceiverMetadata,
         onProgress: (Long) -> Unit,

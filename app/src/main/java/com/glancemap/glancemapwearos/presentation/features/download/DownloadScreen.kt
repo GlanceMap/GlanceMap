@@ -249,7 +249,9 @@ fun DownloadScreen(
             WearScreenSize.MEDIUM -> 17.dp
             WearScreenSize.SMALL -> 16.dp
         }
-    val bottomActionBottomPadding = 0.dp
+    val refreshActionBottomPadding =
+        adaptive.dialogVerticalPadding + if (adaptive.isRound) 24.dp else 0.dp
+    val refreshActionWidthFraction = if (adaptive.isRound) 0.64f else 0.8f
     val bottomActionVisualOffsetY =
         when (screenSize) {
             WearScreenSize.LARGE -> (-6).dp
@@ -359,6 +361,7 @@ fun DownloadScreen(
     )
     RefreshBundleDialog(
         check = uiState.refreshPrompt,
+        selection = uiState.selection,
         onConfirm = viewModel::confirmRefreshBundle,
         onDismiss = viewModel::dismissRefreshPrompt,
     )
@@ -592,9 +595,8 @@ fun DownloadScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(pickerDownloadButtonSize + bottomActionBottomPadding)
-                            .padding(horizontal = listHorizontalPadding)
-                            .padding(bottom = bottomActionBottomPadding),
+                            .height(pickerDownloadButtonSize)
+                            .padding(horizontal = listHorizontalPadding),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (uiState.selectedAreaIds.isNotEmpty()) {
@@ -628,13 +630,13 @@ fun DownloadScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = listHorizontalPadding)
-                                .padding(bottom = bottomActionBottomPadding),
+                                .padding(bottom = refreshActionBottomPadding),
                         contentAlignment = Alignment.Center,
                     ) {
                         DownloadActionButton(
                             label =
                                 if (uiState.isCheckingUpdates) {
-                                    "Checking updates..."
+                                    "Checking…"
                                 } else {
                                     refreshSelectionButtonLabel(uiState.selectedRefreshBundleIds.size)
                                 },
@@ -644,6 +646,7 @@ fun DownloadScreen(
                                     !uiState.isCheckingUpdates,
                             height = actionButtonHeight,
                             iconSize = actionButtonIconSize,
+                            widthFraction = refreshActionWidthFraction,
                             onClick = viewModel::checkSelectedBundlesForRefresh,
                         )
                     }
@@ -651,8 +654,7 @@ fun DownloadScreen(
                     Box(
                         modifier =
                             Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = bottomActionBottomPadding),
+                                .fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
                         Row(
@@ -886,6 +888,7 @@ private fun DownloadActionButton(
     enabled: Boolean,
     height: Dp,
     iconSize: Dp,
+    widthFraction: Float = 1f,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = MaterialTheme.colorScheme.onPrimary,
     onClick: () -> Unit,
@@ -895,7 +898,7 @@ private fun DownloadActionButton(
         enabled = enabled,
         modifier =
             Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(widthFraction)
                 .height(height),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
         colors =
@@ -1004,9 +1007,9 @@ private fun InstalledBundleRow(
 
 private fun refreshSelectionButtonLabel(selectedCount: Int): String =
     if (selectedCount > 0) {
-        "Check for update ($selectedCount)"
+        "Check ($selectedCount)"
     } else {
-        "Check for update"
+        "Check"
     }
 
 private fun installedBundleSubtitle(bundle: OamInstalledBundle): String =

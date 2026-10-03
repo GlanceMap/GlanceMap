@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
+import com.glancemap.glancemapcompanionapp.transfer.util.CopyWithProgressOptions
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
@@ -159,9 +160,12 @@ class ChannelClientStrategy :
                             TransferUtils.copyWithProgress(
                                 input = inp,
                                 output = out,
-                                totalBytes = metadata.totalSize,
-                                bufferBytes = bufferBytes,
-                                awaitIfPaused = awaitIfPaused,
+                                options =
+                                    CopyWithProgressOptions(
+                                        totalBytes = metadata.totalSize,
+                                        bufferBytes = bufferBytes,
+                                        awaitIfPaused = awaitIfPaused,
+                                    ),
                                 onProgress = onProgress,
                             )
                     }

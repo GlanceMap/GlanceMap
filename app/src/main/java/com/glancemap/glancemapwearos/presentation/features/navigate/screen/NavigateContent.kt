@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import android.graphics.Rect
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -77,6 +78,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.model.common.Observer
+import kotlin.math.floor
+import kotlin.math.log2
 
 @Suppress(
     "CyclomaticComplexMethod",
@@ -103,6 +106,7 @@ internal fun NavigateContent(
     zoomMinScaleMeters: Int,
     zoomMaxScaleMeters: Int,
     crownZoomEnabled: Boolean,
+    mapPinchZoomEnabled: Boolean,
     crownZoomInverted: Boolean,
     mapZoomButtonsMode: String,
     northIndicatorMode: String,
@@ -159,12 +163,16 @@ internal fun NavigateContent(
     watchGpsDegradedWarning: Boolean,
     isOfflineMode: Boolean,
     isGpxInspectionEnabled: Boolean,
+    poiMapLongPressActionsEnabled: Boolean,
     selectingGpxPointB: Boolean,
     onCancelSelectingGpxPointB: () -> Unit,
     turnByTurnGuidanceState: TurnByTurnGuidanceState,
     turnByTurnGuidancePaused: Boolean,
     turnByTurnVoiceGuidanceEnabled: Boolean,
     turnByTurnCompactPopupEnabled: Boolean,
+    turnByTurnMapProgressEnabled: Boolean,
+    turnByTurnElevationProgressRingEnabled: Boolean,
+    routeProgressRingSegments: List<RouteProgressRingSegment>,
     onTurnByTurnVoiceGuidanceChange: (Boolean) -> Unit,
     guideBackToRouteActive: Boolean,
     showGuideBackPrompt: Boolean,
@@ -204,7 +212,7 @@ internal fun NavigateContent(
     onSaveReshapePreview: () -> Unit,
     onCrosshairSelectionPickHere: ((LatLong) -> Unit)? = null,
     onCancelCrosshairSelection: (() -> Unit)? = null,
-    onInspectTrack: (LatLong) -> Unit,
+    onMapLongPress: (LatLong) -> Unit,
     visiblePoiMarkers: List<PoiOverlayMarker>,
     poiFocusTarget: PoiNavigateTarget?,
     onPoiFocusTargetConsumed: () -> Unit,
@@ -266,10 +274,17 @@ internal fun NavigateContent(
     val northIndicatorIconSize = sizing.northIndicatorIconSize
     val latestNavMode = rememberUpdatedState(navMode)
     val latestOnUserPanStarted = rememberUpdatedState(onUserPanStarted)
-    val latestOnInspectTrack = rememberUpdatedState(onInspectTrack)
+    val latestOnMapLongPress = rememberUpdatedState(onMapLongPress)
     val latestInspectionEnabled =
         rememberUpdatedState(
             isGpxInspectionEnabled &&
+                routeToolSession == null &&
+                !crosshairSelectionActive &&
+                !reshapePreviewInspectMode,
+        )
+    val latestMapLongPressEnabled =
+        rememberUpdatedState(
+            (isGpxInspectionEnabled || (poiMapLongPressActionsEnabled && !selectingGpxPointB)) &&
                 routeToolSession == null &&
                 !crosshairSelectionActive &&
                 !reshapePreviewInspectMode,
@@ -283,6 +298,7 @@ internal fun NavigateContent(
     val latestVisiblePoiMarkers = rememberUpdatedState(visiblePoiMarkers)
     val latestLastKnownLocation = rememberUpdatedState(lastKnownLocation)
     val latestNavigationMarkerAnchorMode = rememberUpdatedState(navigationMarkerAnchorMode)
+    val latestMapPinchZoomEnabled = rememberUpdatedState(mapPinchZoomEnabled)
     var rotaryScrollAccumulator by remember(mapView, crownZoomEnabled, crownZoomInverted) {
         mutableStateOf(0f)
     }
@@ -371,6 +387,52 @@ internal fun NavigateContent(
         return applyMapZoomTarget(current + step, inputSource)
     }
 
+    val latestApplyMapZoomStep =
+        rememberUpdatedState<(Int, String) -> Boolean> { step, inputSource ->
+            applyMapZoomStep(step, inputSource)
+        }
+    val pinchZoomOutFallbackDetector =
+        remember(mapView) {
+            mapView?.let { currentMapView ->
+                ScaleGestureDetector(
+                    context,
+                    object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                        var scaleFactor = 1f
+                        var startZoom = 0
+
+                        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                            scaleFactor = 1f
+                            startZoom =
+                                currentMapView.model.mapViewPosition.zoomLevel
+                                    .toInt()
+                            return true
+                        }
+
+                        override fun onScale(detector: ScaleGestureDetector): Boolean {
+                            scaleFactor *= detector.scaleFactor
+                            return true
+                        }
+
+                        override fun onScaleEnd(detector: ScaleGestureDetector) {
+                            val zoomOutStep = pinchZoomOutStep(scaleFactor)
+                            if (zoomOutStep == 0) return
+                            currentMapView.post {
+                                val zoomUnchanged =
+                                    currentMapView.model.mapViewPosition.zoomLevel
+                                        .toInt() == startZoom
+                                if (latestMapPinchZoomEnabled.value && zoomUnchanged) {
+                                    latestApplyMapZoomStep.value(
+                                        zoomOutStep,
+                                        "pinch_zoom_out_fallback",
+                                    )
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
+
     fun enqueueCrownZoomStep(step: Int): Boolean {
         val currentMapView = mapView ?: return false
         val accepted =
@@ -440,6 +502,7 @@ internal fun NavigateContent(
                     override fun onDown(e: MotionEvent): Boolean = true
 
                     override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                        if (!latestInspectionEnabled.value) return false
                         val mv = latestMapView.value ?: return false
                         val anchor = mv.resolveNavigationMarkerScreenAnchor(latestNavigationMarkerAnchorMode.value)
                         val (x, y) =
@@ -477,7 +540,7 @@ internal fun NavigateContent(
                     }
 
                     override fun onLongPress(e: MotionEvent) {
-                        if (!latestInspectionEnabled.value) return
+                        if (!latestMapLongPressEnabled.value) return
                         val mv = latestMapView.value ?: return
                         val anchor = mv.resolveNavigationMarkerScreenAnchor(latestNavigationMarkerAnchorMode.value)
                         val (x, y) =
@@ -492,7 +555,7 @@ internal fun NavigateContent(
                             runCatching {
                                 mv.mapViewProjection.fromPixels(x, y)
                             }.getOrNull() ?: return
-                        latestOnInspectTrack.value(ll)
+                        latestOnMapLongPress.value(ll)
                     }
                 },
             )
@@ -766,10 +829,15 @@ internal fun NavigateContent(
                                             isMultiTouchGestureSuppressed = false
                                             MapLayerMutationCoordinator.setGestureActive(mapView, true)
                                         }
-                                        if (
+                                        val isMultiTouchGesture =
                                             event.pointerCount > 1 ||
-                                            event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
-                                            event.actionMasked == MotionEvent.ACTION_POINTER_UP
+                                                event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+                                                event.actionMasked == MotionEvent.ACTION_POINTER_UP
+                                        if (
+                                            shouldSuppressMultiTouchMapGesture(
+                                                pinchZoomEnabled = latestMapPinchZoomEnabled.value,
+                                                isMultiTouchGesture = isMultiTouchGesture,
+                                            )
                                         ) {
                                             if (!isMultiTouchGestureSuppressed) {
                                                 if (
@@ -806,8 +874,12 @@ internal fun NavigateContent(
                                             return@setOnTouchListener true
                                         }
 
+                                        if (latestMapPinchZoomEnabled.value) {
+                                            pinchZoomOutFallbackDetector?.onTouchEvent(event)
+                                        }
+
                                         doubleTapGestureDetector.onTouchEvent(event)
-                                        if (latestInspectionEnabled.value) {
+                                        if (latestMapLongPressEnabled.value) {
                                             gestureDetector.onTouchEvent(event)
                                         }
 
@@ -1041,6 +1113,9 @@ internal fun NavigateContent(
                     turnByTurnGuidancePaused = turnByTurnGuidancePaused,
                     turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
                     turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+                    turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
+                    turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+                    routeProgressRingSegments = routeProgressRingSegments,
                     onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
                     turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
                     recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
@@ -1075,6 +1150,8 @@ internal fun NavigateContent(
                 recordingPaused = traceRecordingState.paused,
                 recordingSaving = traceRecordingState.saving,
                 guidanceActive = turnByTurnGuidanceState.active,
+                guidanceSessionActive =
+                    turnByTurnGuidanceState.active || turnByTurnGuidancePaused,
                 onTap = onRecordingTimeTap,
                 onLongPress = onRecordingTimeLongPress,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -1142,6 +1219,26 @@ internal fun NavigateContent(
     }
 }
 
+internal fun shouldSuppressMultiTouchMapGesture(
+    pinchZoomEnabled: Boolean,
+    isMultiTouchGesture: Boolean,
+): Boolean = isMultiTouchGesture && !pinchZoomEnabled
+
+internal fun pinchZoomOutStep(scaleFactor: Float): Int =
+    if (scaleFactor.isFinite() && scaleFactor < 1f) {
+        floor(log2(scaleFactor.toDouble()))
+            .toInt()
+            .coerceAtMost(-1)
+    } else {
+        0
+    }
+
+internal fun shouldOpenMapLongPressActions(
+    actionsEnabled: Boolean,
+    gpxInspectionHandled: Boolean,
+    selectingGpxPointB: Boolean,
+): Boolean = actionsEnabled && !gpxInspectionHandled && !selectingGpxPointB
+
 // Stateless Compose renderer: its direct UI inputs preserve the visible clock, status, and gestures.
 @Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
@@ -1154,6 +1251,7 @@ private fun CenteredNavigateTimeChip(
     recordingPaused: Boolean,
     recordingSaving: Boolean,
     guidanceActive: Boolean,
+    guidanceSessionActive: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1195,10 +1293,15 @@ private fun CenteredNavigateTimeChip(
             .padding(top = 4.dp)
             .width(128.dp)
             .height(48.dp)
+    val tapEnabled =
+        shouldEnableNavigateTimeChipTap(
+            recordingActive = recordingActive,
+            guidanceSessionActive = guidanceSessionActive,
+        )
     Box(
         modifier =
-            if (recordingActive) {
-                baseModifier.pointerInput(onTap, onLongPress) {
+            if (tapEnabled) {
+                baseModifier.pointerInput(onTap, onLongPress, recordingActive) {
                     detectTapGestures(
                         onPress = {
                             DebugTelemetry.log(
@@ -1211,10 +1314,18 @@ private fun CenteredNavigateTimeChip(
                             DebugTelemetry.log("TraceRecording", "event=time_chip_touch_up action=tap")
                             onTap()
                         },
-                        onLongPress = {
-                            DebugTelemetry.log("TraceRecording", "event=time_chip_touch_up action=long_press")
-                            onLongPress()
-                        },
+                        onLongPress =
+                            if (recordingActive) {
+                                {
+                                    DebugTelemetry.log(
+                                        "TraceRecording",
+                                        "event=time_chip_touch_up action=long_press",
+                                    )
+                                    onLongPress()
+                                }
+                            } else {
+                                null
+                            },
                     )
                 }
             } else {
@@ -1272,6 +1383,11 @@ internal fun shouldRunNavigateTimeChipClock(
     isScreenInteractive: Boolean,
     showTime: Boolean,
 ): Boolean = visible && isScreenInteractive && showTime
+
+internal fun shouldEnableNavigateTimeChipTap(
+    recordingActive: Boolean,
+    guidanceSessionActive: Boolean,
+): Boolean = recordingActive || guidanceSessionActive
 
 internal fun shouldEnterPanningAfterDoubleTap(
     center: LatLong?,

@@ -42,6 +42,58 @@ class HttpTransferConnectionLoopTest {
     }
 
     @Test
+    fun `post-response partial failure uses recovery window after startup deadline expires`() {
+        val startupDeadlineMs = HTTP_STARTUP_BUDGET_MS
+        val firstResponseAtMs = 35_000L
+        val socketFailureAtMs = 55_700L
+        val partialOffsetBytes = 124L * 1024L * 1024L
+        val recoveryWindowMs = 600_000L
+
+        assertEquals(
+            5_000L,
+            httpStartupRemainingBudgetMs(
+                startupComplete = false,
+                startupDeadlineElapsedMs = startupDeadlineMs,
+                nowElapsedMs = firstResponseAtMs,
+            ),
+        )
+        assertEquals(
+            null,
+            httpStartupRemainingBudgetMs(
+                startupComplete = true,
+                startupDeadlineElapsedMs = startupDeadlineMs,
+                nowElapsedMs = socketFailureAtMs,
+            ),
+        )
+
+        val recoveryDeadlineMs =
+            nextHttpConnectDeadlineElapsedMs(
+                startupComplete = true,
+                startupDeadlineElapsedMs = startupDeadlineMs,
+                nowElapsedMs = socketFailureAtMs,
+                retryWindowMs = recoveryWindowMs,
+            )
+
+        assertTrue(recoveryDeadlineMs - socketFailureAtMs >= recoveryWindowMs)
+        assertEquals("bytes=$partialOffsetBytes-", httpRangeHeader(partialOffsetBytes))
+        assertEquals("http_recovery_failure", httpFailureEventName(startupComplete = true))
+    }
+
+    @Test
+    fun `pre-response failure still uses startup failure and deadline`() {
+        assertEquals("http_startup_failure", httpFailureEventName(startupComplete = false))
+        assertEquals(
+            HTTP_STARTUP_BUDGET_MS,
+            nextHttpConnectDeadlineElapsedMs(
+                startupComplete = false,
+                startupDeadlineElapsedMs = HTTP_STARTUP_BUDGET_MS,
+                nowElapsedMs = 0L,
+                retryWindowMs = 120_000L,
+            ),
+        )
+    }
+
+    @Test
     fun `fresh transfer counts all cumulative bytes for this attempt`() {
         assertEquals(
             1_000L,

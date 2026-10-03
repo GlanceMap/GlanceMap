@@ -5,6 +5,8 @@ import android.content.ContextWrapper
 import androidx.test.platform.app.InstrumentationRegistry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -133,6 +135,8 @@ class TraceRecordingDraftStoreTest {
                         timeMillis = 1_700_000_000_000L,
                         accuracyMeters = 4.5f,
                         speedMps = 2.25f,
+                        effectiveAccuracyMeters = 18f,
+                        accuracyInterpretation = RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS,
                         elevationSource = "HYBRID",
                         heartRateBpm = 142,
                         stepCount = 87,
@@ -156,6 +160,31 @@ class TraceRecordingDraftStoreTest {
             externalIntegratedDistanceMeters = 5_600.1,
             stepCount = 88,
         )
+
+    @Test
+    fun legacyDraftWithoutAccuracyProvenanceStillRecovers() =
+        runBlocking {
+            val legacyPoint =
+                JSONObject()
+                    .put("lat", 45.123456)
+                    .put("lon", 6.654321)
+                    .put("timeMillis", 1_700_000_000_000L)
+                    .put("accuracyMeters", 125f)
+                    .put("speedMps", 2.25f)
+            File(draftDir, "current.json").writeText(
+                JSONObject()
+                    .put("active", true)
+                    .put("points", JSONArray().put(legacyPoint))
+                    .toString(),
+            )
+
+            val recovered = requireNotNull(store.load())
+            val point = recovered.points.single()
+
+            assertEquals(125f, point.accuracyMeters)
+            assertEquals(125f, point.effectiveAccuracyMeters)
+            assertEquals(RECORDING_ACCURACY_INTERPRETATION_RAW, point.accuracyInterpretation)
+        }
 
     private class TestContext(
         base: Context,

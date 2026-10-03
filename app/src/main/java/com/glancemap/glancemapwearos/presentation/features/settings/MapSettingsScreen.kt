@@ -16,6 +16,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
@@ -156,7 +157,11 @@ fun MapSettingsScreen(
                     } else {
                         scope.launch {
                             val readiness = themeViewModel.demReadinessForMap(selectedMapPath)
-                            if (readiness.isReady) {
+                            TerrainDiagnostics.record(
+                                event = "live_elevation_gate",
+                                detail = buildLiveElevationGateDiagnosticsDetail(selectedMapPath, readiness),
+                            )
+                            if (canEnableLiveElevation(readiness)) {
                                 viewModel.setLiveElevation(true)
                                 val noticeKey = "${selectedMapPath.orEmpty()}:${readiness.selectedSource.id}"
                                 if (readiness.usesFallbackTerrain && fallbackTerrainNoticeKey != noticeKey) {
@@ -264,6 +269,27 @@ fun MapSettingsScreen(
         }
     }
 }
+
+internal fun buildLiveElevationGateDiagnosticsDetail(
+    mapPath: String?,
+    readiness: DemMapReadiness,
+): String =
+    buildString {
+        append("decision=").append(if (canEnableLiveElevation(readiness)) "allow" else "block")
+        append(" map=").append(TerrainDiagnostics.redactedMapIdentity(mapPath))
+        append(" selectedSource=").append(readiness.selectedSource.id)
+        append(" coverageKnown=").append(readiness.isCoverageKnown)
+        append(" requiredTiles=").append(readiness.requiredTiles)
+        append(" availableTiles=").append(readiness.availableTiles)
+        append(" selectedCoverageKnown=").append(readiness.selectedCoverageKnown)
+        append(" selectedAvailableTiles=").append(readiness.selectedAvailableTiles)
+        append(" fallbackAvailableTiles=").append(readiness.fallbackAvailableTiles)
+        append(" isReady=").append(readiness.isReady)
+        append(" hasAnyTerrain=").append(readiness.hasAnyTerrain)
+        append(" usesFallbackTerrain=").append(readiness.usesFallbackTerrain)
+    }
+
+internal fun canEnableLiveElevation(readiness: DemMapReadiness): Boolean = readiness.hasAnyTerrain
 
 @Composable
 private fun RecenterDelaySetting(

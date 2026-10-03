@@ -3,11 +3,82 @@ package com.glancemap.glancemapwearos.presentation.features.routetools
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxEtaModelConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
 
 class RouteToolPlannerMappingTest {
+    @Test
+    fun coordinatesRouteMapsCurrentStartToEnteredDestination() {
+        val current = LatLong(42.5, 1.6)
+        val request =
+            coordinateSession(
+                startSource = RouteEndpointSource.CURRENT_LOCATION,
+                destinationSource = RouteEndpointSource.COORDINATES,
+                destination = LatLong(42.6, 1.7),
+            ).toRoutePlannerRequest(currentLocation = current)
+
+        assertEquals(current, request.origin)
+        assertEquals(LatLong(42.6, 1.7), request.destination)
+    }
+
+    @Test
+    fun coordinatesRouteMapsEnteredStartToCurrentDestination() {
+        val current = LatLong(42.5, 1.6)
+        val request =
+            coordinateSession(
+                startSource = RouteEndpointSource.COORDINATES,
+                start = LatLong(42.4, 1.5),
+                destinationSource = RouteEndpointSource.CURRENT_LOCATION,
+            ).toRoutePlannerRequest(currentLocation = current)
+
+        assertEquals(LatLong(42.4, 1.5), request.origin)
+        assertEquals(current, request.destination)
+    }
+
+    @Test
+    fun coordinatesRouteMapsTwoEnteredEndpointsWithoutCurrentLocation() {
+        val request =
+            coordinateSession(
+                startSource = RouteEndpointSource.COORDINATES,
+                start = LatLong(42.4, 1.5),
+                destinationSource = RouteEndpointSource.COORDINATES,
+                destination = LatLong(42.6, 1.7),
+            ).toRoutePlannerRequest(currentLocation = null)
+
+        assertEquals(LatLong(42.4, 1.5), request.origin)
+        assertEquals(LatLong(42.6, 1.7), request.destination)
+    }
+
+    @Test
+    fun coordinatesRouteRejectsCurrentToCurrent() {
+        val error =
+            assertThrows(IllegalArgumentException::class.java) {
+                coordinateSession(
+                    startSource = RouteEndpointSource.CURRENT_LOCATION,
+                    destinationSource = RouteEndpointSource.CURRENT_LOCATION,
+                ).toRoutePlannerRequest(currentLocation = LatLong(42.5, 1.6))
+            }
+
+        assertTrue(error.message.orEmpty().contains("Choose coordinates"))
+    }
+
+    @Test
+    fun coordinatesRouteRejectsEffectivelySameEndpoints() {
+        val error =
+            assertThrows(IllegalArgumentException::class.java) {
+                coordinateSession(
+                    startSource = RouteEndpointSource.COORDINATES,
+                    start = LatLong(42.500000, 1.600000),
+                    destinationSource = RouteEndpointSource.COORDINATES,
+                    destination = LatLong(42.500005, 1.600005),
+                ).toRoutePlannerRequest(currentLocation = null)
+            }
+
+        assertTrue(error.message.orEmpty().contains("must be different"))
+    }
+
     @Test
     fun loopRequestKeepsDistanceTargetWhenDistanceModeIsSelected() {
         val request =
@@ -143,4 +214,24 @@ class RouteToolPlannerMappingTest {
             request.viaPoints,
         )
     }
+
+    private fun coordinateSession(
+        startSource: RouteEndpointSource,
+        start: LatLong? = null,
+        destinationSource: RouteEndpointSource,
+        destination: LatLong? = null,
+    ): RouteToolSession =
+        RouteToolSession(
+            options =
+                RouteToolOptions(
+                    toolKind = RouteToolKind.CREATE,
+                    createMode = RouteCreateMode.COORDINATES,
+                    startEndpointSource = startSource,
+                    startCoordinateLatitude = start?.latitude,
+                    startCoordinateLongitude = start?.longitude,
+                    destinationEndpointSource = destinationSource,
+                    destinationCoordinateLatitude = destination?.latitude,
+                    destinationCoordinateLongitude = destination?.longitude,
+                ),
+        )
 }

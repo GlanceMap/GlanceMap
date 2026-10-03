@@ -56,9 +56,12 @@ data class TrackPoint(
     val latLong: LatLong,
     val elevation: Double?,
     val startsNewSegment: Boolean = false,
+    val segmentStartReason: String? = null,
     val hasTimestamp: Boolean = false,
     val timeMillis: Long? = null,
     val accuracyMeters: Float? = null,
+    val effectiveAccuracyMeters: Float? = null,
+    val accuracyInterpretation: String? = null,
     val speedMps: Float? = null,
     val heartRateBpm: Int? = null,
     val stepCount: Int? = null,
@@ -121,6 +124,10 @@ data class ElevationSample(
     val cumulativeAscent: Double,
     val cumulativeDescent: Double,
     val cumulativeDurationSec: Double?,
+)
+
+data class ElevationProfileLocationMarker(
+    val distance: Double,
 )
 
 data class GpxElevationProfileUiState(

@@ -649,6 +649,7 @@ private fun summarizeHoldStillQuality(
 
 private fun compassQualityRank(quality: CompassMarkerQuality): Int =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> 0
         CompassMarkerQuality.UNRELIABLE -> 0
         CompassMarkerQuality.LOW -> 1
         CompassMarkerQuality.MEDIUM -> 2
@@ -665,6 +666,7 @@ private fun compassQualityFromRank(rank: Int): CompassMarkerQuality =
 
 private fun compassQualityShortLabel(quality: CompassMarkerQuality): String =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> "Neutral"
         CompassMarkerQuality.GOOD -> "Good"
         CompassMarkerQuality.MEDIUM -> "Caution"
         CompassMarkerQuality.LOW -> "Poor"
@@ -686,6 +688,7 @@ private fun QualityMeter(
             0
         } else {
             when (quality) {
+                CompassMarkerQuality.NEUTRAL -> 0
                 CompassMarkerQuality.UNRELIABLE -> 1
                 CompassMarkerQuality.LOW -> 2
                 CompassMarkerQuality.MEDIUM -> 3
@@ -741,6 +744,7 @@ private fun compassQualityLabel(
     if (!hasQualitySample) return "Compass quality: Checking..."
     val label =
         when (quality) {
+            CompassMarkerQuality.NEUTRAL -> "Compass quality: Neutral"
             CompassMarkerQuality.GOOD -> "Compass quality: Good"
             CompassMarkerQuality.MEDIUM -> "Compass quality: Caution"
             CompassMarkerQuality.LOW -> "Compass quality: Poor"

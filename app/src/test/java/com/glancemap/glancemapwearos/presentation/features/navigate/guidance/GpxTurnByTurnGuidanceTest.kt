@@ -1,8 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.guidance
 
+import com.glancemap.glancemapwearos.presentation.features.gpx.FileSig
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHint
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHintSource
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
+import com.glancemap.glancemapwearos.presentation.features.gpx.buildProfile
+import com.glancemap.glancemapwearos.presentation.features.gpx.buildTurnByTurnGuidanceSessionFromProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -10,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mapsforge.core.model.LatLong
 
+@Suppress("LargeClass") // Keeps the existing guidance regression cases together with profile coverage.
 class GpxTurnByTurnGuidanceTest {
     @Test
     fun deriveInstructionsDetectsLeftTurnFromGpxGeometry() {
@@ -144,10 +148,9 @@ class GpxTurnByTurnGuidanceTest {
     @Test
     fun waitingForLocationReportsFullRouteElevation() {
         val session =
-            buildGpxGuidanceSession(
+            sessionFromProfile(
                 trackId = "waiting-elevation.gpx",
-                trackTitle = "Waiting elevation route",
-                trackPoints =
+                points =
                     listOf(
                         point(45.0, 6.0, elevation = 100.0),
                         point(45.0, 6.001, elevation = 200.0),
@@ -157,17 +160,17 @@ class GpxTurnByTurnGuidanceTest {
 
         val state = computeTurnByTurnGuidanceState(session = session, currentLocation = null)
 
-        assertEquals(100.0, state.remainingAscentMeters ?: -1.0, 0.01)
-        assertEquals(50.0, state.remainingDescentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeAscentMeters.last(), state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeDescentMeters.last(), state.remainingDescentMeters ?: -1.0, 0.01)
     }
 
     @Test
     fun toStartReportsFullRouteElevation() {
         val session =
-            buildGpxGuidanceSession(
+            sessionFromProfile(
                 trackId = "to-start-elevation.gpx",
-                trackTitle = "To start elevation route",
-                trackPoints =
+                startReached = false,
+                points =
                     listOf(
                         point(45.0, 6.0, elevation = 100.0),
                         point(45.0, 6.001, elevation = 200.0),
@@ -182,8 +185,8 @@ class GpxTurnByTurnGuidanceTest {
             )
 
         assertEquals(GuidanceMode.TO_START, state.mode)
-        assertEquals(100.0, state.remainingAscentMeters ?: -1.0, 0.01)
-        assertEquals(50.0, state.remainingDescentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeAscentMeters.last(), state.remainingAscentMeters ?: -1.0, 0.01)
+        assertEquals(session.cumulativeDescentMeters.last(), state.remainingDescentMeters ?: -1.0, 0.01)
     }
 
     @Test
@@ -320,16 +323,14 @@ class GpxTurnByTurnGuidanceTest {
     @Test
     fun guidanceReportsRemainingAscentAndDescent() {
         val session =
-            buildGpxGuidanceSession(
+            sessionFromProfile(
                 trackId = "elevation.gpx",
-                trackTitle = "Elevation route",
-                trackPoints =
+                points =
                     listOf(
                         point(45.0, 6.0, elevation = 100.0),
                         point(45.0, 6.001, elevation = 200.0),
                         point(45.0, 6.002, elevation = 150.0),
                     ),
-                startReached = true,
             )
 
         val state =
@@ -338,8 +339,134 @@ class GpxTurnByTurnGuidanceTest {
                 currentLocation = LatLong(45.0, 6.0001),
             )
 
-        assertTrue((state.remainingAscentMeters ?: 0.0) > 80.0)
-        assertTrue((state.remainingDescentMeters ?: 0.0) > 40.0)
+        assertNotNull(state.remainingAscentMeters)
+        assertNotNull(state.remainingDescentMeters)
+        assertTrue(state.remainingAscentMeters!! <= session.cumulativeAscentMeters.last())
+        assertTrue(state.remainingDescentMeters!! <= session.cumulativeDescentMeters.last())
+    }
+
+    @Test
+    fun tbtUsesCanonicalFilteredElevationSnapshot() {
+        val points =
+            listOf(
+                point(0.0, 0.0, elevation = 100.0),
+                point(0.0, 0.001, elevation = 100.2),
+                point(0.0, 0.002, elevation = 99.9),
+                point(0.0, 0.003, elevation = 100.1),
+                point(0.0, 0.004, elevation = 130.0),
+            )
+        val profile = buildProfile(FileSig(0L, points.size.toLong()), points)
+        val session = sessionFromProfile(trackId = "noisy.gpx", points = points)
+
+        assertEquals(profile.cumAscent.toList(), session.cumulativeAscentMeters)
+        assertEquals(profile.cumDescent.toList(), session.cumulativeDescentMeters)
+        assertTrue(session.cumulativeAscentMeters.last() < 30.3)
+    }
+
+    @Test
+    fun remainingElevationInterpolatesCanonicalCumulativeSnapshot() {
+        val session =
+            sessionFromProfile(
+                trackId = "interpolated.gpx",
+                points =
+                    listOf(
+                        point(0.0, 0.0, elevation = 100.0),
+                        point(0.0, 0.02, elevation = 220.0),
+                        point(0.0, 0.04, elevation = 100.0),
+                    ),
+            )
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(0.0, 0.01),
+            )
+        val expectedAscentAtHalfFirstSegment =
+            (session.cumulativeAscentMeters[0] + session.cumulativeAscentMeters[1]) / 2.0
+        val expectedDescentAtHalfFirstSegment =
+            (session.cumulativeDescentMeters[0] + session.cumulativeDescentMeters[1]) / 2.0
+
+        assertEquals(
+            session.cumulativeAscentMeters.last() - expectedAscentAtHalfFirstSegment,
+            state.remainingAscentMeters ?: -1.0,
+            0.5,
+        )
+        assertEquals(
+            session.cumulativeDescentMeters.last() - expectedDescentAtHalfFirstSegment,
+            state.remainingDescentMeters ?: -1.0,
+            0.5,
+        )
+    }
+
+    @Test
+    fun reverseSessionRebuildsProfileInTravelDirection() {
+        val points =
+            listOf(
+                point(0.0, 0.0, elevation = 100.0, startsNewSegment = true),
+                point(0.0, 0.001, elevation = 110.0),
+                point(0.0, 0.002, elevation = 200.0, startsNewSegment = true),
+                point(0.0, 0.003, elevation = 210.0),
+            )
+        val session = sessionFromProfile(trackId = "reverse.gpx", points = points, reversed = true)
+
+        assertEquals(listOf(true, false, true, false), session.trackPoints.map { it.startsNewSegment })
+        assertEquals(0.0, session.cumulativeAscentMeters.last(), 0.5)
+        assertTrue(session.cumulativeDescentMeters.last() > 15.0)
+    }
+
+    @Test
+    fun segmentGapsDoNotCreateElevationChanges() {
+        val points =
+            listOf(
+                point(0.0, 0.0, elevation = 100.0, startsNewSegment = true),
+                point(0.0, 0.001, elevation = 200.0),
+                point(0.0, 0.002, elevation = 0.0, startsNewSegment = true),
+                point(0.0, 0.003, elevation = 100.0),
+            )
+        val session = sessionFromProfile(trackId = "gaps.gpx", points = points)
+
+        assertEquals(session.cumulativeDistancesMeters[1], session.cumulativeDistancesMeters[2], 0.0)
+        assertEquals(session.cumulativeAscentMeters[1], session.cumulativeAscentMeters[2], 0.0)
+        assertTrue(session.cumulativeAscentMeters.last() > session.cumulativeAscentMeters[2])
+        assertEquals(0.0, session.cumulativeDescentMeters.last(), 0.5)
+    }
+
+    @Test
+    fun missingElevationsKeepTbtElevationUnavailable() {
+        val session =
+            sessionFromProfile(
+                trackId = "missing-elevation.gpx",
+                points =
+                    listOf(
+                        point(0.0, 0.0),
+                        point(0.0, 0.001),
+                        point(0.0, 0.002),
+                    ),
+            )
+
+        val state =
+            computeTurnByTurnGuidanceState(
+                session = session,
+                currentLocation = LatLong(0.0, 0.001),
+            )
+
+        assertNull(state.remainingAscentMeters)
+        assertNull(state.remainingDescentMeters)
+    }
+
+    @Test
+    fun restoredSessionRetainsCanonicalElevationSnapshot() {
+        val points =
+            listOf(
+                point(0.0, 0.0, elevation = 100.0),
+                point(0.0, 0.001, elevation = 150.0),
+                point(0.0, 0.002, elevation = 120.0),
+            )
+        val profile = buildProfile(FileSig(0L, points.size.toLong()), points)
+        val restored = sessionFromProfile(trackId = "restored.gpx", points = points)
+
+        assertEquals(profile.cumAscent.toList(), restored.cumulativeAscentMeters)
+        assertEquals(profile.cumDescent.toList(), restored.cumulativeDescentMeters)
+        assertEquals(profile.cumDist.toList(), restored.cumulativeDistancesMeters)
     }
 
     @Test
@@ -617,10 +744,26 @@ class GpxTurnByTurnGuidanceTest {
         lon: Double,
         guidanceHint: GpxGuidanceHint? = null,
         elevation: Double? = null,
+        startsNewSegment: Boolean = false,
     ): TrackPoint =
         TrackPoint(
             latLong = LatLong(lat, lon),
             elevation = elevation,
+            startsNewSegment = startsNewSegment,
             guidanceHint = guidanceHint,
+        )
+
+    private fun sessionFromProfile(
+        trackId: String,
+        points: List<TrackPoint>,
+        startReached: Boolean = true,
+        reversed: Boolean = false,
+    ): GpxGuidanceSession =
+        buildTurnByTurnGuidanceSessionFromProfile(
+            trackId = trackId,
+            trackTitle = trackId,
+            profile = buildProfile(FileSig(0L, points.size.toLong()), points),
+            startReached = startReached,
+            reversed = reversed,
         )
 }

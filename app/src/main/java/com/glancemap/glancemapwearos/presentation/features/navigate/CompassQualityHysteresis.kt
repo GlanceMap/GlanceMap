@@ -10,6 +10,7 @@ internal fun compassQualityTransitionHoldMs(
     return when {
         toRank > fromRank ->
             when (to) {
+                CompassMarkerQuality.NEUTRAL -> 0L
                 CompassMarkerQuality.LOW -> COMPASS_QUALITY_TO_LOW_HOLD_MS
                 CompassMarkerQuality.MEDIUM -> COMPASS_QUALITY_TO_MEDIUM_HOLD_MS
                 CompassMarkerQuality.GOOD -> COMPASS_QUALITY_TO_GOOD_HOLD_MS
@@ -18,6 +19,7 @@ internal fun compassQualityTransitionHoldMs(
 
         else ->
             when (to) {
+                CompassMarkerQuality.NEUTRAL -> 0L
                 CompassMarkerQuality.MEDIUM -> COMPASS_QUALITY_DEGRADE_TO_MEDIUM_HOLD_MS
                 CompassMarkerQuality.LOW -> COMPASS_QUALITY_DEGRADE_TO_LOW_HOLD_MS
                 CompassMarkerQuality.UNRELIABLE -> COMPASS_QUALITY_DEGRADE_TO_UNRELIABLE_HOLD_MS
@@ -28,6 +30,7 @@ internal fun compassQualityTransitionHoldMs(
 
 private fun compassQualityHysteresisRank(quality: CompassMarkerQuality): Int =
     when (quality) {
+        CompassMarkerQuality.NEUTRAL -> 0
         CompassMarkerQuality.UNRELIABLE -> 0
         CompassMarkerQuality.LOW -> 1
         CompassMarkerQuality.MEDIUM -> 2

@@ -2,10 +2,6 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.offline.OfflineStartCenteringEffect
@@ -15,47 +11,57 @@ import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.view.MapView
 
 @Composable
+@Suppress("FunctionNaming", "LongParameterList")
 internal fun NavigateStartupCenteringEffects(
     offlineMode: Boolean,
     shouldTrackLocation: Boolean,
     locationMarkerLatLong: LatLong?,
     lastKnownLocation: LatLong?,
+    retainedLocationAnchor: RetainedLocationAnchor?,
+    startupMapFallbackState: StartupMapFallbackState,
+    onStartupMapFallbackEvent: (StartupMapFallbackEvent) -> Unit,
     navigateTarget: PoiNavigateTarget?,
     pendingPoiFocusTarget: PoiNavigateTarget?,
     mapView: MapView,
     mapViewModel: MapViewModel,
     selectedMapPath: String?,
     activeGpxDetails: List<GpxTrackDetails>,
-    navigationMarkerAnchorMode: String,
 ): LatLong? {
     val gpsStartupMapCenteringPending =
-        !offlineMode &&
-            shouldTrackLocation &&
-            locationMarkerLatLong == null &&
-            lastKnownLocation == null
-    var gpsStartupMapFallbackAllowed by remember { mutableStateOf(false) }
+        shouldWaitForOnlineStartupMapFallback(
+            OnlineStartupMapFallbackInput(
+                offlineMode = offlineMode,
+                shouldTrackLocation = shouldTrackLocation,
+                locationMarkerLatLong = locationMarkerLatLong,
+                retainedLocationAnchor = retainedLocationAnchor,
+                lastKnownLocation = lastKnownLocation,
+                startupMapFallbackState = startupMapFallbackState,
+                navigateTarget = navigateTarget,
+                pendingPoiFocusTarget = pendingPoiFocusTarget,
+            ),
+        )
     LaunchedEffect(gpsStartupMapCenteringPending) {
-        gpsStartupMapFallbackAllowed = false
-        if (gpsStartupMapCenteringPending) {
-            delay(NORMAL_STARTUP_MAP_FALLBACK_GRACE_MS)
-            gpsStartupMapFallbackAllowed = true
-        }
+        if (!gpsStartupMapCenteringPending) return@LaunchedEffect
+        delay(NORMAL_STARTUP_MAP_FALLBACK_GRACE_MS)
+        onStartupMapFallbackEvent(StartupMapFallbackEvent.TIMER_EXPIRED)
     }
     val gpsStartupMapCenteringActive =
-        gpsStartupMapCenteringPending &&
-            gpsStartupMapFallbackAllowed
-    val gpsStartupLastKnownCenter =
-        lastKnownLocation.takeIf {
-            !offlineMode &&
-                shouldTrackLocation &&
-                locationMarkerLatLong == null &&
-                navigateTarget == null &&
-                pendingPoiFocusTarget == null
-        }
+        shouldStartOnlineStartupMapCentering(
+            OnlineStartupMapFallbackInput(
+                offlineMode = offlineMode,
+                shouldTrackLocation = shouldTrackLocation,
+                locationMarkerLatLong = locationMarkerLatLong,
+                retainedLocationAnchor = retainedLocationAnchor,
+                lastKnownLocation = lastKnownLocation,
+                startupMapFallbackState = startupMapFallbackState,
+                navigateTarget = navigateTarget,
+                pendingPoiFocusTarget = pendingPoiFocusTarget,
+            ),
+        )
 
-    LaunchedEffect(gpsStartupLastKnownCenter, mapView, navigationMarkerAnchorMode) {
-        gpsStartupLastKnownCenter?.let {
-            mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
+    LaunchedEffect(navigateTarget, pendingPoiFocusTarget) {
+        if (navigateTarget != null || pendingPoiFocusTarget != null) {
+            onStartupMapFallbackEvent(StartupMapFallbackEvent.CANCELLED)
         }
     }
 
@@ -67,13 +73,55 @@ internal fun NavigateStartupCenteringEffects(
         activeGpxDetails = activeGpxDetails,
         skipInitialCentering = navigateTarget != null || pendingPoiFocusTarget != null,
         enabled = offlineMode || gpsStartupMapCenteringActive,
+        onInitialCenteringApplied =
+            if (!offlineMode && gpsStartupMapCenteringActive) {
+                { onStartupMapFallbackEvent(StartupMapFallbackEvent.CENTERING_APPLIED) }
+            } else {
+                null
+            },
+        deferWhenNoCenter = !offlineMode && gpsStartupMapCenteringActive,
     )
 
     return if (offlineMode) {
         null
     } else {
-        locationMarkerLatLong ?: lastKnownLocation
+        locationMarkerLatLong ?: retainedLocationAnchor?.latLong ?: lastKnownLocation
     }
 }
 
 private const val NORMAL_STARTUP_MAP_FALLBACK_GRACE_MS = 15_000L
+
+internal data class OnlineStartupMapFallbackInput(
+    val offlineMode: Boolean,
+    val shouldTrackLocation: Boolean,
+    val locationMarkerLatLong: LatLong?,
+    val retainedLocationAnchor: RetainedLocationAnchor?,
+    val lastKnownLocation: LatLong?,
+    val startupMapFallbackState: StartupMapFallbackState,
+    val navigateTarget: PoiNavigateTarget?,
+    val pendingPoiFocusTarget: PoiNavigateTarget?,
+)
+
+internal fun shouldWaitForOnlineStartupMapFallback(
+    input: OnlineStartupMapFallbackInput,
+): Boolean =
+    !input.offlineMode &&
+        input.shouldTrackLocation &&
+        input.startupMapFallbackState == StartupMapFallbackState.WAITING &&
+        input.locationMarkerLatLong == null &&
+        input.retainedLocationAnchor == null &&
+        input.lastKnownLocation == null &&
+        input.navigateTarget == null &&
+        input.pendingPoiFocusTarget == null
+
+internal fun shouldStartOnlineStartupMapCentering(
+    input: OnlineStartupMapFallbackInput,
+): Boolean =
+    !input.offlineMode &&
+        input.shouldTrackLocation &&
+        input.startupMapFallbackState == StartupMapFallbackState.READY &&
+        input.locationMarkerLatLong == null &&
+        input.retainedLocationAnchor == null &&
+        input.lastKnownLocation == null &&
+        input.navigateTarget == null &&
+        input.pendingPoiFocusTarget == null

@@ -31,6 +31,7 @@ fun PoiSettingsScreen(
     val poiIconSizePx by viewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by viewModel.poiMarkerStyle.collectAsState()
     val poiTapToCenterEnabled by viewModel.poiTapToCenterEnabled.collectAsState()
+    val poiMapLongPressActionsEnabled by viewModel.poiMapLongPressActionsEnabled.collectAsState()
     val linkGpxWaypointPoiFolders by viewModel.linkGpxWaypointPoiFolders.collectAsState()
     val poiPopupTimeoutSeconds by viewModel.poiPopupTimeoutSeconds.collectAsState()
     val poiPopupManualCloseOnly by viewModel.poiPopupManualCloseOnly.collectAsState()
@@ -91,6 +92,19 @@ fun PoiSettingsScreen(
                         "Disabled"
                     },
                 onSelect = viewModel::setPoiTapToCenterEnabled,
+            )
+        }
+        item {
+            SettingsToggleChip(
+                checked = poiMapLongPressActionsEnabled,
+                onCheckedChanged = viewModel::setPoiMapLongPressActionsEnabled,
+                label = "Long press action",
+                secondaryLabel =
+                    if (poiMapLongPressActionsEnabled) {
+                        "Create POI or route"
+                    } else {
+                        "Disabled"
+                    },
             )
         }
         item {
