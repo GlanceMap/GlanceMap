@@ -28,6 +28,14 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 
+internal data class CopyWithProgressOptions(
+    val totalBytes: Long,
+    val bufferBytes: Int,
+    val awaitIfPaused: (suspend () -> Unit)? = null,
+    val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
+    val currentTimeMs: () -> Long = System::currentTimeMillis,
+)
+
 object TransferUtils {
     const val TAG = "TransferUtils"
 
@@ -209,29 +217,32 @@ object TransferUtils {
      * Safe for very large files (streaming).
      *
      * ✅ Adds a stall watchdog that *closes the output stream* to break blocked writes.
+     * Keep the stream loop together so watchdog, cancellation, and progress baselines stay
+     * auditable in their current order.
      */
-    suspend fun copyWithProgress(
+    @Suppress("LongMethod")
+    internal suspend fun copyWithProgress(
         input: InputStream,
         output: OutputStream,
-        totalBytes: Long,
-        bufferBytes: Int,
-        awaitIfPaused: (suspend () -> Unit)? = null,
+        options: CopyWithProgressOptions,
         onProgress: (Float, String) -> Unit,
     ): Long =
         coroutineScope {
-            val buffer = ByteArray(bufferBytes)
+            val buffer = ByteArray(options.bufferBytes)
 
             val copied = AtomicLong(0L)
-            val lastProgressAt = AtomicLong(SystemClock.elapsedRealtime())
+            val lastProgressAt = AtomicLong(options.elapsedRealtimeMs())
 
+            var lastProgressBytes = 0L
+            var lastProgressAtMs = options.currentTimeMs()
             var lastBytesForSpeed = 0L
-            var lastTimeForSpeed = System.currentTimeMillis()
+            var lastTimeForSpeed = lastProgressAtMs
 
             val watchdog =
                 launch {
                     while (isActive) {
                         delay(1000L)
-                        val now = SystemClock.elapsedRealtime()
+                        val now = options.elapsedRealtimeMs()
                         val since = now - lastProgressAt.get()
                         if (since > STALL_TIMEOUT_MS) {
                             runCatching { output.close() } // breaks blocked write
@@ -243,7 +254,7 @@ object TransferUtils {
             try {
                 while (true) {
                     coroutineContext.ensureActive()
-                    awaitIfPaused?.invoke()
+                    options.awaitIfPaused?.invoke()
 
                     val read = input.read(buffer)
                     if (read < 0) break
@@ -251,34 +262,39 @@ object TransferUtils {
                     output.write(buffer, 0, read)
 
                     val newTotal = copied.addAndGet(read.toLong())
-                    lastProgressAt.set(SystemClock.elapsedRealtime())
+                    lastProgressAt.set(options.elapsedRealtimeMs())
 
-                    val nowMs = System.currentTimeMillis()
-                    val timeDelta = nowMs - lastTimeForSpeed
-                    val bytesDelta = newTotal - lastBytesForSpeed
+                    val nowMs = options.currentTimeMs()
+                    val progressTimeDelta = nowMs - lastProgressAtMs
+                    val progressBytesDelta = newTotal - lastProgressBytes
 
-                    if (timeDelta >= UPDATE_INTERVAL_MS ||
-                        bytesDelta >= UPDATE_INTERVAL_BYTES ||
-                        (totalBytes > 0 && newTotal >= totalBytes)
-                    ) {
+                    val progressThresholdReached =
+                        progressTimeDelta >= UPDATE_INTERVAL_MS ||
+                            progressBytesDelta >= UPDATE_INTERVAL_BYTES ||
+                            (options.totalBytes > 0 && newTotal >= options.totalBytes)
+                    if (progressThresholdReached) {
+                        val speedTimeDelta = nowMs - lastTimeForSpeed
+                        val speedBytesDelta = newTotal - lastBytesForSpeed
                         val speedMiBps =
-                            if (timeDelta >= SPEED_WARMUP_MIN_MS) {
-                                val speedBytesPerSec = (bytesDelta * 1000L) / timeDelta
+                            if (speedTimeDelta >= SPEED_WARMUP_MIN_MS) {
+                                val speedBytesPerSec = (speedBytesDelta * 1000L) / speedTimeDelta
                                 speedBytesPerSec.toDouble() / (1024.0 * 1024.0)
                             } else {
                                 null
                             }
 
                         val progress =
-                            if (totalBytes > 0) {
-                                (newTotal.toDouble() / totalBytes.toDouble()).coerceIn(0.0, 1.0)
+                            if (options.totalBytes > 0) {
+                                (newTotal.toDouble() / options.totalBytes.toDouble()).coerceIn(0.0, 1.0)
                             } else {
                                 0.0
                             }
 
-                        val text = buildProgressText(newTotal, totalBytes, speedMiBps)
+                        val text = buildProgressText(newTotal, options.totalBytes, speedMiBps)
 
                         onProgress(progress.toFloat(), text)
+                        lastProgressBytes = newTotal
+                        lastProgressAtMs = nowMs
                         if (speedMiBps != null) {
                             lastBytesForSpeed = newTotal
                             lastTimeForSpeed = nowMs

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
+import org.mapsforge.core.graphics.TileBitmap
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
@@ -249,7 +250,7 @@ internal class FirstVisibleTileRendererLayer(
                 if (tileCache.containsKey(job)) {
                     exactCacheEntryCount += 1
                 }
-                if (tileCache.getImmediately(job) != null) {
+                if (hasAcquiredTileBitmap { tileCache.getImmediately(job) }) {
                     baseTileCount += 1
                 } else if (hasCachedParentTile(tile)) {
                     parentTileCount += 1
@@ -268,7 +269,7 @@ internal class FirstVisibleTileRendererLayer(
         var parent = tile.parent
         repeat(MAX_PARENT_TILE_DEPTH) {
             parent?.let { candidate ->
-                if (tileCache.getImmediately(createJob(candidate)) != null) return true
+                if (hasAcquiredTileBitmap { tileCache.getImmediately(createJob(candidate)) }) return true
                 parent = candidate.parent
             }
         }
@@ -316,10 +317,7 @@ internal class FirstVisibleTileRendererLayer(
                 generateSequence(tile) { candidate -> candidate.parent }
                     .take(MAX_PARENT_TILE_DEPTH + 1)
                     .any { candidate ->
-                        tileCache.getImmediately(createJob(candidate))?.let { bitmap ->
-                            bitmap.decrementRefCount()
-                            true
-                        } ?: false
+                        hasAcquiredTileBitmap { tileCache.getImmediately(createJob(candidate)) }
                     }
             }
 
@@ -338,6 +336,12 @@ internal class FirstVisibleTileRendererLayer(
         const val MAX_PARENT_TILE_DEPTH = 4
         const val COVERAGE_SAMPLE_INTERVAL_MS = 250L
     }
+}
+
+internal fun hasAcquiredTileBitmap(acquire: () -> TileBitmap?): Boolean {
+    val bitmap = acquire() ?: return false
+    bitmap.decrementRefCount()
+    return true
 }
 
 private fun VisibleTileViewportReadinessRequest.toReadinessEvent(

@@ -29,6 +29,10 @@ import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloader
 import com.glancemap.glancemapcompanionapp.routing.RoutingDownloadRequest
 import com.glancemap.glancemapcompanionapp.transfer.WatchInstalledMapsRequester
 import com.glancemap.glancemapcompanionapp.transfer.service.FileTransferService
+import com.glancemap.glancemapcompanionapp.transfer.service.internal.FileItem
+import com.glancemap.glancemapcompanionapp.transfer.service.internal.SelectionRequestState
+import com.glancemap.glancemapcompanionapp.transfer.service.internal.prepareSelectionMetadata
+import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,8 +92,18 @@ class FileTransferViewModel : ViewModel() {
     var isBound = false
         private set
 
-    // ✅ buffer multi-selection if service not yet bound
-    private var pendingFileUris: List<Uri> = emptyList()
+    private data class SelectedFilesPublication(
+        val items: List<FileItem>,
+        val skippedCount: Int,
+    )
+
+    private data class PreparedFilesSelection(
+        val publication: SelectedFilesPublication,
+        val preparedUris: PreparedUriSelection,
+    )
+
+    private val selectionRequestState = SelectionRequestState<SelectedFilesPublication>()
+    private var selectionPreparationJob: Job? = null
 
     private val _uiState = MutableStateFlow(FileTransferUiState())
     val uiState: StateFlow<FileTransferUiState> = _uiState.asStateFlow()
@@ -205,12 +219,16 @@ class FileTransferViewModel : ViewModel() {
                         }
                     }
 
-                // ✅ Apply pending multi-selection
-                if (pendingFileUris.isNotEmpty()) {
-                    if (!_uiState.value.isTransferring) {
-                        boundService.loadFilesFromUris(boundService, pendingFileUris)
-                    }
-                    pendingFileUris = emptyList()
+                // Apply the latest prepared multi-selection after delayed binding.
+                val pendingSelection = selectionRequestState.takePending()
+                if (pendingSelection != null &&
+                    selectionRequestState.isCurrent(pendingSelection.requestId) &&
+                    !boundService.uiState.value.isTransferring
+                ) {
+                    boundService.loadSelectedFiles(
+                        items = pendingSelection.value.items,
+                        skippedCount = pendingSelection.value.skippedCount,
+                    )
                 }
                 if (pendingWatchMapsRefresh && _uiState.value.selectedWatch != null) {
                     refreshWatchInstalledMaps(
@@ -273,65 +291,137 @@ class FileTransferViewModel : ViewModel() {
         context: Context,
         uris: List<Uri>,
     ) {
-        if (_uiState.value.isTransferring) {
+        if (isTransferInProgress()) {
             Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
             return
         }
         if (uris.isEmpty()) return
 
+        val requestId = selectionRequestState.beginRequest()
+        selectionPreparationJob?.cancel()
         val appContext = context.applicationContext
-        viewModelScope.launch {
-            val prepared =
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        prepareSelectedUrisForTransfer(
-                            context = appContext,
-                            uris = uris,
-                            refugesImporter = getRefugesImporter(appContext),
-                            gpxWaypointPoiImporter = getGpxWaypointPoiImporter(appContext),
-                            maxGeoJsonImportBytes = MAX_GEOJSON_IMPORT_BYTES,
-                            maxGpxWaypointImportBytes = MAX_GPX_WAYPOINT_IMPORT_BYTES,
-                        )
-                    }
-                }.getOrElse { error ->
-                    val message =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to read selected file(s)."
-                    Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
-                    return@launch
-                }
+        selectionPreparationJob =
+            viewModelScope.launch {
+                prepareAndPublishSelectedFiles(appContext, uris, requestId)
+            }
+    }
 
-            if (prepared.convertedGeoJsonCount > 0) {
+    private suspend fun prepareAndPublishSelectedFiles(
+        appContext: Context,
+        uris: List<Uri>,
+        requestId: Long,
+    ) {
+        val result = runCatching { prepareFilesSelection(appContext, uris) }
+        val error = result.exceptionOrNull()
+        if (error != null) {
+            if (error is CancellationException) throw error
+            if (selectionRequestState.isCurrent(requestId)) {
+                val message =
+                    error.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: "Failed to read selected file(s)."
+                Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        val prepared = result.getOrThrow()
+
+        val isTransferring = isTransferInProgress()
+        if (!selectionRequestState.canPublish(requestId, isTransferring)) {
+            if (selectionRequestState.isCurrent(requestId) && isTransferring) {
                 Toast
                     .makeText(
                         appContext,
-                        "Converted ${prepared.convertedGeoJsonCount} file(s) to .poi",
+                        "Transfer in progress. Please wait or cancel.",
                         Toast.LENGTH_SHORT,
                     ).show()
             }
-            if (prepared.extractedPoiFromGpxCount > 0) {
-                val message =
-                    if (prepared.extractedPoiFromMixedGpxCount > 0) {
-                        "Extracted POI from ${prepared.extractedPoiFromGpxCount} GPX file(s), route kept when present."
-                    } else {
-                        "Converted ${prepared.extractedPoiFromGpxCount} waypoint GPX file(s) to .poi"
-                    }
-                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
-            }
+            return
+        }
 
-            deliverSelectedUris(appContext, prepared.uris)
+        showSelectionConversionToasts(appContext, prepared.preparedUris)
+        deliverSelectedFiles(requestId, prepared.publication)
+    }
+
+    private suspend fun prepareFilesSelection(
+        appContext: Context,
+        uris: List<Uri>,
+    ): PreparedFilesSelection =
+        withContext(Dispatchers.IO) {
+            val preparedUris =
+                prepareSelectedUrisForTransfer(
+                    context = appContext,
+                    uris = uris,
+                    refugesImporter = getRefugesImporter(appContext),
+                    gpxWaypointPoiImporter = getGpxWaypointPoiImporter(appContext),
+                    maxGeoJsonImportBytes = MAX_GEOJSON_IMPORT_BYTES,
+                    maxGpxWaypointImportBytes = MAX_GPX_WAYPOINT_IMPORT_BYTES,
+                )
+            val metadata =
+                prepareSelectionMetadata(preparedUris.uris) { uri ->
+                    TransferUtils.getTransferFileDetails(appContext, uri)
+                }
+            PreparedFilesSelection(
+                publication =
+                    SelectedFilesPublication(
+                        items =
+                            metadata.items.map { item ->
+                                FileItem(
+                                    uri = item.uri,
+                                    displayName = item.displayName,
+                                    size = item.size,
+                                )
+                            },
+                        skippedCount = metadata.skippedCount,
+                    ),
+                preparedUris = preparedUris,
+            )
+        }
+
+    private fun showSelectionConversionToasts(
+        context: Context,
+        preparedUris: PreparedUriSelection,
+    ) {
+        if (preparedUris.convertedGeoJsonCount > 0) {
+            Toast
+                .makeText(
+                    context,
+                    "Converted ${preparedUris.convertedGeoJsonCount} file(s) to .poi",
+                    Toast.LENGTH_SHORT,
+                ).show()
+        }
+        if (preparedUris.extractedPoiFromGpxCount > 0) {
+            val message =
+                if (preparedUris.extractedPoiFromMixedGpxCount > 0) {
+                    "Extracted POI from ${preparedUris.extractedPoiFromGpxCount} GPX file(s), " +
+                        "route kept when present."
+                } else {
+                    "Converted ${preparedUris.extractedPoiFromGpxCount} waypoint GPX file(s) to .poi"
+                }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun deliverSelectedUris(
-        context: Context,
-        uris: List<Uri>,
+    private fun isTransferInProgress(): Boolean =
+        serviceRef
+            ?.get()
+            ?.uiState
+            ?.value
+            ?.isTransferring ?: _uiState.value.isTransferring
+
+    private fun deliverSelectedFiles(
+        requestId: Long,
+        publication: SelectedFilesPublication,
     ) {
-        if (isBound && serviceRef?.get() != null) {
-            serviceRef?.get()?.loadFilesFromUris(context, uris)
+        if (!selectionRequestState.isCurrent(requestId)) return
+        val service = serviceRef?.get()
+        if (isBound && service != null) {
+            service.loadSelectedFiles(
+                items = publication.items,
+                skippedCount = publication.skippedCount,
+            )
         } else {
-            Log.d("FileTransferVM", "Service not ready. Buffering URIs.")
-            pendingFileUris = uris
+            selectionRequestState.storePending(requestId, publication)
+            Log.d("FileTransferVM", "Service not ready. Buffering prepared file selection.")
         }
     }
 
@@ -1052,7 +1142,9 @@ class FileTransferViewModel : ViewModel() {
     }
 
     fun clearSelectedFiles() {
-        pendingFileUris = emptyList()
+        selectionRequestState.invalidate()
+        selectionPreparationJob?.cancel()
+        selectionPreparationJob = null
         val service = serviceRef?.get()
         if (service != null) {
             service.clearSelectedFiles()

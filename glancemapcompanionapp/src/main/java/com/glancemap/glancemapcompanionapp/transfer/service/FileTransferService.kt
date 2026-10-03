@@ -1,6 +1,5 @@
 package com.glancemap.glancemapcompanionapp.transfer.service
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -23,6 +22,7 @@ import com.glancemap.glancemapcompanionapp.transfer.datalayer.PhoneDataLayerEven
 import com.glancemap.glancemapcompanionapp.transfer.datalayer.PhoneDataLayerRepository
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.AckRegistry
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.BatchTransferRunner
+import com.glancemap.glancemapcompanionapp.transfer.service.internal.FileItem
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.HistoryStore
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.UiProgressUpdater
 import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
@@ -194,11 +194,11 @@ class FileTransferService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    fun loadFilesFromUris(
-        context: Context,
-        uris: List<Uri>,
+    internal fun loadSelectedFiles(
+        items: List<FileItem>,
+        skippedCount: Int,
     ) {
-        batchRunner.loadFilesFromUris(context, uris)
+        batchRunner.loadSelectedFiles(items, skippedCount)
     }
 
     fun clearSelectedFiles() {
