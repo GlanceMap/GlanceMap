@@ -200,6 +200,44 @@ class NavigateVisualWorkPolicyTest {
     }
 
     @Test
+    fun compactGuidancePopupIsSuppressedWhilePanningWithLiveElevation() {
+        assertTrue(
+            shouldSuppressCompactGuidancePopup(
+                navMode = NavMode.PANNING,
+                liveElevationEnabled = true,
+                shortcutTrayExpanded = false,
+            ),
+        )
+        assertFalse(
+            shouldSuppressCompactGuidancePopup(
+                navMode = NavMode.PANNING,
+                liveElevationEnabled = false,
+                shortcutTrayExpanded = false,
+            ),
+        )
+        for (navMode in listOf(NavMode.COMPASS_FOLLOW, NavMode.NORTH_UP_FOLLOW)) {
+            assertFalse(
+                shouldSuppressCompactGuidancePopup(
+                    navMode = navMode,
+                    liveElevationEnabled = true,
+                    shortcutTrayExpanded = false,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun expandedShortcutTrayStillSuppressesCompactGuidancePopup() {
+        assertTrue(
+            shouldSuppressCompactGuidancePopup(
+                navMode = NavMode.COMPASS_FOLLOW,
+                liveElevationEnabled = false,
+                shortcutTrayExpanded = true,
+            ),
+        )
+    }
+
+    @Test
     fun panningDistanceGuideProjectionRunsOnlyWhenInteractive() {
         assertTrue(
             shouldRunPanningDistanceGuideProjection(
