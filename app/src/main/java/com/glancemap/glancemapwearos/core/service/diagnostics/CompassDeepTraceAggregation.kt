@@ -180,27 +180,92 @@ internal class CompassDeepTraceEventRing(
 
     private val records = ArrayDeque<CompassDeepTraceEventRecord>()
     private var nextEventId = 0L
+    private var incidentCapture: CompassDeepTraceIncidentCapture? = null
+    private var preservedIncident: CompassDeepTraceIncidentSnapshot? = null
+    private var incidentWasAutomatic = false
 
     var droppedEvents: Int = 0
         private set
 
     fun record(event: CompassDeepTraceEvent): CompassDeepTraceEventRecord? {
         if (shouldCoalesce(event, records.lastOrNull()?.event)) return null
+        prepareIncident(event)
         val record = CompassDeepTraceEventRecord(eventId = ++nextEventId, event = event)
         records.addLast(record)
         while (records.size > capacity) {
             records.removeFirst()
             droppedEvents += 1
         }
+        if (incidentCapture?.record(record) == false) {
+            freezeIncident(event.atElapsedMs)
+        }
         return record
     }
 
     fun snapshot(): List<CompassDeepTraceEventRecord> = records.toList()
 
+    fun incidentSnapshot(nowElapsedMs: Long): CompassDeepTraceIncidentSnapshot? {
+        val capture = incidentCapture
+        if (capture != null && nowElapsedMs >= capture.postTailEndsAtElapsedMs()) {
+            freezeIncident(nowElapsedMs)
+        }
+        return preservedIncident
+    }
+
+    fun freezeIncident(nowElapsedMs: Long) {
+        val capture = incidentCapture ?: return
+        preservedIncident = capture.snapshot(postTailComplete = nowElapsedMs >= capture.postTailEndsAtElapsedMs())
+        incidentCapture = null
+    }
+
     fun clear() {
         records.clear()
         nextEventId = 0L
         droppedEvents = 0
+        incidentCapture = null
+        preservedIncident = null
+        incidentWasAutomatic = false
+    }
+
+    private fun prepareIncident(event: CompassDeepTraceEvent) {
+        val hasIncident = incidentCapture != null || preservedIncident != null
+        when {
+            event is CompassDeepTraceEvent.Marker && event.type == HEADING_LOOKS_WRONG_MARKER -> {
+                if (!hasIncident || incidentWasAutomatic) {
+                    beginIncident(event.atElapsedMs, automatic = false)
+                }
+            }
+            event is CompassDeepTraceEvent.IntegrityDecision &&
+                (event.quarantineActive || event.unresolvedIndependentDisagreement) &&
+                !hasIncident -> {
+                beginIncident(event.atElapsedMs, automatic = true)
+                record(
+                    CompassDeepTraceEvent.Marker(
+                        atElapsedMs = event.atElapsedMs,
+                        type = AUTOMATIC_INTEGRITY_INCIDENT_MARKER,
+                        detail =
+                            "provider=${event.provider} sampleId=${event.sourceSampleId} " +
+                                "quarantine=${event.quarantineActive} " +
+                                "unresolvedIndependentDisagreement=${event.unresolvedIndependentDisagreement}",
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun beginIncident(
+        atElapsedMs: Long,
+        automatic: Boolean,
+    ) {
+        preservedIncident = null
+        incidentWasAutomatic = automatic
+        incidentCapture =
+            CompassDeepTraceIncidentCapture(
+                preMarkerEvents = snapshot(),
+                preMarkerLiveRingDroppedEvents = droppedEvents,
+                postTailEndsAtElapsedMs = atElapsedMs + COMPASS_DEEP_TRACE_INCIDENT_POST_TAIL_MS,
+                postEventCapacity = COMPASS_DEEP_TRACE_INCIDENT_POST_EVENT_CAPACITY,
+            )
     }
 
     private fun shouldCoalesce(
@@ -223,6 +288,11 @@ internal class CompassDeepTraceEventRing(
             else -> false
         }
 }
+
+private const val HEADING_LOOKS_WRONG_MARKER = "heading_looks_wrong"
+private const val AUTOMATIC_INTEGRITY_INCIDENT_MARKER = "automatic_integrity_incident"
+private const val COMPASS_DEEP_TRACE_INCIDENT_POST_TAIL_MS = 2_000L
+private const val COMPASS_DEEP_TRACE_INCIDENT_POST_EVENT_CAPACITY = 512
 
 internal enum class CompassDeepTraceRawSensor {
     GYROSCOPE,

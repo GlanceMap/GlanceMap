@@ -5,6 +5,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
@@ -800,6 +801,8 @@ internal fun NavigateContent(
             }
 
             var isDragging by remember { mutableStateOf(false) }
+            var panTouchStart by remember { mutableStateOf<ScreenAnchor?>(null) }
+            val panTouchSlopPx = remember(context) { ViewConfiguration.get(context).scaledTouchSlop }
             var isMultiTouchGestureSuppressed by remember { mutableStateOf(false) }
             var lastMapSurfaceTelemetrySignature by remember { mutableStateOf<String?>(null) }
 
@@ -826,6 +829,8 @@ internal fun NavigateContent(
                                 mapView.apply {
                                     setOnTouchListener { v, event ->
                                         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                                            isDragging = false
+                                            panTouchStart = ScreenAnchor(event.x.toDouble(), event.y.toDouble())
                                             isMultiTouchGestureSuppressed = false
                                             MapLayerMutationCoordinator.setGestureActive(mapView, true)
                                         }
@@ -859,6 +864,7 @@ internal fun NavigateContent(
                                                 }
                                             }
                                             isDragging = false
+                                            panTouchStart = null
                                             v.parent?.requestDisallowInterceptTouchEvent(true)
                                             return@setOnTouchListener true
                                         }
@@ -886,6 +892,16 @@ internal fun NavigateContent(
                                         // Reliable panning detection (MapView gets these events).
                                         when (event.actionMasked) {
                                             MotionEvent.ACTION_MOVE -> {
+                                                if (
+                                                    !isDragging &&
+                                                    !shouldStartMapPan(
+                                                        start = panTouchStart,
+                                                        current = ScreenAnchor(event.x.toDouble(), event.y.toDouble()),
+                                                        touchSlopPx = panTouchSlopPx,
+                                                    )
+                                                ) {
+                                                    return@setOnTouchListener false
+                                                }
                                                 if (!isDragging) {
                                                     isDragging = true
                                                     panTelemetry.onPanStarted(
@@ -907,6 +923,7 @@ internal fun NavigateContent(
                                             MotionEvent.ACTION_CANCEL,
                                             -> {
                                                 isDragging = false
+                                                panTouchStart = null
                                                 if (
                                                     panTelemetry.onPanFinished(
                                                         navMode = latestNavMode.value,
@@ -1217,6 +1234,17 @@ internal fun NavigateContent(
             )
         }
     }
+}
+
+internal fun shouldStartMapPan(
+    start: ScreenAnchor?,
+    current: ScreenAnchor,
+    touchSlopPx: Int,
+): Boolean {
+    if (start == null) return false
+    val deltaX = current.x - start.x
+    val deltaY = current.y - start.y
+    return deltaX * deltaX + deltaY * deltaY > touchSlopPx.toDouble() * touchSlopPx
 }
 
 internal fun shouldSuppressMultiTouchMapGesture(

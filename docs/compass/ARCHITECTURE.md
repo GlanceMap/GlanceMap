@@ -35,29 +35,64 @@ This module owns:
   accepted sample, are not stale, and are not in the future of callback elapsed time. Duplicate,
   out-of-order, stale, and future callbacks are recorded but cannot refresh freshness, integrity,
   or rendering. An accepted sample expires at its source time plus the stale window.
+- An unusable Fused sample still belongs to the active request and advances source identity, but it
+  does not refresh confirmed usable-sample freshness or clear the repeated-unusable fallback
+  streak. A usable sample clears that streak and restores the normal confirmed-sample path.
 - Every published heading carries a sequence identity and provider generation when available.
   Reference diagnostics reject marks whose provider sample and rendered sample do not share the same
   provenance.
-- A weak, contradictory fused jump is quarantined. Repeating the same contradictory sample does not
-  release it; a meaningful relative correction must corroborate the provider before the held heading
-  can move. A corrected provider may also clear quarantine by returning near the preserved
-  pre-quarantine heading while the watch is stationary; quarantine is never trusted.
+- SensorManager registration generation is carried through raw samples and smoothing mutations.
+  Re-registration is serialized with state mutation, so an old callback cannot consume bootstrap
+  budgets, update inferred accuracy, reset new smoothing, or publish under the new registration.
+  Each Fused integrity-monitor registration has its own listener, fixed callbacks, and rotation
+  scratch state. Old events waiting across a restart are rejected using their original generation;
+  events already past that check still belong to the original adapter request.
+- During acquisition, one-shot or implausible absolute changes remain held. When no usable relative
+  witness exists, two coherent, nonzero, bounded same-direction absolute steps allow the existing
+  bounded correction path to follow genuine movement at normal or low-power cadence. Actual
+  independent contradictions still block this path; the absolute-only disagreement threshold does
+  not establish an independent contradiction. This responsiveness path does not establish trust or
+  corroboration, and unchanged samples still use the stable acquisition window.
+- A contradictory fused jump is quarantined at the existing confidence-dependent disagreement
+  threshold. Strong provider confidence cannot override independent contradictory motion. Repeating
+  the same suspect sample or entering magnetic degradation does not release its preserved anchor;
+  the degraded path uses the same jump guard as tracking. Bounded degraded motion remains available
+  when no suspect jump is held. A meaningful relative correction must corroborate the provider before
+  a held heading can move. A corrected provider may also clear quarantine by returning near the
+  preserved pre-quarantine heading while the watch is stationary; quarantine is never trusted.
 - The optional Compass Deep Trace stores a bounded ordered decision-event ring. It records provider
   timing, integrity decisions, held output, render provenance, and explicit user reports while the
-  trace is active. Consecutive unchanged render records are coalesced. The first `heading_looks_wrong`
-  marker in a trace session preserves the currently retained pre-history plus a bounded two-second
-  post-marker tail for export, even after the live ring rotates.
+  trace is active. Consecutive unchanged render records are coalesced. The first quarantine or
+  unresolved independent disagreement automatically preserves the currently retained pre-history
+  plus a bounded two-second post-marker tail, labelled `automatic_integrity_incident`, even after
+  the live ring rotates. The first explicit `heading_looks_wrong` report takes priority over an
+  automatic capture and preserves history around the user-reported failure instead. Later reports
+  do not replace that first explicit report. Capture remains opt-in and bounded.
+
+Navigation enters panning only after touch movement exceeds Android's configured touch slop.
+Sub-threshold finger jitter before a blocked multi-touch gesture does not disable compass-follow.
+Intentional dragging still enters panning and requires recentering to restore follow.
 
 SensorManager fallback silence becomes stale after the documented source-time window. Stale output
 cannot drive map-follow rotation. Severe F3 contradictions are held by the integrity engine before
 navigation sees them, while fresh renderable degraded or untrusted Fused output may still drive
-bounded map-follow motion; UI confidence communicates that uncertainty and never presents Fused
-output as green.
+bounded map-follow motion. The selected Fused provider intentionally keeps the green cone, including
+degraded or untrusted output; cone color is not a Fused trust indicator.
+During wake, missing magnetic evidence may allow the existing bounded timeout to release a degraded
+target, but it never becomes GOOD or trusted; active magnetic interference and recovery obligations
+continue to hold the target. The recovery obligation is armed before held-output checks, and only
+the exact unavailable-evidence timeout path may release an otherwise held degraded render.
+
+Significant Fused provider-step diagnostics distinguish acquisition-held output, quarantine,
+degraded or unresolved output, and accepted movement with actual relative corroboration. An
+unsuppressed witness alone is not reported as corroboration.
 
 ## Ownership
 
-- `CompassManager.kt`
-  - Sensor registration, source pipeline resolution, declination handling, smoothing, diagnostics.
+- `SensorManagerOrientationProvider.kt`, `CompassHeadingProcessor.kt`, `CompassAlgorithms.kt`,
+  `CompassManager.Support.kt`, and `CompassRuntime.kt`
+  - Sensor registration, source pipeline resolution, declination handling, smoothing, freshness,
+    accuracy, and diagnostics inputs.
 
 - `CompassViewModel.kt`
   - UI bridge to manager start/stop/settings actions.
@@ -73,7 +108,8 @@ output as green.
 
 ## Guardrails
 
-- Keep Android sensor API handling inside `CompassManager.kt`.
+- Keep Android sensor API handling inside the orientation-provider and compass-manager support
+  files under `domain/sensors`.
 - Keep Compose lifecycle side effects in `NavigateCompassEffects.kt`.
 - Keep pure math helpers in testable `internal` functions.
 - Any change affecting heading stability or power must include before/after evidence in PR.
