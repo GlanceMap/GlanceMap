@@ -1,11 +1,17 @@
 package com.glancemap.glancemapwearos.presentation.features.maps
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MapAppearanceIndicatorPolicyTest {
     @Test
     fun `fast initial map load never reaches delayed show`() {
@@ -109,7 +115,7 @@ class MapAppearanceIndicatorPolicyTest {
 
     @Test
     fun `initial timeout accepts a later drawable current viewport`() =
-        runBlocking {
+        runTest {
             val policy = mapAppearanceIndicatorPolicy(MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD)
             var calls = 0
             var timeoutObserved = false
@@ -141,6 +147,38 @@ class MapAppearanceIndicatorPolicyTest {
             assertTrue(initialVisibleTileViewportReadinessMatches(request, firstVisible))
             assertEquals(2, calls)
             assertTrue(timeoutObserved)
+        }
+
+    @Test
+    fun `missing renderer suspends retries and remains cancellable`() =
+        runTest {
+            var calls = 0
+            var timeouts = 0
+            val waiting =
+                launch {
+                    awaitInitialFirstVisibleAfterTimeout<Unit>(
+                        timeoutMs = 4_500L,
+                        awaitFirstVisible = {
+                            calls += 1
+                            null
+                        },
+                        onTimeout = { timeouts += 1 },
+                    )
+                }
+
+            runCurrent()
+            assertEquals(1, calls)
+            advanceTimeBy(4_500L)
+            runCurrent()
+            assertEquals(2, calls)
+            assertEquals(1, timeouts)
+            assertTrue(waiting.isActive)
+
+            waiting.cancelAndJoin()
+            advanceTimeBy(9_000L)
+            runCurrent()
+            assertEquals(2, calls)
+            assertEquals(1, timeouts)
         }
 
     @Test

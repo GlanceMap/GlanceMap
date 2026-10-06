@@ -195,6 +195,9 @@ internal class FusedHeadingIntegrityEngine(
     private val residualWindow = ArrayDeque<TimedCircularValue>()
     private val absoluteWindow = ArrayDeque<TimedCircularValue>()
 
+    // Lifecycle resets and sensor callbacks run on different threads. Serialize the
+    // complete state transition, including window reads, trimming and snapshots.
+    @Synchronized
     fun reset(
         seedHeadingDeg: Float?,
         atElapsedMs: Long,
@@ -243,6 +246,7 @@ internal class FusedHeadingIntegrityEngine(
         }
     }
 
+    @Synchronized
     fun onRelativeHeading(
         headingDeg: Float,
         horizontalProjection: Float = 1f,
@@ -259,6 +263,7 @@ internal class FusedHeadingIntegrityEngine(
         return buildSnapshot()
     }
 
+    @Synchronized
     fun onRelativeWitnessUnavailable(
         horizontalProjection: Float,
     ): FusedHeadingIntegritySnapshot {
@@ -269,6 +274,7 @@ internal class FusedHeadingIntegrityEngine(
         return buildSnapshot()
     }
 
+    @Synchronized
     fun onMagneticField(
         strengthUt: Float,
         atElapsedMs: Long,
@@ -316,6 +322,7 @@ internal class FusedHeadingIntegrityEngine(
             }
     }
 
+    @Synchronized
     fun onAbsoluteHeading(sample: FusedAbsoluteHeadingSample): FusedHeadingIntegritySnapshot {
         val atElapsedMs = sample.atElapsedMs
         refreshMagneticStaleness(atElapsedMs)
@@ -469,6 +476,7 @@ internal class FusedHeadingIntegrityEngine(
         )
     }
 
+    @Synchronized
     fun snapshot(): FusedHeadingIntegritySnapshot = buildSnapshot()
 
     private fun updateWhileAcquiring(evidence: AbsoluteHeadingEvidence): Float =

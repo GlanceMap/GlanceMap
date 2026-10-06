@@ -661,10 +661,11 @@ class GpxViewModel(
                                 sig = sig,
                                 title = cachedMeta?.title ?: parsed?.title,
                                 distance =
-                                    activitySummary?.distanceMeters?.takeIf { it > 0.0 }
-                                        ?: profile.totalDistance.takeIf { it > 0.0 }
-                                        ?: parsed?.totalDistance
-                                        ?: 0.0,
+                                    resolveGpxDisplayDistance(
+                                        profileDistance = profile.totalDistance,
+                                        parsedDistance = parsed?.totalDistance,
+                                        activityDistance = activitySummary?.distanceMeters,
+                                    ),
                                 elevationGain = activityProfile.totalAscent,
                                 elevationLoss = activityProfile.totalDescent,
                                 isActivity = isActivity,
@@ -786,7 +787,6 @@ class GpxViewModel(
 
         val points = profile.points
         val hasElevationData = points.hasElevationData()
-        if (points.isEmpty()) return null
         parsed.activitySummary?.let { summary ->
             return summary.toRecordingDashboardSnapshot(
                 fallbackProfile = profile,
@@ -794,6 +794,7 @@ class GpxViewModel(
                 fallbackDurationSeconds = parsed.activityDurationSec ?: points.durationFromTimestampsSeconds(),
             )
         }
+        if (points.isEmpty()) return null
 
         val durationSeconds = parsed.activityDurationSec ?: points.durationFromTimestampsSeconds()
         val recordedPoints = points.toRecordedTracePoints()

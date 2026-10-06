@@ -42,6 +42,7 @@ internal data class GpxActivitySummary(
     val activityProfile: String?,
     val durationSeconds: Double?,
     val totalDurationSeconds: Double?,
+    // Original recording distance; independent of the exported GPX geometry.
     val distanceMeters: Double?,
     val elevationGainMeters: Double?,
     val elevationLossMeters: Double?,
@@ -74,6 +75,16 @@ internal data class GpxActivitySummary(
     val maxPowerWatts: Int?,
     val barometricPressureHpa: Double?,
 )
+
+internal fun resolveGpxDisplayDistance(
+    profileDistance: Double,
+    parsedDistance: Double?,
+    activityDistance: Double?,
+): Double =
+    profileDistance.takeIf { it.isFinite() && it > 0.0 }
+        ?: parsedDistance?.takeIf { it.isFinite() && it > 0.0 }
+        ?: activityDistance?.takeIf { it.isFinite() && it > 0.0 }
+        ?: 0.0
 
 private val B_ROUTER_DISPLAY_REGEX = Regex("brouter", RegexOption.IGNORE_CASE)
 
