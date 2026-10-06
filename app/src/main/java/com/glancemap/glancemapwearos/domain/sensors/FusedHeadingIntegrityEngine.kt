@@ -73,6 +73,8 @@ internal data class FusedHeadingIntegritySnapshot(
     val residualSpreadDeg: Float?,
     val quarantinedAbsoluteHeadingDeg: Float?,
     val quarantineActive: Boolean,
+    /** True when the current output is preserved for acquisition or quarantine recovery. */
+    val heldOutput: Boolean,
     val recoveryActive: Boolean,
     val recoveryCorrectionDeg: Float,
     val absoluteStepDeg: Float?,
@@ -175,6 +177,7 @@ internal class FusedHeadingIntegrityEngine(
     private var magneticInterferenceSeen = false
     private var recoveryActive = false
     private var quarantineActive = false
+    private var heldOutput = false
     private var trusted = false
     private var unresolvedIndependentDisagreement = false
     private var unresolvedRebaselineSawCorroboratedTurn = false
@@ -191,6 +194,8 @@ internal class FusedHeadingIntegrityEngine(
     private var lastRelativeStepDeg: Float? = null
     private var unverifiedFastTurnDirection = 0
     private var unverifiedFastTurnSampleCount = 0
+    private var unverifiedAcquisitionMotionDirection = 0
+    private var unverifiedAcquisitionMotionSampleCount = 0
     private val relativeHistory = ArrayDeque<TimedCircularValue>()
     private val residualWindow = ArrayDeque<TimedCircularValue>()
     private val absoluteWindow = ArrayDeque<TimedCircularValue>()
@@ -212,6 +217,7 @@ internal class FusedHeadingIntegrityEngine(
         relativeWitnessValidator.reset()
         recoveryActive = false
         quarantineActive = false
+        heldOutput = false
         trusted = false
         unresolvedIndependentDisagreement = false
         unresolvedRebaselineSawCorroboratedTurn = false
@@ -224,6 +230,7 @@ internal class FusedHeadingIntegrityEngine(
         lastAbsoluteStepIntervalMs = null
         lastRelativeStepDeg = null
         resetUnverifiedFastTurnEvidence()
+        resetUnverifiedAcquisitionMotion()
         residualWindow.clear()
         absoluteWindow.clear()
         if (clearSensorEvidence) {
@@ -334,6 +341,7 @@ internal class FusedHeadingIntegrityEngine(
         if (!witnessWasSuppressed && relativeWitnessValidator.suppressed) {
             beginUnresolvedIndependentDisagreement()
         }
+        val returnedToQuarantineAnchor = returnsToQuarantineAnchor(evidence)
         val correction =
             when (state) {
                 CompassTrackingState.ACQUIRING -> updateWhileAcquiring(evidence)
@@ -343,18 +351,25 @@ internal class FusedHeadingIntegrityEngine(
         observeUnresolvedRebaselineEvidence(evidence)
         resolveUnresolvedIndependentDisagreementIfReady(evidence)
 
-        trusted =
-            state == CompassTrackingState.TRACKING &&
-            !recoveryActive &&
-            !quarantineActive &&
-            !unresolvedIndependentDisagreement &&
-            evidence.fieldAcceptable &&
-            evidence.strongAbsoluteConfidence
+        trusted = canTrustAbsoluteHeading(evidence, returnedToQuarantineAnchor)
         lastDisagreementDeg = evidence.disagreementDeg
         lastResidualSpreadDeg = evidence.residualSpreadDeg ?: evidence.absoluteSpreadDeg
         lastRecoveryCorrectionDeg = correction
         return buildSnapshot()
     }
+
+    private fun canTrustAbsoluteHeading(
+        evidence: AbsoluteHeadingEvidence,
+        returnedToQuarantineAnchor: Boolean,
+    ): Boolean =
+        state == CompassTrackingState.TRACKING &&
+            !recoveryActive &&
+            !quarantineActive &&
+            !unresolvedIndependentDisagreement &&
+            (!evidence.hardDisagreement || returnedToQuarantineAnchor) &&
+            evidence.fieldAcceptable &&
+            magneticQuality == CompassMagneticQuality.GOOD &&
+            evidence.strongAbsoluteConfidence
 
     @Suppress("LongMethod") // Keeps the evidence snapshot assembled in one audited decision boundary.
     private fun collectAbsoluteHeadingEvidence(
@@ -475,6 +490,8 @@ internal class FusedHeadingIntegrityEngine(
         when {
             !evidence.fieldAcceptable -> {
                 reason = unavailableMagneticReason()
+                resetUnverifiedAcquisitionMotion()
+                heldOutput = renderHeadingDeg != null
                 0f
             }
             renderHeadingDeg == null -> {
@@ -482,6 +499,7 @@ internal class FusedHeadingIntegrityEngine(
                 // renderable immediately. Integrity validation continues before TRACKING.
                 renderHeadingDeg = evidence.absoluteHeadingDeg
                 reason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE
+                heldOutput = false
                 0f
             }
             else -> {
@@ -501,13 +519,23 @@ internal class FusedHeadingIntegrityEngine(
                         evidenceSpread != null &&
                         evidenceSpread <= config.acquisitionResidualSpreadDeg
                 if (!evidenceReady) {
-                    reason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE
+                    if (observeUnverifiedAcquisitionMotion(evidence)) {
+                        // Without a usable relative witness, keep the provider estimate bounded
+                        // but do not freeze a genuine, coherent turn at the wake seed.
+                        renderHeadingDeg = moveTowardFusedHeading(evidence)
+                        reason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE
+                        heldOutput = false
+                    } else {
+                        reason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE
+                        heldOutput = true
+                    }
                     0f
                 } else {
                     // Preserve the previous rendered heading until the new provider has
                     // established a stable reference. A first fused sample can be far from
                     // the last known heading while its magnetic integrity is still unknown.
                     renderHeadingDeg = moveTowardFusedHeading(evidence)
+                    resetUnverifiedAcquisitionMotion()
                     completeAcquisition()
                 }
             }
@@ -519,6 +547,7 @@ internal class FusedHeadingIntegrityEngine(
         reason = CompassTrackingReason.STABLE
         recoveryActive = false
         quarantineActive = false
+        heldOutput = false
         quarantinedAbsoluteHeadingDeg = null
         quarantineAnchorHeadingDeg = null
         return 0f
@@ -539,29 +568,22 @@ internal class FusedHeadingIntegrityEngine(
             reason = CompassTrackingReason.STABLE
             recoveryActive = false
             quarantineActive = false
+            heldOutput = false
             quarantinedAbsoluteHeadingDeg = null
             quarantineAnchorHeadingDeg = null
             resetUnverifiedFastTurnEvidence()
             0f
         } else if (shouldHoldUnverifiedHeadingJump(evidence)) {
-            // A weak Google estimate must not turn one unconfirmed provider jump into a visible
-            // map spin. Hold only the suspect samples; the next coherent sample resumes normally.
-            reason = CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT
-            trusted = false
-            recoveryActive = false
-            if (!quarantineActive) {
-                quarantineAnchorHeadingDeg = renderHeadingDeg
-            }
-            quarantineActive = true
-            quarantinedAbsoluteHeadingDeg = evidence.absoluteHeadingDeg
-            resetUnverifiedFastTurnEvidence()
-            0f
+            // Provider confidence cannot override contradictory independent motion. Hold only
+            // suspect samples; an anchor return or corroborated correction can release them.
+            holdUnverifiedHeadingJump(evidence)
         } else {
             updateTrackingAnchor(evidence)
             renderHeadingDeg = moveTowardFusedHeading(evidence)
             reason = CompassTrackingReason.STABLE
             recoveryActive = false
             quarantineActive = false
+            heldOutput = false
             quarantinedAbsoluteHeadingDeg = null
             quarantineAnchorHeadingDeg = null
             0f
@@ -593,9 +615,9 @@ internal class FusedHeadingIntegrityEngine(
         val relativeDisagreement =
             disagreement != null &&
                 evidence.relativeStepDeg != null &&
-                disagreement >= config.weakConfidenceDisagreementEnterDeg
+                disagreement >= disagreementEnterThresholdDeg(evidence.strongAbsoluteConfidence)
         val unresolvedQuarantine =
-            quarantineActive &&
+            quarantineAnchorHeadingDeg != null &&
                 renderedHeading != null &&
                 !hasCorroboratedCorrection(evidence)
         return unresolvedQuarantine ||
@@ -603,16 +625,33 @@ internal class FusedHeadingIntegrityEngine(
                 renderedHeading != null &&
                     renderedDeltaDeg != null &&
                     renderedDeltaDeg >= config.unverifiedHeadingJumpHoldDeg &&
-                    !evidence.strongAbsoluteConfidence &&
                     (relativeDisagreement || unsupportedImplausibleStep)
             )
+    }
+
+    private fun holdUnverifiedHeadingJump(evidence: AbsoluteHeadingEvidence): Float {
+        reason =
+            if (evidence.fieldAcceptable) {
+                CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT
+            } else {
+                unavailableMagneticReason()
+            }
+        trusted = false
+        recoveryActive = false
+        if (quarantineAnchorHeadingDeg == null) {
+            quarantineAnchorHeadingDeg = renderHeadingDeg
+        }
+        quarantineActive = true
+        heldOutput = true
+        quarantinedAbsoluteHeadingDeg = evidence.absoluteHeadingDeg
+        resetUnverifiedFastTurnEvidence()
+        return 0f
     }
 
     private fun hasCorroboratedCorrection(evidence: AbsoluteHeadingEvidence): Boolean =
         evidence.absoluteStepDeg != null &&
             abs(evidence.absoluteStepDeg) >= CORROBORATED_STEP_MIN_DEG &&
-            evidence.relativeStepDeg != null &&
-            abs(evidence.relativeStepDeg) >= CORROBORATED_STEP_MIN_DEG &&
+            isMeaningfulRelativeHeadingStep(evidence.relativeStepDeg) &&
             evidence.stepDisagreementDeg != null &&
             !evidence.hardDisagreement
 
@@ -691,6 +730,12 @@ internal class FusedHeadingIntegrityEngine(
     }
 
     private fun updateWhileDegraded(evidence: AbsoluteHeadingEvidence): Float {
+        if (!returnsToQuarantineAnchor(evidence) && shouldHoldUnverifiedHeadingJump(evidence)) {
+            return holdUnverifiedHeadingJump(evidence)
+        }
+        // A jump hold releases only on an anchor return or a corroborated correction. Magnetic
+        // degradation alone still permits bounded motion when there is no suspect jump to hold.
+        quarantineAnchorHeadingDeg = null
         renderHeadingDeg = moveTowardFusedHeading(evidence)
         return when {
             !evidence.fieldAcceptable -> {
@@ -740,6 +785,7 @@ internal class FusedHeadingIntegrityEngine(
         trackingResidualAnchorDeg = residualWindow.lastOrNull()?.valueDeg
         recoveryActive = false
         quarantineActive = false
+        heldOutput = false
         quarantinedAbsoluteHeadingDeg = null
         return 0f
     }
@@ -804,6 +850,43 @@ internal class FusedHeadingIntegrityEngine(
         unverifiedFastTurnSampleCount = 0
     }
 
+    private fun observeUnverifiedAcquisitionMotion(evidence: AbsoluteHeadingEvidence): Boolean {
+        val stepDeg = evidence.absoluteStepDeg
+        val rateDegPerSec =
+            stepDeg?.let {
+                abs(it) * 1_000f / evidence.elapsedSinceAbsoluteMs.coerceAtLeast(1L)
+            }
+        // The absolute-only disagreement threshold is not an independent contradiction: a
+        // plausible turn can cross it between low-power samples. Keep actual witness conflicts
+        // blocking, and require nonzero motion before counting a same-direction step.
+        val independentContradiction = evidence.disagreementDeg != null && evidence.hardDisagreement
+        val eligible =
+            !hasRelativeEvidence(evidence.atElapsedMs) &&
+                stepDeg != null &&
+                abs(stepDeg) > 0f &&
+                abs(stepDeg) < config.unverifiedHeadingJumpHoldDeg &&
+                rateDegPerSec != null &&
+                rateDegPerSec <= config.unverifiedHeadingJumpMaximumRateDegPerSec &&
+                !independentContradiction
+        if (!eligible) {
+            resetUnverifiedAcquisitionMotion()
+            return false
+        }
+        val direction = if (requireNotNull(stepDeg) > 0f) 1 else -1
+        if (direction == unverifiedAcquisitionMotionDirection) {
+            unverifiedAcquisitionMotionSampleCount += 1
+        } else {
+            unverifiedAcquisitionMotionDirection = direction
+            unverifiedAcquisitionMotionSampleCount = 1
+        }
+        return unverifiedAcquisitionMotionSampleCount >= config.unverifiedFusedFastTurnMinimumSamples
+    }
+
+    private fun resetUnverifiedAcquisitionMotion() {
+        unverifiedAcquisitionMotionDirection = 0
+        unverifiedAcquisitionMotionSampleCount = 0
+    }
+
     private fun disagreementEnterThresholdDeg(strongAbsoluteConfidence: Boolean): Float =
         if (strongAbsoluteConfidence) {
             config.trackingDisagreementEnterDeg
@@ -821,7 +904,7 @@ internal class FusedHeadingIntegrityEngine(
         quarantineActive = true
         trusted = false
         quarantinedAbsoluteHeadingDeg = quarantinedHeadingDeg
-        quarantineAnchorHeadingDeg = null
+        // Sensor interference must not erase a jump hold established by independent evidence.
         residualWindow.clear()
         absoluteWindow.clear()
     }
@@ -942,6 +1025,7 @@ internal class FusedHeadingIntegrityEngine(
             residualSpreadDeg = lastResidualSpreadDeg ?: circularWindowSpreadDeg(residualWindow),
             quarantinedAbsoluteHeadingDeg = quarantinedAbsoluteHeadingDeg,
             quarantineActive = quarantineActive,
+            heldOutput = heldOutput || quarantineActive,
             recoveryActive = recoveryActive,
             recoveryCorrectionDeg = lastRecoveryCorrectionDeg,
             absoluteStepDeg = lastAbsoluteStepDeg,
@@ -1098,6 +1182,10 @@ private fun maxOfNullable(
         second == null -> first
         else -> maxOf(first, second)
     }
+
+internal fun isMeaningfulRelativeHeadingStep(
+    relativeStepDeg: Float?,
+): Boolean = relativeStepDeg?.let { abs(it) >= CORROBORATED_STEP_MIN_DEG } == true
 
 private const val CORROBORATED_STEP_MIN_DEG = 1f
 private const val TRACKING_ANCHOR_ADAPTATION_ALPHA = 0.01f

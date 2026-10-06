@@ -17,6 +17,10 @@ If you change navigation integration around compass start/stop behavior, also ru
 ./gradlew :app:testDebugUnitTest --tests "*presentation.features.navigate*"
 ```
 
+For generation, freshness, or wake-gate changes, include a production-path regression that crosses
+the registration or wake boundary. Do not replace it with a standalone generation comparison or a
+synthetic gate-only held flag; the sample must flow through the adapter/processor/engine contract.
+
 ## Manual Device Checklist
 
 Sanity check on watch:
@@ -28,11 +32,15 @@ Sanity check on watch:
 - heading source mode switch (`AUTO`, `TYPE_HEADING`, `ROTATION_VECTOR`, `MAGNETOMETER`),
 - north reference switch (`TRUE`, `MAGNETIC`),
 - recalibration trigger behavior.
+- moving acquisition and stationary wake, including a wake during wrist tilt;
+- magnetic interference, magnetic-feed loss, and degraded recovery;
+- custom sensor/source combinations where available.
 
 ## Where To Change Code
 
 - Sensor pipeline, smoothing, quality, declination:
-  - `CompassManager.kt`
+  - `SensorManagerOrientationProvider.kt`, `CompassHeadingProcessor.kt`, `CompassAlgorithms.kt`,
+    `CompassManager.Support.kt`, `CompassRuntime.kt`
 
 - Compass lifecycle and low-power orchestration in navigation:
   - `NavigateCompassEffects.kt`

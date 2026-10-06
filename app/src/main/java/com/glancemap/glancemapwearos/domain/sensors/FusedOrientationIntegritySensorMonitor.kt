@@ -11,24 +11,52 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
+internal data class FusedIntegrityMonitorCallbacks(
+    val registrationGeneration: Long,
+    val relativeRegistered: Boolean,
+    val magneticRegistered: Boolean,
+    val onRelativeHeading: ((RelativeHeadingWitness, Long) -> Unit)?,
+    val onMagneticField: ((Float, Long) -> Unit)?,
+)
+
+@Suppress("LongParameterList") // Mirrors the monitor's independent registration/callback seams.
+internal fun captureFusedIntegrityMonitorCallbacks(
+    registrationGeneration: Long,
+    activeRegistrationGeneration: Long,
+    started: Boolean,
+    relativeRegistered: Boolean,
+    magneticRegistered: Boolean,
+    onRelativeHeading: ((RelativeHeadingWitness, Long) -> Unit)?,
+    onMagneticField: ((Float, Long) -> Unit)?,
+): FusedIntegrityMonitorCallbacks? =
+    if (started && registrationGeneration == activeRegistrationGeneration) {
+        FusedIntegrityMonitorCallbacks(
+            registrationGeneration = registrationGeneration,
+            relativeRegistered = relativeRegistered,
+            magneticRegistered = magneticRegistered,
+            onRelativeHeading = onRelativeHeading,
+            onMagneticField = onMagneticField,
+        )
+    } else {
+        null
+    }
+
 /** Supplies a tilt-aware, magnetometer-independent turn witness and magnetic integrity to Google Fused. */
 internal class FusedOrientationIntegritySensorMonitor(
     context: Context,
-) : SensorEventListener {
+) {
     private val appContext = context.applicationContext
     private val sensorManager = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gameRotationVector =
         sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
     private val magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-    private val gameRotationMatrix = FloatArray(9)
-
     private var started = false
+    private var registrationGeneration = 0L
+    private var activeSensorListener: SensorEventListener? = null
 
     @Volatile private var gameRotationVectorRegistered = false
 
     @Volatile private var magnetometerRegistered = false
-    private var onRelativeHeading: ((RelativeHeadingWitness, Long) -> Unit)? = null
-    private var onMagneticField: ((Float, Long) -> Unit)? = null
 
     val relativeSensorAvailable: Boolean
         get() = gameRotationVector != null
@@ -36,6 +64,7 @@ internal class FusedOrientationIntegritySensorMonitor(
     val magnetometerAvailable: Boolean
         get() = magnetometer != null
 
+    @Synchronized
     fun start(
         handler: Handler,
         lowPower: Boolean,
@@ -43,61 +72,95 @@ internal class FusedOrientationIntegritySensorMonitor(
         onMagneticField: (Float, Long) -> Unit,
     ) {
         stop()
-        this.onRelativeHeading = onRelativeHeading
-        this.onMagneticField = onMagneticField
+        val listener = createSensorListener(registrationGeneration, onRelativeHeading, onMagneticField)
+        activeSensorListener = listener
         val relativePeriodUs =
             if (lowPower) INTEGRITY_LOW_POWER_PERIOD_US else INTEGRITY_RELATIVE_PERIOD_US
         val magneticPeriodUs =
             if (lowPower) INTEGRITY_LOW_POWER_PERIOD_US else INTEGRITY_MAGNETIC_PERIOD_US
         val relativeRegistered =
             gameRotationVector?.let { sensor ->
-                sensorManager.registerListener(this, sensor, relativePeriodUs, handler)
+                sensorManager.registerListener(listener, sensor, relativePeriodUs, handler)
             } == true
         val magneticRegistered =
             magnetometer?.let { sensor ->
-                sensorManager.registerListener(this, sensor, magneticPeriodUs, handler)
+                sensorManager.registerListener(listener, sensor, magneticPeriodUs, handler)
             } == true
         gameRotationVectorRegistered = relativeRegistered
         magnetometerRegistered = magneticRegistered
         started = gameRotationVectorRegistered || magnetometerRegistered
     }
 
+    @Synchronized
     fun stop() {
-        if (started) sensorManager.unregisterListener(this)
+        registrationGeneration += 1L
         started = false
+        activeSensorListener?.let(sensorManager::unregisterListener)
+        activeSensorListener = null
         gameRotationVectorRegistered = false
         magnetometerRegistered = false
-        onRelativeHeading = null
-        onMagneticField = null
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        if (!started) return
-        val atElapsedMs =
-            (event.timestamp / NANOS_PER_MILLISECOND).takeIf { it > 0L }
-                ?: SystemClock.elapsedRealtime()
-        when (event.sensor.type) {
-            Sensor.TYPE_GAME_ROTATION_VECTOR -> {
-                if (gameRotationVectorRegistered) publishRelativeHeading(event, atElapsedMs)
+    private fun createSensorListener(
+        generation: Long,
+        onRelativeHeading: (RelativeHeadingWitness, Long) -> Unit,
+        onMagneticField: (Float, Long) -> Unit,
+    ): SensorEventListener =
+        object : SensorEventListener {
+            // Both callbacks and scratch state belong to this registration, including while an
+            // old event waits for a restart lock. Call the adapter outside the monitor lock.
+            private val gameRotationMatrix = FloatArray(9)
+
+            override fun onSensorChanged(event: SensorEvent) {
+                val callbacks = captureCallbacks(generation, onRelativeHeading, onMagneticField) ?: return
+                val atElapsedMs =
+                    (event.timestamp / NANOS_PER_MILLISECOND).takeIf { it > 0L }
+                        ?: SystemClock.elapsedRealtime()
+                when (event.sensor.type) {
+                    Sensor.TYPE_GAME_ROTATION_VECTOR -> {
+                        if (callbacks.relativeRegistered) {
+                            publishRelativeHeading(event, atElapsedMs, callbacks.onRelativeHeading, gameRotationMatrix)
+                        }
+                    }
+                    Sensor.TYPE_MAGNETIC_FIELD -> {
+                        if (callbacks.magneticRegistered) {
+                            publishMagneticField(event, atElapsedMs, callbacks.onMagneticField)
+                        }
+                    }
+                }
             }
-            Sensor.TYPE_MAGNETIC_FIELD -> {
-                if (magnetometerRegistered) publishMagneticField(event, atElapsedMs)
-            }
+
+            override fun onAccuracyChanged(
+                sensor: Sensor,
+                accuracy: Int,
+            ) = Unit
         }
-    }
 
-    override fun onAccuracyChanged(
-        sensor: Sensor,
-        accuracy: Int,
-    ) = Unit
+    @Synchronized
+    private fun captureCallbacks(
+        generation: Long,
+        onRelativeHeading: (RelativeHeadingWitness, Long) -> Unit,
+        onMagneticField: (Float, Long) -> Unit,
+    ): FusedIntegrityMonitorCallbacks? =
+        captureFusedIntegrityMonitorCallbacks(
+            registrationGeneration = generation,
+            activeRegistrationGeneration = registrationGeneration,
+            started = started,
+            relativeRegistered = gameRotationVectorRegistered,
+            magneticRegistered = magnetometerRegistered,
+            onRelativeHeading = onRelativeHeading,
+            onMagneticField = onMagneticField,
+        )
 
     private fun publishRelativeHeading(
         event: SensorEvent,
         atElapsedMs: Long,
+        callback: ((RelativeHeadingWitness, Long) -> Unit)?,
+        gameRotationMatrix: FloatArray,
     ) {
         if (event.values.size < 3) return
         SensorManager.getRotationMatrixFromVector(gameRotationMatrix, event.values)
-        onRelativeHeading?.invoke(
+        callback?.invoke(
             gameRotationScreenTopWitness(gameRotationMatrix),
             atElapsedMs,
         )
@@ -106,13 +169,14 @@ internal class FusedOrientationIntegritySensorMonitor(
     private fun publishMagneticField(
         event: SensorEvent,
         atElapsedMs: Long,
+        callback: ((Float, Long) -> Unit)?,
     ) {
         if (event.values.size < 3) return
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
         if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return
-        onMagneticField?.invoke(sqrt(x * x + y * y + z * z), atElapsedMs)
+        callback?.invoke(sqrt(x * x + y * y + z * z), atElapsedMs)
     }
 }
 

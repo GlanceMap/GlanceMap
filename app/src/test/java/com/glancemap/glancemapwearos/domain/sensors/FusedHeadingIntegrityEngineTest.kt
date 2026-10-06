@@ -32,6 +32,7 @@ class FusedHeadingIntegrityEngineTest {
         assertTrue(snapshot.relativeWitnessAvailable)
         assertTrue(snapshot.relativeWitnessSupportsHighRate)
         assertFalse(snapshot.relativeWitnessSuppressed)
+        assertFalse(snapshot.heldOutput)
     }
 
     @Test
@@ -52,6 +53,59 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(CompassTrackingState.ACQUIRING, snapshot.state)
         assertEquals(100f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
         assertFalse(snapshot.trusted)
+        assertTrue(snapshot.heldOutput)
+    }
+
+    @Test
+    fun unchangedAcquisitionSamplesKeepTheSeedUntilTheStableWindowCompletes() {
+        val engine = FusedHeadingIntegrityEngine(relativeSensorAvailable = false, magnetometerAvailable = true)
+        engine.reset(seedHeadingDeg = 100f, atElapsedMs = 1_000L, clearSensorEvidence = true)
+        val replay = Replay(engine, relativeSensorAvailable = false)
+        replay.magnetic(42f)
+        replay.advance(200L)
+
+        repeat(20) { index ->
+            if (index > 0) replay.advance(20L)
+            replay.magnetic(42f)
+            val snapshot = replay.absolute(headingDeg = 260f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+            assertEquals(CompassTrackingState.ACQUIRING, snapshot.state)
+            assertTrue(snapshot.heldOutput)
+            assertEquals(100f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        }
+
+        replay.advance(20L)
+        replay.magnetic(42f)
+        val acquired = replay.absolute(headingDeg = 260f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+        assertEquals(CompassTrackingState.TRACKING, acquired.state)
+        assertFalse(acquired.heldOutput)
+        assertFalse(acquired.trusted)
+        assertEquals(103.6f, requireNotNull(acquired.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun acquisitionMotionCannotBypassAnIndependentContradiction() {
+        val engine = integrityEngine()
+        engine.reset(seedHeadingDeg = 100f, atElapsedMs = 1_000L, clearSensorEvidence = true)
+        val replay = Replay(engine)
+        replay.magnetic(42f)
+        replay.advance(200L)
+        replay.magnetic(42f)
+        replay.relative(0f)
+        replay.absolute(100f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+        repeat(6) { index ->
+            replay.advance(200L)
+            replay.magnetic(42f)
+            replay.relative(0f)
+            val snapshot =
+                replay.absolute(100f + (index + 1) * 24f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+            assertTrue(snapshot.heldOutput)
+            assertFalse(snapshot.trusted)
+            assertEquals(100f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        }
     }
 
     @Test
@@ -66,6 +120,7 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(CompassTrackingState.ACQUIRING, snapshot.state)
         assertTrue(snapshot.renderable)
         assertEquals(72f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertFalse(snapshot.heldOutput)
     }
 
     @Test
@@ -86,6 +141,7 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(CompassTrackingState.TRACKING, snapshot.state)
         assertEquals(CompassTrackingReason.ABSOLUTE_RELATIVE_DISAGREEMENT, snapshot.reason)
         assertTrue(snapshot.quarantineActive)
+        assertTrue(snapshot.heldOutput)
         assertTrue(snapshot.relativeWitnessSuppressed)
         assertTrue(snapshot.relativeWitnessAvailable)
         assertFalse(snapshot.relativeWitnessSupportsHighRate)
@@ -212,6 +268,160 @@ class FusedHeadingIntegrityEngineTest {
         assertEquals(0f, requireNotNull(first.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
         assertEquals(0f, requireNotNull(second.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
         assertTrue(second.quarantineActive)
+        assertFalse(second.trusted)
+    }
+
+    @Test
+    fun magneticInterferenceCannotEraseAnExistingStationaryJumpHold() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        val held = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        assertTrue(held.heldOutput)
+
+        repeat(75) {
+            replay.advance(20L)
+            replay.magnetic(2_000f)
+            replay.relative(headingDeg = 0f)
+            val snapshot = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+            assertEquals(CompassTrackingState.DEGRADED, snapshot.state)
+            assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+            assertTrue(snapshot.heldOutput)
+            assertFalse(snapshot.trusted)
+        }
+    }
+
+    @Test
+    fun strongConfidenceCannotAuthorizeAStationaryContradicted180DegreeJump() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        repeat(75) {
+            replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(headingDeg = 0f)
+            val snapshot = replay.absolute(headingDeg = 180f)
+
+            assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+            assertTrue(snapshot.heldOutput)
+            assertFalse(snapshot.trusted)
+        }
+    }
+
+    @Test
+    fun stationary180DegreeJumpIsHeldWhenItStartsDuringMagneticInterference() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+
+        repeat(75) {
+            replay.advance(20L)
+            replay.magnetic(2_000f)
+            replay.relative(headingDeg = 0f)
+            val snapshot = replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+            assertEquals(CompassTrackingState.DEGRADED, snapshot.state)
+            assertEquals(0f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+            assertTrue(snapshot.heldOutput)
+            assertFalse(snapshot.trusted)
+        }
+    }
+
+    @Test
+    fun degradedJumpHoldAllowsAStationaryAnchorReturnAfterWitnessLoss() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        replay.witnessUnavailable(horizontalProjection = 0.1f)
+
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(100) {
+            replay.advance(20L)
+            replay.magnetic(42f)
+            latest = replay.absolute(headingDeg = 0f)
+            assertEquals(0f, requireNotNull(latest.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        }
+
+        val recovered = requireNotNull(latest)
+        assertEquals(CompassTrackingState.TRACKING, recovered.state)
+        assertFalse(recovered.quarantineActive)
+        assertFalse(recovered.heldOutput)
+    }
+
+    @Test
+    fun corroboratedPhysicalTurnCanReleaseAJumpHoldDuringMagneticInterference() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+        replay.absolute(headingDeg = 180f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        replay.relative(headingDeg = 90f)
+        val held = replay.absolute(headingDeg = 90f)
+        assertEquals(0f, requireNotNull(held.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        replay.relative(headingDeg = 180f)
+        val corrected = replay.absolute(headingDeg = 180f)
+
+        assertEquals(CompassTrackingState.DEGRADED, corrected.state)
+        assertEquals(
+            MAX_VERIFIED_20_MS_CORRECTION_DEG,
+            kotlin.math.abs(shortestAngleDiffDeg(requireNotNull(corrected.renderHeadingDeg), 0f)),
+            ANGLE_TOLERANCE_DEG,
+        )
+        assertFalse(corrected.trusted)
+    }
+
+    @Test
+    fun strongConfidenceBelowTheJumpHoldSizeDoesNotHideAnIndependentContradiction() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        replay.advance(20L)
+        replay.relative(headingDeg = 0f)
+
+        val snapshot = replay.absolute(headingDeg = 50f)
+
+        assertFalse(snapshot.trusted)
+        assertEquals(
+            MAX_UNVERIFIED_20_MS_CORRECTION_DEG,
+            requireNotNull(snapshot.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
+    }
+
+    @Test
+    fun magneticDegradationWithoutIndependentContradictionKeepsBoundedMotion() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 0f)
+        replay.witnessUnavailable(horizontalProjection = 0.1f)
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        val first = replay.absolute(8f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        val second = replay.absolute(16f, liveErrorDeg = 25f, conservativeErrorDeg = 180f)
+
+        assertEquals(CompassTrackingState.DEGRADED, second.state)
+        assertEquals(
+            MAX_UNVERIFIED_20_MS_CORRECTION_DEG,
+            requireNotNull(first.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
+        assertEquals(
+            MAX_UNVERIFIED_20_MS_CORRECTION_DEG + MAX_UNVERIFIED_FAST_TURN_20_MS_CORRECTION_DEG,
+            requireNotNull(second.renderHeadingDeg),
+            ANGLE_TOLERANCE_DEG,
+        )
         assertFalse(second.trusted)
     }
 

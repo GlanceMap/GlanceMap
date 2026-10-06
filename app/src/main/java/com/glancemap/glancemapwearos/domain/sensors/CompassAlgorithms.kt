@@ -504,6 +504,10 @@ internal fun headingAccuracyFromUncertainty(uncertaintyDeg: Float): Int {
     }
 }
 
+internal fun isSupportedHeadingUncertainty(
+    uncertaintyDeg: Float,
+): Boolean = uncertaintyDeg.isFinite() && uncertaintyDeg >= 0f
+
 private fun accuracyRank(accuracy: Int): Int =
     when (accuracy) {
         SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> 3

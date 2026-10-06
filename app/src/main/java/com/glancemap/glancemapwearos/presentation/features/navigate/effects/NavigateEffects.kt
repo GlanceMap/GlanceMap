@@ -1144,13 +1144,6 @@ internal class NavigateRotationSettleGate {
                 recordsWakeReleaseStep = pendingRelease != null,
             )
         }
-        if (
-            renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
-            renderState.headingSampleHeldOutput
-        ) {
-            hold("await_unheld_fused_output")
-            return null
-        }
         val provenanceMatches =
             magneticRecoveryProvenance == null ||
                 renderState.headingProvenance == magneticRecoveryProvenance
@@ -1174,6 +1167,19 @@ internal class NavigateRotationSettleGate {
                 heldHeadingDeg = normalize360(it)
             }
             hold("await_magnetic_recovery")
+            return null
+        }
+        val unavailableMagneticRecovery =
+            magneticRecoveryRequired && renderState.magneticQuality == CompassMagneticQuality.UNAVAILABLE
+        if (
+            renderState.providerType == CompassProviderType.GOOGLE_FUSED &&
+            renderState.headingSampleHeldOutput &&
+            !unavailableMagneticRecovery
+        ) {
+            // Once magnetic evidence has genuinely gone unavailable, the existing safe render
+            // may be released by the bounded timeout below. It remains degraded/untrusted; this
+            // exception only prevents recovery loss from freezing wake indefinitely.
+            hold("await_unheld_fused_output")
             return null
         }
         if (
@@ -1214,11 +1220,15 @@ internal class NavigateRotationSettleGate {
         val hasPostStableHeading =
             !requirePostStableHeading ||
                 headingSampleElapsedRealtimeMs > stableTrackingObservedAtElapsedMs
+        // Missing magnetic evidence remains degraded and cannot establish stable magnetic
+        // tracking, but it must not disable the existing bounded wake timeout forever.
+        val magneticRecoveryBlocksTimeout =
+            magneticRecoveryRequired && renderState.magneticQuality != CompassMagneticQuality.UNAVAILABLE
         val releaseReason =
             when {
                 hasStableTracking && hasPostStableHeading ->
                     "stable_tracking"
-                !magneticRecoveryRequired &&
+                !magneticRecoveryBlocksTimeout &&
                     nowElapsedMs - wakeSessionStartedAtElapsedMs >= WAKE_SETTLE_TIMEOUT_MS ->
                     "settle_timeout"
                 else -> null
