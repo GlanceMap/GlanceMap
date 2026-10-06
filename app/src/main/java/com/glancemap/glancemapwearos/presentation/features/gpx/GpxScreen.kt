@@ -943,7 +943,7 @@ private fun ActivityDetailsDialog(
     }
 }
 
-private fun activityDetailsMetrics(
+internal fun activityDetailsMetrics(
     gpxFile: GpxFileState,
     isMetric: Boolean,
     fallbackDistanceValue: String,
@@ -953,7 +953,7 @@ private fun activityDetailsMetrics(
     fallbackElevationLossValue: String,
     fallbackElevationLossUnit: String,
 ): List<RecordingRecapMetric> {
-    val summary = gpxFile.activitySummary
+    val summary = gpxFile.summaryForGpxDetails()
     if (summary == null) {
         return listOf(
             recordingRecapMetric("Dist", fallbackDistanceValue, fallbackDistanceUnit),
