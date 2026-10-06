@@ -32,6 +32,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.theme.bundled.Bu
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.view.MapView
@@ -168,12 +170,19 @@ internal suspend fun <T> awaitInitialFirstVisibleAfterTimeout(
     awaitFirstVisible: suspend (Long) -> T?,
     onTimeout: () -> Unit,
 ): T {
-    var firstVisible = awaitFirstVisible(timeoutMs)
+    // A removed renderer can return null immediately. Keep each attempt suspending and
+    // cancellable for its timeout window instead of spinning on the main thread.
+    suspend fun awaitWindow(): T? =
+        withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
+            awaitFirstVisible(timeoutMs) ?: awaitCancellation()
+        }
+
+    var firstVisible = awaitWindow()
     if (firstVisible != null) return firstVisible
 
     onTimeout()
     while (firstVisible == null) {
-        firstVisible = awaitFirstVisible(timeoutMs)
+        firstVisible = awaitWindow()
     }
     return checkNotNull(firstVisible)
 }

@@ -4,8 +4,45 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class FusedHeadingIntegrityEngineTest {
+    @Test
+    fun concurrentLifecycleResetsAndSensorEvidenceDoNotCorruptHistory() {
+        val engine = integrityEngine()
+        val start = CountDownLatch(1)
+        val workers = Executors.newFixedThreadPool(3)
+        try {
+            val operations =
+                listOf<(Long) -> Unit>(
+                    { at -> engine.reset(0f, at, clearSensorEvidence = true) },
+                    { at ->
+                        engine.onRelativeHeading(0f, atElapsedMs = at)
+                        engine.onMagneticField(42f, atElapsedMs = at)
+                    },
+                    { at ->
+                        engine.onAbsoluteHeading(FusedAbsoluteHeadingSample(0f, 8f, 30f, at))
+                        engine.snapshot()
+                    },
+                )
+            val results =
+                operations.map { operation ->
+                    workers.submit {
+                        check(start.await(5, TimeUnit.SECONDS))
+                        repeat(10_000) { index -> operation(index * 50L) }
+                    }
+                }
+            start.countDown()
+            results.forEach { it.get(10, TimeUnit.SECONDS) }
+            engine.reset(32f, 600_000L, clearSensorEvidence = true)
+            assertEquals(32f, requireNotNull(engine.snapshot().renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        } finally {
+            workers.shutdownNow()
+        }
+    }
+
     @Test
     fun normalMagneticWarmupIsNotReportedAsInterference() {
         val replay = Replay(integrityEngine())
