@@ -139,6 +139,83 @@ class LiveTrackingDiagnosticsTest {
     }
 
     @Test
+    fun recordsAcquisitionDetailsWithoutCoordinatesOrCredentials() {
+        PhoneDebugCapture.start()
+
+        recordLiveTrackingAcquisition(
+            LiveTrackingAcquisitionDiagnostic(
+                cycleId = 8L,
+                intervalMillis = 60_000L,
+                reason = LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT,
+                initialAccuracyMeters = 180f,
+                initialQualityResult = LiveTrackingLocationQualityResult.ACCEPT,
+                extraFixesDelivered = 2,
+                extraFixesAccepted = 2,
+                extraFixesRejected = 0,
+                extraFixesSuspect = 0,
+                durationMillis = 6_100L,
+                selectedCandidateAccuracyMeters = 12f,
+                selectedCandidateAgeMillis = 220L,
+                selectionReason = "newest_target_accuracy",
+                usedScheduledFallback = false,
+                earlyTargetReached = true,
+                timedOut = false,
+                registrationFailed = false,
+                duplicateFixesIgnored = 1,
+                outcome = "early_target_sent",
+            ),
+        )
+
+        val capture = PhoneDebugCapture.snapshot().single()
+
+        assertTrue(capture.contains("acquisition id=8 intervalMs=60000 reason=accuracy_refinement"))
+        assertTrue(capture.contains("initialAccM=180.0 initialQuality=ACCEPT"))
+        assertTrue(capture.contains("extraDelivered=2 extraAccepted=2 extraRejected=0 extraSuspect=0"))
+        assertTrue(capture.contains("selectedAccM=12.0 selectedAgeMs=220 selection=newest_target_accuracy"))
+        assertTrue(capture.contains("fallback=false earlyTarget=true timeout=false registrationFailure=false"))
+        assertTrue(capture.contains("duplicateIgnored=1 cleanupTimeout=false cleanupFailure=false"))
+        assertTrue(capture.contains("outcome=early_target_sent"))
+        assertFalse(capture.contains("latitude"))
+        assertFalse(capture.contains("longitude"))
+        assertFalse(capture.contains("https://"))
+        assertFalse(capture.contains("password"))
+    }
+
+    @Test
+    fun recordsRegistrationFailureAndRetainedScheduledFallback() {
+        PhoneDebugCapture.start()
+
+        recordLiveTrackingAcquisition(
+            LiveTrackingAcquisitionDiagnostic(
+                cycleId = 9L,
+                intervalMillis = 120_000L,
+                reason = LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT,
+                initialAccuracyMeters = 350f,
+                initialQualityResult = LiveTrackingLocationQualityResult.ACCEPT,
+                extraFixesDelivered = 0,
+                extraFixesAccepted = 0,
+                extraFixesRejected = 0,
+                extraFixesSuspect = 0,
+                durationMillis = 40L,
+                selectedCandidateAccuracyMeters = 350f,
+                selectedCandidateAgeMillis = 2_000L,
+                selectionReason = "newest_in_recency_band",
+                usedScheduledFallback = true,
+                earlyTargetReached = false,
+                timedOut = false,
+                registrationFailed = true,
+                outcome = "registration_failure_fallback",
+            ),
+        )
+
+        val capture = PhoneDebugCapture.snapshot().single()
+
+        assertTrue(capture.contains("registrationFailure=true cancellation=none"))
+        assertTrue(capture.contains("fallback=true earlyTarget=false timeout=false"))
+        assertTrue(capture.contains("outcome=registration_failure_fallback"))
+    }
+
+    @Test
     @Suppress("LongMethod")
     fun recordsBoundedFieldTestFixesTransmissionsAndSessionCounters() {
         PhoneDebugCapture.start()

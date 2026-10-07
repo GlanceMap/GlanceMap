@@ -108,6 +108,32 @@ internal data class LiveTrackingRescueDiagnostic(
     val speedMetersPerSecond: Float? = null,
 )
 
+internal data class LiveTrackingAcquisitionDiagnostic(
+    val cycleId: Long,
+    val intervalMillis: Long,
+    val reason: LiveTrackingAcquisitionReason,
+    val initialAccuracyMeters: Float?,
+    val initialQualityResult: LiveTrackingLocationQualityResult?,
+    val extraFixesDelivered: Int,
+    val extraFixesAccepted: Int,
+    val extraFixesRejected: Int,
+    val extraFixesSuspect: Int,
+    val durationMillis: Long,
+    val selectedCandidateAccuracyMeters: Float?,
+    val selectedCandidateAgeMillis: Long?,
+    val selectionReason: String,
+    val usedScheduledFallback: Boolean,
+    val earlyTargetReached: Boolean,
+    val timedOut: Boolean,
+    val registrationFailed: Boolean,
+    val cancellation: String? = null,
+    val staleFixesIgnored: Int = 0,
+    val duplicateFixesIgnored: Int = 0,
+    val cleanupTimedOut: Boolean = false,
+    val cleanupFailed: Boolean = false,
+    val outcome: String,
+)
+
 internal object LiveTrackingDiagnostics {
     private const val MAX_EVENTS = 100
     private val mutableEvents = MutableStateFlow<List<LiveTrackingDiagnosticEvent>>(emptyList())
@@ -431,6 +457,48 @@ internal fun recordLiveTrackingRescue(diagnostic: LiveTrackingRescueDiagnostic) 
             append(" outcome=").append(diagnostic.outcome ?: "pending")
         },
     )
+}
+
+internal fun recordLiveTrackingAcquisition(diagnostic: LiveTrackingAcquisitionDiagnostic) {
+    if (!PhoneDebugCapture.isActive()) return
+    PhoneDebugCapture.log(
+        LIVE_TRACKING_CAPTURE_TAG,
+        buildString {
+            append("acquisition id=").append(diagnostic.cycleId)
+            append(" intervalMs=").append(diagnostic.intervalMillis)
+            append(" reason=").append(diagnostic.reason.name.lowercase(Locale.US))
+            append(" initialAccM=")
+                .append(diagnostic.initialAccuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" initialQuality=").append(diagnostic.initialQualityResult ?: "na")
+            append(" extraDelivered=").append(diagnostic.extraFixesDelivered)
+            append(" extraAccepted=").append(diagnostic.extraFixesAccepted)
+            append(" extraRejected=").append(diagnostic.extraFixesRejected)
+            append(" extraSuspect=").append(diagnostic.extraFixesSuspect)
+            append(" durationMs=").append(diagnostic.durationMillis.coerceAtLeast(0L))
+            append(" selectedAccM=")
+                .append(diagnostic.selectedCandidateAccuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" selectedAgeMs=").append(diagnostic.selectedCandidateAgeMillis ?: "na")
+            append(" selection=").append(diagnostic.selectionReason)
+            append(" fallback=").append(diagnostic.usedScheduledFallback)
+            append(" earlyTarget=").append(diagnostic.earlyTargetReached)
+            append(" timeout=").append(diagnostic.timedOut)
+            append(" registrationFailure=").append(diagnostic.registrationFailed)
+            append(" cancellation=").append(diagnostic.cancellation ?: "none")
+            append(" staleIgnored=").append(diagnostic.staleFixesIgnored)
+            append(" duplicateIgnored=").append(diagnostic.duplicateFixesIgnored)
+            append(" cleanupTimeout=").append(diagnostic.cleanupTimedOut)
+            append(" cleanupFailure=").append(diagnostic.cleanupFailed)
+            append(" outcome=").append(diagnostic.outcome)
+        },
+    )
+}
+
+internal fun recordLiveTrackingAcquisitionEvent(
+    cycleId: Long,
+    event: String,
+) {
+    if (!PhoneDebugCapture.isActive()) return
+    PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, "acquisition_event id=$cycleId event=$event")
 }
 
 @Composable

@@ -91,6 +91,34 @@ class LiveTrackingLocationQualityGateTest {
     }
 
     @Test
+    fun correlatedBurstSamplesCannotConfirmASuspectAreaMoreThanOncePerCycle() {
+        val gate = gate()
+        evaluate(gate, fix(0.0, 0))
+        assertEquals(LiveTrackingLocationQualityResult.SUSPECT, evaluate(gate, fix(1_000.0, 60)).result)
+
+        val firstBurstSample =
+            gate.evaluate(
+                fix = fix(1_005.0, 63),
+                nowElapsedRealtimeNanos = BASE_ELAPSED_REALTIME_NANOS + 63 * NANOS_PER_SECOND,
+                nowEpochMilliseconds = BASE_EPOCH_MILLISECONDS + 63 * 1000L,
+                allowPendingAreaConfirmation = true,
+            )
+        val secondBurstSample =
+            gate.evaluate(
+                fix = fix(1_010.0, 66),
+                nowElapsedRealtimeNanos = BASE_ELAPSED_REALTIME_NANOS + 66 * NANOS_PER_SECOND,
+                nowEpochMilliseconds = BASE_EPOCH_MILLISECONDS + 66 * 1000L,
+                allowPendingAreaConfirmation = false,
+            )
+        val nextScheduledSample = evaluate(gate, fix(1_015.0, 120))
+
+        assertEquals(LiveTrackingLocationQualityResult.SUSPECT, firstBurstSample.result)
+        assertEquals(LiveTrackingLocationQualityResult.SUSPECT, secondBurstSample.result)
+        assertEquals(LiveTrackingLocationQualityResult.ACCEPT, nextScheduledSample.result)
+        assertEquals("confirmed_suspect_area", nextScheduledSample.reason)
+    }
+
+    @Test
     fun doesNotTrustADeceptivelySmallAccuracyForAnInconsistentSpike() {
         val gate = gate()
 

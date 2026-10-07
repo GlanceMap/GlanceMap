@@ -15,6 +15,7 @@ import android.content.pm.ServiceInfo
 import android.location.Location
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.ActivityCompat
@@ -24,32 +25,45 @@ import androidx.core.content.ContextCompat
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.android.gms.tasks.Task
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun canContinueLiveTrackingSend(
     isPaused: Boolean,
     isStopping: Boolean,
     stop: Boolean,
-): Boolean = stop || (!isPaused && !isStopping)
+    isPauseRequested: Boolean = false,
+): Boolean = stop || (!isPaused && !isStopping && !isPauseRequested)
+
+internal fun liveTrackingRefinementLocationRequest(): LocationRequest =
+    LocationRequest
+        .Builder(Priority.PRIORITY_HIGH_ACCURACY, BURST_UPDATE_INTERVAL_MS)
+        .setMinUpdateIntervalMillis(BURST_UPDATE_INTERVAL_MS)
+        .setMaxUpdateDelayMillis(0L)
+        .setMaxUpdateAgeMillis(BURST_MAX_UPDATE_AGE_MS)
+        .setMaxUpdates(MAX_ACCURACY_EXTRA_FIXES)
+        .setDurationMillis(ACQUISITION_WINDOW_MS)
+        .build()
 
 // The service intentionally owns the complete foreground-session orchestration and its retries.
 @Suppress("LargeClass")
@@ -60,9 +74,14 @@ class LiveTrackingService : Service() {
     private lateinit var cellularSignalMonitor: CellularSignalMonitor
     private val locationQualityGate = LiveTrackingLocationQualityGate()
     private var settings: LiveTrackingSettings? = null
+    private val scheduledCycleMutex = Mutex()
+
+    private val orchestration = LiveTrackingOrchestration<ActiveAcquisition>()
 
     @Volatile
     private var lastLocation: Location? = null
+
+    private var locationCallback: LocationCallback? = null
     private var sentStart = false
     private var dateId: String? = null
 
@@ -71,23 +90,13 @@ class LiveTrackingService : Service() {
 
     @Volatile
     private var isStopping = false
-    private var lastRescueRequestElapsedRealtimeNanos: Long? = null
-    private val sendMutex = Mutex()
 
-    private val locationCallback =
-        object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                val location = result.lastLocation ?: return
-                serviceScope.launch {
-                    sendLocation(
-                        location = location,
-                        startRequested = true,
-                        stop = false,
-                        source = LiveTrackingFixSource.CALLBACK,
-                    )
-                }
-            }
-        }
+    @Volatile
+    private var pauseRequested = false
+    private var lastProcessedFix: LiveTrackingLocationFix? = null
+    private var nextAcquisitionCycleId = 0L
+
+    private val sendMutex = Mutex()
 
     override fun onCreate() {
         super.onCreate()
@@ -134,7 +143,9 @@ class LiveTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
+        isStopping = true
+        pauseRequested = false
+        stopLocationUpdates("destroy")
         cellularSignalMonitor.stop()
         LiveTrackingDiagnostics.finishLiveTrackingSession()
         serviceScope.cancel()
@@ -156,7 +167,9 @@ class LiveTrackingService : Service() {
                 dateId = null
                 isPaused = false
                 isStopping = false
-                lastRescueRequestElapsedRealtimeNanos = null
+                pauseRequested = false
+                orchestration.resetRescueCooldown()
+                lastProcessedFix = null
                 LiveTrackingControlQueue.clear(this)
                 persistActiveSession()
                 LiveTrackingSessionStore.setStarting()
@@ -225,8 +238,9 @@ class LiveTrackingService : Service() {
             runCatching {
                 LiveTrackingSessionStore.setStatus("Waiting for GPS fix")
                 updateNotification("Waiting for GPS fix")
-                startLocationUpdates()
-                sendLastKnownLocationIfAvailable()
+                startLocationUpdates()?.let { generation ->
+                    sendLastKnownLocationIfAvailable(generation)
+                }
             }.onFailure { error ->
                 LiveTrackingSessionStore.setError(error.message ?: "Live tracking start failed")
                 updateNotification("Live tracking error")
@@ -237,7 +251,7 @@ class LiveTrackingService : Service() {
     // A stale cache must return immediately so the active high-accuracy request can provide the fix.
     @Suppress("ReturnCount", "LongMethod")
     @SuppressLint("MissingPermission")
-    private suspend fun sendLastKnownLocationIfAvailable() {
+    private suspend fun sendLastKnownLocationIfAvailable(generation: LiveTrackingGeneration) {
         if (!hasLocationPermission()) return
         val location = runCatching { locationClient.lastLocation.await() }.getOrNull()
         if (location == null) {
@@ -292,216 +306,1011 @@ class LiveTrackingService : Service() {
             )
             return
         }
-        sendLocation(
-            location = location,
-            startRequested = true,
-            stop = false,
+        sendLocations(
+            locations = listOf(location),
             source = LiveTrackingFixSource.CACHED_STARTUP,
+            generation = generation,
+            cadenceTicket = generation.admission.initialTicket(),
         )
     }
 
-    @Suppress("CyclomaticComplexMethod", "LongMethod")
-    private suspend fun sendLocation(
-        location: Location,
-        startRequested: Boolean,
-        stop: Boolean,
-        source: LiveTrackingFixSource = LiveTrackingFixSource.CALLBACK,
+    private data class PreparedScheduledCycle(
+        val id: Long,
+        val intervalMillis: Long,
+        val initialDecision: LiveTrackingLocationQualityDecision?,
+        val initialCandidates: List<LiveTrackingCandidate<Location>>,
+        val acquisition: ActiveAcquisition?,
+        val confirmationBudget: LiveTrackingCycleConfirmationBudget,
+        val allObservationsRejected: Boolean,
+    )
+
+    private data class TransmissionResult(
+        val outcome: String,
+        val selection: LiveTrackingCandidateSelection<Location>?,
+    )
+
+    private data class AcquisitionRequest(
+        val generation: LiveTrackingGeneration,
+        val cycleId: Long,
+        val intervalMillis: Long,
+        val reason: LiveTrackingAcquisitionReason,
+        val initialFix: LiveTrackingLocationFix,
+        val initialDecision: LiveTrackingLocationQualityDecision,
+        val initialCandidates: List<LiveTrackingCandidate<Location>>,
+        val trigger: String?,
+        val confirmationBudget: LiveTrackingCycleConfirmationBudget,
+        val rescueCooldownPending: Boolean,
+    )
+
+    private data class ActiveAcquisition(
+        override val generation: LiveTrackingGeneration,
+        val cycle: LiveTrackingAcquisitionCycle<Location>,
+        val initialFix: LiveTrackingLocationFix,
+        val initialDecision: LiveTrackingLocationQualityDecision,
+        var trigger: String?,
+        val startedElapsedRealtimeMillis: Long,
+        val callback: LocationCallback,
+        override val ownership: LiveTrackingAcquisitionOwnership = LiveTrackingAcquisitionOwnership(),
+        val completion: CompletableDeferred<String> = CompletableDeferred(),
+        val registrationResult: CompletableDeferred<Boolean> = CompletableDeferred(),
+        @Volatile var cleanupTimedOut: Boolean = false,
+        @Volatile var cleanupFailed: Boolean = false,
+        var rescueWasRequested: Boolean = false,
+        var rescueSkippedCooldown: Boolean = false,
+        var outcome: String? = null,
+        var cancellation: String? = null,
+        var timedOut: Boolean = false,
+        var registrationFailed: Boolean = false,
+        var durationMillis: Long = 0L,
+        val confirmationBudget: LiveTrackingCycleConfirmationBudget,
+        var rescueCooldownPending: Boolean = false,
+    ) : GenerationOwnedLiveTrackingAcquisition
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    private suspend fun sendLocations(
+        locations: List<Location>,
+        source: LiveTrackingFixSource,
+        generation: LiveTrackingGeneration,
+        cadenceTicket: LiveTrackingCadenceTicket,
     ) {
-        if (!canContinueLiveTrackingSend(isPaused = isPaused, isStopping = isStopping, stop = stop)) return
-        sendMutex.withLock {
-            if (!canContinueLiveTrackingSend(isPaused = isPaused, isStopping = isStopping, stop = stop)) {
-                return@withLock
+        if (!orchestration.isCurrent(generation)) {
+            recordLiveTrackingAcquisitionEvent(generation.id, "late_normal_callback_ignored")
+            return
+        }
+        scheduledCycleMutex.withLock {
+            if (!orchestration.reserveAdmission(generation, cadenceTicket)) {
+                recordLiveTrackingAcquisitionEvent(cadenceTicket.windowIndex, "cadence_cycle_coalesced")
+                return
             }
-            val activeSettings = settings ?: return@withLock
-            val fix = location.toLiveTrackingLocationFix()
-            val qualityDecision =
-                if (stop) {
-                    null
-                } else {
-                    locationQualityGate
-                        .evaluate(
-                            fix = fix,
-                            nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
-                            nowEpochMilliseconds = System.currentTimeMillis(),
-                            startupStaleReason =
-                                if (source == LiveTrackingFixSource.CACHED_STARTUP) {
-                                    "stale_startup_cache"
-                                } else {
-                                    "stale_startup_callback"
-                                },
-                        ).also { decision ->
-                            LiveTrackingDiagnostics.recordLiveTrackingFix(
-                                source = source,
-                                decision = decision,
-                                androidSpeedMetersPerSecond = fix.speedMetersPerSecond,
-                                isMockLocation = location.isMockLocationForDiagnostics(),
-                                gsmSignalPercent = cellularSignalMonitor.currentPercent(),
-                                queueSize = diagnosticPositionQueueSize(),
+            val prepared =
+                sendMutex.withLock {
+                    orchestration.withGeneration(generation) {
+                        prepareScheduledCycleLocked(locations, source, generation)
+                    }
+                } ?: return
+            if (prepared.allObservationsRejected && prepared.acquisition == null) {
+                orchestration.releaseRejectedStartup(generation, cadenceTicket)
+            }
+            prepared.acquisition?.let { awaitAcquisition(it) }
+
+            var selection: LiveTrackingCandidateSelection<Location>? = null
+            var selectedTransmission = TransmissionResult("no_candidate", null)
+            val sendOutcome =
+                sendMutex.withLock {
+                    if (!orchestration.isCurrent(generation)) {
+                        "stale_request_generation"
+                    } else if (
+                        !canContinueLiveTrackingSend(
+                            isPaused,
+                            isStopping,
+                            stop = false,
+                            isPauseRequested = pauseRequested,
+                        )
+                    ) {
+                        "cancelled_lifecycle"
+                    } else if (generation.admission.isSuperseded(cadenceTicket)) {
+                        "superseded_cadence"
+                    } else {
+                        val candidates =
+                            prepared.acquisition?.cycle?.eligibleCandidates()
+                                ?: prepared.initialCandidates
+                        selection = selectLiveTrackingCandidate(candidates)
+                        val activeSettings = settings
+                        if (selection == null || activeSettings == null) {
+                            "no_candidate"
+                        } else if (
+                            !canContinueLiveTrackingSend(
+                                isPaused,
+                                isStopping,
+                                stop = false,
+                                isPauseRequested = pauseRequested,
                             )
-                            if (decision.result != LiveTrackingLocationQualityResult.ACCEPT) {
-                                LiveTrackingDiagnostics.recordLocationQuality(
-                                    decision = decision,
-                                    gsmSignalPercent = cellularSignalMonitor.currentPercent(),
+                        ) {
+                            "cancelled_lifecycle"
+                        } else {
+                            selectedTransmission =
+                                transmitSelectedLocationLocked(
+                                    settings = activeSettings,
+                                    candidates = candidates,
+                                    generation = generation,
                                 )
-                            }
+                            selection = selectedTransmission.selection
+                            selectedTransmission.outcome
                         }
+                    }
                 }
-            var locationToSend = location
-            var qualityDecisionToSend = qualityDecision
-            if (qualityDecision != null &&
-                qualityDecision.result != LiveTrackingLocationQualityResult.ACCEPT
-            ) {
-                if (qualityDecision.result == LiveTrackingLocationQualityResult.SUSPECT) {
+
+            val acquisition = prepared.acquisition
+            val selectedCandidate = selection?.candidate
+            recordLiveTrackingAcquisition(
+                LiveTrackingAcquisitionDiagnostic(
+                    cycleId = prepared.id,
+                    intervalMillis = acquisition?.cycle?.intervalMillis ?: prepared.intervalMillis,
+                    reason = acquisition?.cycle?.reason ?: LiveTrackingAcquisitionReason.NONE,
+                    initialAccuracyMeters = prepared.initialDecision?.accuracyMeters,
+                    initialQualityResult = prepared.initialDecision?.result,
+                    extraFixesDelivered = acquisition?.cycle?.extraFixesDelivered ?: 0,
+                    extraFixesAccepted = acquisition?.cycle?.extraFixesAccepted ?: 0,
+                    extraFixesRejected = acquisition?.cycle?.extraFixesRejected ?: 0,
+                    extraFixesSuspect = acquisition?.cycle?.extraFixesSuspect ?: 0,
+                    durationMillis = acquisition?.durationMillis ?: 0L,
+                    selectedCandidateAccuracyMeters = selectedCandidate?.decision?.accuracyMeters,
+                    selectedCandidateAgeMillis =
+                        selectedCandidate?.fix?.let {
+                            liveTrackingLocationAgeMillis(
+                                it,
+                                SystemClock.elapsedRealtimeNanos(),
+                                System.currentTimeMillis(),
+                            )
+                        },
+                    selectionReason = selection?.selectionReason ?: "none",
+                    usedScheduledFallback = selectedCandidate?.isScheduledFallback == true,
+                    earlyTargetReached = acquisition?.cycle?.earlyTargetReached == true,
+                    timedOut = acquisition?.timedOut == true,
+                    registrationFailed = acquisition?.registrationFailed == true,
+                    cancellation = acquisition?.cancellation,
+                    staleFixesIgnored = acquisition?.cycle?.staleFixesIgnored ?: 0,
+                    duplicateFixesIgnored = acquisition?.cycle?.duplicateFixesIgnored ?: 0,
+                    outcome = acquisitionOutcome(acquisition, sendOutcome, selectedCandidate),
+                    cleanupTimedOut = acquisition?.cleanupTimedOut == true,
+                    cleanupFailed = acquisition?.cleanupFailed == true,
+                ),
+            )
+            acquisition
+                ?.takeIf { it.cycle.reason == LiveTrackingAcquisitionReason.SUSPECT_CONFIRMATION }
+                ?.let { recordRescueOutcome(it, selectedCandidate) }
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    private fun prepareScheduledCycleLocked(
+        locations: List<Location>,
+        source: LiveTrackingFixSource,
+        generation: LiveTrackingGeneration,
+    ): PreparedScheduledCycle? {
+        if (!canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)) {
+            return null
+        }
+        if (settings == null || locations.isEmpty()) return null
+
+        val cycleId = ++nextAcquisitionCycleId
+        val intervalMillis = updateIntervalMs()
+        var lastLocation: Location? = null
+        var lastFix: LiveTrackingLocationFix? = null
+        var initialDecision: LiveTrackingLocationQualityDecision? = null
+        val candidatePool = LiveTrackingScheduledCandidatePool<Location>()
+        val confirmationBudget = LiveTrackingCycleConfirmationBudget()
+        var allObservationsRejected = true
+
+        val orderedLocations =
+            sortLiveTrackingFixesChronologically(
+                locations.map { it to it.toLiveTrackingLocationFix() },
+            )
+        for ((location, fix) in orderedLocations) {
+            val comparison = lastProcessedFix?.let { compareLiveTrackingFixTime(fix, it) }
+            if (comparison?.let { it <= 0 } == true) {
+                recordLiveTrackingAcquisitionEvent(
+                    cycleId,
+                    if (comparison == 0) "duplicate_ignored" else "stale_ignored",
+                )
+                continue
+            }
+            val allowPendingAreaConfirmation = confirmationBudget.allowsPendingAreaConfirmation()
+            val decision =
+                locationQualityGate.evaluate(
+                    fix = fix,
+                    nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
+                    nowEpochMilliseconds = System.currentTimeMillis(),
+                    startupStaleReason =
+                        if (source == LiveTrackingFixSource.CACHED_STARTUP) {
+                            "stale_startup_cache"
+                        } else {
+                            "stale_startup_callback"
+                        },
+                    allowPendingAreaConfirmation = allowPendingAreaConfirmation,
+                )
+            confirmationBudget.record(decision)
+            // Rejected startup observations must not exclude an older, valid startup cache either.
+            if (decision.result != LiveTrackingLocationQualityResult.REJECT || locationQualityGate.hasFreshInitialFix) {
+                lastProcessedFix = fix
+            }
+            if (decision.result != LiveTrackingLocationQualityResult.REJECT) allObservationsRejected = false
+            lastLocation = location
+            lastFix = fix
+            initialDecision = decision
+            candidatePool.record(
+                decision,
+                if (decision.result == LiveTrackingLocationQualityResult.ACCEPT) {
+                    LiveTrackingCandidate(location, fix, decision)
+                } else {
+                    null
+                },
+            )
+            LiveTrackingDiagnostics.recordLiveTrackingFix(
+                source = source,
+                decision = decision,
+                androidSpeedMetersPerSecond = fix.speedMetersPerSecond,
+                isMockLocation = location.isMockLocationForDiagnostics(),
+                gsmSignalPercent = cellularSignalMonitor.currentPercent(),
+                queueSize = diagnosticPositionQueueSize(),
+            )
+            if (decision.result != LiveTrackingLocationQualityResult.ACCEPT) {
+                LiveTrackingDiagnostics.recordLocationQuality(
+                    decision = decision,
+                    gsmSignalPercent = cellularSignalMonitor.currentPercent(),
+                )
+            }
+        }
+
+        val decision =
+            initialDecision ?: return PreparedScheduledCycle(
+                id = cycleId,
+                intervalMillis = intervalMillis,
+                initialDecision = null,
+                initialCandidates = candidatePool.acceptedCandidates(),
+                acquisition = null,
+                confirmationBudget = confirmationBudget,
+                allObservationsRejected = allObservationsRejected,
+            )
+        val location =
+            lastLocation
+                ?: return PreparedScheduledCycle(
+                    cycleId,
+                    intervalMillis,
+                    decision,
+                    candidatePool.acceptedCandidates(),
+                    null,
+                    confirmationBudget,
+                    allObservationsRejected,
+                )
+        val fix = checkNotNull(lastFix)
+        val scheduledFallbacks = candidatePool.scheduledFallbacks()
+        var acquisition: ActiveAcquisition? = null
+        when (decision.result) {
+            LiveTrackingLocationQualityResult.ACCEPT -> {
+                val eligible =
+                    shouldRefineLiveTrackingAccuracy(
+                        LiveTrackingAccuracyRefinementContext(
+                            source = source,
+                            result = decision.result,
+                            intervalMillis = intervalMillis,
+                            accuracyMeters = decision.accuracyMeters,
+                            hasFineLocationPermission = hasFineLocationPermission(),
+                            sessionActive =
+                                settings != null &&
+                                    !isPaused &&
+                                    !isStopping &&
+                                    !pauseRequested,
+                            acquisitionRunning = orchestration.hasActiveAcquisition(),
+                        ),
+                    )
+                if (eligible) {
+                    acquisition =
+                        createActiveAcquisition(
+                            AcquisitionRequest(
+                                generation = generation,
+                                cycleId = cycleId,
+                                intervalMillis = intervalMillis,
+                                reason = LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT,
+                                initialFix = fix,
+                                initialDecision = decision,
+                                initialCandidates = scheduledFallbacks,
+                                trigger = null,
+                                confirmationBudget = confirmationBudget,
+                                rescueCooldownPending = false,
+                            ),
+                        ).takeIf { orchestration.publishAcquisition(it) }
+                }
+            }
+            LiveTrackingLocationQualityResult.SUSPECT -> {
+                if (source == LiveTrackingFixSource.CALLBACK) {
                     LiveTrackingSessionStore.setStatus("Waiting for GPS confirmation")
                     updateNotification("Waiting for GPS confirmation")
                 }
-                val rescue =
-                    if (qualityDecision.result == LiveTrackingLocationQualityResult.SUSPECT) {
-                        requestRescueForSuspectLocked(
-                            source = source,
-                            trigger = qualityDecision.reason,
-                        )
-                    } else {
-                        null
-                    }
-                if (rescue == null ||
-                    !canContinueLiveTrackingSend(isPaused = isPaused, isStopping = isStopping, stop = stop)
-                ) {
-                    return@withLock
-                }
-                locationToSend = rescue.location
-                qualityDecisionToSend = rescue.decision
-            }
-            if (!stop) lastLocation = locationToSend
-            var attemptedUpdate: ArkluzLocationUpdate? = null
-            var sentStartInRequest = false
-            var queueSizeBeforeTransmission: Int? = null
-            runCatching {
-                flushPendingSessionControlsLocked()
-                if (!canContinueLiveTrackingSend(isPaused = isPaused, isStopping = isStopping, stop = stop)) {
-                    return@withLock
-                }
-                queueSizeBeforeTransmission = diagnosticPositionQueueSize()
-                // The last-known location and callback can arrive before the first request completes.
-                sentStartInRequest = startRequested && !sentStart
-                attemptedUpdate =
-                    arkluzClient.buildLocationUpdate(
-                        settings = activeSettings,
-                        location = locationToSend,
-                        start = sentStartInRequest,
-                        stop = stop,
-                        locationDiagnostics = qualityDecisionToSend?.toDiagnostics(),
+                val cooldownRemaining =
+                    orchestration.rescueCooldownRemainingMillis(
+                        nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
+                        cooldownMillis = RESCUE_COOLDOWN_MILLIS,
                     )
-                if (!canContinueLiveTrackingSend(isPaused = isPaused, isStopping = isStopping, stop = stop)) {
-                    return@withLock
+                val canRescue =
+                    source == LiveTrackingFixSource.CALLBACK && cooldownRemaining == null && hasLocationPermission()
+                if (canRescue) {
+                    acquisition =
+                        createActiveAcquisition(
+                            AcquisitionRequest(
+                                generation = generation,
+                                cycleId = cycleId,
+                                intervalMillis = intervalMillis,
+                                reason = LiveTrackingAcquisitionReason.SUSPECT_CONFIRMATION,
+                                initialFix = fix,
+                                initialDecision = decision,
+                                initialCandidates = scheduledFallbacks,
+                                trigger = decision.reason,
+                                confirmationBudget = confirmationBudget,
+                                rescueCooldownPending = true,
+                            ),
+                        ).takeIf { orchestration.publishAcquisition(it) }
+                } else {
+                    recordLiveTrackingRescue(
+                        LiveTrackingRescueDiagnostic(
+                            requested = false,
+                            trigger = decision.reason,
+                            skippedBecauseCooldown =
+                                source == LiveTrackingFixSource.CALLBACK && cooldownRemaining != null,
+                            outcome =
+                                if (source == LiveTrackingFixSource.CALLBACK) {
+                                    "unavailable"
+                                } else {
+                                    "not_periodic_callback"
+                                },
+                        ),
+                    )
                 }
-                arkluzClient.sendLocationUpdate(checkNotNull(attemptedUpdate))
-            }.onSuccess { result ->
+            }
+            LiveTrackingLocationQualityResult.REJECT -> Unit
+        }
+
+        return PreparedScheduledCycle(
+            id = cycleId,
+            intervalMillis = intervalMillis,
+            initialDecision = decision,
+            initialCandidates = candidatePool.acceptedCandidates(),
+            acquisition = acquisition,
+            confirmationBudget = confirmationBudget,
+            allObservationsRejected = allObservationsRejected,
+        )
+    }
+
+    private fun createActiveAcquisition(request: AcquisitionRequest): ActiveAcquisition {
+        val cycle =
+            LiveTrackingAcquisitionCycle(
+                request.cycleId,
+                request.reason,
+                request.intervalMillis,
+                request.initialCandidates,
+            )
+        lateinit var acquisition: ActiveAcquisition
+        val callback =
+            object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    val locations = result.locations.toList()
+                    if (locations.isEmpty()) return
+                    serviceScope.launch { handleAcquisitionResult(acquisition, locations) }
+                }
+            }
+        acquisition =
+            ActiveAcquisition(
+                generation = request.generation,
+                cycle = cycle,
+                initialFix = request.initialFix,
+                initialDecision = request.initialDecision,
+                trigger = request.trigger,
+                startedElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+                callback = callback,
+                confirmationBudget = request.confirmationBudget,
+                rescueCooldownPending = request.rescueCooldownPending,
+            )
+        return acquisition
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
+    private suspend fun handleAcquisitionResult(
+        acquisition: ActiveAcquisition,
+        locations: List<Location>,
+    ) {
+        var completionReason: String? = null
+        sendMutex.withLock {
+            val handled =
+                orchestration.withAcquisition(acquisition) {
+                    val ordered =
+                        sortLiveTrackingFixesChronologically(
+                            locations.map { it to it.toLiveTrackingLocationFix() },
+                        )
+                    for ((location, fix) in ordered) {
+                        if (
+                            !canContinueLiveTrackingSend(
+                                isPaused,
+                                isStopping,
+                                stop = false,
+                                isPauseRequested = pauseRequested,
+                            )
+                        ) {
+                            return@withAcquisition
+                        }
+                        if (!acquisition.cycle.consumeDeliveredFix()) {
+                            recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "update_budget_exhausted")
+                            continue
+                        }
+                        val initialComparison = compareLiveTrackingFixTime(fix, acquisition.initialFix)
+                        val previousComparison = lastProcessedFix?.let { compareLiveTrackingFixTime(fix, it) }
+                        if (initialComparison <= 0 || previousComparison?.let { it <= 0 } == true) {
+                            val duplicate = initialComparison == 0 || previousComparison == 0
+                            acquisition.cycle.recordIgnoredFix(duplicate)
+                            recordLiveTrackingAcquisitionEvent(
+                                acquisition.cycle.id,
+                                if (duplicate) "duplicate_ignored" else "stale_ignored",
+                            )
+                            continue
+                        }
+                        if (acquisition.rescueCooldownPending && !beginRescueActivity(acquisition)) {
+                            completionReason = "confirmation_cooldown_blocked"
+                            break
+                        }
+                        lastProcessedFix = fix
+                        val mayAdvanceConfirmation = acquisition.confirmationBudget.allowsPendingAreaConfirmation()
+                        val decision =
+                            locationQualityGate.evaluate(
+                                fix = fix,
+                                nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
+                                nowEpochMilliseconds = System.currentTimeMillis(),
+                                startupStaleReason = "stale_refinement_fix",
+                                allowPendingAreaConfirmation = mayAdvanceConfirmation,
+                            )
+                        acquisition.confirmationBudget.record(decision)
+                        val candidate =
+                            if (decision.result == LiveTrackingLocationQualityResult.ACCEPT) {
+                                LiveTrackingCandidate(location, fix, decision)
+                            } else {
+                                null
+                            }
+                        acquisition.cycle.recordDecision(decision, candidate)
+                        LiveTrackingDiagnostics.recordLiveTrackingFix(
+                            source = LiveTrackingFixSource.EXPLICIT_FRESH,
+                            decision = decision,
+                            androidSpeedMetersPerSecond = fix.speedMetersPerSecond,
+                            isMockLocation = location.isMockLocationForDiagnostics(),
+                            gsmSignalPercent = cellularSignalMonitor.currentPercent(),
+                            queueSize = diagnosticPositionQueueSize(),
+                        )
+                        if (decision.result != LiveTrackingLocationQualityResult.ACCEPT) {
+                            LiveTrackingDiagnostics.recordLocationQuality(
+                                decision,
+                                cellularSignalMonitor.currentPercent(),
+                            )
+                        }
+                        if (decision.result == LiveTrackingLocationQualityResult.SUSPECT &&
+                            acquisition.cycle.reason == LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT
+                        ) {
+                            completionReason = handOffRefinementToSuspectConfirmation(acquisition, decision)
+                            if (completionReason != null) break
+                        }
+                        if (acquisition.cycle.reason == LiveTrackingAcquisitionReason.SUSPECT_CONFIRMATION &&
+                            decision.result == LiveTrackingLocationQualityResult.ACCEPT
+                        ) {
+                            completionReason = "suspect_confirmed"
+                        }
+                        if (completionReason == null && acquisition.cycle.hasReachedTarget()) {
+                            completionReason = "target_reached"
+                        }
+                        if (completionReason != null) break
+                    }
+                    if (completionReason == null && acquisition.cycle.extraFixesDelivered >= MAX_ACCURACY_EXTRA_FIXES) {
+                        completionReason = "budget_exhausted"
+                    }
+                    completionReason?.let { completeAcquisitionLocked(acquisition, it) }
+                    true
+                }
+            if (handled == null) {
+                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "late_callback_ignored")
+            }
+        }
+        if (completionReason != null) removeAcquisitionCallback(acquisition)
+    }
+
+    @Suppress("ReturnCount")
+    private fun handOffRefinementToSuspectConfirmation(
+        acquisition: ActiveAcquisition,
+        decision: LiveTrackingLocationQualityDecision,
+    ): String? {
+        acquisition.trigger = decision.reason
+        val now = SystemClock.elapsedRealtimeNanos()
+        val cooldownRemaining =
+            orchestration.rescueCooldownRemainingMillis(
+                nowElapsedRealtimeNanos = now,
+                cooldownMillis = RESCUE_COOLDOWN_MILLIS,
+            )
+        when (
+            handoffLiveTrackingAcquisitionToConfirmation(
+                acquisition.cycle,
+                cooldownRemaining,
+                hasLocationPermission(),
+            )
+        ) {
+            LiveTrackingConfirmationHandoff.UNAVAILABLE -> return "confirmation_unavailable"
+            LiveTrackingConfirmationHandoff.COOLDOWN_BLOCKED -> {
+                acquisition.rescueSkippedCooldown = true
+                return "confirmation_cooldown_blocked"
+            }
+            LiveTrackingConfirmationHandoff.NOT_APPLICABLE -> return null
+            LiveTrackingConfirmationHandoff.CONTINUE -> Unit
+        }
+        return if (beginRescueActivity(acquisition)) null else "confirmation_cooldown_blocked"
+    }
+
+    @SuppressLint("MissingPermission")
+    @Suppress("CyclomaticComplexMethod")
+    private suspend fun awaitAcquisition(acquisition: ActiveAcquisition) {
+        try {
+            val request = liveTrackingRefinementLocationRequest()
+            val registrationTask =
+                orchestration.registerAcquisition(
+                    acquisition = acquisition,
+                    sessionActive = { canRegisterAcquisition(acquisition) },
+                    register = {
+                        locationClient
+                            .requestLocationUpdates(request, acquisition.callback, mainLooper)
+                            .also { task ->
+                                task.addOnCompleteListener { completedTask ->
+                                    onAcquisitionRegistrationComplete(acquisition, completedTask)
+                                }
+                            }
+                    },
+                )
+            if (registrationTask == null) {
+                completeAcquisitionLocked(acquisition, "cancelled_before_registration")
+                return
+            }
+            val remainingBeforeRegistration = acquisitionRemainingMillis(acquisition)
+            val registered =
+                withTimeoutOrNull(remainingBeforeRegistration) {
+                    select<Boolean?> {
+                        acquisition.registrationResult.onAwait { it }
+                        acquisition.completion.onAwait { null }
+                    }
+                }
+            if (registered == null && !acquisition.cycle.completed) {
+                acquisition.timedOut = true
+                completeAcquisitionLocked(acquisition, "timeout")
+            } else if (registered == false && !acquisition.cycle.completed) {
+                completeAcquisitionLocked(acquisition, "registration_cancelled")
+            } else if (registered == true && !isAcquisitionActive(acquisition)) {
+                requestAcquisitionCallbackRemoval(acquisition, "late_registration_cleanup")
+            } else if (registered == true) {
+                val completed =
+                    withTimeoutOrNull(acquisitionRemainingMillis(acquisition)) {
+                        acquisition.completion.await()
+                    }
+                if (completed == null && !acquisition.cycle.completed) {
+                    acquisition.timedOut = true
+                    completeAcquisitionLocked(acquisition, "timeout")
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            if (!acquisition.cycle.completed) {
+                acquisition.registrationFailed = true
+                completeAcquisitionLocked(acquisition, "registration_failure")
+            }
+        } finally {
+            removeAcquisitionCallback(acquisition)
+            acquisition.durationMillis =
+                (SystemClock.elapsedRealtime() - acquisition.startedElapsedRealtimeMillis).coerceAtLeast(0L)
+        }
+    }
+
+    private fun completeAcquisitionLocked(
+        acquisition: ActiveAcquisition,
+        outcome: String,
+    ) {
+        orchestration.finishAcquisition(acquisition) {
+            acquisition.outcome = outcome
+            acquisition.cycle.complete()
+            acquisition.completion.complete(outcome)
+        }
+    }
+
+    private fun recordCancelledAcquisition(
+        acquisition: ActiveAcquisition,
+        reason: String,
+    ) {
+        acquisition.cancellation = reason
+        acquisition.outcome = "cancelled_$reason"
+        acquisition.cycle.complete()
+        acquisition.completion.complete(checkNotNull(acquisition.outcome))
+        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "cancelled_$reason")
+        requestAcquisitionCallbackRemoval(acquisition, "cancel_cleanup")
+    }
+
+    private suspend fun removeAcquisitionCallback(acquisition: ActiveAcquisition) {
+        withContext(NonCancellable) {
+            val removal =
+                runCatching { locationClient.removeLocationUpdates(acquisition.callback) }
+                    .getOrElse {
+                        acquisition.cleanupFailed = true
+                        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                        return@withContext
+                    }
+            val finished =
+                runCatching {
+                    withTimeoutOrNull(ACQUISITION_CLEANUP_TIMEOUT_MS) {
+                        removal.await()
+                        true
+                    } ?: false
+                }.getOrElse {
+                    acquisition.cleanupFailed = true
+                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                    false
+                }
+            if (!finished && !acquisition.cleanupFailed) {
+                acquisition.cleanupTimedOut = true
+                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_timeout")
+            }
+        }
+    }
+
+    private fun canRegisterAcquisition(acquisition: ActiveAcquisition): Boolean =
+        orchestration.isAcquisitionActive(acquisition) &&
+            !acquisition.cycle.completed &&
+            settings != null &&
+            !isPaused &&
+            !pauseRequested &&
+            !isStopping &&
+            (
+                acquisition.cycle.reason != LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT ||
+                    hasFineLocationPermission()
+            )
+
+    private fun isAcquisitionActive(acquisition: ActiveAcquisition): Boolean =
+        orchestration.isAcquisitionActive(acquisition) &&
+            settings != null &&
+            !isPaused &&
+            !pauseRequested &&
+            !isStopping
+
+    private fun acquisitionRemainingMillis(acquisition: ActiveAcquisition): Long =
+        (
+            ACQUISITION_WINDOW_MS -
+                (SystemClock.elapsedRealtime() - acquisition.startedElapsedRealtimeMillis).coerceAtLeast(0L)
+        ).coerceAtLeast(0L)
+
+    @Suppress("ReturnCount")
+    private fun onAcquisitionRegistrationComplete(
+        acquisition: ActiveAcquisition,
+        task: Task<Void>,
+    ) {
+        if (!task.isSuccessful) {
+            acquisition.registrationResult.completeExceptionally(
+                task.exception ?: IllegalStateException("Location callback registration failed"),
+            )
+            return
+        }
+        val retained =
+            orchestration.acknowledgeRegistration(
+                acquisition = acquisition,
+                sessionActive = { canRegisterAcquisition(acquisition) },
+                removeLateRegistration = {
+                    requestAcquisitionCallbackRemoval(acquisition, "late_registration_cleanup")
+                },
+            )
+        if (!retained) {
+            acquisition.registrationResult.complete(false)
+            return
+        }
+        val registered =
+            orchestration.withAcquisition(acquisition) {
+                if (acquisition.rescueCooldownPending && !beginRescueActivity(acquisition)) {
+                    completeAcquisitionLocked(acquisition, "confirmation_cooldown_blocked")
+                    requestAcquisitionCallbackRemoval(acquisition, "cooldown_cleanup")
+                    false
+                } else {
+                    true
+                }
+            } ?: false
+        acquisition.registrationResult.complete(registered)
+    }
+
+    private fun beginRescueActivity(acquisition: ActiveAcquisition): Boolean =
+        orchestration.withAcquisition(acquisition) {
+            orchestration
+                .beginRescueActivity(
+                    acquisition = acquisition,
+                    nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
+                    cooldownMillis = RESCUE_COOLDOWN_MILLIS,
+                ) {
+                    acquisition.rescueCooldownPending = false
+                    acquisition.rescueWasRequested = true
+                    recordLiveTrackingRescue(
+                        LiveTrackingRescueDiagnostic(
+                            requested = true,
+                            trigger = acquisition.trigger ?: acquisition.initialDecision.reason,
+                        ),
+                    )
+                }.also { allowed ->
+                    if (!allowed) acquisition.rescueSkippedCooldown = true
+                }
+        } ?: false
+
+    private fun requestAcquisitionCallbackRemoval(
+        acquisition: ActiveAcquisition,
+        event: String,
+    ) {
+        val removal =
+            runCatching { locationClient.removeLocationUpdates(acquisition.callback) }
+                .getOrElse {
+                    acquisition.cleanupFailed = true
+                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                    return
+                }
+        val cleanupTimeoutHandler = if (event == "late_registration_cleanup") Handler(mainLooper) else null
+        val cleanupTimeout =
+            Runnable {
+                if (!removal.isComplete) {
+                    acquisition.cleanupTimedOut = true
+                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_timeout")
+                }
+            }
+        cleanupTimeoutHandler?.postDelayed(cleanupTimeout, ACQUISITION_CLEANUP_TIMEOUT_MS)
+        removal.addOnCompleteListener { task ->
+            cleanupTimeoutHandler?.removeCallbacks(cleanupTimeout)
+            if (!task.isSuccessful) {
+                acquisition.cleanupFailed = true
+                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+            }
+        }
+        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, event)
+    }
+
+    private fun acquisitionOutcome(
+        acquisition: ActiveAcquisition?,
+        sendOutcome: String,
+        selected: LiveTrackingCandidate<Location>?,
+    ): String =
+        liveTrackingAcquisitionOutcome(
+            acquisitionOutcome = acquisition?.outcome,
+            transmissionOutcome = sendOutcome,
+            hasCandidate = selected != null,
+            usesScheduledFallback = selected?.isScheduledFallback == true,
+        )
+
+    private fun recordRescueOutcome(
+        acquisition: ActiveAcquisition,
+        selected: LiveTrackingCandidate<Location>?,
+    ) {
+        val decision = selected?.decision
+        recordLiveTrackingRescue(
+            LiveTrackingRescueDiagnostic(
+                requested = acquisition.rescueWasRequested,
+                trigger = acquisition.trigger ?: acquisition.initialDecision.reason,
+                skippedBecauseCooldown = acquisition.rescueSkippedCooldown,
+                resultAgeMillis = decision?.fixAgeMillis,
+                accuracyMeters = decision?.accuracyMeters,
+                speedMetersPerSecond = selected?.fix?.speedMetersPerSecond,
+                outcome =
+                    when {
+                        acquisition.rescueSkippedCooldown -> "cooldown_blocked"
+                        !acquisition.rescueWasRequested -> acquisition.outcome ?: "unavailable"
+                        selected == null -> acquisition.outcome ?: "inconclusive"
+                        selected.isScheduledFallback -> "fallback_after_inconclusive"
+                        decision?.suspectResolution == LiveTrackingSuspectResolution.REJECTED ->
+                            "returned_previous_area"
+                        else -> "confirmed_candidate"
+                    },
+            ),
+        )
+    }
+
+    @Suppress(
+        "LongMethod",
+        "CyclomaticComplexMethod",
+        "ReturnCount",
+        "TooGenericExceptionCaught",
+        "NestedBlockDepth",
+        "LoopWithTooManyJumpStatements",
+    )
+    private suspend fun transmitSelectedLocationLocked(
+        settings: LiveTrackingSettings,
+        candidates: List<LiveTrackingCandidate<Location>>,
+        generation: LiveTrackingGeneration,
+    ): TransmissionResult {
+        if (
+            !orchestration.isCurrent(generation) ||
+            !canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)
+        ) {
+            return TransmissionResult("cancelled_lifecycle", null)
+        }
+        var attemptedUpdate: ArkluzLocationUpdate? = null
+        var attemptedSelection: LiveTrackingCandidateSelection<Location>? = null
+        var sentStartInRequest = false
+        var queueSizeBeforeTransmission: Int? = null
+        try {
+            flushPendingSessionControlsLocked()
+            if (
+                !orchestration.isCurrent(generation) ||
+                !canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)
+            ) {
+                return TransmissionResult("cancelled_lifecycle", null)
+            }
+            while (true) {
+                val selection =
+                    selectFreshLiveTrackingCandidate(
+                        candidates,
+                        SystemClock.elapsedRealtimeNanos(),
+                        System.currentTimeMillis(),
+                    ) ?: return TransmissionResult("stale_no_candidate", null)
+                val selected = selection.candidate
+                val age =
+                    liveTrackingLocationAgeMillis(
+                        selected.fix,
+                        SystemClock.elapsedRealtimeNanos(),
+                        System.currentTimeMillis(),
+                    ) ?: continue
+                val qualityDecision = selected.decision.copy(fixAgeMillis = age)
+                sentStartInRequest = !sentStart
+                val update =
+                    arkluzClient.buildLocationUpdate(
+                        settings = settings,
+                        location = selected.value,
+                        start = sentStartInRequest,
+                        stop = false,
+                        locationDiagnostics = qualityDecision.toDiagnostics(),
+                    )
+                if (
+                    !orchestration.isCurrent(generation) ||
+                    !canContinueLiveTrackingSend(
+                        isPaused,
+                        isStopping,
+                        stop = false,
+                        isPauseRequested = pauseRequested,
+                    )
+                ) {
+                    return TransmissionResult("cancelled_lifecycle", null)
+                }
+                val afterBuild =
+                    selectFreshLiveTrackingCandidate(
+                        candidates,
+                        SystemClock.elapsedRealtimeNanos(),
+                        System.currentTimeMillis(),
+                    )
+                if (afterBuild?.candidate !== selected) continue
+
+                queueSizeBeforeTransmission = diagnosticPositionQueueSize()
+                attemptedSelection = selection
+                attemptedUpdate = update
+                lastLocation = selected.value
+                val result = arkluzClient.sendLocationUpdate(update)
                 if (sentStartInRequest) {
                     sentStart = true
                     result.dateId?.let { dateId = it }
                     persistActiveSession()
                 }
                 val serverMessage = result.message.takeUnless { it == "Server accepted request" }
-                val status =
-                    serverMessage ?: when {
-                        stop -> "Stop sent"
-                        sentStartInRequest -> "Started and position sent"
-                        else -> "Position sent"
-                    }
-                val replayResult =
-                    if (stop) {
-                        Result.success(0)
-                    } else {
-                        runCatching { replayStoredGpsPointsLocked() }
-                    }
-                replayResult
+                val status = serverMessage ?: if (sentStartInRequest) "Started and position sent" else "Position sent"
+                val replay = runCatching { replayStoredGpsPointsLocked() }
+                replay
                     .onSuccess { replayedCount ->
-                        attemptedUpdate?.let { update ->
-                            LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                                isCatchUp = update.isCatchUp,
-                                fixTimestampEpochMillis = update.epochMilliseconds,
-                                fixAgeMillis = qualityDecisionToSend?.fixAgeMillis,
-                                gsmSignalPercent = update.gsmSignalPercent,
-                                queueSizeBefore = queueSizeBeforeTransmission,
-                                queueSizeAfter = diagnosticPositionQueueSize(),
-                                outcome = "success",
-                            )
-                        }
+                        LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                            isCatchUp = update.isCatchUp,
+                            fixTimestampEpochMillis = update.epochMilliseconds,
+                            fixAgeMillis = qualityDecision.fixAgeMillis,
+                            gsmSignalPercent = update.gsmSignalPercent,
+                            queueSizeBefore = queueSizeBeforeTransmission,
+                            queueSizeAfter = diagnosticPositionQueueSize(),
+                            outcome = "success",
+                        )
                         val replayStatus =
                             if (replayedCount > 0) {
-                                "$status; replayed $replayedCount stored GPS point${if (replayedCount == 1) "" else "s"}"
+                                "$status; replayed $replayedCount stored GPS point" +
+                                    if (replayedCount == 1) "" else "s"
                             } else {
                                 status
                             }
                         LiveTrackingSessionStore.setSent(replayStatus)
                         updateNotification(replayStatus)
                     }.onFailure { error ->
-                        attemptedUpdate?.let { update ->
-                            LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                                isCatchUp = update.isCatchUp,
-                                fixTimestampEpochMillis = update.epochMilliseconds,
-                                fixAgeMillis = qualityDecisionToSend?.fixAgeMillis,
-                                gsmSignalPercent = update.gsmSignalPercent,
-                                queueSizeBefore = queueSizeBeforeTransmission,
-                                queueSizeAfter = diagnosticPositionQueueSize(),
-                                outcome = "success_with_pending_catch_up",
-                            )
-                        }
-                        val message = "Position sent; stored GPS points still waiting (${error.toLiveTrackingErrorText()})"
+                        LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                            isCatchUp = update.isCatchUp,
+                            fixTimestampEpochMillis = update.epochMilliseconds,
+                            fixAgeMillis = qualityDecision.fixAgeMillis,
+                            gsmSignalPercent = update.gsmSignalPercent,
+                            queueSizeBefore = queueSizeBeforeTransmission,
+                            queueSizeAfter = diagnosticPositionQueueSize(),
+                            outcome = "success_with_pending_catch_up",
+                        )
+                        val message =
+                            "Position sent; stored GPS points still waiting (${error.toLiveTrackingErrorText()})"
                         LiveTrackingSessionStore.setError(message)
                         updateNotification("Stored GPS points still waiting")
                     }
-            }.onFailure { error ->
-                val failedUpdate =
-                    attemptedUpdate
-                        ?: arkluzClient.buildLocationUpdate(
-                            settings = activeSettings,
-                            location = locationToSend,
-                            start = false,
-                            stop = stop,
-                        )
-                val startWasAlreadyPending =
-                    LiveTrackingControlQueue.load(this@LiveTrackingService).any { it.start }
-                if (failedUpdate.start && !startWasAlreadyPending) {
-                    LiveTrackingControlQueue.enqueue(this@LiveTrackingService, failedUpdate)
-                    serviceScope.launch { retryPendingStartUntilConfirmed() }
-                }
-                val controlsPending = LiveTrackingControlQueue.load(this@LiveTrackingService).isNotEmpty()
-                if (!stop && error.isRetryableArkluzFailure()) {
-                    val queueSize = LiveTrackingPositionQueue.enqueue(this@LiveTrackingService, failedUpdate)
-                    LiveTrackingDiagnostics.recordLiveTrackingPositionQueued(queueSize)
-                    if (!sentStart && controlsPending) {
-                        val message = "Waiting for network to start tracking; GPS stored for retry ($queueSize waiting)"
-                        LiveTrackingSessionStore.setStartPending(message)
-                        updateNotification("Waiting for network to start tracking")
-                    } else if (controlsPending) {
-                        LiveTrackingSessionStore.setActive(
-                            status = "GPS stored for retry ($queueSize waiting)",
-                            serverSyncPending = true,
-                        )
-                        updateNotification("Tracking active; Arkluz notification pending")
-                    } else {
-                        val message = "GPS stored for retry ($queueSize waiting): ${error.toLiveTrackingErrorText()}"
-                        LiveTrackingSessionStore.setError(message)
-                        updateNotification("GPS stored for retry ($queueSize waiting)")
-                    }
-                } else {
-                    LiveTrackingSessionStore.setError(error.message ?: "Unable to send position")
-                    updateNotification("Unable to send position")
-                }
-                attemptedUpdate?.let { update ->
-                    LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                        isCatchUp = update.isCatchUp,
-                        fixTimestampEpochMillis = update.epochMilliseconds,
-                        fixAgeMillis = qualityDecisionToSend?.fixAgeMillis,
-                        gsmSignalPercent = update.gsmSignalPercent,
-                        queueSizeBefore = queueSizeBeforeTransmission,
-                        queueSizeAfter = diagnosticPositionQueueSize(),
-                        outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
-                    )
-                }
+                return TransmissionResult(
+                    "sent",
+                    selection.copy(candidate = selected.copy(decision = qualityDecision)),
+                )
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (!orchestration.isCurrent(generation)) return TransmissionResult("stale_request_generation", null)
+            val eligibleNow =
+                selectFreshLiveTrackingCandidate(
+                    candidates,
+                    SystemClock.elapsedRealtimeNanos(),
+                    System.currentTimeMillis(),
+                ) ?: return TransmissionResult("stale_no_candidate", null)
+            val location = eligibleNow.candidate.value
+            val qualityDecision =
+                eligibleNow.candidate.decision.copy(
+                    fixAgeMillis =
+                        liveTrackingLocationAgeMillis(
+                            eligibleNow.candidate.fix,
+                            SystemClock.elapsedRealtimeNanos(),
+                            System.currentTimeMillis(),
+                        ),
+                )
+            lastLocation = location
+            val failedUpdate =
+                attemptedUpdate.takeIf { attemptedSelection?.candidate === eligibleNow.candidate }
+                    ?: arkluzClient.buildLocationUpdate(
+                        settings = settings,
+                        location = location,
+                        start = attemptedUpdate?.start == true,
+                        stop = false,
+                    )
+            val startWasAlreadyPending = LiveTrackingControlQueue.load(this).any { it.start }
+            if (failedUpdate.start && !startWasAlreadyPending) {
+                LiveTrackingControlQueue.enqueue(this, failedUpdate)
+                serviceScope.launch { retryPendingStartUntilConfirmed() }
+            }
+            val controlsPending = LiveTrackingControlQueue.load(this).isNotEmpty()
+            if (error.isRetryableArkluzFailure()) {
+                val queueSize = LiveTrackingPositionQueue.enqueue(this, failedUpdate)
+                LiveTrackingDiagnostics.recordLiveTrackingPositionQueued(queueSize)
+                if (!sentStart && controlsPending) {
+                    LiveTrackingSessionStore.setStartPending(
+                        "Waiting for network to start tracking; GPS stored for retry ($queueSize waiting)",
+                    )
+                    updateNotification("Waiting for network to start tracking")
+                } else if (controlsPending) {
+                    LiveTrackingSessionStore.setActive(
+                        status = "GPS stored for retry ($queueSize waiting)",
+                        serverSyncPending = true,
+                    )
+                    updateNotification("Tracking active; Arkluz notification pending")
+                } else {
+                    LiveTrackingSessionStore.setError(
+                        "GPS stored for retry ($queueSize waiting): ${error.toLiveTrackingErrorText()}",
+                    )
+                    updateNotification("GPS stored for retry ($queueSize waiting)")
+                }
+            } else {
+                LiveTrackingSessionStore.setError(error.message ?: "Unable to send position")
+                updateNotification("Unable to send position")
+            }
+            attemptedUpdate?.let { update ->
+                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                    isCatchUp = update.isCatchUp,
+                    fixTimestampEpochMillis = update.epochMilliseconds,
+                    fixAgeMillis = qualityDecision.fixAgeMillis,
+                    gsmSignalPercent = update.gsmSignalPercent,
+                    queueSizeBefore = queueSizeBeforeTransmission,
+                    queueSizeAfter = diagnosticPositionQueueSize(),
+                    outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
+                )
+            }
+            return TransmissionResult(
+                if (error.isRetryableArkluzFailure()) "queued" else "failed",
+                eligibleNow.copy(candidate = eligibleNow.candidate.copy(decision = qualityDecision)),
+            )
         }
     }
 
@@ -511,137 +1320,6 @@ class LiveTrackingService : Service() {
             if (isStopping || sentStart) return
             runCatching { flushPendingSessionControls() }
             updateControlSyncStatus()
-        }
-    }
-
-    private suspend fun requestRescueForSuspectLocked(
-        source: LiveTrackingFixSource,
-        trigger: String,
-    ): RescueLocation? {
-        val skippedBecauseCooldown =
-            source == LiveTrackingFixSource.CALLBACK &&
-                liveTrackingRescueCooldownRemainingMillis(
-                    lastRequestElapsedRealtimeNanos = lastRescueRequestElapsedRealtimeNanos,
-                    nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
-                    cooldownMillis = RESCUE_COOLDOWN_MILLIS,
-                ) != null
-        if (source != LiveTrackingFixSource.CALLBACK || skippedBecauseCooldown) {
-            recordLiveTrackingRescue(
-                LiveTrackingRescueDiagnostic(
-                    requested = false,
-                    trigger = trigger,
-                    skippedBecauseCooldown = skippedBecauseCooldown,
-                ),
-            )
-            return null
-        }
-
-        lastRescueRequestElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-        recordLiveTrackingRescue(
-            LiveTrackingRescueDiagnostic(
-                requested = true,
-                trigger = trigger,
-            ),
-        )
-        val acquisition = acquireRescueLocation()
-        return acquisition.location?.let { rescueLocation ->
-            evaluateRescueLocation(rescueLocation, trigger)
-        } ?: run {
-            recordLiveTrackingRescue(
-                LiveTrackingRescueDiagnostic(
-                    requested = true,
-                    trigger = trigger,
-                    outcome = acquisition.outcome.takeUnless { it == "completed" } ?: "unavailable",
-                ),
-            )
-            null
-        }
-    }
-
-    private fun evaluateRescueLocation(
-        rescueLocation: Location,
-        trigger: String,
-    ): RescueLocation? {
-        val rescueFix = rescueLocation.toLiveTrackingLocationFix()
-        val rescueDecision =
-            locationQualityGate.evaluate(
-                fix = rescueFix,
-                nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
-                nowEpochMilliseconds = System.currentTimeMillis(),
-                startupStaleReason = "stale_rescue_location",
-            )
-        LiveTrackingDiagnostics.recordLiveTrackingFix(
-            source = LiveTrackingFixSource.EXPLICIT_FRESH,
-            decision = rescueDecision,
-            androidSpeedMetersPerSecond = rescueFix.speedMetersPerSecond,
-            isMockLocation = rescueLocation.isMockLocationForDiagnostics(),
-            gsmSignalPercent = cellularSignalMonitor.currentPercent(),
-            queueSize = diagnosticPositionQueueSize(),
-        )
-        if (rescueDecision.result != LiveTrackingLocationQualityResult.ACCEPT) {
-            LiveTrackingDiagnostics.recordLocationQuality(
-                decision = rescueDecision,
-                gsmSignalPercent = cellularSignalMonitor.currentPercent(),
-            )
-        }
-        recordLiveTrackingRescue(
-            LiveTrackingRescueDiagnostic(
-                requested = true,
-                trigger = trigger,
-                resultAgeMillis = rescueDecision.fixAgeMillis,
-                accuracyMeters = rescueFix.accuracyMeters,
-                speedMetersPerSecond = rescueFix.speedMetersPerSecond,
-                outcome =
-                    when {
-                        rescueDecision.result != LiveTrackingLocationQualityResult.ACCEPT -> "inconclusive"
-                        rescueDecision.suspectResolution == LiveTrackingSuspectResolution.REJECTED ->
-                            "returned_previous_area"
-                        else -> "confirmed_candidate"
-                    },
-            ),
-        )
-        return rescueLocation
-            .takeIf { rescueDecision.result == LiveTrackingLocationQualityResult.ACCEPT }
-            ?.let { RescueLocation(location = it, decision = rescueDecision) }
-    }
-
-    private data class RescueLocation(
-        val location: Location,
-        val decision: LiveTrackingLocationQualityDecision,
-    )
-
-    private data class RescueAcquisition(
-        val location: Location?,
-        val outcome: String,
-    )
-
-    @SuppressLint("MissingPermission")
-    private suspend fun acquireRescueLocation(): RescueAcquisition {
-        val cancellationTokenSource = CancellationTokenSource()
-        val request =
-            CurrentLocationRequest
-                .Builder()
-                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-                .setMaxUpdateAgeMillis(0L)
-                .setDurationMillis(RESCUE_TIMEOUT_MILLIS)
-                .build()
-        return try {
-            withTimeoutOrNull(RESCUE_TIMEOUT_MILLIS) {
-                RescueAcquisition(
-                    location = locationClient.getCurrentLocation(request, cancellationTokenSource.token).await(),
-                    outcome = "completed",
-                )
-            } ?: RescueAcquisition(location = null, outcome = "timeout")
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: ApiException) {
-            RescueAcquisition(location = null, outcome = "unavailable")
-        } catch (_: SecurityException) {
-            RescueAcquisition(location = null, outcome = "unavailable")
-        } catch (_: IllegalStateException) {
-            RescueAcquisition(location = null, outcome = "unavailable")
-        } finally {
-            cancellationTokenSource.cancel()
         }
     }
 
@@ -702,21 +1380,66 @@ class LiveTrackingService : Service() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun startLocationUpdates() {
-        if (!hasLocationPermission()) return
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
-        isPaused = false
+    private fun startLocationUpdates(): LiveTrackingGeneration? {
+        if (!hasLocationPermission()) return null
+        stopLocationUpdates()
+        val intervalMillis = updateIntervalMs()
+        val generation =
+            orchestration.startGeneration(intervalMillis, SystemClock.elapsedRealtime()) {
+                canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)
+            }
+        generation?.let { registerPeriodicLocationUpdates(it, intervalMillis) }
+        return generation
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun registerPeriodicLocationUpdates(
+        generation: LiveTrackingGeneration,
+        intervalMillis: Long,
+    ) {
         val request =
             LocationRequest
-                .Builder(Priority.PRIORITY_HIGH_ACCURACY, updateIntervalMs())
-                .setMinUpdateIntervalMillis(updateIntervalMs())
-                .setMaxUpdateDelayMillis(updateIntervalMs())
+                .Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis)
+                .setMinUpdateIntervalMillis(intervalMillis)
+                .setMaxUpdateDelayMillis(intervalMillis)
                 .build()
-        locationClient.requestLocationUpdates(request, locationCallback, mainLooper)
+        val callback =
+            object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    val locations = result.locations.toList()
+                    if (locations.isEmpty()) return
+                    val ticket =
+                        orchestration.withGeneration(generation) {
+                            generation.admission.observe(SystemClock.elapsedRealtime())
+                        } ?: return
+                    serviceScope.launch {
+                        sendLocations(locations, LiveTrackingFixSource.CALLBACK, generation, ticket)
+                    }
+                }
+            }
+        orchestration.withGeneration(generation) {
+            if (canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)) {
+                locationCallback = callback
+                locationClient.requestLocationUpdates(request, callback, mainLooper)
+            }
+        }
+    }
+
+    private fun stopLocationUpdates(reason: String = "request_replaced") {
+        orchestration.invalidateGeneration(
+            onCancelled = { recordCancelledAcquisition(it, reason) },
+            stopPeriodicUpdates = {
+                val callback = locationCallback
+                locationCallback = null
+                if (callback != null) runCatching { locationClient.removeLocationUpdates(callback) }
+            },
+        )
     }
 
     private fun pauseTracking() {
         if (isPaused || isStopping || !sentStart) return
+        pauseRequested = true
+        stopLocationUpdates("pause")
         serviceScope.launch {
             var pauseStarted = false
             sendMutex.withLock {
@@ -727,8 +1450,8 @@ class LiveTrackingService : Service() {
                         LiveTrackingSessionStore.setError("Wait for the first GPS position before pausing")
                         return@withLock
                     }
-                runCatching { locationClient.removeLocationUpdates(locationCallback) }
                 isPaused = true
+                pauseRequested = false
                 persistActiveSession()
                 LiveTrackingControlQueue.enqueue(
                     this@LiveTrackingService,
@@ -740,7 +1463,10 @@ class LiveTrackingService : Service() {
                 )
                 pauseStarted = true
             }
-            if (!pauseStarted) return@launch
+            if (!pauseStarted) {
+                pauseRequested = false
+                return@launch
+            }
             cellularSignalMonitor.stop()
             LiveTrackingSessionStore.setPaused(serverSyncPending = true)
             updateNotification("Pause pending; a no-movement alert may still be sent")
@@ -760,6 +1486,7 @@ class LiveTrackingService : Service() {
         }
         cellularSignalMonitor.start()
         isPaused = false
+        pauseRequested = false
         persistActiveSession()
         LiveTrackingControlQueue.enqueue(
             this,
@@ -893,15 +1620,16 @@ class LiveTrackingService : Service() {
     }
 
     private fun updateIntervalMs(): Long =
-        (settings?.updateIntervalSeconds ?: DEFAULT_UPDATE_INTERVAL_SECONDS)
-            .coerceIn(MIN_UPDATE_INTERVAL_SECONDS, MAX_UPDATE_INTERVAL_SECONDS)
-            .toLong() * 1000L
+        normalLiveTrackingIntervalMs(
+            settings?.updateIntervalSeconds ?: DEFAULT_UPDATE_INTERVAL_SECONDS,
+        )
 
     private fun stopTracking() {
         if (isStopping) return
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
-        isPaused = false
         isStopping = true
+        pauseRequested = false
+        isPaused = false
+        stopLocationUpdates("stop")
         serviceScope.launch {
             val location = sendMutex.withLock { lastLocation }
             if (location == null) {
@@ -993,6 +1721,9 @@ class LiveTrackingService : Service() {
         status: String,
         clearPlannedDraft: Boolean = false,
     ) {
+        isStopping = true
+        pauseRequested = false
+        stopLocationUpdates("stop")
         cellularSignalMonitor.stop()
         LiveTrackingDiagnostics.finishLiveTrackingSession()
         LiveTrackingControlQueue.clear(this)
@@ -1097,6 +1828,10 @@ class LiveTrackingService : Service() {
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    private fun hasFineLocationPermission(): Boolean =
+        ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
     private fun persistActiveSession() {
         val activeSettings = settings ?: return
         LiveTrackingActiveSessionStore.save(
@@ -1120,7 +1855,7 @@ class LiveTrackingService : Service() {
         private const val MAX_UPDATE_INTERVAL_SECONDS = 600
         private const val STOP_RETRY_DELAY_MS = 30_000L
         private const val CONTROL_RETRY_DELAY_MS = 30_000L
-        private const val RESCUE_TIMEOUT_MILLIS = 8_000L
+        private const val ACQUISITION_CLEANUP_TIMEOUT_MS = 500L
 
         // Two minutes prevents repeated suspect callbacks from becoming fast GPS polling.
         private const val RESCUE_COOLDOWN_MILLIS = 2 * 60 * 1000L
