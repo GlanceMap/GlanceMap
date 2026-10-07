@@ -119,6 +119,7 @@ class LiveTrackingDiagnosticsTest {
                 resultAgeMillis = 120L,
                 accuracyMeters = 350f,
                 speedMetersPerSecond = 4f,
+                context = LiveTrackingDiagnosticContext(100L, 2L, 8L),
             ),
         )
         recordLiveTrackingRescue(
@@ -126,6 +127,8 @@ class LiveTrackingDiagnosticsTest {
                 requested = false,
                 trigger = "repeated_suspect_area",
                 skippedBecauseCooldown = true,
+                context = LiveTrackingDiagnosticContext(100L, 2L, 9L),
+                cooldownRemainingMillis = 115_000L,
             ),
         )
 
@@ -136,6 +139,8 @@ class LiveTrackingDiagnosticsTest {
         assertTrue(capture.contains("rescue requested=false trigger=repeated_suspect_area skippedCooldown=true"))
         assertFalse(capture.contains("latitude"))
         assertFalse(capture.contains("longitude"))
+        assertTrue(capture.contains("serviceId=100 generationId=2 cycleId=8"))
+        assertTrue(capture.contains("cooldownRemainingMs=115000 serviceId=100 generationId=2 cycleId=9"))
     }
 
     @Test
@@ -163,6 +168,7 @@ class LiveTrackingDiagnosticsTest {
                 registrationFailed = false,
                 duplicateFixesIgnored = 1,
                 outcome = "early_target_sent",
+                context = LiveTrackingDiagnosticContext(100L, 2L, 8L, 0L),
             ),
         )
 
@@ -175,10 +181,60 @@ class LiveTrackingDiagnosticsTest {
         assertTrue(capture.contains("fallback=false earlyTarget=true timeout=false registrationFailure=false"))
         assertTrue(capture.contains("duplicateIgnored=1 cleanupTimeout=false cleanupFailure=false"))
         assertTrue(capture.contains("outcome=early_target_sent"))
+        assertTrue(capture.contains("selectedAgeMeasuredAt=summary"))
+        assertTrue(capture.contains("serviceId=100 generationId=2 cycleId=8 cadenceWindow=0"))
         assertFalse(capture.contains("latitude"))
         assertFalse(capture.contains("longitude"))
         assertFalse(capture.contains("https://"))
         assertFalse(capture.contains("password"))
+    }
+
+    @Test
+    fun correlatesObservedFixWithAttemptAndQueuedPositionAcrossGenerationChanges() {
+        PhoneDebugCapture.start()
+        val oldContext = LiveTrackingDiagnosticContext(100L, 2L, 8L, 0L)
+        val currentContext = oldContext.copy(generationId = 3L)
+        recordLiveTrackingEvent(oldContext, "generation_invalidated_pause")
+        recordLiveTrackingEvent(oldContext, "registration_ack_cleanup_only")
+        recordLiveTrackingEvent(currentContext, "cadence_admission_reserved")
+        LiveTrackingDiagnostics.recordLiveTrackingFix(
+            source = LiveTrackingFixSource.CALLBACK,
+            decision =
+                LiveTrackingLocationQualityDecision(
+                    result = LiveTrackingLocationQualityResult.ACCEPT,
+                    reason = "first_fix",
+                    accuracyMeters = 20f,
+                    fixAgeMillis = 100L,
+                    distanceFromPreviousMeters = null,
+                    impliedSpeedMetersPerSecond = null,
+                ),
+            androidSpeedMetersPerSecond = null,
+            isMockLocation = false,
+            gsmSignalPercent = 75,
+            queueSize = 0,
+            context = currentContext,
+            fixTimestampEpochMillis = 1_000L,
+        )
+        listOf("attempt", "queued").forEach { outcome ->
+            LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                isCatchUp = false,
+                fixTimestampEpochMillis = 1_000L,
+                fixAgeMillis = 100L,
+                gsmSignalPercent = 75,
+                queueSizeBefore = 0,
+                queueSizeAfter = if (outcome == "queued") 1 else 0,
+                outcome = outcome,
+                context = currentContext,
+            )
+        }
+
+        val lines = PhoneDebugCapture.snapshot()
+        assertEquals(2, lines.count { it.contains("serviceId=100 generationId=2 cycleId=8 cadenceWindow=0") })
+        assertEquals(4, lines.count { it.contains("serviceId=100 generationId=3 cycleId=8 cadenceWindow=0") })
+        assertEquals(3, lines.count { it.contains("fixTsMs=1000") })
+        assertEquals(1, lines.count { it.contains("outcome=attempt") })
+        assertEquals(1, lines.count { it.contains("outcome=queued") })
+        assertFalse(lines.any { it.contains("latitude") || it.contains("longitude") })
     }
 
     @Test

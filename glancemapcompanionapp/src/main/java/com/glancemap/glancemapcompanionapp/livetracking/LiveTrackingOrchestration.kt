@@ -64,9 +64,7 @@ internal class LiveTrackingOrchestration<T : GenerationOwnedLiveTrackingAcquisit
     fun releaseRejectedStartup(
         generation: LiveTrackingGeneration,
         ticket: LiveTrackingCadenceTicket,
-    ) {
-        if (isCurrent(generation)) generation.admission.releaseRejectedStartup(ticket)
-    }
+    ): Boolean = isCurrent(generation) && generation.admission.releaseRejectedStartup(ticket)
 
     @Synchronized
     fun publishAcquisition(acquisition: T): Boolean {

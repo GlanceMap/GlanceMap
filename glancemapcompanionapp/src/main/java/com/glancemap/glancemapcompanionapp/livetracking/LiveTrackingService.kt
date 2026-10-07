@@ -77,6 +77,8 @@ class LiveTrackingService : Service() {
     private val scheduledCycleMutex = Mutex()
 
     private val orchestration = LiveTrackingOrchestration<ActiveAcquisition>()
+    private val diagnosticServiceId = SystemClock.elapsedRealtimeNanos()
+    private var periodicDiagnosticContext: LiveTrackingDiagnosticContext? = null
 
     @Volatile
     private var lastLocation: Location? = null
@@ -259,6 +261,7 @@ class LiveTrackingService : Service() {
                 cachedLocationExists = false,
                 cachedLocationAgeMillis = null,
                 cachedLocationAccepted = null,
+                context = trackingContext(generation),
             )
             return
         }
@@ -281,6 +284,7 @@ class LiveTrackingService : Service() {
             cachedLocationExists = true,
             cachedLocationAgeMillis = ageMillis,
             cachedLocationAccepted = isFresh,
+            context = trackingContext(generation),
         )
         if (!isFresh) {
             val decision =
@@ -299,6 +303,8 @@ class LiveTrackingService : Service() {
                 isMockLocation = location.isMockLocationForDiagnostics(),
                 gsmSignalPercent = cellularSignalMonitor.currentPercent(),
                 queueSize = diagnosticPositionQueueSize(),
+                context = trackingContext(generation),
+                fixTimestampEpochMillis = fix.epochMilliseconds,
             )
             LiveTrackingDiagnostics.recordLocationQuality(
                 decision = decision,
@@ -366,6 +372,24 @@ class LiveTrackingService : Service() {
         var rescueCooldownPending: Boolean = false,
     ) : GenerationOwnedLiveTrackingAcquisition
 
+    private fun trackingContext(
+        generation: LiveTrackingGeneration,
+        cycleId: Long? = null,
+        cadenceWindow: Long? = null,
+    ): LiveTrackingDiagnosticContext =
+        LiveTrackingDiagnosticContext(
+            diagnosticServiceId,
+            generation.id,
+            cycleId,
+            cadenceWindow,
+        )
+
+    private fun ActiveAcquisition.trackingContext(): LiveTrackingDiagnosticContext =
+        trackingContext(
+            generation,
+            cycle.id,
+        )
+
     @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     private suspend fun sendLocations(
         locations: List<Location>,
@@ -373,23 +397,29 @@ class LiveTrackingService : Service() {
         generation: LiveTrackingGeneration,
         cadenceTicket: LiveTrackingCadenceTicket,
     ) {
+        val context = trackingContext(generation, cadenceWindow = cadenceTicket.windowIndex)
         if (!orchestration.isCurrent(generation)) {
-            recordLiveTrackingAcquisitionEvent(generation.id, "late_normal_callback_ignored")
+            recordLiveTrackingEvent(context, "late_normal_callback_ignored")
             return
         }
         scheduledCycleMutex.withLock {
             if (!orchestration.reserveAdmission(generation, cadenceTicket)) {
-                recordLiveTrackingAcquisitionEvent(cadenceTicket.windowIndex, "cadence_cycle_coalesced")
+                recordLiveTrackingEvent(context, "cadence_admission_denied")
                 return
             }
+            recordLiveTrackingEvent(context, "cadence_admission_reserved")
             val prepared =
                 sendMutex.withLock {
                     orchestration.withGeneration(generation) {
                         prepareScheduledCycleLocked(locations, source, generation)
                     }
                 } ?: return
+            val cycleContext = context.copy(cycleId = prepared.id)
+            recordLiveTrackingEvent(cycleContext, "cycle_prepared")
             if (prepared.allObservationsRejected && prepared.acquisition == null) {
-                orchestration.releaseRejectedStartup(generation, cadenceTicket)
+                if (orchestration.releaseRejectedStartup(generation, cadenceTicket)) {
+                    recordLiveTrackingEvent(cycleContext, "startup_admission_released")
+                }
             }
             prepared.acquisition?.let { awaitAcquisition(it) }
 
@@ -433,6 +463,7 @@ class LiveTrackingService : Service() {
                                     settings = activeSettings,
                                     candidates = candidates,
                                     generation = generation,
+                                    context = cycleContext,
                                 )
                             selection = selectedTransmission.selection
                             selectedTransmission.outcome
@@ -474,6 +505,7 @@ class LiveTrackingService : Service() {
                     outcome = acquisitionOutcome(acquisition, sendOutcome, selectedCandidate),
                     cleanupTimedOut = acquisition?.cleanupTimedOut == true,
                     cleanupFailed = acquisition?.cleanupFailed == true,
+                    context = cycleContext,
                 ),
             )
             acquisition
@@ -494,6 +526,7 @@ class LiveTrackingService : Service() {
         if (settings == null || locations.isEmpty()) return null
 
         val cycleId = ++nextAcquisitionCycleId
+        val context = trackingContext(generation, cycleId)
         val intervalMillis = updateIntervalMs()
         var lastLocation: Location? = null
         var lastFix: LiveTrackingLocationFix? = null
@@ -509,8 +542,8 @@ class LiveTrackingService : Service() {
         for ((location, fix) in orderedLocations) {
             val comparison = lastProcessedFix?.let { compareLiveTrackingFixTime(fix, it) }
             if (comparison?.let { it <= 0 } == true) {
-                recordLiveTrackingAcquisitionEvent(
-                    cycleId,
+                recordLiveTrackingEvent(
+                    context,
                     if (comparison == 0) "duplicate_ignored" else "stale_ignored",
                 )
                 continue
@@ -553,6 +586,8 @@ class LiveTrackingService : Service() {
                 isMockLocation = location.isMockLocationForDiagnostics(),
                 gsmSignalPercent = cellularSignalMonitor.currentPercent(),
                 queueSize = diagnosticPositionQueueSize(),
+                context = context,
+                fixTimestampEpochMillis = fix.epochMilliseconds,
             )
             if (decision.result != LiveTrackingLocationQualityResult.ACCEPT) {
                 LiveTrackingDiagnostics.recordLocationQuality(
@@ -655,6 +690,8 @@ class LiveTrackingService : Service() {
                         LiveTrackingRescueDiagnostic(
                             requested = false,
                             trigger = decision.reason,
+                            context = context,
+                            cooldownRemainingMillis = cooldownRemaining,
                             skippedBecauseCooldown =
                                 source == LiveTrackingFixSource.CALLBACK && cooldownRemaining != null,
                             outcome =
@@ -670,6 +707,9 @@ class LiveTrackingService : Service() {
             LiveTrackingLocationQualityResult.REJECT -> Unit
         }
 
+        acquisition?.let {
+            recordLiveTrackingEvent(it.trackingContext(), "acquisition_published_${it.cycle.reason.name}")
+        }
         return PreparedScheduledCycle(
             id = cycleId,
             intervalMillis = intervalMillis,
@@ -738,7 +778,7 @@ class LiveTrackingService : Service() {
                             return@withAcquisition
                         }
                         if (!acquisition.cycle.consumeDeliveredFix()) {
-                            recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "update_budget_exhausted")
+                            recordLiveTrackingEvent(acquisition.trackingContext(), "update_budget_exhausted")
                             continue
                         }
                         val initialComparison = compareLiveTrackingFixTime(fix, acquisition.initialFix)
@@ -746,8 +786,8 @@ class LiveTrackingService : Service() {
                         if (initialComparison <= 0 || previousComparison?.let { it <= 0 } == true) {
                             val duplicate = initialComparison == 0 || previousComparison == 0
                             acquisition.cycle.recordIgnoredFix(duplicate)
-                            recordLiveTrackingAcquisitionEvent(
-                                acquisition.cycle.id,
+                            recordLiveTrackingEvent(
+                                acquisition.trackingContext(),
                                 if (duplicate) "duplicate_ignored" else "stale_ignored",
                             )
                             continue
@@ -781,6 +821,8 @@ class LiveTrackingService : Service() {
                             isMockLocation = location.isMockLocationForDiagnostics(),
                             gsmSignalPercent = cellularSignalMonitor.currentPercent(),
                             queueSize = diagnosticPositionQueueSize(),
+                            context = acquisition.trackingContext(),
+                            fixTimestampEpochMillis = fix.epochMilliseconds,
                         )
                         if (decision.result != LiveTrackingLocationQualityResult.ACCEPT) {
                             LiveTrackingDiagnostics.recordLocationQuality(
@@ -811,7 +853,7 @@ class LiveTrackingService : Service() {
                     true
                 }
             if (handled == null) {
-                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "late_callback_ignored")
+                recordLiveTrackingEvent(acquisition.trackingContext(), "late_callback_ignored")
             }
         }
         if (completionReason != null) removeAcquisitionCallback(acquisition)
@@ -848,7 +890,8 @@ class LiveTrackingService : Service() {
     }
 
     @SuppressLint("MissingPermission")
-    @Suppress("CyclomaticComplexMethod")
+    // Keep registration, bounded waiting and cleanup together to preserve lifecycle ordering.
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     private suspend fun awaitAcquisition(acquisition: ActiveAcquisition) {
         try {
             val request = liveTrackingRefinementLocationRequest()
@@ -857,6 +900,7 @@ class LiveTrackingService : Service() {
                     acquisition = acquisition,
                     sessionActive = { canRegisterAcquisition(acquisition) },
                     register = {
+                        recordLiveTrackingEvent(acquisition.trackingContext(), "registration_requested")
                         locationClient
                             .requestLocationUpdates(request, acquisition.callback, mainLooper)
                             .also { task ->
@@ -916,6 +960,7 @@ class LiveTrackingService : Service() {
         orchestration.finishAcquisition(acquisition) {
             acquisition.outcome = outcome
             acquisition.cycle.complete()
+            recordLiveTrackingEvent(acquisition.trackingContext(), "acquisition_completed_$outcome")
             acquisition.completion.complete(outcome)
         }
     }
@@ -928,19 +973,27 @@ class LiveTrackingService : Service() {
         acquisition.outcome = "cancelled_$reason"
         acquisition.cycle.complete()
         acquisition.completion.complete(checkNotNull(acquisition.outcome))
-        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "cancelled_$reason")
+        recordLiveTrackingEvent(acquisition.trackingContext(), "cancelled_$reason")
         requestAcquisitionCallbackRemoval(acquisition, "cancel_cleanup")
     }
 
     private suspend fun removeAcquisitionCallback(acquisition: ActiveAcquisition) {
         withContext(NonCancellable) {
+            recordLiveTrackingEvent(acquisition.trackingContext(), "callback_removal_requested")
             val removal =
                 runCatching { locationClient.removeLocationUpdates(acquisition.callback) }
                     .getOrElse {
                         acquisition.cleanupFailed = true
-                        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                        recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_failure")
                         return@withContext
                     }
+            // Observe late acknowledgements even if the bounded cleanup wait has already timed out.
+            removal.addOnCompleteListener { task ->
+                recordLiveTrackingEvent(
+                    acquisition.trackingContext(),
+                    if (task.isSuccessful) "callback_removal_acknowledged" else "callback_removal_ack_failed",
+                )
+            }
             val finished =
                 runCatching {
                     withTimeoutOrNull(ACQUISITION_CLEANUP_TIMEOUT_MS) {
@@ -949,12 +1002,12 @@ class LiveTrackingService : Service() {
                     } ?: false
                 }.getOrElse {
                     acquisition.cleanupFailed = true
-                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                    recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_failure")
                     false
                 }
             if (!finished && !acquisition.cleanupFailed) {
                 acquisition.cleanupTimedOut = true
-                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_timeout")
+                recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_timeout")
             }
         }
     }
@@ -990,6 +1043,7 @@ class LiveTrackingService : Service() {
         task: Task<Void>,
     ) {
         if (!task.isSuccessful) {
+            recordLiveTrackingEvent(acquisition.trackingContext(), "registration_ack_failed")
             acquisition.registrationResult.completeExceptionally(
                 task.exception ?: IllegalStateException("Location callback registration failed"),
             )
@@ -1004,9 +1058,11 @@ class LiveTrackingService : Service() {
                 },
             )
         if (!retained) {
+            recordLiveTrackingEvent(acquisition.trackingContext(), "registration_ack_cleanup_only")
             acquisition.registrationResult.complete(false)
             return
         }
+        recordLiveTrackingEvent(acquisition.trackingContext(), "registration_ack_owned")
         val registered =
             orchestration.withAcquisition(acquisition) {
                 if (acquisition.rescueCooldownPending && !beginRescueActivity(acquisition)) {
@@ -1030,13 +1086,28 @@ class LiveTrackingService : Service() {
                 ) {
                     acquisition.rescueCooldownPending = false
                     acquisition.rescueWasRequested = true
+                    recordLiveTrackingEvent(
+                        acquisition.trackingContext(),
+                        "rescue_cooldown_initialized",
+                        RESCUE_COOLDOWN_MILLIS,
+                    )
                     recordLiveTrackingRescue(
                         LiveTrackingRescueDiagnostic(
                             requested = true,
                             trigger = acquisition.trigger ?: acquisition.initialDecision.reason,
+                            context = acquisition.trackingContext(),
+                            cooldownRemainingMillis = RESCUE_COOLDOWN_MILLIS,
                         ),
                     )
                 }.also { allowed ->
+                    recordLiveTrackingEvent(
+                        acquisition.trackingContext(),
+                        if (allowed) "rescue_cooldown_allowed" else "rescue_cooldown_blocked",
+                        orchestration.rescueCooldownRemainingMillis(
+                            SystemClock.elapsedRealtimeNanos(),
+                            RESCUE_COOLDOWN_MILLIS,
+                        ),
+                    )
                     if (!allowed) acquisition.rescueSkippedCooldown = true
                 }
         } ?: false
@@ -1045,11 +1116,12 @@ class LiveTrackingService : Service() {
         acquisition: ActiveAcquisition,
         event: String,
     ) {
+        recordLiveTrackingEvent(acquisition.trackingContext(), event)
         val removal =
             runCatching { locationClient.removeLocationUpdates(acquisition.callback) }
                 .getOrElse {
                     acquisition.cleanupFailed = true
-                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                    recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_failure")
                     return
                 }
         val cleanupTimeoutHandler = if (event == "late_registration_cleanup") Handler(mainLooper) else null
@@ -1057,7 +1129,7 @@ class LiveTrackingService : Service() {
             Runnable {
                 if (!removal.isComplete) {
                     acquisition.cleanupTimedOut = true
-                    recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_timeout")
+                    recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_timeout")
                 }
             }
         cleanupTimeoutHandler?.postDelayed(cleanupTimeout, ACQUISITION_CLEANUP_TIMEOUT_MS)
@@ -1065,10 +1137,11 @@ class LiveTrackingService : Service() {
             cleanupTimeoutHandler?.removeCallbacks(cleanupTimeout)
             if (!task.isSuccessful) {
                 acquisition.cleanupFailed = true
-                recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, "callback_cleanup_failure")
+                recordLiveTrackingEvent(acquisition.trackingContext(), "callback_cleanup_failure")
+            } else {
+                recordLiveTrackingEvent(acquisition.trackingContext(), "callback_removal_acknowledged")
             }
         }
-        recordLiveTrackingAcquisitionEvent(acquisition.cycle.id, event)
     }
 
     private fun acquisitionOutcome(
@@ -1092,6 +1165,7 @@ class LiveTrackingService : Service() {
             LiveTrackingRescueDiagnostic(
                 requested = acquisition.rescueWasRequested,
                 trigger = acquisition.trigger ?: acquisition.initialDecision.reason,
+                context = acquisition.trackingContext(),
                 skippedBecauseCooldown = acquisition.rescueSkippedCooldown,
                 resultAgeMillis = decision?.fixAgeMillis,
                 accuracyMeters = decision?.accuracyMeters,
@@ -1122,6 +1196,7 @@ class LiveTrackingService : Service() {
         settings: LiveTrackingSettings,
         candidates: List<LiveTrackingCandidate<Location>>,
         generation: LiveTrackingGeneration,
+        context: LiveTrackingDiagnosticContext,
     ): TransmissionResult {
         if (
             !orchestration.isCurrent(generation) ||
@@ -1188,6 +1263,21 @@ class LiveTrackingService : Service() {
                 attemptedSelection = selection
                 attemptedUpdate = update
                 lastLocation = selected.value
+                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                    isCatchUp = false,
+                    fixTimestampEpochMillis = update.epochMilliseconds,
+                    fixAgeMillis =
+                        liveTrackingLocationAgeMillis(
+                            selected.fix,
+                            SystemClock.elapsedRealtimeNanos(),
+                            System.currentTimeMillis(),
+                        ),
+                    gsmSignalPercent = update.gsmSignalPercent,
+                    queueSizeBefore = queueSizeBeforeTransmission,
+                    queueSizeAfter = queueSizeBeforeTransmission,
+                    outcome = "attempt",
+                    context = context,
+                )
                 val result = arkluzClient.sendLocationUpdate(update)
                 if (sentStartInRequest) {
                     sentStart = true
@@ -1207,6 +1297,7 @@ class LiveTrackingService : Service() {
                             queueSizeBefore = queueSizeBeforeTransmission,
                             queueSizeAfter = diagnosticPositionQueueSize(),
                             outcome = "success",
+                            context = context,
                         )
                         val replayStatus =
                             if (replayedCount > 0) {
@@ -1226,6 +1317,7 @@ class LiveTrackingService : Service() {
                             queueSizeBefore = queueSizeBeforeTransmission,
                             queueSizeAfter = diagnosticPositionQueueSize(),
                             outcome = "success_with_pending_catch_up",
+                            context = context,
                         )
                         val message =
                             "Position sent; stored GPS points still waiting (${error.toLiveTrackingErrorText()})"
@@ -1275,6 +1367,16 @@ class LiveTrackingService : Service() {
             if (error.isRetryableArkluzFailure()) {
                 val queueSize = LiveTrackingPositionQueue.enqueue(this, failedUpdate)
                 LiveTrackingDiagnostics.recordLiveTrackingPositionQueued(queueSize)
+                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                    isCatchUp = false,
+                    fixTimestampEpochMillis = failedUpdate.epochMilliseconds,
+                    fixAgeMillis = qualityDecision.fixAgeMillis,
+                    gsmSignalPercent = failedUpdate.gsmSignalPercent,
+                    queueSizeBefore = queueSizeBeforeTransmission,
+                    queueSizeAfter = queueSize,
+                    outcome = "queued",
+                    context = context,
+                )
                 if (!sentStart && controlsPending) {
                     LiveTrackingSessionStore.setStartPending(
                         "Waiting for network to start tracking; GPS stored for retry ($queueSize waiting)",
@@ -1305,6 +1407,7 @@ class LiveTrackingService : Service() {
                     queueSizeBefore = queueSizeBeforeTransmission,
                     queueSizeAfter = diagnosticPositionQueueSize(),
                     outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
+                    context = context,
                 )
             }
             return TransmissionResult(
@@ -1411,7 +1514,10 @@ class LiveTrackingService : Service() {
                     val ticket =
                         orchestration.withGeneration(generation) {
                             generation.admission.observe(SystemClock.elapsedRealtime())
-                        } ?: return
+                        } ?: run {
+                            recordLiveTrackingEvent(trackingContext(generation), "late_normal_callback_ignored")
+                            return
+                        }
                     serviceScope.launch {
                         sendLocations(locations, LiveTrackingFixSource.CALLBACK, generation, ticket)
                     }
@@ -1419,7 +1525,11 @@ class LiveTrackingService : Service() {
             }
         orchestration.withGeneration(generation) {
             if (canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)) {
+                val context = trackingContext(generation)
+                periodicDiagnosticContext = context
+                recordLiveTrackingEvent(context, "generation_started")
                 locationCallback = callback
+                recordLiveTrackingEvent(context, "periodic_registration_requested")
                 locationClient.requestLocationUpdates(request, callback, mainLooper)
             }
         }
@@ -1429,6 +1539,8 @@ class LiveTrackingService : Service() {
         orchestration.invalidateGeneration(
             onCancelled = { recordCancelledAcquisition(it, reason) },
             stopPeriodicUpdates = {
+                periodicDiagnosticContext?.let { recordLiveTrackingEvent(it, "generation_invalidated_$reason") }
+                periodicDiagnosticContext = null
                 val callback = locationCallback
                 locationCallback = null
                 if (callback != null) runCatching { locationClient.removeLocationUpdates(callback) }

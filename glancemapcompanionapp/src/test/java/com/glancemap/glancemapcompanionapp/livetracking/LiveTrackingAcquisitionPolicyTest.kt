@@ -194,6 +194,25 @@ class LiveTrackingAcquisitionPolicyTest {
     }
 
     @Test
+    fun startupReleaseReportsOnlyAnActualOwnedAdmissionRelease() {
+        val cadence = LiveTrackingCadenceAdmission(60_000L, 10_000L)
+        val initial = cadence.initialTicket()
+        val foreign = LiveTrackingCadenceAdmission(60_000L, 10_000L).initialTicket()
+
+        assertFalse(cadence.releaseRejectedStartup(initial))
+        assertTrue(cadence.begin(initial))
+        assertFalse(cadence.releaseRejectedStartup(foreign))
+        assertTrue(cadence.releaseRejectedStartup(initial))
+        assertFalse(cadence.releaseRejectedStartup(initial))
+        assertTrue(cadence.begin(initial))
+
+        val later = cadence.observe(70_000L)
+        assertTrue(cadence.begin(later))
+        assertFalse(cadence.releaseRejectedStartup(later))
+        assertFalse(cadence.releaseRejectedStartup(initial))
+    }
+
+    @Test
     fun dropsCallbacksQueuedBehindSlowWorkWhenANewerCadenceWindowArrives() {
         val cadence = LiveTrackingCadenceAdmission(intervalMillis = 60_000L, startedAtElapsedRealtimeMillis = 10_000L)
         val delayed = cadence.observe(70_000L)

@@ -170,10 +170,12 @@ internal class LiveTrackingCadenceAdmission(
     }
 
     @Synchronized
-    fun releaseRejectedStartup(ticket: LiveTrackingCadenceTicket) {
+    fun releaseRejectedStartup(ticket: LiveTrackingCadenceTicket): Boolean {
         if (ticket.admission === this && ticket.windowIndex == 0L && newestProcessedWindow == 0L) {
             newestProcessedWindow = -1L
+            return true
         }
+        return false
     }
 
     fun isSuperseded(ticket: LiveTrackingCadenceTicket): Boolean =

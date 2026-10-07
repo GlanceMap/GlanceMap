@@ -106,7 +106,24 @@ internal data class LiveTrackingRescueDiagnostic(
     val resultAgeMillis: Long? = null,
     val accuracyMeters: Float? = null,
     val speedMetersPerSecond: Float? = null,
+    val context: LiveTrackingDiagnosticContext? = null,
+    val cooldownRemainingMillis: Long? = null,
 )
+
+internal data class LiveTrackingDiagnosticContext(
+    val serviceId: Long,
+    val generationId: Long,
+    val cycleId: Long? = null,
+    val cadenceWindow: Long? = null,
+)
+
+private fun StringBuilder.appendTrackingContext(context: LiveTrackingDiagnosticContext?) {
+    if (context == null) return
+    append(" serviceId=").append(context.serviceId)
+    append(" generationId=").append(context.generationId)
+    append(" cycleId=").append(context.cycleId ?: "na")
+    append(" cadenceWindow=").append(context.cadenceWindow ?: "na")
+}
 
 internal data class LiveTrackingAcquisitionDiagnostic(
     val cycleId: Long,
@@ -132,6 +149,7 @@ internal data class LiveTrackingAcquisitionDiagnostic(
     val cleanupTimedOut: Boolean = false,
     val cleanupFailed: Boolean = false,
     val outcome: String,
+    val context: LiveTrackingDiagnosticContext? = null,
 )
 
 internal object LiveTrackingDiagnostics {
@@ -193,6 +211,7 @@ internal object LiveTrackingDiagnostics {
         cachedLocationExists: Boolean,
         cachedLocationAgeMillis: Long?,
         cachedLocationAccepted: Boolean?,
+        context: LiveTrackingDiagnosticContext? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val line =
@@ -209,6 +228,7 @@ internal object LiveTrackingDiagnostics {
                     append(" cacheAgeMs=").append(cachedLocationAgeMillis ?: "na")
                     append(" cacheFreshness=")
                         .append(cachedLocationAccepted?.let { if (it) "accepted" else "rejected" } ?: "na")
+                    appendTrackingContext(context)
                 }
             }
         line?.let { PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, it) }
@@ -222,6 +242,8 @@ internal object LiveTrackingDiagnostics {
         isMockLocation: Boolean?,
         gsmSignalPercent: Int,
         queueSize: Int?,
+        context: LiveTrackingDiagnosticContext? = null,
+        fixTimestampEpochMillis: Long? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val captureSessionId = PhoneDebugCapture.state.value.sessionId
@@ -262,6 +284,8 @@ internal object LiveTrackingDiagnostics {
                     append(" gsm=").append(gsmSignalPercent)
                     append(" queue=").append(queueSize ?: "na")
                     append(" mock=").append(isMockLocation ?: "na")
+                    append(" fixTsMs=").append(fixTimestampEpochMillis ?: "na")
+                    appendTrackingContext(context)
                 }
             PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
         }
@@ -276,6 +300,7 @@ internal object LiveTrackingDiagnostics {
         queueSizeBefore: Int?,
         queueSizeAfter: Int?,
         outcome: String,
+        context: LiveTrackingDiagnosticContext? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val captureSessionId = PhoneDebugCapture.state.value.sessionId
@@ -296,6 +321,7 @@ internal object LiveTrackingDiagnostics {
                     append(" queueBefore=").append(queueSizeBefore ?: "na")
                     append(" queueAfter=").append(queueSizeAfter ?: "na")
                     append(" outcome=").append(outcome)
+                    appendTrackingContext(context)
                 }
             }
         PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
@@ -455,6 +481,8 @@ internal fun recordLiveTrackingRescue(diagnostic: LiveTrackingRescueDiagnostic) 
             append(" accuracyM=").append(diagnostic.accuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
             append(" speedMps=").append(diagnostic.speedMetersPerSecond?.let(::formatDiagnosticDecimal) ?: "na")
             append(" outcome=").append(diagnostic.outcome ?: "pending")
+            append(" cooldownRemainingMs=").append(diagnostic.cooldownRemainingMillis ?: "na")
+            appendTrackingContext(diagnostic.context)
         },
     )
 }
@@ -489,16 +517,26 @@ internal fun recordLiveTrackingAcquisition(diagnostic: LiveTrackingAcquisitionDi
             append(" cleanupTimeout=").append(diagnostic.cleanupTimedOut)
             append(" cleanupFailure=").append(diagnostic.cleanupFailed)
             append(" outcome=").append(diagnostic.outcome)
+            append(" selectedAgeMeasuredAt=summary")
+            appendTrackingContext(diagnostic.context)
         },
     )
 }
 
-internal fun recordLiveTrackingAcquisitionEvent(
-    cycleId: Long,
+internal fun recordLiveTrackingEvent(
+    context: LiveTrackingDiagnosticContext,
     event: String,
+    cooldownRemainingMillis: Long? = null,
 ) {
     if (!PhoneDebugCapture.isActive()) return
-    PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, "acquisition_event id=$cycleId event=$event")
+    PhoneDebugCapture.log(
+        LIVE_TRACKING_CAPTURE_TAG,
+        buildString {
+            append("tracking_event event=").append(event)
+            cooldownRemainingMillis?.let { append(" cooldownRemainingMs=").append(it) }
+            appendTrackingContext(context)
+        },
+    )
 }
 
 @Composable
