@@ -80,6 +80,8 @@ internal data class FusedHeadingIntegritySnapshot(
     val absoluteStepDeg: Float?,
     val absoluteStepIntervalMs: Long?,
     val relativeStepDeg: Float?,
+    /** A suspect absolute jump is frozen at its preserved anchor; general degradation is separate. */
+    val headingJumpHeld: Boolean = false,
 )
 
 internal data class FusedHeadingIntegrityConfig(
@@ -1039,6 +1041,7 @@ internal class FusedHeadingIntegrityEngine(
             absoluteStepDeg = lastAbsoluteStepDeg,
             absoluteStepIntervalMs = lastAbsoluteStepIntervalMs,
             relativeStepDeg = lastRelativeStepDeg,
+            headingJumpHeld = quarantineAnchorHeadingDeg != null,
         )
 }
 

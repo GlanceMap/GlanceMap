@@ -193,6 +193,8 @@ internal object CompassDeepTraceDiagnostics {
                     mapRotationDeg = sample.mapRotationDeg,
                     heldOutput = sample.heldOutput,
                     provenance = sample.provenance,
+                    relativeMotionSample = sample.relativeMotionSample,
+                    coneSuppressed = sample.coneSuppressed,
                 ),
             )
         }
@@ -365,6 +367,6 @@ private data class CompassDeepTraceGyroSample(
     val magnitudeRadPerSec: Float,
 )
 
-internal const val COMPASS_DEEP_TRACE_SCHEMA_VERSION = 4
+internal const val COMPASS_DEEP_TRACE_SCHEMA_VERSION = 5
 internal const val COMPASS_DEEP_TRACE_DECISION_EVENT_CAPACITY = 2_048
 private const val GYRO_HISTORY_MS = 3_000L

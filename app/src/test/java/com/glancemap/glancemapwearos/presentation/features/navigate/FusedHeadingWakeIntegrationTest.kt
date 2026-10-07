@@ -4,6 +4,7 @@ import android.hardware.SensorManager
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassRelativeMotionSample
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
@@ -20,6 +21,91 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FusedHeadingWakeIntegrationTest {
+    @Test
+    fun interferenceWithCorroboratedAbsoluteTurnsKeepsNormalNavigationAndCone() {
+        val replay = WakeReplay(relativeSensorAvailable = true)
+        replay.reset(seedHeadingDeg = 100f)
+        replay.warmMagneticField()
+        replay.acquireStableHeading(100f)
+        replay.relative(0f)
+        val healthy = replay.absolute(100f)
+        val policy = NavigateMagneticMotionFallback()
+        val gate = NavigateRotationSettleGate()
+        policy.beginSession(replay.nowElapsedMs)
+        policy.resolve(
+            healthy.toRenderState(replay.nowElapsedMs),
+            gate.resolveFromIntegrity(healthy, replay.nowElapsedMs),
+            100f,
+            replay.nowElapsedMs,
+        )
+        var displayed = 100f
+        repeat(20) { index ->
+            replay.advance(100L)
+            replay.magnetic(600f)
+            replay.relative((index + 1) * 5f)
+            val snapshot = replay.absolute(100f + (index + 1) * 5f)
+            val absolute = requireNotNull(gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs))
+            val applied =
+                requireNotNull(
+                    policy.resolve(
+                        snapshot.toRenderState(replay.nowElapsedMs),
+                        absolute,
+                        displayed,
+                        replay.nowElapsedMs,
+                    ),
+                )
+            assertEquals(CompassMagneticQuality.INTERFERENCE, snapshot.magneticQuality)
+            assertFalse(snapshot.headingJumpHeld)
+            assertTrue(requireNotNull(snapshot.renderHeadingDeg) > displayed)
+            assertEquals(absolute, applied)
+            assertFalse(applied.relativeMotion)
+            assertFalse(policy.coneSuppressed)
+            displayed = applied.headingDeg
+        }
+    }
+
+    @Test
+    fun magneticWakeUsesOnlyAnchoredRelativeTurnsWhileAbsoluteFlipStaysQuarantined() {
+        val replay = WakeReplay(relativeSensorAvailable = true)
+        replay.reset(seedHeadingDeg = 100f)
+        replay.warmMagneticField()
+        replay.acquireStableHeading(100f)
+        replay.relative(0f)
+        val healthy = replay.absolute(100f)
+        assertEquals(CompassTrackingState.TRACKING, healthy.state)
+        val policy = NavigateMagneticMotionFallback()
+        policy.beginSession(replay.nowElapsedMs)
+        policy.resolve(
+            healthy.toRenderState(replay.nowElapsedMs),
+            NavigationRotationTarget(100f),
+            100f,
+            replay.nowElapsedMs,
+        )
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(replay.nowElapsedMs, heldHeadingDeg = 100f)
+
+        replay.advance(20L)
+        replay.magnetic(600f)
+        replay.relative(0f)
+        var snapshot = replay.absolute(280f)
+        assertTrue(snapshot.heldOutput)
+        assertTrue(snapshot.headingJumpHeld)
+        assertNull(gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs))
+        val stationary = policy.resolve(snapshot.toRenderState(replay.nowElapsedMs), null, 100f, replay.nowElapsedMs)
+        assertEquals(100f, requireNotNull(stationary).headingDeg, ANGLE_TOLERANCE_DEG)
+
+        replay.advance(100L)
+        replay.relative(30f)
+        snapshot = replay.absolute(280f)
+        val turned = policy.resolve(snapshot.toRenderState(replay.nowElapsedMs), null, 100f, replay.nowElapsedMs)
+        assertEquals(130f, requireNotNull(turned).headingDeg, ANGLE_TOLERANCE_DEG)
+        assertTrue(turned.relativeMotion)
+        assertEquals(100f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        assertFalse(snapshot.trusted)
+        assertTrue(snapshot.quarantineActive)
+        assertNull(gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs))
+    }
+
     @Test
     fun seededAcquisitionRemainsHeldPastWakeTimeoutUntilStableAndReleasesItsRecoveredTarget() {
         val replay = WakeReplay(relativeSensorAvailable = false)
@@ -388,8 +474,18 @@ class FusedHeadingWakeIntegrationTest {
             magneticQuality = magneticQuality,
             magneticFieldUt = magneticFieldUt,
             quarantineActive = quarantineActive,
+            headingJumpHeld = headingJumpHeld,
             unresolvedIndependentDisagreement = unresolvedIndependentDisagreement,
             relativeHeadingDeg = relativeHeadingDeg,
+            relativeMotionSample =
+                relativeHeadingDeg?.let { heading ->
+                    CompassRelativeMotionSample(
+                        headingDeg = heading,
+                        horizontalProjection = relativeHorizontalProjection ?: 0f,
+                        atElapsedMs = sampleAtElapsedMs,
+                        provenance = CompassHeadingProvenance(CompassProviderType.GOOGLE_FUSED, 1L),
+                    )
+                },
         )
 
     private class WakeReplay(

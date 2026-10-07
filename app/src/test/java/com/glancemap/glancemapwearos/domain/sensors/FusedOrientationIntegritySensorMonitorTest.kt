@@ -14,6 +14,25 @@ import java.util.concurrent.atomic.AtomicReference
 
 class FusedOrientationIntegritySensorMonitorTest {
     @Test
+    fun screenTopUsesDisplayAxesForAllFourRotations() {
+        val identity = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
+        listOf(0f, 270f, 180f, 90f).forEachIndexed { rotation, expected ->
+            val witness = gameRotationScreenTopWitness(identity, rotation)
+            assertEquals(expected, requireNotNull(witness.headingDeg), ANGLE_TOLERANCE_DEG)
+            assertEquals(rotation, witness.displayRotation)
+        }
+    }
+
+    @Test
+    fun displayRotationSelectsTheActualHorizontalAxisOnATiltedWatch() {
+        val cosine = 0.2f
+        val sine = kotlin.math.sqrt(1f - cosine * cosine)
+        val tilted = floatArrayOf(1f, 0f, 0f, 0f, cosine, -sine, 0f, sine, cosine)
+        assertNull(gameRotationScreenTopWitness(tilted, 0).headingDeg)
+        assertEquals(270f, requireNotNull(gameRotationScreenTopWitness(tilted, 1).headingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
     fun screenTopProjectionUsesTheSamePhysicalAxisAsTheMapHeading() {
         val witness =
             gameRotationScreenTopWitness(

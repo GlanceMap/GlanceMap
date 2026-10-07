@@ -76,8 +76,8 @@ Intentional dragging still enters panning and requires recentering to restore fo
 SensorManager fallback silence becomes stale after the documented source-time window. Stale output
 cannot drive map-follow rotation. Severe F3 contradictions are held by the integrity engine before
 navigation sees them, while fresh renderable degraded or untrusted Fused output may still drive
-bounded map-follow motion. The selected Fused provider intentionally keeps the green cone, including
-degraded or untrusted output; cone color is not a Fused trust indicator.
+bounded map-follow motion. The selected Fused provider keeps its normal green cone for ordinary
+weak confidence; cone color is not a Fused trust indicator.
 During wake, missing magnetic evidence may allow the existing bounded timeout to release a degraded
 target, but it never becomes GOOD or trusted; active magnetic interference and recovery obligations
 continue to hold the target. The recovery obligation is armed before held-output checks, and only
@@ -86,6 +86,34 @@ the exact unavailable-evidence timeout path may release an otherwise held degrad
 Significant Fused provider-step diagnostics distinguish acquisition-held output, quarantine,
 degraded or unresolved output, and accepted movement with actual relative corroboration. An
 unsuppressed witness alone is not reported as corroboration.
+
+## Temporary motion during magnetic holds
+
+`NavigateMagneticMotionFallback` preserves the visible map angle when the existing wake gate
+blocks Google Fused absolute heading for magnetic interference, or the integrity engine holds a
+quarantined contradictory jump, then applies only fresh game-rotation turns. Magnetic interference
+alone does not start this fallback while navigation still allows absolute heading movement.
+Jump holds use the engine's explicit preserved-jump-anchor flag. General quarantine or a weak
+confidence/disagreement label is insufficient, because those states can still permit bounded motion.
+It requires a previously accepted stable absolute anchor; a disturbed cold start cannot invent
+north. It never changes the absolute provider heading, uncertainty, trust, or quarantine decision.
+Relative samples carry source time, request generation, horizontal projection, and display rotation.
+Missing, old, future, mismatched, steeply tilted, or implausible samples cannot drive rotation.
+Gaps, registrations, display-frame changes, and wake/panning sessions re-establish the relative
+origin at the current visible heading without applying missed turns. The motion budget does not
+renew on wake and expires after 60 seconds without absolute recovery.
+
+The cone hides after 500 ms of a continuous magnetic wake hold or jump quarantine, retaining the location
+dot. Brief spikes and ordinary weak confidence do not hide it. After one second of fresh stable
+magnetic tracking, navigation reconnects to the absolute target with a four-degree visual step cap.
+An already hidden cone returns only when the visible heading is within five degrees of that target.
+There is no additional uncertainty message. Existing north-up and panning behavior is preserved.
+Witness suppression caused by disagreement with the disturbed absolute source does not itself
+invalidate physical relative motion; freshness, projection, frame continuity, and plausible-step
+checks remain mandatory. This is temporary estimated orientation, never proof of north accuracy.
+
+Deep Trace schema 5 records the actual relative sample/time/generation/frame used by each coasting
+render, cone suppression, and mode transitions. Capture remains opt-in and bounded.
 
 ## Ownership
 

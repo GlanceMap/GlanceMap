@@ -30,6 +30,7 @@ import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassRelativeMotionSample
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
@@ -70,6 +71,7 @@ fun NavigationOrientationEffect(
     navigationMarkerAnchorMode: String,
     onRenderedHeadingChanged: (Float) -> Unit,
     onRenderedMapRotationChanged: (Float) -> Unit,
+    onCompassConeSuppressedChanged: (Boolean) -> Unit,
     requestMapRedraw: () -> Unit,
 ) {
     val mv = mapView ?: return
@@ -77,6 +79,7 @@ fun NavigationOrientationEffect(
     val latestNavigationMarkerAnchorMode = rememberUpdatedState(navigationMarkerAnchorMode)
     val latestOnRenderedHeadingChanged = rememberUpdatedState(onRenderedHeadingChanged)
     val latestOnRenderedMapRotationChanged = rememberUpdatedState(onRenderedMapRotationChanged)
+    val latestOnCompassConeSuppressedChanged = rememberUpdatedState(onCompassConeSuppressedChanged)
 
     val navMode =
         remember(isCompassMode, isAutoCentering) {
@@ -91,6 +94,15 @@ fun NavigationOrientationEffect(
     val displayedMapRot = remember { mutableFloatStateOf(0f) }
     val frozenRotationDeg = remember { mutableFloatStateOf(0f) }
     val rotationSettleGate = remember(mv) { NavigateRotationSettleGate() }
+    val magneticMotionFallback =
+        remember(mv) {
+            NavigateMagneticMotionFallback { message ->
+                if (isCompassTelemetryCaptureActive()) {
+                    DebugTelemetry.log(COMPASS_TELEMETRY_TAG, "magnetic_motion $message")
+                }
+                CompassDeepTraceDiagnostics.recordMarker("magnetic_motion", message)
+            }
+        }
     val wakeContinuityCapture = remember(mv) { NavigateWakeContinuityCapture() }
     val hasObservedInteractive = remember(mv) { mutableStateOf(false) }
     val latestCompassInteractive = rememberUpdatedState(compassInteractive)
@@ -369,6 +381,7 @@ fun NavigationOrientationEffect(
         compassInteractive,
     ) {
         if (!shouldRunOrientationVisualLoop(compassInteractive, navMode)) return@LaunchedEffect
+        magneticMotionFallback.beginSession(SystemClock.elapsedRealtime())
 
         // Local var: safe because both coroutines run on Main (single-threaded).
         var liveTarget = displayedHeading.floatValue
@@ -442,7 +455,7 @@ fun NavigationOrientationEffect(
                 if (!latestCompassInteractive.value) return@withFrameNanos
                 val nowElapsedMs = SystemClock.elapsedRealtime()
                 val current = displayedHeading.floatValue
-                val headingTarget =
+                val absoluteHeadingTarget =
                     when (navMode) {
                         NavMode.COMPASS_FOLLOW ->
                             rotationSettleGate.resolve(
@@ -471,6 +484,14 @@ fun NavigationOrientationEffect(
 
                         NavMode.PANNING -> null
                     }
+                val headingTarget =
+                    magneticMotionFallback.resolve(
+                        state = latestRenderState,
+                        absoluteTarget = absoluteHeadingTarget,
+                        currentDisplayedHeadingDeg = current,
+                        nowElapsedMs = nowElapsedMs,
+                    )
+                latestOnCompassConeSuppressedChanged.value(magneticMotionFallback.coneSuppressed)
                 if (headingTarget == null) {
                     return@withFrameNanos
                 }
@@ -501,8 +522,15 @@ fun NavigationOrientationEffect(
                                     targetHeadingDeg = headingTarget.headingDeg,
                                     renderedHeadingDeg = current,
                                     mapRotationDeg = displayedMapRot.floatValue,
-                                    continuityActive = false,
-                                    continuityOffsetDeg = 0f,
+                                    continuityActive = headingTarget.relativeMotion,
+                                    continuityOffsetDeg =
+                                        if (headingTarget.relativeMotion) {
+                                            angleDeltaDeg(headingTarget.headingDeg, latestRenderState.headingDeg)
+                                        } else {
+                                            0f
+                                        },
+                                    relativeMotionSample = headingTarget.relativeMotionSample,
+                                    coneSuppressed = magneticMotionFallback.coneSuppressed,
                                     sourceSampleId = latestRenderState.headingSampleSequenceId,
                                     heldOutput = latestRenderState.headingSampleHeldOutput,
                                     provenance = latestRenderState.headingProvenance,
@@ -574,8 +602,15 @@ fun NavigationOrientationEffect(
                             targetHeadingDeg = headingTarget.headingDeg,
                             renderedHeadingDeg = next,
                             mapRotationDeg = displayedMapRot.floatValue,
-                            continuityActive = false,
-                            continuityOffsetDeg = 0f,
+                            continuityActive = headingTarget.relativeMotion,
+                            continuityOffsetDeg =
+                                if (headingTarget.relativeMotion) {
+                                    angleDeltaDeg(headingTarget.headingDeg, latestRenderState.headingDeg)
+                                } else {
+                                    0f
+                                },
+                            relativeMotionSample = headingTarget.relativeMotionSample,
+                            coneSuppressed = magneticMotionFallback.coneSuppressed,
                             sourceSampleId = latestRenderState.headingSampleSequenceId,
                             heldOutput = latestRenderState.headingSampleHeldOutput,
                             provenance = latestRenderState.headingProvenance,
@@ -1317,7 +1352,11 @@ internal data class NavigationRotationTarget(
     val headingDeg: Float,
     val maxVisualStepDeg: Float? = null,
     val recordsWakeReleaseStep: Boolean = false,
-)
+    val relativeMotionSample: CompassRelativeMotionSample? = null,
+) {
+    val relativeMotion: Boolean
+        get() = relativeMotionSample != null
+}
 
 @Suppress("ComplexCondition")
 internal fun shouldDriveMarkerHeading(

@@ -2,8 +2,11 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.CompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassRelativeMotionSample
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import org.junit.Assert.assertEquals
@@ -206,10 +209,48 @@ class CompassDeepTraceAggregationTest {
         )
 
         assertTrue(output.contains("Compass Deep Trace"))
-        assertTrue(output.contains("schemaVersion=4"))
+        assertTrue(output.contains("schemaVersion=5"))
         assertTrue(output.contains("aggregateWindowCount=2"))
         assertTrue(output.contains("lastStopReason=manual"))
         assertEquals(1, output.lines().count { it.startsWith("window index=") })
+    }
+
+    @Test
+    fun relativeMotionAndConeChangesKeepTheirOwnIdentityInRenderExports() {
+        val provenance = CompassHeadingProvenance(CompassProviderType.GOOGLE_FUSED, 5L)
+        val motion = CompassRelativeMotionSample(20f, 0.9f, 1_002L, provenance, displayRotation = 1)
+        val render =
+            CompassDeepTraceEvent.Render(
+                atElapsedMs = 1_003L,
+                sourceSampleId = 7L,
+                targetHeadingDeg = 120f,
+                renderedHeadingDeg = 110f,
+                mapRotationDeg = -110f,
+                provenance = provenance,
+            )
+        val ring = CompassDeepTraceEventRing(capacity = 8)
+        ring.record(render)
+        val coasting = render.copy(atElapsedMs = 1_004L, relativeMotionSample = motion)
+        ring.record(coasting)
+        ring.record(coasting.copy(atElapsedMs = 1_005L))
+        val concealed = coasting.copy(atElapsedMs = 1_006L, coneSuppressed = true)
+        ring.record(concealed)
+        ring.record(concealed.copy(atElapsedMs = 1_007L, relativeMotionSample = motion.copy(atElapsedMs = 1_006L)))
+        val output = StringBuilder()
+        output.writeCompassDeepTraceSection(
+            CompassDeepTraceSnapshot(false, 1, 0, 0, "export", emptyList(), events = ring.snapshot()),
+        )
+
+        assertEquals(4, ring.snapshot().size)
+        assertTrue(output.contains("sampleId=7"))
+        assertTrue(output.contains("relativeMotion=false coneSuppressed=false"))
+        assertTrue(output.contains("relativeMotion=true coneSuppressed=true"))
+        assertTrue(
+            output.contains(
+                "relativeAtMs=1002 relativeHeadingDeg=20.0 relativeProvenance=google_fused_5 displayRotation=1",
+            ),
+        )
+        assertTrue(output.contains("relativeAtMs=1006"))
     }
 
     @Test

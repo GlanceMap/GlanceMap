@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
+import com.glancemap.glancemapwearos.domain.sensors.CompassRelativeMotionSample
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import java.util.ArrayDeque
@@ -53,6 +54,8 @@ internal data class CompassDeepTraceRenderSample(
     val sourceSampleId: Long? = null,
     val heldOutput: Boolean = false,
     val provenance: CompassHeadingProvenance? = null,
+    val relativeMotionSample: CompassRelativeMotionSample? = null,
+    val coneSuppressed: Boolean = false,
     val atElapsedMs: Long,
 )
 
@@ -103,6 +106,8 @@ internal sealed interface CompassDeepTraceEvent {
         val mapRotationDeg: Float,
         val heldOutput: Boolean = false,
         val provenance: CompassHeadingProvenance?,
+        val relativeMotionSample: CompassRelativeMotionSample? = null,
+        val coneSuppressed: Boolean = false,
     ) : CompassDeepTraceEvent
 
     data class Telemetry(
@@ -274,12 +279,7 @@ internal class CompassDeepTraceEventRing(
     ): Boolean =
         when {
             event is CompassDeepTraceEvent.Render && previous is CompassDeepTraceEvent.Render ->
-                event.sourceSampleId == previous.sourceSampleId &&
-                    event.targetHeadingDeg == previous.targetHeadingDeg &&
-                    event.renderedHeadingDeg == previous.renderedHeadingDeg &&
-                    event.mapRotationDeg == previous.mapRotationDeg &&
-                    event.heldOutput == previous.heldOutput &&
-                    event.provenance == previous.provenance
+                event.copy(atElapsedMs = previous.atElapsedMs) == previous
             event is CompassDeepTraceEvent.UiConfidence && previous is CompassDeepTraceEvent.UiConfidence ->
                 event.provider == previous.provider &&
                     event.quality == previous.quality &&

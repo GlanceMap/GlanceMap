@@ -5,8 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
@@ -97,6 +100,7 @@ internal fun MapOverlays(
     onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
 ) {
     val mapView = mapHolder.mapView
+    var compassConeSuppressed by remember(mapView) { mutableStateOf(false) }
     val gpsAccuracyCircleLayer =
         remember(mapView) {
             val fill =
@@ -181,6 +185,7 @@ internal fun MapOverlays(
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
         onRenderedHeadingChanged = onRenderedHeadingChanged,
         onRenderedMapRotationChanged = onRenderedMapRotationChanged,
+        onCompassConeSuppressedChanged = { compassConeSuppressed = it },
         requestMapRedraw = requestMapRedraw,
     )
 
@@ -199,7 +204,7 @@ internal fun MapOverlays(
         mapView = mapView,
         compassInteractive = compassInteractive,
         navMode = navMode,
-        showCompassConeOverlay = showCompassConeOverlay,
+        showCompassConeOverlay = showCompassConeOverlay && !compassConeSuppressed,
         compassConeBaseSizePx = compassConeBaseSizePx,
         compassQuality = compassQuality,
         compassHeadingErrorDeg = compassHeadingErrorDeg,

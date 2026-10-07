@@ -34,6 +34,12 @@ Sanity check on watch:
 - recalibration trigger behavior.
 - moving acquisition and stationary wake, including a wake during wrist tilt;
 - magnetic interference, magnetic-feed loss, and degraded recovery;
+- during a sustained magnetic hold, the cone hides while the location dot remains and fresh
+  game-rotation turns move the map from its last visible orientation; ordinary weak confidence and
+  brief disturbance should not blink the cone; an interference warning that still allows normal
+  absolute heading movement must not activate this fallback;
+- magnetic motion stops on a sensor gap/steep tilt or after 60 seconds without absolute recovery;
+  wake must not replay hidden motion or renew that budget, and recovery must reconnect without a snap;
 - custom sensor/source combinations where available.
 
 ## Where To Change Code

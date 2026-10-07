@@ -106,6 +106,9 @@ internal class FusedOrientationProviderAdapter(
 
     @Volatile private var latestIntegritySnapshot = headingIntegrityEngine.snapshot()
 
+    private var latestRelativeMotionSample: CompassRelativeMotionSample? = null
+    private var lastRelativeMotionPublishAtElapsedMs = 0L
+
     @Volatile private var northReferenceMode = NorthReferenceMode.TRUE
 
     @Volatile private var fallbackDeclinationSeed: FusedFallbackDeclinationSeed? = null
@@ -680,6 +683,16 @@ internal class FusedOrientationProviderAdapter(
         atElapsedMs: Long,
     ) {
         if (!isActiveOrientationRequest(requestGeneration)) return
+        latestRelativeMotionSample =
+            witness.headingDeg?.let { headingDeg ->
+                CompassRelativeMotionSample(
+                    headingDeg = headingDeg,
+                    horizontalProjection = witness.horizontalProjection,
+                    atElapsedMs = atElapsedMs,
+                    provenance = CompassHeadingProvenance(providerType, requestGeneration),
+                    displayRotation = witness.displayRotation,
+                )
+            }
         latestIntegritySnapshot =
             witness.headingDeg?.let { headingDeg ->
                 headingIntegrityEngine.onRelativeHeading(
@@ -690,6 +703,22 @@ internal class FusedOrientationProviderAdapter(
             } ?: headingIntegrityEngine.onRelativeWitnessUnavailable(
                 horizontalProjection = witness.horizontalProjection,
             )
+        // Normal absolute publication already carries the latest relative sample. During a hold,
+        // keep motion observable even if absolute callbacks stop changing or become unusable.
+        if (latestIntegritySnapshot.heldOutput || latestIntegritySnapshot.quarantineActive) {
+            val nowElapsedMs = SystemClock.elapsedRealtime()
+            if (
+                shouldPublishFusedHeading(
+                    nowElapsedMs = nowElapsedMs,
+                    lastPublishAtElapsedMs = lastRelativeMotionPublishAtElapsedMs,
+                    lowPowerMode = lowPowerMode,
+                    force = latestRelativeMotionSample == null,
+                )
+            ) {
+                lastRelativeMotionPublishAtElapsedMs = nowElapsedMs
+                publishOwnRenderState()
+            }
+        }
     }
 
     @Synchronized
@@ -1279,9 +1308,11 @@ internal class FusedOrientationProviderAdapter(
                 magneticQuality = latestIntegritySnapshot.magneticQuality,
                 magneticFieldUt = latestIntegritySnapshot.magneticFieldUt,
                 quarantineActive = latestIntegritySnapshot.quarantineActive,
+                headingJumpHeld = latestIntegritySnapshot.headingJumpHeld,
                 unresolvedIndependentDisagreement =
                     latestIntegritySnapshot.unresolvedIndependentDisagreement,
                 relativeHeadingDeg = latestIntegritySnapshot.relativeHeadingDeg,
+                relativeMotionSample = latestRelativeMotionSample,
             )
     }
 
@@ -1350,6 +1381,8 @@ internal class FusedOrientationProviderAdapter(
             )
         }
         integritySensorMonitor.stop()
+        latestRelativeMotionSample = null
+        lastRelativeMotionPublishAtElapsedMs = 0L
         orientationRequestGeneration += 1L
         val listenerToRemove = activeOrientationListener
         activeOrientationListener = null

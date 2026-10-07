@@ -3,11 +3,46 @@ package com.glancemap.glancemapwearos.domain.sensors
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import sun.misc.Unsafe
 
 class FusedOrientationProviderAdapterSupportTest {
+    @Test
+    fun relativeMotionRetainsSourceTimeAndCannotCrossARequestRestart() {
+        val unsafeField = Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+        val unsafe = unsafeField.get(null) as Unsafe
+        val adapter = unsafe.allocateInstance(FusedOrientationProviderAdapter::class.java)
+        val engine = FusedHeadingIntegrityEngine(relativeSensorAvailable = true, magnetometerAvailable = true)
+        field("started").set(adapter, true)
+        field("orientationRequestGeneration").set(adapter, 2L)
+        field("_useFallbackProvider").set(adapter, MutableStateFlow(false))
+        field("headingIntegrityEngine").set(adapter, engine)
+        field("providerType").set(adapter, CompassProviderType.GOOGLE_FUSED)
+        val update =
+            FusedOrientationProviderAdapter::class.java
+                .getDeclaredMethod(
+                    "updateRelativeIntegritySnapshot",
+                    Long::class.javaPrimitiveType,
+                    RelativeHeadingWitness::class.java,
+                    Long::class.javaPrimitiveType,
+                ).apply { isAccessible = true }
+
+        update.invoke(adapter, 2L, RelativeHeadingWitness(20f, 0.9f, displayRotation = 1), 1_200L)
+        val sample = field("latestRelativeMotionSample").get(adapter) as CompassRelativeMotionSample
+        assertEquals(1_200L, sample.atElapsedMs)
+        assertEquals(2L, sample.provenance.generation)
+        assertEquals(1, sample.displayRotation)
+
+        update.invoke(adapter, 1L, RelativeHeadingWitness(200f, 0.9f), 1_300L)
+        assertEquals(sample, field("latestRelativeMotionSample").get(adapter))
+        assertEquals(20f, requireNotNull(engine.snapshot().relativeHeadingDeg), 0f)
+
+        update.invoke(adapter, 2L, RelativeHeadingWitness(null, 0.1f), 1_400L)
+        assertNull(field("latestRelativeMotionSample").get(adapter))
+    }
+
     @Test
     fun publicationAndIntegrityCallbacksRejectARequestAfterRestartOrStop() {
         assertTrue(

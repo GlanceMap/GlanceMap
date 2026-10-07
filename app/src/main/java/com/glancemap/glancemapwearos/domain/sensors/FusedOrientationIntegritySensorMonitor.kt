@@ -7,6 +7,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.SystemClock
+import android.view.Surface
+import android.view.WindowManager
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -47,6 +49,7 @@ internal class FusedOrientationIntegritySensorMonitor(
 ) {
     private val appContext = context.applicationContext
     private val sensorManager = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val gameRotationVector =
         sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
     private val magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
@@ -110,6 +113,8 @@ internal class FusedOrientationIntegritySensorMonitor(
             // Both callbacks and scratch state belong to this registration, including while an
             // old event waits for a restart lock. Call the adapter outside the monitor lock.
             private val gameRotationMatrix = FloatArray(9)
+            private var displayRotation = Surface.ROTATION_0
+            private var displayRotationSampledAtMs = Long.MIN_VALUE
 
             override fun onSensorChanged(event: SensorEvent) {
                 val callbacks = captureCallbacks(generation, onRelativeHeading, onMagneticField) ?: return
@@ -119,7 +124,20 @@ internal class FusedOrientationIntegritySensorMonitor(
                 when (event.sensor.type) {
                     Sensor.TYPE_GAME_ROTATION_VECTOR -> {
                         if (callbacks.relativeRegistered) {
-                            publishRelativeHeading(event, atElapsedMs, callbacks.onRelativeHeading, gameRotationMatrix)
+                            if (
+                                displayRotationSampledAtMs == Long.MIN_VALUE ||
+                                shouldSampleDisplayRotation(atElapsedMs, displayRotationSampledAtMs)
+                            ) {
+                                displayRotation = queryDisplayRotation(windowManager)
+                                displayRotationSampledAtMs = atElapsedMs
+                            }
+                            publishRelativeHeading(
+                                event,
+                                atElapsedMs,
+                                callbacks.onRelativeHeading,
+                                gameRotationMatrix,
+                                displayRotation,
+                            )
                         }
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -157,11 +175,12 @@ internal class FusedOrientationIntegritySensorMonitor(
         atElapsedMs: Long,
         callback: ((RelativeHeadingWitness, Long) -> Unit)?,
         gameRotationMatrix: FloatArray,
+        displayRotation: Int,
     ) {
         if (event.values.size < 3) return
         SensorManager.getRotationMatrixFromVector(gameRotationMatrix, event.values)
         callback?.invoke(
-            gameRotationScreenTopWitness(gameRotationMatrix),
+            gameRotationScreenTopWitness(gameRotationMatrix, displayRotation),
             atElapsedMs,
         )
     }
@@ -184,24 +203,30 @@ internal class FusedOrientationIntegritySensorMonitor(
  * A heading measured from the projected top of the watch screen.
  *
  * TYPE_GAME_ROTATION_VECTOR deliberately has no north reference. Its heading is therefore only
- * suitable as a relative witness for Google Fused, never as the heading displayed on the map.
+ * suitable for validating Google Fused and for relative turns anchored to a prior map angle,
+ * never as an absolute heading displayed on the map.
  */
 internal data class RelativeHeadingWitness(
     val headingDeg: Float?,
     val horizontalProjection: Float,
+    val displayRotation: Int = Surface.ROTATION_0,
 )
 
 /**
- * Finds the horizontal direction of device +Y (the top of a watch screen) in the game-RV world
+ * Finds the horizontal direction of the current screen top in the game-RV world
  * frame. A heading is unavailable when that axis is nearly vertical, because any azimuth would be
  * dominated by wrist pitch/roll noise.
  */
-internal fun gameRotationScreenTopWitness(rotationMatrix: FloatArray): RelativeHeadingWitness {
+internal fun gameRotationScreenTopWitness(
+    rotationMatrix: FloatArray,
+    displayRotation: Int = Surface.ROTATION_0,
+): RelativeHeadingWitness {
     if (rotationMatrix.size < ROTATION_MATRIX_SIZE) return RelativeHeadingWitness(null, 0f)
-    // getRotationMatrixFromVector transforms device coordinates to world coordinates. The second
-    // column is therefore the world direction of device +Y / screen top.
-    val eastComponent = rotationMatrix[1]
-    val northComponent = rotationMatrix[4]
+    // Google heading uses +Y, -X, -Y, +X for display rotations 0, 90, 180, 270.
+    val axisColumn = if (displayRotation == Surface.ROTATION_90 || displayRotation == Surface.ROTATION_270) 0 else 1
+    val sign = if (displayRotation == Surface.ROTATION_90 || displayRotation == Surface.ROTATION_180) -1f else 1f
+    val eastComponent = sign * rotationMatrix[axisColumn]
+    val northComponent = sign * rotationMatrix[3 + axisColumn]
     val horizontalProjection = sqrt(eastComponent * eastComponent + northComponent * northComponent)
     val headingDeg =
         when {
@@ -214,7 +239,7 @@ internal fun gameRotationScreenTopWitness(rotationMatrix: FloatArray): RelativeH
                     Math.toDegrees(atan2(eastComponent.toDouble(), northComponent.toDouble())).toFloat(),
                 )
         }
-    return RelativeHeadingWitness(headingDeg, horizontalProjection)
+    return RelativeHeadingWitness(headingDeg, horizontalProjection, displayRotation)
 }
 
 internal fun isPlausibleRelativeHeadingStep(
@@ -235,7 +260,7 @@ private const val INTEGRITY_MAGNETIC_PERIOD_US = 100_000
 private const val INTEGRITY_LOW_POWER_PERIOD_US = 200_000
 private const val NANOS_PER_MILLISECOND = 1_000_000L
 private const val ROTATION_MATRIX_SIZE = 9
-private const val MIN_SCREEN_TOP_HORIZONTAL_PROJECTION = 0.35f
+internal const val MIN_SCREEN_TOP_HORIZONTAL_PROJECTION = 0.35f
 private const val RELATIVE_STEP_BASE_ALLOWANCE_DEG = 5f
 private const val RELATIVE_STEP_MAX_RATE_DEG_PER_SEC = 1_080f
 private const val RELATIVE_STEP_ABSOLUTE_MAX_DEG = 120f

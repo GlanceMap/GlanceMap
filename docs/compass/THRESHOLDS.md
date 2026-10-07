@@ -9,6 +9,7 @@ Source constants file:
 - `app/src/main/java/com/glancemap/glancemapwearos/domain/sensors/SensorManagerOrientationProvider.kt`
 - `app/src/main/java/com/glancemap/glancemapwearos/presentation/features/navigate/effects/NavigateCompassEffects.kt`
 - `app/src/main/java/com/glancemap/glancemapwearos/presentation/features/navigate/effects/NavigateEffects.kt`
+- `app/src/main/java/com/glancemap/glancemapwearos/presentation/features/navigate/NavigateMagneticMotionFallback.kt`
 
 ## How To Use This File
 
@@ -48,6 +49,21 @@ Source constants file:
 | `MAG_FIELD_MAX_VALID_UT` | `85 uT` | Upper bound for plausible magnetic field | Detects interference/saturation | Neutral |
 | `MAG_FIELD_SPIKE_THRESHOLD_UT` | `18 uT` | Spike detector for sudden interference | Captures abrupt disturbances | Neutral |
 | `MAG_INTERFERENCE_HOLD_MS` | `3000 ms` | Hold interference state after trigger | Avoids rapid quality flapping | Neutral |
+
+## Temporary magnetic motion controls
+
+These initial UX/drift controls require watch validation; they do not change absolute integrity
+thresholds or the sensor request rates. Tune cone disappearance from field captures, not ordinary
+Google heading uncertainty (which often stays weak even when the map follows correctly).
+
+| Constant | Initial value | Purpose |
+|---|---:|---|
+| `MAGNETIC_CONE_HIDE_DELAY_MS` | `500 ms` | Ignore brief existing magnetic holds/jump quarantine |
+| `MAGNETIC_MOTION_RECOVERY_HOLD_MS` | `1000 ms` | Require sustained healthy tracking before reconnecting |
+| `MAGNETIC_MOTION_SAMPLE_FRESHNESS_MS` | `300 ms` | Reject sensor silence and missed relative intervals |
+| `MAGNETIC_MOTION_MAX_DURATION_MS` | `60000 ms` | Bound relative drift without absolute recovery |
+| `MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG` | `4 deg` | Cap visible reconnection steps |
+| `MAGNETIC_CONE_RESTORE_DELTA_DEG` | `5 deg` | Restore the cone only near the recovered heading |
 
 ## Change Template
 
