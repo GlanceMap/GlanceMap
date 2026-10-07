@@ -59,9 +59,9 @@ Google heading uncertainty (which often stays weak even when the map follows cor
 | Constant | Initial value | Purpose |
 |---|---:|---|
 | `MAGNETIC_CONE_HIDE_DELAY_MS` | `500 ms` | Ignore brief existing magnetic holds/jump quarantine |
-| `MAGNETIC_MOTION_RECOVERY_HOLD_MS` | `1000 ms` | Require sustained healthy tracking before reconnecting |
+| `MAGNETIC_MOTION_RECOVERY_HOLD_MS` | `1000 ms` | Require stable released absolute tracking in the same interactive session; later wakes reuse wake-gate validation |
 | `MAGNETIC_MOTION_SAMPLE_FRESHNESS_MS` | `300 ms` | Reject sensor silence and missed relative intervals |
-| `MAGNETIC_MOTION_MAX_DURATION_MS` | `60000 ms` | Bound relative drift without absolute recovery |
+| `MAGNETIC_MOTION_MAX_DURATION_MS` | `60000 ms` | Stop relative drift without absolute recovery; expiry does not hide the cone or renew on wake |
 | `MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG` | `4 deg` | Cap visible reconnection steps |
 | `MAGNETIC_CONE_RESTORE_DELTA_DEG` | `5 deg` | Restore the cone only near the recovered heading |
 

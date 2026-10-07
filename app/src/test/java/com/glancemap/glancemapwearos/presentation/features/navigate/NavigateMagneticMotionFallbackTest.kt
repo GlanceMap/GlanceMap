@@ -248,6 +248,138 @@ class NavigateMagneticMotionFallbackTest {
     }
 
     @Test
+    fun expiredBriefHoldCannotHideTheConeOnAnOrdinaryWake() {
+        val replay = Replay()
+        replay.disturb()
+        replay.now += 100L
+        val acquiring =
+            replay.state().copy(
+                trackingState = CompassTrackingState.ACQUIRING,
+                trackingReason = CompassTrackingReason.ABSOLUTE_WINDOW_UNSTABLE,
+                headingSampleHeldOutput = true,
+            )
+        replay.resolve(acquiring)
+        replay.now += MAGNETIC_MOTION_MAX_DURATION_MS
+        replay.policy.beginSession(replay.now)
+        val frozen = replay.resolve(acquiring.copy(headingSampleElapsedRealtimeMs = replay.now))
+        assertFalse(frozen.relativeMotion)
+        assertFalse(replay.policy.coneSuppressed)
+
+        replay.disturb()
+        replay.now += MAGNETIC_CONE_HIDE_DELAY_MS
+        assertFalse(replay.disturb(30f).relativeMotion)
+        assertTrue(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun wakeReconnectsToItsAcceptedFreshHeadingWithoutAnotherRecoveryDelay() {
+        val replay = Replay()
+        replay.hideCone()
+        val cached = replay.state()
+        replay.now += 100L
+        replay.policy.beginSession(replay.now)
+        replay.resolve(cached, NavigationRotationTarget(100f))
+        assertTrue(replay.policy.coneSuppressed)
+
+        replay.now += 100L
+        val target = replay.resolve(replay.state(), NavigationRotationTarget(100f))
+        assertFalse(target.relativeMotion)
+        assertEquals(MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG, requireNotNull(target.maxVisualStepDeg), 0f)
+        assertFalse(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun wakeReconnectionRetainsTheVisualCapAndWaitsForConvergence() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now += 5_000L
+        replay.policy.beginSession(replay.now)
+        val allowed = replay.state().copy(headingDeg = 200f)
+        val absolute = NavigationRotationTarget(200f, maxVisualStepDeg = 2f)
+        val target = replay.resolve(allowed, absolute, applyTarget = false)
+        assertFalse(target.relativeMotion)
+        assertEquals(2f, requireNotNull(target.maxVisualStepDeg), 0f)
+        assertTrue(replay.policy.coneSuppressed)
+
+        replay.displayed = 196f
+        replay.resolve(allowed, absolute)
+        assertFalse(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun aNewHoldDuringWakeReconnectionRequiresTheStableRecoveryWindowAgain() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now += 5_000L
+        replay.policy.beginSession(replay.now)
+        replay.resolve(replay.state(), NavigationRotationTarget(200f), applyTarget = false)
+
+        replay.now += 100L
+        replay.disturb()
+        replay.now += 100L
+        val waiting = replay.resolve(replay.state(), NavigationRotationTarget(100f))
+        assertTrue(waiting.relativeMotion)
+        assertTrue(replay.policy.coneSuppressed)
+
+        replay.now += MAGNETIC_MOTION_RECOVERY_HOLD_MS
+        val recovered = replay.resolve(replay.state(), NavigationRotationTarget(100f))
+        assertFalse(recovered.relativeMotion)
+        assertFalse(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun wakeStillRequiresItsGateAndAReleasedJumpBeforeRestoringCone() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now += 5_000L
+        replay.policy.beginSession(replay.now)
+        replay.resolve(replay.state())
+        assertTrue(replay.policy.coneSuppressed)
+        repeat(2) {
+            replay.now += MAGNETIC_MOTION_RECOVERY_HOLD_MS
+            val held = replay.state().copy(headingJumpHeld = true)
+            val target = replay.resolve(held, NavigationRotationTarget(280f))
+            assertTrue(target.relativeMotion)
+            assertEquals(100f, target.headingDeg, 0f)
+            assertTrue(replay.policy.coneSuppressed)
+        }
+    }
+
+    @Test
+    fun historicalDisagreementCannotKeepAReleasedAbsoluteHeadingInBackup() {
+        val replay = Replay()
+        replay.hideCone()
+        val allowed = replay.state().copy(unresolvedIndependentDisagreement = true, headingTrusted = false)
+        replay.resolve(allowed, NavigationRotationTarget(100f))
+        replay.now += MAGNETIC_MOTION_RECOVERY_HOLD_MS
+        val target =
+            replay.resolve(
+                allowed.copy(headingSampleElapsedRealtimeMs = replay.now),
+                NavigationRotationTarget(100f),
+            )
+        assertFalse(target.relativeMotion)
+        assertFalse(replay.policy.coneSuppressed)
+        assertFalse(allowed.headingTrusted)
+    }
+
+    @Test
+    fun unresolvedRecoveryCannotInventAColdRelativeAnchor() {
+        val replay = Replay(seedAnchor = false)
+        replay.hideCone()
+        replay.resolve(replay.state().copy(unresolvedIndependentDisagreement = true), NavigationRotationTarget(100f))
+        replay.now += MAGNETIC_MOTION_RECOVERY_HOLD_MS
+        replay.resolve(replay.state().copy(unresolvedIndependentDisagreement = true), NavigationRotationTarget(100f))
+        assertFalse(replay.policy.coneSuppressed)
+
+        replay.now += 100L
+        replay.disturb()
+        replay.now += 100L
+        val target = replay.disturb(30f)
+        assertFalse(target.relativeMotion)
+        assertEquals(100f, target.headingDeg, 0f)
+    }
+
+    @Test
     fun recoveryWaitsForHealthyTrackingThenConvergesBeforeRestoringCone() {
         val replay = Replay()
         replay.hideCone()

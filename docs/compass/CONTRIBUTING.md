@@ -40,6 +40,9 @@ Sanity check on watch:
   absolute heading movement must not activate this fallback;
 - magnetic motion stops on a sensor gap/steep tilt or after 60 seconds without absolute recovery;
   wake must not replay hidden motion or renew that budget, and recovery must reconnect without a snap;
+- after a previous hold, ordinary wake must restore the cone once fresh absolute heading is admitted
+  by the wake gate and visual reconnection finishes; old disagreement metadata or motion-budget
+  expiry alone must not keep it hidden, while a current magnetic/jump hold must still protect heading;
 - custom sensor/source combinations where available.
 
 ## Where To Change Code

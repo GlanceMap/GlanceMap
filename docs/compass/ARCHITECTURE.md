@@ -101,11 +101,18 @@ Relative samples carry source time, request generation, horizontal projection, a
 Missing, old, future, mismatched, steeply tilted, or implausible samples cannot drive rotation.
 Gaps, registrations, display-frame changes, and wake/panning sessions re-establish the relative
 origin at the current visible heading without applying missed turns. The motion budget does not
-renew on wake and expires after 60 seconds without absolute recovery.
+renew on wake and expires after 60 seconds without absolute recovery. Expiry stops relative motion;
+it cannot itself hide the cone.
 
 The cone hides after 500 ms of a continuous magnetic wake hold or jump quarantine, retaining the location
-dot. Brief spikes and ordinary weak confidence do not hide it. After one second of fresh stable
-magnetic tracking, navigation reconnects to the absolute target with a four-degree visual step cap.
+dot. Brief spikes and ordinary weak confidence do not hide it. Once the navigation gate allows a
+fresh, stable, unheld absolute heading, navigation reconnects with a four-degree visual step cap.
+Recovery in the same interactive session requires one second of stable tracking. A later wake uses
+the existing wake gate's validation without adding another recovery delay for the old episode.
+A new hold during reconnection requires the stable recovery window again.
+Historical unresolved-disagreement metadata still qualifies provider trust, but cannot prolong
+navigation backup after the actual hold releases. Cached samples and current jump holds cannot
+establish recovery.
 An already hidden cone returns only when the visible heading is within five degrees of that target.
 There is no additional uncertainty message. Existing north-up and panning behavior is preserved.
 Witness suppression caused by disagreement with the disturbed absolute source does not itself

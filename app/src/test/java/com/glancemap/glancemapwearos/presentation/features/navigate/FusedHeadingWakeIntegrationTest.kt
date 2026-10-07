@@ -107,6 +107,55 @@ class FusedHeadingWakeIntegrationTest {
     }
 
     @Test
+    fun freshStableWakeClearsAnOldMagneticEpisodeWhenTheWakeGateReleases() {
+        val replay = WakeReplay(relativeSensorAvailable = true)
+        replay.reset(seedHeadingDeg = 100f)
+        replay.warmMagneticField()
+        replay.acquireStableHeading(100f)
+        replay.relative(0f)
+        val healthy = replay.absolute(100f)
+        val policy = NavigateMagneticMotionFallback()
+        val gate = NavigateRotationSettleGate()
+        policy.beginSession(replay.nowElapsedMs)
+        policy.resolve(
+            healthy.toRenderState(replay.nowElapsedMs),
+            NavigationRotationTarget(100f),
+            100f,
+            replay.nowElapsedMs,
+        )
+        gate.beginWakeSession(replay.nowElapsedMs, heldHeadingDeg = 100f)
+
+        repeat(2) {
+            replay.advance(MAGNETIC_CONE_HIDE_DELAY_MS)
+            replay.magnetic(600f)
+            replay.relative(0f)
+            val held = replay.absolute(280f)
+            assertTrue(held.headingJumpHeld)
+            val absolute = gate.resolveFromIntegrity(held, replay.nowElapsedMs)
+            assertNull(absolute)
+            policy.resolve(held.toRenderState(replay.nowElapsedMs), absolute, 100f, replay.nowElapsedMs)
+        }
+        assertTrue(policy.coneSuppressed)
+        gate.endWakeSession(replay.nowElapsedMs)
+
+        replay.advance(5_000L)
+        policy.beginSession(replay.nowElapsedMs)
+        gate.beginWakeSession(replay.nowElapsedMs, heldHeadingDeg = 100f)
+        replay.reset(seedHeadingDeg = 100f)
+        replay.warmMagneticField()
+        val recovered = replay.acquireStableHeading(100f)
+        assertFalse(recovered.heldOutput)
+        val absolute = requireNotNull(gate.resolveFromIntegrity(recovered, replay.nowElapsedMs))
+        val target =
+            requireNotNull(
+                policy.resolve(recovered.toRenderState(replay.nowElapsedMs), absolute, 100f, replay.nowElapsedMs),
+            )
+        assertFalse(target.relativeMotion)
+        assertFalse(policy.coneSuppressed)
+        assertEquals(MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG, requireNotNull(target.maxVisualStepDeg), 0f)
+    }
+
+    @Test
     fun seededAcquisitionRemainsHeldPastWakeTimeoutUntilStableAndReleasesItsRecoveredTarget() {
         val replay = WakeReplay(relativeSensorAvailable = false)
         replay.reset(seedHeadingDeg = 100f)

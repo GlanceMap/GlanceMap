@@ -25,10 +25,12 @@ internal class NavigateMagneticMotionFallback(
     private var previousMotion: CompassRelativeMotionSample? = null
     private var motionHeadingDeg = 0f
     private var recoveringAbsolute = false
+    private var reuseWakeValidation = false
     private var expired = false
 
     fun beginSession(nowElapsedMs: Long) {
         sessionStartedAtMs = nowElapsedMs
+        reuseWakeValidation = episodeStartedAtMs != null
         previousMotion = null
         recoveringAbsolute = false
         blockedSinceMs = null
@@ -61,7 +63,12 @@ internal class NavigateMagneticMotionFallback(
                 absoluteTarget
             }
             episodeStartedAtMs == null && !blocked -> {
-                if (hasHealthyAbsoluteHeading(state, absoluteTarget)) hasAcceptedAbsoluteAnchor = true
+                if (
+                    hasStableAbsoluteTarget(state, absoluteTarget, nowElapsedMs) &&
+                    !state.unresolvedIndependentDisagreement
+                ) {
+                    hasAcceptedAbsoluteAnchor = true
+                }
                 previousMotion = usableMotion(state, nowElapsedMs)
                 absoluteTarget
             }
@@ -89,27 +96,39 @@ internal class NavigateMagneticMotionFallback(
             coneSuppressed = true
             log("stage=cone_hidden atMs=$nowElapsedMs")
         }
-        val healthy = hasHealthyAbsoluteHeading(state, absoluteTarget)
+        // The existing navigation gate remains authoritative. Historical disagreement can
+        // qualify provider trust without extending an absolute hold that the engine released.
+        val healthy = !blocked && hasStableAbsoluteTarget(state, absoluteTarget, nowElapsedMs)
         healthySinceMs = if (healthy) healthySinceMs ?: nowElapsedMs else null
-        if (healthySinceMs?.let { nowElapsedMs - it >= MAGNETIC_MOTION_RECOVERY_HOLD_MS } == true) {
-            return recoverAbsolute(requireNotNull(absoluteTarget), currentHeadingDeg)
+        val recoveredAfterWake = healthy && reuseWakeValidation
+        if (recoveredAfterWake || hasCompletedRecoveryHold(nowElapsedMs)) {
+            // A fresh target admitted after wake already passed its settling gate. Do not make
+            // an old episode add another dwell; retain the visual cap and convergence check.
+            return recoverAbsolute(state, requireNotNull(absoluteTarget), currentHeadingDeg)
         }
         if (recoveringAbsolute) {
             motionHeadingDeg = currentHeadingDeg
             previousMotion = null
             recoveringAbsolute = false
+            reuseWakeValidation = false
         }
         return coast(state, currentHeadingDeg, nowElapsedMs)
     }
 
+    private fun hasCompletedRecoveryHold(nowElapsedMs: Long): Boolean =
+        healthySinceMs?.let {
+            nowElapsedMs - it >= MAGNETIC_MOTION_RECOVERY_HOLD_MS
+        } == true
+
     private fun recoverAbsolute(
+        state: CompassRenderState,
         target: NavigationRotationTarget,
         currentHeadingDeg: Float,
     ): NavigationRotationTarget {
         if (!recoveringAbsolute) log("stage=reconnecting targetDeg=${target.headingDeg}")
         recoveringAbsolute = true
         if (abs(shortestAngleDiffDeg(target.headingDeg, currentHeadingDeg)) <= MAGNETIC_CONE_RESTORE_DELTA_DEG) {
-            hasAcceptedAbsoluteAnchor = true
+            if (!state.unresolvedIndependentDisagreement) hasAcceptedAbsoluteAnchor = true
             clearEpisode()
             log("stage=recovered targetDeg=${target.headingDeg}")
         }
@@ -126,7 +145,6 @@ internal class NavigateMagneticMotionFallback(
     ): NavigationRotationTarget {
         if (!expired && nowElapsedMs - requireNotNull(episodeStartedAtMs) >= MAGNETIC_MOTION_MAX_DURATION_MS) {
             expired = true
-            coneSuppressed = true
             log("stage=expired atMs=$nowElapsedMs")
         }
         val sample = usableMotion(state, nowElapsedMs)
@@ -183,21 +201,26 @@ internal class NavigateMagneticMotionFallback(
                 sample.provenance.provider == CompassProviderType.GOOGLE_FUSED
         }
 
-    private fun hasHealthyAbsoluteHeading(
+    private fun hasStableAbsoluteTarget(
         state: CompassRenderState,
         target: NavigationRotationTarget?,
+        nowElapsedMs: Long,
     ): Boolean =
         target != null &&
+            target.headingDeg.isFinite() &&
+            shouldDriveCompassFollowMap(state, nowElapsedMs) &&
+            state.headingSampleElapsedRealtimeMs?.let { it >= sessionStartedAtMs } == true &&
             hasStableMagneticCompassHeading(state) &&
             !state.headingSampleHeldOutput &&
             !state.quarantineActive &&
-            !state.unresolvedIndependentDisagreement
+            !state.headingJumpHeld
 
     private fun clearEpisode() {
         episodeStartedAtMs = null
         blockedSinceMs = null
         healthySinceMs = null
         recoveringAbsolute = false
+        reuseWakeValidation = false
         expired = false
         coneSuppressed = false
     }
