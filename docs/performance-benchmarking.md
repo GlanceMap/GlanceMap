@@ -59,7 +59,7 @@ Run only the relief memory/DEM baseline:
 
 - Navigation: `navigateScreenRecomposeCount`, `navigateContentRecomposeCount`, heap/RSS memory. Run `navigateFrameTiming` separately if the device reports RenderThread slices.
 - Map load: startup timing plus `mapLayerUpdateSumMs`, `mapFileOpenSumMs`, `renderThemeBuildSumMs`, `themeSelectionApplySumMs`, `dynamicThemeCreateSumMs`.
-- Relief: `reliefDemReadSumMs`, `reliefDemDecodeSumMs`, `reliefTileBuildSumMs`, `reliefTileBuildCount`, heap/RSS memory.
+- Relief: `reliefDemReadDecodeSumMs`, `reliefTileBuildSumMs`, `reliefTileBuildCount`, heap/RSS memory. DEM input and sample decoding now stream together; the combined metric replaces the separate read/decode timings.
 
 Watch benchmark JSON and trace artifacts are written under:
 
