@@ -91,6 +91,10 @@ materially affect tile generation. The release Git SHA does not identify uncommi
   Explicit invalidation and rebuilding the same identity still purge rendered content. Map and
   theme signatures now include full-resolution modification times and file identity, so installing
   this build can require one initial render for the newly keyed buckets.
+- Within one bundled theme, switch style or overlay configuration A to B to A. The return should
+  report `generated_theme_cache_hit` and reuse A's tile-cache identity. Four generated XML variants
+  are retained per theme using separate usage records; a fifth evicts the least recently used
+  unselected variant. Confirm each configuration's appearance and that the current file is retained.
 - During theme changes, compare `theme_viewport_ready` with `mapRenderer.visibleTiles` for the
   current layer. Cache notifications alone cannot complete this wait. The existing 4,500 ms
   appearance timeout remains bounded and reports `theme_viewport_timeout` if tiles are still absent;
