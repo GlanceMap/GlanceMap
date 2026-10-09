@@ -13,10 +13,104 @@ import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import com.glancemap.glancemapwearos.domain.sensors.normalize360Deg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigateMagneticMotionFallbackTest {
+    @Test
+    fun aNewMapWithoutAnActiveEpisodeMustAcquireItsOwnAbsoluteAnchor() {
+        val replay = Replay()
+        assertNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        replay.displayed = 0f
+        replay.now += 100L
+        replay.policy.beginSession(replay.now)
+        replay.disturb(0f)
+        replay.now += 100L
+        assertFalse(replay.disturb(30f).relativeMotion)
+        assertEquals(0f, replay.displayed, 0f)
+    }
+
+    @Test
+    fun recreatedMapRetainsItsAcceptedAngleAndRebasesOnTheNewRegistration() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now += 100L
+        replay.disturb(20f)
+        val restored = requireNotNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        assertEquals(120f, restored, 0f)
+        assertTrue(replay.policy.coneSuppressed)
+
+        replay.displayed = restored
+        replay.now += 100L
+        replay.policy.beginSession(replay.now)
+        val generation = PROVENANCE.copy(generation = 2L)
+        val restarted =
+            replay.disturbedState().copy(
+                headingProvenance = generation,
+                relativeMotionSample = replay.motion(250f).copy(provenance = generation),
+            )
+        assertEquals(120f, replay.resolve(restarted).headingDeg, 0f)
+        replay.now += 100L
+        val turned =
+            replay.resolve(
+                restarted.copy(relativeMotionSample = replay.motion(260f).copy(provenance = generation)),
+            )
+        assertEquals(130f, turned.headingDeg, 0f)
+        assertTrue(turned.relativeMotion)
+        assertTrue(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun recreatingTheMapCannotRenewItsOriginalBackupDeadline() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now = 1_000L + MAGNETIC_MOTION_MAX_DURATION_MS - 100L
+        replay.displayed = requireNotNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        replay.policy.beginSession(replay.now)
+        replay.disturb(20f)
+        replay.now += 100L
+        assertFalse(replay.disturb(30f).relativeMotion)
+        assertEquals(100f, replay.displayed, 0f)
+        assertTrue(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun coldStartAndReplacementProviderCannotRestoreAnAcceptedCompassAnchor() {
+        val cold = Replay(seedAnchor = false)
+        cold.hideCone()
+        cold.policy.recordDisplayedHeading(100f)
+        assertNull(cold.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+
+        val warm = Replay()
+        warm.hideCone()
+        assertNull(warm.policy.prepareForRecreatedMap(CompassProviderType.SENSOR_MANAGER))
+        warm.resolve(
+            warm.state().copy(providerType = CompassProviderType.SENSOR_MANAGER),
+            NavigationRotationTarget(180f),
+        )
+        assertNull(warm.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        assertFalse(warm.policy.coneSuppressed)
+    }
+
+    @Test
+    fun restoredEpisodeRecoversOnlyAfterAFreshReleasedAbsoluteTargetConverges() {
+        val replay = Replay()
+        replay.hideCone()
+        replay.now += 5_000L
+        replay.displayed = requireNotNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        replay.policy.beginSession(replay.now)
+        replay.disturb(0f)
+        replay.now += 100L
+        val recovered = replay.resolve(replay.state(), NavigationRotationTarget(130f), applyTarget = false)
+        assertEquals(4f, requireNotNull(recovered.maxVisualStepDeg), 0f)
+        assertTrue(replay.policy.coneSuppressed)
+        replay.displayed = 127f
+        replay.resolve(replay.state(), NavigationRotationTarget(130f))
+        assertFalse(replay.policy.coneSuppressed)
+        assertNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+    }
+
     @Test
     fun magneticWarningWithAllowedAbsoluteMotionNeverStartsBackup() {
         val replay = Replay()
@@ -507,7 +601,10 @@ class NavigateMagneticMotionFallbackTest {
             applyTarget: Boolean = true,
         ): NavigationRotationTarget {
             val target = requireNotNull(policy.resolve(state, absolute, displayed, now))
-            if (applyTarget) displayed = target.headingDeg
+            if (applyTarget) {
+                displayed = target.headingDeg
+                policy.recordDisplayedHeading(displayed)
+            }
             return target
         }
     }

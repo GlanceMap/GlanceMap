@@ -110,6 +110,15 @@ origin at the current visible heading without applying missed turns. The motion 
 renew on wake and expires after 60 seconds without absolute recovery. Expiry stops relative motion;
 it cannot itself hide the cone.
 
+The shared `MapViewModel` retains this controller across Navigate disposal and MapView recreation.
+During an active episode it also retains the last applied map heading and accepted-anchor status.
+A recreated compass-follow map retains cone suppression immediately and restores the angle once
+the view has dimensions, before heading updates and wake validation start;
+fresh relative samples then establish a new origin without replaying turns while away. Re-entry
+does not renew the original 60-second deadline. A real cold start or replacement provider cannot
+inherit an accepted Fused anchor, and the continuity state is never persisted across process death.
+A recreated map without an active restorable episode acquires its own absolute anchor.
+
 The cone hides after 500 ms of a continuous magnetic wake hold, jump quarantine, or severe magnetic
 episode, retaining the location dot. Brief spikes and ordinary weak confidence do not hide it.
 Once the navigation gate allows a fresh, stable, unheld absolute heading, navigation reconnects
@@ -128,6 +137,16 @@ checks remain mandatory. This is temporary estimated orientation, never proof of
 
 Deep Trace schema 5 records the actual relative sample/time/generation/frame used by each coasting
 render, cone suppression, and mode transitions. Capture remains opt-in and bounded.
+Motion-hold transitions distinguish a missing accepted anchor, expired drift budget, and unavailable
+relative motion.
+
+While Deep Trace is enabled, an independent uncalibrated magnetometer listener captures its field
+and estimated hard-iron bias alongside the calibrated sensor. At most one `magnetic_calibration`
+snapshot per second records copied vectors, magnitudes, sensor accuracy, measurement/arrival times,
+sample ages, and pair skew. These snapshots share the existing bounded line and event buffers.
+Calibration snapshots reject old registration generations and duplicate/out-of-order measurements.
+Missing or malformed uncalibrated samples remain unavailable; they never mix
+into calibrated field statistics or drive production heading, trust, severity, or recovery.
 
 ## Ownership
 

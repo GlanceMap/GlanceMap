@@ -27,6 +27,24 @@ internal class NavigateMagneticMotionFallback(
     private var recoveringAbsolute = false
     private var reuseWakeValidation = false
     private var expired = false
+    private var lastDisplayedHeadingDeg: Float? = null
+    private var lastCoastHoldReason: String? = null
+
+    fun prepareForRecreatedMap(provider: CompassProviderType): Float? {
+        val retainedHeading =
+            lastDisplayedHeadingDeg.takeIf {
+                provider == CompassProviderType.GOOGLE_FUSED && hasAcceptedAbsoluteAnchor && episodeStartedAtMs != null
+            }
+        // A new map without a restorable episode must acquire its own absolute anchor.
+        if (retainedHeading == null) hasAcceptedAbsoluteAnchor = false
+        return retainedHeading
+    }
+
+    fun recordDisplayedHeading(headingDeg: Float) {
+        if (hasAcceptedAbsoluteAnchor && headingDeg.isFinite()) {
+            lastDisplayedHeadingDeg = normalize360Deg(headingDeg)
+        }
+    }
 
     fun beginSession(nowElapsedMs: Long) {
         sessionStartedAtMs = nowElapsedMs
@@ -69,7 +87,7 @@ internal class NavigateMagneticMotionFallback(
                 ) {
                     hasAcceptedAbsoluteAnchor = true
                 }
-                previousMotion = usableMotion(state, nowElapsedMs)
+                previousMotion = usableMotion(state, sessionStartedAtMs, nowElapsedMs)
                 absoluteTarget
             }
             else -> resolveEpisode(state, absoluteTarget, currentDisplayedHeadingDeg, nowElapsedMs, blocked)
@@ -102,7 +120,7 @@ internal class NavigateMagneticMotionFallback(
         val healthy = !blocked && hasStableAbsoluteTarget(state, absoluteTarget, nowElapsedMs)
         healthySinceMs = if (healthy) healthySinceMs ?: nowElapsedMs else null
         val recoveredAfterWake = healthy && reuseWakeValidation
-        if (recoveredAfterWake || hasCompletedRecoveryHold(nowElapsedMs)) {
+        if (recoveredAfterWake || hasCompletedRecoveryHold(healthySinceMs, nowElapsedMs)) {
             // A fresh target admitted after wake already passed its settling gate. Do not make
             // an old episode add another dwell; retain the visual cap and convergence check.
             return recoverAbsolute(state, requireNotNull(absoluteTarget), currentHeadingDeg)
@@ -115,11 +133,6 @@ internal class NavigateMagneticMotionFallback(
         }
         return coast(state, currentHeadingDeg, nowElapsedMs)
     }
-
-    private fun hasCompletedRecoveryHold(nowElapsedMs: Long): Boolean =
-        healthySinceMs?.let {
-            nowElapsedMs - it >= MAGNETIC_MOTION_RECOVERY_HOLD_MS
-        } == true
 
     private fun recoverAbsolute(
         state: CompassRenderState,
@@ -148,13 +161,24 @@ internal class NavigateMagneticMotionFallback(
             expired = true
             log("stage=expired atMs=$nowElapsedMs")
         }
-        val sample = usableMotion(state, nowElapsedMs)
-        return if (!hasAcceptedAbsoluteAnchor || expired || sample == null) {
+        val sample = usableMotion(state, sessionStartedAtMs, nowElapsedMs)
+        val holdReason =
+            when {
+                !hasAcceptedAbsoluteAnchor -> "no_accepted_anchor"
+                expired -> "expired"
+                sample == null -> "relative_unavailable"
+                else -> null
+            }
+        if (holdReason != lastCoastHoldReason && holdReason != null) {
+            log("stage=motion_hold reason=$holdReason atMs=$nowElapsedMs")
+        }
+        lastCoastHoldReason = holdReason
+        return if (holdReason != null) {
             previousMotion = null
             motionHeadingDeg = currentHeadingDeg
             NavigationRotationTarget(currentHeadingDeg)
         } else {
-            advanceMotion(sample, currentHeadingDeg)
+            advanceMotion(requireNotNull(sample), currentHeadingDeg)
             NavigationRotationTarget(motionHeadingDeg, relativeMotionSample = previousMotion)
         }
     }
@@ -187,21 +211,6 @@ internal class NavigateMagneticMotionFallback(
         }
     }
 
-    private fun usableMotion(
-        state: CompassRenderState,
-        nowElapsedMs: Long,
-    ): CompassRelativeMotionSample? =
-        state.relativeMotionSample?.takeIf { sample ->
-            sample.headingDeg.isFinite() &&
-                sample.horizontalProjection.isFinite() &&
-                sample.horizontalProjection >= MIN_SCREEN_TOP_HORIZONTAL_PROJECTION &&
-                sample.atElapsedMs >= sessionStartedAtMs &&
-                sample.atElapsedMs <= nowElapsedMs &&
-                nowElapsedMs - sample.atElapsedMs <= MAGNETIC_MOTION_SAMPLE_FRESHNESS_MS &&
-                sample.provenance == state.headingProvenance &&
-                sample.provenance.provider == CompassProviderType.GOOGLE_FUSED
-        }
-
     private fun hasStableAbsoluteTarget(
         state: CompassRenderState,
         target: NavigationRotationTarget?,
@@ -224,8 +233,30 @@ internal class NavigateMagneticMotionFallback(
         reuseWakeValidation = false
         expired = false
         coneSuppressed = false
+        lastCoastHoldReason = null
     }
 }
+
+private fun usableMotion(
+    state: CompassRenderState,
+    sessionStartedAtMs: Long,
+    nowElapsedMs: Long,
+): CompassRelativeMotionSample? =
+    state.relativeMotionSample?.takeIf { sample ->
+        sample.headingDeg.isFinite() &&
+            sample.horizontalProjection.isFinite() &&
+            sample.horizontalProjection >= MIN_SCREEN_TOP_HORIZONTAL_PROJECTION &&
+            sample.atElapsedMs >= sessionStartedAtMs &&
+            sample.atElapsedMs <= nowElapsedMs &&
+            nowElapsedMs - sample.atElapsedMs <= MAGNETIC_MOTION_SAMPLE_FRESHNESS_MS &&
+            sample.provenance == state.headingProvenance &&
+            sample.provenance.provider == CompassProviderType.GOOGLE_FUSED
+    }
+
+private fun hasCompletedRecoveryHold(
+    healthySinceMs: Long?,
+    nowElapsedMs: Long,
+): Boolean = healthySinceMs?.let { nowElapsedMs - it >= MAGNETIC_MOTION_RECOVERY_HOLD_MS } == true
 
 // New fallback UX/drift controls; the absolute-heading integrity thresholds remain unchanged.
 internal const val MAGNETIC_CONE_HIDE_DELAY_MS = 500L

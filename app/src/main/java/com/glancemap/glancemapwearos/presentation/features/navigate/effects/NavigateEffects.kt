@@ -39,6 +39,7 @@ import com.glancemap.glancemapwearos.domain.sensors.HeadingTurnRateHysteresis
 import com.glancemap.glancemapwearos.domain.sensors.hasRecentGoogleFusedCachedHeading
 import com.glancemap.glancemapwearos.domain.sensors.isFusedHeadingSampleFresh
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
+import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -60,6 +61,7 @@ import kotlin.math.exp
  */
 @Composable
 fun NavigationOrientationEffect(
+    mapViewModel: MapViewModel,
     isCompassMode: Boolean,
     isAutoCentering: Boolean,
     forceNorthUpInPanning: Boolean,
@@ -95,14 +97,24 @@ fun NavigationOrientationEffect(
     val frozenRotationDeg = remember { mutableFloatStateOf(0f) }
     val rotationSettleGate = remember(mv) { NavigateRotationSettleGate() }
     val magneticMotionFallback =
-        remember(mv) {
-            NavigateMagneticMotionFallback { message ->
+        remember(mapViewModel) {
+            mapViewModel.navigateMagneticMotionFallback ?: NavigateMagneticMotionFallback { message ->
                 if (isCompassTelemetryCaptureActive()) {
                     DebugTelemetry.log(COMPASS_TELEMETRY_TAG, "magnetic_motion $message")
                 }
                 CompassDeepTraceDiagnostics.recordMarker("magnetic_motion", message)
+            }.also { mapViewModel.navigateMagneticMotionFallback = it }
+        }
+    val retainedHeading =
+        remember(mv) {
+            if (navMode == NavMode.COMPASS_FOLLOW && !hasInitializedMapOrientation(mv)) {
+                magneticMotionFallback.prepareForRecreatedMap(renderStateFlow.value.providerType)
+            } else {
+                null
             }
         }
+    val restoringRetainedHeading = remember(mv) { mutableStateOf(retainedHeading != null) }
+    val isRestoringHeading = restoringRetainedHeading.value
     val wakeContinuityCapture = remember(mv) { NavigateWakeContinuityCapture() }
     val hasObservedInteractive = remember(mv) { mutableStateOf(false) }
     val latestCompassInteractive = rememberUpdatedState(compassInteractive)
@@ -113,6 +125,9 @@ fun NavigationOrientationEffect(
         force: Boolean = false,
         nowElapsedMs: Long = SystemClock.elapsedRealtime(),
     ) {
+        if (navMode == NavMode.COMPASS_FOLLOW && hasInitializedMapOrientation(mv)) {
+            magneticMotionFallback.recordDisplayedHeading(normalize360(-mv.mapRotation.degrees))
+        }
         if (
             !shouldPublishRenderedCompassUiState(
                 nowElapsedMs = nowElapsedMs,
@@ -222,11 +237,30 @@ fun NavigationOrientationEffect(
     LaunchedEffect(mv) {
         // Clear any legacy Android view rotation so map orientation is driven only by Mapsforge.
         mv.rotation = 0f
+        if (retainedHeading != null) {
+            while (
+                !mv.trySetMapsforgeRotation(
+                    -retainedHeading,
+                    mv.resolveNavigationMarkerScreenAnchor(latestNavigationMarkerAnchorMode.value),
+                )
+            ) {
+                withFrameNanos { }
+            }
+            displayedHeading.floatValue = retainedHeading
+            markMapOrientationInitialized(mv)
+            CompassDeepTraceDiagnostics.recordMarker(
+                "magnetic_motion",
+                "stage=map_restored headingDeg=$retainedHeading",
+            )
+            requestMapRedraw()
+        }
         syncDisplayedMapRotationFromMap()
         publishRenderedState(force = true)
+        restoringRetainedHeading.value = false
     }
 
-    LaunchedEffect(compassInteractive, mv) {
+    LaunchedEffect(compassInteractive, mv, isRestoringHeading) {
+        if (isRestoringHeading) return@LaunchedEffect
         val nowElapsedMs = SystemClock.elapsedRealtime()
         if (compassInteractive) {
             if (shouldUseWakeContinuityAnchor(navMode)) {
@@ -280,7 +314,9 @@ fun NavigationOrientationEffect(
         mv,
         forceNorthUpInPanning,
         navigationMarkerAnchorMode,
+        isRestoringHeading,
     ) {
+        if (isRestoringHeading) return@LaunchedEffect
         val renderStateNow = renderStateFlow.value
         val headingNow = normalize360(renderStateNow.headingDeg)
         val shouldDriveHeadingNow =
@@ -379,7 +415,9 @@ fun NavigationOrientationEffect(
         forceNorthUpInPanning,
         navigationMarkerAnchorMode,
         compassInteractive,
+        isRestoringHeading,
     ) {
+        if (isRestoringHeading) return@LaunchedEffect
         if (!shouldRunOrientationVisualLoop(compassInteractive, navMode)) return@LaunchedEffect
         magneticMotionFallback.beginSession(SystemClock.elapsedRealtime())
 

@@ -592,6 +592,7 @@ fun NavigateScreen(
                 createPreviewInProgress = routeToolCreatePreviewInProgress,
             )
         MapOverlays(
+            mapViewModel = mapViewModel,
             mapHolder = mapHolder,
             activeGpxDetails = activeGpxDetails,
             routeToolPreviewPoints =

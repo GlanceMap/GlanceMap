@@ -14,6 +14,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityD
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxInspectionUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
@@ -22,6 +23,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionAUiStat
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupA
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupAB
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
+import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlaySource
@@ -56,6 +58,7 @@ private const val ROUTE_TOOL_PREVIEW_BLUE = 232
 @OptIn(FlowPreview::class)
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 internal fun MapOverlays(
+    mapViewModel: MapViewModel,
     mapHolder: MapHolder,
     activeGpxDetails: List<GpxTrackDetails>,
     routeToolPreviewPoints: List<LatLong>,
@@ -100,7 +103,12 @@ internal fun MapOverlays(
     onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
 ) {
     val mapView = mapHolder.mapView
-    var compassConeSuppressed by remember(mapView) { mutableStateOf(false) }
+    var compassConeSuppressed by remember(mapView) {
+        mutableStateOf(
+            compassRenderStateFlow.value.providerType == CompassProviderType.GOOGLE_FUSED &&
+                mapViewModel.navigateMagneticMotionFallback?.coneSuppressed == true,
+        )
+    }
     val gpsAccuracyCircleLayer =
         remember(mapView) {
             val fill =
@@ -174,6 +182,7 @@ internal fun MapOverlays(
     }
 
     NavigationOrientationEffect(
+        mapViewModel = mapViewModel,
         isCompassMode = navMode == NavMode.COMPASS_FOLLOW,
         isAutoCentering = navMode != NavMode.PANNING,
         forceNorthUpInPanning = forceNorthUpInPanning,

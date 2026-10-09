@@ -298,6 +298,7 @@ internal enum class CompassDeepTraceRawSensor {
     GYROSCOPE,
     ACCELEROMETER,
     MAGNETOMETER,
+    UNCALIBRATED_MAGNETOMETER,
 }
 
 @Suppress("TooManyFunctions") // Keeps the bounded trace aggregation and serialization in one audited owner.
@@ -403,6 +404,8 @@ internal class CompassDeepTraceWindowAccumulator(
                     magnetometerOutsideNormalSamples += 1
                 }
             }
+            // Uncalibrated values and bias are exported separately, never mixed into calibrated field statistics.
+            CompassDeepTraceRawSensor.UNCALIBRATED_MAGNETOMETER -> Unit
         }
     }
 
