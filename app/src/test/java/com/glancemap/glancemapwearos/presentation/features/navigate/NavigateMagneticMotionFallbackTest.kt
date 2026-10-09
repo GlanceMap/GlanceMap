@@ -91,6 +91,22 @@ class NavigateMagneticMotionFallbackTest {
     }
 
     @Test
+    fun briefSevereSpikeProtectsTheAnchorWithoutBlinkingTheCone() {
+        val replay = Replay()
+        replay.now += 100L
+        val severe = replay.disturbedState().copy(severeMagneticInterference = true)
+        val held = replay.resolve(severe, NavigationRotationTarget(180f))
+        assertTrue(held.relativeMotion)
+        assertEquals(100f, held.headingDeg, 0f)
+        assertFalse(replay.policy.coneSuppressed)
+        repeat(15) {
+            replay.now += 100L
+            replay.resolve(replay.state(), NavigationRotationTarget(100f))
+            assertFalse(replay.policy.coneSuppressed)
+        }
+    }
+
+    @Test
     fun sustainedInterferenceHidesTheConeWithoutHidingTheLocationMarker() {
         val replay = Replay()
         replay.disturb()

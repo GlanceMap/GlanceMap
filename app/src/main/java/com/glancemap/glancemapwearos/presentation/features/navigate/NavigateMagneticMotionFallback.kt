@@ -52,9 +52,9 @@ internal class NavigateMagneticMotionFallback(
                             state.magneticQuality == CompassMagneticQuality.INTERFERENCE
                     )
             ) ||
-                state.headingJumpHeld
-        // A magnetic warning alone can still permit bounded absolute motion. Only replace an
-        // existing navigation hold or an explicit contradictory-jump hold, never normal tracking.
+                state.headingJumpHeld ||
+                state.severeMagneticInterference
+        // Mild warnings retain absolute motion; hard-invalid fields also block an already-settled map.
         return when {
             state.providerType != CompassProviderType.GOOGLE_FUSED -> {
                 clearEpisode()
@@ -88,7 +88,8 @@ internal class NavigateMagneticMotionFallback(
             motionHeadingDeg = currentHeadingDeg
             log(
                 "stage=start atMs=$nowElapsedMs anchorDeg=$currentHeadingDeg " +
-                    "absoluteHeld=${absoluteTarget == null} jumpHeld=${state.headingJumpHeld}",
+                    "absoluteHeld=${absoluteTarget == null} jumpHeld=${state.headingJumpHeld} " +
+                    "severeInterference=${state.severeMagneticInterference}",
             )
         }
         blockedSinceMs = if (blocked) blockedSinceMs ?: nowElapsedMs else null

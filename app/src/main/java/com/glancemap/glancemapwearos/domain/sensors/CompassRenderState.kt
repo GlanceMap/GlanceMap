@@ -26,6 +26,8 @@ data class CompassRenderState(
     val northBasis: CompassNorthBasis = CompassNorthBasis.UNKNOWN,
     val magneticQuality: CompassMagneticQuality = CompassMagneticQuality.UNKNOWN,
     val magneticFieldUt: Float? = null,
+    /** Current magnetic evidence exceeds the provider's hard validity limits. */
+    val severeMagneticInterference: Boolean = false,
     val quarantineActive: Boolean = false,
     /** Explicit absolute jump hold, separate from quarantine that still permits bounded motion. */
     val headingJumpHeld: Boolean = false,

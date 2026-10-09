@@ -22,7 +22,63 @@ import org.junit.Test
 
 class FusedHeadingWakeIntegrationTest {
     @Test
-    fun interferenceWithCorroboratedAbsoluteTurnsKeepsNormalNavigationAndCone() {
+    fun severeInterferenceAfterWakeSettlesUsesRelativeMotionUntilAbsoluteRecovery() {
+        val replay = WakeReplay(relativeSensorAvailable = true)
+        replay.reset(seedHeadingDeg = 100f)
+        replay.warmMagneticField()
+        replay.acquireStableHeading(100f)
+        replay.relative(0f)
+        val healthy = replay.absolute(100f, 25f, 180f)
+        val policy = NavigateMagneticMotionFallback()
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(replay.nowElapsedMs - 1L, heldHeadingDeg = 100f)
+        policy.beginSession(replay.nowElapsedMs)
+        policy.resolve(
+            healthy.toRenderState(replay.nowElapsedMs),
+            gate.resolveFromIntegrity(healthy, replay.nowElapsedMs),
+            100f,
+            replay.nowElapsedMs,
+        )
+
+        var displayed = 100f
+        repeat(7) { index ->
+            replay.advance(100L)
+            replay.magnetic(2_000f)
+            replay.relative(index * 5f)
+            val disturbed = replay.absolute(110f + index * 5f, 25f, 180f)
+            val state = disturbed.toRenderState(replay.nowElapsedMs)
+            val absolute = requireNotNull(gate.resolveFromIntegrity(disturbed, replay.nowElapsedMs))
+            val target = requireNotNull(policy.resolve(state, absolute, displayed, replay.nowElapsedMs))
+            assertFalse(disturbed.headingJumpHeld)
+            assertTrue(target.relativeMotion)
+            assertEquals(100f + index * 5f, target.headingDeg, ANGLE_TOLERANCE_DEG)
+            assertEquals(index >= 5, policy.coneSuppressed)
+            displayed = target.headingDeg
+        }
+
+        var firstRecoveredTarget: NavigationRotationTarget? = null
+        repeat(25) {
+            replay.advance(100L)
+            replay.magnetic(42f)
+            replay.relative(30f)
+            val recovered = replay.absolute(130f, 25f, 180f)
+            val state = recovered.toRenderState(replay.nowElapsedMs)
+            val absolute = gate.resolveFromIntegrity(recovered, replay.nowElapsedMs)
+            val target = requireNotNull(policy.resolve(state, absolute, displayed, replay.nowElapsedMs))
+            if (!target.relativeMotion && firstRecoveredTarget == null) firstRecoveredTarget = target
+            displayed = target.headingDeg
+        }
+        assertFalse(policy.coneSuppressed)
+        assertEquals(130f, displayed, ANGLE_TOLERANCE_DEG)
+        assertEquals(
+            MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG,
+            requireNotNull(firstRecoveredTarget).maxVisualStepDeg ?: -1f,
+            0f,
+        )
+    }
+
+    @Test
+    fun mildInterferenceWithCorroboratedAbsoluteTurnsKeepsNormalNavigationAndCone() {
         val replay = WakeReplay(relativeSensorAvailable = true)
         replay.reset(seedHeadingDeg = 100f)
         replay.warmMagneticField()
@@ -41,7 +97,7 @@ class FusedHeadingWakeIntegrationTest {
         var displayed = 100f
         repeat(20) { index ->
             replay.advance(100L)
-            replay.magnetic(600f)
+            replay.magnetic(90f)
             replay.relative((index + 1) * 5f)
             val snapshot = replay.absolute(100f + (index + 1) * 5f)
             val absolute = requireNotNull(gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs))
@@ -153,6 +209,53 @@ class FusedHeadingWakeIntegrationTest {
         assertFalse(target.relativeMotion)
         assertFalse(policy.coneSuppressed)
         assertEquals(MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG, requireNotNull(target.maxVisualStepDeg), 0f)
+    }
+
+    @Test
+    fun movingWakeAcquiresFromRecentEvidenceInsteadOfTheRecoveryWindow() {
+        val replay = WakeReplay(relativeSensorAvailable = true)
+        replay.reset(seedHeadingDeg = 303.6f)
+        val wakeStartedAtMs = replay.nowElapsedMs
+        val gate = NavigateRotationSettleGate()
+        gate.beginWakeSession(wakeStartedAtMs, heldHeadingDeg = 303.6f)
+        replay.warmMagneticField()
+
+        // Startup residual changes quickly, then settles while both sensors keep reporting turns.
+        repeat(25) { index ->
+            if (index > 0) replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(index * 0.8f)
+            val snapshot = replay.absolute(215.8f + index * 2.3f, 25f, 180f)
+            assertTrue(snapshot.heldOutput)
+            assertFalse(snapshot.relativeWitnessSuppressed)
+            assertNull(gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs))
+        }
+
+        var firstReleaseAtMs: Long? = null
+        var firstTarget: NavigationRotationTarget? = null
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(60) { index ->
+            replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(24 * 0.8f + (index + 1) * 0.8f)
+            val snapshot = replay.absolute(215.8f + 24 * 2.3f + (index + 1) * 1.2f, 25f, 180f)
+            latest = snapshot
+            val target = gate.resolveFromIntegrity(snapshot, replay.nowElapsedMs)
+            if (firstTarget == null && target != null) {
+                firstTarget = target
+                firstReleaseAtMs = replay.nowElapsedMs
+            }
+        }
+
+        assertTrue("Recent agreeing motion must release wake without waiting for recovery history", firstTarget != null)
+        assertTrue(requireNotNull(firstReleaseAtMs) - wakeStartedAtMs <= 1_600L)
+        assertEquals(10f, requireNotNull(firstTarget).maxVisualStepDeg ?: -1f, 0f)
+        val acquired = requireNotNull(latest)
+        assertEquals(CompassTrackingState.TRACKING, acquired.state)
+        assertFalse(acquired.heldOutput)
+        assertFalse(acquired.trusted)
+        assertFalse(acquired.relativeWitnessSuppressed)
+        assertFalse(acquired.quarantineActive)
     }
 
     @Test
@@ -522,6 +625,7 @@ class FusedHeadingWakeIntegrationTest {
             trackingReason = reason,
             magneticQuality = magneticQuality,
             magneticFieldUt = magneticFieldUt,
+            severeMagneticInterference = severeMagneticInterference,
             quarantineActive = quarantineActive,
             headingJumpHeld = headingJumpHeld,
             unresolvedIndependentDisagreement = unresolvedIndependentDisagreement,

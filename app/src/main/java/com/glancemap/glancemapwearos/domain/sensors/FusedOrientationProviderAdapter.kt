@@ -1059,6 +1059,7 @@ internal class FusedOrientationProviderAdapter(
             previous.state != next.state ||
                 previous.reason != next.reason ||
                 previous.magneticQuality != next.magneticQuality ||
+                previous.severeMagneticInterference != next.severeMagneticInterference ||
                 previous.quarantineActive != next.quarantineActive ||
                 previous.recoveryActive != next.recoveryActive ||
                 previous.relativeWitnessAvailable != next.relativeWitnessAvailable ||
@@ -1071,6 +1072,7 @@ internal class FusedOrientationProviderAdapter(
                     "reason=${next.reason.telemetryToken} renderable=${next.renderable} " +
                     "trusted=${next.trusted} magnetic=${next.magneticQuality.telemetryToken} " +
                     "fieldUt=${next.magneticFieldUt.formatOrNA(1)} " +
+                    "severeInterference=${next.severeMagneticInterference} " +
                     "disagreementDeg=${next.absoluteRelativeDisagreementDeg.formatOrNA(1)} " +
                     "spreadDeg=${next.residualSpreadDeg.formatOrNA(1)} " +
                     "witnessAvailable=${next.relativeWitnessAvailable} " +
@@ -1307,6 +1309,7 @@ internal class FusedOrientationProviderAdapter(
                 northBasis = CompassNorthBasis.GOOGLE_AUTOMATIC,
                 magneticQuality = latestIntegritySnapshot.magneticQuality,
                 magneticFieldUt = latestIntegritySnapshot.magneticFieldUt,
+                severeMagneticInterference = latestIntegritySnapshot.severeMagneticInterference,
                 quarantineActive = latestIntegritySnapshot.quarantineActive,
                 headingJumpHeld = latestIntegritySnapshot.headingJumpHeld,
                 unresolvedIndependentDisagreement =

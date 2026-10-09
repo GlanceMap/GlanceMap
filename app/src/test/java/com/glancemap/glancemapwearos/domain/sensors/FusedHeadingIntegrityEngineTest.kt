@@ -11,6 +11,41 @@ import java.util.concurrent.TimeUnit
 @Suppress("LargeClass") // Keeps the integrity replay and concurrent lifecycle regressions together.
 class FusedHeadingIntegrityEngineTest {
     @Test
+    fun severeMagneticInterferenceUsesTheConfiguredHardLimits() {
+        for ((fieldUt, severe) in listOf(9.9f to true, 10f to false, 120f to false, 120.1f to true)) {
+            val engine = integrityEngine()
+            assertEquals(severe, engine.onMagneticField(fieldUt, 1_000L).severeMagneticInterference)
+        }
+        val custom =
+            FusedHeadingIntegrityEngine(
+                relativeSensorAvailable = true,
+                magnetometerAvailable = true,
+                config = FusedHeadingIntegrityConfig(magneticHardMaximumUt = 250f),
+            )
+        assertFalse(custom.onMagneticField(200f, 1_000L).severeMagneticInterference)
+        assertTrue(custom.onMagneticField(251f, 1_020L).severeMagneticInterference)
+    }
+
+    @Test
+    fun severeMagneticInterferenceDoesNotSurviveStaleEvidenceOrAReset() {
+        val engine = integrityEngine()
+        engine.reset(100f, 1_000L, clearSensorEvidence = true)
+        assertTrue(engine.onMagneticField(2_000f, 1_000L).severeMagneticInterference)
+        val stale = engine.onAbsoluteHeading(FusedAbsoluteHeadingSample(100f, 25f, 180f, 2_001L))
+        assertEquals(CompassMagneticQuality.UNKNOWN, stale.magneticQuality)
+        assertFalse(stale.severeMagneticInterference)
+        val unavailable = engine.onAbsoluteHeading(FusedAbsoluteHeadingSample(100f, 25f, 180f, 4_001L))
+        assertEquals(CompassMagneticQuality.UNAVAILABLE, unavailable.magneticQuality)
+        assertFalse(unavailable.severeMagneticInterference)
+        assertTrue(engine.onMagneticField(2_000f, 4_002L).severeMagneticInterference)
+        engine.reset(100f, 4_003L, clearSensorEvidence = true)
+        assertFalse(engine.snapshot().severeMagneticInterference)
+        val mild = engine.onMagneticField(90f, 4_004L)
+        assertEquals(CompassMagneticQuality.INTERFERENCE, mild.magneticQuality)
+        assertFalse(mild.severeMagneticInterference)
+    }
+
+    @Test
     fun concurrentLifecycleResetsAndSensorEvidenceDoNotCorruptHistory() {
         val engine = integrityEngine()
         val start = CountDownLatch(1)
@@ -120,6 +155,60 @@ class FusedHeadingIntegrityEngineTest {
         assertFalse(acquired.heldOutput)
         assertFalse(acquired.trusted)
         assertEquals(103.6f, requireNotNull(acquired.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+    }
+
+    @Test
+    fun lowPowerAcquisitionRetainsEnoughSamplesToValidateStableEvidence() {
+        val engine = integrityEngine()
+        engine.reset(seedHeadingDeg = 100f, atElapsedMs = 1_000L, clearSensorEvidence = true)
+        val replay = Replay(engine)
+        replay.magnetic(42f)
+        replay.advance(200L)
+
+        repeat(7) { index ->
+            if (index > 0) replay.advance(200L)
+            replay.magnetic(42f)
+            replay.relative(0f)
+            val snapshot = replay.absolute(260f, 25f, 180f)
+            assertEquals(CompassTrackingState.ACQUIRING, snapshot.state)
+            assertTrue(snapshot.heldOutput)
+            assertEquals(100f, requireNotNull(snapshot.renderHeadingDeg), ANGLE_TOLERANCE_DEG)
+        }
+
+        replay.advance(200L)
+        replay.magnetic(42f)
+        replay.relative(0f)
+        val acquired = replay.absolute(260f, 25f, 180f)
+        assertEquals(CompassTrackingState.TRACKING, acquired.state)
+        assertFalse(acquired.heldOutput)
+        assertFalse(acquired.trusted)
+    }
+
+    @Test
+    fun unavailableWitnessDoesNotShortenUnstableAbsoluteAcquisition() {
+        val engine = FusedHeadingIntegrityEngine(relativeSensorAvailable = false, magnetometerAvailable = true)
+        engine.reset(seedHeadingDeg = 100f, atElapsedMs = 1_000L, clearSensorEvidence = true)
+        val replay = Replay(engine, relativeSensorAvailable = false)
+        replay.magnetic(42f)
+        replay.advance(200L)
+
+        repeat(25) { index ->
+            if (index > 0) replay.advance(20L)
+            replay.magnetic(42f)
+            replay.absolute(100f + index, 25f, 180f)
+        }
+
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(60) { index ->
+            replay.advance(20L)
+            replay.magnetic(42f)
+            latest = replay.absolute(124f + (index + 1) * 0.4f, 25f, 180f)
+        }
+
+        val acquiring = requireNotNull(latest)
+        assertEquals(CompassTrackingState.ACQUIRING, acquiring.state)
+        assertFalse(acquiring.trusted)
+        assertFalse(acquiring.relativeWitnessAvailable)
     }
 
     @Test
@@ -673,6 +762,34 @@ class FusedHeadingIntegrityEngineTest {
             requireNotNull(second.renderHeadingDeg),
             ANGLE_TOLERANCE_DEG,
         )
+    }
+
+    @Test
+    fun magneticRecoveryStillRequiresItsLongerEvidenceWindow() {
+        val replay = Replay(integrityEngine())
+        replay.acquireStableHeading(headingDeg = 40f)
+        replay.advance(20L)
+        replay.magnetic(2_000f)
+        replay.relative(0f)
+        replay.absolute(40f)
+
+        var latest: FusedHeadingIntegritySnapshot? = null
+        repeat(50) { index ->
+            replay.advance(20L)
+            replay.magnetic(42f)
+            replay.relative(0f)
+            latest = replay.absolute(40f)
+            if (index < 49) {
+                assertEquals(CompassTrackingState.DEGRADED, requireNotNull(latest).state)
+                assertFalse(requireNotNull(latest).trusted)
+            }
+        }
+
+        val recovered = requireNotNull(latest)
+        assertEquals(CompassMagneticQuality.GOOD, recovered.magneticQuality)
+        assertEquals(CompassTrackingState.TRACKING, recovered.state)
+        assertFalse(recovered.heldOutput)
+        assertFalse(recovered.quarantineActive)
     }
 
     @Test

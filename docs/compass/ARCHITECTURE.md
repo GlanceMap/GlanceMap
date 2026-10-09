@@ -53,6 +53,10 @@ This module owns:
   independent contradictions still block this path; the absolute-only disagreement threshold does
   not establish an independent contradiction. This responsiveness path does not establish trust or
   corroboration, and unchanged samples still use the stable acquisition window.
+- With fresh, unsuppressed relative evidence, acquisition history uses its configured startup
+  duration plus the existing sample-retention slack. It retains the minimum sample count at lower
+  sensor rates. Acquisition without that evidence, tracking, and recovery keep the longer history;
+  faster corroborated acquisition does not shorten magnetic or disagreement recovery.
 - A contradictory fused jump is quarantined at the existing confidence-dependent disagreement
   threshold. Strong provider confidence cannot override independent contradictory motion. Repeating
   the same suspect sample or entering magnetic degradation does not release its preserved anchor;
@@ -91,10 +95,12 @@ unsuppressed witness alone is not reported as corroboration.
 
 `NavigateMagneticMotionFallback` preserves the visible map angle when the existing wake gate
 blocks Google Fused absolute heading for magnetic interference, or the integrity engine holds a
-quarantined contradictory jump, then applies only fresh game-rotation turns. Magnetic interference
-alone does not start this fallback while navigation still allows absolute heading movement.
-Jump holds use the engine's explicit preserved-jump-anchor flag. General quarantine or a weak
-confidence/disagreement label is insufficient, because those states can still permit bounded motion.
+quarantined contradictory jump, then applies only fresh game-rotation turns. Current magnetic
+evidence beyond the engine's hard validity limits also starts backup during active navigation,
+even after the wake gate has settled. The engine owns this severity classification and publishes
+it with the render state; stale or unavailable magnetic evidence cannot retain the severe flag.
+Mild magnetic warnings still allow absolute heading movement. Jump holds use the engine's explicit
+preserved-jump-anchor flag. General quarantine or a weak confidence/disagreement label is insufficient.
 It requires a previously accepted stable absolute anchor; a disturbed cold start cannot invent
 north. It never changes the absolute provider heading, uncertainty, trust, or quarantine decision.
 Relative samples carry source time, request generation, horizontal projection, and display rotation.
@@ -104,9 +110,10 @@ origin at the current visible heading without applying missed turns. The motion 
 renew on wake and expires after 60 seconds without absolute recovery. Expiry stops relative motion;
 it cannot itself hide the cone.
 
-The cone hides after 500 ms of a continuous magnetic wake hold or jump quarantine, retaining the location
-dot. Brief spikes and ordinary weak confidence do not hide it. Once the navigation gate allows a
-fresh, stable, unheld absolute heading, navigation reconnects with a four-degree visual step cap.
+The cone hides after 500 ms of a continuous magnetic wake hold, jump quarantine, or severe magnetic
+episode, retaining the location dot. Brief spikes and ordinary weak confidence do not hide it.
+Once the navigation gate allows a fresh, stable, unheld absolute heading, navigation reconnects
+with a four-degree visual step cap.
 Recovery in the same interactive session requires one second of stable tracking. A later wake uses
 the existing wake gate's validation without adding another recovery delay for the old episode.
 A new hold during reconnection requires the stable recovery window again.

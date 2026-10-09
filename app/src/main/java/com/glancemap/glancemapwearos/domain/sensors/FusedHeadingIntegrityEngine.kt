@@ -82,6 +82,7 @@ internal data class FusedHeadingIntegritySnapshot(
     val relativeStepDeg: Float?,
     /** A suspect absolute jump is frozen at its preserved anchor; general degradation is separate. */
     val headingJumpHeld: Boolean = false,
+    val severeMagneticInterference: Boolean = false,
 )
 
 internal data class FusedHeadingIntegrityConfig(
@@ -292,9 +293,7 @@ internal class FusedHeadingIntegrityEngine(
             magneticFieldUt = strengthUt
             lastMagneticAtElapsedMs = atElapsedMs
 
-            val hardInvalid =
-                strengthUt < config.magneticHardMinimumUt ||
-                    strengthUt > config.magneticHardMaximumUt
+            val hardInvalid = isSevereField(strengthUt)
             val outsideNormal =
                 strengthUt < config.magneticNormalMinimumUt ||
                     strengthUt > config.magneticNormalMaximumUt
@@ -925,16 +924,23 @@ internal class FusedHeadingIntegrityEngine(
         atElapsedMs: Long,
     ) {
         absoluteWindow.addLast(TimedCircularValue(atElapsedMs, absoluteHeadingDeg))
-        val evidenceRetentionMs =
-            maxOf(config.acquisitionWindowMs, config.recoveryEvidenceWindowMs) +
-                EVIDENCE_WINDOW_RETENTION_SLACK_MS
-        trimWindow(absoluteWindow, atElapsedMs, evidenceRetentionMs)
+        // With a usable witness, age out startup variation without shortening recovery evidence.
+        val evidenceWindowMs =
+            if (state == CompassTrackingState.ACQUIRING && hasRelativeEvidence(atElapsedMs)) {
+                config.acquisitionWindowMs
+            } else {
+                maxOf(config.acquisitionWindowMs, config.recoveryEvidenceWindowMs)
+            }
+        val evidenceRetentionMs = evidenceWindowMs + EVIDENCE_WINDOW_RETENTION_SLACK_MS
+        val minimumSamples = if (state == CompassTrackingState.ACQUIRING) config.acquisitionMinimumSamples else 0
+        trimWindow(absoluteWindow, atElapsedMs, evidenceRetentionMs, minimumSamples)
         if (residualDeg != null) {
             residualWindow.addLast(TimedCircularValue(atElapsedMs, residualDeg))
             trimWindow(
                 residualWindow,
                 atElapsedMs,
                 evidenceRetentionMs,
+                minimumSamples,
             )
         }
     }
@@ -990,6 +996,10 @@ internal class FusedHeadingIntegrityEngine(
         magneticQuality == CompassMagneticQuality.GOOD ||
             magneticQuality == CompassMagneticQuality.UNAVAILABLE
 
+    private fun isSevereField(
+        fieldUt: Float,
+    ): Boolean = fieldUt < config.magneticHardMinimumUt || fieldUt > config.magneticHardMaximumUt
+
     private fun unavailableMagneticReason(): CompassTrackingReason =
         if (magneticQuality == CompassMagneticQuality.INTERFERENCE) {
             CompassTrackingReason.MAGNETIC_INTERFERENCE
@@ -1042,6 +1052,9 @@ internal class FusedHeadingIntegrityEngine(
             absoluteStepIntervalMs = lastAbsoluteStepIntervalMs,
             relativeStepDeg = lastRelativeStepDeg,
             headingJumpHeld = quarantineAnchorHeadingDeg != null,
+            severeMagneticInterference =
+                magneticQuality == CompassMagneticQuality.INTERFERENCE &&
+                    magneticFieldUt?.let(::isSevereField) == true,
         )
 }
 
@@ -1150,8 +1163,9 @@ private fun trimWindow(
     values: ArrayDeque<TimedCircularValue>,
     atElapsedMs: Long,
     windowMs: Long,
+    minimumSamples: Int = 0,
 ) {
-    while (values.isNotEmpty() && atElapsedMs - values.first().atElapsedMs > windowMs) {
+    while (values.size > minimumSamples && atElapsedMs - values.first().atElapsedMs > windowMs) {
         values.removeFirst()
     }
 }
