@@ -15,7 +15,7 @@ internal object LiveTrackingPositionQueue {
         update: ArkluzLocationUpdate,
     ): Int =
         synchronized(lock) {
-            val updates = loadLocked(context) + update.asStoredGpsPoint()
+            val updates = acknowledgedLiveTrackingPositions(loadLocked(context), update) + update.asStoredGpsPoint()
             val cappedUpdates = updates.takeLast(MAX_QUEUE_SIZE)
             saveLocked(context, cappedUpdates)
             cappedUpdates.size
@@ -34,6 +34,17 @@ internal object LiveTrackingPositionQueue {
             saveLocked(context, updates.sortedBy { it.epochMilliseconds }.takeLast(MAX_QUEUE_SIZE))
         }
     }
+
+    fun acknowledge(
+        context: Context,
+        update: ArkluzLocationUpdate,
+    ): Int =
+        synchronized(lock) {
+            val positions = loadLocked(context)
+            val remaining = acknowledgedLiveTrackingPositions(positions, update)
+            if (remaining.size != positions.size) saveLocked(context, remaining)
+            remaining.size
+        }
 
     private fun loadLocked(context: Context): List<ArkluzLocationUpdate> {
         val raw =
