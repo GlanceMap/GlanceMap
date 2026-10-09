@@ -1070,11 +1070,19 @@ class MapViewModel(
                 themeApplyResult.requiresVisibleTileWait &&
                 renderer != null
             ) {
-                renderer.awaitTileCacheUpdateAfter(
-                    baselineVersion = themeApplyResult.tileUpdateBaselineVersion,
-                    timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
+                val viewportRequest = renderer.armViewportReadiness()
+                val ready =
+                    viewportRequest?.let { request ->
+                        renderer.awaitViewportReadiness(request, MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS)
+                    }
+                MapHotPathDiagnostics.recordEvent(
+                    stage = "map_update_ui",
+                    status = if (ready != null) "theme_viewport_ready" else "theme_viewport_timeout",
+                    detail =
+                        "reason=theme_selection scope=viewport " +
+                            "layer=${viewportRequest?.layerId ?: 0} request=${viewportRequest?.requestId ?: 0L}",
                 )
-                delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
+                if (ready != null) delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
             }
         } finally {
             MapHotPathDiagnostics.end(
@@ -1483,7 +1491,7 @@ class MapViewModel(
         if (!awaitVisibleMap) return true
         val initialViewportReadiness =
             if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
-                renderer.armInitialViewportReadiness()
+                renderer.armViewportReadiness()
             } else {
                 null
             }
@@ -1507,7 +1515,7 @@ class MapViewModel(
                     timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
                     awaitFirstVisible = { timeoutMs ->
                         initialViewportReadiness?.let { request ->
-                            renderer.awaitInitialViewportReadiness(request, timeoutMs)
+                            renderer.awaitViewportReadiness(request, timeoutMs)
                         }
                     },
                     onTimeout = {

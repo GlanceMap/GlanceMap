@@ -37,7 +37,6 @@ import java.util.Locale
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
-import org.mapsforge.map.model.common.Observer as MapsforgeObserver
 
 internal fun shouldWarmMapStartupTileCache(
     prewarmingEnabled: Boolean,
@@ -117,7 +116,6 @@ class MapRenderer(
 
     data class ThemeApplyResult(
         val requiresVisibleTileWait: Boolean = false,
-        val tileUpdateBaselineVersion: Long = 0L,
     )
 
     internal data class FirstVisibleMapEvent(
@@ -272,8 +270,6 @@ class MapRenderer(
     private var preserveAuxiliaryLayersOnCleanSwap: Boolean = false
 
     @Volatile private var cacheCleanupInProgress: Boolean = false
-    private val tileCacheUpdateCounter = AtomicLong(0L)
-    private val tileCacheUpdateVersion = MutableStateFlow(0L)
     private val firstVisibleMapCounter = AtomicLong(0L)
     private val firstVisibleMapEvent = MutableStateFlow<FirstVisibleMapEvent?>(null)
     private val _hillshadeTerrainUnavailableEvent =
@@ -290,13 +286,6 @@ class MapRenderer(
     private val tileCacheConfig: TileCacheConfig by lazy {
         buildTileCacheConfig()
     }
-    private val tileCacheObserver =
-        object : MapsforgeObserver {
-            override fun onChange() {
-                val nextVersion = tileCacheUpdateCounter.incrementAndGet()
-                tileCacheUpdateVersion.value = nextVersion
-            }
-        }
     private val cacheMaintenancePrefs by lazy {
         context.getSharedPreferences(CACHE_CLEANUP_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -320,7 +309,6 @@ class MapRenderer(
                     true,
                 )
             }
-        cache.addObserver(tileCacheObserver)
         Log.i(
             TAG,
             "createTileCache: cacheId=$cacheId tiles=${config.firstLevelTiles} " +
@@ -517,9 +505,6 @@ class MapRenderer(
                 destroyHillsRenderConfig()
             }
 
-            // Clear rendered tiles so the old theme cannot survive the full theme reload.
-            purgeTileCache(reason = "theme_pre_reload")
-
             val newDemSignature = computeDemSignatureOrNull()
             demChanged = newDemSignature != currentDemSignature
             val currentPath = currentMapPath
@@ -542,7 +527,6 @@ class MapRenderer(
             themeApplyResult =
                 ThemeApplyResult(
                     requiresVisibleTileWait = true,
-                    tileUpdateBaselineVersion = tileCacheUpdateCounter.get(),
                 )
             forceReloadCurrentMapLayer(currentPath)
         } finally {
@@ -675,18 +659,6 @@ class MapRenderer(
             }
     }
 
-    suspend fun awaitTileCacheUpdateAfter(
-        baselineVersion: Long,
-        timeoutMs: Long,
-    ): Boolean {
-        if (tileCacheUpdateCounter.get() > baselineVersion) return true
-        return withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
-            tileCacheUpdateVersion.first { it > baselineVersion }
-        } != null
-    }
-
-    fun currentTileCacheUpdateVersion(): Long = tileCacheUpdateCounter.get()
-
     /** Debug-only snapshot taken after a map-position observer reports a completed zoom change. */
     fun recordCompletedZoomChange(
         oldZoom: Int,
@@ -738,13 +710,13 @@ class MapRenderer(
         }
     }
 
-    internal fun armInitialViewportReadiness(): VisibleTileViewportReadinessRequest? {
+    internal fun armViewportReadiness(): VisibleTileViewportReadinessRequest? {
         val layer = currentLayer as? FirstVisibleTileRendererLayer ?: return null
         val request = layer.armCurrentViewportReadiness()
         return request.takeIf { currentLayer === layer }
     }
 
-    internal suspend fun awaitInitialViewportReadiness(
+    internal suspend fun awaitViewportReadiness(
         request: VisibleTileViewportReadinessRequest,
         timeoutMs: Long,
     ): VisibleTileViewportReadinessEvent? {
@@ -1007,22 +979,12 @@ class MapRenderer(
         val preserveAuxiliaryLayers = cleanLayerSwap && preserveAuxiliaryLayersOnCleanSwap
         cleanLayerSwapRequested = false
         preserveAuxiliaryLayersOnCleanSwap = false
-        val cleared =
-            if (preserveAuxiliaryLayers) {
-                clearBaseMapLayer(reason = "clean_label_scale_reload")
-            } else {
-                clearCurrentLayer(
-                    reason =
-                        if (cleanLayerSwap) {
-                            "clean_theme_reload"
-                        } else {
-                            "map_reload"
-                        },
-                )
-            }
-        if (cleanLayerSwap && cleared) {
-            purgeTileCache(reason = "theme_after_layer_clear")
-            forceRedraw()
+        if (preserveAuxiliaryLayers) {
+            clearBaseMapLayer(reason = "clean_label_scale_reload")
+        } else {
+            clearCurrentLayer(
+                reason = if (cleanLayerSwap) "clean_theme_reload" else "map_reload",
+            )
         }
         return cleanLayerSwap
     }
@@ -1036,7 +998,6 @@ class MapRenderer(
     fun onExternalCachesCleared() {
         clearCurrentLayer()
         destroyHillsRenderConfig()
-        runCatching { tileCache.removeObserver(tileCacheObserver) }
         runCatching { tileCache.destroy() }
             .onFailure { Log.w(TAG, "onExternalCachesCleared: tileCache.destroy() failed", it) }
         currentTileCacheId = "$CACHE_ID_PREFIX-bootstrap"
@@ -1082,7 +1043,6 @@ class MapRenderer(
         cancelFirstVisibleMapTiming(reason = "destroyed")
         clearCurrentLayer()
         destroyHillsRenderConfig()
-        runCatching { tileCache.removeObserver(tileCacheObserver) }
         runCatching { tileCache.destroy() }
             .onFailure { Log.w(TAG, "destroy: tileCache.destroy() failed", it) }
         reliefOverlayStateListeners.clear()
@@ -1169,7 +1129,7 @@ class MapRenderer(
         updateMapLayer(mapPath)
     }
 
-    private fun armStartupTilePrewarm(layer: TileRendererLayer) {
+    private fun armStartupTilePrewarm(layer: FirstVisibleTileRendererLayer) {
         val config = tileCacheConfig
         if (
             !shouldWarmMapStartupTileCache(
@@ -1189,7 +1149,9 @@ class MapRenderer(
 
         mapView.postDelayed(
             {
-                if (currentLayer !== layer || currentHillShadingEnabled) return@postDelayed
+                if (currentLayer !== layer || currentHillShadingEnabled || !layer.isStartupPrewarmAllowed) {
+                    return@postDelayed
+                }
                 // Warm adjacent zoom levels once startup rendering has had a chance to settle.
                 layer.setCacheZoomPlus(config.startupPrewarmZoomPlus)
                 layer.setCacheZoomMinus(config.startupPrewarmZoomMinus)
@@ -1888,10 +1850,11 @@ class MapRenderer(
 
     private fun recreateTileCache(newCacheId: String) {
         val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.recreateTileCache")
+        val previousCacheId = currentTileCacheId
         try {
-            runCatching { tileCache.removeObserver(tileCacheObserver) }
-            purgeTileCache(reason = "recreate_before_destroy")
-            runCatching { tileCache.destroy() }
+            // The old layer is already stopped. Keep its disk bucket when changing identities;
+            // an explicit rebuild of the same identity still invalidates its rendered content.
+            runCatching { closeMapRendererTileCache(tileCache, previousCacheId, newCacheId) }
                 .onFailure { Log.w(TAG, "recreateTileCache: failed to destroy previous cache", it) }
             currentTileCacheId = newCacheId
             tileCache = createTileCache(cacheId = currentTileCacheId)
@@ -1899,7 +1862,9 @@ class MapRenderer(
         } finally {
             MapHotPathDiagnostics.end(
                 marker = timingMarker,
-                detail = "cacheId=$newCacheId",
+                detail =
+                    "cacheId=$newCacheId previousCacheId=$previousCacheId " +
+                        "diskRetained=${previousCacheId != newCacheId}",
             )
         }
     }
