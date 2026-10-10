@@ -24,6 +24,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlaySource
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingTraceOverlayEffect
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
@@ -56,7 +57,7 @@ internal fun MapOverlays(
     mapHolder: MapHolder,
     activeGpxDetails: List<GpxTrackDetails>,
     routeToolPreviewPoints: List<LatLong>,
-    recordingTraceSegments: List<List<LatLong>>,
+    recordingTraceState: TraceRecordingUiState,
     recordingTraceFollowsMarker: Boolean,
     routeToolCreatePreviewActive: Boolean,
     routeToolDraftPoints: List<LatLong>,
@@ -249,7 +250,7 @@ internal fun MapOverlays(
 
     RecordingTraceOverlayEffect(
         mapView = mapView,
-        segments = recordingTraceSegments,
+        recordingState = recordingTraceState,
         followLocationMarker = recordingTraceFollowsMarker,
         locationMarker = locationMarker,
         topOverlayCoordinator = topOverlayCoordinator,
@@ -464,10 +465,19 @@ private fun PoiOverlayEffect(
     val markersByKey = remember(mapView) { mutableMapOf<String, PoiMarkerEntry>() }
     val viewportQueryCache = remember(mapView) { PoiOverlayViewportQueryCache() }
     val markerBitmapCache =
-        remember(mapView, poiMarkerStyle) {
-            mutableMapOf<Pair<Int, String>, Map<PoiType, AndroidBitmap>>()
+        remember(mapView) {
+            PoiMarkerBitmapCache<AndroidBitmap>(onEvicted = AndroidBitmap::decrementRefCount)
         }
-    val latestSources = rememberUpdatedState(activePoiOverlaySources)
+    val preparationConfig =
+        poiMarkerPreparationConfig(
+            sources = activePoiOverlaySources,
+            markerSizePx = poiMarkerSizePx,
+            markerStyle = poiMarkerStyle,
+        )
+    val latestPreparationConfig = rememberUpdatedState(preparationConfig)
+    val preparationVersion = remember(mapView) { PoiMarkerPreparationVersion(preparationConfig) }
+    SideEffect { preparationVersion.update(preparationConfig) }
+    val poiAssets = remember(mapView) { mapView.context.applicationContext.assets }
     val querySignals =
         remember(mapView) {
             MutableSharedFlow<Unit>(
@@ -484,9 +494,14 @@ private fun PoiOverlayEffect(
         }
 
     fun clearAllMarkers() {
+        val clearVersion = preparationVersion.snapshot()
         mapView.mutateLayers { layers ->
+            if (!preparationVersion.isCurrent(clearVersion)) return@mutateLayers
             if (markersByKey.isEmpty()) return@mutateLayers
-            markersByKey.values.forEach { entry -> layers.remove(entry.marker) }
+            markersByKey.values.forEach { entry ->
+                layers.remove(entry.marker)
+                entry.marker.onDestroy()
+            }
             markersByKey.clear()
             requestMapRedraw()
         }
@@ -522,7 +537,8 @@ private fun PoiOverlayEffect(
         querySignals
             .sample(320L)
             .collect {
-                if (latestSources.value.isEmpty()) {
+                val requestConfig = latestPreparationConfig.value
+                if (requestConfig.sources.isEmpty()) {
                     clearAllMarkers()
                     return@collect
                 }
@@ -559,22 +575,9 @@ private fun PoiOverlayEffect(
                         minLon = minLon,
                         maxLon = maxLon,
                     )
-                val effectiveMarkerSizePx = effectivePoiMarkerSizePx(poiMarkerSizePx, zoom)
-                val markerBitmapByType =
-                    markerBitmapCache.getOrPut(effectiveMarkerSizePx to poiMarkerStyle) {
-                        val iconSizePx = (effectiveMarkerSizePx * 0.72f).toInt().coerceAtLeast(12)
-                        PoiType.entries.associateWith { type ->
-                            val osmIcon = loadOsmPoiIconBitmapOrNull(mapView, type, sizePx = iconSizePx)
-                            AndroidBitmap(
-                                if (poiMarkerStyle == SettingsRepository.POI_MARKER_STYLE_THEME_ICON) {
-                                    createPoiThemeIconMarkerBitmap(osmIcon, effectiveMarkerSizePx, fallbackType = type)
-                                } else {
-                                    createPoiTypeMarkerBitmap(type, osmIcon, sizePx = effectiveMarkerSizePx)
-                                },
-                            )
-                        }
-                    }
-
+                val requestVersion = preparationVersion.invalidate()
+                // A superseded queued result must not suppress a retry at its old viewport.
+                viewportQueryCache.invalidate()
                 val markers =
                     withContext(Dispatchers.IO) {
                         poiViewModel.queryVisibleMarkers(
@@ -582,6 +585,62 @@ private fun PoiOverlayEffect(
                             zoomLevel = zoom,
                         )
                     }
+
+                fun isRequestCurrent(): Boolean =
+                    preparationVersion.isCurrent(requestVersion) &&
+                        mapView
+                            .model
+                            .mapViewPosition
+                            .zoomLevel
+                            .toInt() == zoom
+
+                if (!isRequestCurrent()) return@collect
+
+                val effectiveMarkerSizePx = effectivePoiMarkerSizePx(requestConfig.markerSizePx, zoom)
+                val requiredTypes = requiredPoiMarkerTypes(markers)
+                val markerBitmapByType = HashMap<PoiType, AndroidBitmap>(requiredTypes.size)
+                requiredTypes.forEach { type ->
+                    markerBitmapCache[
+                        PoiMarkerBitmapKey(
+                            type = type,
+                            effectiveMarkerSizePx = effectiveMarkerSizePx,
+                            markerStyle = requestConfig.markerStyle,
+                        ),
+                    ]?.let { bitmap -> markerBitmapByType[type] = bitmap }
+                }
+
+                val missingTypes = requiredTypes.filterNot(markerBitmapByType::containsKey).toSet()
+                val preparedBitmaps =
+                    if (missingTypes.isEmpty()) {
+                        emptyMap()
+                    } else {
+                        preparePoiMarkerBitmapsOnIo {
+                            preparePoiMarkerBitmaps(
+                                assets = poiAssets,
+                                types = missingTypes,
+                                effectiveMarkerSizePx = effectiveMarkerSizePx,
+                                markerStyle = requestConfig.markerStyle,
+                            )
+                        }
+                    }
+
+                if (!isRequestCurrent()) {
+                    preparedBitmaps.values.forEach(AndroidBitmap::decrementRefCount)
+                    return@collect
+                }
+
+                preparedBitmaps.forEach { (type, bitmap) ->
+                    markerBitmapCache.put(
+                        PoiMarkerBitmapKey(
+                            type = type,
+                            effectiveMarkerSizePx = effectiveMarkerSizePx,
+                            markerStyle = requestConfig.markerStyle,
+                        ),
+                        bitmap,
+                    )
+                    markerBitmapByType[type] = bitmap
+                }
+
                 viewportQueryCache.recordSuccessfulQuery(
                     center = center,
                     zoomLevel = zoom,
@@ -590,12 +649,15 @@ private fun PoiOverlayEffect(
                 onPoiMarkersSnapshotChanged(markers)
 
                 mapView.mutateLayers { layers ->
+                    // Gestures can defer this mutation beyond a newer query or cache disposal.
+                    if (!isRequestCurrent()) return@mutateLayers
                     val wantedKeys = markers.map { it.key }.toSet()
                     var changed = false
 
                     (markersByKey.keys - wantedKeys).forEach { key ->
                         markersByKey.remove(key)?.let { entry ->
                             layers.remove(entry.marker)
+                            entry.marker.onDestroy()
                             changed = true
                         }
                     }
@@ -608,13 +670,13 @@ private fun PoiOverlayEffect(
                                 ?: markerBitmapByType[PoiType.GENERIC]
                                 ?: return@forEach
                         if (existing == null) {
-                            val marker = Marker(latLong, bitmap, 0, 0)
+                            val marker = createPoiOverlayMarker(latLong, bitmap)
                             markersByKey[point.key] =
                                 PoiMarkerEntry(
                                     marker = marker,
                                     type = point.type,
                                     markerSizePx = effectiveMarkerSizePx,
-                                    markerStyle = poiMarkerStyle,
+                                    markerStyle = requestConfig.markerStyle,
                                 )
                             layers.add(marker)
                             changed = true
@@ -622,16 +684,17 @@ private fun PoiOverlayEffect(
                             if (
                                 existing.type != point.type ||
                                 existing.markerSizePx != effectiveMarkerSizePx ||
-                                existing.markerStyle != poiMarkerStyle
+                                existing.markerStyle != requestConfig.markerStyle
                             ) {
+                                val marker = createPoiOverlayMarker(latLong, bitmap)
                                 layers.remove(existing.marker)
-                                val marker = Marker(latLong, bitmap, 0, 0)
+                                existing.marker.onDestroy()
                                 markersByKey[point.key] =
                                     PoiMarkerEntry(
                                         marker = marker,
                                         type = point.type,
                                         markerSizePx = effectiveMarkerSizePx,
-                                        markerStyle = poiMarkerStyle,
+                                        markerStyle = requestConfig.markerStyle,
                                     )
                                 layers.add(marker)
                                 changed = true
@@ -652,12 +715,17 @@ private fun PoiOverlayEffect(
 
     DisposableEffect(mapView) {
         onDispose {
+            preparationVersion.invalidate()
             onPoiMarkersSnapshotChanged(emptyList())
             mapView.mutateLayers { layers ->
-                markersByKey.values.forEach { entry -> layers.remove(entry.marker) }
+                markersByKey.values.forEach { entry ->
+                    layers.remove(entry.marker)
+                    entry.marker.onDestroy()
+                }
                 markersByKey.clear()
                 mapView.requestLayerRedrawSafely()
             }
+            markerBitmapCache.clear()
         }
     }
 }

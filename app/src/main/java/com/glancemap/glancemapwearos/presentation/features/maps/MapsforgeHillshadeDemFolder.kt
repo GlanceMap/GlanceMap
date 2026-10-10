@@ -250,7 +250,7 @@ private fun countBytes(input: InputStream): Long {
     return total
 }
 
-private fun readGzipUncompressedSize(file: File): Long {
+internal fun readGzipUncompressedSize(file: File): Long {
     if (file.length() < GZIP_FOOTER_SIZE_BYTES) return 0L
     RandomAccessFile(file, "r").use { raf ->
         raf.seek(file.length() - GZIP_FOOTER_SIZE_BYTES)

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -10,9 +11,13 @@ import android.graphics.Typeface
 import com.caverock.androidsvg.PreserveAspectRatio
 import com.caverock.androidsvg.SVG
 import com.glancemap.glancemapwearos.data.repository.PoiType
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.mapsforge.core.model.LatLong
-import org.mapsforge.map.android.view.MapView
+import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.layer.Layer
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.overlay.Marker
@@ -80,13 +85,13 @@ private val PoiType.osmIconAssetName: String
         }
 
 internal fun loadOsmPoiIconBitmapOrNull(
-    mapView: MapView,
+    assets: AssetManager,
     type: PoiType,
     sizePx: Int = 20,
 ): Bitmap? {
     val assetPath = "poi/osm/${type.osmIconAssetName}"
     return runCatching {
-        mapView.context.assets.open(assetPath).use { input ->
+        assets.open(assetPath).use { input ->
             val svg = SVG.getFromInputStream(input)
             svg.setDocumentPreserveAspectRatio(PreserveAspectRatio.LETTERBOX)
             svg.setDocumentWidth("${sizePx}px")
@@ -261,6 +266,37 @@ internal fun createPoiThemeIconMarkerBitmap(
     canvas.drawBitmap(iconBitmap, null, iconRect, iconPaint)
 
     return bitmap
+}
+
+internal suspend fun preparePoiMarkerBitmaps(
+    assets: AssetManager,
+    types: Set<PoiType>,
+    effectiveMarkerSizePx: Int,
+    markerStyle: String,
+): Map<PoiType, AndroidBitmap> {
+    val coroutineContext = currentCoroutineContext()
+    val prepared = LinkedHashMap<PoiType, AndroidBitmap>(types.size)
+    val iconSizePx = (effectiveMarkerSizePx * 0.72f).toInt().coerceAtLeast(12)
+
+    try {
+        types.forEach { type ->
+            coroutineContext.ensureActive()
+            val osmIcon = loadOsmPoiIconBitmapOrNull(assets, type, sizePx = iconSizePx)
+            val markerBitmap =
+                if (markerStyle == SettingsRepository.POI_MARKER_STYLE_THEME_ICON) {
+                    createPoiThemeIconMarkerBitmap(osmIcon, effectiveMarkerSizePx, fallbackType = type)
+                } else {
+                    createPoiTypeMarkerBitmap(type, osmIcon, sizePx = effectiveMarkerSizePx)
+                }
+            prepared[type] = AndroidBitmap(markerBitmap)
+        }
+        coroutineContext.ensureActive()
+    } catch (cancelled: CancellationException) {
+        prepared.values.forEach(AndroidBitmap::decrementRefCount)
+        throw cancelled
+    }
+
+    return prepared
 }
 
 internal fun createGpxDirectionArrowBitmap(sizePx: Int = 16): Bitmap {

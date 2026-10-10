@@ -45,6 +45,9 @@ data class TraceRecordingUiState(
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val trackSmoothingMode: String = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE,
     val points: List<RecordedTracePoint> = emptyList(),
+    /** Display-only invalidation; neither field is persisted or exported. */
+    val pointsRevision: Long = 0L,
+    val pointsChangedFromIndex: Int = 0,
     val latestLivePoint: RecordedTracePoint? = null,
     val distanceMeters: Double = 0.0,
     val startedAtMillis: Long? = null,

@@ -4,17 +4,12 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 
 import android.util.Log
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.util.LinkedHashMap
 import java.util.Locale
-import java.util.zip.GZIPInputStream
-import java.util.zip.ZipInputStream
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.min
-import kotlin.math.sqrt
 
 internal class ReliefDemRepository(
     private val demRootDirs: List<File>,
@@ -97,8 +92,7 @@ internal class ReliefDemRepository(
         val loaded =
             runCatching {
                 val file = resolveDemFile(demRootDirs, tileId) ?: return@runCatching null
-                val bytes = readDemBytes(file) ?: return@runCatching null
-                decodeDemBytes(bytes)
+                BenchmarkTrace.section("relief.demReadDecode") { readReliefDemTile(file) }
             }.onFailure { error ->
                 Log.w(tag, "Failed to load DEM tile $tileId", error)
             }.getOrNull()
@@ -108,59 +102,6 @@ internal class ReliefDemRepository(
         }
         return loaded
     }
-
-    private fun readDemBytes(file: File): ByteArray? =
-        BenchmarkTrace.section("relief.demReadBytes") {
-            when {
-                file.name.endsWith(".zip", ignoreCase = true) -> readZipEntryBytes(file)
-                file.name.endsWith(".gz", ignoreCase = true) -> readGzipBytes(file)
-                else -> file.readBytes()
-            }
-        }
-
-    private fun readGzipBytes(file: File): ByteArray =
-        GZIPInputStream(FileInputStream(file).buffered()).use { gzip ->
-            gzip.readBytes()
-        }
-
-    private fun readZipEntryBytes(file: File): ByteArray? {
-        ZipInputStream(FileInputStream(file).buffered()).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (!entry.isDirectory && entry.name.endsWith(".hgt", ignoreCase = true)) {
-                    val out = ByteArrayOutputStream()
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = zip.read(buffer)
-                        if (read < 0) break
-                        if (read > 0) out.write(buffer, 0, read)
-                    }
-                    return out.toByteArray()
-                }
-            }
-        }
-        return null
-    }
-
-    private fun decodeDemBytes(bytes: ByteArray): DemTileData? =
-        BenchmarkTrace.section("relief.demDecode") {
-            if (bytes.size < 4 || bytes.size % 2 != 0) return@section null
-
-            val sampleCount = bytes.size / 2
-            val rowLen = sqrt(sampleCount.toDouble()).toInt()
-            if (rowLen < 2 || rowLen * rowLen != sampleCount) return@section null
-            val axisLen = rowLen - 1
-
-            val samples = ShortArray(sampleCount)
-            var cursor = 0
-            for (i in 0 until sampleCount) {
-                val hi = bytes[cursor].toInt() and 0xFF
-                val lo = bytes[cursor + 1].toInt() and 0xFF
-                samples[i] = ((hi shl 8) or lo).toShort()
-                cursor += 2
-            }
-            DemTileData(axisLen = axisLen, rowLen = rowLen, samples = samples)
-        }
 
     private fun tileId(
         latTile: Int,

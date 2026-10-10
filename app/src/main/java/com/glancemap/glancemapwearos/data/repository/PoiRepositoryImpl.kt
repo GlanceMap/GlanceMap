@@ -21,13 +21,27 @@ class PoiRepositoryImpl(
         context.getSharedPreferences("poi_metadata", Context.MODE_PRIVATE)
     }
     private val mergedCategoryAliasesByPath = mutableMapOf<String, Map<Int, Set<Int>>>()
+    private val categoriesCache by lazy { metadataCache("categories", PoiCategoryMetadataCodec) }
+    private val coverageCache by lazy { metadataCache("coverage", PoiCoverageMetadataCodec) }
+    private val pointCountCache by lazy { metadataCache("counts", PoiPointCountMetadataCodec) }
+
+    private fun <T> metadataCache(
+        name: String,
+        codec: PoiMetadataCodec<T>,
+    ): PoiFileMetadataCache<T> {
+        val directory = File(context.cacheDir, "poi-metadata/$name")
+        return PoiFileMetadataCache(diskStore = PoiMetadataDiskStore(directory, codec))
+    }
 
     companion object {
         private const val KEY_FILE_ENABLED_PREFIX = "file_enabled_"
         private const val KEY_ENABLED_CATEGORY_PREFIX = "enabled_categories_"
     }
 
-    override suspend fun listPoiFiles(): List<File> = withContext(Dispatchers.IO) { poiFiles.list() }
+    override suspend fun listPoiFiles(): List<File> =
+        withContext(Dispatchers.IO) {
+            tracePoiMetadata("list_files") { poiFiles.list() }
+        }
 
     override suspend fun savePoiFileAtomic(
         fileName: String,
@@ -38,7 +52,10 @@ class PoiRepositoryImpl(
         diagnosticContext: String?,
     ): String? =
         withContext(Dispatchers.IO) {
-            poiFiles.saveAtomic(fileName, inputStream, onProgress, expectedSize, resumeOffset, diagnosticContext)
+            val checksum =
+                poiFiles.saveAtomic(fileName, inputStream, onProgress, expectedSize, resumeOffset, diagnosticContext)
+            invalidateMetadata(File(poiDir, fileName).absolutePath)
+            checksum
         }
 
     override suspend fun deletePoiFile(path: String): Boolean =
@@ -51,6 +68,7 @@ class PoiRepositoryImpl(
 
             val deleted = if (file.exists() && isInsideDir) file.delete() else false
             File(poiDir, ".${file.name}.part").delete()
+            invalidateMetadata(path)
             deleteVisibilityState(path)
             synchronized(mergedCategoryAliasesByPath) {
                 mergedCategoryAliasesByPath.remove(file.absolutePath)
@@ -67,87 +85,22 @@ class PoiRepositoryImpl(
     override suspend fun readCategories(path: String): List<PoiCategory> =
         withContext(Dispatchers.IO) {
             val poiFile = File(path)
-            if (!poiFile.exists() || !poiFile.isFile) return@withContext emptyList()
-
-            val rawCategories = mutableListOf<RawPoiCategory>()
-            val directPointCountsByCategoryId = mutableMapOf<Int, Int>()
-            openPoiDatabase(poiFile.absolutePath).use { db ->
-                db
-                    .rawQuery(
-                        "SELECT id, name, parent FROM poi_categories",
-                        emptyArray(),
-                    ).use { cursor ->
-                        val idIdx = cursor.getColumnIndex("id")
-                        val nameIdx = cursor.getColumnIndex("name")
-                        val parentIdx = cursor.getColumnIndex("parent")
-                        while (cursor.moveToNext()) {
-                            if (idIdx < 0 || nameIdx < 0) continue
-                            rawCategories +=
-                                RawPoiCategory(
-                                    id = cursor.getInt(idIdx),
-                                    name = cursor.getString(nameIdx).orEmpty(),
-                                    parent =
-                                        if (parentIdx >= 0 && !cursor.isNull(parentIdx)) {
-                                            cursor.getInt(parentIdx)
-                                        } else {
-                                            null
-                                        },
-                                )
-                        }
-                    }
-                db
-                    .rawQuery(
-                        "SELECT category, COUNT(DISTINCT id) AS point_count FROM poi_category_map GROUP BY category",
-                        emptyArray(),
-                    ).use { cursor ->
-                        val categoryIdx = cursor.getColumnIndex("category")
-                        val countIdx = cursor.getColumnIndex("point_count")
-                        while (cursor.moveToNext()) {
-                            if (categoryIdx < 0 || cursor.isNull(categoryIdx)) continue
-                            val categoryId = cursor.getInt(categoryIdx)
-                            val pointCount =
-                                if (countIdx >= 0 && !cursor.isNull(countIdx)) {
-                                    cursor.getInt(countIdx)
-                                } else {
-                                    0
-                                }
-                            directPointCountsByCategoryId[categoryId] = pointCount
-                        }
-                    }
-            }
-
-            val usedCategoryIds = directPointCountsByCategoryId.keys
-            val filteredRawCategories = keepCategoriesWithPoiData(rawCategories, usedCategoryIds)
-            val (collapsedRawCategories, mergedAliases) =
-                collapseDuplicateRetainedCategories(filteredRawCategories)
-            val (groupedRawCategories, syntheticGroupAliases) =
-                applySyntheticTopLevelGrouping(collapsedRawCategories)
-            val combinedAliases =
-                mutableMapOf<Int, Set<Int>>().apply {
-                    putAll(mergedAliases)
-                    syntheticGroupAliases.forEach { (key, value) ->
-                        val current = this[key].orEmpty()
-                        this[key] = (current + value).toSet()
-                    }
-                }
+            val metadata = categoriesCache.getOrLoadTraced(poiFile, "categories") { readPoiCategoryMetadata(poiFile) }
             synchronized(mergedCategoryAliasesByPath) {
-                mergedCategoryAliasesByPath[poiFile.absolutePath] = combinedAliases
+                mergedCategoryAliasesByPath[poiFile.absolutePath] = metadata.aliases
             }
-            val sortWeights =
-                buildCategorySortWeights(
-                    categories = groupedRawCategories,
-                    directPointCountsByCategoryId = directPointCountsByCategoryId,
-                    aliasMap = combinedAliases,
-                )
-            buildCategoryTree(
-                raw = groupedRawCategories,
-                sortWeightByCategoryId = sortWeights,
-            )
+            metadata.categories
         }
 
-    override suspend fun readCoverageBounds(path: String) = withContext(Dispatchers.IO) { readPoiCoverageBounds(path) }
+    override suspend fun readCoverageBounds(path: String) =
+        withContext(Dispatchers.IO) {
+            coverageCache.getOrLoadTraced(File(path), "coverage") { readPoiCoverageBounds(path) }
+        }
 
-    override suspend fun readLinkedGpxWaypointFileName(path: String): String? = poiIo { links.read(path) }
+    override suspend fun readLinkedGpxWaypointFileName(path: String): String? =
+        poiIo {
+            tracePoiMetadata("gpx_link", File(path)) { links.read(path) }
+        }
 
     override suspend fun findGpxWaypointPoiFiles(gpxFileName: String): List<File> = poiIo { links.find(gpxFileName) }
 
@@ -235,35 +188,21 @@ class PoiRepositoryImpl(
     ): Int =
         withContext(Dispatchers.IO) {
             val poiFile = File(path)
-            if (!poiFile.exists() || !poiFile.isFile) return@withContext 0
-            if (categoryIds.isEmpty()) return@withContext 0
             val expandedCategoryIds =
                 expandCategoryIdsWithMergedAliases(
                     path = poiFile.absolutePath,
                     categoryIds = categoryIds,
                 )
-            if (expandedCategoryIds.isEmpty()) return@withContext 0
-
-            val placeholders = expandedCategoryIds.joinToString(separator = ",") { "?" }
-            val sql =
-                """
-                SELECT COUNT(DISTINCT pcm.id) AS poi_count
-                FROM poi_category_map pcm
-                WHERE pcm.category IN ($placeholders)
-                """.trimIndent()
-            val args = expandedCategoryIds.map { it.toString() }.toTypedArray()
-
-            openPoiDatabase(poiFile.absolutePath).use { db ->
-                db.rawQuery(sql, args).use { cursor ->
-                    val countIdx = cursor.getColumnIndex("poi_count")
-                    if (cursor.moveToFirst()) {
-                        if (countIdx >= 0) cursor.getInt(countIdx) else cursor.getInt(0)
-                    } else {
-                        0
-                    }
-                }
+            pointCountCache.getOrLoadTraced(poiFile, "point_count", expandedCategoryIds) {
+                readPoiPointCount(poiFile, expandedCategoryIds)
             }
         }
+
+    private suspend fun invalidateMetadata(path: String) {
+        categoriesCache.invalidate(path)
+        coverageCache.invalidate(path)
+        pointCountCache.invalidate(path)
+    }
 
     override suspend fun queryPoiPointsByCategories(
         path: String,
