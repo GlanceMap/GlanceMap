@@ -88,6 +88,8 @@ internal data class LiveTrackingDiagnosticRequest(
     val locationQualityReason: String? = null,
     val gsmSignalPercent: Int? = null,
     val isCatchUp: Boolean = false,
+    val pointId: String? = null,
+    val fixTimestampEpochMillis: Long? = null,
 )
 
 internal data class LiveTrackingDiagnosticEvent(
@@ -117,7 +119,7 @@ internal data class LiveTrackingDiagnosticContext(
     val cadenceWindow: Long? = null,
 )
 
-private fun StringBuilder.appendTrackingContext(context: LiveTrackingDiagnosticContext?) {
+internal fun StringBuilder.appendTrackingContext(context: LiveTrackingDiagnosticContext?) {
     if (context == null) return
     append(" serviceId=").append(context.serviceId)
     append(" generationId=").append(context.generationId)
@@ -527,6 +529,7 @@ internal fun recordLiveTrackingEvent(
     context: LiveTrackingDiagnosticContext,
     event: String,
     cooldownRemainingMillis: Long? = null,
+    fixTimestampEpochMillis: Long? = null,
 ) {
     if (!PhoneDebugCapture.isActive()) return
     PhoneDebugCapture.log(
@@ -534,6 +537,7 @@ internal fun recordLiveTrackingEvent(
         buildString {
             append("tracking_event event=").append(event)
             cooldownRemainingMillis?.let { append(" cooldownRemainingMs=").append(it) }
+            fixTimestampEpochMillis?.let { append(" fixTsMs=").append(it) }
             appendTrackingContext(context)
         },
     )
@@ -631,6 +635,8 @@ internal fun LiveTrackingDiagnosticEvent.toDisplayText(): String {
             add("quality ${result.lowercase()}${request.locationQualityReason?.let { ":$it" }.orEmpty()}")
         }
         request.gsmSignalPercent?.let { add(if (it < 0) "gsm unknown" else "gsm $it%") }
+        request.pointId?.let { add("pointId=$it") }
+        request.fixTimestampEpochMillis?.let { add("fixTsMs=$it") }
         if (request.operation == LiveTrackingDiagnosticOperation.LOCATION_UPDATE) {
             add(if (request.isCatchUp) "catch-up" else "real-time")
         }

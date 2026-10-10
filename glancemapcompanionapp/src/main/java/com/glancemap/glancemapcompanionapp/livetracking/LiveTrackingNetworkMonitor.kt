@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.IOException
@@ -93,6 +94,14 @@ internal class LiveTrackingNetworkMonitor(
                 capabilities: NetworkCapabilities,
             ) {
                 tracker.capabilitiesChanged(network, capabilities.hasValidatedInternet())
+                PhoneDebugCapture.log(
+                    "LiveTracking",
+                    "network_capabilities wifi=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)} " +
+                        "cellular=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)} " +
+                        "internet=${capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)} " +
+                        "validated=${capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)} " +
+                        "captive=${capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)}",
+                )
             }
 
             override fun onLost(network: Network) = tracker.lost(network)
@@ -110,7 +119,10 @@ internal class LiveTrackingNetworkMonitor(
                 tracker.initialize(network, capabilities?.hasValidatedInternet() == true)
                 connectivityManager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
             }.isSuccess
-        if (!registered) tracker.monitoringUnavailable()
+        if (!registered) {
+            tracker.monitoringUnavailable()
+            recordLiveTrackingDelivery(LiveTrackingDeliveryDiagnostic("network_registration_failed"))
+        }
     }
 
     @Synchronized

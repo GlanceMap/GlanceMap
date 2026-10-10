@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.diagnostics
 import android.content.Context
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
+import com.glancemap.glancemapcompanionapp.livetracking.liveTrackingRecoverySummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
@@ -127,6 +128,9 @@ object PhoneDebugCapture {
             appendLine("BufferedLines: ${state.bufferedLines}")
             appendLine("DroppedLines: ${state.droppedLines}")
             appendLine("TotalLoggedLines: ${state.totalLoggedLines}")
+            appendLine()
+            appendLine("Persisted Live Tracking Recovery")
+            liveTrackingRecoverySummary(context).forEach { appendLine(it) }
             appendLine()
             appendLine("Logs")
             val snapshot = snapshot()

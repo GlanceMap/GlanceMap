@@ -21,6 +21,8 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.text.SimpleDateFormat
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -64,6 +66,7 @@ internal data class ArkluzLocationUpdate(
     val dateId: String? = null,
     val locationDiagnostics: LiveTrackingLocationDiagnostics? = null,
     val isCatchUp: Boolean = false,
+    val pointId: String? = null,
 ) {
     fun asStoredGpsPoint(): ArkluzLocationUpdate =
         copy(
@@ -127,6 +130,7 @@ internal class ArkluzLiveTrackingClient(
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(45, TimeUnit.SECONDS)
+            .eventListenerFactory { LiveTrackingHttpTimingListener() }
             .build()
 
     suspend fun uploadPlannedRoute(settings: LiveTrackingSettings): ArkluzServerResult {
@@ -409,8 +413,12 @@ internal class ArkluzLiveTrackingClient(
             locationDiagnostics = locationDiagnostics,
         )
 
-    suspend fun sendLocationUpdate(update: ArkluzLocationUpdate): ArkluzServerResult =
+    suspend fun sendLocationUpdate(
+        update: ArkluzLocationUpdate,
+        canSend: () -> Boolean = { true },
+    ): ArkluzServerResult =
         withContext(Dispatchers.IO) {
+            if (!canSend()) throw LiveTrackingSendDeferredException()
             execute(
                 Request
                     .Builder()
@@ -418,6 +426,7 @@ internal class ArkluzLiveTrackingClient(
                     .get()
                     .build(),
                 diagnosticRequest = update.toDiagnosticRequest(),
+                responseParser = String::toArkluzTrackingResult,
             )
         }
 
@@ -427,28 +436,35 @@ internal class ArkluzLiveTrackingClient(
         responseParser: (String) -> ArkluzServerResult = String::toArkluzServerResult,
     ): ArkluzServerResult =
         withDiagnostics(diagnosticRequest) { recordOutcome ->
-            httpClient.newCall(request).execute().use { response ->
-                val serverMessage =
-                    response.body
-                        .string()
-                        .toReadableServerMessage()
-                if (!response.isSuccessful) {
-                    recordOutcome(LiveTrackingDiagnosticResult.HTTP_ERROR, response.code)
-                    throw ArkluzHttpException(response.code, response.toShortHttpErrorMessage())
+            httpClient
+                .newCall(request.newBuilder().tag(LiveTrackingDiagnosticRequest::class.java, diagnosticRequest).build())
+                .execute()
+                .use { response ->
+                    val serverMessage =
+                        response.body
+                            .string()
+                            .toReadableServerMessage()
+                    if (!response.isSuccessful) {
+                        recordOutcome(LiveTrackingDiagnosticResult.HTTP_ERROR, response.code)
+                        throw ArkluzHttpException(
+                            response.code,
+                            response.toShortHttpErrorMessage(),
+                            arkluzRetryAfterMillis(response.header("Retry-After"), System.currentTimeMillis()),
+                        )
+                    }
+                    if (serverMessage.isArkluzError()) {
+                        recordOutcome(LiveTrackingDiagnosticResult.SERVER_REJECTED, response.code)
+                        error(serverMessage)
+                    }
+                    val serverResult =
+                        runCatching { responseParser(serverMessage) }
+                            .getOrElse { error ->
+                                recordOutcome(LiveTrackingDiagnosticResult.SERVER_REJECTED, response.code)
+                                throw error
+                            }
+                    recordOutcome(LiveTrackingDiagnosticResult.SUCCESS, response.code)
+                    serverResult
                 }
-                if (serverMessage.isArkluzError()) {
-                    recordOutcome(LiveTrackingDiagnosticResult.SERVER_REJECTED, response.code)
-                    error(serverMessage)
-                }
-                val serverResult =
-                    runCatching { responseParser(serverMessage) }
-                        .getOrElse { error ->
-                            recordOutcome(LiveTrackingDiagnosticResult.SERVER_REJECTED, response.code)
-                            throw error
-                        }
-                recordOutcome(LiveTrackingDiagnosticResult.SUCCESS, response.code)
-                serverResult
-            }
         }
 
     private fun executeSmsSupport(
@@ -626,7 +642,7 @@ private fun ArkluzLocationUpdate.toDiagnosticRequest(): LiveTrackingDiagnosticRe
         locationQualityReason = locationDiagnostics?.qualityReason,
         gsmSignalPercent = gsmSignalPercent,
         isCatchUp = isCatchUp,
-    )
+    ).copy(pointId = pointId, fixTimestampEpochMillis = epochMilliseconds)
 
 @Suppress("LongParameterList")
 private fun diagnosticRequestWithRecipients(
@@ -760,11 +776,41 @@ private const val ARKLUZ_API_HOST = "arkluz.com"
 internal class ArkluzHttpException(
     val code: Int,
     message: String,
+    val retryAfterMillis: Long? = null,
 ) : IOException(message)
 
 internal fun Throwable.isRetryableArkluzFailure(): Boolean =
     this is IOException &&
-        (this !is ArkluzHttpException || code >= 500)
+        (this !is ArkluzHttpException || code >= 500 || code in setOf(401, 403, 408, 429))
+
+internal class ArkluzUnconfirmedResponseException : IOException("Arkluz did not clearly acknowledge the request")
+
+internal class ArkluzRetryDeferredException(
+    val remainingMillis: Long,
+) : IOException("Waiting before retrying Arkluz")
+
+internal class LiveTrackingSendDeferredException :
+    IOException(
+        "The normal position is no longer eligible; it remains stored",
+    )
+
+internal fun arkluzRetryAfterMillis(
+    header: String?,
+    nowEpochMilliseconds: Long,
+): Long? {
+    val value = header?.trim() ?: return null
+    val seconds = value.toLongOrNull()
+    return if (seconds != null) {
+        seconds.takeIf { it >= 0L && it <= Long.MAX_VALUE / 1_000L }?.times(1_000L)
+    } else {
+        runCatching {
+            (
+                ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() -
+                    nowEpochMilliseconds
+            ).coerceAtLeast(0L)
+        }.getOrNull()
+    }
+}
 
 internal fun Throwable.toArkluzFailureDetail(): String =
     when (this) {
@@ -845,6 +891,20 @@ private fun String.toArkluzServerResult(): ArkluzServerResult {
         responseValue = responseValue,
         groupAvailable = equals("group available", ignoreCase = true),
     )
+}
+
+internal fun String.toArkluzTrackingResult(): ArkluzServerResult {
+    // Preserve legacy empty/OK acknowledgements until Arkluz confirms a stricter response contract.
+    if (isNotBlank() &&
+        lineSequence()
+            .first()
+            .trim()
+            .equals("OK", ignoreCase = true)
+            .not()
+    ) {
+        throw ArkluzUnconfirmedResponseException()
+    }
+    return toArkluzServerResult()
 }
 
 internal fun String.toArkluzUploadResult(): ArkluzServerResult {
