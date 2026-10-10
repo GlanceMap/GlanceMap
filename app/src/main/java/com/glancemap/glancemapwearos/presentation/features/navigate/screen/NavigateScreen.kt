@@ -722,6 +722,9 @@ fun NavigateScreen(
             NavigateStartupCenteringEffects(
                 offlineMode = offlineMode,
                 shouldTrackLocation = shouldTrackLocation,
+                shouldFollowPosition = shouldFollowPosition,
+                startupLocation = rawCurrentLocation,
+                gpsSignalSnapshot = gpsSignalSnapshot,
                 locationMarkerLatLong = locationMarker?.latLong,
                 lastKnownLocation = uiState.lastKnownLocation,
                 retainedLocationAnchor = uiState.retainedLocationAnchor,

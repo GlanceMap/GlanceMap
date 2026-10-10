@@ -696,6 +696,12 @@ class MapRenderer(
             ?.requestVisibleTileDiagnosticSnapshot("pan_completed")
     }
 
+    internal fun recordStartupMapPreview() {
+        if (!DebugTelemetry.isFullDiagnosticsCaptureEnabled()) return
+        (currentLayer as? FirstVisibleTileRendererLayer)
+            ?.requestVisibleTileDiagnosticSnapshot("startup_preview")
+    }
+
     internal suspend fun awaitFirstVisibleMapAfter(
         baselineVersion: Long,
         timeoutMs: Long,

@@ -107,6 +107,27 @@ Do not infer battery savings from these diagnostic captures. Compare battery sep
 same workload and capture mode. Recorded-trace display copying and Compose profiling remain
 separate follow-ups.
 
+## Map Startup Position Regression Checks
+
+With recording and TBT off, restart the process without clearing cache or app data. Capture startup
+with Full diagnostics and the same map/theme and configured default zoom.
+
+- When the service supplies a recent accepted fix before the live marker's wake hold releases,
+  `navigate.startupMapPreview status=centered` should appear once. The map can show that area while
+  the current-position marker retains its existing freshness/accuracy checks. The preview does not
+  publish a marker or guidance anchor and does not change GPS requests, cadence, or wake thresholds.
+- Compare the preview event with `mapRenderer.visibleTiles reason=startup_preview` and subsequent
+  drawable tiles. The first renderer draw can precede location centering; its `.cold` label alone
+  does not establish disk-cache loss or time until the user's area is visible.
+- Pan or focus a POI before a fix arrives: startup preview must not recenter the chosen view. Warm
+  screen returns with a retained position must also keep their current view. Confirm normal following
+  resumes when a trusted marker update arrives, including with a noncentral marker anchor setting.
+- Test offline mode, no usable fix, and location-source changes. Existing offline centering and the
+  15-second no-position fallback remain in use; a previous-source or stale fix cannot preview the map.
+
+Watch timing and appearance still require device validation. No persistent position store or new
+polling/prewarming activity is added by startup preview.
+
 ## Cold POI Library Regression Checks
 
 Use Full diagnostics and the same downloaded POI files and visibility selections. The first load

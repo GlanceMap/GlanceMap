@@ -749,6 +749,10 @@ class MapViewModel(
         mapRenderer?.recordCompletedPan()
     }
 
+    internal fun recordStartupMapPreview() {
+        mapRenderer?.recordStartupMapPreview()
+    }
+
     fun dismissHillshadeTerrainUnavailable() {
         _hillshadeTerrainUnavailableEvent.value = null
     }
