@@ -73,7 +73,7 @@ Phone companion benchmark artifacts are written under:
 companionmacrobenchmark/build/outputs/connected_android_test_additional_output/
 ```
 
-Save the baseline artifacts before making optimization changes, then run the same benchmark command again after each change.
+Save the baseline artifacts before making optimization changes, then run the same benchmark command again after each coherent batch.
 
 ## Map Zoom and Configuration Regression Checks
 
@@ -113,8 +113,57 @@ materially affect tile generation. The release Git SHA does not identify uncommi
   behavior before merging the streaming decoder changes.
 
 Do not infer battery savings from these diagnostic captures. Compare battery separately with the
-same workload and capture mode. Recorded-trace display copying and Compose profiling remain
-separate follow-ups.
+same workload and capture mode. Use the combined checks below for recording display and navigation
+state delivery; measured frame-time and recomposition comparisons still require a watch profile.
+
+## Final Performance Batch: PERF-001, PERF-004 and PERF-008
+
+Map-file opening, persistent tile-cache opening/replacement, theme-file preparation and DEM
+signature/coverage preparation now run on IO. Renderer configurations and layer updates remain
+serialized across suspension; prepared resources are released if a request is cancelled before
+delivery or the renderer is destroyed. Layer mutations remain on Main. Relief shutdown interrupts
+its worker without waiting up to 200 ms on Main; late tile publication releases its bitmap rather
+than adding it to a destroyed layer. Cache sizes, disk identities, retention, worker limits and
+startup prewarming policy are unchanged.
+
+Recording display preparation uses immutable views of canonical saved points. Sequential updates
+rescan only the changed smoothing tail and rebuild safely after missed revisions or restoration.
+One history layer draws those views on the Mapsforge drawing thread, replacing full-history
+coordinate copying and Polyline synchronization on Main. The existing two-point hold, live tail,
+manual pause bridges, segment boundaries, paints and projection are preserved. Display revision
+metadata is neither persisted nor exported. Canonical point capture, smoothing, distance, cadence,
+GPS source handling and GPX output are unchanged. Drawing still projects the displayed history;
+this does not claim constant-time rendering for an arbitrarily long track.
+
+Navigation collects a presentation flow that ignores retained-anchor coordinate-only updates.
+The full state still retains every rendered position for wake handling. New fix timestamps,
+accuracy, source epoch/mode, acceptance, startup state, zoom and navigation changes still reach the
+screen. This removes a demonstrated state-delivery cause; it does not establish measured Compose
+frame-time savings or eliminate every navigation recomposition.
+
+Run **one combined Full diagnostics watch session** for this batch and the bundled theme fingerprint
+fix, rather than a separate watch test for each edit:
+
+1. With recording and TBT off, repeat rapid zoom and same-map screen wake, then force-close and
+   reopen. Switch maps/themes A to B to A; also change a theme while another change is preparing.
+   Confirm the final selection appears, controls remain responsive, and no stale/missing layer
+   persists. Async map preparation spans include suspension; use a trace to distinguish elapsed
+   preparation time from Main-thread CPU time. For the fingerprint fix, an APK update with
+   unchanged assets should retain prepared resources and generated variants as described above.
+2. With installed DEM data, enable hillshade and relief, pan/zoom, then disable them while tiles
+   are building and return to the map. Confirm terrain and elevation still work when re-enabled,
+   and teardown causes no visible stall or crash. Existing worker and cache budgets must remain.
+3. Record a short moving route, pause/resume nearby and farther away, switch screens and wake the
+   watch. Confirm the green saved history/live tail, pause bridges, segment gaps and marker remain
+   correct; save and open the GPX. Unit fixtures cover all three smoothing modes, missed updates,
+   restoration, a 20,000-point append and drawing equivalence. A long-recording profile remains
+   useful for quantifying the benefit, rather than required to establish a claimed speedup.
+4. Return to POI/GPX screens after successful loading in the same process, then reopen after the
+   process restart. Reuse the cold/warm library checks below and confirm trust/zoom controls and
+   retained positioning still behave correctly. Export the combined diagnostics capture.
+
+Watch validation of this final batch and the theme fingerprint is pending. Unit tests do not prove
+GPS/sensor continuity on hardware, smoother frame times or battery/runtime savings.
 
 ## Map Startup Position Regression Checks
 

@@ -33,6 +33,7 @@ internal object MapHotPathDiagnostics {
         val stage: String,
         val startedAtElapsedMs: Long,
         val diagnosticsEnabled: Boolean,
+        val asyncTraceMarker: BenchmarkTrace.AsyncMarker? = null,
     )
 
     private data class TimingEvent(
@@ -142,6 +143,15 @@ internal object MapHotPathDiagnostics {
 
     fun begin(stage: String): Marker? {
         BenchmarkTrace.begin(stage)
+        return createMarker(stage)
+    }
+
+    fun beginAsync(stage: String): Marker? = createMarker(stage, BenchmarkTrace.beginAsync(stage))
+
+    private fun createMarker(
+        stage: String,
+        asyncTraceMarker: BenchmarkTrace.AsyncMarker? = null,
+    ): Marker {
         val diagnosticsEnabled = DebugTelemetry.isEnabled()
         val nowElapsedMs = SystemClock.elapsedRealtime()
         if (diagnosticsEnabled) {
@@ -153,6 +163,7 @@ internal object MapHotPathDiagnostics {
             stage = stage,
             startedAtElapsedMs = nowElapsedMs,
             diagnosticsEnabled = diagnosticsEnabled,
+            asyncTraceMarker = asyncTraceMarker,
         )
     }
 
@@ -163,7 +174,7 @@ internal object MapHotPathDiagnostics {
     ) {
         if (marker == null) return
         if (!marker.diagnosticsEnabled) {
-            BenchmarkTrace.end()
+            endTrace(marker)
             return
         }
         try {
@@ -178,8 +189,13 @@ internal object MapHotPathDiagnostics {
                 )
             DebugTelemetry.log(TAG, eventLine)
         } finally {
-            BenchmarkTrace.end()
+            endTrace(marker)
         }
+    }
+
+    private fun endTrace(marker: Marker) {
+        val asyncMarker = marker.asyncTraceMarker
+        if (asyncMarker == null) BenchmarkTrace.end() else BenchmarkTrace.endAsync(asyncMarker)
     }
 
     fun recordInterval(

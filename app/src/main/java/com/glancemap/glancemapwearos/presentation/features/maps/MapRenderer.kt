@@ -15,6 +15,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnost
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -290,7 +291,9 @@ class MapRenderer(
         context.getSharedPreferences(CACHE_CLEANUP_PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private var tileCache: TileCache = createTileCache(cacheId = currentTileCacheId)
+    private val workOwner = MapRendererWorkOwner()
+    private var configurationInterrupted = false
+    private var tileCache: TileCache? = null
 
     private fun createTileCache(cacheId: String): TileCache {
         val tileSize = mapView.model.displayModel.tileSize
@@ -418,7 +421,75 @@ class MapRenderer(
         mapView.model.displayModel.setThemeCallback(elevationLabelThemeCallback)
     }
 
-    fun setThemeConfig(
+    suspend fun setThemeConfig(
+        themeFile: File?,
+        mapsforgeThemeName: String?,
+        bundledThemeId: String,
+        hillShadingEnabled: Boolean,
+        reliefOverlayEnabled: Boolean,
+        demSource: DemSource = DemSource.DEFAULT,
+    ): ThemeApplyResult =
+        runRendererWork {
+            setThemeConfigLocked(
+                themeFile,
+                mapsforgeThemeName,
+                bundledThemeId,
+                hillShadingEnabled,
+                reliefOverlayEnabled,
+                demSource,
+            ).also { configurationInterrupted = false }
+        } ?: ThemeApplyResult()
+
+    suspend fun setElevationLabelUnitsMetric(isMetric: Boolean) {
+        runRendererWork { setElevationLabelUnitsMetricLocked(isMetric) }
+    }
+
+    internal suspend fun applyConfiguration(configuration: MapRendererConfiguration): ThemeApplyResult =
+        runRendererWork {
+            setElevationLabelUnitsMetricLocked(configuration.elevationLabelsMetric)
+            setMapLabelTextScaleLocked(configuration.mapLabelTextScale)
+            setThemeConfigLocked(
+                themeFile = configuration.themeFile,
+                mapsforgeThemeName = configuration.mapsforgeThemeName,
+                bundledThemeId = configuration.bundledThemeId,
+                hillShadingEnabled = configuration.hillShadingEnabled,
+                reliefOverlayEnabled = configuration.reliefOverlayEnabled,
+                demSource = configuration.demSource,
+            ).also { configurationInterrupted = false }
+        } ?: ThemeApplyResult()
+
+    suspend fun setMapLabelTextScale(textScale: Float) {
+        runRendererWork { setMapLabelTextScaleLocked(textScale) }
+    }
+
+    suspend fun updateMapLayer(mapPath: String?) {
+        runRendererWork { updateMapLayerLocked(mapPath) }
+    }
+
+    suspend fun invalidateTileCache() {
+        runRendererWork { invalidateTileCacheLocked() }
+    }
+
+    suspend fun onExternalCachesCleared() {
+        runRendererWork { onExternalCachesClearedLocked() }
+    }
+
+    private suspend fun <T> runRendererWork(block: suspend () -> T): T? =
+        workOwner.run {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                // A newer request must finish a partially applied configuration, not skip it.
+                currentMapSignature = null
+                configurationInterrupted = true
+                throw cancelled
+            }
+        }
+
+    // This established orchestration was baseline-exempt before becoming suspend. Keep the
+    // configuration and resource handoff in one ordered flow rather than split state transitions.
+    @Suppress("LongMethod", "ReturnCount")
+    private suspend fun setThemeConfigLocked(
         themeFile: File?,
         mapsforgeThemeName: String?,
         bundledThemeId: String,
@@ -426,7 +497,6 @@ class MapRenderer(
         reliefOverlayEnabled: Boolean,
         demSource: DemSource = DemSource.DEFAULT,
     ): ThemeApplyResult {
-        val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.setThemeConfig")
         var timingStatus = "ok"
         var usedLightweightReload = false
         var demChanged = false
@@ -452,35 +522,42 @@ class MapRenderer(
                 demSource = demSource,
             )
         val newSignature =
-            computeMapRendererThemeSignature(
-                file = themeFile,
-                mapsforgeThemeName = normalizedMapsforge,
-                bundledThemeId = normalizedBundledThemeId,
-                hillShadingEnabled = false,
-            )
+            workOwner.read {
+                computeMapRendererThemeSignature(
+                    file = themeFile,
+                    mapsforgeThemeName = normalizedMapsforge,
+                    bundledThemeId = normalizedBundledThemeId,
+                    hillShadingEnabled = false,
+                )
+            }
 
+        val timingMarker = MapHotPathDiagnostics.beginAsync("mapRenderer.setThemeConfig")
         // Hillshade is an independent transparent layer. Updating it must not purge, remove, or
         // rebuild the already-visible base map.
-        if (currentThemeSignature == newSignature) {
-            return applyLayerOnlyThemeConfig(
-                request = request,
-                timingMarker = timingMarker,
-            )
+        if (currentThemeSignature == newSignature && !configurationInterrupted) {
+            return runCatching {
+                applyLayerOnlyThemeConfig(request = request, timingMarker = timingMarker)
+            }.getOrElse { error ->
+                MapHotPathDiagnostics.end(marker = timingMarker, status = "error_${error.javaClass.simpleName}")
+                throw error
+            }
         }
 
         val demSourceChanged = currentDemSource != demSource
         try {
             val theme =
-                MapHotPathDiagnostics.measure(
-                    stage = "mapRenderer.buildRenderThemeOrNull",
-                    detail = "mapsforge=${normalizedMapsforge != null} bundled=$normalizedBundledThemeId",
-                ) {
-                    buildMapRendererThemeOrNull(
-                        context = context,
-                        themeFile = themeFile,
-                        mapsforgeThemeName = normalizedMapsforge,
-                        bundledThemeId = normalizedBundledThemeId,
-                    )
+                workOwner.read {
+                    MapHotPathDiagnostics.measure(
+                        stage = "mapRenderer.buildRenderThemeOrNull",
+                        detail = "mapsforge=${normalizedMapsforge != null} bundled=$normalizedBundledThemeId",
+                    ) {
+                        buildMapRendererThemeOrNull(
+                            context = context,
+                            themeFile = themeFile,
+                            mapsforgeThemeName = normalizedMapsforge,
+                            bundledThemeId = normalizedBundledThemeId,
+                        )
+                    }
                 } ?: run {
                     timingStatus = "theme_unavailable"
                     Log.w(TAG, "setThemeConfig: theme is null")
@@ -548,7 +625,7 @@ class MapRenderer(
         return themeApplyResult
     }
 
-    private fun applyLayerOnlyThemeConfig(
+    private suspend fun applyLayerOnlyThemeConfig(
         request: ThemeConfigRequest,
         timingMarker: MapHotPathDiagnostics.Marker?,
     ): ThemeApplyResult {
@@ -641,22 +718,20 @@ class MapRenderer(
         return ThemeApplyResult()
     }
 
-    private fun updateHillshadeLayerForCurrentMap(demSignature: String?) {
-        currentMapPath
-            ?.let(::File)
-            ?.takeIf { it.isFile }
-            ?.let { mapFile ->
-                updateHillshadeLayer(
-                    mapFile = mapFile,
-                    demSignature = demSignature,
-                    requiredDemTileIds =
-                        if (currentHillShadingEnabled) {
-                            Dem3CoverageUtils.requiredTileIdsForMap(mapFile)
-                        } else {
-                            null
-                        },
-                )
-            }
+    private suspend fun updateHillshadeLayerForCurrentMap(demSignature: String?) {
+        val mapFile = currentMapPath?.let(::File) ?: return
+        if (workOwner.read { mapFile.isFile }) {
+            updateHillshadeLayer(
+                mapFile = mapFile,
+                demSignature = demSignature,
+                requiredDemTileIds =
+                    if (currentHillShadingEnabled) {
+                        workOwner.read { Dem3CoverageUtils.requiredTileIdsForMap(mapFile) }
+                    } else {
+                        null
+                    },
+            )
+        }
     }
 
     /** Debug-only snapshot taken after a map-position observer reports a completed zoom change. */
@@ -737,17 +812,17 @@ class MapRenderer(
 
     internal fun currentFirstVisibleMapVersion(): Long = firstVisibleMapCounter.get()
 
-    fun setElevationLabelUnitsMetric(isMetric: Boolean) {
+    private suspend fun setElevationLabelUnitsMetricLocked(isMetric: Boolean) {
         if (currentElevationLabelsMetric == isMetric) return
 
         currentElevationLabelsMetric = isMetric
         mapView.model.displayModel.setThemeCallback(elevationLabelThemeCallback)
         rebuildTileCacheRequested = true
         skipNextStartupTilePrewarm = true
-        updateMapLayer(currentMapPath)
+        updateMapLayerLocked(currentMapPath)
     }
 
-    fun setMapLabelTextScale(textScale: Float) {
+    private suspend fun setMapLabelTextScaleLocked(textScale: Float) {
         val normalizedTextScale = mapRendererLayerTextScale(textScale)
         if (currentMapLabelTextScale == normalizedTextScale) return
 
@@ -757,7 +832,7 @@ class MapRenderer(
         currentMapLabelTextScale = normalizedTextScale
         val desiredCacheId =
             resolveMapRendererDesiredCacheId(
-                mapSignature = computeMapRendererMapSignature(currentMapPath),
+                mapSignature = workOwner.read { computeMapRendererMapSignature(currentMapPath) },
                 themeSignature = currentThemeSignature,
                 elevationLabelsMetric = currentElevationLabelsMetric,
                 labelTextScale = normalizedTextScale,
@@ -772,7 +847,7 @@ class MapRenderer(
         ) {
             cleanLayerSwapRequested = true
             preserveAuxiliaryLayersOnCleanSwap = true
-            updateMapLayer(mapPath)
+            updateMapLayerLocked(mapPath)
         }
         val layerRecreated = previousLayer != null && currentLayer != null && previousLayer !== currentLayer
         val cacheRecreated = previousCacheId != currentTileCacheId && currentTileCacheId == desiredCacheId
@@ -793,15 +868,18 @@ class MapRenderer(
         )
     }
 
-    fun updateMapLayer(mapPath: String?) {
-        val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.updateMapLayer")
+    // Previously covered by the baseline. Preserve the validated rebuild/error sequence while
+    // IO suspends; extracting its state transitions would obscure resource ownership.
+    @Suppress("LongMethod", "ReturnCount")
+    private suspend fun updateMapLayerLocked(mapPath: String?) {
         var timingStatus = "ok"
         var desiredCacheIdForTiming: String? = null
         var cacheRecreated = false
         var warmStartupCache = false
         var cleanLayerSwap = false
-        val newMapSignature = computeMapRendererMapSignature(mapPath)
+        val newMapSignature = workOwner.read { computeMapRendererMapSignature(mapPath) }
         val newDemSignature = computeDemSignatureOrNull()
+        val timingMarker = MapHotPathDiagnostics.beginAsync("mapRenderer.updateMapLayer")
         val desiredCacheId =
             resolveMapRendererDesiredCacheId(
                 mapSignature = newMapSignature,
@@ -810,13 +888,7 @@ class MapRenderer(
                 labelTextScale = currentMapLabelTextScale,
             )
         desiredCacheIdForTiming = desiredCacheId
-        if (
-            mapPath == currentMapPath &&
-            newMapSignature == currentMapSignature &&
-            newDemSignature == currentDemSignature &&
-            !rebuildTileCacheRequested &&
-            desiredCacheId == currentTileCacheId
-        ) {
+        if (canReuseCurrentMapLayer(mapPath, newMapSignature, newDemSignature, desiredCacheId)) {
             timingStatus = "no_change"
             MapHotPathDiagnostics.end(
                 marker = timingMarker,
@@ -835,7 +907,7 @@ class MapRenderer(
             val preserveAuxiliaryLayers =
                 cleanLayerSwapRequested && preserveAuxiliaryLayersOnCleanSwap
             cleanLayerSwap = consumeCleanLayerSwap()
-            if (rebuildTileCacheRequested || desiredCacheId != currentTileCacheId) {
+            if (rebuildTileCacheRequested || desiredCacheId != currentTileCacheId || tileCache == null) {
                 recreateTileCache(newCacheId = desiredCacheId)
                 cacheRecreated = true
                 rebuildTileCacheRequested = false
@@ -854,7 +926,7 @@ class MapRenderer(
             }
 
             val mapFile = File(mapPath)
-            if (!mapFile.exists()) {
+            if (!workOwner.read { mapFile.exists() }) {
                 timingStatus = "missing_map_file"
                 cancelFirstVisibleMapTiming(reason = timingStatus)
                 currentMapPath = null
@@ -869,16 +941,20 @@ class MapRenderer(
             }
 
             val theme =
-                MapHotPathDiagnostics.measure(
-                    stage = "mapRenderer.buildRenderThemeOrNull",
-                    detail = "mapsforge=${!currentMapsforgeThemeName.isNullOrBlank()} bundled=$currentBundledThemeId",
-                ) {
-                    buildMapRendererThemeOrNull(
-                        context = context,
-                        themeFile = currentThemeFile,
-                        mapsforgeThemeName = currentMapsforgeThemeName,
-                        bundledThemeId = currentBundledThemeId,
-                    )
+                workOwner.read {
+                    MapHotPathDiagnostics.measure(
+                        stage = "mapRenderer.buildRenderThemeOrNull",
+                        detail =
+                            "mapsforge=${!currentMapsforgeThemeName.isNullOrBlank()} " +
+                                "bundled=$currentBundledThemeId",
+                    ) {
+                        buildMapRendererThemeOrNull(
+                            context = context,
+                            themeFile = currentThemeFile,
+                            mapsforgeThemeName = currentMapsforgeThemeName,
+                            bundledThemeId = currentBundledThemeId,
+                        )
+                    }
                 }
             if (theme == null) {
                 timingStatus = "theme_unavailable"
@@ -894,11 +970,13 @@ class MapRenderer(
             }
 
             val mapDataStore: MapDataStore =
-                MapHotPathDiagnostics.measure(
-                    stage = "mapRenderer.openMapFile",
-                    detail = "file=${mapFile.name}",
-                ) {
-                    MapFile(mapFile)
+                workOwner.prepare(release = MapDataStore::close) {
+                    MapHotPathDiagnostics.measure(
+                        stage = "mapRenderer.openMapFile",
+                        detail = "file=${mapFile.name}",
+                    ) {
+                        MapFile(mapFile)
+                    }
                 }
             currentStore = mapDataStore
             warmStartupCache =
@@ -935,6 +1013,8 @@ class MapRenderer(
 
             forceRedraw()
             timingStatus = "loaded"
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             timingStatus = "error_${e.javaClass.simpleName}"
             cancelFirstVisibleMapTiming(reason = timingStatus)
@@ -963,7 +1043,19 @@ class MapRenderer(
         }
     }
 
-    private fun updateAuxiliaryLayersForMap(
+    private fun canReuseCurrentMapLayer(
+        mapPath: String?,
+        mapSignature: String?,
+        demSignature: String?,
+        desiredCacheId: String,
+    ): Boolean {
+        val unchangedMap =
+            mapPath == currentMapPath && mapSignature == currentMapSignature && demSignature == currentDemSignature
+        val unchangedCache = tileCache != null && desiredCacheId == currentTileCacheId
+        return unchangedMap && unchangedCache && !rebuildTileCacheRequested
+    }
+
+    private suspend fun updateAuxiliaryLayersForMap(
         mapFile: File,
         demSignature: String?,
     ) {
@@ -972,7 +1064,7 @@ class MapRenderer(
             demSignature = demSignature,
             requiredDemTileIds =
                 if (currentHillShadingEnabled) {
-                    Dem3CoverageUtils.requiredTileIdsForMap(mapFile)
+                    workOwner.read { Dem3CoverageUtils.requiredTileIdsForMap(mapFile) }
                 } else {
                     null
                 },
@@ -995,19 +1087,19 @@ class MapRenderer(
         return cleanLayerSwap
     }
 
-    fun invalidateTileCache() {
+    private suspend fun invalidateTileCacheLocked() {
         purgeTileCache(reason = "invalidate")
         purgeHillshadeTileCache(reason = "invalidate")
         forceRedraw()
     }
 
-    fun onExternalCachesCleared() {
+    private suspend fun onExternalCachesClearedLocked() {
         clearCurrentLayer()
         destroyHillsRenderConfig()
-        runCatching { tileCache.destroy() }
-            .onFailure { Log.w(TAG, "onExternalCachesCleared: tileCache.destroy() failed", it) }
+        val previous = tileCache
+        tileCache = null
+        workOwner.release { previous?.destroy() }
         currentTileCacheId = "$CACHE_ID_PREFIX-bootstrap"
-        tileCache = createTileCache(cacheId = currentTileCacheId)
         rebuildTileCacheRequested = true
         currentDemSignature = null
 
@@ -1017,7 +1109,7 @@ class MapRenderer(
             publishReliefOverlayState(force = true)
             forceRedraw()
         } else {
-            updateMapLayer(mapPath)
+            updateMapLayerLocked(mapPath)
         }
     }
 
@@ -1046,10 +1138,11 @@ class MapRenderer(
     }
 
     fun destroy() {
+        workOwner.destroy()
         cancelFirstVisibleMapTiming(reason = "destroyed")
         clearCurrentLayer()
         destroyHillsRenderConfig()
-        runCatching { tileCache.destroy() }
+        runCatching { tileCache?.destroy() }
             .onFailure { Log.w(TAG, "destroy: tileCache.destroy() failed", it) }
         reliefOverlayStateListeners.clear()
         lastPublishedReliefOverlayState = null
@@ -1128,11 +1221,11 @@ class MapRenderer(
         }
     }
 
-    private fun forceReloadCurrentMapLayer(mapPath: String) {
+    private suspend fun forceReloadCurrentMapLayer(mapPath: String) {
         currentMapPath = null
         currentMapSignature = null
         currentDemSignature = null
-        updateMapLayer(mapPath)
+        updateMapLayerLocked(mapPath)
     }
 
     private fun armStartupTilePrewarm(layer: FirstVisibleTileRendererLayer) {
@@ -1178,11 +1271,11 @@ class MapRenderer(
     }
 
     @Suppress("LongMethod", "ReturnCount")
-    private fun buildHillsRenderConfigOrNull(
+    private suspend fun buildHillsRenderConfigOrNull(
         demSignature: String?,
         requiredDemTileIds: Set<String>?,
     ): HillsRenderConfig? {
-        val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.buildHillsRenderConfigOrNull")
+        val timingMarker = MapHotPathDiagnostics.beginAsync("mapRenderer.buildHillsRenderConfigOrNull")
         var timingStatus = "ok"
         val hasExistingConfiguration = hillsRenderConfig != null
         return try {
@@ -1216,7 +1309,7 @@ class MapRenderer(
                 return null
             }
             val effectiveDemRootDirs =
-                resolveHillshadeDemRootDirs(hillshadeDemRootDirs, requiredDemTileIds)
+                workOwner.read { resolveHillshadeDemRootDirs(hillshadeDemRootDirs, requiredDemTileIds) }
             if (effectiveDemRootDirs.isEmpty()) {
                 timingStatus = "missing_renderable_dem"
                 Log.d(
@@ -1279,22 +1372,25 @@ class MapRenderer(
 
             val config =
                 runCatching {
-                    val demFolder =
-                        MapsforgeHillshadeDemFolder(
-                            demRootDirs = effectiveDemRootDirs,
-                            requiredTileIds = requiredDemTileIds,
-                        )
-                    val tileSource =
-                        MemoryCachingHgtReaderTileSource(
-                            demFolder,
-                            createWearHillShadingAlgorithm(),
-                            AndroidGraphicFactory.INSTANCE,
-                        )
-                    HillsRenderConfig(tileSource)
-                        .setMagnitudeScaleFactor(1f)
-                        .setExternal(true)
-                        .indexOnThread()
+                    workOwner.prepare(release = HillsRenderConfig::interruptAndDestroy) {
+                        val demFolder =
+                            MapsforgeHillshadeDemFolder(
+                                demRootDirs = effectiveDemRootDirs,
+                                requiredTileIds = requiredDemTileIds,
+                            )
+                        val tileSource =
+                            MemoryCachingHgtReaderTileSource(
+                                demFolder,
+                                createWearHillShadingAlgorithm(),
+                                AndroidGraphicFactory.INSTANCE,
+                            )
+                        HillsRenderConfig(tileSource)
+                            .setMagnitudeScaleFactor(1f)
+                            .setExternal(true)
+                            .indexOnThread()
+                    }
                 }.getOrElse { e ->
+                    if (e is CancellationException) throw e
                     timingStatus = "error_${e.javaClass.simpleName}"
                     Log.w(
                         TAG,
@@ -1355,7 +1451,7 @@ class MapRenderer(
             detail = "warmStartupCache=$warmStartupCache externalHillshade=true",
         ) {
             FirstVisibleTileRendererLayer(
-                tileCache,
+                checkNotNull(tileCache),
                 mapDataStore,
                 mapView.model.mapViewPosition,
                 AndroidGraphicFactory.INSTANCE,
@@ -1385,7 +1481,7 @@ class MapRenderer(
         }
 
     @Suppress("LongMethod", "ReturnCount")
-    private fun updateHillshadeLayer(
+    private suspend fun updateHillshadeLayer(
         mapFile: File,
         demSignature: String?,
         requiredDemTileIds: Set<String>?,
@@ -1445,15 +1541,31 @@ class MapRenderer(
                 demSourceId = DemSource.LOAD_PRIORITY.joinToString(">") { source -> source.id },
                 demSignature = demSignature,
             )
-        val cache = createHillshadeTileCache(cacheId)
-        val hillshadeMapStore =
+        val (cache, hillshadeMapStore) =
             runCatching {
-                MapHotPathDiagnostics.measure(
-                    stage = "mapRenderer.openHillshadeMapFile",
-                    detail = "file=${mapFile.name}",
-                ) { MapFile(mapFile) }
+                workOwner.prepare(
+                    release = { resources ->
+                        try {
+                            resources.second.close()
+                        } finally {
+                            resources.first.destroy()
+                        }
+                    },
+                ) {
+                    val cache = createHillshadeTileCache(cacheId)
+                    runCatching {
+                        cache to
+                            MapHotPathDiagnostics.measure(
+                                stage = "mapRenderer.openHillshadeMapFile",
+                                detail = "file=${mapFile.name}",
+                            ) { MapFile(mapFile) }
+                    }.getOrElse { error ->
+                        cache.destroy()
+                        throw error
+                    }
+                }
             }.getOrElse { error ->
-                runCatching { cache.destroy() }
+                if (error is CancellationException) throw error
                 Log.w(TAG, "updateHillshadeLayer: Failed opening map store", error)
                 recordHillshadeLayerDecision(
                     status = "error",
@@ -1854,16 +1966,22 @@ class MapRenderer(
         activeHillshadeDemRootDirs = emptyList()
     }
 
-    private fun recreateTileCache(newCacheId: String) {
-        val timingMarker = MapHotPathDiagnostics.begin("mapRenderer.recreateTileCache")
+    private suspend fun recreateTileCache(newCacheId: String) {
+        val timingMarker = MapHotPathDiagnostics.beginAsync("mapRenderer.recreateTileCache")
         val previousCacheId = currentTileCacheId
         try {
             // The old layer is already stopped. Keep its disk bucket when changing identities;
             // an explicit rebuild of the same identity still invalidates its rendered content.
-            runCatching { closeMapRendererTileCache(tileCache, previousCacheId, newCacheId) }
-                .onFailure { Log.w(TAG, "recreateTileCache: failed to destroy previous cache", it) }
+            val previous = tileCache
+            tileCache = null
+            workOwner.release {
+                previous?.let { cache ->
+                    runCatching { closeMapRendererTileCache(cache, previousCacheId, newCacheId) }
+                        .onFailure { Log.w(TAG, "recreateTileCache: failed to destroy previous cache", it) }
+                }
+            }
             currentTileCacheId = newCacheId
-            tileCache = createTileCache(cacheId = currentTileCacheId)
+            tileCache = workOwner.prepare(release = TileCache::destroy) { createTileCache(cacheId = newCacheId) }
             maybeCleanupPersistentCachesAsync()
         } finally {
             MapHotPathDiagnostics.end(
@@ -1875,22 +1993,26 @@ class MapRenderer(
         }
     }
 
-    private fun purgeTileCache(reason: String) {
-        MapHotPathDiagnostics.measure(
-            stage = "mapRenderer.purgeTileCache",
-            detail = "reason=$reason cacheId=$currentTileCacheId",
-        ) {
-            tileCache.tryPurge()
+    private suspend fun purgeTileCache(reason: String) {
+        workOwner.read {
+            MapHotPathDiagnostics.measure(
+                stage = "mapRenderer.purgeTileCache",
+                detail = "reason=$reason cacheId=$currentTileCacheId",
+            ) {
+                tileCache?.tryPurge()
+            }
         }
     }
 
-    private fun purgeHillshadeTileCache(reason: String) {
+    private suspend fun purgeHillshadeTileCache(reason: String) {
         val cache = hillshadeTileCache ?: return
-        MapHotPathDiagnostics.measure(
-            stage = "mapRenderer.purgeHillshadeTileCache",
-            detail = "reason=$reason cacheId=$currentHillshadeTileCacheId",
-        ) {
-            cache.tryPurge()
+        workOwner.read {
+            MapHotPathDiagnostics.measure(
+                stage = "mapRenderer.purgeHillshadeTileCache",
+                detail = "reason=$reason cacheId=$currentHillshadeTileCacheId",
+            ) {
+                cache.tryPurge()
+            }
         }
     }
 
@@ -1931,13 +2053,15 @@ class MapRenderer(
         ).start()
     }
 
-    private fun computeDemSignatureOrNull(): String? {
+    private suspend fun computeDemSignatureOrNull(): String? {
         if (!currentHillShadingEnabled && !currentReliefOverlayEnabled) return null
-        return DemSignatureStore.resolveSignature(
-            context = context,
-            demRootDirs = demRootDirs,
-            maxDepth = DEM_SCAN_MAX_DEPTH,
-        )
+        return workOwner.read {
+            DemSignatureStore.resolveSignature(
+                context = context,
+                demRootDirs = demRootDirs,
+                maxDepth = DEM_SCAN_MAX_DEPTH,
+            )
+        }
     }
 
     private fun updateReliefOverlayLayer() {
