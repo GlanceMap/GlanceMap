@@ -112,6 +112,14 @@ private fun CompassDeepTraceEventRecord.toCompassDeepTraceLine(): String =
                 append(" mapRotationDeg=").append(value.mapRotationDeg.formatTrace(1))
                 append(" heldOutput=").append(value.heldOutput)
                 append(" provenance=").append(value.provenance.traceToken())
+                append(" relativeMotion=").append(value.relativeMotionSample != null)
+                append(" coneSuppressed=").append(value.coneSuppressed)
+                value.relativeMotionSample?.let { motion ->
+                    append(" relativeAtMs=").append(motion.atElapsedMs)
+                    append(" relativeHeadingDeg=").append(motion.headingDeg.formatTrace(1))
+                    append(" relativeProvenance=").append(motion.provenance.traceToken())
+                    append(" displayRotation=").append(motion.displayRotation)
+                }
             }
             is CompassDeepTraceEvent.Telemetry -> {
                 append(" type=telemetry atMs=").append(value.atElapsedMs)

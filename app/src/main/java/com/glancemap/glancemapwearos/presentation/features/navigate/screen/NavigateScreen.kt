@@ -47,7 +47,6 @@ import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
-import com.glancemap.glancemapwearos.presentation.features.recording.recordedTraceSegments
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteModifyMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolKind
@@ -114,7 +113,8 @@ fun NavigateScreen(
     val menuClickGuardUntilElapsedMs = lifecycleState.menuClickGuardUntilElapsedMs
 
     // ---- UI STATE ----
-    val uiState by navigateViewModel.uiState.collectAsState()
+    val initialUiState = remember(navigateViewModel) { navigateViewModel.currentStateSnapshot }
+    val uiState by navigateViewModel.presentationState.collectAsState(initial = initialUiState)
     val navMode by navigateViewModel.navMode.collectAsState()
     val showCalibrationDialog = uiState.showCalibrationDialog
     val currentZoomLevel = uiState.currentZoomLevel
@@ -218,11 +218,6 @@ fun NavigateScreen(
                 SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> turnByTurnScreenOnGpsEnabled
                 SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS -> false
                 else -> true
-            }
-        val recordingTraceSegments =
-            remember(traceRecordingState.points) {
-                recordedTraceSegments(traceRecordingState.points)
-                    .map { segment -> segment.map { it.latLong } }
             }
         val recordingStatusMessage =
             rememberRecordingStatusMessage(
@@ -508,7 +503,7 @@ fun NavigateScreen(
                 isBikeActivityProfile = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 navigationMarkerBitmap = navigationMarkerBitmap,
                 historicalNavigationMarkerBitmap = historicalNavigationMarkerBitmap,
-                retainedLocationAnchor = uiState.retainedLocationAnchor,
+                retainedLocationAnchor = navigateViewModel.currentStateSnapshot.retainedLocationAnchor,
                 suppressLocationMarker = offlineMode,
                 navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             )
@@ -592,13 +587,14 @@ fun NavigateScreen(
                 createPreviewInProgress = routeToolCreatePreviewInProgress,
             )
         MapOverlays(
+            mapViewModel = mapViewModel,
             mapHolder = mapHolder,
             activeGpxDetails = activeGpxDetails,
             routeToolPreviewPoints =
                 routeToolPreview?.previewPoints
                     ?: displayedRouteToolCreatePreview?.previewPoints
                     ?: emptyList(),
-            recordingTraceSegments = recordingTraceSegments,
+            recordingTraceState = traceRecordingState,
             recordingTraceFollowsMarker = traceRecordingState.active && !traceRecordingState.paused,
             routeToolCreatePreviewActive = displayedRouteToolCreatePreview != null,
             routeToolDraftPoints = routeToolDraftConnectorPoints,
@@ -722,9 +718,12 @@ fun NavigateScreen(
             NavigateStartupCenteringEffects(
                 offlineMode = offlineMode,
                 shouldTrackLocation = shouldTrackLocation,
+                shouldFollowPosition = shouldFollowPosition,
+                startupLocation = rawCurrentLocation,
+                gpsSignalSnapshot = gpsSignalSnapshot,
                 locationMarkerLatLong = locationMarker?.latLong,
                 lastKnownLocation = uiState.lastKnownLocation,
-                retainedLocationAnchor = uiState.retainedLocationAnchor,
+                retainedLocationAnchor = navigateViewModel.currentStateSnapshot.retainedLocationAnchor,
                 startupMapFallbackState = uiState.startupMapFallbackState,
                 onStartupMapFallbackEvent = navigateViewModel::onStartupMapFallbackEvent,
                 navigateTarget = navigateTarget,

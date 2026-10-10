@@ -243,14 +243,9 @@ class WatchNavigationBenchmarks {
                     ),
             ),
             TraceSectionMetric(
-                sectionName = "relief.demReadBytes",
+                sectionName = "relief.demReadDecode",
                 mode = TraceSectionMetric.Mode.Sum,
-                label = "reliefDemRead",
-            ),
-            TraceSectionMetric(
-                sectionName = "relief.demDecode",
-                mode = TraceSectionMetric.Mode.Sum,
-                label = "reliefDemDecode",
+                label = "reliefDemReadDecode",
             ),
             TraceSectionMetric(
                 sectionName = "relief.overlayTileBuild",

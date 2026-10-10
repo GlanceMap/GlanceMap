@@ -37,3 +37,19 @@ data class NavigateUiState(
     val retainedLocationAnchor: RetainedLocationAnchor? = null,
     val startupMapFallbackState: StartupMapFallbackState = StartupMapFallbackState.WAITING,
 )
+
+/** Rendered coordinates remain retained for wake; only trust/UI changes invalidate the screen. */
+internal fun sameNavigatePresentationState(
+    previous: NavigateUiState,
+    next: NavigateUiState,
+): Boolean {
+    val previousAnchor = previous.retainedLocationAnchor
+    val nextAnchor = next.retainedLocationAnchor
+    val sameAnchorMetadata =
+        if (previousAnchor == null || nextAnchor == null) {
+            previousAnchor == nextAnchor
+        } else {
+            previousAnchor.copy(latLong = nextAnchor.latLong) == nextAnchor
+        }
+    return sameAnchorMetadata && previous.copy(retainedLocationAnchor = nextAnchor) == next
+}

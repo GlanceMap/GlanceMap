@@ -25,7 +25,7 @@ internal class CompassDeepTraceSensorRegistration(
 
 internal fun startCompassDeepTraceSensorRegistration(
     context: Context,
-    onSample: (CompassDeepTraceRawSensor, FloatArray, Long) -> Unit,
+    onSample: (CompassDeepTraceRawSensor, FloatArray, Int, Long) -> Unit,
 ): CompassDeepTraceSensorRegistration {
     val manager = context.applicationContext.getSystemService(SensorManager::class.java)
     val thread = HandlerThread("CompassDeepTrace").apply { start() }
@@ -38,12 +38,13 @@ internal fun startCompassDeepTraceSensorRegistration(
                         Sensor.TYPE_GYROSCOPE -> CompassDeepTraceRawSensor.GYROSCOPE
                         Sensor.TYPE_ACCELEROMETER -> CompassDeepTraceRawSensor.ACCELEROMETER
                         Sensor.TYPE_MAGNETIC_FIELD -> CompassDeepTraceRawSensor.MAGNETOMETER
+                        Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> CompassDeepTraceRawSensor.UNCALIBRATED_MAGNETOMETER
                         else -> return
                     }
                 val atElapsedMs =
                     (event.timestamp / 1_000_000L).takeIf { it > 0L }
                         ?: SystemClock.elapsedRealtime()
-                onSample(sensor, event.values, atElapsedMs)
+                onSample(sensor, event.values, event.accuracy, atElapsedMs)
             }
 
             override fun onAccuracyChanged(
@@ -74,6 +75,7 @@ private fun registerCompassDeepTraceSensors(
         Sensor.TYPE_GYROSCOPE to "gyroscope",
         Sensor.TYPE_ACCELEROMETER to "accelerometer",
         Sensor.TYPE_MAGNETIC_FIELD to "magnetometer",
+        Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED to "uncalibrated_magnetometer",
     ).forEach { (sensorType, label) ->
         val sensor = manager.getDefaultSensor(sensorType) ?: return@forEach
         val success =

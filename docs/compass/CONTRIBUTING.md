@@ -17,6 +17,10 @@ If you change navigation integration around compass start/stop behavior, also ru
 ./gradlew :app:testDebugUnitTest --tests "*presentation.features.navigate*"
 ```
 
+For generation, freshness, or wake-gate changes, include a production-path regression that crosses
+the registration or wake boundary. Do not replace it with a standalone generation comparison or a
+synthetic gate-only held flag; the sample must flow through the adapter/processor/engine contract.
+
 ## Manual Device Checklist
 
 Sanity check on watch:
@@ -28,11 +32,28 @@ Sanity check on watch:
 - heading source mode switch (`AUTO`, `TYPE_HEADING`, `ROTATION_VECTOR`, `MAGNETOMETER`),
 - north reference switch (`TRUE`, `MAGNETIC`),
 - recalibration trigger behavior.
+- moving acquisition and stationary wake, including a wake during wrist tilt;
+- magnetic interference, magnetic-feed loss, and degraded recovery;
+- during a sustained magnetic hold, the cone hides while the location dot remains and fresh
+  game-rotation turns move the map from its last visible orientation; ordinary weak confidence and
+  brief disturbance should not blink the cone; an interference warning that still allows normal
+  absolute heading movement must not activate this fallback;
+- a disturbed cold start hides the cone immediately and follows fresh relative turns from the map's
+  current orientation; a later usable absolute heading reconnects with the existing visual cap;
+- fast 180/360-degree turns and immediate reversals remain smooth, with dot/cone alignment through
+  panning, zoom, lower marker placement, and background image swaps;
+- magnetic motion stops on a sensor gap/steep tilt or after 60 seconds without absolute recovery;
+  wake must not replay hidden motion or renew that budget, and recovery must reconnect without a snap;
+- after a previous hold, ordinary wake must restore the cone once fresh absolute heading is admitted
+  by the wake gate and visual reconnection finishes; old disagreement metadata or motion-budget
+  expiry alone must not keep it hidden, while a current magnetic/jump hold must still protect heading;
+- custom sensor/source combinations where available.
 
 ## Where To Change Code
 
 - Sensor pipeline, smoothing, quality, declination:
-  - `CompassManager.kt`
+  - `SensorManagerOrientationProvider.kt`, `CompassHeadingProcessor.kt`, `CompassAlgorithms.kt`,
+    `CompassManager.Support.kt`, `CompassRuntime.kt`
 
 - Compass lifecycle and low-power orchestration in navigation:
   - `NavigateCompassEffects.kt`

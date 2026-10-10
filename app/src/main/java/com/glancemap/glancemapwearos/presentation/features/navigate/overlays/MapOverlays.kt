@@ -5,25 +5,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxInspectionUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionABUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionAUiState
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupA
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupAB
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
+import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlaySource
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingTraceOverlayEffect
+import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
@@ -53,10 +61,11 @@ private const val ROUTE_TOOL_PREVIEW_BLUE = 232
 @OptIn(FlowPreview::class)
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 internal fun MapOverlays(
+    mapViewModel: MapViewModel,
     mapHolder: MapHolder,
     activeGpxDetails: List<GpxTrackDetails>,
     routeToolPreviewPoints: List<LatLong>,
-    recordingTraceSegments: List<List<LatLong>>,
+    recordingTraceState: TraceRecordingUiState,
     recordingTraceFollowsMarker: Boolean,
     routeToolCreatePreviewActive: Boolean,
     routeToolDraftPoints: List<LatLong>,
@@ -97,6 +106,12 @@ internal fun MapOverlays(
     onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
 ) {
     val mapView = mapHolder.mapView
+    var compassConeSuppressed by remember(mapView) {
+        mutableStateOf(
+            compassRenderStateFlow.value.providerType == CompassProviderType.GOOGLE_FUSED &&
+                mapViewModel.navigateMagneticMotionFallback?.coneSuppressed == true,
+        )
+    }
     val gpsAccuracyCircleLayer =
         remember(mapView) {
             val fill =
@@ -113,11 +128,13 @@ internal fun MapOverlays(
             GpsAccuracyCircleLayer(
                 fillPaint = fill,
                 strokePaint = stroke,
+                displayFrameOwner = mapView as? DisplayFrameLayerOwner,
             )
         }
     val compassConeLayer =
         remember(mapView) {
-            findExistingCompassConeLayer(mapView) ?: CompassConeLayer()
+            val frameOwner = mapView as? DisplayFrameLayerOwner
+            findExistingCompassConeLayer(mapView) ?: CompassConeLayer(displayFrameOwner = frameOwner)
         }
     val markerAHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
     val markerBHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
@@ -170,6 +187,7 @@ internal fun MapOverlays(
     }
 
     NavigationOrientationEffect(
+        mapViewModel = mapViewModel,
         isCompassMode = navMode == NavMode.COMPASS_FOLLOW,
         isAutoCentering = navMode != NavMode.PANNING,
         forceNorthUpInPanning = forceNorthUpInPanning,
@@ -181,6 +199,7 @@ internal fun MapOverlays(
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
         onRenderedHeadingChanged = onRenderedHeadingChanged,
         onRenderedMapRotationChanged = onRenderedMapRotationChanged,
+        onCompassConeSuppressedChanged = { compassConeSuppressed = it },
         requestMapRedraw = requestMapRedraw,
     )
 
@@ -199,7 +218,7 @@ internal fun MapOverlays(
         mapView = mapView,
         compassInteractive = compassInteractive,
         navMode = navMode,
-        showCompassConeOverlay = showCompassConeOverlay,
+        showCompassConeOverlay = showCompassConeOverlay && !compassConeSuppressed,
         compassConeBaseSizePx = compassConeBaseSizePx,
         compassQuality = compassQuality,
         compassHeadingErrorDeg = compassHeadingErrorDeg,
@@ -249,7 +268,7 @@ internal fun MapOverlays(
 
     RecordingTraceOverlayEffect(
         mapView = mapView,
-        segments = recordingTraceSegments,
+        recordingState = recordingTraceState,
         followLocationMarker = recordingTraceFollowsMarker,
         locationMarker = locationMarker,
         topOverlayCoordinator = topOverlayCoordinator,
@@ -464,10 +483,19 @@ private fun PoiOverlayEffect(
     val markersByKey = remember(mapView) { mutableMapOf<String, PoiMarkerEntry>() }
     val viewportQueryCache = remember(mapView) { PoiOverlayViewportQueryCache() }
     val markerBitmapCache =
-        remember(mapView, poiMarkerStyle) {
-            mutableMapOf<Pair<Int, String>, Map<PoiType, AndroidBitmap>>()
+        remember(mapView) {
+            PoiMarkerBitmapCache<AndroidBitmap>(onEvicted = AndroidBitmap::decrementRefCount)
         }
-    val latestSources = rememberUpdatedState(activePoiOverlaySources)
+    val preparationConfig =
+        poiMarkerPreparationConfig(
+            sources = activePoiOverlaySources,
+            markerSizePx = poiMarkerSizePx,
+            markerStyle = poiMarkerStyle,
+        )
+    val latestPreparationConfig = rememberUpdatedState(preparationConfig)
+    val preparationVersion = remember(mapView) { PoiMarkerPreparationVersion(preparationConfig) }
+    SideEffect { preparationVersion.update(preparationConfig) }
+    val poiAssets = remember(mapView) { mapView.context.applicationContext.assets }
     val querySignals =
         remember(mapView) {
             MutableSharedFlow<Unit>(
@@ -484,9 +512,14 @@ private fun PoiOverlayEffect(
         }
 
     fun clearAllMarkers() {
+        val clearVersion = preparationVersion.snapshot()
         mapView.mutateLayers { layers ->
+            if (!preparationVersion.isCurrent(clearVersion)) return@mutateLayers
             if (markersByKey.isEmpty()) return@mutateLayers
-            markersByKey.values.forEach { entry -> layers.remove(entry.marker) }
+            markersByKey.values.forEach { entry ->
+                layers.remove(entry.marker)
+                entry.marker.onDestroy()
+            }
             markersByKey.clear()
             requestMapRedraw()
         }
@@ -522,7 +555,8 @@ private fun PoiOverlayEffect(
         querySignals
             .sample(320L)
             .collect {
-                if (latestSources.value.isEmpty()) {
+                val requestConfig = latestPreparationConfig.value
+                if (requestConfig.sources.isEmpty()) {
                     clearAllMarkers()
                     return@collect
                 }
@@ -559,22 +593,9 @@ private fun PoiOverlayEffect(
                         minLon = minLon,
                         maxLon = maxLon,
                     )
-                val effectiveMarkerSizePx = effectivePoiMarkerSizePx(poiMarkerSizePx, zoom)
-                val markerBitmapByType =
-                    markerBitmapCache.getOrPut(effectiveMarkerSizePx to poiMarkerStyle) {
-                        val iconSizePx = (effectiveMarkerSizePx * 0.72f).toInt().coerceAtLeast(12)
-                        PoiType.entries.associateWith { type ->
-                            val osmIcon = loadOsmPoiIconBitmapOrNull(mapView, type, sizePx = iconSizePx)
-                            AndroidBitmap(
-                                if (poiMarkerStyle == SettingsRepository.POI_MARKER_STYLE_THEME_ICON) {
-                                    createPoiThemeIconMarkerBitmap(osmIcon, effectiveMarkerSizePx, fallbackType = type)
-                                } else {
-                                    createPoiTypeMarkerBitmap(type, osmIcon, sizePx = effectiveMarkerSizePx)
-                                },
-                            )
-                        }
-                    }
-
+                val requestVersion = preparationVersion.invalidate()
+                // A superseded queued result must not suppress a retry at its old viewport.
+                viewportQueryCache.invalidate()
                 val markers =
                     withContext(Dispatchers.IO) {
                         poiViewModel.queryVisibleMarkers(
@@ -582,6 +603,62 @@ private fun PoiOverlayEffect(
                             zoomLevel = zoom,
                         )
                     }
+
+                fun isRequestCurrent(): Boolean =
+                    preparationVersion.isCurrent(requestVersion) &&
+                        mapView
+                            .model
+                            .mapViewPosition
+                            .zoomLevel
+                            .toInt() == zoom
+
+                if (!isRequestCurrent()) return@collect
+
+                val effectiveMarkerSizePx = effectivePoiMarkerSizePx(requestConfig.markerSizePx, zoom)
+                val requiredTypes = requiredPoiMarkerTypes(markers)
+                val markerBitmapByType = HashMap<PoiType, AndroidBitmap>(requiredTypes.size)
+                requiredTypes.forEach { type ->
+                    markerBitmapCache[
+                        PoiMarkerBitmapKey(
+                            type = type,
+                            effectiveMarkerSizePx = effectiveMarkerSizePx,
+                            markerStyle = requestConfig.markerStyle,
+                        ),
+                    ]?.let { bitmap -> markerBitmapByType[type] = bitmap }
+                }
+
+                val missingTypes = requiredTypes.filterNot(markerBitmapByType::containsKey).toSet()
+                val preparedBitmaps =
+                    if (missingTypes.isEmpty()) {
+                        emptyMap()
+                    } else {
+                        preparePoiMarkerBitmapsOnIo {
+                            preparePoiMarkerBitmaps(
+                                assets = poiAssets,
+                                types = missingTypes,
+                                effectiveMarkerSizePx = effectiveMarkerSizePx,
+                                markerStyle = requestConfig.markerStyle,
+                            )
+                        }
+                    }
+
+                if (!isRequestCurrent()) {
+                    preparedBitmaps.values.forEach(AndroidBitmap::decrementRefCount)
+                    return@collect
+                }
+
+                preparedBitmaps.forEach { (type, bitmap) ->
+                    markerBitmapCache.put(
+                        PoiMarkerBitmapKey(
+                            type = type,
+                            effectiveMarkerSizePx = effectiveMarkerSizePx,
+                            markerStyle = requestConfig.markerStyle,
+                        ),
+                        bitmap,
+                    )
+                    markerBitmapByType[type] = bitmap
+                }
+
                 viewportQueryCache.recordSuccessfulQuery(
                     center = center,
                     zoomLevel = zoom,
@@ -590,12 +667,15 @@ private fun PoiOverlayEffect(
                 onPoiMarkersSnapshotChanged(markers)
 
                 mapView.mutateLayers { layers ->
+                    // Gestures can defer this mutation beyond a newer query or cache disposal.
+                    if (!isRequestCurrent()) return@mutateLayers
                     val wantedKeys = markers.map { it.key }.toSet()
                     var changed = false
 
                     (markersByKey.keys - wantedKeys).forEach { key ->
                         markersByKey.remove(key)?.let { entry ->
                             layers.remove(entry.marker)
+                            entry.marker.onDestroy()
                             changed = true
                         }
                     }
@@ -608,13 +688,13 @@ private fun PoiOverlayEffect(
                                 ?: markerBitmapByType[PoiType.GENERIC]
                                 ?: return@forEach
                         if (existing == null) {
-                            val marker = Marker(latLong, bitmap, 0, 0)
+                            val marker = createPoiOverlayMarker(latLong, bitmap)
                             markersByKey[point.key] =
                                 PoiMarkerEntry(
                                     marker = marker,
                                     type = point.type,
                                     markerSizePx = effectiveMarkerSizePx,
-                                    markerStyle = poiMarkerStyle,
+                                    markerStyle = requestConfig.markerStyle,
                                 )
                             layers.add(marker)
                             changed = true
@@ -622,16 +702,17 @@ private fun PoiOverlayEffect(
                             if (
                                 existing.type != point.type ||
                                 existing.markerSizePx != effectiveMarkerSizePx ||
-                                existing.markerStyle != poiMarkerStyle
+                                existing.markerStyle != requestConfig.markerStyle
                             ) {
+                                val marker = createPoiOverlayMarker(latLong, bitmap)
                                 layers.remove(existing.marker)
-                                val marker = Marker(latLong, bitmap, 0, 0)
+                                existing.marker.onDestroy()
                                 markersByKey[point.key] =
                                     PoiMarkerEntry(
                                         marker = marker,
                                         type = point.type,
                                         markerSizePx = effectiveMarkerSizePx,
-                                        markerStyle = poiMarkerStyle,
+                                        markerStyle = requestConfig.markerStyle,
                                     )
                                 layers.add(marker)
                                 changed = true
@@ -652,12 +733,17 @@ private fun PoiOverlayEffect(
 
     DisposableEffect(mapView) {
         onDispose {
+            preparationVersion.invalidate()
             onPoiMarkersSnapshotChanged(emptyList())
             mapView.mutateLayers { layers ->
-                markersByKey.values.forEach { entry -> layers.remove(entry.marker) }
+                markersByKey.values.forEach { entry ->
+                    layers.remove(entry.marker)
+                    entry.marker.onDestroy()
+                }
                 markersByKey.clear()
                 mapView.requestLayerRedrawSafely()
             }
+            markerBitmapCache.clear()
         }
     }
 }
@@ -1080,7 +1166,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerAHolder[0] =
                 selectedPointA?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapA, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapA, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true
@@ -1102,7 +1188,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerBHolder[0] =
                 selectedPointB?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapB, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapB, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true

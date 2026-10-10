@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -20,7 +22,10 @@ class UserPoiRepository(
         private const val KEY_CREATED_AT = "createdAtEpochMs"
     }
 
-    suspend fun readSourceState(): UserPoiSourceState = readStore()
+    suspend fun readSourceState(): UserPoiSourceState =
+        withContext(Dispatchers.IO) {
+            tracePoiMetadata("user_source") { readStore() }
+        }
 
     suspend fun createPoi(
         lat: Double,

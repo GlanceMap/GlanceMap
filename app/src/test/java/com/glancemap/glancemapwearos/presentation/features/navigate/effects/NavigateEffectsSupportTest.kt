@@ -1066,23 +1066,23 @@ class NavigateEffectsSupportTest {
     }
 
     @Test
-    fun activeCompassTurnAllowsDisplayRateMapsforgeRotation() {
-        assertTrue(
-            shouldThrottleMapsforgeRotation(
-                navMode = NavMode.COMPASS_FOLLOW,
-                nowElapsedMs = 1_015L,
-                lastAppliedAtElapsedMs = 1_000L,
-                highFrequencyRotation = true,
-            ),
-        )
-        assertFalse(
-            shouldThrottleMapsforgeRotation(
-                navMode = NavMode.COMPASS_FOLLOW,
-                nowElapsedMs = 1_016L,
-                lastAppliedAtElapsedMs = 1_000L,
-                highFrequencyRotation = true,
-            ),
-        )
+    fun activeCompassTurnDoesNotDiscardSubDegreeMotionOrRoundedFrameIntervals() {
+        for (frameMs in listOf(8L, 11L, 15L, 16L, 17L)) {
+            assertFalse(
+                shouldThrottleMapsforgeRotation(
+                    navMode = NavMode.COMPASS_FOLLOW,
+                    nowElapsedMs = 1_000L + frameMs,
+                    lastAppliedAtElapsedMs = 1_000L,
+                    highFrequencyRotation = true,
+                ),
+            )
+        }
+        for (delta in listOf(-0.1f, 0.1f, 0.3f)) {
+            assertTrue(shouldApplyMapsforgeRotation(delta, highFrequencyRotation = true))
+            assertFalse(shouldApplyMapsforgeRotation(delta, highFrequencyRotation = false))
+        }
+        assertFalse(shouldApplyMapsforgeRotation(0f, highFrequencyRotation = true))
+        assertFalse(shouldApplyMapsforgeRotation(Float.NaN, highFrequencyRotation = true))
     }
 
     @Test
