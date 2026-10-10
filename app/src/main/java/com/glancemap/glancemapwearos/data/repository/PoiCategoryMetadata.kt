@@ -13,8 +13,11 @@ internal fun readPoiCategoryMetadata(poiFile: File): PoiCategoryMetadata {
     if (!poiFile.exists() || !poiFile.isFile) return PoiCategoryMetadata(emptyList(), emptyMap())
 
     val (rawCategories, directPointCountsByCategoryId) =
-        SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            readRawPoiCategories(db) to readDirectPoiCategoryCounts(db)
+        tracePoiMetadata("categories_open", poiFile) {
+            SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        }.use { db ->
+            tracePoiMetadata("category_rows", poiFile) { readRawPoiCategories(db) } to
+                tracePoiMetadata("category_counts", poiFile) { readDirectPoiCategoryCounts(db) }
         }
     val filteredRawCategories = keepCategoriesWithPoiData(rawCategories, directPointCountsByCategoryId.keys)
     val (collapsedRawCategories, mergedAliases) = collapseDuplicateRetainedCategories(filteredRawCategories)
@@ -83,8 +86,10 @@ internal fun readPoiPointCount(
         WHERE pcm.category IN ($placeholders)
         """.trimIndent()
     val args = categoryIds.map { it.toString() }.toTypedArray()
-    return SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-        db.rawQuery(sql, args).use(::readPoiCount)
+    return tracePoiMetadata("point_count_open", poiFile) {
+        SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+    }.use { db ->
+        tracePoiMetadata("unique_count", poiFile) { db.rawQuery(sql, args).use(::readPoiCount) }
     }
 }
 

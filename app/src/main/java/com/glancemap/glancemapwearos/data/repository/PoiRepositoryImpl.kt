@@ -3,7 +3,6 @@ package com.glancemap.glancemapwearos.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import android.database.sqlite.SQLiteDatabase
-import com.glancemap.glancemapwearos.core.maps.GeoBounds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -22,16 +21,27 @@ class PoiRepositoryImpl(
         context.getSharedPreferences("poi_metadata", Context.MODE_PRIVATE)
     }
     private val mergedCategoryAliasesByPath = mutableMapOf<String, Map<Int, Set<Int>>>()
-    private val categoriesCache = PoiFileMetadataCache<PoiCategoryMetadata>()
-    private val coverageCache = PoiFileMetadataCache<GeoBounds?>()
-    private val pointCountCache = PoiFileMetadataCache<Int>()
+    private val categoriesCache by lazy { metadataCache("categories", PoiCategoryMetadataCodec) }
+    private val coverageCache by lazy { metadataCache("coverage", PoiCoverageMetadataCodec) }
+    private val pointCountCache by lazy { metadataCache("counts", PoiPointCountMetadataCodec) }
+
+    private fun <T> metadataCache(
+        name: String,
+        codec: PoiMetadataCodec<T>,
+    ): PoiFileMetadataCache<T> {
+        val directory = File(context.cacheDir, "poi-metadata/$name")
+        return PoiFileMetadataCache(diskStore = PoiMetadataDiskStore(directory, codec))
+    }
 
     companion object {
         private const val KEY_FILE_ENABLED_PREFIX = "file_enabled_"
         private const val KEY_ENABLED_CATEGORY_PREFIX = "enabled_categories_"
     }
 
-    override suspend fun listPoiFiles(): List<File> = withContext(Dispatchers.IO) { poiFiles.list() }
+    override suspend fun listPoiFiles(): List<File> =
+        withContext(Dispatchers.IO) {
+            tracePoiMetadata("list_files") { poiFiles.list() }
+        }
 
     override suspend fun savePoiFileAtomic(
         fileName: String,
@@ -75,7 +85,7 @@ class PoiRepositoryImpl(
     override suspend fun readCategories(path: String): List<PoiCategory> =
         withContext(Dispatchers.IO) {
             val poiFile = File(path)
-            val metadata = categoriesCache.getOrLoad(poiFile) { readPoiCategoryMetadata(poiFile) }
+            val metadata = categoriesCache.getOrLoadTraced(poiFile, "categories") { readPoiCategoryMetadata(poiFile) }
             synchronized(mergedCategoryAliasesByPath) {
                 mergedCategoryAliasesByPath[poiFile.absolutePath] = metadata.aliases
             }
@@ -84,10 +94,13 @@ class PoiRepositoryImpl(
 
     override suspend fun readCoverageBounds(path: String) =
         withContext(Dispatchers.IO) {
-            coverageCache.getOrLoad(File(path)) { readPoiCoverageBounds(path) }
+            coverageCache.getOrLoadTraced(File(path), "coverage") { readPoiCoverageBounds(path) }
         }
 
-    override suspend fun readLinkedGpxWaypointFileName(path: String): String? = poiIo { links.read(path) }
+    override suspend fun readLinkedGpxWaypointFileName(path: String): String? =
+        poiIo {
+            tracePoiMetadata("gpx_link", File(path)) { links.read(path) }
+        }
 
     override suspend fun findGpxWaypointPoiFiles(gpxFileName: String): List<File> = poiIo { links.find(gpxFileName) }
 
@@ -180,7 +193,7 @@ class PoiRepositoryImpl(
                     path = poiFile.absolutePath,
                     categoryIds = categoryIds,
                 )
-            pointCountCache.getOrLoad(poiFile, expandedCategoryIds) {
+            pointCountCache.getOrLoadTraced(poiFile, "point_count", expandedCategoryIds) {
                 readPoiPointCount(poiFile, expandedCategoryIds)
             }
         }

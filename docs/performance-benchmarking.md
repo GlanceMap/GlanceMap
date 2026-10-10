@@ -104,5 +104,39 @@ materially affect tile generation. The release Git SHA does not identify uncommi
   behavior before merging the streaming decoder changes.
 
 Do not infer battery savings from these diagnostic captures. Compare battery separately with the
-same workload and capture mode. Cold POI preparation, recorded-trace display copying, and Compose
-profiling remain separate follow-ups.
+same workload and capture mode. Recorded-trace display copying and Compose profiling remain
+separate follow-ups.
+
+## Cold POI Library Regression Checks
+
+Use Full diagnostics and the same downloaded POI files and visibility selections. The first load
+after installing the metadata cache still runs the existing database scans. Wait for loading to
+complete before testing a process restart; screen wake alone may retain the in-memory cache.
+
+- Restart the app process without clearing app data or cache. `metadata_cache` should report
+  `source=DISK` for unchanged categories, coverage, and previously counted category selections.
+  A forced refresh in the same process should report `source=MEMORY`. Compare `reload_complete`
+  duration and confirm file names, category order, total/enabled counts, coverage, and markers.
+- Change enabled categories and file visibility, then restart. Visibility preferences are read
+  live. A new category selection may run one `source=DATABASE` count; previously counted selections
+  can reuse disk results. Counts must remain unique point counts, including points in several categories.
+- Replace/import a file, including an atomic replacement with the same size and modification time,
+  and delete a file. Changed data must rescan and deleted rows must disappear. Rename a linked GPX
+  file and confirm the POI folder label updates; the GPX link is deliberately read live.
+- Clear only the app cache, retaining downloaded POI files. Loading must rebuild summaries and
+  publish the same library. Missing, invalid, or obsolete records fall back to database reads.
+
+Summaries live in the app's private cache directory, with at most 64 completed records per metadata
+type and 256 KiB per record. They validate source path, size, full modification time and file identity,
+schema version, and checksum. Files without a usable identity skip persistence. Cache reclamation
+by Android can therefore make a later restart cold again.
+
+`metadata_stage` identifies database opening, category rows/grouped counts, coverage, unique counts,
+GPX links, file listing, and the user source read. `metadata_cache` reports a hashed file identifier,
+file size, selection size, and source, without file names or coordinates. These events run only during
+Full capture and occur per operation, without polling. `elapsedMs` includes device sleep;
+`uptimeMs` excludes deep sleep. `cpuMs` is recorded only around synchronous work on one IO thread,
+not around coroutine suspension. `reload_complete` also reports uptime for the whole library load.
+
+Real-watch cold/warm timings, correctness after import/selection changes, and battery impact still
+require device validation; unit tests do not establish those results.

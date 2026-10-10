@@ -802,6 +802,7 @@ class PoiViewModel(
 
     private suspend fun reloadFromDisk(request: PoiReloadRequest) {
         val startedAtElapsedMs = SystemClock.elapsedRealtime()
+        val startedAtUptimeMs = SystemClock.uptimeMillis()
         var listedFileCount = -1
         var importedFileCount = -1
         val showBlockingLoading = _poiFiles.value.none { file -> !isUserPoiPath(file.path) }
@@ -853,9 +854,10 @@ class PoiViewModel(
         } finally {
             _isLoadingPoiFiles.value = false
             val durationMs = SystemClock.elapsedRealtime() - startedAtElapsedMs
+            val uptimeMs = SystemClock.uptimeMillis() - startedAtUptimeMs
             DebugTelemetry.log(
                 "POI",
-                "event=reload_complete reason=${request.reason} durationMs=$durationMs " +
+                "event=reload_complete reason=${request.reason} durationMs=$durationMs uptimeMs=$uptimeMs " +
                     "listedFiles=$listedFileCount importedFiles=$importedFileCount " +
                     "visibleFiles=${_poiFiles.value.size}",
             )

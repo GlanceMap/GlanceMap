@@ -7,22 +7,29 @@ import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 
+internal data class PoiMetadataSignature(
+    val size: Long,
+    val modified: FileTime,
+    val fileKey: Any?,
+)
+
+internal enum class PoiMetadataCacheSource {
+    MEMORY,
+    DISK,
+    DATABASE,
+}
+
 internal class PoiFileMetadataCache<T>(
     private val maxEntries: Int = 64,
+    private val diskStore: PoiMetadataDiskStore<T>? = null,
 ) {
     private data class Key(
         val path: String,
         val categoryIds: Set<Int>,
     )
 
-    private data class Signature(
-        val size: Long,
-        val modified: FileTime,
-        val fileKey: Any?,
-    )
-
     private data class Entry<T>(
-        val signature: Signature,
+        val signature: PoiMetadataSignature,
         val value: T,
     )
 
@@ -37,6 +44,7 @@ internal class PoiFileMetadataCache<T>(
     suspend fun getOrLoad(
         file: File,
         categoryIds: Set<Int> = emptySet(),
+        onSource: (PoiMetadataCacheSource) -> Unit = {},
         load: suspend () -> T,
     ): T {
         val key = Key(file.absolutePath, categoryIds.toSet())
@@ -47,30 +55,61 @@ internal class PoiFileMetadataCache<T>(
                 if (cachedEntry == null) entries.remove(key)
                 invalidationGeneration to cachedEntry
             }
-        if (cached != null) return cached.value
+        val available = cached ?: restore(file, key, signature, generation)
+        if (available != null) {
+            onSource(if (cached != null) PoiMetadataCacheSource.MEMORY else PoiMetadataCacheSource.DISK)
+            return available.value
+        }
 
+        onSource(PoiMetadataCacheSource.DATABASE)
         val value = load()
         val unchanged = signature != null && signature == signatureOf(file)
         // Keep database reads outside the lock so imports can invalidate without waiting for a scan.
         mutex.withLock {
             if (unchanged && generation == invalidationGeneration) {
-                entries[key] = Entry(signature, value)
-                if (entries.size > maxEntries) entries.remove(entries.keys.first())
+                remember(key, Entry(signature, value))
+                diskStore?.write(file, key.categoryIds, signature, value)
             }
         }
         return value
+    }
+
+    private suspend fun restore(
+        file: File,
+        key: Key,
+        signature: PoiMetadataSignature?,
+        generation: Long,
+    ): Entry<T>? {
+        val restored = signature?.let { diskStore?.read(file, key.categoryIds, it) }
+        if (restored == null || signature != signatureOf(file)) return null
+        return mutex.withLock {
+            if (generation != invalidationGeneration) {
+                null
+            } else {
+                Entry(signature, restored.value).also { remember(key, it) }
+            }
+        }
     }
 
     suspend fun invalidate(path: String) {
         mutex.withLock {
             invalidationGeneration += 1
             entries.keys.removeAll { it.path == File(path).absolutePath }
+            diskStore?.invalidate(File(path))
         }
     }
 
-    private fun signatureOf(file: File): Signature? =
+    private fun remember(
+        key: Key,
+        entry: Entry<T>,
+    ) {
+        entries[key] = entry
+        if (entries.size > maxEntries) entries.remove(entries.keys.first())
+    }
+
+    private fun signatureOf(file: File): PoiMetadataSignature? =
         runCatching {
             val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
-            Signature(attributes.size(), attributes.lastModifiedTime(), attributes.fileKey())
+            PoiMetadataSignature(attributes.size(), attributes.lastModifiedTime(), attributes.fileKey())
         }.getOrNull()
 }
