@@ -25,6 +25,9 @@ class BundledAssetThemeComposer(
         private const val TAG = "BundledThemeComposer"
         private const val RESOURCE_THEME_MARKER_FILE = ".theme_id"
         private const val VOLUNTARY_DEFAULT_STYLE_ID = "vol-hiking"
+
+        // Bump when XML composition or bundled rendering changes require cache invalidation.
+        private const val THEME_COMPOSITION_VERSION = 1
     }
 
     private data class StyleMenuMetadata(
@@ -342,11 +345,22 @@ class BundledAssetThemeComposer(
                 themeFingerprintCache[themeId]?.let { return@synchronized it }
                 timingStatus = "cache_miss"
                 val metadata = assetMetadataForTheme(themeId)
+                val applicationInfo = context.applicationInfo
+                val assetFingerprint =
+                    bundledThemeAssetFingerprintOrNull(
+                        apkFiles =
+                            (listOf(applicationInfo.sourceDir) + applicationInfo.splitSourceDirs.orEmpty())
+                                .map(::File),
+                        themePath = metadata.themePath,
+                        resourceRoots = metadata.themeRoot?.let(::setOf) ?: metadata.referencedAssetRoots,
+                    )
+                timingStatus = if (assetFingerprint != null) "asset_content" else "bundle_fallback"
                 val fingerprint =
                     sha256Hex(
                         buildString {
-                            append("bundle:")
-                            append(appBundleFingerprint)
+                            append("composition:").append(THEME_COMPOSITION_VERSION)
+                            append('|')
+                            append(assetFingerprint ?: "bundle:$appBundleFingerprint")
                             append('|')
                             append("theme:")
                             append(themeId)

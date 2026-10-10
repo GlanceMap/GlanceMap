@@ -95,6 +95,15 @@ materially affect tile generation. The release Git SHA does not identify uncommi
   report `generated_theme_cache_hit` and reuse A's tile-cache identity. Four generated XML variants
   are retained per theme using separate usage records; a fifth evicts the least recently used
   unselected variant. Confirm each configuration's appearance and that the current file is retained.
+- After the first use of this fingerprint schema, reinstall/update an APK with unchanged bundled
+  theme assets. `themeComposer.fingerprintForTheme` should report `asset_content` once per theme in
+  the new process; resource preparation and generated XML should report cache hits, preserving the
+  selected variant's tile-cache identity. The fingerprint uses APK entry names, sizes and checksums
+  without extracting resource bytes. Changed XML, added/removed assets, or changed resource content
+  must invalidate the theme. `bundle_fallback` retains installation-based invalidation when APK
+  metadata is unreadable, required assets are missing, or split APK entries are ambiguous. Bump
+  `THEME_COMPOSITION_VERSION` when XML composition or bundled rendering changes require invalidation.
+  A genuinely uncached theme/viewport can still need tile rendering, especially during rapid zoom.
 - During theme changes, compare `theme_viewport_ready` with `mapRenderer.visibleTiles` for the
   current layer. Cache notifications alone cannot complete this wait. The existing 4,500 ms
   appearance timeout remains bounded and reports `theme_viewport_timeout` if tiles are still absent;
