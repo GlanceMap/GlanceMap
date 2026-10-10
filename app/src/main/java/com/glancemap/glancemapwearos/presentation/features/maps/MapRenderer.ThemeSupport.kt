@@ -72,9 +72,8 @@ internal fun computeMapRendererThemeSignature(
     return if (file == null) {
         "ASSET:${bundledThemeId.uppercase(Locale.ROOT)}|HILLS:$hillShadingEnabled"
     } else {
-        val lastModified = runCatching { file.lastModified() }.getOrDefault(0L)
-        val length = runCatching { file.length() }.getOrDefault(0L)
-        "FILE:${file.absolutePath}|$lastModified|$length|THEME:${bundledThemeId.uppercase(Locale.ROOT)}|HILLS:$hillShadingEnabled"
+        "FILE:${mapRendererFileSignature(file)}|THEME:${bundledThemeId.uppercase(Locale.ROOT)}" +
+            "|HILLS:$hillShadingEnabled"
     }
 }
 

@@ -10,8 +10,10 @@ internal fun readPoiCoverageBounds(path: String): GeoBounds? =
     File(path)
         .takeIf { it.exists() && it.isFile }
         ?.let { poiFile ->
-            SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-                queryPoiCoverageBounds(db)
+            tracePoiMetadata("coverage_open", poiFile) {
+                SQLiteDatabase.openDatabase(poiFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            }.use { db ->
+                tracePoiMetadata("coverage_query", poiFile) { queryPoiCoverageBounds(db) }
             }
         }
 

@@ -274,6 +274,7 @@ class MapViewModel(
     private var rendererConfigApplyPending: Boolean = false
     private var themeApplyJob: Job? = null
     private var rendererWorkJob: Job? = null
+    private var rendererConfigJob: Job? = null
     private var mapAppearanceIndicatorGeneration: Long = 0L
     private var visibleMapAppearanceIndicator: MapAppearanceIndicator? = null
     private var hillshadeTerrainEventJob: Job? = null
@@ -451,6 +452,8 @@ class MapViewModel(
         rendererWorkJob?.cancel()
         rendererWorkJob = null
         rendererWorkJobGeneration = null
+        rendererConfigJob?.cancel()
+        rendererConfigJob = null
         mapHolder?.renderer?.destroy()
         runCatching { mapHolder?.mapView?.destroyAll() }
         mapHolder = null
@@ -707,6 +710,8 @@ class MapViewModel(
 
     fun setMapRenderer(renderer: MapRenderer?) {
         if (mapRenderer !== renderer) {
+            rendererConfigJob?.cancel()
+            rendererConfigJob = null
             MapHotPathDiagnostics.recordEvent(
                 stage = "map_lifecycle",
                 status = "renderer_changed",
@@ -717,7 +722,6 @@ class MapViewModel(
             hillshadeTerrainEventJob?.cancel()
             _hillshadeTerrainUnavailableEvent.value = null
             mapRenderer = renderer
-            renderer?.setMapLabelTextScale(latestMapLabelTextScale)
             hillshadeTerrainEventJob =
                 renderer
                     ?.hillshadeTerrainUnavailableEvent
@@ -733,7 +737,7 @@ class MapViewModel(
                         }
                     }?.launchIn(viewModelScope)
         }
-        applyRendererConfigIfReady()
+        requestRendererConfigApply()
         schedulePendingRendererWorkIfReady()
     }
 
@@ -753,6 +757,10 @@ class MapViewModel(
         mapRenderer?.recordCompletedPan()
     }
 
+    internal fun recordStartupMapPreview() {
+        mapRenderer?.recordStartupMapPreview()
+    }
+
     fun dismissHillshadeTerrainUnavailable() {
         _hillshadeTerrainUnavailableEvent.value = null
     }
@@ -768,7 +776,7 @@ class MapViewModel(
     fun onMapViewReadyForRendering() {
         submitPendingThemeSelectionIfReady()
         if (pendingThemeSelection == null && themeApplyJob?.isActive != true && rendererConfigApplyPending) {
-            applyRendererConfigIfReady()
+            requestRendererConfigApply()
         }
         schedulePendingRendererWorkIfReady()
     }
@@ -1017,7 +1025,7 @@ class MapViewModel(
         selection: ThemeSelection,
         awaitVisibleContent: Boolean,
     ) {
-        val timingMarker = MapHotPathDiagnostics.begin("mapViewModel.applyThemeSelection")
+        val timingMarker = MapHotPathDiagnostics.beginAsync("mapViewModel.applyThemeSelection")
         var timingStatus = "ok"
         var themeApplyResult = MapRenderer.ThemeApplyResult()
         Log.d(
@@ -1074,11 +1082,19 @@ class MapViewModel(
                 themeApplyResult.requiresVisibleTileWait &&
                 renderer != null
             ) {
-                renderer.awaitTileCacheUpdateAfter(
-                    baselineVersion = themeApplyResult.tileUpdateBaselineVersion,
-                    timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
+                val viewportRequest = renderer.armViewportReadiness()
+                val ready =
+                    viewportRequest?.let { request ->
+                        renderer.awaitViewportReadiness(request, MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS)
+                    }
+                MapHotPathDiagnostics.recordEvent(
+                    stage = "map_update_ui",
+                    status = if (ready != null) "theme_viewport_ready" else "theme_viewport_timeout",
+                    detail =
+                        "reason=theme_selection scope=viewport " +
+                            "layer=${viewportRequest?.layerId ?: 0} request=${viewportRequest?.requestId ?: 0L}",
                 )
-                delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
+                if (ready != null) delay(MAP_APPEARANCE_VISIBLE_TILE_SETTLE_MS)
             }
         } finally {
             MapHotPathDiagnostics.end(
@@ -1189,12 +1205,14 @@ class MapViewModel(
                     "renderer=${mapRenderer?.let(System::identityHashCode) ?: 0}",
         )
         rendererWorkGeneration += 1L
+        rendererWorkJob?.cancel()
         schedulePendingRendererWorkIfReady()
     }
 
     private fun requestExternalCacheClear() {
         pendingExternalCacheClear = true
         rendererWorkGeneration += 1L
+        rendererWorkJob?.cancel()
         schedulePendingRendererWorkIfReady()
     }
 
@@ -1475,8 +1493,9 @@ class MapViewModel(
                 0L
             }
         if (pendingExternalCacheClear) {
-            pendingExternalCacheClear = false
             renderer.onExternalCachesCleared()
+            // Cancellation while waiting for renderer IO must leave this request pending.
+            pendingExternalCacheClear = false
             renderer.updateMapLayer(selectedMapPath.value)
             applyLatestZoomBounds(reason = "external_cache_clear")
         } else {
@@ -1487,7 +1506,7 @@ class MapViewModel(
         if (!awaitVisibleMap) return true
         val initialViewportReadiness =
             if (firstVisibleRequest == MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD) {
-                renderer.armInitialViewportReadiness()
+                renderer.armViewportReadiness()
             } else {
                 null
             }
@@ -1511,7 +1530,7 @@ class MapViewModel(
                     timeoutMs = MAP_APPEARANCE_VISIBLE_TILE_TIMEOUT_MS,
                     awaitFirstVisible = { timeoutMs ->
                         initialViewportReadiness?.let { request ->
-                            renderer.awaitInitialViewportReadiness(request, timeoutMs)
+                            renderer.awaitViewportReadiness(request, timeoutMs)
                         }
                     },
                     onTimeout = {
@@ -1586,31 +1605,34 @@ class MapViewModel(
         return mapReady
     }
 
-    private fun applyRendererConfigIfReady(): MapRenderer.ThemeApplyResult {
-        if (!hasPreparedThemeSelection) {
-            rendererConfigApplyPending = true
-            return MapRenderer.ThemeApplyResult()
-        }
+    private fun requestRendererConfigApply() {
+        if (rendererConfigJob?.isActive == true) return
         val renderer = mapRenderer
-        if (renderer == null) {
-            rendererConfigApplyPending = true
-            return MapRenderer.ThemeApplyResult()
-        }
-        if (!isMapViewRenderReady()) {
+        rendererConfigJob =
+            viewModelScope.launch {
+                if (mapRenderer === renderer) applyRendererConfigIfReady()
+            }
+    }
+
+    private suspend fun applyRendererConfigIfReady(): MapRenderer.ThemeApplyResult {
+        val renderer = mapRenderer
+        if (!hasPreparedThemeSelection || renderer == null || !isMapViewRenderReady()) {
             rendererConfigApplyPending = true
             return MapRenderer.ThemeApplyResult()
         }
 
         rendererConfigApplyPending = false
-        renderer.setElevationLabelUnitsMetric(latestIsMetric)
-        renderer.setMapLabelTextScale(latestMapLabelTextScale)
-        return renderer.setThemeConfig(
-            themeFile = latestThemeFile,
-            mapsforgeThemeName = latestMapsforgeThemeName,
-            bundledThemeId = latestBundledThemeId,
-            hillShadingEnabled = latestHillShadingEnabled,
-            reliefOverlayEnabled = latestReliefOverlayEnabled,
-            demSource = latestDemSource,
+        return renderer.applyConfiguration(
+            MapRendererConfiguration(
+                elevationLabelsMetric = latestIsMetric,
+                mapLabelTextScale = latestMapLabelTextScale,
+                themeFile = latestThemeFile,
+                mapsforgeThemeName = latestMapsforgeThemeName,
+                bundledThemeId = latestBundledThemeId,
+                hillShadingEnabled = latestHillShadingEnabled,
+                reliefOverlayEnabled = latestReliefOverlayEnabled,
+                demSource = latestDemSource,
+            ),
         )
     }
 

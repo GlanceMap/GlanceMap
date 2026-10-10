@@ -144,7 +144,7 @@ class MapAppearanceIndicatorPolicyTest {
 
             assertTrue(shouldRetainInitialMapLoadIndicator(policy, mapReady = false))
             assertFalse(shouldRetainInitialMapLoadIndicator(policy, mapReady = true))
-            assertTrue(initialVisibleTileViewportReadinessMatches(request, firstVisible))
+            assertTrue(visibleTileViewportReadinessMatches(request, firstVisible))
             assertEquals(2, calls)
             assertTrue(timeoutObserved)
         }
@@ -200,7 +200,7 @@ class MapAppearanceIndicatorPolicyTest {
             )
 
         assertTrue(
-            initialVisibleTileViewportReadinessMatches(
+            visibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,
@@ -221,7 +221,7 @@ class MapAppearanceIndicatorPolicyTest {
             )
 
         assertTrue(
-            initialVisibleTileViewportReadinessMatches(
+            visibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,
@@ -242,7 +242,7 @@ class MapAppearanceIndicatorPolicyTest {
             )
 
         assertFalse(
-            initialVisibleTileViewportReadinessMatches(
+            visibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 102,
@@ -252,7 +252,7 @@ class MapAppearanceIndicatorPolicyTest {
             ),
         )
         assertFalse(
-            initialVisibleTileViewportReadinessMatches(
+            visibleTileViewportReadinessMatches(
                 request,
                 VisibleTileViewportReadinessEvent(
                     layerId = 101,

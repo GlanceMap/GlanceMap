@@ -166,18 +166,6 @@ class GpxViewModel(
     // ----------------------------
     // CACHES
     // ----------------------------
-    private data class CachedMeta(
-        val sig: FileSig,
-        val title: String?,
-        val distance: Double,
-        val elevationGain: Double,
-        val elevationLoss: Double,
-        val isActivity: Boolean,
-        val activityProfile: String?,
-        val activityDurationSec: Double?,
-        val activitySummary: RecordingDashboardSnapshot?,
-    )
-
     private data class CachedEta(
         val sig: FileSig,
         val modelConfig: GpxEtaModelConfig,
@@ -191,7 +179,7 @@ class GpxViewModel(
         val activityProfile: String,
     )
 
-    private val metaCache = LinkedHashMap<String, CachedMeta>(64, 0.75f, true)
+    private val metaCache = LinkedHashMap<String, GpxLibrarySummary>(64, 0.75f, true)
     private val profileCache = LinkedHashMap<String, TrackProfile>(16, 0.75f, true)
     private val etaCache = LinkedHashMap<String, CachedEta>(16, 0.75f, true)
     private val cacheLock = Any()
@@ -461,7 +449,7 @@ class GpxViewModel(
     private fun cachedMeta(
         path: String,
         sig: FileSig,
-    ): CachedMeta? =
+    ): GpxLibrarySummary? =
         synchronized(cacheLock) {
             metaCache[path]?.takeIf { it.sig == sig }
         }
@@ -490,9 +478,11 @@ class GpxViewModel(
 
     private fun putMetaCache(
         path: String,
-        meta: CachedMeta,
+        meta: GpxLibrarySummary,
+        cacheGeneration: Long,
     ) {
         synchronized(cacheLock) {
+            if (cacheGeneration != reloadGeneration) return
             metaCache[path] = meta
             metaCache.trimTo(maxMetaCacheEntries)
         }
@@ -572,9 +562,7 @@ class GpxViewModel(
         loadAndProcessGpxFiles(files, activePaths, requestId)
     }
 
-    // Keep the validated per-file metadata/profile orchestration intact; the reload request guard
-    // only adds safe boundaries around this pipeline, so splitting it would make the data flow
-    // harder to verify without reducing work.
+    // Keep the validated cold-load and activity recovery pipeline after the summary fast path.
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private suspend fun loadAndProcessGpxFiles(
         files: List<File>,
@@ -597,118 +585,118 @@ class GpxViewModel(
                         val path = file.absolutePath
                         val sig = sigOf(file)
 
-                        val cachedMeta = cachedMeta(path, sig)
-                        val cachedProfile =
-                            cachedProfile(
-                                path = path,
-                                sig = sig,
-                                elevationConfig = filterConfig,
-                            )
-
-                        val parsed =
-                            if (cachedMeta != null && cachedProfile != null) {
-                                null
-                            } else {
-                                parseGpxData(file)
-                            }
-                        val profile =
-                            cachedProfile ?: buildProfile(
-                                sig = sig,
-                                pts = parsed?.points ?: emptyList(),
-                                elevationFilterConfig = filterConfig,
-                            ).also { created ->
-                                if (isCurrentReloadGeneration(reloadId)) {
-                                    putProfileCache(path, created)
-                                }
-                            }
-                        val isActivity =
-                            cachedMeta?.isActivity
-                                ?: parsed?.isActivity
-                                ?: file.name.startsWith("Recording-", ignoreCase = true)
-                        val activityProfile =
-                            if (isActivity) {
-                                recoverActivityDemProfileIfNeeded(
+                        val cachedSummary = cachedMeta(path, sig)
+                        cachedSummary.loadOrReuseGpxFileState(
+                            sig = sig,
+                            elevationFilterConfig = filterConfig,
+                            etaModelConfig = etaConfig,
+                            isActive = path in activePaths,
+                        ) {
+                            val cachedMeta = cachedSummary?.fileState
+                            val cachedProfile =
+                                cachedProfile(
+                                    path = path,
                                     sig = sig,
-                                    profile = profile,
-                                    parsed = parsed,
+                                    elevationConfig = filterConfig,
                                 )
-                            } else {
-                                profile
-                            }
-                        val activitySummary =
-                            when {
-                                !isActivity -> null
-                                cachedMeta?.activitySummary?.hasElevationData == true -> cachedMeta.activitySummary
-                                parsed != null ->
-                                    buildSavedActivitySummary(
-                                        profile = activityProfile,
-                                        parsed = parsed,
-                                    )
-                                cachedMeta?.activitySummary != null ->
-                                    cachedMeta.activitySummary.withRecoveredElevationIfAvailable(activityProfile)
-                                else -> null
-                            }
-                        val recordingActivityProfile =
-                            if (isActivity) {
-                                parsed?.activitySummary?.activityProfile?.resolvedActivityProfile()
-                                    ?: cachedMeta?.activityProfile
-                                    ?: SettingsRepository.ACTIVITY_PROFILE_HIKE
-                            } else {
-                                null
-                            }
-                        val canonicalMeta =
-                            CachedMeta(
-                                sig = sig,
-                                title = cachedMeta?.title ?: parsed?.title,
-                                distance =
-                                    resolveGpxDisplayDistance(
-                                        profileDistance = profile.totalDistance,
-                                        parsedDistance = parsed?.totalDistance,
-                                        activityDistance = activitySummary?.distanceMeters,
-                                    ),
-                                elevationGain = activityProfile.totalAscent,
-                                elevationLoss = activityProfile.totalDescent,
-                                isActivity = isActivity,
-                                activityProfile = recordingActivityProfile,
-                                activityDurationSec = cachedMeta?.activityDurationSec ?: parsed?.activityDurationSec,
-                                activitySummary = activitySummary,
-                            )
-                        val meta =
-                            if (cachedMeta == canonicalMeta) {
-                                cachedMeta
-                            } else {
-                                canonicalMeta.also { created ->
+
+                            val parsed =
+                                if (cachedMeta != null && cachedProfile != null) {
+                                    null
+                                } else {
+                                    parseGpxData(file)
+                                }
+                            val profile =
+                                cachedProfile ?: buildProfile(
+                                    sig = sig,
+                                    pts = parsed?.points ?: emptyList(),
+                                    elevationFilterConfig = filterConfig,
+                                ).also { created ->
                                     if (isCurrentReloadGeneration(reloadId)) {
-                                        putMetaCache(path, created)
+                                        putProfileCache(path, created)
                                     }
                                 }
-                            }
+                            val isActivity =
+                                cachedMeta?.isActivity
+                                    ?: parsed?.isActivity
+                                    ?: file.name.startsWith("Recording-", ignoreCase = true)
+                            val activityProfile =
+                                if (isActivity) {
+                                    recoverActivityDemProfileIfNeeded(
+                                        sig = sig,
+                                        profile = profile,
+                                        parsed = parsed,
+                                    )
+                                } else {
+                                    profile
+                                }
+                            val activitySummary =
+                                when {
+                                    !isActivity -> null
+                                    cachedMeta?.activitySummary?.hasElevationData == true -> cachedMeta.activitySummary
+                                    parsed != null ->
+                                        buildSavedActivitySummary(
+                                            profile = activityProfile,
+                                            parsed = parsed,
+                                        )
+                                    cachedMeta?.activitySummary != null ->
+                                        cachedMeta.activitySummary.withRecoveredElevationIfAvailable(activityProfile)
+                                    else -> null
+                                }
+                            val recordingActivityProfile =
+                                if (isActivity) {
+                                    parsed?.activitySummary?.activityProfile?.resolvedActivityProfile()
+                                        ?: cachedMeta?.activityProfile
+                                        ?: SettingsRepository.ACTIVITY_PROFILE_HIKE
+                                } else {
+                                    null
+                                }
+                            val etaSeconds =
+                                getOrBuildEtaProjection(
+                                    path = path,
+                                    sig = sig,
+                                    profile = profile,
+                                    modelConfig = etaConfig,
+                                    cacheGeneration = reloadId,
+                                )?.totalSeconds
 
-                        val etaSeconds =
-                            getOrBuildEtaProjection(
+                            val fileState =
+                                GpxFileState(
+                                    name =
+                                        normalizeUserFacingGpxText(file.nameWithoutExtension)
+                                            ?: file.nameWithoutExtension,
+                                    path = path,
+                                    title = cachedMeta?.title ?: parsed?.title,
+                                    distance =
+                                        resolveGpxDisplayDistance(
+                                            profileDistance = profile.totalDistance,
+                                            parsedDistance = parsed?.totalDistance,
+                                            activityDistance = activitySummary?.distanceMeters,
+                                        ),
+                                    elevationGain = activityProfile.totalAscent,
+                                    elevationLoss = activityProfile.totalDescent,
+                                    estimatedDurationSec = etaSeconds,
+                                    isActive = path in activePaths,
+                                    isActivity = isActivity,
+                                    activityProfile = recordingActivityProfile,
+                                    activityDurationSec =
+                                        cachedMeta?.activityDurationSec ?: parsed?.activityDurationSec,
+                                    activitySummary = activitySummary,
+                                )
+                            putMetaCache(
                                 path = path,
-                                sig = sig,
-                                profile = profile,
-                                modelConfig = etaConfig,
+                                meta =
+                                    GpxLibrarySummary(
+                                        sig = sig,
+                                        elevationFilterConfig = filterConfig,
+                                        etaModelConfig = etaConfig,
+                                        fileState = fileState,
+                                        requiresDemRecovery = isActivity && !profile.points.hasElevationData(),
+                                    ),
                                 cacheGeneration = reloadId,
-                            )?.totalSeconds
-
-                        GpxFileState(
-                            name =
-                                normalizeUserFacingGpxText(file.nameWithoutExtension)
-                                    ?: file.nameWithoutExtension,
-                            path = path,
-                            title = meta.title,
-                            distance = meta.distance,
-                            elevationGain = meta.elevationGain,
-                            elevationLoss = meta.elevationLoss,
-                            estimatedDurationSec = etaSeconds,
-                            isActive = path in activePaths,
-                            isActivity = meta.isActivity,
-                            activityProfile = meta.activityProfile,
-                            activityDurationSec = meta.activityDurationSec,
-                            activitySummary = meta.activitySummary,
-                        )
+                            )
+                            fileState
+                        }
                     },
                 )
             }
