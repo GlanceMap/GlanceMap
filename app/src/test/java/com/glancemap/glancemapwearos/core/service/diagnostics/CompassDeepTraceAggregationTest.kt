@@ -2,16 +2,151 @@ package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.CompassHeadingTelemetrySummary
 import com.glancemap.glancemapwearos.core.service.diagnostics.export.writeCompassDeepTraceSection
+import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassMagneticQuality
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
+import com.glancemap.glancemapwearos.domain.sensors.CompassRelativeMotionSample
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CompassDeepTraceAggregationTest {
+    @Test
+    fun automaticIntegrityIncidentSurvivesLiveRingRolloverAndExportsItsTrigger() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(CompassDeepTraceEvent.Telemetry(1_000L, "before"))
+        ring.record(integrityDecision(atElapsedMs = 1_001L))
+        repeat(5) { index ->
+            ring.record(CompassDeepTraceEvent.Telemetry(1_002L + index, "after_$index"))
+        }
+
+        val incident = requireNotNull(ring.incidentSnapshot(nowElapsedMs = 3_001L))
+        val marker = incident.markerAndPostEvents.first().event as CompassDeepTraceEvent.Marker
+        val output = StringBuilder()
+        output.writeCompassDeepTraceSection(
+            CompassDeepTraceSnapshot(false, 1, 0, 0, "export", emptyList(), incident = incident),
+        )
+
+        assertEquals("automatic_integrity_incident", marker.type)
+        assertEquals("before", (incident.preMarkerEvents.single().event as CompassDeepTraceEvent.Telemetry).line)
+        assertTrue(incident.markerAndPostEvents.any { it.event is CompassDeepTraceEvent.IntegrityDecision })
+        assertTrue(incident.postTailComplete)
+        assertTrue(output.contains("preservedIncident=true"))
+        assertTrue(output.contains("marker=automatic_integrity_incident"))
+        assertTrue(output.contains("unresolvedIndependentDisagreement=true"))
+        assertEquals(2, ring.snapshot().size)
+    }
+
+    @Test
+    fun quarantineAlsoAutomaticallyPreservesAnIncident() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L, quarantineActive = true, unresolvedIndependentDisagreement = false))
+
+        assertTrue(requireNotNull(ring.incidentSnapshot(3_000L)).postTailComplete)
+    }
+
+    @Test
+    fun weakConfidenceAloneDoesNotAutomaticallyPreserveAnIncident() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L, unresolvedIndependentDisagreement = false))
+
+        assertNull(ring.incidentSnapshot(3_000L))
+    }
+
+    @Test
+    fun manualReportReplacesAutomaticIncidentAndKeepsTheFirstManualReport() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L))
+        ring.incidentSnapshot(3_000L)
+        ring.record(CompassDeepTraceEvent.Marker(4_000L, "heading_looks_wrong", "manual_one"))
+        ring.record(CompassDeepTraceEvent.Marker(4_100L, "heading_looks_wrong", "manual_two"))
+        ring.record(integrityDecision(4_200L))
+
+        val incident = requireNotNull(ring.incidentSnapshot(6_000L))
+        val marker = incident.markerAndPostEvents.first().event as CompassDeepTraceEvent.Marker
+
+        assertEquals("heading_looks_wrong", marker.type)
+        assertEquals("manual_one", marker.detail)
+        assertFalse(
+            incident.markerAndPostEvents.any {
+                (it.event as? CompassDeepTraceEvent.Marker)?.type == "automatic_integrity_incident"
+            },
+        )
+    }
+
+    @Test
+    fun manualReportReplacesAutomaticCaptureWhileItsTailIsStillRunning() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L))
+        ring.record(CompassDeepTraceEvent.Marker(1_100L, "heading_looks_wrong", "manual"))
+
+        val incident = requireNotNull(ring.incidentSnapshot(3_100L))
+        val marker = incident.markerAndPostEvents.first().event as CompassDeepTraceEvent.Marker
+
+        assertEquals("heading_looks_wrong", marker.type)
+        assertEquals(1_100L, marker.atElapsedMs)
+    }
+
+    @Test
+    fun automaticIncidentPostTailStaysBoundedDuringHighRateDelivery() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L))
+        repeat(600) { index ->
+            ring.record(CompassDeepTraceEvent.Telemetry(1_001L + index, "sample_$index"))
+        }
+
+        val incident = requireNotNull(ring.incidentSnapshot(3_000L))
+
+        assertEquals(512, incident.markerAndPostEvents.size)
+        assertEquals(90, incident.droppedPostEvents)
+        assertEquals(2, ring.snapshot().size)
+    }
+
+    @Test
+    fun stoppingBeforeTheDeadlineKeepsAPartialIncidentAndClearResetsIt() {
+        val ring = CompassDeepTraceEventRing(capacity = 2)
+        ring.record(integrityDecision(1_000L))
+        ring.freezeIncident(1_100L)
+
+        assertFalse(requireNotNull(ring.incidentSnapshot(1_100L)).postTailComplete)
+        ring.clear()
+        assertNull(ring.incidentSnapshot(3_000L))
+        assertEquals(0, ring.droppedEvents)
+        ring.record(integrityDecision(4_000L))
+        assertTrue(requireNotNull(ring.incidentSnapshot(6_000L)).postTailComplete)
+    }
+
+    private fun integrityDecision(
+        atElapsedMs: Long,
+        quarantineActive: Boolean = false,
+        unresolvedIndependentDisagreement: Boolean = true,
+    ) = CompassDeepTraceEvent.IntegrityDecision(
+        atElapsedMs = atElapsedMs,
+        provider = "google_fused",
+        sourceSampleId = 7L,
+        headingDeg = 180f,
+        liveHeadingErrorDeg = 25f,
+        conservativeHeadingErrorDeg = 180f,
+        trackingState = CompassTrackingState.TRACKING,
+        trackingReason = CompassTrackingReason.STABLE,
+        relativeHeadingDeg = 0f,
+        fusedRelativeDisagreementDeg = 180f,
+        targetHeadingDeg = 180f,
+        trusted = false,
+        quarantineActive = quarantineActive,
+        recoveryActive = false,
+        relativeWitnessAvailable = true,
+        relativeWitnessSuppressed = unresolvedIndependentDisagreement,
+        unresolvedIndependentDisagreement = unresolvedIndependentDisagreement,
+        heldOutput = quarantineActive,
+        provenance = null,
+    )
+
     @Test
     fun aggregatesWraparoundReversalsRawSensorsAndRenderLag() {
         val accumulator = CompassDeepTraceWindowAccumulator(startedAtElapsedMs = 1_000L)
@@ -74,10 +209,48 @@ class CompassDeepTraceAggregationTest {
         )
 
         assertTrue(output.contains("Compass Deep Trace"))
-        assertTrue(output.contains("schemaVersion=4"))
+        assertTrue(output.contains("schemaVersion=5"))
         assertTrue(output.contains("aggregateWindowCount=2"))
         assertTrue(output.contains("lastStopReason=manual"))
         assertEquals(1, output.lines().count { it.startsWith("window index=") })
+    }
+
+    @Test
+    fun relativeMotionAndConeChangesKeepTheirOwnIdentityInRenderExports() {
+        val provenance = CompassHeadingProvenance(CompassProviderType.GOOGLE_FUSED, 5L)
+        val motion = CompassRelativeMotionSample(20f, 0.9f, 1_002L, provenance, displayRotation = 1)
+        val render =
+            CompassDeepTraceEvent.Render(
+                atElapsedMs = 1_003L,
+                sourceSampleId = 7L,
+                targetHeadingDeg = 120f,
+                renderedHeadingDeg = 110f,
+                mapRotationDeg = -110f,
+                provenance = provenance,
+            )
+        val ring = CompassDeepTraceEventRing(capacity = 8)
+        ring.record(render)
+        val coasting = render.copy(atElapsedMs = 1_004L, relativeMotionSample = motion)
+        ring.record(coasting)
+        ring.record(coasting.copy(atElapsedMs = 1_005L))
+        val concealed = coasting.copy(atElapsedMs = 1_006L, coneSuppressed = true)
+        ring.record(concealed)
+        ring.record(concealed.copy(atElapsedMs = 1_007L, relativeMotionSample = motion.copy(atElapsedMs = 1_006L)))
+        val output = StringBuilder()
+        output.writeCompassDeepTraceSection(
+            CompassDeepTraceSnapshot(false, 1, 0, 0, "export", emptyList(), events = ring.snapshot()),
+        )
+
+        assertEquals(4, ring.snapshot().size)
+        assertTrue(output.contains("sampleId=7"))
+        assertTrue(output.contains("relativeMotion=false coneSuppressed=false"))
+        assertTrue(output.contains("relativeMotion=true coneSuppressed=true"))
+        assertTrue(
+            output.contains(
+                "relativeAtMs=1002 relativeHeadingDeg=20.0 relativeProvenance=google_fused_5 displayRotation=1",
+            ),
+        )
+        assertTrue(output.contains("relativeAtMs=1006"))
     }
 
     @Test

@@ -29,6 +29,7 @@ import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.Mapsforge
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.bundled.BundledAssetThemeComposer
+import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateMagneticMotionFallback
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -285,6 +286,9 @@ class MapViewModel(
     private var pendingExternalCacheClear: Boolean = false
 
     private var mapHolder: MapHolder? = null
+
+    // Navigate and its MapView can be recreated during the same compass interference episode.
+    internal var navigateMagneticMotionFallback: NavigateMagneticMotionFallback? = null
     private var latestZoomMin: Int? = null
     private var latestZoomMax: Int? = null
     private var initialMapLoadIndicatorPending: Boolean = true
@@ -392,7 +396,7 @@ class MapViewModel(
         AndroidGraphicFactory.createInstance(appContext)
 
         val mv =
-            MapView(appContext).apply {
+            DisplayFrameMapView(appContext).apply {
                 isClickable = true
                 isFocusable = true
                 isFocusableInTouchMode = true

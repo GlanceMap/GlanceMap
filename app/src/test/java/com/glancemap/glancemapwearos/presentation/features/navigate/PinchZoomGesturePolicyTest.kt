@@ -7,6 +7,31 @@ import org.junit.Test
 
 class PinchZoomGesturePolicyTest {
     @Test
+    fun `touch jitter before a suppressed pinch does not start panning`() {
+        val start = ScreenAnchor(100.0, 100.0)
+
+        listOf(ScreenAnchor(101.0, 101.0), ScreenAnchor(102.0, 101.0)).forEach { point ->
+            assertFalse(shouldStartMapPan(start, point, touchSlopPx = 8))
+        }
+        assertTrue(shouldSuppressMultiTouchMapGesture(pinchZoomEnabled = false, isMultiTouchGesture = true))
+    }
+
+    @Test
+    fun `drag starts only after leaving the platform touch slop`() {
+        val start = ScreenAnchor(100.0, 100.0)
+
+        assertFalse(shouldStartMapPan(start, ScreenAnchor(108.0, 100.0), touchSlopPx = 8))
+        assertTrue(shouldStartMapPan(start, ScreenAnchor(109.0, 100.0), touchSlopPx = 8))
+        assertTrue(shouldStartMapPan(start, ScreenAnchor(91.0, 100.0), touchSlopPx = 8))
+        assertTrue(shouldStartMapPan(start, ScreenAnchor(106.0, 106.0), touchSlopPx = 8))
+    }
+
+    @Test
+    fun `a cancelled gesture cannot start panning without another touch down`() {
+        assertFalse(shouldStartMapPan(null, ScreenAnchor(150.0, 100.0), touchSlopPx = 8))
+    }
+
+    @Test
     fun `multi-touch stays blocked when pinch zoom is disabled`() {
         assertTrue(
             shouldSuppressMultiTouchMapGesture(

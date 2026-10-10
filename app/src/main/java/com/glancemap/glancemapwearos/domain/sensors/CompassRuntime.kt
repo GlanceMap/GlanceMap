@@ -422,7 +422,7 @@ internal fun resolveSensorReportedAccuracy(
     if (pipeline == HeadingPipeline.HEADING_SENSOR) {
         val fromUncertainty = headingAccuracyFromUncertainty(headingUncertaintyDeg)
         return when {
-            fromUncertainty != SensorManager.SENSOR_STATUS_UNRELIABLE -> fromUncertainty
+            isSupportedHeadingUncertainty(headingUncertaintyDeg) -> fromUncertainty
             headingAccuracy != SensorManager.SENSOR_STATUS_UNRELIABLE -> headingAccuracy
             magAccuracy != SensorManager.SENSOR_STATUS_UNRELIABLE -> magAccuracy
             else -> SensorManager.SENSOR_STATUS_UNRELIABLE
@@ -431,7 +431,7 @@ internal fun resolveSensorReportedAccuracy(
     if (pipeline == HeadingPipeline.ROTATION_VECTOR) {
         val fromUncertainty = headingAccuracyFromUncertainty(rotVecHeadingUncertaintyDeg)
         return when {
-            fromUncertainty != SensorManager.SENSOR_STATUS_UNRELIABLE -> fromUncertainty
+            isSupportedHeadingUncertainty(rotVecHeadingUncertaintyDeg) -> fromUncertainty
             rotVecAccuracy != SensorManager.SENSOR_STATUS_UNRELIABLE -> rotVecAccuracy
             magAccuracy != SensorManager.SENSOR_STATUS_UNRELIABLE ->
                 maxOf(magAccuracy, SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM)

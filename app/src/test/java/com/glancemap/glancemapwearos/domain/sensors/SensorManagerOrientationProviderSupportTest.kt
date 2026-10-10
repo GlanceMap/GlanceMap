@@ -1,18 +1,28 @@
 package com.glancemap.glancemapwearos.domain.sensors
 
 import android.hardware.SensorManager
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
+@Suppress("LargeClass") // Keeps production-boundary freshness and generation regressions together.
 class SensorManagerOrientationProviderSupportTest {
     @Test
     fun initialHeadingHasNoTimestampAndIsStale() {
@@ -74,6 +84,268 @@ class SensorManagerOrientationProviderSupportTest {
         assertTrue(isSensorHeadingSampleStale(sampleAtElapsedRealtimeMs = 1_000L, nowElapsedRealtimeMs = 2_500L))
         assertTrue(isSensorHeadingSampleStale(sampleAtElapsedRealtimeMs = 1_000L, nowElapsedRealtimeMs = 999L))
     }
+
+    @Test
+    fun cachedSettingsRefreshKeepsAStoppedSensorOutputStale() {
+        val sensorSample =
+            SensorRawHeadingSample(
+                headingDeg = 42f,
+                sourceMeasurementAtElapsedRealtimeMs = 1_000L,
+                callbackArrivalAtElapsedRealtimeMs = 1_000L,
+                sequenceId = 1L,
+            )
+        val staleBeforeRefresh =
+            sensorHeadingSampleFreshnessAfterPublish(
+                sample = sensorSample,
+                nowElapsedRealtimeMs = 2_500L,
+            )
+        val cachedRefresh =
+            sensorHeadingSampleFreshnessAfterPublish(
+                sample =
+                    sensorSample.copy(
+                        callbackArrivalAtElapsedRealtimeMs = 2_600L,
+                        sequenceId = 2L,
+                    ),
+                nowElapsedRealtimeMs = 2_600L,
+            )
+
+        assertTrue(staleBeforeRefresh.stale)
+        assertTrue(cachedRefresh.stale)
+        assertEquals(1_000L, cachedRefresh.sampleAtElapsedRealtimeMs)
+        assertEquals(2_600L, cachedRefresh.arrivalAtElapsedRealtimeMs)
+    }
+
+    @Test
+    fun northReferenceConversionPreservesTheOriginalMeasurementTime() {
+        val convertedSample =
+            SensorRawHeadingSample(
+                headingDeg = 97f,
+                sourceMeasurementAtElapsedRealtimeMs = 4_000L,
+                callbackArrivalAtElapsedRealtimeMs = 4_250L,
+                sequenceId = 8L,
+            )
+
+        val freshness =
+            sensorHeadingSampleFreshnessAfterPublish(
+                sample = convertedSample,
+                nowElapsedRealtimeMs = 4_250L,
+            )
+
+        assertEquals(4_000L, freshness.sampleAtElapsedRealtimeMs)
+        assertEquals(4_250L, freshness.arrivalAtElapsedRealtimeMs)
+        assertFalse(freshness.stale)
+    }
+
+    @Test
+    fun equalHeadingFromANewSensorEventRefreshesFreshness() {
+        val previousSample =
+            SensorRawHeadingSample(
+                headingDeg = 42f,
+                sourceMeasurementAtElapsedRealtimeMs = 1_000L,
+                callbackArrivalAtElapsedRealtimeMs = 1_000L,
+                sequenceId = 1L,
+            )
+        val newSensorSample =
+            previousSample.copy(
+                sourceMeasurementAtElapsedRealtimeMs = 2_500L,
+                callbackArrivalAtElapsedRealtimeMs = 2_500L,
+                sequenceId = 2L,
+            )
+
+        val freshness =
+            sensorHeadingSampleFreshnessAfterPublish(
+                sample = newSensorSample,
+                nowElapsedRealtimeMs = 2_500L,
+            )
+
+        assertEquals(previousSample.headingDeg, newSensorSample.headingDeg)
+        assertEquals(2_500L, freshness.sampleAtElapsedRealtimeMs)
+        assertEquals(2L, freshness.sequenceId)
+        assertFalse(freshness.stale)
+    }
+
+    @Test
+    fun queuedOldRegistrationSampleCannotConsumeTheNewResetOrPublish() =
+        runBlocking {
+            val rawHeadingFlow = MutableSharedFlow<SensorRawHeadingSample>(extraBufferCapacity = 8)
+            val processingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val sampleEntered = CountDownLatch(1)
+            val releaseSample = CountDownLatch(1)
+            val published = CompletableDeferred<SensorRawHeadingSample>()
+            var currentGeneration = 1L
+            var firstCurrentCheck = true
+            var resetRequested = false
+            var resetConsumed = 0
+            val processor =
+                launchTestHeadingProcessor(
+                    scope = processingScope,
+                    rawHeadingFlow = rawHeadingFlow,
+                    isRawSampleCurrent = { sample ->
+                        if (firstCurrentCheck) {
+                            firstCurrentCheck = false
+                            sampleEntered.countDown()
+                            assertTrue(releaseSample.await(2, TimeUnit.SECONDS))
+                        }
+                        sample.registrationGeneration == currentGeneration
+                    },
+                    consumeResetSmoothingRequested = { _ ->
+                        if (!resetRequested) {
+                            false
+                        } else {
+                            resetRequested = false
+                            resetConsumed += 1
+                            true
+                        }
+                    },
+                    pendingStartupHeadingPublishesToMask = 1,
+                    publishDisplayedHeading = { _, sample -> published.complete(sample) },
+                )
+
+            try {
+                rawHeadingFlow.emit(sample(headingDeg = 10f, registrationGeneration = 1L))
+                assertTrue(sampleEntered.await(2, TimeUnit.SECONDS))
+                currentGeneration = 2L
+                resetRequested = true
+                releaseSample.countDown()
+
+                rawHeadingFlow.emit(sample(headingDeg = 20f, registrationGeneration = 2L))
+                val currentSample = withTimeout(2_000L) { published.await() }
+
+                assertEquals(2L, currentSample.registrationGeneration)
+                assertEquals(1, resetConsumed)
+            } finally {
+                processor.cancel()
+                processingScope.cancel()
+            }
+        }
+
+    @Test
+    fun inFlightSampleCannotPublishAfterStop() =
+        runBlocking {
+            val rawHeadingFlow = MutableSharedFlow<SensorRawHeadingSample>(extraBufferCapacity = 8)
+            val processingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val finalOwnershipCheck = CountDownLatch(1)
+            var started = true
+            var currentCheck = 0
+            var published = false
+            val processor =
+                launchTestHeadingProcessor(
+                    scope = processingScope,
+                    rawHeadingFlow = rawHeadingFlow,
+                    isRawSampleCurrent = { sample ->
+                        currentCheck += 1
+                        if (currentCheck == 2) {
+                            started = false
+                            finalOwnershipCheck.countDown()
+                        }
+                        started && sample.registrationGeneration == 1L
+                    },
+                    publishDisplayedHeading = { _, _ -> published = true },
+                )
+
+            try {
+                rawHeadingFlow.emit(sample(headingDeg = 10f, registrationGeneration = 1L))
+                assertTrue(finalOwnershipCheck.await(2, TimeUnit.SECONDS))
+                assertFalse(published)
+            } finally {
+                processor.cancel()
+                processingScope.cancel()
+            }
+        }
+
+    @Test
+    fun generationChangeAfterEntryCheckCannotConsumeNewBootstrapBudget() =
+        runBlocking {
+            val rawHeadingFlow = MutableSharedFlow<SensorRawHeadingSample>(extraBufferCapacity = 8)
+            val processingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            var currentGeneration = 1L
+            var bootstrapRemaining = 0
+            val processor =
+                launchTestHeadingProcessor(
+                    scope = processingScope,
+                    rawHeadingFlow = rawHeadingFlow,
+                    isRawSampleCurrent = { sample ->
+                        sample.registrationGeneration == currentGeneration
+                    },
+                    getNowElapsedMs = {
+                        currentGeneration = 2L
+                        bootstrapRemaining = 3
+                        1_000L
+                    },
+                    getPendingBootstrapRawSamplesToIgnore = { bootstrapRemaining },
+                    setPendingBootstrapRawSamplesToIgnore = { _, remaining ->
+                        bootstrapRemaining = remaining
+                    },
+                    publishDisplayedHeading = { _, _ ->
+                        error("An old registration sample must not publish")
+                    },
+                )
+
+            try {
+                rawHeadingFlow.emit(sample(headingDeg = 10f, registrationGeneration = 1L))
+                withTimeout(2_000L) {
+                    while (currentGeneration == 1L) kotlinx.coroutines.yield()
+                }
+                assertEquals(3, bootstrapRemaining)
+            } finally {
+                processor.cancel()
+                processingScope.cancel()
+            }
+        }
+
+    @Test
+    fun currentGenerationRateTransitionPublishesWithContinuity() =
+        runBlocking {
+            val rawHeadingFlow = MutableSharedFlow<SensorRawHeadingSample>(extraBufferCapacity = 8)
+            val processingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val firstPublished = CompletableDeferred<SensorRawHeadingSample>()
+            val secondPublished = CompletableDeferred<SensorRawHeadingSample>()
+            var currentGeneration = 1L
+            var displayedHeading = 0f
+            var resetRequested = false
+            val processor =
+                launchTestHeadingProcessor(
+                    scope = processingScope,
+                    rawHeadingFlow = rawHeadingFlow,
+                    isRawSampleCurrent = { sample ->
+                        sample.registrationGeneration == currentGeneration
+                    },
+                    consumeResetSmoothingRequested = { _ ->
+                        if (!resetRequested) {
+                            false
+                        } else {
+                            resetRequested = false
+                            true
+                        }
+                    },
+                    getDisplayedHeading = { displayedHeading },
+                    pendingStartupHeadingPublishesToMask = 1,
+                    publishDisplayedHeading = { heading, sample ->
+                        displayedHeading = heading
+                        if (!firstPublished.isCompleted) {
+                            firstPublished.complete(sample)
+                        } else {
+                            secondPublished.complete(sample)
+                        }
+                    },
+                )
+
+            try {
+                rawHeadingFlow.emit(sample(headingDeg = 10f, registrationGeneration = 1L))
+                assertEquals(1L, withTimeout(2_000L) { firstPublished.await() }.registrationGeneration)
+
+                currentGeneration = 2L
+                resetRequested = true
+                rawHeadingFlow.emit(sample(headingDeg = 12f, registrationGeneration = 2L))
+                val currentSample = withTimeout(2_000L) { secondPublished.await() }
+
+                assertEquals(2L, currentSample.registrationGeneration)
+                assertTrue(displayedHeading.isFinite())
+            } finally {
+                processor.cancel()
+                processingScope.cancel()
+            }
+        }
 
     @Test
     fun poorRotationVectorUncertaintyImmediatelyCapsCombinedAccuracy() {
@@ -429,4 +701,56 @@ class SensorManagerOrientationProviderSupportTest {
                     registrationGeneration = magnetometerGeneration,
                 ),
         )
+
+    private fun sample(
+        headingDeg: Float,
+        registrationGeneration: Long,
+    ): SensorRawHeadingSample =
+        SensorRawHeadingSample(
+            headingDeg = headingDeg,
+            sourceMeasurementAtElapsedRealtimeMs = 1_000L,
+            callbackArrivalAtElapsedRealtimeMs = 1_000L,
+            sequenceId = registrationGeneration,
+            registrationGeneration = registrationGeneration,
+        )
+
+    @Suppress("LongParameterList") // Mirrors the production processor's independent ownership seams.
+    private fun launchTestHeadingProcessor(
+        scope: CoroutineScope,
+        rawHeadingFlow: MutableSharedFlow<SensorRawHeadingSample>,
+        isRawSampleCurrent: (SensorRawHeadingSample) -> Boolean,
+        consumeResetSmoothingRequested: (SensorRawHeadingSample) -> Boolean = { false },
+        getDisplayedHeading: () -> Float = { 0f },
+        pendingStartupHeadingPublishesToMask: Int = 0,
+        getNowElapsedMs: () -> Long = { 1_000L },
+        getPendingBootstrapRawSamplesToIgnore: () -> Int = { 0 },
+        setPendingBootstrapRawSamplesToIgnore: (SensorRawHeadingSample, Int) -> Unit = { _, _ -> },
+        publishDisplayedHeading: (Float, SensorRawHeadingSample) -> Unit,
+    ): Job {
+        var pendingMask = pendingStartupHeadingPublishesToMask
+        return CompassHeadingProcessor().launch(
+            scope = scope,
+            rawHeadingFlow = rawHeadingFlow,
+            settleWindowMs = 0L,
+            getStartAtMs = { 0L },
+            getNowElapsedMs = getNowElapsedMs,
+            getHeadingRelockUntilElapsedMs = { 0L },
+            consumeResetSmoothingRequested = consumeResetSmoothingRequested,
+            getDisplayedHeading = getDisplayedHeading,
+            isRawSampleCurrent = isRawSampleCurrent,
+            publishDisplayedHeading = publishDisplayedHeading,
+            getPendingBootstrapRawSamplesToIgnore = getPendingBootstrapRawSamplesToIgnore,
+            setPendingBootstrapRawSamplesToIgnore = setPendingBootstrapRawSamplesToIgnore,
+            getPendingStartupBogusSamplesToIgnore = { 0 },
+            setPendingStartupBogusSamplesToIgnore = { _, _ -> },
+            getPendingStartupHeadingPublishesToMask = { pendingMask },
+            setPendingStartupHeadingPublishesToMask = { _, remaining -> pendingMask = remaining },
+            getStartupStabilizationUntilElapsedMs = { 0L },
+            getStartupHeadingPublishMaskUntilElapsedMs = { 0L },
+            isUsingRotationVector = { false },
+            isUsingHeadingSensor = { false },
+            updateInferredHeadingAccuracy = { _, _ -> },
+            logDiagnostics = {},
+        )
+    }
 }

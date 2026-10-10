@@ -5,20 +5,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassRenderState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxInspectionUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionABUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionAUiState
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupA
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupAB
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
+import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlaySource
@@ -54,6 +61,7 @@ private const val ROUTE_TOOL_PREVIEW_BLUE = 232
 @OptIn(FlowPreview::class)
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 internal fun MapOverlays(
+    mapViewModel: MapViewModel,
     mapHolder: MapHolder,
     activeGpxDetails: List<GpxTrackDetails>,
     routeToolPreviewPoints: List<LatLong>,
@@ -98,6 +106,12 @@ internal fun MapOverlays(
     onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
 ) {
     val mapView = mapHolder.mapView
+    var compassConeSuppressed by remember(mapView) {
+        mutableStateOf(
+            compassRenderStateFlow.value.providerType == CompassProviderType.GOOGLE_FUSED &&
+                mapViewModel.navigateMagneticMotionFallback?.coneSuppressed == true,
+        )
+    }
     val gpsAccuracyCircleLayer =
         remember(mapView) {
             val fill =
@@ -114,11 +128,13 @@ internal fun MapOverlays(
             GpsAccuracyCircleLayer(
                 fillPaint = fill,
                 strokePaint = stroke,
+                displayFrameOwner = mapView as? DisplayFrameLayerOwner,
             )
         }
     val compassConeLayer =
         remember(mapView) {
-            findExistingCompassConeLayer(mapView) ?: CompassConeLayer()
+            val frameOwner = mapView as? DisplayFrameLayerOwner
+            findExistingCompassConeLayer(mapView) ?: CompassConeLayer(displayFrameOwner = frameOwner)
         }
     val markerAHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
     val markerBHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
@@ -171,6 +187,7 @@ internal fun MapOverlays(
     }
 
     NavigationOrientationEffect(
+        mapViewModel = mapViewModel,
         isCompassMode = navMode == NavMode.COMPASS_FOLLOW,
         isAutoCentering = navMode != NavMode.PANNING,
         forceNorthUpInPanning = forceNorthUpInPanning,
@@ -182,6 +199,7 @@ internal fun MapOverlays(
         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
         onRenderedHeadingChanged = onRenderedHeadingChanged,
         onRenderedMapRotationChanged = onRenderedMapRotationChanged,
+        onCompassConeSuppressedChanged = { compassConeSuppressed = it },
         requestMapRedraw = requestMapRedraw,
     )
 
@@ -200,7 +218,7 @@ internal fun MapOverlays(
         mapView = mapView,
         compassInteractive = compassInteractive,
         navMode = navMode,
-        showCompassConeOverlay = showCompassConeOverlay,
+        showCompassConeOverlay = showCompassConeOverlay && !compassConeSuppressed,
         compassConeBaseSizePx = compassConeBaseSizePx,
         compassQuality = compassQuality,
         compassHeadingErrorDeg = compassHeadingErrorDeg,
@@ -1148,7 +1166,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerAHolder[0] =
                 selectedPointA?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapA, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapA, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true
@@ -1170,7 +1188,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerBHolder[0] =
                 selectedPointB?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapB, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapB, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true
