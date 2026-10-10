@@ -91,6 +91,22 @@ Significant Fused provider-step diagnostics distinguish acquisition-held output,
 degraded or unresolved output, and accepted movement with actual relative corroboration. An
 unsuppressed witness alone is not reported as corroboration.
 
+## Display-frame rotation
+
+`DisplayFrameMapView` applies the current camera rotation to the existing Mapsforge image on each
+active display frame. It reapplies that rotation when a background image swaps in, so a slower
+layer redraw cannot restore an older heading. Dot, cone, accuracy circle, and inspection markers
+draw once in their existing layer order on the native frame, using the same buffer-to-view transform.
+The transform preserves pan, zoom scale/pivot, and map-center offsets. These foreground layers are
+excluded from the background image; hidden cones cannot linger in a cached bitmap. Layer add/remove
+callbacks maintain the foreground snapshot, so native drawing never takes the background layer-list lock.
+
+Active turns retain sub-degree animation and application steps without a second millisecond timer.
+The existing stationary deadbands, turn hysteresis, interpolation, and visual step caps remain.
+Fresh relative turns use the same turn detector without changing absolute heading authority.
+The captured 121 ms input plateau and subsequent burst are replayed alongside full turns/reversals.
+These tests do not measure physical watch display timing; hardware validation remains required.
+
 ## Temporary motion during magnetic holds
 
 `NavigateMagneticMotionFallback` preserves the visible map angle when the existing wake gate
@@ -101,8 +117,10 @@ even after the wake gate has settled. The engine owns this severity classificati
 it with the render state; stale or unavailable magnetic evidence cannot retain the severe flag.
 Mild magnetic warnings still allow absolute heading movement. Jump holds use the engine's explicit
 preserved-jump-anchor flag. General quarantine or a weak confidence/disagreement label is insufficient.
-It requires a previously accepted stable absolute anchor; a disturbed cold start cannot invent
-north. It never changes the absolute provider heading, uncertainty, trust, or quarantine decision.
+With no accepted absolute anchor, a disturbed cold start uses the map's current orientation as a
+provisional visual origin and hides the cone immediately. Only subsequent fresh relative turns
+move that origin; it is not an estimate of north. It never changes the absolute provider heading,
+uncertainty, trust, or quarantine decision.
 Relative samples carry source time, request generation, horizontal projection, and display rotation.
 Missing, old, future, mismatched, steeply tilted, or implausible samples cannot drive rotation.
 Gaps, registrations, display-frame changes, and wake/panning sessions re-establish the relative
@@ -119,8 +137,9 @@ does not renew the original 60-second deadline. A real cold start or replacement
 inherit an accepted Fused anchor, and the continuity state is never persisted across process death.
 A recreated map without an active restorable episode acquires its own absolute anchor.
 
-The cone hides after 500 ms of a continuous magnetic wake hold, jump quarantine, or severe magnetic
-episode, retaining the location dot. Brief spikes and ordinary weak confidence do not hide it.
+With an accepted absolute anchor, the cone hides after 500 ms of a continuous magnetic wake hold,
+jump quarantine, or severe magnetic episode, retaining the location dot. Brief spikes and ordinary
+weak confidence do not hide it.
 Once the navigation gate allows a fresh, stable, unheld absolute heading, navigation reconnects
 with a four-degree visual step cap.
 Recovery in the same interactive session requires one second of stable tracking. A later wake uses
@@ -137,8 +156,8 @@ checks remain mandatory. This is temporary estimated orientation, never proof of
 
 Deep Trace schema 5 records the actual relative sample/time/generation/frame used by each coasting
 render, cone suppression, and mode transitions. Capture remains opt-in and bounded.
-Motion-hold transitions distinguish a missing accepted anchor, expired drift budget, and unavailable
-relative motion.
+Episode-start diagnostics identify whether an absolute anchor was accepted. Motion-hold transitions
+distinguish expired drift budget from unavailable relative motion.
 
 While Deep Trace is enabled, an independent uncalibrated magnetometer listener captures its field
 and estimated hard-iron bias alongside the calibrated sensor. At most one `magnetic_calibration`

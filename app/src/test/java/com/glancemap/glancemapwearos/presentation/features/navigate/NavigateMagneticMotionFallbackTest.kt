@@ -19,7 +19,7 @@ import org.junit.Test
 
 class NavigateMagneticMotionFallbackTest {
     @Test
-    fun aNewMapWithoutAnActiveEpisodeMustAcquireItsOwnAbsoluteAnchor() {
+    fun aNewMapWithoutAnAbsoluteAnchorCanFollowOnlySubsequentRelativeTurns() {
         val replay = Replay()
         assertNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
         replay.displayed = 0f
@@ -27,8 +27,9 @@ class NavigateMagneticMotionFallbackTest {
         replay.policy.beginSession(replay.now)
         replay.disturb(0f)
         replay.now += 100L
-        assertFalse(replay.disturb(30f).relativeMotion)
-        assertEquals(0f, replay.displayed, 0f)
+        assertTrue(replay.disturb(30f).relativeMotion)
+        assertEquals(30f, replay.displayed, 0f)
+        assertTrue(replay.policy.coneSuppressed)
     }
 
     @Test
@@ -76,11 +77,11 @@ class NavigateMagneticMotionFallbackTest {
     }
 
     @Test
-    fun coldStartAndReplacementProviderCannotRestoreAnAcceptedCompassAnchor() {
+    fun coldVisualOriginCanBeRetainedButReplacementProviderClearsIt() {
         val cold = Replay(seedAnchor = false)
         cold.hideCone()
         cold.policy.recordDisplayedHeading(100f)
-        assertNull(cold.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        assertEquals(100f, requireNotNull(cold.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED)), 0f)
 
         val warm = Replay()
         warm.hideCone()
@@ -473,7 +474,7 @@ class NavigateMagneticMotionFallbackTest {
     }
 
     @Test
-    fun unresolvedRecoveryCannotInventAColdRelativeAnchor() {
+    fun unresolvedRecoveryAllowsAVisualOriginWithoutAcceptingAbsoluteNorth() {
         val replay = Replay(seedAnchor = false)
         replay.hideCone()
         replay.resolve(replay.state().copy(unresolvedIndependentDisagreement = true), NavigationRotationTarget(100f))
@@ -485,8 +486,9 @@ class NavigateMagneticMotionFallbackTest {
         replay.disturb()
         replay.now += 100L
         val target = replay.disturb(30f)
-        assertFalse(target.relativeMotion)
-        assertEquals(100f, target.headingDeg, 0f)
+        assertTrue(target.relativeMotion)
+        assertEquals(130f, target.headingDeg, 0f)
+        assertTrue(replay.policy.coneSuppressed)
     }
 
     @Test
@@ -526,15 +528,55 @@ class NavigateMagneticMotionFallbackTest {
     }
 
     @Test
-    fun coldDisturbedStartCannotInventANorthAnchor() {
+    fun coldDisturbedStartUsesTheMapAngleAndNeverTheDisturbedAbsoluteHeading() {
+        val replay = Replay(seedAnchor = false)
+        replay.displayed = 275f
+        val start = replay.resolve(replay.disturbedState(240f).copy(headingDeg = 95f))
+        assertTrue(start.relativeMotion)
+        assertEquals(275f, start.headingDeg, 0f)
+        assertTrue(replay.policy.coneSuppressed)
+        replay.now += 100L
+        replay.resolve(replay.disturbedState(270f).copy(headingDeg = 95f))
+        assertEquals(305f, replay.displayed, 0f)
+
+        // After reconstruction, a fresh registration rebases rather than applying hidden turns.
+        replay.displayed = requireNotNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        replay.now += 100L
+        replay.policy.beginSession(replay.now)
+        replay.disturb(30f)
+        assertEquals(305f, replay.displayed, 0f)
+        replay.now += 100L
+        replay.disturb(40f)
+        assertEquals(315f, replay.displayed, 0f)
+        assertTrue(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun coldEpisodeRetainsTheActualMapOriginBeforeTheFirstAppliedTurn() {
+        val replay = Replay()
+        assertNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED))
+        replay.displayed = 0f
+        replay.policy.beginSession(replay.now)
+        replay.resolve(replay.disturbedState(), applyTarget = false)
+        assertEquals(0f, requireNotNull(replay.policy.prepareForRecreatedMap(CompassProviderType.GOOGLE_FUSED)), 0f)
+        assertTrue(replay.policy.coneSuppressed)
+    }
+
+    @Test
+    fun coldRelativeMotionStillExpiresAndRecoversWithTheExistingVisualCap() {
         val replay = Replay(seedAnchor = false)
         replay.disturb()
-        replay.now += 100L
+        replay.now = 1_000L + MAGNETIC_MOTION_MAX_DURATION_MS
         assertFalse(replay.disturb(30f).relativeMotion)
         assertEquals(100f, replay.displayed, 0f)
-        replay.now += MAGNETIC_CONE_HIDE_DELAY_MS
-        replay.disturb(60f)
+        replay.resolve(replay.state(), NavigationRotationTarget(200f), applyTarget = false)
+        replay.now += MAGNETIC_MOTION_RECOVERY_HOLD_MS
+        val recovery = replay.resolve(replay.state(), NavigationRotationTarget(200f), applyTarget = false)
+        assertEquals(4f, requireNotNull(recovery.maxVisualStepDeg), 0f)
         assertTrue(replay.policy.coneSuppressed)
+        replay.displayed = 197f
+        replay.resolve(replay.state(), NavigationRotationTarget(200f))
+        assertFalse(replay.policy.coneSuppressed)
     }
 
     @Test

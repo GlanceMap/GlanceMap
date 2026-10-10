@@ -33,7 +33,7 @@ internal class NavigateMagneticMotionFallback(
     fun prepareForRecreatedMap(provider: CompassProviderType): Float? {
         val retainedHeading =
             lastDisplayedHeadingDeg.takeIf {
-                provider == CompassProviderType.GOOGLE_FUSED && hasAcceptedAbsoluteAnchor && episodeStartedAtMs != null
+                provider == CompassProviderType.GOOGLE_FUSED && episodeStartedAtMs != null
             }
         // A new map without a restorable episode must acquire its own absolute anchor.
         if (retainedHeading == null) hasAcceptedAbsoluteAnchor = false
@@ -41,7 +41,7 @@ internal class NavigateMagneticMotionFallback(
     }
 
     fun recordDisplayedHeading(headingDeg: Float) {
-        if (hasAcceptedAbsoluteAnchor && headingDeg.isFinite()) {
+        if ((hasAcceptedAbsoluteAnchor || episodeStartedAtMs != null) && headingDeg.isFinite()) {
             lastDisplayedHeadingDeg = normalize360Deg(headingDeg)
         }
     }
@@ -104,14 +104,16 @@ internal class NavigateMagneticMotionFallback(
         if (episodeStartedAtMs == null) {
             episodeStartedAtMs = nowElapsedMs
             motionHeadingDeg = currentHeadingDeg
+            lastDisplayedHeadingDeg = normalize360Deg(currentHeadingDeg)
             log(
                 "stage=start atMs=$nowElapsedMs anchorDeg=$currentHeadingDeg " +
+                    "absoluteAnchorAccepted=$hasAcceptedAbsoluteAnchor " +
                     "absoluteHeld=${absoluteTarget == null} jumpHeld=${state.headingJumpHeld} " +
                     "severeInterference=${state.severeMagneticInterference}",
             )
         }
         blockedSinceMs = if (blocked) blockedSinceMs ?: nowElapsedMs else null
-        if (!coneSuppressed && blockedSinceMs?.let { nowElapsedMs - it >= MAGNETIC_CONE_HIDE_DELAY_MS } == true) {
+        if (shouldHideCone(coneSuppressed, hasAcceptedAbsoluteAnchor, blockedSinceMs, nowElapsedMs)) {
             coneSuppressed = true
             log("stage=cone_hidden atMs=$nowElapsedMs")
         }
@@ -164,7 +166,6 @@ internal class NavigateMagneticMotionFallback(
         val sample = usableMotion(state, sessionStartedAtMs, nowElapsedMs)
         val holdReason =
             when {
-                !hasAcceptedAbsoluteAnchor -> "no_accepted_anchor"
                 expired -> "expired"
                 sample == null -> "relative_unavailable"
                 else -> null
@@ -178,6 +179,7 @@ internal class NavigateMagneticMotionFallback(
             motionHeadingDeg = currentHeadingDeg
             NavigationRotationTarget(currentHeadingDeg)
         } else {
+            // With no absolute anchor this is only the map's visual origin, never a north estimate.
             advanceMotion(requireNotNull(sample), currentHeadingDeg)
             NavigationRotationTarget(motionHeadingDeg, relativeMotionSample = previousMotion)
         }
@@ -265,3 +267,15 @@ internal const val MAGNETIC_MOTION_SAMPLE_FRESHNESS_MS = 300L
 internal const val MAGNETIC_MOTION_MAX_DURATION_MS = 60_000L
 internal const val MAGNETIC_MOTION_RECOVERY_MAX_STEP_DEG = 4f
 private const val MAGNETIC_CONE_RESTORE_DELTA_DEG = 5f
+
+private fun shouldHideCone(
+    suppressed: Boolean,
+    hasAbsoluteAnchor: Boolean,
+    blockedSinceMs: Long?,
+    nowElapsedMs: Long,
+): Boolean =
+    !suppressed &&
+        (
+            !hasAbsoluteAnchor ||
+                blockedSinceMs?.let { nowElapsedMs - it >= MAGNETIC_CONE_HIDE_DELAY_MS } == true
+        )

@@ -38,6 +38,10 @@ Sanity check on watch:
   game-rotation turns move the map from its last visible orientation; ordinary weak confidence and
   brief disturbance should not blink the cone; an interference warning that still allows normal
   absolute heading movement must not activate this fallback;
+- a disturbed cold start hides the cone immediately and follows fresh relative turns from the map's
+  current orientation; a later usable absolute heading reconnects with the existing visual cap;
+- fast 180/360-degree turns and immediate reversals remain smooth, with dot/cone alignment through
+  panning, zoom, lower marker placement, and background image swaps;
 - magnetic motion stops on a sensor gap/steep tilt or after 60 seconds without absolute recovery;
   wake must not replay hidden motion or renew that budget, and recovery must reconnect without a snap;
 - after a previous hold, ordinary wake must restore the cone once fresh absolute heading is admitted

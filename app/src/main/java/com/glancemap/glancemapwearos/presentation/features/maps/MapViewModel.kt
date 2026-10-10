@@ -396,7 +396,7 @@ class MapViewModel(
         AndroidGraphicFactory.createInstance(appContext)
 
         val mv =
-            MapView(appContext).apply {
+            DisplayFrameMapView(appContext).apply {
                 isClickable = true
                 isFocusable = true
                 isFocusableInTouchMode = true

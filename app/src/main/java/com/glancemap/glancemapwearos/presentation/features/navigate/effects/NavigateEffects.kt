@@ -185,13 +185,12 @@ fun NavigationOrientationEffect(
             } else {
                 targetRotationDeg
             }
-        val applyEpsilonDeg =
-            if (highFrequencyRotation) {
-                MAP_ROTATION_ACTIVE_TURN_APPLY_EPSILON_DEG
-            } else {
-                MAP_ROTATION_APPLY_EPSILON_DEG
-            }
-        if (abs(angleDeltaDeg(resolvedTargetRotationDeg, currentRotationDeg)) < applyEpsilonDeg) {
+        if (
+            !shouldApplyMapsforgeRotation(
+                deltaDeg = angleDeltaDeg(resolvedTargetRotationDeg, currentRotationDeg),
+                highFrequencyRotation = highFrequencyRotation,
+            )
+        ) {
             CompassRenderPerfTelemetry.recordRotationSkipped(navMode)
             publishRenderedState()
             return
@@ -426,14 +425,9 @@ fun NavigationOrientationEffect(
         var latestRenderState = renderStateFlow.value
         var activeHeadingTurn = false
         var previousFrameTimeNanos = 0L
-        val headingTurnTracker =
-            HeadingTurnRateHysteresis(
-                enterRateDegPerSec = RENDER_ACTIVE_TURN_ENTER_RATE_DEG_PER_SEC,
-                exitRateDegPerSec = RENDER_ACTIVE_TURN_EXIT_RATE_DEG_PER_SEC,
-                exitHoldMs = RENDER_ACTIVE_TURN_EXIT_HOLD_MS,
-                minimumEntryStepDeg = RENDER_ACTIVE_TURN_MIN_ENTRY_STEP_DEG,
-                maximumSampleGapMs = RENDER_ACTIVE_TURN_MAX_SAMPLE_GAP_MS,
-            )
+        val headingTurnTracker = createNavigationTurnTracker()
+        val relativeTurnTracker = createNavigationTurnTracker()
+        var previousRelativeTurnSample: CompassRelativeMotionSample? = null
 
         // Keep liveTarget current without blocking the animation loop.
         launch {
@@ -533,6 +527,21 @@ fun NavigationOrientationEffect(
                 if (headingTarget == null) {
                     return@withFrameNanos
                 }
+                val relativeSample = headingTarget.relativeMotionSample
+                if (relativeSample == null) {
+                    relativeTurnTracker.reset()
+                    previousRelativeTurnSample = null
+                } else if (relativeSample != previousRelativeTurnSample) {
+                    if (
+                        relativeSample.provenance != previousRelativeTurnSample?.provenance ||
+                        relativeSample.displayRotation != previousRelativeTurnSample?.displayRotation
+                    ) {
+                        relativeTurnTracker.reset()
+                    }
+                    relativeTurnTracker.update(relativeSample.headingDeg, relativeSample.atElapsedMs)
+                    previousRelativeTurnSample = relativeSample
+                }
+                val activeRenderTurn = activeHeadingTurn || relativeTurnTracker.active
                 CompassRenderPerfTelemetry.recordFrame(navMode)
                 val diff = angleDeltaDeg(headingTarget.headingDeg, current)
                 val responsiveRotation =
@@ -540,7 +549,7 @@ fun NavigationOrientationEffect(
                         renderState = latestRenderState,
                         nowElapsedMs = nowElapsedMs,
                     )
-                if (abs(diff) < HEADING_ANIMATION_DONE_DEG) {
+                if (!shouldAnimateNavigationHeading(diff, activeRenderTurn)) {
                     val mapCatchupDeltaDeg =
                         if (navMode == NavMode.COMPASS_FOLLOW) {
                             abs(angleDeltaDeg(-current, displayedMapRot.floatValue))
@@ -595,7 +604,7 @@ fun NavigationOrientationEffect(
                 val animationDelta =
                     resolveHeadingAnimationDelta(
                         diffDeg = diff,
-                        activeTurn = activeHeadingTurn,
+                        activeTurn = activeRenderTurn,
                         frameDeltaMs = frameDeltaMs,
                         responsiveRotation = responsiveRotation,
                         maxStepDeg = headingTarget.maxVisualStepDeg,
@@ -623,7 +632,7 @@ fun NavigationOrientationEffect(
                     NavMode.COMPASS_FOLLOW -> {
                         applyMapRotation(
                             targetRotationDeg = -next,
-                            highFrequencyRotation = activeHeadingTurn,
+                            highFrequencyRotation = activeRenderTurn,
                             responsiveRotation = responsiveRotation,
                             maxVisualStepDeg = headingTarget.maxVisualStepDeg,
                         )
@@ -1494,21 +1503,49 @@ internal fun shouldPublishRenderedCompassUiState(
         lastPublishedAtElapsedMs == Long.MIN_VALUE ||
         nowElapsedMs - lastPublishedAtElapsedMs >= RENDERED_COMPASS_UI_PUBLISH_INTERVAL_MS
 
+private fun createNavigationTurnTracker(): HeadingTurnRateHysteresis =
+    HeadingTurnRateHysteresis(
+        enterRateDegPerSec = RENDER_ACTIVE_TURN_ENTER_RATE_DEG_PER_SEC,
+        exitRateDegPerSec = RENDER_ACTIVE_TURN_EXIT_RATE_DEG_PER_SEC,
+        exitHoldMs = RENDER_ACTIVE_TURN_EXIT_HOLD_MS,
+        minimumEntryStepDeg = RENDER_ACTIVE_TURN_MIN_ENTRY_STEP_DEG,
+        maximumSampleGapMs = RENDER_ACTIVE_TURN_MAX_SAMPLE_GAP_MS,
+    )
+
+internal fun shouldAnimateNavigationHeading(
+    deltaDeg: Float,
+    activeTurn: Boolean,
+): Boolean =
+    deltaDeg.isFinite() &&
+        if (activeTurn) {
+            deltaDeg != 0f
+        } else {
+            abs(deltaDeg) >= HEADING_ANIMATION_DONE_DEG
+        }
+
+internal fun shouldApplyMapsforgeRotation(
+    deltaDeg: Float,
+    highFrequencyRotation: Boolean,
+): Boolean =
+    deltaDeg.isFinite() &&
+        if (highFrequencyRotation) {
+            deltaDeg != 0f
+        } else {
+            abs(deltaDeg) >= MAP_ROTATION_APPLY_EPSILON_DEG
+        }
+
 internal fun shouldThrottleMapsforgeRotation(
     navMode: NavMode,
     nowElapsedMs: Long,
     lastAppliedAtElapsedMs: Long,
     highFrequencyRotation: Boolean = false,
 ): Boolean {
-    val minimumIntervalMs =
-        if (highFrequencyRotation) {
-            MAP_ROTATION_ACTIVE_TURN_MIN_APPLY_INTERVAL_MS
-        } else {
-            MAP_ROTATION_MIN_APPLY_INTERVAL_MS
-        }
+    // Active rotation is already paced by withFrameNanos. Millisecond throttling can
+    // discard alternating frames on faster displays or when frame timestamps round down.
     return navMode == NavMode.COMPASS_FOLLOW &&
+        !highFrequencyRotation &&
         lastAppliedAtElapsedMs != Long.MIN_VALUE &&
-        nowElapsedMs - lastAppliedAtElapsedMs < minimumIntervalMs
+        nowElapsedMs - lastAppliedAtElapsedMs < MAP_ROTATION_MIN_APPLY_INTERVAL_MS
 }
 
 internal fun resolveHeadingAnimationAlpha(
@@ -1601,7 +1638,6 @@ private const val MAP_ROTATION_ACTIVE_TURN_APPLY_EPSILON_DEG = 0.35f
 // more than 30 times per second while stationary. During a deliberate turn, temporarily allow
 // display-rate rotation so a 360-degree sweep stays fluid, then fall back to the lower-power rate.
 private const val MAP_ROTATION_MIN_APPLY_INTERVAL_MS = 33L
-private const val MAP_ROTATION_ACTIVE_TURN_MIN_APPLY_INTERVAL_MS = 16L
 
 // Keep the frame-rate interpolation local to the map, while publishing the surrounding Compose
 // screen state at the same 25fps cadence as the existing map-overlay redraw flow.

@@ -20,6 +20,8 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.GpxInspectionUiSt
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionABUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionAUiState
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupA
 import com.glancemap.glancemapwearos.presentation.features.maps.GpxInspectionPopupAB
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
@@ -126,11 +128,13 @@ internal fun MapOverlays(
             GpsAccuracyCircleLayer(
                 fillPaint = fill,
                 strokePaint = stroke,
+                displayFrameOwner = mapView as? DisplayFrameLayerOwner,
             )
         }
     val compassConeLayer =
         remember(mapView) {
-            findExistingCompassConeLayer(mapView) ?: CompassConeLayer()
+            val frameOwner = mapView as? DisplayFrameLayerOwner
+            findExistingCompassConeLayer(mapView) ?: CompassConeLayer(displayFrameOwner = frameOwner)
         }
     val markerAHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
     val markerBHolder = remember(mapView) { arrayOfNulls<Marker>(1) }
@@ -1162,7 +1166,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerAHolder[0] =
                 selectedPointA?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapA, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapA, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true
@@ -1184,7 +1188,7 @@ private fun GpxAndInspectionOverlayEffect(
             markerBHolder[0] =
                 selectedPointB?.let { ll ->
                     val snapped = snapToRenderedTrackOrNull(ll, activeGpxDetails) ?: ll
-                    Marker(snapped, markerBitmapB, 0, 0)
+                    DisplayFrameMarker(snapped, markerBitmapB, displayFrameOwner = mapView as? DisplayFrameLayerOwner)
                         .also {
                             layers.add(it)
                             changed = true
