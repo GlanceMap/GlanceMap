@@ -4026,6 +4026,7 @@ private fun createMapView(
             if (mapView.isDestroyed) return@getMapAsync
             mapForProjection = map
             map.uiSettings.setCompassEnabled(false)
+            map.uiSettings.setTiltGesturesEnabled(false)
             callbacks.onMapReady(generation, mapView, map)
             map.addOnMapClickListener { point ->
                 if (suppressNextMapTap) {
