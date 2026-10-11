@@ -60,10 +60,10 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
 
     @Test
     fun stoppingUpdatesRetainsTheLatestValidLocation() {
+        val active = PhoneMapLocationSubscription().start()
         val retained =
-            PhoneMapLocationSubscription()
-                .start()
-                .update(insideLocation)
+            active
+                .update(active.generation, insideLocation)
                 .stop()
 
         assertFalse(retained.isActive)

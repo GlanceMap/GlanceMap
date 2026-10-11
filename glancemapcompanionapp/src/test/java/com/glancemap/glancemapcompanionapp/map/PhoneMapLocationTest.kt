@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -36,4 +37,81 @@ class PhoneMapLocationTest {
         assertNull(metadata.elapsedRealtimeNanos)
         assertNull(metadata.altitudeMeters)
     }
+
+    @Test
+    fun olderCachedFixCannotReplaceNewerLiveFix() {
+        val active = PhoneMapLocationSubscription().start()
+        val liveFix = phoneMapLocation(latitude = 47.0, longitude = 8.0, elapsedMillis = 2_000L)
+        val cachedFix = phoneMapLocation(latitude = 46.0, longitude = 7.0, elapsedMillis = 1_000L)
+
+        val afterLive = active.update(active.generation, liveFix)
+        val afterCached = afterLive.update(active.generation, cachedFix)
+
+        assertEquals(liveFix, afterCached.latestLocation)
+    }
+
+    @Test
+    fun callbackFromEarlierSubscriptionIsIgnoredAfterRestart() {
+        val firstSubscription = PhoneMapLocationSubscription().start()
+        val firstFix = phoneMapLocation(latitude = 46.0, longitude = 7.0, elapsedMillis = 1_000L)
+        val restarted = firstSubscription.update(firstSubscription.generation, firstFix).stop().start()
+        val currentFix = phoneMapLocation(latitude = 47.0, longitude = 8.0, elapsedMillis = 2_000L)
+        val currentSubscription = restarted.update(restarted.generation, currentFix)
+        val obsoleteFix = phoneMapLocation(latitude = 48.0, longitude = 9.0, elapsedMillis = 3_000L)
+
+        val afterObsoleteCallback = currentSubscription.update(firstSubscription.generation, obsoleteFix)
+
+        assertEquals(currentSubscription, afterObsoleteCallback)
+        assertEquals(currentFix, afterObsoleteCallback.latestLocation)
+    }
+
+    @Test
+    fun callbackWhileStoppedIsIgnoredAndLatestLocationIsRetained() {
+        val active = PhoneMapLocationSubscription().start()
+        val retainedFix = phoneMapLocation(latitude = 47.0, longitude = 8.0, elapsedMillis = 2_000L)
+        val stopped = active.update(active.generation, retainedFix).stop()
+        val lateFix = phoneMapLocation(latitude = 48.0, longitude = 9.0, elapsedMillis = 3_000L)
+
+        val afterLateCallback = stopped.update(active.generation, lateFix)
+
+        assertFalse(afterLateCallback.isActive)
+        assertEquals(retainedFix, afterLateCallback.latestLocation)
+    }
+
+    @Test
+    fun currentSubscriptionAcceptsNewerFixes() {
+        val active = PhoneMapLocationSubscription().start()
+        val previousFix = phoneMapLocation(latitude = 46.0, longitude = 7.0, elapsedMillis = 1_000L)
+        val newerFix = phoneMapLocation(latitude = 47.0, longitude = 8.0, elapsedMillis = 2_000L)
+
+        val previous = active.update(active.generation, previousFix)
+        val current = previous.update(active.generation, newerFix)
+
+        assertEquals(newerFix, current.latestLocation)
+    }
+
+    @Test
+    fun invalidElapsedRealtimeDoesNotMakeAFixAppearNewer() {
+        val active = PhoneMapLocationSubscription().start()
+        val acceptedFix = phoneMapLocation(latitude = 47.0, longitude = 8.0, elapsedMillis = 2_000L)
+        val previous = active.update(active.generation, acceptedFix)
+        val missingTimestamp = phoneMapLocation(latitude = 48.0, longitude = 9.0, elapsedMillis = 0L)
+        val invalidTimestamp = phoneMapLocation(latitude = 49.0, longitude = 10.0, elapsedMillis = -1L)
+
+        assertEquals(previous, previous.update(active.generation, missingTimestamp))
+        assertEquals(previous, previous.update(active.generation, invalidTimestamp))
+    }
+
+    private fun phoneMapLocation(
+        latitude: Double,
+        longitude: Double,
+        elapsedMillis: Long,
+    ): PhoneMapLocation =
+        PhoneMapLocation(
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = 3f,
+            fixElapsedRealtimeMillis = elapsedMillis,
+            altitudeMeters = 900.0,
+        )
 }

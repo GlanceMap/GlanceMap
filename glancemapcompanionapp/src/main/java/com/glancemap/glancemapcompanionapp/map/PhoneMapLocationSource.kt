@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Looper
-import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -50,14 +49,28 @@ internal fun Context.hasPhoneMapLocationPermission(): Boolean =
 
 /** Keeps the latest foreground-map fix while location updates are temporarily unsubscribed. */
 internal data class PhoneMapLocationSubscription(
+    val generation: Long = 0L,
     val isActive: Boolean = false,
     val latestLocation: PhoneMapLocation? = null,
 ) {
-    fun start(): PhoneMapLocationSubscription = copy(isActive = true)
+    fun start(): PhoneMapLocationSubscription = copy(generation = generation + 1L, isActive = true)
 
     fun stop(): PhoneMapLocationSubscription = copy(isActive = false)
 
-    fun update(location: PhoneMapLocation): PhoneMapLocationSubscription = copy(latestLocation = location)
+    fun update(
+        generation: Long,
+        location: PhoneMapLocation,
+    ): PhoneMapLocationSubscription {
+        val isCurrentSubscription = isActive && generation == this.generation
+        val hasValidTimestamp = location.fixElapsedRealtimeMillis > 0L
+        val isNotOlderThanLatest =
+            latestLocation?.let { location.fixElapsedRealtimeMillis >= it.fixElapsedRealtimeMillis } ?: true
+        return if (isCurrentSubscription && hasValidTimestamp && isNotOlderThanLatest) {
+            copy(latestLocation = location)
+        } else {
+            this
+        }
+    }
 }
 
 /** Foreground map-only location stream shared by the online and offline renderers. */
@@ -68,19 +81,22 @@ internal class PhoneMapLocationSource(
     private val _location = MutableStateFlow<PhoneMapLocation?>(null)
     val location: StateFlow<PhoneMapLocation?> = _location.asStateFlow()
     private var subscription = PhoneMapLocationSubscription()
-    private val callback =
-        object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                if (subscription.isActive) result.lastLocation?.let(::publish)
-            }
-        }
+    private var activeCallback: LocationCallback? = null
 
     @SuppressLint("MissingPermission")
     fun start() {
         if (subscription.isActive) return
         subscription = subscription.start()
+        val generation = subscription.generation
+        val callback =
+            object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    result.lastLocation?.let { publish(it, generation) }
+                }
+            }
+        activeCallback = callback
         locationClient.lastLocation.addOnSuccessListener { location ->
-            if (subscription.isActive) location?.let(::publish)
+            location?.let { publish(it, generation) }
         }
         locationClient.requestLocationUpdates(
             LocationRequest
@@ -95,22 +111,23 @@ internal class PhoneMapLocationSource(
     fun stop() {
         if (!subscription.isActive) return
         subscription = subscription.stop()
-        locationClient.removeLocationUpdates(callback)
+        activeCallback?.let(locationClient::removeLocationUpdates)
+        activeCallback = null
     }
 
-    private fun publish(location: Location) {
+    private fun publish(
+        location: Location,
+        generation: Long,
+    ) {
         val fix =
             PhoneMapLocation(
                 latitude = location.latitude,
                 longitude = location.longitude,
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
-                fixElapsedRealtimeMillis =
-                    (location.elapsedRealtimeNanos / NANOSECONDS_PER_MILLISECOND)
-                        .takeIf { it > 0L }
-                        ?: SystemClock.elapsedRealtime(),
+                fixElapsedRealtimeMillis = location.elapsedRealtimeNanos / NANOSECONDS_PER_MILLISECOND,
                 altitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() },
             )
-        subscription = subscription.update(fix)
+        subscription = subscription.update(generation, fix)
         _location.value = subscription.latestLocation
     }
 }
