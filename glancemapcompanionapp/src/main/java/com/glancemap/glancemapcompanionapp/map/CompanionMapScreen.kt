@@ -92,6 +92,7 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarke
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineRasterOpacity
 import com.glancemap.trailcore.geo.GeoPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -454,6 +455,25 @@ internal fun CompanionMapScreen(
     var selectedGpxAnalysis by remember { mutableStateOf<PhoneMapGpxItem?>(null) }
     var routeAnalysis by remember { mutableStateOf<PhoneMapRouteAnalysis?>(null) }
     var routeAnalysisSelectingPointB by remember { mutableStateOf(false) }
+    var routeAnalysisTrackRevision by remember { mutableStateOf<PhoneMapRouteAnalysisTrackRevision?>(null) }
+    var routeAnalysisRequestState by remember { mutableStateOf(PhoneMapRouteAnalysisRequestState()) }
+    var routeAnalysisPendingRequest by remember { mutableStateOf<PhoneMapRouteAnalysisRequest?>(null) }
+    var routeAnalysisJob by remember { mutableStateOf<Job?>(null) }
+    val cancelRouteAnalysisJob = {
+        routeAnalysisJob?.cancel()
+        routeAnalysisJob = null
+        routeAnalysisPendingRequest = null
+    }
+    val invalidateRouteAnalysisRequest = {
+        cancelRouteAnalysisJob()
+        routeAnalysisRequestState = routeAnalysisRequestState.invalidate()
+    }
+    val clearRouteAnalysis = {
+        invalidateRouteAnalysisRequest()
+        routeAnalysis = null
+        routeAnalysisTrackRevision = null
+        routeAnalysisSelectingPointB = false
+    }
     val pointSelectionMarkers =
         phoneMapPointSelectionMarkers(poiCreationPoint, routeToolsState) +
             phoneMapDistanceMeasurementMarkers(distanceMeasurement)
@@ -565,6 +585,46 @@ internal fun CompanionMapScreen(
     }
     val currentLiveMapPosition by rememberUpdatedState(liveMapPosition)
     val currentOfflineMaps by rememberUpdatedState(offlineMaps)
+    LaunchedEffect(
+        gpxUiState.items,
+        mapUiState.contentVisibility.gpxTracks,
+        gpxSettings.inspectionEnabled,
+        routeToolsState.isOpen,
+        poiCreationActive,
+        poiCreationPoint != null,
+    ) {
+        val currentItems = gpxUiState.items
+        val routeAnalysisAvailable =
+            isPhoneMapRouteAnalysisAvailable(
+                inspectionEnabled = gpxSettings.inspectionEnabled,
+                gpxTracksVisible = mapUiState.contentVisibility.gpxTracks,
+                routeToolsOpen = routeToolsState.isOpen,
+                poiCreationActive = poiCreationActive,
+                poiCreationPointSet = poiCreationPoint != null,
+            )
+        val pendingRequest = routeAnalysisPendingRequest
+        if (
+            pendingRequest != null &&
+            (
+                !routeAnalysisAvailable ||
+                    !pendingRequest.hasSameCandidateTracks(currentItems)
+            )
+        ) {
+            invalidateRouteAnalysisRequest()
+        }
+        if (
+            routeAnalysis != null &&
+            (
+                !gpxSettings.inspectionEnabled ||
+                    routeAnalysisTrackRevision?.isAvailableIn(
+                        currentItems,
+                        mapUiState.contentVisibility.gpxTracks,
+                    ) != true
+            )
+        ) {
+            clearRouteAnalysis()
+        }
+    }
     LaunchedEffect(
         mapSettings.liveElevationEnabled,
         mapUiState.mapMode.isDetachedFromLocation,
@@ -1253,8 +1313,7 @@ internal fun CompanionMapScreen(
             onDismiss = routeToolsViewModel::cancel,
         )
     val onOpenRouteTools = {
-        routeAnalysis = null
-        routeAnalysisSelectingPointB = false
+        clearRouteAnalysis()
         poiCreationActive = false
         poiCreationPoint = null
         poiCreationDialogVisible = false
@@ -1262,8 +1321,7 @@ internal fun CompanionMapScreen(
         routeToolsViewModel.open(gpxUiState.items)
     }
     val onAddPoi = {
-        routeAnalysis = null
-        routeAnalysisSelectingPointB = false
+        clearRouteAnalysis()
         routeToolsViewModel.cancel()
         selectedPoi = null
         poiCreationActive = true
@@ -1309,67 +1367,101 @@ internal fun CompanionMapScreen(
                 poiCreationPointSet = poiCreationPoint != null,
             )
         if (canAnalyzeRoute) {
-            val selectingPointB = routeAnalysisSelectingPointB
-            val allowedTrackId = if (selectingPointB) routeAnalysis?.trackId else null
-            val enabledItems = gpxUiState.items.filter { item -> item.enabled }
-            coroutineScope.launch(Dispatchers.Default) {
-                val hit =
-                    findClosestPhoneMapRoutePosition(
-                        press = point,
-                        items = enabledItems,
-                        allowedTrackId = allowedTrackId,
-                    )?.takeIf { value ->
-                        value.distanceToTrackMeters <= PHONE_ROUTE_ANALYSIS_PRESS_THRESHOLD_METERS
+            val phase =
+                if (routeAnalysisSelectingPointB) {
+                    PhoneMapRouteAnalysisSelectionPhase.POINT_B
+                } else {
+                    PhoneMapRouteAnalysisSelectionPhase.POINT_A
+                }
+            val currentAnalysis = routeAnalysis
+            val currentTrackRevision = routeAnalysisTrackRevision
+            val enabledItems =
+                gpxViewModel.uiState.value.items
+                    .filter(PhoneMapGpxItem::enabled)
+            val candidateItems =
+                if (phase == PhoneMapRouteAnalysisSelectionPhase.POINT_B) {
+                    enabledItems.filter { item ->
+                        item.id == currentAnalysis?.trackId &&
+                            currentTrackRevision?.isAvailableIn(listOf(item), gpxTracksVisible = true) == true
                     }
-                if (hit != null) {
-                    withContext(Dispatchers.Main.immediate) {
-                        if (
-                            !isPhoneMapRouteAnalysisAvailable(
-                                inspectionEnabled = gpxSettings.inspectionEnabled,
-                                gpxTracksVisible = mapUiState.contentVisibility.gpxTracks,
-                                routeToolsOpen = routeToolsState.isOpen,
-                                poiCreationActive = poiCreationActive,
-                                poiCreationPointSet = poiCreationPoint != null,
-                            )
-                        ) {
-                            return@withContext
-                        }
-                        if (selectingPointB != routeAnalysisSelectingPointB) return@withContext
-                        if (selectingPointB) {
-                            val current = routeAnalysis
-                            val currentItem =
-                                current?.let { value ->
-                                    gpxUiState.items.firstOrNull { item -> item.id == value.trackId }
-                                }
-                            if (current != null && currentItem != null) {
-                                routeAnalysis =
-                                    buildPhoneMapRouteAnalysis(
-                                        pointA =
-                                            PhoneMapRouteAnalysisHit(
-                                                item = currentItem,
-                                                position = current.pointAPosition,
-                                                coordinate = current.pointA,
-                                                distanceToTrackMeters = 0.0,
-                                            ),
-                                        pointB = hit,
-                                        settings = gpxSettings,
-                                        generalSettings = generalSettings,
-                                    )
+                } else {
+                    enabledItems
+                }
+            if (candidateItems.isEmpty()) {
+                if (phase == PhoneMapRouteAnalysisSelectionPhase.POINT_B) {
+                    clearRouteAnalysis()
+                } else {
+                    invalidateRouteAnalysisRequest()
+                }
+                return
+            }
+            cancelRouteAnalysisJob()
+            val settingsSnapshot = gpxSettings
+            val generalSettingsSnapshot = generalSettings
+            val (requestState, request) =
+                routeAnalysisRequestState.begin(
+                    PhoneMapRouteAnalysisRequestInput(
+                        phase = phase,
+                        press = point,
+                        candidateItems = candidateItems,
+                        currentAnalysis = currentAnalysis,
+                        currentTrackRevision = currentTrackRevision,
+                        settings = settingsSnapshot,
+                        generalSettings = generalSettingsSnapshot,
+                    ),
+                )
+            routeAnalysisRequestState = requestState
+            routeAnalysisPendingRequest = request
+            val job =
+                coroutineScope.launch {
+                    try {
+                        val result = withContext(Dispatchers.Default) { computePhoneMapRouteAnalysisRequest(request) }
+                        if (result != null) {
+                            val currentItems = gpxViewModel.uiState.value.items
+                            val routeAnalysisAvailable =
+                                isPhoneMapRouteAnalysisAvailable(
+                                    inspectionEnabled = gpxSettings.inspectionEnabled,
+                                    gpxTracksVisible = mapUiState.contentVisibility.gpxTracks,
+                                    routeToolsOpen = routeToolsState.isOpen,
+                                    poiCreationActive = poiCreationActive,
+                                    poiCreationPointSet = poiCreationPoint != null,
+                                )
+                            if (
+                                routeAnalysisRequestState.canPublish(
+                                    request = request,
+                                    result = result,
+                                    current =
+                                        PhoneMapRouteAnalysisRequestCurrentState(
+                                            phase =
+                                                if (routeAnalysisSelectingPointB) {
+                                                    PhoneMapRouteAnalysisSelectionPhase.POINT_B
+                                                } else {
+                                                    PhoneMapRouteAnalysisSelectionPhase.POINT_A
+                                                },
+                                            analysis = routeAnalysis,
+                                            trackRevision = routeAnalysisTrackRevision,
+                                            items = currentItems,
+                                            routeAnalysisAvailable = routeAnalysisAvailable,
+                                            gpxTracksVisible = mapUiState.contentVisibility.gpxTracks,
+                                            settings = gpxSettings,
+                                            generalSettings = generalSettings,
+                                        ),
+                                )
+                            ) {
+                                if (phase == PhoneMapRouteAnalysisSelectionPhase.POINT_A) selectedPoi = null
+                                routeAnalysis = result.analysis
+                                routeAnalysisTrackRevision = result.trackRevision
                                 routeAnalysisSelectingPointB = false
                             }
-                        } else {
-                            selectedPoi = null
-                            routeAnalysis =
-                                buildPhoneMapRouteAnalysis(
-                                    pointA = hit,
-                                    settings = gpxSettings,
-                                    generalSettings = generalSettings,
-                                )
-                            routeAnalysisSelectingPointB = false
+                        }
+                    } finally {
+                        if (routeAnalysisPendingRequest === request) {
+                            routeAnalysisPendingRequest = null
+                            routeAnalysisJob = null
                         }
                     }
                 }
-            }
+            routeAnalysisJob = job
         }
     }
     val savePoi = {
@@ -1406,10 +1498,7 @@ internal fun CompanionMapScreen(
     val onMapBack = {
         when {
             selectedGpxAnalysis != null -> selectedGpxAnalysis = null
-            routeAnalysis != null -> {
-                routeAnalysis = null
-                routeAnalysisSelectingPointB = false
-            }
+            routeAnalysis != null || routeAnalysisJob != null || routeAnalysisSelectingPointB -> clearRouteAnalysis()
             poiCreationPoint != null -> {
                 poiCreationPoint = null
                 poiCreationDialogVisible = false
@@ -1427,7 +1516,9 @@ internal fun CompanionMapScreen(
                 poiCreationActive ||
                 poiCreationPoint != null ||
                 selectedGpxAnalysis != null ||
-                routeAnalysis != null,
+                routeAnalysis != null ||
+                routeAnalysisJob != null ||
+                routeAnalysisSelectingPointB,
     ) {
         onMapBack()
     }
@@ -2331,10 +2422,12 @@ internal fun CompanionMapScreen(
                         isMetric = generalSettings.isMetric,
                         selectingPointB = routeAnalysisSelectingPointB,
                         onDismiss = {
-                            routeAnalysis = null
-                            routeAnalysisSelectingPointB = false
+                            clearRouteAnalysis()
                         },
-                        onSelectPointB = { routeAnalysisSelectingPointB = true },
+                        onSelectPointB = {
+                            invalidateRouteAnalysisRequest()
+                            routeAnalysisSelectingPointB = true
+                        },
                     )
                 }
                 poiCreationMessage?.let { savedName ->
@@ -2458,18 +2551,30 @@ internal fun CompanionMapScreen(
                     MapToolsPanelActions(
                         maps = mapActions,
                         onGpxVisibilityChanged = { visible ->
+                            if (!visible) clearRouteAnalysis()
                             mapUiState =
                                 mapUiState.copy(
                                     contentVisibility =
                                         mapUiState.contentVisibility.copy(gpxTracks = visible),
                                 )
                         },
-                        onGpxItemToggled = gpxViewModel::toggle,
+                        onGpxItemToggled = { id ->
+                            val disablesRouteSource =
+                                routeAnalysis?.trackId == id &&
+                                    gpxUiState.items.firstOrNull { item -> item.id == id }?.enabled == true
+                            if (disablesRouteSource) {
+                                clearRouteAnalysis()
+                            } else {
+                                invalidateRouteAnalysisRequest()
+                            }
+                            gpxViewModel.toggle(id)
+                        },
                         onOpenGpxAnalysis = { item -> selectedGpxAnalysis = item },
                         onRenameGpxItem = { item -> openContentRename(PhoneMapManagedContent.Gpx(item)) },
                         onDeleteGpxItem = { item -> openContentDelete(PhoneMapManagedContent.Gpx(item)) },
                         onOpenRouteTools = onOpenRouteTools,
                         onGpxSettingsChanged = { settings ->
+                            if (!settings.inspectionEnabled) clearRouteAnalysis() else invalidateRouteAnalysisRequest()
                             gpxSettings = gpxSettingsPreferences.save(settings)
                         },
                         onSelectGpxFolder = { selectGpxFolderLauncher.launch(null) },
