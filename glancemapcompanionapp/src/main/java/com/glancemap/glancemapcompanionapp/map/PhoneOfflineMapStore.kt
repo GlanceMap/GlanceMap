@@ -15,6 +15,8 @@ import kotlinx.coroutines.ensureActive
 import org.mapsforge.map.reader.MapFile
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /** A locally copied Mapsforge source owned by the companion phone application. */
 internal data class PhoneOfflineMap(
@@ -213,8 +215,8 @@ internal class PhoneOfflineMapStore(
 
     /**
      * Installs an extracted OAM map only after the temporary file validates. Existing valid files
-     * are reused; an invalid target is replaced only after its replacement is ready. Atomic
-     * promotion needs explicit safety branches, including generic I/O exceptions.
+     * are reused unless replacement is requested. Promotion is atomic within the map directory;
+     * a failed promotion leaves the existing map intact.
      */
     @Suppress("CyclomaticComplexMethod", "ReturnCount", "TooGenericExceptionCaught")
     suspend fun installBundleMap(
@@ -231,7 +233,7 @@ internal class PhoneOfflineMapStore(
         }
 
         val destination = File(directory, File(fileName).name)
-        val temporary = File(directory, ".${destination.name}.bundle.part")
+        val temporary = File(destination.parentFile, ".${destination.name}.bundle.part")
         var completed = false
         return try {
             temporary.outputStream().use { output ->
@@ -244,15 +246,19 @@ internal class PhoneOfflineMapStore(
                             map = PhoneOfflineMap(destination),
                             reusedExisting = true,
                         )
-                    destination.exists() && !destination.delete() ->
-                        PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
-                    temporary.renameTo(destination) ->
+                    else -> {
+                        Files.move(
+                            temporary.toPath(),
+                            destination.toPath(),
+                            StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING,
+                        )
                         PhoneOfflineMapBundleInstallResult.Success(
                             map = PhoneOfflineMap(destination),
                             reusedExisting = false,
                         )
-                    else -> PhoneOfflineMapBundleInstallResult.Failure(PhoneOfflineMapError.COPY_FAILED)
-                }.also { result -> completed = result is PhoneOfflineMapBundleInstallResult.Success }
+                    }
+                }.also { completed = true }
         } catch (exception: CancellationException) {
             throw exception
         } catch (_: Exception) {
