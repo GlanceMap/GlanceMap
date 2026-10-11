@@ -310,6 +310,7 @@ class LiveTrackingService : Service() {
                 cachedLocationAgeMillis = null,
                 cachedLocationAccepted = null,
                 context = trackingContext(generation),
+                fineLocationGranted = hasFineLocationPermission(),
             )
             return
         }
@@ -333,6 +334,7 @@ class LiveTrackingService : Service() {
             cachedLocationAgeMillis = ageMillis,
             cachedLocationAccepted = isFresh,
             context = trackingContext(generation),
+            fineLocationGranted = hasFineLocationPermission(),
         )
         if (!isFresh) {
             val decision =

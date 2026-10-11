@@ -214,6 +214,7 @@ internal object LiveTrackingDiagnostics {
         cachedLocationAgeMillis: Long?,
         cachedLocationAccepted: Boolean?,
         context: LiveTrackingDiagnosticContext? = null,
+        fineLocationGranted: Boolean? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val line =
@@ -230,6 +231,7 @@ internal object LiveTrackingDiagnostics {
                     append(" cacheAgeMs=").append(cachedLocationAgeMillis ?: "na")
                     append(" cacheFreshness=")
                         .append(cachedLocationAccepted?.let { if (it) "accepted" else "rejected" } ?: "na")
+                    append(" fineLocationGranted=").append(fineLocationGranted ?: "na")
                     appendTrackingContext(context)
                 }
             }

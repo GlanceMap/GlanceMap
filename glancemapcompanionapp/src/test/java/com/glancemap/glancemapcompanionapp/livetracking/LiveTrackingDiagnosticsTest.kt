@@ -284,6 +284,7 @@ class LiveTrackingDiagnosticsTest {
             cachedLocationExists = true,
             cachedLocationAgeMillis = 220L,
             cachedLocationAccepted = true,
+            fineLocationGranted = false,
         )
         LiveTrackingDiagnostics.recordLiveTrackingFix(
             source = LiveTrackingFixSource.CALLBACK,
@@ -390,6 +391,7 @@ class LiveTrackingDiagnosticsTest {
         val capture = PhoneDebugCapture.snapshot().joinToString("\n")
 
         assertTrue(capture.contains("session_start endpoint=development intervalSec=30"))
+        assertTrue(capture.contains("fineLocationGranted=false"))
         assertTrue(capture.contains("fix=1 source=callback"))
         assertTrue(capture.contains("source=callback ageMs=31000"))
         assertTrue(capture.contains("reason=stale_startup_callback"))

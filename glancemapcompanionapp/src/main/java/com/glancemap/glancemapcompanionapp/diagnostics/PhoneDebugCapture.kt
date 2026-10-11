@@ -1,8 +1,12 @@
 package com.glancemap.glancemapcompanionapp.diagnostics
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.core.content.pm.PackageInfoCompat
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.glancemapcompanionapp.livetracking.liveTrackingRecoverySummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,6 +104,12 @@ object PhoneDebugCapture {
     fun buildReport(context: Context): String {
         val state = state.value
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val fineLocationGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        val coarseLocationGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
         val generatedAt = Instant.now()
         val timestampFormatter =
             DateTimeFormatter
@@ -114,11 +124,19 @@ object PhoneDebugCapture {
             appendLine("Package: ${context.packageName}")
             appendLine("VersionName: ${packageInfo.versionName}")
             appendLine("VersionCode: ${PackageInfoCompat.getLongVersionCode(packageInfo)}")
+            appendLine("BuildType: ${BuildConfig.BUILD_TYPE}")
+            appendLine("GitSha: ${BuildConfig.GIT_SHA}")
+            appendLine("GitBranch: ${BuildConfig.GIT_BRANCH}")
+            appendLine("GitDirty: ${BuildConfig.GIT_DIRTY}")
             appendLine()
             appendLine("Device")
             appendLine("Manufacturer: ${Build.MANUFACTURER}")
             appendLine("Model: ${Build.MODEL}")
             appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+            appendLine()
+            appendLine("Location Permissions At Export")
+            appendLine("FineLocationGranted: $fineLocationGranted")
+            appendLine("CoarseLocationGranted: $coarseLocationGranted")
             appendLine()
             appendLine("Capture")
             appendLine("SessionId: ${state.sessionId}")
