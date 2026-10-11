@@ -357,6 +357,11 @@ private class PhoneOfflineMapsforgeView(
         )
     }
 
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (hasWindowFocus) onMapViewLifecycleChanged()
+    }
+
     fun render(state: PhoneOfflineMapSurfaceState) {
         if (disposed) return
         mapView.isEnabled = state.isInteractive

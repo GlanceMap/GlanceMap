@@ -37,6 +37,23 @@ class PhoneOfflineMapsforgeSurfaceTest {
         val scheduled = requireNotNull(gate.scheduleIfReady(ready()))
 
         assertTrue(gate.consumeIfCurrent(scheduled, ready()))
+        assertFalse(gate.consumeIfCurrent(scheduled, ready()))
+        assertFalse(gate.hasPendingWork())
+    }
+
+    @Test
+    fun pendingRendererWorkCanBeRescheduledAfterReadinessReturns() {
+        val gate = PhoneMapsforgeRenderWorkGate()
+        gate.requestWork()
+        val scheduled = requireNotNull(gate.scheduleIfReady(ready()))
+        val notReady = ready().copy(hasWindowFocus = false)
+
+        assertFalse(gate.consumeIfCurrent(scheduled, notReady))
+        assertTrue(gate.hasPendingWork())
+
+        val rescheduled = requireNotNull(gate.scheduleIfReady(ready()))
+        assertEquals(scheduled, rescheduled)
+        assertTrue(gate.consumeIfCurrent(rescheduled, ready()))
         assertFalse(gate.hasPendingWork())
     }
 
@@ -48,7 +65,8 @@ class PhoneOfflineMapsforgeSurfaceTest {
         gate.requestWork()
         val current = requireNotNull(gate.scheduleIfReady(ready()))
 
-        assertFalse(gate.consumeIfCurrent(stale, ready()))
+        assertFalse(gate.consumeIfCurrent(stale, ready().copy(hasWindowFocus = false)))
+        assertNull(gate.scheduleIfReady(ready()))
         assertTrue(gate.consumeIfCurrent(current, ready()))
     }
 

@@ -36,10 +36,17 @@ internal class PhoneMapsforgeRenderWorkGate {
         scheduled: Long,
         readiness: PhoneMapViewRenderReadiness,
     ): Boolean {
-        if (!readiness.isReady || !pending || scheduled != generation) return false
-        pending = false
-        scheduledGeneration = null
-        return true
+        val isCurrent = pending && scheduled == generation
+        val isReady = readiness.isReady
+        if (isCurrent && !isReady && scheduledGeneration == scheduled) {
+            scheduledGeneration = null
+        }
+        val canConsume = isCurrent && isReady
+        if (canConsume) {
+            pending = false
+            scheduledGeneration = null
+        }
+        return canConsume
     }
 
     fun hasPendingWork(): Boolean = pending
