@@ -7,11 +7,48 @@ import org.junit.Test
 
 class PhoneOfflineBundleRefreshTest {
     @Test
-    fun remoteMetadataComparisonPrefersStableContentLength() {
+    fun changedEntityTagOverridesEqualContentLength() {
         val previous = metadata(entityTag = "old", modified = 1L, size = 100L)
-        val current = metadata(entityTag = "new", modified = 2L, size = 100L)
+        val current = metadata(entityTag = "new", modified = 1L, size = 100L)
+
+        assertEquals(PhoneOfflineRemoteMetadataComparison.CHANGED, previous.compareWith(current))
+    }
+
+    @Test
+    fun changedLastModifiedOverridesEqualContentLength() {
+        val previous = metadata(entityTag = "same", modified = 1L, size = 100L)
+        val current = metadata(entityTag = "same", modified = 2L, size = 100L)
+
+        assertEquals(PhoneOfflineRemoteMetadataComparison.CHANGED, previous.compareWith(current))
+    }
+
+    @Test
+    fun unchangedValidatorsReportSame() {
+        val previous = metadata(entityTag = "same", modified = 1L, size = 100L)
+        val current = metadata(entityTag = "same", modified = 1L, size = 100L)
 
         assertEquals(PhoneOfflineRemoteMetadataComparison.SAME, previous.compareWith(current))
+    }
+
+    @Test
+    fun changedContentLengthReportsChanged() {
+        val previous = metadata(entityTag = "same", modified = 1L, size = 100L)
+        val current = metadata(entityTag = "same", modified = 1L, size = 101L)
+
+        assertEquals(PhoneOfflineRemoteMetadataComparison.CHANGED, previous.compareWith(current))
+    }
+
+    @Test
+    fun successfulStatusAloneDoesNotProveUnchangedContent() {
+        val successful = metadata(entityTag = null, modified = null, size = null).copy(httpStatusCode = 200)
+
+        assertTrue(successful.isComparable())
+        assertEquals(PhoneOfflineRemoteMetadataComparison.UNKNOWN, successful.compareWith(successful))
+        assertEquals(
+            PhoneOfflineRemoteMetadataComparison.UNKNOWN,
+            metadata(entityTag = null, modified = null, size = null)
+                .compareWith(metadata(entityTag = null, modified = null, size = null)),
+        )
     }
 
     @Test

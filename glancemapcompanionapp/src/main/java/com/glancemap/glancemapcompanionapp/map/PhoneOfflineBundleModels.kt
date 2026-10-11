@@ -171,31 +171,28 @@ internal enum class PhoneOfflineRemoteMetadataComparison {
 @Suppress("CyclomaticComplexMethod") // Compares the three optional HTTP validators in priority order.
 internal fun PhoneOfflineRemoteFileMetadata.compareWith(
     other: PhoneOfflineRemoteFileMetadata,
-): PhoneOfflineRemoteMetadataComparison =
-    when {
+): PhoneOfflineRemoteMetadataComparison {
+    val entityTagMatches = entityTag.matchesWhenBothPresent(other.entityTag)
+    val lastModifiedMatches = lastModifiedMillis.matchesWhenBothPresent(other.lastModifiedMillis)
+    val contentLengthMatches = contentLengthBytes.matchesWhenBothPresent(other.contentLengthBytes)
+    return when {
         url != other.url -> PhoneOfflineRemoteMetadataComparison.CHANGED
-        httpStatusCode != null || other.httpStatusCode != null ->
-            if (httpStatusCode == other.httpStatusCode) {
+        httpStatusCode == 404 || other.httpStatusCode == 404 ->
+            if (httpStatusCode == 404 && other.httpStatusCode == 404) {
                 PhoneOfflineRemoteMetadataComparison.SAME
             } else {
                 PhoneOfflineRemoteMetadataComparison.CHANGED
             }
-        contentLengthBytes != null &&
-            other.contentLengthBytes != null &&
-            contentLengthBytes == other.contentLengthBytes -> PhoneOfflineRemoteMetadataComparison.SAME
-        contentLengthBytes != null && other.contentLengthBytes != null ->
+        entityTagMatches == false || lastModifiedMatches == false ->
             PhoneOfflineRemoteMetadataComparison.CHANGED
-        lastModifiedMillis != null && other.lastModifiedMillis != null ->
-            if (lastModifiedMillis == other.lastModifiedMillis) {
-                PhoneOfflineRemoteMetadataComparison.SAME
-            } else {
-                PhoneOfflineRemoteMetadataComparison.CHANGED
-            }
-        entityTag != null && other.entityTag != null && entityTag == other.entityTag ->
-            PhoneOfflineRemoteMetadataComparison.SAME
-        entityTag != null && other.entityTag != null -> PhoneOfflineRemoteMetadataComparison.CHANGED
+        contentLengthMatches == false -> PhoneOfflineRemoteMetadataComparison.CHANGED
+        entityTagMatches == true || lastModifiedMatches == true -> PhoneOfflineRemoteMetadataComparison.SAME
+        contentLengthMatches == true -> PhoneOfflineRemoteMetadataComparison.SAME
         else -> PhoneOfflineRemoteMetadataComparison.UNKNOWN
     }
+}
+
+private fun <T : Any> T?.matchesWhenBothPresent(other: T?): Boolean? = this?.let { value -> other?.let { value == it } }
 
 internal fun PhoneOfflineRemoteFileMetadata.isComparable(): Boolean =
     httpStatusCode != null ||
