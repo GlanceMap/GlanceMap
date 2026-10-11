@@ -180,8 +180,15 @@ class PoiViewModel(
     private val _offlineSearchUiState = MutableStateFlow(PoiSearchUiState())
     val offlineSearchUiState: StateFlow<PoiSearchUiState> = _offlineSearchUiState.asStateFlow()
     private var poiSearchJob: Job? = null
-    private var poiFilesReloadJob: Job? = null
     private var hasLoadedPoiFiles = false
+    private val poiReloadCoordinator =
+        PoiReloadCoordinator(
+            scope = viewModelScope,
+            reload = ::reloadFromDisk,
+            onFailure = { error ->
+                DebugTelemetry.log("POI", "event=reload_failed type=${error.javaClass.simpleName}")
+            },
+        )
 
     private val selectedMapPath: StateFlow<String?> =
         settingsRepository.selectedMapPath
@@ -224,8 +231,7 @@ class PoiViewModel(
         collapseAll: Boolean = false,
         forceRefresh: Boolean = false,
     ) {
-        val currentJob = poiFilesReloadJob
-        if (currentJob?.isActive == true) {
+        if (poiReloadCoordinator.isLoading && !forceRefresh) {
             DebugTelemetry.log(
                 "POI",
                 "event=reload_skip reason=$reason skipReason=in_progress collapseAll=$collapseAll",
@@ -240,10 +246,10 @@ class PoiViewModel(
             )
             return
         }
-        poiFilesReloadJob =
-            viewModelScope.launch {
-                reloadFromDisk(reason = reason, collapseAll = collapseAll)
-            }
+        if (poiReloadCoordinator.isLoading) {
+            DebugTelemetry.log("POI", "event=reload_queued reason=$reason collapseAll=$collapseAll")
+        }
+        poiReloadCoordinator.request(reason = reason, collapseAll = collapseAll)
     }
 
     fun toggleExpanded(path: String) {
@@ -596,7 +602,7 @@ class PoiViewModel(
             _categoryCounts.update { counts ->
                 counts.filterKeys { key -> key.filePath != path }
             }
-            reloadFromDisk(reason = "delete")
+            requestPoiFilesReload(reason = "delete", forceRefresh = true)
         }
     }
 
@@ -794,23 +800,22 @@ class PoiViewModel(
             markers
         }
 
-    private suspend fun reloadFromDisk(
-        reason: String,
-        collapseAll: Boolean = false,
-    ) {
+    private suspend fun reloadFromDisk(request: PoiReloadRequest) {
         val startedAtElapsedMs = SystemClock.elapsedRealtime()
+        val startedAtUptimeMs = SystemClock.uptimeMillis()
         var listedFileCount = -1
         var importedFileCount = -1
         val showBlockingLoading = _poiFiles.value.none { file -> !isUserPoiPath(file.path) }
         DebugTelemetry.log(
             "POI",
-            "event=reload_start reason=$reason collapseAll=$collapseAll previousFiles=${_poiFiles.value.size} " +
+            "event=reload_start reason=${request.reason} collapseAll=${request.collapseAll} " +
+                "previousFiles=${_poiFiles.value.size} " +
                 "blockingOverlay=$showBlockingLoading",
         )
         _isLoadingPoiFiles.value = showBlockingLoading
         try {
             val previousExpanded =
-                if (collapseAll) {
+                if (request.collapseAll) {
                     emptyMap()
                 } else {
                     _poiFiles.value.associate { it.path to it.isExpanded }
@@ -827,6 +832,14 @@ class PoiViewModel(
             val (importedFiles, coverageAreas) = loadImportedPoiFiles(files, previousExpanded)
             importedFileCount = importedFiles.size
 
+            if (!poiReloadCoordinator.isCurrent(request)) {
+                DebugTelemetry.log(
+                    "POI",
+                    "event=reload_stale reason=${request.reason} generation=${request.generation}",
+                )
+                return
+            }
+
             val syntheticUserFile =
                 buildUserPoiFileUiState(
                     isExpanded = previousExpanded[USER_POI_SOURCE_PATH] ?: false,
@@ -841,9 +854,10 @@ class PoiViewModel(
         } finally {
             _isLoadingPoiFiles.value = false
             val durationMs = SystemClock.elapsedRealtime() - startedAtElapsedMs
+            val uptimeMs = SystemClock.uptimeMillis() - startedAtUptimeMs
             DebugTelemetry.log(
                 "POI",
-                "event=reload_complete reason=$reason durationMs=$durationMs " +
+                "event=reload_complete reason=${request.reason} durationMs=$durationMs uptimeMs=$uptimeMs " +
                     "listedFiles=$listedFileCount importedFiles=$importedFileCount " +
                     "visibleFiles=${_poiFiles.value.size}",
             )

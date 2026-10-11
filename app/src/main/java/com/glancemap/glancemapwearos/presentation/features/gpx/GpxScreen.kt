@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +54,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import androidx.navigation.NavHostController
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
@@ -83,10 +87,16 @@ import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+
+internal fun CoroutineScope.launchGpxGuidanceCompletion(
+    lifecycle: Lifecycle,
+    onComplete: () -> Unit,
+): Job = launch { lifecycle.withResumed(onComplete) }
 
 private enum class GpxListMode(
     val storedPage: String,
@@ -142,6 +152,8 @@ fun GpxScreen(
     recordingActiveOrSaving: Boolean = false,
     onStartRecording: () -> Unit = {},
 ) {
+    val guidanceCompletionScope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
     val gpxFiles by gpxViewModel.gpxFiles.collectAsState()
@@ -407,37 +419,41 @@ fun GpxScreen(
         )
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         gpxViewModel.startTurnByTurnGuidance(gpxFile.path) { result ->
-            val elapsedMs = (SystemClock.elapsedRealtime() - tapElapsedMs).coerceAtLeast(0L)
-            if (guidanceStartingPath == gpxFile.path) {
-                guidanceStartingPath = null
-            }
-            DebugTelemetry.log(
-                "TurnByTurnStart",
-                "event=tap_complete success=${result.isSuccess} elapsedMs=$elapsedMs file=${gpxFile.path.telemetryToken()}",
-            )
-            result
-                .onSuccess { startResult ->
-                    if (autoStartRecordingWithGuidance && !recordingActiveOrSaving) {
-                        onStartRecording()
-                    }
-                    val warning = startResult.warningMessage
-                    if (warning != null) {
-                        guidanceMessageTitle = "BRouter unavailable"
-                        guidanceMessageBody = warning
-                        navigateAfterGuidanceMessage = true
-                    } else {
-                        navController.navigate(WatchRoutes.NAVIGATE) {
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                }.onFailure { error ->
-                    guidanceMessageTitle = "Guidance failed"
-                    guidanceMessageBody =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "The GPX could not be started for guidance."
-                    navigateAfterGuidanceMessage = false
+            // Guidance preparation outlives this screen. Only its live, resumed UI
+            // may navigate or act on the completion; disposal cancels this scope.
+            guidanceCompletionScope.launchGpxGuidanceCompletion(lifecycleOwner.lifecycle) {
+                val elapsedMs = (SystemClock.elapsedRealtime() - tapElapsedMs).coerceAtLeast(0L)
+                if (guidanceStartingPath == gpxFile.path) {
+                    guidanceStartingPath = null
                 }
+                DebugTelemetry.log(
+                    "TurnByTurnStart",
+                    "event=tap_complete success=${result.isSuccess} elapsedMs=$elapsedMs file=${gpxFile.path.telemetryToken()}",
+                )
+                result
+                    .onSuccess { startResult ->
+                        if (autoStartRecordingWithGuidance && !recordingActiveOrSaving) {
+                            onStartRecording()
+                        }
+                        val warning = startResult.warningMessage
+                        if (warning != null) {
+                            guidanceMessageTitle = "BRouter unavailable"
+                            guidanceMessageBody = warning
+                            navigateAfterGuidanceMessage = true
+                        } else {
+                            navController.navigate(WatchRoutes.NAVIGATE) {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    }.onFailure { error ->
+                        guidanceMessageTitle = "Guidance failed"
+                        guidanceMessageBody =
+                            error.localizedMessage?.takeIf { it.isNotBlank() }
+                                ?: "The GPX could not be started for guidance."
+                        navigateAfterGuidanceMessage = false
+                    }
+            }
         }
     }
 
@@ -943,7 +959,7 @@ private fun ActivityDetailsDialog(
     }
 }
 
-private fun activityDetailsMetrics(
+internal fun activityDetailsMetrics(
     gpxFile: GpxFileState,
     isMetric: Boolean,
     fallbackDistanceValue: String,
@@ -953,7 +969,7 @@ private fun activityDetailsMetrics(
     fallbackElevationLossValue: String,
     fallbackElevationLossUnit: String,
 ): List<RecordingRecapMetric> {
-    val summary = gpxFile.activitySummary
+    val summary = gpxFile.summaryForGpxDetails()
     if (summary == null) {
         return listOf(
             recordingRecapMetric("Dist", fallbackDistanceValue, fallbackDistanceUnit),

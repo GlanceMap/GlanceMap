@@ -48,11 +48,7 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
     buildList {
         var currentSegment = mutableListOf<RecordedTracePoint>()
         points.forEach { point ->
-            if (
-                point.startsNewSegment &&
-                currentSegment.isNotEmpty() &&
-                !shouldVisuallyBridgeRecordedPause(currentSegment.last(), point)
-            ) {
+            if (startsRecordedTraceSegment(currentSegment.lastOrNull(), point)) {
                 add(currentSegment)
                 currentSegment = mutableListOf()
             }
@@ -62,6 +58,11 @@ internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<
             add(currentSegment)
         }
     }
+
+internal fun startsRecordedTraceSegment(
+    previous: RecordedTracePoint?,
+    point: RecordedTracePoint,
+): Boolean = previous != null && point.startsNewSegment && !shouldVisuallyBridgeRecordedPause(previous, point)
 
 private fun shouldVisuallyBridgeRecordedPause(
     previous: RecordedTracePoint,

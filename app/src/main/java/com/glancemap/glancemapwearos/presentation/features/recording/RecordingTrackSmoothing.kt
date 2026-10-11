@@ -60,6 +60,7 @@ internal data class RecordingCanonicalAppendResult(
     val confirmedReversalCorrected: Boolean,
     val straightDriftCorrectedPointCount: Int,
     val trajectoryDiagnostics: RecordingTrajectorySmoothingDiagnostics = RecordingTrajectorySmoothingDiagnostics(),
+    val firstChangedPointIndex: Int = 0,
 )
 
 /**
@@ -82,6 +83,7 @@ internal fun appendCanonicalRecordingPoint(
             maximumAdjustmentMeters = 0.0,
             confirmedReversalCorrected = false,
             straightDriftCorrectedPointCount = 0,
+            firstChangedPointIndex = existingPoints.size,
         )
     }
 
@@ -126,6 +128,7 @@ internal fun appendCanonicalRecordingPoint(
         confirmedReversalCorrected = revision.confirmedReversalCorrected,
         straightDriftCorrectedPointCount = revision.straightDriftCorrectedPointCount,
         trajectoryDiagnostics = revision.trajectoryDiagnostics,
+        firstChangedPointIndex = oldTailStartIndex,
     )
 }
 
@@ -143,6 +146,7 @@ internal fun flushCanonicalRecordingTail(
             maximumAdjustmentMeters = 0.0,
             confirmedReversalCorrected = false,
             straightDriftCorrectedPointCount = 0,
+            firstChangedPointIndex = existingPoints.size,
         )
     }
     val tailStartIndex =
@@ -166,6 +170,7 @@ internal fun flushCanonicalRecordingTail(
         confirmedReversalCorrected = revision.confirmedReversalCorrected,
         straightDriftCorrectedPointCount = revision.straightDriftCorrectedPointCount,
         trajectoryDiagnostics = revision.trajectoryDiagnostics,
+        firstChangedPointIndex = tailStartIndex,
     )
 }
 

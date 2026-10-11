@@ -5,6 +5,8 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayer
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.Point
@@ -19,7 +21,10 @@ import android.graphics.Canvas as AndroidCanvas
 /**
  * Compass quality cone rendered as a real Mapsforge layer so it can sit below the location marker.
  */
-internal class CompassConeLayer : Layer() {
+internal class CompassConeLayer(
+    override val displayFrameOwner: DisplayFrameLayerOwner? = null,
+) : Layer(),
+    DisplayFrameLayer {
     var anchorMarker: com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker? = null
     var headingDeg: Float = 0f
         set(value) {
@@ -39,7 +44,29 @@ internal class CompassConeLayer : Layer() {
     private var cachedConeBitmapKey: ConeBitmapKey? = null
     private var cachedConeBitmap: org.mapsforge.core.graphics.Bitmap? = null
 
+    override fun onAdd() {
+        super.onAdd()
+        displayFrameOwner?.addDisplayFrameLayer(this)
+    }
+
+    override fun onRemove() {
+        displayFrameOwner?.removeDisplayFrameLayer(this)
+        super.onRemove()
+    }
+
     override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: Canvas,
+        topLeft: Point,
+        mapViewRotation: Rotation,
+    ) {
+        if (!displayOnFrame) drawDisplayFrame(boundingBox, zoomLevel, canvas, topLeft, mapViewRotation)
+    }
+
+    // Preserve the existing layer's unavailable/offscreen guards in the foreground path.
+    @Suppress("ReturnCount")
+    override fun drawDisplayFrame(
         boundingBox: BoundingBox,
         zoomLevel: Byte,
         canvas: Canvas,

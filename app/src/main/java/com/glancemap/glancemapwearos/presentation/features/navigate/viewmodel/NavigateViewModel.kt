@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -23,6 +24,11 @@ class NavigateViewModel(
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(NavigateUiState())
     val uiState: StateFlow<NavigateUiState> = _uiState.asStateFlow()
+    val presentationState = uiState.distinctUntilChanged(::sameNavigatePresentationState)
+
+    /** One-time initialization and lifecycle seeding need the latest retained position, not a subscription. */
+    val currentStateSnapshot: NavigateUiState
+        get() = _uiState.value
 
     private val settingsRepository: SettingsRepository =
         SettingsRepositoryImpl.getInstance(application)

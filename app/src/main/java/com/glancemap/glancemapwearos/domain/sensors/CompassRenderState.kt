@@ -26,14 +26,28 @@ data class CompassRenderState(
     val northBasis: CompassNorthBasis = CompassNorthBasis.UNKNOWN,
     val magneticQuality: CompassMagneticQuality = CompassMagneticQuality.UNKNOWN,
     val magneticFieldUt: Float? = null,
+    /** Current magnetic evidence exceeds the provider's hard validity limits. */
+    val severeMagneticInterference: Boolean = false,
     val quarantineActive: Boolean = false,
+    /** Explicit absolute jump hold, separate from quarantine that still permits bounded motion. */
+    val headingJumpHeld: Boolean = false,
     /** Independent heading contradiction that still needs fresh corroborated re-baselining. */
     val unresolvedIndependentDisagreement: Boolean = false,
     /**
-     * Relative game-rotation heading used only to validate a compass turn. It has no north
-     * reference and must never be rendered as the map heading.
+     * Relative game-rotation heading used to validate a compass turn. It has no north reference
+     * and must never be used directly as an absolute map heading.
      */
     val relativeHeadingDeg: Float? = null,
+    /** Independent source identity for temporary navigation motion during magnetic holds. */
+    val relativeMotionSample: CompassRelativeMotionSample? = null,
+)
+
+data class CompassRelativeMotionSample(
+    val headingDeg: Float,
+    val horizontalProjection: Float,
+    val atElapsedMs: Long,
+    val provenance: CompassHeadingProvenance,
+    val displayRotation: Int = 0,
 )
 
 data class CompassHeadingProvenance(

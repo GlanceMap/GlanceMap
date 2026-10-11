@@ -10,6 +10,7 @@ data class GpxFileState(
     val name: String,
     val path: String,
     val title: String?,
+    // GPX geometry distance, with recorded distance used only when geometry is unavailable.
     val distance: Double,
     val elevationGain: Double,
     val elevationLoss: Double = 0.0,
@@ -18,10 +19,22 @@ data class GpxFileState(
     val isActivity: Boolean = false,
     val activityProfile: String? = null,
     val activityDurationSec: Double? = null,
+    // Preserve the original recording metrics separately from the GPX details presentation.
     val activitySummary: RecordingDashboardSnapshot? = null,
 ) {
     val displayTitle: String
         get() = name
+
+    fun summaryForGpxDetails(): RecordingDashboardSnapshot? =
+        activitySummary?.let { summary ->
+            summary.copy(
+                distanceMeters = distance,
+                averageSpeedMps =
+                    summary.durationSeconds
+                        .takeIf { it.isFinite() && it > 0.0 }
+                        ?.let { distance / it },
+            )
+        }
 
     fun formattedDistance(isMetric: Boolean): Pair<String, String> = UnitFormatter.formatDistance(distance, isMetric)
 

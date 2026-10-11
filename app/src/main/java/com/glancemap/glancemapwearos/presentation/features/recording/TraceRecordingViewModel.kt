@@ -1050,6 +1050,8 @@ class TraceRecordingViewModel(
                 val updatedState =
                     currentState.copy(
                         points = canonicalAppend.points,
+                        pointsRevision = currentState.pointsRevision + 1L,
+                        pointsChangedFromIndex = canonicalAppend.firstChangedPointIndex,
                         latestLivePoint = point,
                         distanceMeters = (currentState.distanceMeters + addedDistance).coerceAtLeast(0.0),
                         gpsActiveDurationMillis = gpsActiveDurationMillis,
@@ -1549,7 +1551,11 @@ class TraceRecordingViewModel(
         maxSmoothedAdjustmentMeters = maxOf(maxSmoothedAdjustmentMeters, finalized.maximumAdjustmentMeters)
         trajectoryGapResetCount += finalized.trajectoryDiagnostics.gapResetCount
         trajectoryBarrierCount += finalized.trajectoryDiagnostics.barrierCount
-        return state.copy(points = finalized.points)
+        return state.copy(
+            points = finalized.points,
+            pointsRevision = state.pointsRevision + 1L,
+            pointsChangedFromIndex = finalized.firstChangedPointIndex,
+        )
     }
 
     private fun flushWatchGpsDistanceGeometry(state: TraceRecordingUiState): TraceRecordingUiState {

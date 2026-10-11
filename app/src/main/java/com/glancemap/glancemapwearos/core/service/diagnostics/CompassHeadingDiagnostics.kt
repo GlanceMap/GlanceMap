@@ -8,6 +8,7 @@ import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingReason
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.FusedHeadingIntegritySnapshot
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
+import com.glancemap.glancemapwearos.domain.sensors.isMeaningfulRelativeHeadingStep
 import kotlin.math.abs
 
 /**
@@ -309,14 +310,7 @@ internal object CompassHeadingDiagnostics {
                 previousTargetHeadingDeg
                     ?.let { previous -> shortestSignedAngleDeg(target, previous) }
             }
-        val integrityDecision =
-            when {
-                snapshot.quarantineActive -> "quarantined"
-                snapshot.state == CompassTrackingState.DEGRADED -> "degraded"
-                snapshot.unresolvedIndependentDisagreement -> "unresolved_independent_disagreement"
-                snapshot.relativeWitnessSuppressed -> "accepted_without_witness"
-                else -> "accepted_with_witness"
-            }
+        val integrityDecision = providerStepIntegrityDecision(snapshot, targetStepDeg)
         return "heading_engine provider_step " +
             "providerHeadingDeg=${providerHeadingDeg.formatOrNa(1)} " +
             "providerStepDeg=${providerStepDeg.formatOrNa(1)} " +
@@ -338,6 +332,36 @@ internal object CompassHeadingDiagnostics {
                     .takeIf { lastRenderedHeadingAtElapsedMs > 0L } ?: -1L
             }"
     }
+
+    internal fun providerStepIntegrityDecision(
+        snapshot: FusedHeadingIntegritySnapshot,
+        targetStepDeg: Float?,
+    ): String =
+        when {
+            snapshot.quarantineActive -> "quarantined"
+            snapshot.heldOutput && snapshot.state == CompassTrackingState.ACQUIRING -> "acquisition_held"
+            snapshot.unresolvedIndependentDisagreement -> "unresolved_independent_disagreement"
+            snapshot.state == CompassTrackingState.DEGRADED -> "degraded"
+            snapshot.state == CompassTrackingState.TRACKING &&
+                snapshot.reason == CompassTrackingReason.STABLE &&
+                !snapshot.heldOutput &&
+                !snapshot.relativeWitnessSuppressed &&
+                snapshot.relativeWitnessSupportsHighRate &&
+                relativeMovementSupportsTarget(snapshot.relativeStepDeg, targetStepDeg) ->
+                "accepted_with_corroboration"
+            else -> "accepted_without_corroboration"
+        }
+
+    private fun relativeMovementSupportsTarget(
+        relativeStepDeg: Float?,
+        targetStepDeg: Float?,
+    ): Boolean =
+        isMeaningfulRelativeHeadingStep(relativeStepDeg) &&
+            targetStepDeg?.let { target ->
+                target.isFinite() &&
+                    abs(target) > 0f &&
+                    relativeStepDeg?.let { relative -> relative * target > 0f } == true
+            } == true
 
     private class WindowAccumulator(
         val startedAtElapsedMs: Long = 0L,

@@ -4,12 +4,16 @@ import android.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.navigate.MapTopOverlayCoordinator
 import com.glancemap.glancemapwearos.presentation.features.navigate.requestLayerRedrawSafely
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.mapsforge.core.graphics.Canvas
+import org.mapsforge.core.graphics.GraphicFactory
 import org.mapsforge.core.graphics.Paint
 import org.mapsforge.core.graphics.Style
 import org.mapsforge.core.model.BoundingBox
@@ -21,14 +25,13 @@ import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.layer.Layer
 import org.mapsforge.map.layer.Layers
-import org.mapsforge.map.layer.overlay.Polyline
 import kotlin.math.roundToInt
 
 @Composable
 @Suppress("FunctionNaming")
 internal fun RecordingTraceOverlayEffect(
     mapView: MapView,
-    segments: List<List<LatLong>>,
+    recordingState: TraceRecordingUiState,
     followLocationMarker: Boolean,
     locationMarker: RotatableMarker?,
     topOverlayCoordinator: MapTopOverlayCoordinator,
@@ -42,12 +45,28 @@ internal fun RecordingTraceOverlayEffect(
             }
         }
     val traceLayers = remember(mapView) { RecordingTraceLayers(paint) }
+    val cachedGeometry = remember(mapView) { mutableStateOf<RecordingTraceGeometry?>(null) }
 
-    LaunchedEffect(mapView, segments, followLocationMarker, locationMarker, topOverlayCoordinator) {
+    LaunchedEffect(
+        mapView,
+        recordingState.startedAtMillis,
+        recordingState.pointsRevision,
+        followLocationMarker,
+        locationMarker,
+        topOverlayCoordinator,
+    ) {
+        val previous = cachedGeometry.value
+        val geometry =
+            if (recordingState.points.isEmpty() || previous?.points === recordingState.points) {
+                prepareRecordingTraceGeometry(recordingState, previous)
+            } else {
+                withContext(Dispatchers.Default) { prepareRecordingTraceGeometry(recordingState, previous) }
+            }
+        cachedGeometry.value = geometry
         mapView.mutateLayers { layers ->
             val renderState =
                 recordingTraceRenderState(
-                    segments = segments,
+                    segments = geometry.segments,
                     followLocationMarker = followLocationMarker && locationMarker != null,
                 )
             var changed = traceLayers.sync(layers, renderState, locationMarker)
@@ -93,7 +112,7 @@ internal fun recordingTraceRenderState(
             segments =
                 buildList {
                     addAll(segments.dropLast(1))
-                    add(lastSegment.take(stablePointCount))
+                    add(lastSegment.subList(0, stablePointCount))
                 },
             liveTailStart =
                 lastSegment.getOrNull(stablePointCount - 1)
@@ -104,61 +123,41 @@ internal fun recordingTraceRenderState(
 private class RecordingTraceLayers(
     paint: Paint,
 ) {
-    private val polylines = mutableListOf<Polyline>()
+    private val historyLayer = RecordingTraceHistoryLayer(paint)
     private val liveTailLayer = RecordingTraceLiveTailLayer(paint)
-    private val paint = paint
 
     fun sync(
         layers: Layers,
         renderState: RecordingTraceRenderState,
         locationMarker: RotatableMarker?,
     ): Boolean {
-        val visibleSegments = renderState.segments.filter { it.size >= MIN_RECORDING_TRACE_POINTS }
-        var changed = syncPolylines(layers, visibleSegments)
+        historyLayer.segments = renderState.segments
+        var changed = syncHistory(layers, renderState.segments.any { it.size >= MIN_RECORDING_TRACE_POINTS })
         changed = syncLiveTail(layers, renderState.liveTailStart, locationMarker) || changed
         return changed
     }
 
     fun clear(layers: Layers): Boolean {
-        var changed = false
-        polylines.forEach { polyline ->
-            changed = layers.remove(polyline) || changed
-            polyline.latLongs.clear()
-        }
+        var changed = layers.remove(historyLayer)
+        historyLayer.segments = emptyList()
         liveTailLayer.anchorMarker = null
         liveTailLayer.startLatLong = null
         changed = layers.remove(liveTailLayer) || changed
-        polylines.clear()
         return changed
     }
 
-    private fun syncPolylines(
+    private fun syncHistory(
         layers: Layers,
-        visibleSegments: List<List<LatLong>>,
-    ): Boolean {
-        var changed = false
-        while (polylines.size < visibleSegments.size) {
-            polylines += Polyline(paint, AndroidGraphicFactory.INSTANCE)
-        }
-        visibleSegments.forEachIndexed { index, points ->
-            val polyline = polylines[index]
-            if (!layers.contains(polyline)) {
-                layers.add(polyline)
-                changed = true
+        visible: Boolean,
+    ): Boolean =
+        when {
+            visible && !layers.contains(historyLayer) -> {
+                layers.add(historyLayer)
+                true
             }
-            if (!sameLatLongs(polyline.latLongs, points)) {
-                polyline.latLongs.clear()
-                polyline.latLongs.addAll(points)
-                changed = true
-            }
+            visible -> true // A new immutable geometry snapshot still needs drawing.
+            else -> layers.remove(historyLayer)
         }
-        for (index in polylines.lastIndex downTo visibleSegments.size) {
-            val polyline = polylines.removeAt(index)
-            changed = layers.remove(polyline) || changed
-            polyline.latLongs.clear()
-        }
-        return changed
-    }
 
     private fun syncLiveTail(
         layers: Layers,
@@ -175,6 +174,36 @@ private class RecordingTraceLayers(
             }
             !shouldShow -> layers.remove(liveTailLayer)
             else -> false
+        }
+    }
+}
+
+internal class RecordingTraceHistoryLayer(
+    private val paint: Paint,
+    private val graphicFactory: GraphicFactory = AndroidGraphicFactory.INSTANCE,
+) : Layer() {
+    @Volatile var segments: List<List<LatLong>> = emptyList()
+
+    override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: Canvas,
+        topLeft: Point,
+        mapViewRotation: Rotation,
+    ) {
+        val snapshot = segments
+        if (!isVisible) return
+        val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
+        snapshot.forEach { points ->
+            if (points.size >= MIN_RECORDING_TRACE_POINTS) {
+                val path = graphicFactory.createPath()
+                points.forEachIndexed { index, point ->
+                    val x = (MercatorProjection.longitudeToPixelX(point.longitude, mapSize) - topLeft.x).toFloat()
+                    val y = (MercatorProjection.latitudeToPixelY(point.latitude, mapSize) - topLeft.y).toFloat()
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                canvas.drawPath(path, paint)
+            }
         }
     }
 }
@@ -212,17 +241,6 @@ private class RecordingTraceLiveTailLayer(
             (MercatorProjection.latitudeToPixelY(end.latitude, mapSize) - topLeft.y)
                 .roundToInt()
         canvas.drawLine(startX, startY, endX, endY, paint)
-    }
-}
-
-private fun sameLatLongs(
-    current: List<LatLong>,
-    next: List<LatLong>,
-): Boolean {
-    if (current.size != next.size) return false
-    return current.indices.all { index ->
-        current[index].latitude == next[index].latitude &&
-            current[index].longitude == next[index].longitude
     }
 }
 

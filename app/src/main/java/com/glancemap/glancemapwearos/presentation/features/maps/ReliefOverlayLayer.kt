@@ -412,8 +412,8 @@ internal class ReliefOverlayLayer(
 
         runCatching {
             overlayWorker.shutdownNow()
-            overlayWorker.awaitTermination(200, TimeUnit.MILLISECONDS)
         }
+        clearPendingOverlayQueue()
         notifyProcessingStateChangedIfNeeded(force = true)
     }
 
@@ -823,12 +823,11 @@ internal class ReliefOverlayLayer(
         key: OverlayTileKey,
         entry: OverlayTileEntry,
     ): Boolean {
-        if (isDestroyed) {
-            entry.bitmap?.decrementRefCount()
-            return false
-        }
-
         synchronized(overlayTileCache) {
+            if (isDestroyed) {
+                entry.bitmap?.decrementRefCount()
+                return false
+            }
             overlayTileCache[key]?.bitmap?.decrementRefCount()
             overlayTileCache[key] = entry
         }
@@ -846,6 +845,7 @@ internal class ReliefOverlayLayer(
     }
 
     private fun notifyProcessingStateChangedIfNeeded(force: Boolean = false) {
+        if (isDestroyed && !force) return
         val processing = isProcessing()
         val progress = progressPercent()
         if (!force && processing == lastNotifiedProcessingState && progress == lastNotifiedProgressPercent) {

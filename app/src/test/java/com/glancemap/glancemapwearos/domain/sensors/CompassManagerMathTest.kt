@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+@Suppress("LargeClass") // Keeps the compass publication and threshold regressions together.
 class CompassManagerMathTest {
     @Test
     fun resolveHeadingPipelineAutoPrefersRotationVector() {
@@ -253,6 +254,118 @@ class CompassManagerMathTest {
         assertEquals(
             SensorManager.SENSOR_STATUS_UNRELIABLE,
             headingAccuracyFromUncertainty(45f),
+        )
+    }
+
+    @Test
+    fun rotationVectorPoorUncertaintyRemainsCappedAcrossAccuracyCallbacks() {
+        var rotVecAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        var magAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        var inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_LOW
+        var rotVecUncertaintyDeg = 45f
+
+        fun publish(hasMagneticInterference: Boolean = false): Int =
+            computeCompassAccuracyPublication(
+                pipeline = HeadingPipeline.ROTATION_VECTOR,
+                headingAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingUncertaintyDeg = Float.NaN,
+                magAccuracy = magAccuracy,
+                rotVecAccuracy = rotVecAccuracy,
+                rotVecHeadingUncertaintyDeg = rotVecUncertaintyDeg,
+                inferredAccuracy = inferredAccuracy,
+                usingRotationVector = true,
+                usingHeadingSensor = false,
+                hasMagneticInterference = hasMagneticInterference,
+            )
+
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish())
+
+        rotVecAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish())
+
+        magAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH
+        inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish())
+
+        rotVecUncertaintyDeg = 6f
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_HIGH, publish())
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish(hasMagneticInterference = true))
+    }
+
+    @Test
+    fun typeHeadingPoorUncertaintyRecoversOnlyAfterUncertaintyImproves() {
+        var headingAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        var headingUncertaintyDeg = 45f
+
+        fun publish(): Int =
+            computeCompassAccuracyPublication(
+                pipeline = HeadingPipeline.HEADING_SENSOR,
+                headingAccuracy = headingAccuracy,
+                headingUncertaintyDeg = headingUncertaintyDeg,
+                magAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                rotVecAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecHeadingUncertaintyDeg = Float.NaN,
+                inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                usingRotationVector = false,
+                usingHeadingSensor = true,
+                hasMagneticInterference = false,
+            )
+
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish())
+
+        headingAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_LOW, publish())
+
+        headingUncertaintyDeg = 6f
+        assertEquals(SensorManager.SENSOR_STATUS_ACCURACY_HIGH, publish())
+    }
+
+    @Test
+    fun missingUncertaintyKeepsSensorAccuracyFallback() {
+        assertEquals(
+            SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+            computeCompassAccuracyPublication(
+                pipeline = HeadingPipeline.ROTATION_VECTOR,
+                headingAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                headingUncertaintyDeg = Float.NaN,
+                magAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                rotVecHeadingUncertaintyDeg = Float.NaN,
+                inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                usingRotationVector = true,
+                usingHeadingSensor = false,
+                hasMagneticInterference = false,
+            ),
+        )
+        assertEquals(
+            SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+            computeCompassAccuracyPublication(
+                pipeline = HeadingPipeline.HEADING_SENSOR,
+                headingAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                headingUncertaintyDeg = Float.NaN,
+                magAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecHeadingUncertaintyDeg = Float.NaN,
+                inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                usingRotationVector = false,
+                usingHeadingSensor = true,
+                hasMagneticInterference = false,
+            ),
+        )
+        assertEquals(
+            SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+            computeCompassAccuracyPublication(
+                pipeline = HeadingPipeline.HEADING_SENSOR,
+                headingAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                headingUncertaintyDeg = -1f,
+                magAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE,
+                rotVecHeadingUncertaintyDeg = Float.NaN,
+                inferredAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                usingRotationVector = false,
+                usingHeadingSensor = true,
+                hasMagneticInterference = false,
+            ),
         )
     }
 

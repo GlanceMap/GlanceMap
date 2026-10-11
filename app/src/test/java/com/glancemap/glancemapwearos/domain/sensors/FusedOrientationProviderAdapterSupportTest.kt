@@ -1,11 +1,84 @@
 package com.glancemap.glancemapwearos.domain.sensors
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import sun.misc.Unsafe
 
 class FusedOrientationProviderAdapterSupportTest {
+    @Test
+    fun relativeMotionRetainsSourceTimeAndCannotCrossARequestRestart() {
+        val unsafeField = Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+        val unsafe = unsafeField.get(null) as Unsafe
+        val adapter = unsafe.allocateInstance(FusedOrientationProviderAdapter::class.java)
+        val engine = FusedHeadingIntegrityEngine(relativeSensorAvailable = true, magnetometerAvailable = true)
+        field("started").set(adapter, true)
+        field("orientationRequestGeneration").set(adapter, 2L)
+        field("_useFallbackProvider").set(adapter, MutableStateFlow(false))
+        field("headingIntegrityEngine").set(adapter, engine)
+        field("providerType").set(adapter, CompassProviderType.GOOGLE_FUSED)
+        val update =
+            FusedOrientationProviderAdapter::class.java
+                .getDeclaredMethod(
+                    "updateRelativeIntegritySnapshot",
+                    Long::class.javaPrimitiveType,
+                    RelativeHeadingWitness::class.java,
+                    Long::class.javaPrimitiveType,
+                ).apply { isAccessible = true }
+
+        update.invoke(adapter, 2L, RelativeHeadingWitness(20f, 0.9f, displayRotation = 1), 1_200L)
+        val sample = field("latestRelativeMotionSample").get(adapter) as CompassRelativeMotionSample
+        assertEquals(1_200L, sample.atElapsedMs)
+        assertEquals(2L, sample.provenance.generation)
+        assertEquals(1, sample.displayRotation)
+
+        update.invoke(adapter, 1L, RelativeHeadingWitness(200f, 0.9f), 1_300L)
+        assertEquals(sample, field("latestRelativeMotionSample").get(adapter))
+        assertEquals(20f, requireNotNull(engine.snapshot().relativeHeadingDeg), 0f)
+
+        update.invoke(adapter, 2L, RelativeHeadingWitness(null, 0.1f), 1_400L)
+        assertNull(field("latestRelativeMotionSample").get(adapter))
+    }
+
+    @Test
+    fun publicationAndIntegrityCallbacksRejectARequestAfterRestartOrStop() {
+        assertTrue(
+            isCurrentFusedRequest(
+                requestGeneration = 7L,
+                activeRequestGeneration = 7L,
+                started = true,
+                usingFallback = false,
+            ),
+        )
+        assertFalse(
+            isCurrentFusedRequest(
+                requestGeneration = 7L,
+                activeRequestGeneration = 8L,
+                started = true,
+                usingFallback = false,
+            ),
+        )
+        assertFalse(
+            isCurrentFusedRequest(
+                requestGeneration = 7L,
+                activeRequestGeneration = 7L,
+                started = false,
+                usingFallback = false,
+            ),
+        )
+        assertFalse(
+            isCurrentFusedRequest(
+                requestGeneration = 7L,
+                activeRequestGeneration = 7L,
+                started = true,
+                usingFallback = true,
+            ),
+        )
+    }
+
     @Test
     fun lowConfidenceGoogleHeadingRemainsUsableForDegradedTracking() {
         assertTrue(isUsableGoogleFusedHeadingError(45f))
@@ -129,6 +202,55 @@ class FusedOrientationProviderAdapterSupportTest {
         assertTrue(third.shouldFallback)
         assertEquals(3, third.state.consecutiveSamples)
         assertEquals(1_100L, third.durationMs)
+    }
+
+    @Test
+    fun repeatedUnusableCallbacksAccumulateAndUsableCallbackClearsTheFallbackStreak() {
+        val unsafeField = Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+        val unsafe = unsafeField.get(null) as Unsafe
+        val adapter = unsafe.allocateInstance(FusedOrientationProviderAdapter::class.java)
+
+        fun set(
+            name: String,
+            value: Any,
+        ) {
+            field(name).set(adapter, value)
+        }
+
+        set("started", true)
+        set("orientationRequestGeneration", 1L)
+        set("_useFallbackProvider", MutableStateFlow(false))
+        val accept =
+            FusedOrientationProviderAdapter::class.java
+                .getDeclaredMethod(
+                    "acceptFusedMeasurement",
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType,
+                ).apply { isAccessible = true }
+        val unusable =
+            FusedOrientationProviderAdapter::class.java
+                .getDeclaredMethod(
+                    "handleSustainedUnusableHeading",
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Float::class.javaPrimitiveType,
+                    Float::class.javaPrimitiveType,
+                ).apply { isAccessible = true }
+
+        repeat(3) { index ->
+            val now = 1_000L + index * 200L
+            accept.invoke(adapter, 1L, now, now, false)
+            unusable.invoke(adapter, 1L, now, 180f, 180f)
+        }
+        assertTrue(field("consecutiveUnusableFusedSamples").getInt(adapter) > 1)
+        assertEquals(0L, field("lastConfirmedFusedSampleElapsedRealtimeMs").getLong(adapter))
+
+        accept.invoke(adapter, 1L, 2_000L, 2_000L, true)
+
+        assertEquals(0, field("consecutiveUnusableFusedSamples").getInt(adapter))
+        assertEquals(2_000L, field("lastConfirmedFusedSampleElapsedRealtimeMs").getLong(adapter))
     }
 
     @Test
@@ -324,4 +446,9 @@ class FusedOrientationProviderAdapterSupportTest {
             minSamples = 3,
             minDurationMs = 1_000L,
         )
+
+    private fun field(name: String) =
+        FusedOrientationProviderAdapter::class.java
+            .getDeclaredField(name)
+            .apply { isAccessible = true }
 }

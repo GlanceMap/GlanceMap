@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayer
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.Paint
@@ -13,7 +15,9 @@ import kotlin.math.roundToInt
 internal class GpsAccuracyCircleLayer(
     private val fillPaint: Paint,
     private val strokePaint: Paint,
-) : Layer() {
+    override val displayFrameOwner: DisplayFrameLayerOwner? = null,
+) : Layer(),
+    DisplayFrameLayer {
     var anchorMarker: RotatableMarker? = null
     var radiusMeters: Float = 0f
 
@@ -23,7 +27,29 @@ internal class GpsAccuracyCircleLayer(
 
     @Volatile private var cachedMapSize: Long = 0L
 
+    override fun onAdd() {
+        super.onAdd()
+        displayFrameOwner?.addDisplayFrameLayer(this)
+    }
+
+    override fun onRemove() {
+        displayFrameOwner?.removeDisplayFrameLayer(this)
+        super.onRemove()
+    }
+
     override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: Canvas,
+        topLeft: Point,
+        mapViewRotation: Rotation,
+    ) {
+        if (!displayOnFrame) drawDisplayFrame(boundingBox, zoomLevel, canvas, topLeft, mapViewRotation)
+    }
+
+    // Preserve the existing layer's unavailable/offscreen guards in the foreground path.
+    @Suppress("ReturnCount")
+    override fun drawDisplayFrame(
         boundingBox: BoundingBox,
         zoomLevel: Byte,
         canvas: Canvas,

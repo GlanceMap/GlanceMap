@@ -25,6 +25,9 @@ class BundledAssetThemeComposer(
         private const val TAG = "BundledThemeComposer"
         private const val RESOURCE_THEME_MARKER_FILE = ".theme_id"
         private const val VOLUNTARY_DEFAULT_STYLE_ID = "vol-hiking"
+
+        // Bump when XML composition or bundled rendering changes require cache invalidation.
+        private const val THEME_COMPOSITION_VERSION = 1
     }
 
     private data class StyleMenuMetadata(
@@ -121,13 +124,6 @@ class BundledAssetThemeComposer(
             }
 
             val themeAssetFingerprint = fingerprintForTheme(normalizedThemeId)
-            val themeCacheDir =
-                ensureThemeResourcesInCache(
-                    themeId = normalizedThemeId,
-                    themeAssetFingerprint = themeAssetFingerprint,
-                    metadata = metadata,
-                )
-
             val themeKey =
                 buildThemeKey(
                     themeId = normalizedThemeId,
@@ -137,30 +133,40 @@ class BundledAssetThemeComposer(
                     themeAssetFingerprint = themeAssetFingerprint,
                 )
             val fileName = "dynamic_theme_$themeKey.xml"
-            val outFile = File(themeCacheDir, fileName)
 
-            if (outFile.exists() && outFile.length() > 0L) {
-                timingStatus = "generated_theme_cache_hit"
-                return outFile
+            synchronized(themeResourceCacheLock) {
+                val themeCacheDir =
+                    ensureThemeResourcesInCache(
+                        themeId = normalizedThemeId,
+                        themeAssetFingerprint = themeAssetFingerprint,
+                        metadata = metadata,
+                    )
+                val outFile = File(themeCacheDir, fileName)
+
+                if (outFile.isFile && outFile.length() > 0L) {
+                    retainBundledThemeVariants(outFile)
+                    timingStatus = "generated_theme_cache_hit"
+                    return@synchronized outFile
+                }
+
+                val content =
+                    generateXml(
+                        metadata = metadata,
+                        selectedStyleId = selectedStyleId,
+                        enabledOverlayLayerIds = overlays.toSet(),
+                        hillShadingEnabled = hillShadingEnabled,
+                    )
+
+                MapHotPathDiagnostics.measure(
+                    stage = "themeComposer.writeDynamicThemeFile",
+                    detail = "theme=$normalizedThemeId",
+                ) {
+                    outFile.writeText(content)
+                }
+                retainBundledThemeVariants(outFile)
+                timingStatus = "generated_theme_file"
+                outFile
             }
-
-            val content =
-                generateXml(
-                    metadata = metadata,
-                    selectedStyleId = selectedStyleId,
-                    enabledOverlayLayerIds = overlays.toSet(),
-                    hillShadingEnabled = hillShadingEnabled,
-                )
-
-            MapHotPathDiagnostics.measure(
-                stage = "themeComposer.writeDynamicThemeFile",
-                detail = "theme=$normalizedThemeId",
-            ) {
-                outFile.writeText(content)
-            }
-            cleanupOldDynamicThemes(themeCacheDir, keepFileName = fileName)
-            timingStatus = "generated_theme_file"
-            outFile
         } finally {
             MapHotPathDiagnostics.end(
                 marker = timingMarker,
@@ -207,20 +213,6 @@ class BundledAssetThemeComposer(
         val sb = StringBuilder(bytes.size * 2)
         for (b in bytes) sb.append(String.format(Locale.US, "%02x", b))
         return sb.toString()
-    }
-
-    private fun cleanupOldDynamicThemes(
-        themeCacheDir: File,
-        keepFileName: String,
-    ) {
-        runCatching {
-            themeCacheDir
-                .listFiles()
-                ?.asSequence()
-                ?.filter { it.isFile && it.name.startsWith("dynamic_theme_") && it.name.endsWith(".xml") }
-                ?.filter { it.name != keepFileName }
-                ?.forEach { it.delete() }
-        }
     }
 
     private fun ensureThemeResourcesInCache(
@@ -353,11 +345,22 @@ class BundledAssetThemeComposer(
                 themeFingerprintCache[themeId]?.let { return@synchronized it }
                 timingStatus = "cache_miss"
                 val metadata = assetMetadataForTheme(themeId)
+                val applicationInfo = context.applicationInfo
+                val assetFingerprint =
+                    bundledThemeAssetFingerprintOrNull(
+                        apkFiles =
+                            (listOf(applicationInfo.sourceDir) + applicationInfo.splitSourceDirs.orEmpty())
+                                .map(::File),
+                        themePath = metadata.themePath,
+                        resourceRoots = metadata.themeRoot?.let(::setOf) ?: metadata.referencedAssetRoots,
+                    )
+                timingStatus = if (assetFingerprint != null) "asset_content" else "bundle_fallback"
                 val fingerprint =
                     sha256Hex(
                         buildString {
-                            append("bundle:")
-                            append(appBundleFingerprint)
+                            append("composition:").append(THEME_COMPOSITION_VERSION)
+                            append('|')
+                            append(assetFingerprint ?: "bundle:$appBundleFingerprint")
                             append('|')
                             append("theme:")
                             append(themeId)

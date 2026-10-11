@@ -4,6 +4,7 @@ import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,16 +56,28 @@ internal data class VisibleTileViewportReadinessEvent(
 )
 
 /**
- * Initial-map readiness follows the displayed viewport. The viewport captured while arming is
+ * Readiness follows the displayed viewport. The viewport captured while arming is
  * diagnostic context, not a permanent requirement: layout, pan, or zoom can change it before a
  * usable tile arrives.
  */
-internal fun initialVisibleTileViewportReadinessMatches(
+internal fun visibleTileViewportReadinessMatches(
     request: VisibleTileViewportReadinessRequest,
     event: VisibleTileViewportReadinessEvent,
+    currentViewportKey: VisibleTileViewportKey = event.viewportKey,
 ): Boolean =
     request.layerId == event.layerId &&
-        request.requestId == event.requestId
+        request.requestId == event.requestId &&
+        event.viewportKey.zoomLevel == currentViewportKey.zoomLevel &&
+        event.viewportKey.tiles.containsAll(currentViewportKey.tiles)
+
+internal suspend fun awaitVisibleTileViewportReadiness(
+    request: VisibleTileViewportReadinessRequest,
+    events: StateFlow<VisibleTileViewportReadinessEvent?>,
+    timeoutMs: Long,
+): VisibleTileViewportReadinessEvent? =
+    withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
+        events.filterNotNull().first { event -> visibleTileViewportReadinessMatches(request, event) }
+    }
 
 /** Reports when an exact tile from the visible viewport is first available to draw. */
 internal class FirstVisibleTileRendererLayer(
@@ -95,6 +108,7 @@ internal class FirstVisibleTileRendererLayer(
     private val viewportReadinessLock = Any()
     private var armedViewportReadiness: VisibleTileViewportReadinessRequest? = null
     private var hasDrawn = false
+    private val startupPrewarmPolicy = MapStartupTilePrewarmPolicy()
     private var lastDiagnosticState: String? = null
     private var lastCoverageSampleAtElapsedMs: Long? = null
 
@@ -105,6 +119,20 @@ internal class FirstVisibleTileRendererLayer(
         topLeftPoint: Point,
         rotation: Rotation,
     ) {
+        val previousZoom = startupPrewarmPolicy.lastDrawnZoom
+        if (startupPrewarmPolicy.onDrawZoom(zoomLevel)) {
+            setCacheZoomPlus(0)
+            setCacheZoomMinus(0)
+            setCacheTileMargin(0)
+            val rescheduled = jobQueue?.let(::refreshMapTileJobPriorities) ?: false
+            if (DebugTelemetry.isFullDiagnosticsCaptureEnabled()) {
+                MapHotPathDiagnostics.recordEvent(
+                    stage = "mapRenderer.zoomQueue",
+                    status = if (rescheduled) "reprioritized" else "empty",
+                    detail = "oldZoom=$previousZoom newZoom=$zoomLevel pendingJobs=${jobQueue?.size() ?: 0}",
+                )
+            }
+        }
         val firstDraw = !hasDrawn
         val cachedBeforeDraw = hasCachedVisibleBaseTile(boundingBox, zoomLevel)
         hasDrawn = true
@@ -131,7 +159,10 @@ internal class FirstVisibleTileRendererLayer(
         completeArmedViewportReadiness(boundingBox, zoomLevel)
     }
 
-    /** Arms one initial-map readiness signal for the current visible tile set. */
+    val isStartupPrewarmAllowed: Boolean
+        get() = startupPrewarmPolicy.isAllowed()
+
+    /** Arms one readiness signal for the current visible tile set. */
     fun armCurrentViewportReadiness(): VisibleTileViewportReadinessRequest {
         val mapView = diagnostics.mapView
         val viewportKey =
@@ -148,6 +179,7 @@ internal class FirstVisibleTileRendererLayer(
             )
         synchronized(viewportReadinessLock) {
             if (hasDrawableTile(request.viewportKey)) {
+                armedViewportReadiness = null
                 viewportReadinessEvent.value = request.toReadinessEvent()
             } else {
                 armedViewportReadiness = request
@@ -159,16 +191,12 @@ internal class FirstVisibleTileRendererLayer(
     suspend fun awaitViewportReadiness(
         request: VisibleTileViewportReadinessRequest,
         timeoutMs: Long,
-    ): VisibleTileViewportReadinessEvent? {
-        viewportReadinessEvent.value?.let { event ->
-            if (initialVisibleTileViewportReadinessMatches(request, event)) return event
-        }
-        return withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
-            viewportReadinessEvent
-                .filterNotNull()
-                .first { event -> initialVisibleTileViewportReadinessMatches(request, event) }
-        }
-    }
+    ): VisibleTileViewportReadinessEvent? =
+        awaitVisibleTileViewportReadiness(
+            request,
+            viewportReadinessEvent,
+            timeoutMs,
+        )
 
     /** Queues one FULL-diagnostics visibility snapshot for the next completed map draw. */
     fun requestVisibleTileDiagnosticSnapshot(reason: String) {
@@ -301,11 +329,23 @@ internal class FirstVisibleTileRendererLayer(
                 zoomLevel = zoomLevel,
                 tileSize = tileSize,
             )
-        if (hasDrawableTile(viewportKey)) {
+        val event = request.toReadinessEvent(viewportKey)
+        val currentViewportKey =
+            visibleTileViewportKey(
+                boundingBox = diagnostics.mapView.boundingBox,
+                zoomLevel = diagnostics.mapView.model.mapViewPosition.zoomLevel,
+                tileSize = tileSize,
+            )
+        // Mapsforge's drawing buffer is larger than the view; only usable current-view tiles
+        // can complete readiness, even when a padded or superseded frame finishes drawing.
+        if (
+            visibleTileViewportReadinessMatches(request, event, currentViewportKey) &&
+            hasDrawableTile(currentViewportKey)
+        ) {
             synchronized(viewportReadinessLock) {
                 if (armedViewportReadiness == request) {
                     armedViewportReadiness = null
-                    viewportReadinessEvent.value = request.toReadinessEvent(viewportKey)
+                    viewportReadinessEvent.value = request.toReadinessEvent(currentViewportKey)
                 }
             }
         }

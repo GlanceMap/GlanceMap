@@ -25,6 +25,7 @@ import com.glancemap.glancemapwearos.core.service.location.model.resolveLocation
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.domain.sensors.CompassViewModel
+import com.glancemap.glancemapwearos.presentation.features.maps.DisplayFrameLayerOwner
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.navigate.GpsFixIndicatorState
@@ -355,6 +356,7 @@ internal fun rememberNavigateLocationUiState(
                                 wakeMarkerBitmap,
                                 -navigationMarkerBitmap.width / 2,
                                 -navigationMarkerBitmap.height / 2,
+                                displayFrameOwner = mapView as? DisplayFrameLayerOwner,
                             ).also { marker ->
                                 mapView.mutateLayers { layers -> layers.add(marker) }
                             }
@@ -645,6 +647,7 @@ internal fun rememberNavigateLocationUiState(
                     ),
                     -navigationMarkerBitmap.width / 2,
                     -navigationMarkerBitmap.height / 2,
+                    displayFrameOwner = mapView as? DisplayFrameLayerOwner,
                 ).also { marker ->
                     mapView.mutateLayers { layers -> layers.add(marker) }
                     lastMarkerVisualUpdateAtElapsedMs = android.os.SystemClock.elapsedRealtime()
@@ -668,6 +671,7 @@ internal fun rememberNavigateLocationUiState(
                 ),
                 -navigationMarkerBitmap.width / 2,
                 -navigationMarkerBitmap.height / 2,
+                displayFrameOwner = mapView as? DisplayFrameLayerOwner,
             ).also { marker ->
                 marker.heading = heading
                 marker.isVisible = isVisible
@@ -978,6 +982,7 @@ internal fun rememberNavigateLocationUiState(
                             ),
                             -navigationMarkerBitmap.width / 2,
                             -navigationMarkerBitmap.height / 2,
+                            displayFrameOwner = mapView as? DisplayFrameLayerOwner,
                         ).also { marker ->
                             mapView.mutateLayers { layers -> layers.add(marker) }
                         }

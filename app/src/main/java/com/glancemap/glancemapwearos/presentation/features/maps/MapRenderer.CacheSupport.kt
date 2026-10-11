@@ -104,9 +104,7 @@ internal fun computeMapRendererMapSignature(mapPath: String?): String? {
     if (mapPath.isNullOrBlank()) return null
     val file = File(mapPath)
     if (!file.exists()) return "MISSING:$mapPath"
-    val lastModified = runCatching { file.lastModified() }.getOrDefault(0L)
-    val length = runCatching { file.length() }.getOrDefault(0L)
-    return "FILE:${file.absolutePath}|$lastModified|$length"
+    return "FILE:${mapRendererFileSignature(file)}"
 }
 
 internal fun resolveMapRendererDesiredCacheId(

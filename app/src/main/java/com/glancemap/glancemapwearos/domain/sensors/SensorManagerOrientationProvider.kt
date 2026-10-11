@@ -63,6 +63,7 @@ internal data class SensorRawHeadingSample(
     val sourceMeasurementAtElapsedRealtimeMs: Long,
     val callbackArrivalAtElapsedRealtimeMs: Long,
     val sequenceId: Long,
+    val registrationGeneration: Long = 0L,
 )
 
 internal fun isSensorHeadingSampleStale(
@@ -73,6 +74,26 @@ internal fun isSensorHeadingSampleStale(
     sampleAtElapsedRealtimeMs == null ||
         nowElapsedRealtimeMs < sampleAtElapsedRealtimeMs ||
         nowElapsedRealtimeMs - sampleAtElapsedRealtimeMs >= maxAgeMs
+
+internal fun sensorHeadingSampleFreshnessAfterPublish(
+    sample: SensorRawHeadingSample,
+    sampleAtElapsedRealtimeMs: Long = sample.sourceMeasurementAtElapsedRealtimeMs,
+    nowElapsedRealtimeMs: Long,
+    heldOutput: Boolean = false,
+): SensorHeadingSampleFreshness =
+    SensorHeadingSampleFreshness
+        .afterPublish(
+            sampleAtElapsedRealtimeMs = sampleAtElapsedRealtimeMs,
+            arrivalAtElapsedRealtimeMs = sample.callbackArrivalAtElapsedRealtimeMs,
+            sequenceId = sample.sequenceId,
+            heldOutput = heldOutput,
+        ).copy(
+            stale =
+                isSensorHeadingSampleStale(
+                    sampleAtElapsedRealtimeMs = sampleAtElapsedRealtimeMs,
+                    nowElapsedRealtimeMs = nowElapsedRealtimeMs,
+                ),
+        )
 
 private data class SensorPublishedHeadingSample(
     val headingDeg: Float = 0f,
@@ -494,7 +515,7 @@ internal class SensorManagerOrientationProvider(
             if (remappedHeading.isFinite()) {
                 _publishedHeadingSample.value =
                     _publishedHeadingSample.value.copy(headingDeg = remappedHeading)
-                emitRawHeading(remappedHeading)
+                emitCachedHeading(remappedHeading)
             }
         }
         if (started) {
@@ -510,8 +531,9 @@ internal class SensorManagerOrientationProvider(
             if (modeChanged || sourceChanged) {
                 // Re-snap smoothing only when the effective heading basis changed.
                 resetSmoothingRequested.set(true)
-            } else if (forceRefresh && !modeChanged) {
-                emitRawHeading(_publishedHeadingSample.value.headingDeg)
+            }
+            if (!sourceChanged && (modeChanged || forceRefresh)) {
+                emitCachedHeading(_publishedHeadingSample.value.headingDeg)
             }
         }
         publishNorthReferenceStatus()
@@ -550,7 +572,7 @@ internal class SensorManagerOrientationProvider(
                 // Re-snap only when the effective sensor pipeline changed.
                 resetSmoothingRequested.set(true)
             } else if (forceRefresh && !sourceChanged) {
-                emitRawHeading(_publishedHeadingSample.value.headingDeg)
+                emitCachedHeading(_publishedHeadingSample.value.headingDeg)
             }
         }
         publishHeadingSourceFromCurrentMode()
@@ -600,13 +622,16 @@ internal class SensorManagerOrientationProvider(
         }
 
         when {
-            usingHeadingSensor -> handleHeadingSensorChanged(event)
-            usingRotationVector -> handleRotationVectorChanged(event)
+            usingHeadingSensor -> handleHeadingSensorChanged(event, registrationGeneration)
+            usingRotationVector -> handleRotationVectorChanged(event, registrationGeneration)
             usingMagAccelFallback -> handleMagAccelFallbackChanged(event, registrationGeneration)
         }
     }
 
-    private fun handleHeadingSensorChanged(event: SensorEvent) {
+    private fun handleHeadingSensorChanged(
+        event: SensorEvent,
+        registrationGeneration: Long,
+    ) {
         if (event.sensor.type != HEADING_SENSOR_TYPE) return
         val headingDeg = event.values.firstOrNull()
         if (headingDeg != null && headingDeg.isFinite()) {
@@ -619,12 +644,19 @@ internal class SensorManagerOrientationProvider(
                     northReferenceMode = northReferenceMode,
                     headingDeg = headingDeg,
                 )
-            emitRawHeading(normalized, event.timestamp)
+            emitRawHeading(
+                headingDeg = normalized,
+                sourceTimestampNs = event.timestamp,
+                registrationGeneration = registrationGeneration,
+            )
             maybeLogHeadingSample(normalized)
         }
     }
 
-    private fun handleRotationVectorChanged(event: SensorEvent) {
+    private fun handleRotationVectorChanged(
+        event: SensorEvent,
+        registrationGeneration: Long,
+    ) {
         if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
             updateRotationVectorUncertainty(values = event.values)
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -642,7 +674,11 @@ internal class SensorManagerOrientationProvider(
                     declinationDeg = declinationController.resolveCorrection(northReferenceMode),
                     northReferenceMode = northReferenceMode,
                 )
-            emitRawHeading(normalized, event.timestamp)
+            emitRawHeading(
+                headingDeg = normalized,
+                sourceTimestampNs = event.timestamp,
+                registrationGeneration = registrationGeneration,
+            )
             maybeLogHeadingSample(normalized)
         }
     }
@@ -687,13 +723,16 @@ internal class SensorManagerOrientationProvider(
             )
         recordMagAccelPairTraceIfChanged(pairValidity)
         if (pairValidity.accepted && SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
-            publishMagAccelHeading(pairValidity)
+            publishMagAccelHeading(pairValidity, registrationGeneration)
         } else if (!pairValidity.accepted) {
             markMagAccelHeadingStale(pairValidity.reason)
         }
     }
 
-    private fun publishMagAccelHeading(pairValidity: SensorMagAccelPairValidity) {
+    private fun publishMagAccelHeading(
+        pairValidity: SensorMagAccelPairValidity,
+        registrationGeneration: Long,
+    ) {
         remapForDisplayRotation(
             rotation = cachedDisplayRotation,
             inR = rotationMatrix,
@@ -713,19 +752,33 @@ internal class SensorManagerOrientationProvider(
             sourceTimestampNs =
                 magAccelPairPublishedAtElapsedRealtimeMs(pairValidity) *
                     SENSOR_EVENT_TIMESTAMP_NANOS_PER_MILLISECOND,
+            registrationGeneration = registrationGeneration,
         )
         maybeLogHeadingSample(normalized)
+    }
+
+    private fun emitCachedHeading(headingDeg: Float) {
+        val sourceMeasurementAtElapsedRealtimeMs =
+            _publishedHeadingSample.value.freshness.sampleAtElapsedRealtimeMs ?: return
+        emitRawHeading(
+            headingDeg = headingDeg,
+            sourceMeasurementAtElapsedRealtimeMs = sourceMeasurementAtElapsedRealtimeMs,
+            registrationGeneration = sensorRegistrationGeneration,
+        )
     }
 
     private fun emitRawHeading(
         headingDeg: Float,
         sourceTimestampNs: Long? = null,
+        sourceMeasurementAtElapsedRealtimeMs: Long? = null,
+        registrationGeneration: Long = sensorRegistrationGeneration,
     ) {
         val arrivalElapsedMs = SystemClock.elapsedRealtime()
         val sourceElapsedMs =
-            sourceTimestampNs
-                ?.div(1_000_000L)
-                ?.takeIf { it > 0L }
+            sourceMeasurementAtElapsedRealtimeMs?.takeIf { it > 0L }
+                ?: sourceTimestampNs
+                    ?.div(1_000_000L)
+                    ?.takeIf { it > 0L }
                 ?: arrivalElapsedMs
         val sample =
             SensorRawHeadingSample(
@@ -733,6 +786,7 @@ internal class SensorManagerOrientationProvider(
                 sourceMeasurementAtElapsedRealtimeMs = sourceElapsedMs,
                 callbackArrivalAtElapsedRealtimeMs = arrivalElapsedMs,
                 sequenceId = ++rawHeadingSequenceId,
+                registrationGeneration = registrationGeneration,
             )
         rawHeadingFlow.tryEmit(sample)
         recordDeepTraceHeading(sample)
@@ -762,7 +816,7 @@ internal class SensorManagerOrientationProvider(
                 provenance =
                     CompassHeadingProvenance(
                         provider = providerType,
-                        generation = sensorRegistrationGeneration,
+                        generation = sample.registrationGeneration,
                     ),
                 atElapsedMs = sample.callbackArrivalAtElapsedRealtimeMs,
             ),
@@ -813,45 +867,20 @@ internal class SensorManagerOrientationProvider(
                 rawHeadingFlow = rawHeadingFlow,
                 settleWindowMs = settleWindowMs,
                 getStartAtMs = { startAtMs },
+                getNowElapsedMs = { SystemClock.elapsedRealtime() },
                 getHeadingRelockUntilElapsedMs = { headingRelockUntilElapsedMs },
-                consumeResetSmoothingRequested = { resetSmoothingRequested.getAndSet(false) },
+                consumeResetSmoothingRequested = ::consumeResetSmoothingRequested,
                 getDisplayedHeading = { _publishedHeadingSample.value.headingDeg },
-                publishDisplayedHeading = { heading, sample ->
-                    val pairValidity =
-                        if (usingMagAccelFallback) {
-                            validateSensorMagAccelPair(
-                                state = magAccelPairState,
-                                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-                                registrationGeneration = sensorRegistrationGeneration,
-                            )
-                        } else {
-                            null
-                        }
-                    if (pairValidity?.accepted == false) {
-                        markMagAccelHeadingStale(pairValidity.reason)
-                    } else {
-                        _publishedHeadingSample.value =
-                            SensorPublishedHeadingSample(
-                                headingDeg = heading,
-                                freshness =
-                                    SensorHeadingSampleFreshness.afterPublish(
-                                        sampleAtElapsedRealtimeMs =
-                                            pairValidity?.let(::magAccelPairPublishedAtElapsedRealtimeMs)
-                                                ?: sample.sourceMeasurementAtElapsedRealtimeMs,
-                                        arrivalAtElapsedRealtimeMs =
-                                            sample.callbackArrivalAtElapsedRealtimeMs,
-                                        sequenceId = sample.sequenceId,
-                                    ),
-                            )
-                        hasPublishedHeading = true
-                    }
+                isRawSampleCurrent = { sample ->
+                    started && sample.registrationGeneration == sensorRegistrationGeneration
                 },
+                publishDisplayedHeading = ::publishDisplayedHeading,
                 getPendingBootstrapRawSamplesToIgnore = { pendingBootstrapRawSamplesToIgnore },
-                setPendingBootstrapRawSamplesToIgnore = { pendingBootstrapRawSamplesToIgnore = it },
+                setPendingBootstrapRawSamplesToIgnore = ::setPendingBootstrapRawSamplesToIgnore,
                 getPendingStartupBogusSamplesToIgnore = { pendingStartupBogusSamplesToIgnore },
-                setPendingStartupBogusSamplesToIgnore = { pendingStartupBogusSamplesToIgnore = it },
+                setPendingStartupBogusSamplesToIgnore = ::setPendingStartupBogusSamplesToIgnore,
                 getPendingStartupHeadingPublishesToMask = { pendingStartupHeadingPublishesToMask },
-                setPendingStartupHeadingPublishesToMask = { pendingStartupHeadingPublishesToMask = it },
+                setPendingStartupHeadingPublishesToMask = ::setPendingStartupHeadingPublishesToMask,
                 getStartupStabilizationUntilElapsedMs = { startupStabilizationUntilElapsedMs },
                 getStartupHeadingPublishMaskUntilElapsedMs = { startupHeadingPublishMaskUntilElapsedMs },
                 isUsingRotationVector = { usingRotationVector },
@@ -859,6 +888,47 @@ internal class SensorManagerOrientationProvider(
                 updateInferredHeadingAccuracy = ::updateInferredHeadingAccuracy,
                 logDiagnostics = ::logDiagnostics,
             )
+    }
+
+    @Synchronized
+    private fun consumeResetSmoothingRequested(sample: SensorRawHeadingSample): Boolean {
+        if (!started || sample.registrationGeneration != sensorRegistrationGeneration) return false
+        return resetSmoothingRequested.getAndSet(false)
+    }
+
+    @Synchronized
+    private fun publishDisplayedHeading(
+        heading: Float,
+        sample: SensorRawHeadingSample,
+    ) {
+        if (!started || sample.registrationGeneration != sensorRegistrationGeneration) return
+        val pairValidity =
+            if (usingMagAccelFallback) {
+                validateSensorMagAccelPair(
+                    state = magAccelPairState,
+                    nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                    registrationGeneration = sensorRegistrationGeneration,
+                )
+            } else {
+                null
+            }
+        if (pairValidity?.accepted == false) {
+            markMagAccelHeadingStale(pairValidity.reason)
+            return
+        }
+        _publishedHeadingSample.value =
+            SensorPublishedHeadingSample(
+                headingDeg = heading,
+                freshness =
+                    sensorHeadingSampleFreshnessAfterPublish(
+                        sample = sample,
+                        sampleAtElapsedRealtimeMs =
+                            pairValidity?.let(::magAccelPairPublishedAtElapsedRealtimeMs)
+                                ?: sample.sourceMeasurementAtElapsedRealtimeMs,
+                        nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                    ),
+            )
+        hasPublishedHeading = true
     }
 
     private fun startFreshnessMonitor() {
@@ -934,6 +1004,33 @@ internal class SensorManagerOrientationProvider(
             "sensor_mag_accel_stale generation=$sensorRegistrationGeneration " +
                 "reason=${reason.telemetryToken}",
         )
+    }
+
+    @Synchronized
+    private fun setPendingBootstrapRawSamplesToIgnore(
+        sample: SensorRawHeadingSample,
+        remaining: Int,
+    ) {
+        if (!isCurrentRegistrationSample(sample)) return
+        pendingBootstrapRawSamplesToIgnore = remaining
+    }
+
+    @Synchronized
+    private fun setPendingStartupBogusSamplesToIgnore(
+        sample: SensorRawHeadingSample,
+        remaining: Int,
+    ) {
+        if (!isCurrentRegistrationSample(sample)) return
+        pendingStartupBogusSamplesToIgnore = remaining
+    }
+
+    @Synchronized
+    private fun setPendingStartupHeadingPublishesToMask(
+        sample: SensorRawHeadingSample,
+        remaining: Int,
+    ) {
+        if (!isCurrentRegistrationSample(sample)) return
+        pendingStartupHeadingPublishesToMask = remaining
     }
 
     private fun recordMagAccelPairTraceIfChanged(validity: SensorMagAccelPairValidity) {
@@ -1180,11 +1277,20 @@ internal class SensorManagerOrientationProvider(
         logDiagnostics(reset.logMessage)
     }
 
-    private fun updateInferredHeadingAccuracy(accuracy: Int) {
+    @Synchronized
+    private fun updateInferredHeadingAccuracy(
+        sample: SensorRawHeadingSample,
+        accuracy: Int,
+    ) {
+        if (!isCurrentRegistrationSample(sample)) return
         if (inferredHeadingAccuracy == accuracy) return
         inferredHeadingAccuracy = accuracy
         publishAccuracyFromCurrentSignals()
     }
+
+    private fun isCurrentRegistrationSample(
+        sample: SensorRawHeadingSample,
+    ): Boolean = started && sample.registrationGeneration == sensorRegistrationGeneration
 
     private fun resolveSensorReportedAccuracy(): Int =
         resolveSensorReportedAccuracy(
@@ -1201,7 +1307,7 @@ internal class SensorManagerOrientationProvider(
             computeCompassRotationVectorUpdate(
                 previousUncertaintyDeg = rotVecHeadingUncertaintyDeg,
                 values = values,
-                sensorAccuracy = resolveSensorReportedAccuracy(),
+                sensorAccuracy = resolveSensorReportedAccuracyIgnoringUncertainty(),
                 inferredAccuracy = inferredHeadingAccuracy,
                 usingRotationVector = usingRotationVector,
                 usingHeadingSensor = usingHeadingSensor,
@@ -1215,10 +1321,25 @@ internal class SensorManagerOrientationProvider(
         update.logMessage?.let(::logDiagnostics)
     }
 
+    private fun resolveSensorReportedAccuracyIgnoringUncertainty(): Int =
+        resolveSensorReportedAccuracy(
+            pipeline = currentHeadingPipeline(),
+            headingAccuracy = headingAccuracy,
+            headingUncertaintyDeg = headingUncertaintyDeg,
+            magAccuracy = magAccuracy,
+            rotVecAccuracy = rotVecAccuracy,
+            rotVecHeadingUncertaintyDeg = Float.NaN,
+        )
+
     private fun publishAccuracyFromCurrentSignals() {
         val combined =
-            computeCompassCombinedAccuracy(
-                sensorAccuracy = resolveSensorReportedAccuracy(),
+            computeCompassAccuracyPublication(
+                pipeline = currentHeadingPipeline(),
+                headingAccuracy = headingAccuracy,
+                headingUncertaintyDeg = headingUncertaintyDeg,
+                magAccuracy = magAccuracy,
+                rotVecAccuracy = rotVecAccuracy,
+                rotVecHeadingUncertaintyDeg = rotVecHeadingUncertaintyDeg,
                 inferredAccuracy = inferredHeadingAccuracy,
                 usingRotationVector = usingRotationVector,
                 usingHeadingSensor = usingHeadingSensor,

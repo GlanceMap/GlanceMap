@@ -2,7 +2,6 @@ package com.glancemap.glancemapwearos.domain.sensors
 
 import android.hardware.Sensor
 import android.hardware.SensorManager
-import android.os.SystemClock
 import android.view.WindowManager
 import com.glancemap.glancemapwearos.core.service.diagnostics.isCompassTelemetryCaptureActive
 import kotlinx.coroutines.CoroutineScope
@@ -229,7 +228,7 @@ internal fun computeCompassRotationVectorUpdate(
     val uncertaintyAccuracy =
         headingAccuracyFromUncertainty(update.uncertaintyDeg)
     val effectiveSensorAccuracy =
-        if (update.uncertaintyDeg.isFinite()) uncertaintyAccuracy else sensorAccuracy
+        if (isSupportedHeadingUncertainty(update.uncertaintyDeg)) uncertaintyAccuracy else sensorAccuracy
     val combinedAccuracy =
         combineCompassAccuracy(
             sensorAccuracy = effectiveSensorAccuracy,
@@ -261,6 +260,35 @@ internal fun computeCompassCombinedAccuracy(
         sensorAccuracy = sensorAccuracy,
         inferredAccuracy = inferredAccuracy,
         usingRotationVector = usingRotationVector || usingHeadingSensor,
+        hasMagneticInterference = hasMagneticInterference,
+    )
+
+@Suppress("LongParameterList")
+internal fun computeCompassAccuracyPublication(
+    pipeline: HeadingPipeline,
+    headingAccuracy: Int,
+    headingUncertaintyDeg: Float,
+    magAccuracy: Int,
+    rotVecAccuracy: Int,
+    rotVecHeadingUncertaintyDeg: Float,
+    inferredAccuracy: Int,
+    usingRotationVector: Boolean,
+    usingHeadingSensor: Boolean,
+    hasMagneticInterference: Boolean,
+): Int =
+    computeCompassCombinedAccuracy(
+        sensorAccuracy =
+            resolveSensorReportedAccuracy(
+                pipeline = pipeline,
+                headingAccuracy = headingAccuracy,
+                headingUncertaintyDeg = headingUncertaintyDeg,
+                magAccuracy = magAccuracy,
+                rotVecAccuracy = rotVecAccuracy,
+                rotVecHeadingUncertaintyDeg = rotVecHeadingUncertaintyDeg,
+            ),
+        inferredAccuracy = inferredAccuracy,
+        usingRotationVector = usingRotationVector,
+        usingHeadingSensor = usingHeadingSensor,
         hasMagneticInterference = hasMagneticInterference,
     )
 
@@ -363,21 +391,23 @@ internal fun launchCompassSmoothingJob(
     rawHeadingFlow: SharedFlow<SensorRawHeadingSample>,
     settleWindowMs: Long,
     getStartAtMs: () -> Long,
+    getNowElapsedMs: () -> Long,
     getHeadingRelockUntilElapsedMs: () -> Long,
-    consumeResetSmoothingRequested: () -> Boolean,
+    consumeResetSmoothingRequested: (SensorRawHeadingSample) -> Boolean,
     getDisplayedHeading: () -> Float,
+    isRawSampleCurrent: (SensorRawHeadingSample) -> Boolean,
     publishDisplayedHeading: (Float, SensorRawHeadingSample) -> Unit,
     getPendingBootstrapRawSamplesToIgnore: () -> Int,
-    setPendingBootstrapRawSamplesToIgnore: (Int) -> Unit,
+    setPendingBootstrapRawSamplesToIgnore: (SensorRawHeadingSample, Int) -> Unit,
     getPendingStartupBogusSamplesToIgnore: () -> Int,
-    setPendingStartupBogusSamplesToIgnore: (Int) -> Unit,
+    setPendingStartupBogusSamplesToIgnore: (SensorRawHeadingSample, Int) -> Unit,
     getPendingStartupHeadingPublishesToMask: () -> Int,
-    setPendingStartupHeadingPublishesToMask: (Int) -> Unit,
+    setPendingStartupHeadingPublishesToMask: (SensorRawHeadingSample, Int) -> Unit,
     getStartupStabilizationUntilElapsedMs: () -> Long,
     getStartupHeadingPublishMaskUntilElapsedMs: () -> Long,
     isUsingRotationVector: () -> Boolean,
     isUsingHeadingSensor: () -> Boolean,
-    updateInferredHeadingAccuracy: (Int) -> Unit,
+    updateInferredHeadingAccuracy: (SensorRawHeadingSample, Int) -> Unit,
     logDiagnostics: (String) -> Unit,
 ): Job {
     return scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -397,13 +427,17 @@ internal fun launchCompassSmoothingJob(
 
         rawHeadingFlow
             .collect { rawSample ->
-                val now = SystemClock.elapsedRealtime()
+                if (!isRawSampleCurrent(rawSample)) return@collect
+                val now = getNowElapsedMs()
+                if (!isRawSampleCurrent(rawSample)) return@collect
                 val settling = (now - getStartAtMs()) < settleWindowMs
                 val inRelock = now < getHeadingRelockUntilElapsedMs()
 
+                @Suppress("ReturnCount")
                 fun publishHeadingCandidate(candidateHeading: Float): Boolean {
                     val currentDisplayedHeading = getDisplayedHeading()
                     if (
+                        !isRawSampleCurrent(rawSample) ||
                         shouldMaskStartupHeadingPublish(
                             candidateHeadingDeg = candidateHeading,
                             displayedHeadingDeg = currentDisplayedHeading,
@@ -411,9 +445,10 @@ internal fun launchCompassSmoothingJob(
                             withinMaskWindow = now <= getStartupHeadingPublishMaskUntilElapsedMs(),
                         )
                     ) {
+                        if (!isRawSampleCurrent(rawSample)) return false
                         val remainingPublishesToMask =
                             (getPendingStartupHeadingPublishesToMask() - 1).coerceAtLeast(0)
-                        setPendingStartupHeadingPublishesToMask(remainingPublishesToMask)
+                        setPendingStartupHeadingPublishesToMask(rawSample, remainingPublishesToMask)
                         val deltaDeg =
                             abs(
                                 shortestAngleDiffDeg(
@@ -435,7 +470,7 @@ internal fun launchCompassSmoothingJob(
 
                 val raw = normalize360Deg(rawSample.headingDeg)
 
-                if (consumeResetSmoothingRequested()) {
+                if (consumeResetSmoothingRequested(rawSample)) {
                     val displayedHeading = getDisplayedHeading()
                     resumedWithPreviousHeading =
                         getPendingStartupHeadingPublishesToMask() > 0 &&
@@ -446,7 +481,7 @@ internal fun launchCompassSmoothingJob(
                         // The prior heading now provides continuity. Let the bounded re-anchor
                         // publish every step instead of hiding early steps and exposing a larger
                         // accumulated jump once the old sample mask is exhausted.
-                        setPendingStartupHeadingPublishesToMask(0)
+                        setPendingStartupHeadingPublishesToMask(rawSample, 0)
                     }
                     startupInputConfirmed = false
                     suppressFirstPublishAfterReset = !resumedWithPreviousHeading
@@ -462,7 +497,7 @@ internal fun launchCompassSmoothingJob(
 
                 if (getPendingBootstrapRawSamplesToIgnore() > 0) {
                     val remainingSamples = getPendingBootstrapRawSamplesToIgnore() - 1
-                    setPendingBootstrapRawSamplesToIgnore(remainingSamples)
+                    setPendingBootstrapRawSamplesToIgnore(rawSample, remainingSamples)
                     logDiagnostics(
                         "bootstrap_sample ignored raw=${raw.format(1)} " +
                             "remaining=$remainingSamples",
@@ -482,6 +517,7 @@ internal fun launchCompassSmoothingJob(
                 if (startupTransientDecision != null) {
                     startupCandidateRawHeading = startupTransientDecision.nextCandidateHeadingDeg
                     setPendingStartupBogusSamplesToIgnore(
+                        rawSample,
                         startupTransientDecision.nextRemainingSamplesToIgnore,
                     )
                     when (startupTransientDecision.action) {
@@ -489,6 +525,7 @@ internal fun launchCompassSmoothingJob(
                         StartupTransientAction.IGNORE_REPLACE_CANDIDATE,
                         -> {
                             updateInferredHeadingAccuracy(
+                                rawSample,
                                 SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
                             )
                             logDiagnostics(
@@ -538,7 +575,7 @@ internal fun launchCompassSmoothingJob(
                         } else {
                             SensorManager.SENSOR_STATUS_ACCURACY_LOW
                         }
-                    updateInferredHeadingAccuracy(initAccuracy)
+                    updateInferredHeadingAccuracy(rawSample, initAccuracy)
                     if (suppressFirstPublishAfterReset) {
                         suppressFirstPublishAfterReset = false
                         return@collect
@@ -557,7 +594,7 @@ internal fun launchCompassSmoothingJob(
                         )
                     window.clear()
                     window.addLast(raw)
-                    updateInferredHeadingAccuracy(SensorManager.SENSOR_STATUS_ACCURACY_LOW)
+                    updateInferredHeadingAccuracy(rawSample, SensorManager.SENSOR_STATUS_ACCURACY_LOW)
                     publishHeadingCandidate(smoothedHeading)
                     if (reanchorDiff <= HEADING_REANCHOR_MAX_STEP_DEG) {
                         reanchorBlendActive = false
@@ -609,7 +646,7 @@ internal fun launchCompassSmoothingJob(
                         window.addLast(raw)
                         pendingLargeJumpHeading = null
                         pendingLargeJumpAtMs = 0L
-                        updateInferredHeadingAccuracy(SensorManager.SENSOR_STATUS_ACCURACY_LOW)
+                        updateInferredHeadingAccuracy(rawSample, SensorManager.SENSOR_STATUS_ACCURACY_LOW)
                         publishHeadingCandidate(smoothedHeading)
                         logDiagnostics(
                             "large_jump accepted jump=${jump.format(1)} " +
@@ -634,7 +671,7 @@ internal fun launchCompassSmoothingJob(
                             )
                         }
                         pendingLargeJumpHeading = raw
-                        updateInferredHeadingAccuracy(SensorManager.SENSOR_STATUS_ACCURACY_LOW)
+                        updateInferredHeadingAccuracy(rawSample, SensorManager.SENSOR_STATUS_ACCURACY_LOW)
                         return@collect
                     }
 
@@ -661,7 +698,7 @@ internal fun launchCompassSmoothingJob(
                         } else {
                             SensorManager.SENSOR_STATUS_ACCURACY_LOW
                         }
-                    updateInferredHeadingAccuracy(settlingAccuracy)
+                    updateInferredHeadingAccuracy(rawSample, settlingAccuracy)
                     publishHeadingCandidate(smoothedHeading)
                     return@collect
                 }
@@ -677,6 +714,7 @@ internal fun launchCompassSmoothingJob(
                 // sample window, so chase the live raw reading directly for responsiveness.
                 val avg = if (isFastTurn) raw else computeCircularMean(window)
                 updateInferredHeadingAccuracy(
+                    rawSample,
                     inferHeadingAccuracy(
                         noiseDeg = noise,
                         turnRateDegPerSec = turnRateEmaDegPerSec,

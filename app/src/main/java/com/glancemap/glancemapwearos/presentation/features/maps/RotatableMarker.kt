@@ -15,7 +15,9 @@ class RotatableMarker(
     bitmap: Bitmap,
     horizontalOffset: Int,
     verticalOffset: Int,
-) : Marker(latLong, bitmap, horizontalOffset, verticalOffset) {
+    override val displayFrameOwner: DisplayFrameLayerOwner? = null,
+) : Marker(latLong, bitmap, horizontalOffset, verticalOffset),
+    DisplayFrameLayer {
     init {
         // Marker releases its bitmap but does not acquire it. Keep a separate reference from
         // the Compose cache so switching between cached marker appearances stays safe.
@@ -40,7 +42,29 @@ class RotatableMarker(
         super.setBitmap(bitmap)
     }
 
+    override fun onAdd() {
+        super.onAdd()
+        displayFrameOwner?.addDisplayFrameLayer(this)
+    }
+
+    override fun onRemove() {
+        displayFrameOwner?.removeDisplayFrameLayer(this)
+        super.onRemove()
+    }
+
     override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: Canvas,
+        topLeft: Point,
+        mapViewRotation: Rotation,
+    ) {
+        if (!displayOnFrame) drawDisplayFrame(boundingBox, zoomLevel, canvas, topLeft, mapViewRotation)
+    }
+
+    // Preserve the existing layer's unavailable/offscreen guards in the foreground path.
+    @Suppress("ReturnCount")
+    override fun drawDisplayFrame(
         boundingBox: BoundingBox,
         zoomLevel: Byte,
         canvas: Canvas,
