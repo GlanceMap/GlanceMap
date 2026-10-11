@@ -186,6 +186,7 @@ internal sealed interface PhoneMapComparisonLayer {
 internal data class PhoneMapComparisonState(
     val layer: PhoneMapComparisonLayer? = null,
     val transparencyPercent: Float = DEFAULT_PHONE_MAP_COMPARISON_TRANSPARENCY_PERCENT,
+    val selectionGeneration: Long = 0L,
 ) {
     @Suppress("MaxLineLength") // Keep this compact immutable state helper readable at its call sites.
     fun withTransparency(percent: Float): PhoneMapComparisonState = copy(transparencyPercent = percent.coerceIn(0f, 100f))
@@ -229,16 +230,31 @@ internal data class PhoneMapUiState(
 
     fun showFeatureSettings(): PhoneMapUiState = copy(toolPanel = toolPanel.showFeatureSettings())
 
-    @Suppress("MaxLineLength") // Keep this immutable state transition beside the other tool actions.
-    fun selectComparisonLayer(layer: PhoneMapComparisonLayer?): PhoneMapUiState = copy(comparison = comparison.copy(layer = layer))
+    fun selectComparisonLayer(layer: PhoneMapComparisonLayer?): PhoneMapUiState =
+        copy(
+            comparison =
+                comparison.copy(
+                    layer = layer,
+                    selectionGeneration = comparison.selectionGeneration + 1L,
+                ),
+        )
+
+    fun clearFailedOfflineComparison(
+        layer: PhoneMapComparisonLayer.Offline,
+        selectionGeneration: Long,
+    ): PhoneMapUiState =
+        if (comparison.layer == layer && comparison.selectionGeneration == selectionGeneration) {
+            selectComparisonLayer(null)
+        } else {
+            this
+        }
 
     @Suppress("MaxLineLength") // Keep this immutable state transition beside the other tool actions.
     fun setComparisonTransparency(percent: Float): PhoneMapUiState = copy(comparison = comparison.withTransparency(percent))
 
     fun clearUnavailableComparison(offlineMaps: List<PhoneOfflineMap>): PhoneMapUiState =
         takeIf { !comparison.isAvailableFor(source, offlineMaps) }
-            ?.copy(comparison = comparison.copy(layer = null))
-            ?: this
+            ?.selectComparisonLayer(null) ?: this
 
     fun requestZoom(delta: Int): PhoneMapUiState =
         copy(

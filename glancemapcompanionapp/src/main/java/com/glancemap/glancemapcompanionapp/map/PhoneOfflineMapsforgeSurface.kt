@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -132,48 +133,51 @@ internal fun offlineMapSurface(
     callbacks: PhoneOfflineMapsforgeCallbacks,
     modifier: Modifier = Modifier.fillMaxSize(),
     isVisible: Boolean = true,
+    rendererGeneration: Long = 0L,
 ) {
-    val currentCallbacks by rememberUpdatedState(callbacks)
-    var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
+    key(rendererGeneration) {
+        val currentCallbacks by rememberUpdatedState(callbacks)
+        var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
 
-    AndroidView(
-        factory = { context ->
-            PhoneOfflineMapsforgeView(
-                context = context,
-                transparentBackground = state.transparentBackground,
-                callbacks =
-                    PhoneOfflineMapsforgeCallbacks(
-                        onCameraChanged = { currentCallbacks.onCameraChanged(it) },
-                        onLiveMapPositionChanged = { currentCallbacks.onLiveMapPositionChanged(it) },
-                        onViewportChanged = { currentCallbacks.onViewportChanged(it) },
-                        onPoiSelected = { currentCallbacks.onPoiSelected(it) },
-                        onMapTap = { currentCallbacks.onMapTap(it) },
-                        onMapLongPress = { currentCallbacks.onMapLongPress(it) },
-                        onTwoFingerTap = { first, second -> currentCallbacks.onTwoFingerTap(first, second) },
-                        onMeasurementPointMoved = { index, point ->
-                            currentCallbacks.onMeasurementPointMoved(index, point)
-                        },
-                        onUserPan = { currentCallbacks.onUserPan(it) },
-                        onUserRotation = { currentCallbacks.onUserRotation(it) },
-                        onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
-                        onMapError = { currentCallbacks.onMapError(it) },
-                        onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
-                    ),
-            ).also { created ->
-                holder = created
-                created.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
-                created.render(state)
-            }
-        },
-        update = { activeHolder ->
-            activeHolder.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
-            activeHolder.render(state)
-        },
-        modifier = modifier,
-    )
+        AndroidView(
+            factory = { context ->
+                PhoneOfflineMapsforgeView(
+                    context = context,
+                    transparentBackground = state.transparentBackground,
+                    callbacks =
+                        PhoneOfflineMapsforgeCallbacks(
+                            onCameraChanged = { currentCallbacks.onCameraChanged(it) },
+                            onLiveMapPositionChanged = { currentCallbacks.onLiveMapPositionChanged(it) },
+                            onViewportChanged = { currentCallbacks.onViewportChanged(it) },
+                            onPoiSelected = { currentCallbacks.onPoiSelected(it) },
+                            onMapTap = { currentCallbacks.onMapTap(it) },
+                            onMapLongPress = { currentCallbacks.onMapLongPress(it) },
+                            onTwoFingerTap = { first, second -> currentCallbacks.onTwoFingerTap(first, second) },
+                            onMeasurementPointMoved = { index, point ->
+                                currentCallbacks.onMeasurementPointMoved(index, point)
+                            },
+                            onUserPan = { currentCallbacks.onUserPan(it) },
+                            onUserRotation = { currentCallbacks.onUserRotation(it) },
+                            onCameraCommandHandled = { currentCallbacks.onCameraCommandHandled(it) },
+                            onMapError = { currentCallbacks.onMapError(it) },
+                            onLocationFollowUnavailable = { currentCallbacks.onLocationFollowUnavailable() },
+                        ),
+                ).also { created ->
+                    holder = created
+                    created.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
+                    created.render(state)
+                }
+            },
+            update = { activeHolder ->
+                activeHolder.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
+                activeHolder.render(state)
+            },
+            modifier = modifier,
+        )
 
-    DisposableEffect(Unit) {
-        onDispose { holder?.dispose() }
+        DisposableEffect(Unit) {
+            onDispose { holder?.dispose() }
+        }
     }
 }
 

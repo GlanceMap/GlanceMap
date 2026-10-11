@@ -513,16 +513,18 @@ internal fun CompanionMapScreen(
             pendingOfflineMap = null
             mapUiState =
                 mapUiState
-                    .copy(
-                        source = PhoneMapSource.Online,
-                        comparison =
-                            mapUiState.comparison.copy(
-                                layer =
-                                    mapUiState.comparison.layer.takeUnless { layer ->
-                                        layer == PhoneMapComparisonLayer.Online(onlineSource)
-                                    },
-                            ),
-                    ).clearUnavailableComparison(offlineMaps)
+                    .copy(source = PhoneMapSource.Online)
+                    .let { state ->
+                        val comparisonLayer =
+                            state.comparison.layer.takeUnless { layer ->
+                                layer == PhoneMapComparisonLayer.Online(onlineSource)
+                            }
+                        if (comparisonLayer == state.comparison.layer) {
+                            state
+                        } else {
+                            state.selectComparisonLayer(comparisonLayer)
+                        }
+                    }.clearUnavailableComparison(offlineMaps)
             offlineMapError = null
             mapLocationMessage = null
         }
@@ -979,24 +981,16 @@ internal fun CompanionMapScreen(
                     mapSourcePreferences.replaceOfflineMapName(target.map.displayName, renamed.displayName)
                 offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
                 mapUiState =
-                    mapUiState.copy(
-                        comparison =
-                            mapUiState.comparison.copy(
-                                layer =
-                                    when (mapUiState.comparison.layer) {
-                                        is PhoneMapComparisonLayer.Offline -> {
-                                            val comparison =
-                                                mapUiState.comparison.layer as PhoneMapComparisonLayer.Offline
-                                            if (comparison.map == target.map) {
-                                                PhoneMapComparisonLayer.Offline(renamed)
-                                            } else {
-                                                comparison
-                                            }
-                                        }
-                                        else -> mapUiState.comparison.layer
-                                    },
-                            ),
-                    )
+                    when (val comparisonLayer = mapUiState.comparison.layer) {
+                        is PhoneMapComparisonLayer.Offline -> {
+                            if (comparisonLayer.map == target.map) {
+                                mapUiState.selectComparisonLayer(PhoneMapComparisonLayer.Offline(renamed))
+                            } else {
+                                mapUiState
+                            }
+                        }
+                        else -> mapUiState
+                    }
                 if ((mapUiState.source as? PhoneMapSource.Offline)?.map == target.map) {
                     switchToOfflineMap(renamed)
                 }
@@ -1428,6 +1422,7 @@ internal fun CompanionMapScreen(
     val comparisonOverlayAlpha = mapUiState.comparison.overlayAlpha()
     val selectedOfflineComparison = mapUiState.comparison.layer as? PhoneMapComparisonLayer.Offline
     val offlineComparison = selectedOfflineComparison
+    val offlineComparisonSelectionGeneration = mapUiState.comparison.selectionGeneration
     val offlineComparisonActive = offlineComparison != null && comparisonOverlayAlpha > 0f
     val onlineComparison =
         (mapUiState.comparison.layer as? PhoneMapComparisonLayer.Online)
@@ -1878,11 +1873,22 @@ internal fun CompanionMapScreen(
                                                     )
                                             },
                                             onCameraCommandHandled = {},
-                                            onMapError = { error -> offlineMapError = error },
+                                            onMapError = { error ->
+                                                val recovered =
+                                                    mapUiState.clearFailedOfflineComparison(
+                                                        layer = comparison,
+                                                        selectionGeneration = offlineComparisonSelectionGeneration,
+                                                    )
+                                                if (recovered != mapUiState) {
+                                                    offlineMapError = error
+                                                    mapUiState = recovered
+                                                }
+                                            },
                                             onLocationFollowUnavailable = {},
                                         ),
                                     modifier = Modifier.fillMaxSize(),
                                     isVisible = offlineComparisonActive,
+                                    rendererGeneration = offlineComparisonSelectionGeneration,
                                 )
                             }
                         }

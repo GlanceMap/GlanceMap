@@ -79,6 +79,81 @@ class PhoneMapComparisonTest {
     }
 
     @Test
+    fun failedOfflineComparisonClearsAndReturnsOwnershipToTheBase() {
+        val layer = PhoneMapComparisonLayer.Offline(offlineMap())
+        val selected = PhoneMapUiState().selectComparisonLayer(layer)
+
+        val failed =
+            selected.clearFailedOfflineComparison(
+                layer = layer,
+                selectionGeneration = selected.comparison.selectionGeneration,
+            )
+        val selectedOfflineComparisonActive =
+            selected.comparison.layer is PhoneMapComparisonLayer.Offline && selected.comparison.overlayAlpha() > 0f
+        val failedOfflineComparisonActive =
+            failed.comparison.layer is PhoneMapComparisonLayer.Offline && failed.comparison.overlayAlpha() > 0f
+
+        assertEquals(PhoneMapSource.Online, failed.source)
+        assertEquals(null, failed.comparison.layer)
+        assertTrue(
+            phoneMapComparisonOwnsSemanticOverlays(
+                offlineComparisonActive = selectedOfflineComparisonActive,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertFalse(
+            phoneMapComparisonOwnsSemanticOverlays(
+                offlineComparisonActive = failedOfflineComparisonActive,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertTrue(
+            phoneMapComparisonOwnsUserCamera(
+                offlineComparisonActive = selectedOfflineComparisonActive,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertFalse(
+            phoneMapComparisonOwnsUserCamera(
+                offlineComparisonActive = failedOfflineComparisonActive,
+                onlineComparisonActive = false,
+            ),
+        )
+        assertFalse(phoneMapComparisonOwnsFollowAndCommands(failed.source, onlineComparisonActive = false))
+    }
+
+    @Test
+    fun oldOfflineRendererFailureCannotClearANewerOrReselectedComparison() {
+        val oldLayer = PhoneMapComparisonLayer.Offline(offlineMap())
+        val oldSelection = PhoneMapUiState().selectComparisonLayer(oldLayer)
+        val newerLayer = PhoneMapComparisonLayer.Offline(PhoneOfflineMap(java.io.File("pyrenees.map")))
+        val newerSelection = oldSelection.selectComparisonLayer(newerLayer)
+
+        assertEquals(
+            newerSelection,
+            newerSelection.clearFailedOfflineComparison(oldLayer, oldSelection.comparison.selectionGeneration),
+        )
+
+        val reselectedOldLayer = newerSelection.selectComparisonLayer(oldLayer)
+        assertEquals(
+            reselectedOldLayer,
+            reselectedOldLayer.clearFailedOfflineComparison(oldLayer, oldSelection.comparison.selectionGeneration),
+        )
+    }
+
+    @Test
+    fun offlineRendererFailureAfterComparisonWasClearedIsIgnored() {
+        val layer = PhoneMapComparisonLayer.Offline(offlineMap())
+        val selected = PhoneMapUiState().selectComparisonLayer(layer)
+        val cleared = selected.selectComparisonLayer(null)
+
+        assertEquals(
+            cleared,
+            cleared.clearFailedOfflineComparison(layer, selected.comparison.selectionGeneration),
+        )
+    }
+
+    @Test
     fun comparisonOwnsUserCameraOnlyWhileVisible() {
         assertFalse(phoneMapComparisonOwnsUserCamera(false, false))
         assertTrue(phoneMapComparisonOwnsUserCamera(true, false))
