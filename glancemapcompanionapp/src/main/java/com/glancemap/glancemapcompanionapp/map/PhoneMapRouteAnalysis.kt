@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.trailcore.profile.TrailPacingConfig
 import com.glancemap.trailcore.profile.TrailPoint
 import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
@@ -68,7 +69,8 @@ internal fun buildPhoneMapRouteAnalysis(
         "Route analysis points must belong to the same GPX track."
     }
     val points = pointA.item.track.points
-    val profile = buildTrailRouteProfile(points, settings.toTrailPacingConfig(points, generalSettings))
+    val pacing = settings.toTrailPacingConfig(points, generalSettings)
+    val profile = buildTrailRouteProfile(points, pacing)
     val scalarA = profile.scalarAt(pointA.position)
     val scalarB = pointB?.let { profile.scalarAt(it.position) }
     return PhoneMapRouteAnalysis(
@@ -80,7 +82,7 @@ internal fun buildPhoneMapRouteAnalysis(
         pointBPosition = pointB?.position,
         startToA = profile.legFromStart(scalarA),
         aToEnd = profile.legToEnd(scalarA),
-        aToB = scalarB?.let { scalarA.legBetween(it) },
+        aToB = scalarB?.let { scalarA.legBetween(it, pacing) },
         bToEnd = scalarB?.let(profile::legToEnd),
     )
 }
@@ -120,25 +122,49 @@ private fun TrailRouteProfile.legToEnd(scalar: RouteAnalysisScalar): PhoneMapRou
         durationSeconds = (estimatedDurationSeconds - scalar.durationSeconds).coerceAtLeast(0.0),
     )
 
-private fun RouteAnalysisScalar.legBetween(other: RouteAnalysisScalar): PhoneMapRouteAnalysisLeg {
+private fun RouteAnalysisScalar.legBetween(
+    other: RouteAnalysisScalar,
+    pacing: TrailPacingConfig,
+): PhoneMapRouteAnalysisLeg {
     val isForward = distanceMeters <= other.distanceMeters
     val start = if (isForward) this else other
     val end = if (isForward) other else this
+    val distanceMeters = (end.distanceMeters - start.distanceMeters).coerceAtLeast(0.0)
+    val ascentMeters =
+        if (isForward) {
+            (end.ascentMeters - start.ascentMeters).coerceAtLeast(0.0)
+        } else {
+            (end.descentMeters - start.descentMeters).coerceAtLeast(0.0)
+        }
+    val descentMeters =
+        if (isForward) {
+            (end.descentMeters - start.descentMeters).coerceAtLeast(0.0)
+        } else {
+            (end.ascentMeters - start.ascentMeters).coerceAtLeast(0.0)
+        }
+    val durationSeconds =
+        if (isForward) {
+            (end.durationSeconds - start.durationSeconds).coerceAtLeast(0.0)
+        } else {
+            val uphillSeconds =
+                if (pacing.uphillVerticalMetersPerHour > 0.0) {
+                    ascentMeters / pacing.uphillVerticalMetersPerHour * 3_600.0
+                } else {
+                    0.0
+                }
+            val downhillSeconds =
+                if (pacing.downhillVerticalMetersPerHour > 0.0) {
+                    descentMeters / pacing.downhillVerticalMetersPerHour * 3_600.0
+                } else {
+                    0.0
+                }
+            distanceMeters / pacing.flatSpeedMetersPerSecond + uphillSeconds + downhillSeconds
+        }
     return PhoneMapRouteAnalysisLeg(
-        distanceMeters = (end.distanceMeters - start.distanceMeters).coerceAtLeast(0.0),
-        ascentMeters =
-            if (isForward) {
-                (end.ascentMeters - start.ascentMeters).coerceAtLeast(0.0)
-            } else {
-                (end.descentMeters - start.descentMeters).coerceAtLeast(0.0)
-            },
-        descentMeters =
-            if (isForward) {
-                (end.descentMeters - start.descentMeters).coerceAtLeast(0.0)
-            } else {
-                (end.ascentMeters - start.ascentMeters).coerceAtLeast(0.0)
-            },
-        durationSeconds = (end.durationSeconds - start.durationSeconds).coerceAtLeast(0.0),
+        distanceMeters = distanceMeters,
+        ascentMeters = ascentMeters,
+        descentMeters = descentMeters,
+        durationSeconds = durationSeconds,
     )
 }
 
