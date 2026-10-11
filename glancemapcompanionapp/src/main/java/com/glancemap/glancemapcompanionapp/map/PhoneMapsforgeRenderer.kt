@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
+import org.mapsforge.core.graphics.TileBitmap
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.MapPosition
@@ -17,6 +18,8 @@ import org.mapsforge.map.android.util.AndroidUtil
 import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.cache.TileCache
+import org.mapsforge.map.layer.cache.TwoLevelTileCache
+import org.mapsforge.map.layer.queue.Job
 import org.mapsforge.map.layer.hills.AClasyHillShading
 import org.mapsforge.map.layer.hills.AdaptiveClasyHillShading
 import org.mapsforge.map.layer.hills.HillsRenderConfig
@@ -31,9 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 private const val PHONE_MAP_CACHE_PREFIX = "phone-offline"
-private const val PHONE_MAP_CACHE_MIN_TILES = 64
 private const val PHONE_MAP_CACHE_MAX_TILES = 256
-private const val PHONE_MAP_CONSTRAINED_CACHE_MIN_TILES = 24
 private const val PHONE_MAP_CONSTRAINED_CACHE_MAX_TILES = 80
 private const val PHONE_MAP_MEMORY_BUDGET_FRACTION = 1.0 / 16.0
 private const val PHONE_MAP_MEMORY_BUDGET_CAP_BYTES = 32L * 1024L * 1024L
@@ -56,6 +57,7 @@ internal fun phoneMapsforgeTileCacheConfig(
     memoryClassMb: Int,
     maxHeapBytes: Long,
 ): PhoneMapsforgeTileCacheConfig {
+    require(tileSize > 0 && bytesPerPixel > 0) { "Tile and pixel sizes must be positive." }
     val constrained =
         (memoryClassMb in 1..PHONE_MAP_CONSTRAINED_MEMORY_CLASS_MB) ||
             maxHeapBytes <= PHONE_MAP_CONSTRAINED_MAX_HEAP_BYTES
@@ -75,17 +77,24 @@ internal fun phoneMapsforgeTileCacheConfig(
                 PHONE_MAP_MEMORY_BUDGET_CAP_BYTES
             },
         )
-    val minimum =
-        if (constrained) PHONE_MAP_CONSTRAINED_CACHE_MIN_TILES else PHONE_MAP_CACHE_MIN_TILES
     val maximum =
         if (constrained) PHONE_MAP_CONSTRAINED_CACHE_MAX_TILES else PHONE_MAP_CACHE_MAX_TILES
     val tileBytes = tileSize.toLong() * tileSize * bytesPerPixel
-    val calculated = if (tileBytes > 0L) (budget / tileBytes).toInt() else minimum
+    require(tileBytes in 1..budget) { "A map tile must fit within the cache memory budget." }
+    val calculated = (budget / tileBytes).coerceAtMost(maximum.toLong()).toInt()
     return PhoneMapsforgeTileCacheConfig(
-        firstLevelTiles = calculated.coerceIn(minimum, maximum),
+        firstLevelTiles = calculated,
         memoryBudgetBytes = budget,
         constrainedMemory = constrained,
     )
+}
+
+/** Reads disk-backed visible tiles even when the memory budget cannot retain the full working set. */
+internal class PhoneMapsforgeTileCache(
+    firstLevel: TileCache,
+    secondLevel: TileCache,
+) : TwoLevelTileCache(firstLevel, secondLevel) {
+    override fun getImmediately(key: Job): TileBitmap? = get(key)
 }
 
 internal fun phoneMapsforgeTileCacheId(identity: PhoneMapsforgeBaseLayerIdentity): String =
@@ -558,7 +567,7 @@ internal class PhoneMapsforgeRenderer(
         onRuntimeChanged()
     }
 
-    private fun createTileCache(cacheId: String): TileCache {
+    internal fun createTileCache(cacheId: String): TileCache {
         val config =
             phoneMapsforgeTileCacheConfig(
                 tileSize = mapView.model.displayModel.tileSize,
@@ -567,22 +576,37 @@ internal class PhoneMapsforgeRenderer(
                 memoryClassMb = context.getSystemService(ActivityManager::class.java)?.memoryClass ?: 0,
                 maxHeapBytes = Runtime.getRuntime().maxMemory(),
             )
-        val cache =
-            AndroidUtil.createTileCache(
+        var cache =
+            AndroidUtil.createExternalStorageTileCache(
                 context.applicationContext,
                 cacheId,
                 config.firstLevelTiles,
-                1f,
-                mapView.model.frameBufferModel.overdrawFactor,
+                mapView.model.displayModel.tileSize,
                 false,
             )
+        if (cache !is TwoLevelTileCache) {
+            cache.destroy()
+            cache =
+                AndroidUtil.createExternalStorageTileCache(
+                    context.applicationContext.cacheDir,
+                    cacheId,
+                    config.firstLevelTiles,
+                    mapView.model.displayModel.tileSize,
+                    false,
+                )
+        }
+        if (cache !is TwoLevelTileCache) {
+            cache.destroy()
+            error("Offline tile cache storage is unavailable.")
+        }
+        val drawableCache = PhoneMapsforgeTileCache(cache.firstLevelTileCache, cache.secondLevelTileCache)
         PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
             event = "tile_cache_created",
             detail =
-                "renderer=$rendererId cache=$cacheId tiles=${config.firstLevelTiles} " +
+                "renderer=$rendererId cache=$cacheId tiles=${cache.capacityFirstLevel} " +
                     "constrained=${config.constrainedMemory}",
         )
-        return cache
+        return drawableCache
     }
 
     private fun clearCurrentBaseLayer(
