@@ -14,21 +14,36 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.mapsforge.map.reader.MapFile
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 
 /** A locally copied Mapsforge source owned by the companion phone application. */
 internal data class PhoneOfflineMap(
     val file: File,
+    val contentRevision: String = phoneOfflineMapContentRevision(file),
 ) {
     val displayName: String
         get() = file.name
 
-    /** The Mapsforge renderer owns one concrete file and must be recreated only when it changes. */
-    val rendererIdentity: String
+    val selectionIdentity: String
         get() = file.absolutePath
+
+    /** Capture the installed file revision once so discovery can replace stale renderer inputs. */
+    val rendererIdentity: String
+        get() = "$selectionIdentity:$contentRevision"
 }
+
+private fun phoneOfflineMapContentRevision(file: File): String =
+    try {
+        val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
+        // The file key detects atomic replacement even when length and modification time match.
+        "${attributes.fileKey()}:${attributes.size()}:${attributes.lastModifiedTime()}"
+    } catch (_: IOException) {
+        "unavailable"
+    }
 
 /** The active phone renderer source; Mapsforge and file details remain in the companion. */
 internal sealed interface PhoneMapSource {

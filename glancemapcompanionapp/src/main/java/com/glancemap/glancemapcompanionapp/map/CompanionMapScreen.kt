@@ -776,11 +776,18 @@ internal fun CompanionMapScreen(
                 ?.let(switchToOfflineMap)
         }
         val selectedOfflineMap = (mapUiState.source as? PhoneMapSource.Offline)?.map
-        if (selectedOfflineMap != null && selectedOfflineMap !in offlineMaps) {
+        if (
+            selectedOfflineMap != null &&
+            offlineMaps.none { it.selectionIdentity == selectedOfflineMap.selectionIdentity }
+        ) {
             switchToOnlineMap()
             offlineMapError = PhoneOfflineMapError.MISSING
         }
-        mapUiState = mapUiState.clearUnavailableComparison(offlineMaps)
+        mapUiState = mapUiState.refreshOfflineMapSelections(offlineMaps)
+    }
+    LaunchedEffect(offlineMaps) {
+        mapUiState = mapUiState.refreshOfflineMapSelections(offlineMaps)
+        pendingOfflineMap = pendingOfflineMap?.refreshedFrom(offlineMaps)
     }
     LaunchedEffect(gpxFolderSource) {
         gpxFolderScan = withContext(Dispatchers.IO) { gpxFolderSource.scanSelectedFolder() }
@@ -986,7 +993,7 @@ internal fun CompanionMapScreen(
                 mapUiState =
                     when (val comparisonLayer = mapUiState.comparison.layer) {
                         is PhoneMapComparisonLayer.Offline -> {
-                            if (comparisonLayer.map == target.map) {
+                            if (comparisonLayer.map.selectionIdentity == target.map.selectionIdentity) {
                                 mapUiState.selectComparisonLayer(PhoneMapComparisonLayer.Offline(renamed))
                             } else {
                                 mapUiState
@@ -994,7 +1001,8 @@ internal fun CompanionMapScreen(
                         }
                         else -> mapUiState
                     }
-                if ((mapUiState.source as? PhoneMapSource.Offline)?.map == target.map) {
+                val selectedMapIdentity = (mapUiState.source as? PhoneMapSource.Offline)?.map?.selectionIdentity
+                if (selectedMapIdentity == target.map.selectionIdentity) {
                     switchToOfflineMap(renamed)
                 }
                 bundleViewModel.refreshInstalledBundles()
@@ -1024,13 +1032,14 @@ internal fun CompanionMapScreen(
     val deleteContent: suspend (PhoneMapManagedContent) -> Unit = { target ->
         when (target) {
             is PhoneMapManagedContent.OfflineMap -> {
-                if ((mapUiState.source as? PhoneMapSource.Offline)?.map == target.map) {
+                val selectedMapIdentity = (mapUiState.source as? PhoneMapSource.Offline)?.map?.selectionIdentity
+                if (selectedMapIdentity == target.map.selectionIdentity) {
                     switchToOnlineMap()
                 }
                 withContext(Dispatchers.IO) { offlineMapStore.delete(target.map) }
                 mapSourcePreference = mapSourcePreferences.forgetOfflineMapName(target.map.displayName)
                 offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-                mapUiState = mapUiState.clearUnavailableComparison(offlineMaps)
+                mapUiState = mapUiState.refreshOfflineMapSelections(offlineMaps)
                 bundleViewModel.refreshInstalledBundles()
             }
 
