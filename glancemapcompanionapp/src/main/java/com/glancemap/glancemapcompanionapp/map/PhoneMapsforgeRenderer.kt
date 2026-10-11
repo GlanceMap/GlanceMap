@@ -438,8 +438,10 @@ internal class PhoneMapsforgeRenderer(
                     "reason=${camera.reason} clamped=${camera.zoomClamped}",
         )
         if (change == PhoneMapsforgeBaseLayerChange.MAP_SWAP) {
-            mapView.setZoomLevelMin(mapFile.mapFileInfo.zoomLevelMin)
-            mapView.setZoomLevelMax(mapFile.mapFileInfo.zoomLevelMax)
+            model.mapViewPosition.setZoomLevelRange(
+                mapFile.mapFileInfo.zoomLevelMin,
+                mapFile.mapFileInfo.zoomLevelMax,
+            )
             val mapViewPosition = model.mapViewPosition
             mapViewPosition.setMapPosition(
                 MapPosition(

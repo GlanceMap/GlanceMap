@@ -485,12 +485,7 @@ private class PhoneOfflineMapsforgeView(
             val zoomMax = minOf(baseZoomMax, settingsZoomMax ?: baseZoomMax)
             val mapViewPosition = mapView.model.mapViewPosition
             if (zoomMin <= zoomMax) {
-                if (mapViewPosition.zoomLevelMin.toInt() != zoomMin) {
-                    mapView.setZoomLevelMin(zoomMin.toByte())
-                }
-                if (mapViewPosition.zoomLevelMax.toInt() != zoomMax) {
-                    mapView.setZoomLevelMax(zoomMax.toByte())
-                }
+                mapViewPosition.setZoomLevelRange(zoomMin.toByte(), zoomMax.toByte())
             }
             if (initialCamera == defaultPhoneMapCamera) {
                 phoneMapZoomForScale(
