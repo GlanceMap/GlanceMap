@@ -154,6 +154,176 @@ class PhoneMapComparisonTest {
     }
 
     @Test
+    fun laterOfflineSelectionWinsWhenEarlierValidationCompletesLast() {
+        val layerA = PhoneMapComparisonLayer.Offline(offlineMap("a.map"))
+        val layerB = PhoneMapComparisonLayer.Offline(offlineMap("b.map"))
+        val installedMaps = listOf(layerA.map, layerB.map)
+        val requestA = PhoneMapUiState().nextComparisonSelectionRequest()
+        val requestAGeneration = requestA.comparison.validationRequestGeneration
+        val requestB = requestA.nextComparisonSelectionRequest()
+        val requestBGeneration = requestB.comparison.validationRequestGeneration
+
+        val afterB =
+            requestB.completeOfflineComparisonSelection(
+                requestGeneration = requestBGeneration,
+                layer = layerB,
+                validationError = null,
+                offlineMaps = installedMaps,
+            )
+        val afterLateA =
+            afterB.state.completeOfflineComparisonSelection(
+                requestGeneration = requestAGeneration,
+                layer = layerA,
+                validationError = null,
+                offlineMaps = installedMaps,
+            )
+
+        assertEquals(layerB, afterLateA.state.comparison.layer)
+        assertEquals(null, afterLateA.validationError)
+    }
+
+    @Test
+    fun clearingComparisonInvalidatesPendingValidation() {
+        val layer = PhoneMapComparisonLayer.Offline(offlineMap("pending.map"))
+        val pending = PhoneMapUiState().nextComparisonSelectionRequest()
+        val requestGeneration = pending.comparison.validationRequestGeneration
+        val cleared = pending.nextComparisonSelectionRequest().selectComparisonLayer(null)
+
+        val completion =
+            cleared.completeOfflineComparisonSelection(
+                requestGeneration = requestGeneration,
+                layer = layer,
+                validationError = null,
+                offlineMaps = listOf(layer.map),
+            )
+
+        assertEquals(cleared, completion.state)
+        assertEquals(null, completion.state.comparison.layer)
+        assertEquals(null, completion.validationError)
+    }
+
+    @Test
+    fun staleValidationFailureDoesNotProduceAnError() {
+        val layerA = PhoneMapComparisonLayer.Offline(offlineMap("a.map"))
+        val layerB = PhoneMapComparisonLayer.Offline(offlineMap("b.map"))
+        val requestA = PhoneMapUiState().nextComparisonSelectionRequest()
+        val requestAGeneration = requestA.comparison.validationRequestGeneration
+        val requestB = requestA.nextComparisonSelectionRequest()
+
+        val completion =
+            requestB.completeOfflineComparisonSelection(
+                requestGeneration = requestAGeneration,
+                layer = layerA,
+                validationError = PhoneOfflineMapError.INVALID,
+                offlineMaps = listOf(layerA.map, layerB.map),
+            )
+
+        assertEquals(requestB, completion.state)
+        assertEquals(null, completion.validationError)
+    }
+
+    @Test
+    fun reselectingSameLayerInvalidatesItsEarlierValidation() {
+        val currentLayer = PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP)
+        val requestedLayer = PhoneMapComparisonLayer.Offline(offlineMap("requested.map"))
+        val current = PhoneMapUiState().selectComparisonLayer(currentLayer)
+        val oldRequest = current.nextComparisonSelectionRequest()
+        val oldGeneration = oldRequest.comparison.validationRequestGeneration
+        val latestRequest = oldRequest.nextComparisonSelectionRequest()
+        val latestGeneration = latestRequest.comparison.validationRequestGeneration
+
+        val staleFailure =
+            latestRequest.completeOfflineComparisonSelection(
+                requestGeneration = oldGeneration,
+                layer = requestedLayer,
+                validationError = PhoneOfflineMapError.INVALID,
+                offlineMaps = listOf(requestedLayer.map),
+            )
+        val latestSuccess =
+            staleFailure.state.completeOfflineComparisonSelection(
+                requestGeneration = latestGeneration,
+                layer = requestedLayer,
+                validationError = null,
+                offlineMaps = listOf(requestedLayer.map),
+            )
+
+        assertEquals(currentLayer, staleFailure.state.comparison.layer)
+        assertEquals(null, staleFailure.validationError)
+        assertEquals(requestedLayer, latestSuccess.state.comparison.layer)
+        assertEquals(null, latestSuccess.validationError)
+    }
+
+    @Test
+    fun baseSourceChangeMakesPendingOfflineSelectionObsolete() {
+        val baseMap = offlineMap("base.map")
+        val requestedLayer = PhoneMapComparisonLayer.Offline(offlineMap("comparison.map"))
+        val currentLayer = PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP)
+        val current = PhoneMapUiState().selectComparisonLayer(currentLayer)
+        val pending = current.nextComparisonSelectionRequest()
+        val requestGeneration = pending.comparison.validationRequestGeneration
+        val changedBase = pending.changeBaseSource(PhoneMapSource.Offline(baseMap))
+
+        val completion =
+            changedBase.completeOfflineComparisonSelection(
+                requestGeneration = requestGeneration,
+                layer = requestedLayer,
+                validationError = PhoneOfflineMapError.INVALID,
+                offlineMaps = listOf(baseMap, requestedLayer.map),
+            )
+
+        assertEquals(PhoneMapSource.Offline(baseMap), completion.state.source)
+        assertEquals(currentLayer, completion.state.comparison.layer)
+        assertEquals(changedBase, completion.state)
+        assertEquals(null, completion.validationError)
+    }
+
+    @Test
+    fun latestValidationCanSelectLayerAndCurrentFailureStillReportsError() {
+        val currentLayer = PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP)
+        val requestedLayer = PhoneMapComparisonLayer.Offline(offlineMap("requested.map"))
+        val current = PhoneMapUiState().selectComparisonLayer(currentLayer)
+        val failedRequest = current.nextComparisonSelectionRequest()
+        val failedGeneration = failedRequest.comparison.validationRequestGeneration
+
+        val failure =
+            failedRequest.completeOfflineComparisonSelection(
+                requestGeneration = failedGeneration,
+                layer = requestedLayer,
+                validationError = PhoneOfflineMapError.INVALID,
+                offlineMaps = listOf(requestedLayer.map),
+            )
+        val latestRequest = failure.state.nextComparisonSelectionRequest()
+        val success =
+            latestRequest.completeOfflineComparisonSelection(
+                requestGeneration = latestRequest.comparison.validationRequestGeneration,
+                layer = requestedLayer,
+                validationError = null,
+                offlineMaps = listOf(requestedLayer.map),
+            )
+
+        assertEquals(currentLayer, failure.state.comparison.layer)
+        assertEquals(PhoneOfflineMapError.INVALID, failure.validationError)
+        assertEquals(requestedLayer, success.state.comparison.layer)
+        assertEquals(null, success.validationError)
+    }
+
+    @Test
+    fun removedOfflineMapCannotBeSelectedAfterValidation() {
+        val requestedLayer = PhoneMapComparisonLayer.Offline(offlineMap("removed.map"))
+        val pending = PhoneMapUiState().nextComparisonSelectionRequest()
+        val completion =
+            pending.completeOfflineComparisonSelection(
+                requestGeneration = pending.comparison.validationRequestGeneration,
+                layer = requestedLayer,
+                validationError = null,
+                offlineMaps = emptyList(),
+            )
+
+        assertEquals(pending, completion.state)
+        assertEquals(null, completion.validationError)
+    }
+
+    @Test
     fun comparisonOwnsUserCameraOnlyWhileVisible() {
         assertFalse(phoneMapComparisonOwnsUserCamera(false, false))
         assertTrue(phoneMapComparisonOwnsUserCamera(true, false))
@@ -243,5 +413,5 @@ class PhoneMapComparisonTest {
         )
     }
 
-    private fun offlineMap(): PhoneOfflineMap = PhoneOfflineMap(java.io.File("alps.map"))
+    private fun offlineMap(name: String = "alps.map"): PhoneOfflineMap = PhoneOfflineMap(java.io.File(name))
 }

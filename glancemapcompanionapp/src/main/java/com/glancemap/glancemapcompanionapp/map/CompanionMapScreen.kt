@@ -491,6 +491,7 @@ internal fun CompanionMapScreen(
             gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
         }
     val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
+        mapUiState = mapUiState.nextComparisonSelectionRequest()
         mapSourcePreference = mapSourcePreferences.saveOffline(selectedMap)
         mapRuntime.map
             ?.cameraSnapshotOrNull(mapRuntime.mapView?.pixelRatio?.toDouble() ?: 1.0)
@@ -513,6 +514,7 @@ internal fun CompanionMapScreen(
             pendingOfflineMap = null
             mapUiState =
                 mapUiState
+                    .nextComparisonSelectionRequest()
                     .copy(source = PhoneMapSource.Online)
                     .let { state ->
                         val comparisonLayer =
@@ -547,7 +549,7 @@ internal fun CompanionMapScreen(
         if (pendingOfflineMap != selectedMap) return@LaunchedEffect
         mapUiState =
             mapUiState
-                .copy(source = PhoneMapSource.Offline(selectedMap))
+                .changeBaseSource(PhoneMapSource.Offline(selectedMap))
                 .clearUnavailableComparison(offlineMaps)
         pendingOfflineMap = null
     }
@@ -562,6 +564,7 @@ internal fun CompanionMapScreen(
         hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
     }
     val currentLiveMapPosition by rememberUpdatedState(liveMapPosition)
+    val currentOfflineMaps by rememberUpdatedState(offlineMaps)
     LaunchedEffect(
         mapSettings.liveElevationEnabled,
         mapUiState.mapMode.isDetachedFromLocation,
@@ -881,7 +884,7 @@ internal fun CompanionMapScreen(
             fileTransferViewModel.cancelPoiImport()
             fileTransferViewModel.cancelRoutingDownload()
             if (selectedOfflineMapName != null) {
-                mapUiState = mapUiState.copy(source = PhoneMapSource.Online)
+                mapUiState = mapUiState.changeBaseSource(PhoneMapSource.Online)
                 mapRuntime = mapRuntime.invalidate()
             }
             val operationsStopped =
@@ -2487,19 +2490,26 @@ internal fun CompanionMapScreen(
                         },
                         onComparisonLayerChanged = { layer ->
                             val offlineLayer = layer as? PhoneMapComparisonLayer.Offline
+                            val selectionRequest = mapUiState.nextComparisonSelectionRequest()
+                            mapUiState = selectionRequest
                             if (offlineLayer == null) {
                                 mapUiState = mapUiState.selectComparisonLayer(layer)
                             } else {
+                                val requestGeneration = selectionRequest.comparison.validationRequestGeneration
                                 coroutineScope.launch {
                                     val error =
                                         withContext(Dispatchers.IO) {
                                             offlineMapStore.validate(offlineLayer.map)
                                         }
-                                    if (error == null) {
-                                        mapUiState = mapUiState.selectComparisonLayer(offlineLayer)
-                                    } else {
-                                        offlineMapError = error
-                                    }
+                                    val completion =
+                                        mapUiState.completeOfflineComparisonSelection(
+                                            requestGeneration = requestGeneration,
+                                            layer = offlineLayer,
+                                            validationError = error,
+                                            offlineMaps = currentOfflineMaps,
+                                        )
+                                    mapUiState = completion.state
+                                    completion.validationError?.let { offlineMapError = it }
                                 }
                             }
                         },

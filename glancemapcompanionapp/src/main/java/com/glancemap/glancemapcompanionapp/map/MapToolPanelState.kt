@@ -187,6 +187,7 @@ internal data class PhoneMapComparisonState(
     val layer: PhoneMapComparisonLayer? = null,
     val transparencyPercent: Float = DEFAULT_PHONE_MAP_COMPARISON_TRANSPARENCY_PERCENT,
     val selectionGeneration: Long = 0L,
+    val validationRequestGeneration: Long = 0L,
 ) {
     @Suppress("MaxLineLength") // Keep this compact immutable state helper readable at its call sites.
     fun withTransparency(percent: Float): PhoneMapComparisonState = copy(transparencyPercent = percent.coerceIn(0f, 100f))
@@ -205,6 +206,11 @@ internal data class PhoneMapComparisonState(
 }
 
 internal const val DEFAULT_PHONE_MAP_COMPARISON_TRANSPARENCY_PERCENT = 50f
+
+internal data class PhoneMapComparisonSelectionCompletion(
+    val state: PhoneMapUiState,
+    val validationError: PhoneOfflineMapError? = null,
+)
 
 /** Map selection and semantic content visibility remain untouched when a tool panel changes. */
 @Suppress("TooManyFunctions") // State transitions stay beside the immutable map-tool state they update.
@@ -229,6 +235,40 @@ internal data class PhoneMapUiState(
     fun closeTool(): PhoneMapUiState = copy(toolPanel = toolPanel.close())
 
     fun showFeatureSettings(): PhoneMapUiState = copy(toolPanel = toolPanel.showFeatureSettings())
+
+    fun nextComparisonSelectionRequest(): PhoneMapUiState =
+        copy(
+            comparison =
+                comparison.copy(
+                    validationRequestGeneration = comparison.validationRequestGeneration + 1L,
+                ),
+        )
+
+    fun changeBaseSource(source: PhoneMapSource): PhoneMapUiState =
+        if (this.source == source) {
+            this
+        } else {
+            copy(source = source).nextComparisonSelectionRequest()
+        }
+
+    fun completeOfflineComparisonSelection(
+        requestGeneration: Long,
+        layer: PhoneMapComparisonLayer.Offline,
+        validationError: PhoneOfflineMapError?,
+        offlineMaps: List<PhoneOfflineMap>,
+    ): PhoneMapComparisonSelectionCompletion {
+        if (
+            comparison.validationRequestGeneration != requestGeneration ||
+            !comparison.copy(layer = layer).isAvailableFor(source, offlineMaps)
+        ) {
+            return PhoneMapComparisonSelectionCompletion(this)
+        }
+        return if (validationError == null) {
+            PhoneMapComparisonSelectionCompletion(selectComparisonLayer(layer))
+        } else {
+            PhoneMapComparisonSelectionCompletion(this, validationError)
+        }
+    }
 
     fun selectComparisonLayer(layer: PhoneMapComparisonLayer?): PhoneMapUiState =
         copy(
