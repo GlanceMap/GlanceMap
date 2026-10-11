@@ -34,6 +34,7 @@ internal class PhoneMapPoiViewModel(
     }
 
     fun onViewportChanged(viewport: PhoneMapViewport) {
+        if (currentViewport == viewport) return
         currentViewport = viewport
         if (poiVisible) query(viewport)
     }
