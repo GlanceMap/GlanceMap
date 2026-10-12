@@ -90,6 +90,7 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderDistanceMeasuremen
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarkers
+import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineHillshade
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineRasterOpacity
 import com.glancemap.trailcore.geo.GeoPoint
 import kotlinx.coroutines.Dispatchers
@@ -113,12 +114,9 @@ import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import kotlin.math.log2
-import kotlin.math.roundToInt
 
 internal val defaultPhoneMapCamera =
     PhoneMapCameraSnapshot(latitude = 20.0, longitude = 0.0, zoom = PHONE_MAP_DEFAULT_ZOOM)
-private const val PHONE_MAP_LIVE_ELEVATION_GPS_FALLBACK_METERS = 100.0
-private const val PHONE_MAP_LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS = 3.0
 private const val PHONE_MAP_LIVE_METRICS_REFRESH_MS = 320L
 private const val PHONE_POI_SELECTION_PREVIEW_DELAY_MS = 700L
 private const val PHONE_STORAGE_OPERATION_STOP_TIMEOUT_MS = 5_000L
@@ -336,6 +334,7 @@ internal fun CompanionMapScreen(
     val elevationFolderSource = remember(context) { PhoneElevationFolderSource(context.applicationContext) }
     val routingFolderSource = remember(context) { PhoneRoutingFolderSource(context.applicationContext) }
     val elevationRepository = remember(context) { PhoneElevationRepository(context.applicationContext) }
+    val onlineElevationRepository = remember(context) { PhoneOnlineElevationRepository(context.applicationContext) }
     val offlineStorage = remember(context) { PhoneOfflineStorage(context.applicationContext) }
     val userPoiStore = remember(context) { PhoneMapUserPoiStore(context.applicationContext) }
     val mapFolderSource =
@@ -589,6 +588,7 @@ internal fun CompanionMapScreen(
         hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
     }
     val currentLiveMapPosition by rememberUpdatedState(liveMapPosition)
+    val currentMapLocation by rememberUpdatedState(mapLocation)
     val currentOfflineMaps by rememberUpdatedState(offlineMaps)
     LaunchedEffect(
         gpxUiState.items,
@@ -632,8 +632,8 @@ internal fun CompanionMapScreen(
     }
     LaunchedEffect(
         mapSettings.liveElevationEnabled,
+        mapSettings.onlineElevationEnabled,
         mapUiState.mapMode.isDetachedFromLocation,
-        mapLocation?.fixElapsedRealtimeMillis,
         terrainDataVersion,
     ) {
         if (!mapSettings.liveElevationEnabled || !mapUiState.mapMode.isDetachedFromLocation) {
@@ -642,9 +642,15 @@ internal fun CompanionMapScreen(
         }
 
         var lastElevationSampleTarget: PhoneMapCoordinate? = null
+        var onlineElevationJob: Job? = null
+        var lastDemElevation: Double? = null
         while (isActive) {
             val target = currentLiveMapPosition?.target
             if (target == null) {
+                onlineElevationJob?.cancel()
+                liveMapElevation = null
+                lastElevationSampleTarget = null
+                lastDemElevation = null
                 delay(PHONE_MAP_LIVE_METRICS_REFRESH_MS)
                 continue
             }
@@ -659,20 +665,37 @@ internal fun CompanionMapScreen(
                 previousTarget == null ||
                     movedMeters >= PHONE_MAP_LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS
             if (shouldResampleElevation) {
+                onlineElevationJob?.cancel()
+                liveMapElevation = null
                 val sampledElevation =
                     withContext(Dispatchers.IO) {
                         elevationRepository.elevationAt(target.latitude, target.longitude)
                     }
-                liveMapElevation =
-                    sampledElevation
-                        ?: mapLocation
-                            ?.takeIf { location ->
-                                phoneMapDistanceMeters(
-                                    PhoneMapCoordinate(location.latitude, location.longitude),
-                                    target,
-                                ) <= PHONE_MAP_LIVE_ELEVATION_GPS_FALLBACK_METERS
-                            }?.altitudeMeters
+                lastDemElevation = sampledElevation
+                if (phoneMapElevationTargetIsCurrent(target, currentLiveMapPosition?.target)) {
+                    liveMapElevation = phoneMapLiveElevation(sampledElevation, target, currentMapLocation)
+                }
                 lastElevationSampleTarget = target
+                if (sampledElevation == null && mapSettings.onlineElevationEnabled) {
+                    onlineElevationJob =
+                        launch {
+                            val onlineElevation =
+                                phoneMapElevationAt(target, elevationRepository, onlineElevationRepository)
+                            if (phoneMapElevationTargetIsCurrent(target, currentLiveMapPosition?.target)) {
+                                lastDemElevation = onlineElevation
+                                liveMapElevation = phoneMapLiveElevation(onlineElevation, target, currentMapLocation)
+                            }
+                            if (onlineElevation == null) {
+                                delay(PHONE_ONLINE_DEM_FAILURE_RETRY_MS)
+                                if (phoneMapElevationTargetIsCurrent(target, currentLiveMapPosition?.target)) {
+                                    lastElevationSampleTarget = null
+                                }
+                            }
+                        }
+                }
+            }
+            if (phoneMapElevationTargetIsCurrent(lastElevationSampleTarget ?: target, currentLiveMapPosition?.target)) {
+                liveMapElevation = phoneMapLiveElevation(lastDemElevation, target, currentMapLocation)
             }
             delay(PHONE_MAP_LIVE_METRICS_REFRESH_MS)
         }
@@ -1780,6 +1803,7 @@ internal fun CompanionMapScreen(
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
                                     showLocationMarker = onlineComparisonActive,
+                                    terrainOpacity = if (onlineComparisonActive) comparisonOverlayAlpha else 0f,
                                     ownsLocationFollow = comparisonOwnsFollowAndCommands,
                                 )
                                 synchronizeGpxOverlay(
@@ -2162,6 +2186,7 @@ internal fun CompanionMapScreen(
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
                                     showLocationMarker = onlineComparisonActive,
+                                    terrainOpacity = if (onlineComparisonActive) comparisonOverlayAlpha else 0f,
                                     ownsLocationFollow = comparisonOwnsFollowAndCommands,
                                 )
                                 synchronizeGpxOverlay(
@@ -3207,6 +3232,7 @@ private fun synchronizeOnlineMapPresentation(
     compassSource: PhoneCompassSensorSource,
     compassPresentation: PhoneMapCompassPresentation,
     showLocationMarker: Boolean = true,
+    terrainOpacity: Float = 1f,
     ownsLocationFollow: Boolean = true,
 ) {
     val context = LocalContext.current
@@ -3215,6 +3241,7 @@ private fun synchronizeOnlineMapPresentation(
     val currentMapMode by rememberUpdatedState(mapMode)
     val currentUserGestureActive by rememberUpdatedState(userGestureActive)
     var lastCameraSyncSkip by remember { mutableStateOf<PhoneOnlineCameraSyncSkipKey?>(null) }
+    synchronizeOnlineHillshade(runtime, mapSettings.hillShadingEnabled, terrainOpacity)
 
     LaunchedEffect(
         runtime.map,
@@ -3309,6 +3336,31 @@ private fun synchronizeOnlineMapPresentation(
                     compassPresentation = compassPresentation,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun synchronizeOnlineHillshade(
+    runtime: MapRuntime,
+    enabled: Boolean,
+    opacity: Float,
+) {
+    val currentRuntime by rememberUpdatedState(runtime)
+    val currentEnabled by rememberUpdatedState(enabled)
+    val currentOpacity by rememberUpdatedState(opacity)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, enabled, opacity) {
+        runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
+            runCatching { style.setOnlineHillshade(currentEnabled, currentOpacity) }
+                .onSuccess {
+                    PhoneDebugCapture.log(
+                        "PhoneOnlineDem",
+                        "event=hillshade enabled=$currentEnabled opacity=$currentOpacity " +
+                            "generation=${runtime.generation.renderer}",
+                    )
+                }.onFailure {
+                    PhoneDebugCapture.log("PhoneOnlineDem", "event=hillshade_failure category=style_update")
+                }
         }
     }
 }
@@ -3948,18 +4000,6 @@ private fun BoxScope.phoneMapLiveDistanceCard(
             ),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
-    }
-}
-
-private fun formatPhoneMapElevation(
-    meters: Double,
-    isMetric: Boolean,
-): String {
-    if (!meters.isFinite()) return "—"
-    return if (isMetric) {
-        "${meters.roundToInt()} m"
-    } else {
-        "${(meters * 3.28084).roundToInt()} ft"
     }
 }
 

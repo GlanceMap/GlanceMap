@@ -116,6 +116,18 @@ internal fun formatPhoneMapDistanceMeters(meters: Double): String {
     return String.format(Locale.getDefault(), "%.1f m", meters)
 }
 
+internal fun formatPhoneMapElevation(
+    meters: Double,
+    isMetric: Boolean,
+): String {
+    if (!meters.isFinite()) return "—"
+    return if (isMetric) {
+        "${meters.roundToInt()} m"
+    } else {
+        "${(meters * 3.28084).roundToInt()} ft"
+    }
+}
+
 private const val EARTH_RADIUS_METERS = 6_371_008.8
 private const val METERS_TO_FEET = 3.28084
 private const val FEET_PER_MILE = 5_280.0

@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -613,7 +615,17 @@ private fun mapToolsMapTerrainSettings(
     settings: PhoneMapSettings,
     onSettingsChanged: (PhoneMapSettings) -> Unit,
 ) {
+    val uriHandler = LocalUriHandler.current
     Text(stringResource(R.string.map_tools_maps_terrain_heading))
+    mapToolsMapsToggle(
+        label = stringResource(R.string.map_tools_maps_online_elevation),
+        checked = settings.onlineElevationEnabled,
+        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(onlineElevationEnabled = enabled)) },
+    )
+    Text(stringResource(R.string.map_tools_maps_online_elevation_summary))
+    TextButton(onClick = { uriHandler.openUri(PHONE_ONLINE_DEM_ATTRIBUTION_URL) }) {
+        Text(stringResource(R.string.map_tools_maps_terrain_attribution))
+    }
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_maps_dem_source),
         selectedLabel = stringResource(settings.demSource.shortLabelResource()),
@@ -779,12 +791,12 @@ internal fun mapToolsMapsQuickDisplaySettings(
         checked = settings.distanceMeasurementEnabled,
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(distanceMeasurementEnabled = enabled)) },
     )
+    mapToolsMapsToggle(
+        label = stringResource(R.string.map_tools_maps_hill_shading),
+        checked = settings.hillShadingEnabled,
+        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
+    )
     if (showOfflineOnlyOptions) {
-        mapToolsMapsToggle(
-            label = stringResource(R.string.map_tools_maps_hill_shading),
-            checked = settings.hillShadingEnabled,
-            onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
-        )
         mapToolsMapsToggle(
             label = stringResource(R.string.map_tools_maps_relief_overlay),
             checked = settings.reliefOverlayEnabled,

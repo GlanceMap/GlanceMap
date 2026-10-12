@@ -29,6 +29,15 @@ class PhoneMapDistanceMeasurementTest {
     }
 
     @Test
+    fun endpointElevationsPreserveSeaLevelNegativeValuesAndSelectedUnits() {
+        assertEquals("0 m", formatPhoneMapElevation(0.0, isMetric = true))
+        assertEquals("-12 m", formatPhoneMapElevation(-12.0, isMetric = true))
+        assertEquals("328 ft", formatPhoneMapElevation(100.0, isMetric = false))
+        assertEquals("—", formatPhoneMapElevation(Double.NaN, isMetric = true))
+        assertEquals("—", formatPhoneMapElevation(Double.POSITIVE_INFINITY, isMetric = false))
+    }
+
+    @Test
     fun liveDistancePrefersRenderedMarkerOriginOverLocationFallback() {
         val renderedMarker = PhoneMapCoordinate(latitude = 46.0, longitude = 6.0)
         val locationFallback = PhoneMapCoordinate(latitude = 46.0, longitude = 7.0)
@@ -76,6 +85,7 @@ class PhoneMapDistanceMeasurementTest {
             ),
             markers.map { marker -> marker.kind },
         )
+        assertEquals(listOf("A", "B"), markers.map { marker -> marker.kind.label })
         assertEquals(first, markers.first().point)
         assertEquals(second, markers.last().point)
     }

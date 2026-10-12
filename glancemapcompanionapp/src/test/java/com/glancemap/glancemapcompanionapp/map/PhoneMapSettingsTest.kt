@@ -24,6 +24,7 @@ class PhoneMapSettingsTest {
         assertFalse(settings.liveDistanceEnabled)
         assertFalse(settings.distanceMeasurementEnabled)
         assertFalse(settings.hillShadingEnabled)
+        assertTrue(settings.onlineElevationEnabled)
         assertFalse(settings.reliefOverlayEnabled)
         assertEquals(100, settings.reliefOverlayOpacityPercent)
         assertFalse(settings.nightModeEnabled)

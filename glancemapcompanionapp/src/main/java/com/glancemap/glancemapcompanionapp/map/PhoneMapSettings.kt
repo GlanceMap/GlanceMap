@@ -105,6 +105,7 @@ internal data class PhoneMapSettings(
     val liveDistanceEnabled: Boolean = false,
     val distanceMeasurementEnabled: Boolean = false,
     val hillShadingEnabled: Boolean = false,
+    val onlineElevationEnabled: Boolean = true,
     val reliefOverlayEnabled: Boolean = false,
     val reliefOverlayOpacityPercent: Int = DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT,
     val nightModeEnabled: Boolean = false,
@@ -187,6 +188,7 @@ internal class PhoneMapSettingsPreferences(
                 liveDistanceEnabled = preferences.getBoolean(KEY_LIVE_DISTANCE_ENABLED, false),
                 distanceMeasurementEnabled = preferences.getBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, false),
                 hillShadingEnabled = preferences.getBoolean(KEY_HILL_SHADING_ENABLED, false),
+                onlineElevationEnabled = preferences.getBoolean(KEY_ONLINE_ELEVATION_ENABLED, true),
                 reliefOverlayEnabled = preferences.getBoolean(KEY_RELIEF_OVERLAY_ENABLED, false),
                 reliefOverlayOpacityPercent =
                     preferences.getInt(
@@ -228,6 +230,7 @@ internal class PhoneMapSettingsPreferences(
             .putBoolean(KEY_LIVE_DISTANCE_ENABLED, normalized.liveDistanceEnabled)
             .putBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, normalized.distanceMeasurementEnabled)
             .putBoolean(KEY_HILL_SHADING_ENABLED, normalized.hillShadingEnabled)
+            .putBoolean(KEY_ONLINE_ELEVATION_ENABLED, normalized.onlineElevationEnabled)
             .putBoolean(KEY_RELIEF_OVERLAY_ENABLED, normalized.reliefOverlayEnabled)
             .putInt(KEY_RELIEF_OVERLAY_OPACITY_PERCENT, normalized.reliefOverlayOpacityPercent)
             .putBoolean(KEY_NIGHT_MODE_ENABLED, normalized.nightModeEnabled)
@@ -253,6 +256,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_LIVE_DISTANCE_ENABLED = "live_distance_enabled"
         const val KEY_DISTANCE_MEASUREMENT_ENABLED = "distance_measurement_enabled"
         const val KEY_HILL_SHADING_ENABLED = "hill_shading_enabled"
+        const val KEY_ONLINE_ELEVATION_ENABLED = "online_elevation_enabled"
         const val KEY_RELIEF_OVERLAY_ENABLED = "relief_overlay_enabled"
         const val KEY_RELIEF_OVERLAY_OPACITY_PERCENT = "relief_overlay_opacity_percent"
         const val KEY_NIGHT_MODE_ENABLED = "night_mode_enabled"
