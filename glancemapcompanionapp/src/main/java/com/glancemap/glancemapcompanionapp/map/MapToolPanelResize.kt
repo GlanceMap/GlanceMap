@@ -1,11 +1,14 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -31,6 +34,7 @@ internal fun mapToolPanelResizeModifier(
     val haptics = LocalHapticFeedback.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     return Modifier
+        .consumeLongPressRelease()
         .pointerInput(isWide, isRtl, axisSizePx, fractionRange) {
             var dragFraction = DEFAULT_MAP_TOOL_PANEL_FRACTION
             var didResize = false
@@ -64,6 +68,22 @@ internal fun mapToolPanelResizeModifier(
             )
         }.then(mapToolPanelResizeSemantics(state, fractionRange, actions))
 }
+
+// Consume held releases before IconButton sees them, even when no drag event arrives.
+private fun Modifier.consumeLongPressRelease(): Modifier =
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val timeout = viewConfiguration.longPressTimeoutMillis
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change != null && !change.pressed && change.uptimeMillis - down.uptimeMillis >= timeout) {
+                    change.consume()
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
 
 @Composable
 private fun mapToolPanelResizeSemantics(

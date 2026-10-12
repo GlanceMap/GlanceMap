@@ -1,11 +1,8 @@
 package com.glancemap.glancemapcompanionapp.map
 
-import kotlin.math.abs
-
 internal const val DEFAULT_MAP_TOOL_PANEL_FRACTION = 0.32f
 private const val MIN_MAP_TOOL_PANEL_FRACTION = 0.05f
-private const val MAX_MAP_TOOL_PANEL_FRACTION = 0.95f
-private const val MAP_TOOL_PANEL_PRESET_TOLERANCE = 0.005f
+private const val MAX_MAP_TOOL_PANEL_FRACTION = 1f
 
 internal enum class MapToolPanelSizeTarget {
     FULL,
@@ -17,9 +14,9 @@ internal val MapToolPanelState.nextSizeTarget: MapToolPanelSizeTarget
     get() =
         when {
             mode == MapToolPanelMode.EXPANDED -> MapToolPanelSizeTarget.DEFAULT
-            abs(splitFraction - DEFAULT_MAP_TOOL_PANEL_FRACTION) <= MAP_TOOL_PANEL_PRESET_TOLERANCE &&
+            splitFraction == DEFAULT_MAP_TOOL_PANEL_FRACTION &&
                 customSplitFraction != null &&
-                abs(customSplitFraction - DEFAULT_MAP_TOOL_PANEL_FRACTION) > MAP_TOOL_PANEL_PRESET_TOLERANCE ->
+                customSplitFraction != DEFAULT_MAP_TOOL_PANEL_FRACTION ->
                 MapToolPanelSizeTarget.CUSTOM
             else -> MapToolPanelSizeTarget.FULL
         }
@@ -56,7 +53,7 @@ private fun normalizedMapToolPanelFraction(fraction: Float): Float =
         DEFAULT_MAP_TOOL_PANEL_FRACTION
     }
 
-/** Keep the header/list and the map controls usable, adapting both minimums on small windows. */
+/** Keep the header reachable, including when the window cannot also fit the requested map minimum. */
 internal fun mapToolPanelFractionRange(
     axisSizePx: Int,
     minPanelSizePx: Int,
@@ -64,7 +61,7 @@ internal fun mapToolPanelFractionRange(
 ): ClosedFloatingPointRange<Float> {
     if (axisSizePx <= 0) return DEFAULT_MAP_TOOL_PANEL_FRACTION..DEFAULT_MAP_TOOL_PANEL_FRACTION
     val half = axisSizePx / 2f
-    val minimum = minOf(minPanelSizePx.coerceAtLeast(0).toFloat(), half) / axisSizePx
     val maximum = 1f - minOf(minMapSizePx.coerceAtLeast(0).toFloat(), half) / axisSizePx
+    val minimum = minOf(minPanelSizePx.coerceAtLeast(0).toFloat() / axisSizePx, maximum)
     return minimum.coerceAtLeast(MIN_MAP_TOOL_PANEL_FRACTION)..maximum.coerceAtMost(MAX_MAP_TOOL_PANEL_FRACTION)
 }

@@ -66,7 +66,23 @@ class MapToolPanelSizingTest {
         assertEquals(MapToolPanelState(), corrupt.normalizedSizing())
         val bounded = MapToolPanelState(splitFraction = -1f, customSplitFraction = 2f).normalizedSizing()
         assertEquals(0.05f, bounded.splitFraction, 0f)
-        assertEquals(0.95f, bounded.customSplitFraction)
+        assertEquals(1f, bounded.customSplitFraction)
+    }
+
+    @Test
+    fun everyDistinctCustomRatioCanBeRestoredIncludingNearDefaultAndNearFullscreen() {
+        for (fraction in listOf(0.324f, 0.987f, 1f)) {
+            val custom = MapToolPanelState().select(MapTool.MAPS).resize(fraction)
+            assertEquals(custom, custom.cycleSize().cycleSize().cycleSize())
+        }
+    }
+
+    @Test
+    fun portraitRangeOnlyReservesTheToolbarAndHeader() {
+        val range = mapToolPanelFractionRange(1_000, 112, 0)
+        assertEquals(0.112f, range.start, 0.0001f)
+        assertEquals(1f, range.endInclusive, 0f)
+        assertEquals(1f..1f, mapToolPanelFractionRange(100, 112, 0))
     }
 
     @Test

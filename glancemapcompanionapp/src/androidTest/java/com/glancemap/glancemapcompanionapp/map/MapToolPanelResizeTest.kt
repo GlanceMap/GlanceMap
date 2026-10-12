@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -49,6 +50,42 @@ class MapToolPanelResizeTest {
     private var mapViewReleases = 0
     private var resizeCompletions = 0
     private var longPressMillis = 1_000L
+
+    @Test
+    fun defaultBottomAreaIncludesTheToolbarAndCustomSizingCanReach100Percent() {
+        setContent()
+        val map = composeRule.onNodeWithTag("map-view").fetchSemanticsNode().boundsInRoot
+        val toolbar = composeRule.onNodeWithTag("map-tool-toolbar").fetchSemanticsNode().boundsInRoot
+        val bottom =
+            composeRule
+                .onNodeWithTag("panel-content")
+                .fetchSemanticsNode()
+                .boundsInRoot.bottom
+        assertEquals((bottom - map.top) * 0.32f, bottom - toolbar.top, 1f)
+
+        composeRule.runOnIdle { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.resize(1f)) }
+        val maximumToolbar = composeRule.onNodeWithTag("map-tool-toolbar").fetchSemanticsNode().boundsInRoot
+        val maximumMap = composeRule.onNodeWithTag("map-view").fetchSemanticsNode().boundsInRoot
+        assertEquals(map.top, maximumToolbar.top, 1f)
+        assertTrue(maximumMap.height > 0f)
+        composeRule.runOnIdle {
+            assertEquals(1, mapViewCreations)
+            assertEquals(0, mapViewReleases)
+        }
+    }
+
+    @Test
+    fun tappingTheHandleCyclesFullDefaultAndSavedCustom() {
+        setContent()
+        composeRule.runOnIdle { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.resize(0.487f)) }
+        val button = composeRule.onNode(hasContentDescription(resizeHint(), substring = true))
+        button.performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
+        button.performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(0.32f, ui.value.toolPanel.splitFraction, 0f) }
+        button.performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(0.487f, ui.value.toolPanel.splitFraction, 0f) }
+    }
 
     @Test
     fun longPressDragResizesWithoutClickingAndMapViewSurvivesSizeAndToolChanges() {
@@ -95,6 +132,10 @@ class MapToolPanelResizeTest {
             down(center)
             advanceEventTime(longPressMillis + 50)
             up()
+        }
+        composeRule.runOnIdle {
+            assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
+            assertEquals(0, resizeCompletions)
         }
         composeRule.onNodeWithTag("panel-content").performTouchInput { swipeUp() }
         composeRule.runOnIdle {
@@ -183,7 +224,7 @@ class MapToolPanelResizeTest {
                                     mapViewCreations++
                                     FrameLayout(it)
                                 },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().testTag("map-view"),
                                 onRelease = { mapViewReleases++ },
                             )
                         },

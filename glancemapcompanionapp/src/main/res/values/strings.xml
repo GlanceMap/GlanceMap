@@ -86,6 +86,7 @@
     <string name="map_tool_action_settings_content_description">Open map tool settings</string>
     <string name="map_layer_base_source">Base map</string>
     <string name="map_layer_select_source">Comparison layer</string>
+    <string name="map_layer_none">None</string>
     <string name="map_layer_no_offline_maps">Import an offline map to compare it with the online map.</string>
     <string name="map_layer_online">Online map</string>
     <string name="map_layer_transparency">Transparency: %1$d%%</string>

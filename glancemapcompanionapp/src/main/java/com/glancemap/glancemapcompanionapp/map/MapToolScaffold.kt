@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -44,6 +45,8 @@ import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.layout.CompanionWidthClass
 import com.glancemap.glancemapcompanionapp.layout.LocalCompanionLayoutContext
 import kotlin.math.roundToInt
+
+private val mapToolLauncherHeight = 64.dp
 
 /** Hosts the map and every tool panel without letting a panel own map renderer state. */
 internal data class MapToolScaffoldActions(
@@ -75,8 +78,12 @@ internal fun MapToolScaffold(
     val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
     var availableSize by remember { mutableStateOf(IntSize.Zero) }
     val axisSize = if (isWide) availableSize.width else availableSize.height
-    val minPanelSize = with(LocalDensity.current) { (if (isWide) 200.dp else 144.dp).roundToPx() }
-    val minMapSize = with(LocalDensity.current) { (if (isWide) 240.dp else 160.dp).roundToPx() }
+    val launcherHeight = with(LocalDensity.current) { mapToolLauncherHeight.roundToPx() }
+    val minPanelSize =
+        with(LocalDensity.current) {
+            (if (isWide) 200.dp else mapToolLauncherHeight + 48.dp).roundToPx()
+        }
+    val minMapSize = with(LocalDensity.current) { (if (isWide) 240.dp else 0.dp).roundToPx() }
     val fractionRange = mapToolPanelFractionRange(axisSize, minPanelSize, minMapSize)
     val resizeModifier = mapToolPanelResizeModifier(state, isWide, axisSize, fractionRange, actions)
     Layout(
@@ -110,6 +117,9 @@ internal fun MapToolScaffold(
         val panelOpen = state.activeTool != null && state.mode != MapToolPanelMode.CLOSED
         val range = mapToolPanelFractionRange(if (isWide) width else height, minPanelSize, minMapSize)
         val panelFraction = state.normalizedSizing().splitFraction.coerceIn(range)
+        // Portrait fractions include the toolbar, which is overlaid inside the map host.
+        val portraitPanelHeight =
+            ((height * panelFraction).roundToInt() - launcherHeight.coerceAtMost(height)).coerceAtLeast(0)
         val mapWidth =
             if (panelOpen && state.mode == MapToolPanelMode.SPLIT && isWide) {
                 width - (width * panelFraction).roundToInt()
@@ -118,7 +128,7 @@ internal fun MapToolScaffold(
             }
         val mapHeight =
             if (panelOpen && state.mode == MapToolPanelMode.SPLIT && !isWide) {
-                height - (height * panelFraction).roundToInt()
+                height - portraitPanelHeight
             } else {
                 height
             }
@@ -301,24 +311,6 @@ private fun mapToolLauncher(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                secondaryMapTools.reversed().forEach { tool ->
-                    ExtendedFloatingActionButton(
-                        onClick = { onToolSelected(tool) },
-                        icon = {
-                            Icon(
-                                imageVector = tool.icon(),
-                                contentDescription = stringResource(tool.titleResource()),
-                            )
-                        },
-                        text = { Text(stringResource(tool.titleResource())) },
-                        containerColor =
-                            if (activeTool == tool) {
-                                MaterialTheme.colorScheme.secondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHigh
-                            },
-                    )
-                }
                 ExtendedFloatingActionButton(
                     onClick = onAddPoi,
                     icon = {
@@ -341,10 +333,28 @@ private fun mapToolLauncher(
                     text = { Text(stringResource(R.string.map_tool_shortcut_gpx)) },
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 )
+                secondaryMapTools.forEach { tool ->
+                    ExtendedFloatingActionButton(
+                        onClick = { onToolSelected(tool) },
+                        icon = {
+                            Icon(
+                                imageVector = tool.icon(),
+                                contentDescription = stringResource(tool.titleResource()),
+                            )
+                        },
+                        text = { Text(stringResource(tool.titleResource())) },
+                        containerColor =
+                            if (activeTool == tool) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                    )
+                }
             }
         }
         NavigationBar(
-            modifier = Modifier.align(Alignment.BottomCenter).height(64.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).height(mapToolLauncherHeight).testTag("map-tool-toolbar"),
         ) {
             primaryMapTools.forEach { tool ->
                 NavigationBarItem(

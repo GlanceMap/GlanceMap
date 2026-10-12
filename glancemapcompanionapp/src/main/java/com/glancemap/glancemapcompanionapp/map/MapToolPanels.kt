@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -32,8 +34,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -271,7 +273,7 @@ internal fun MapToolPanelContent(
 }
 
 @Composable
-private fun mapToolsLayerPanel(
+internal fun mapToolsLayerPanel(
     state: MapToolsLayerState,
     onLayerChanged: (PhoneMapComparisonLayer?) -> Unit,
     onTransparencyChanged: (Float) -> Unit,
@@ -288,47 +290,56 @@ private fun mapToolsLayerPanel(
         remember(state.mapSettings.reliefOverlayOpacityPercent) {
             mutableStateOf(state.mapSettings.reliefOverlayOpacityPercent.toFloat())
         }
-    mapToolPanelColumn {
-        ListItem(
-            headlineContent = { Text(stringResource(R.string.map_layer_base_source)) },
-            supportingContent = {
-                Text(comparisonLayerLabel(state.base.asComparisonLayer(state.baseOnlineSource)))
-            },
+    mapToolPanelColumn(verticalSpacing = 0.dp, verticalPadding = 0.dp) {
+        val baseLabel = comparisonLayerLabel(state.base.asComparisonLayer(state.baseOnlineSource))
+        Text(
+            text = "${stringResource(R.string.map_layer_base_source)}: $baseLabel",
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp),
         )
-        Text(stringResource(R.string.map_layer_select_source))
-        if (layerOptions.isEmpty()) {
-            Text(stringResource(R.string.map_layer_no_offline_maps))
-        } else {
-            layerOptions.forEach { layer ->
-                ListItem(
-                    headlineContent = { Text(comparisonLayerLabel(layer)) },
-                    leadingContent = {
-                        RadioButton(
-                            selected = state.comparison.layer == layer,
-                            onClick = { onLayerChanged(layer) },
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().clickable { onLayerChanged(layer) },
-                )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.weight(1f)) {
+                if (layerOptions.isEmpty()) {
+                    Text(stringResource(R.string.map_layer_no_offline_maps))
+                } else {
+                    mapToolsMapSettingPicker(
+                        label = stringResource(R.string.map_layer_select_source),
+                        selectedLabel =
+                            state.comparison.layer?.let { comparisonLayerLabel(it) }
+                                ?: stringResource(R.string.map_layer_none),
+                        options = layerOptions.map { layer -> layer to comparisonLayerLabel(layer) },
+                        onSelect = onLayerChanged,
+                    )
+                }
+            }
+            if (state.comparison.layer != null) {
+                IconButton(onClick = { onLayerChanged(null) }) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_layer_clear))
+                }
             }
         }
-        state.comparison.layer?.let {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(
-                    R.string.map_layer_transparency,
-                    state.comparison.transparencyPercent.toInt(),
-                ),
+                text =
+                    stringResource(
+                        R.string.map_layer_transparency,
+                        state.comparison.transparencyPercent.toInt(),
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 140.dp),
             )
             Slider(
                 value = state.comparison.transparencyPercent,
                 onValueChange = onTransparencyChanged,
+                enabled = state.comparison.layer != null,
                 valueRange = 0f..100f,
                 steps = 99,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f).height(32.dp),
             )
-            OutlinedButton(onClick = { onLayerChanged(null) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.map_layer_clear))
-            }
         }
         val reliefAvailable = state.base is PhoneMapSource.Offline && state.hasElevationData
         ListItem(
@@ -981,6 +992,7 @@ private fun mapToolsActivitySettings(
 @Composable
 internal fun mapToolPanelColumn(
     verticalSpacing: Dp = 12.dp,
+    verticalPadding: Dp = 16.dp,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -988,7 +1000,7 @@ internal fun mapToolPanelColumn(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = verticalPadding),
         verticalArrangement = Arrangement.spacedBy(verticalSpacing),
     ) {
         content()
