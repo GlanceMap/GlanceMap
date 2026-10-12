@@ -111,6 +111,16 @@ object PhoneDebugCapture {
 
     fun isActive(): Boolean = enabled.get()
 
+    fun activeSessionId(): Long? =
+        synchronized(lock) {
+            stateFlow.value.sessionId.takeIf { enabled.get() && stateFlow.value.active && it > 0L }
+        }
+
+    fun sessionId(slot: PhoneDebugCaptureSlot = PhoneDebugCaptureSlot.CURRENT): Long? =
+        synchronized(lock) {
+            captureFor(slot)?.state?.sessionId?.takeIf { it > 0L }
+        }
+
     @Suppress("MaxLineLength") // Keeps the trivial slot lookup as one expression.
     fun snapshot(slot: PhoneDebugCaptureSlot = PhoneDebugCaptureSlot.CURRENT): List<String> = synchronized(lock) { captureFor(slot)?.lines.orEmpty() }
 
@@ -120,9 +130,12 @@ object PhoneDebugCapture {
     fun updateSection(
         key: String,
         reportText: String,
+        expectedSessionId: Long? = null,
     ) {
         if (!enabled.get() || reportText.isBlank()) return
         synchronized(lock) {
+            val current = stateFlow.value
+            if (!current.active || expectedSessionId != null && current.sessionId != expectedSessionId) return
             sections[key] = reportText.trimEnd()
             persistCurrentLocked()
         }
@@ -131,23 +144,29 @@ object PhoneDebugCapture {
     fun log(
         tag: String,
         message: String,
-    ) {
-        if (!enabled.get()) return
-        synchronized(lock) {
+        expectedSessionId: Long? = null,
+    ): Boolean {
+        if (!enabled.get()) return false
+        return synchronized(lock) {
             val current = stateFlow.value
-            lines.addLast("${tsFormatter.format(Instant.now())} [$tag] $message")
-            var dropped = current.droppedLines
-            while (lines.size > MAX_LINES) {
-                lines.removeFirst()
-                dropped += 1
+            if (!current.active || expectedSessionId != null && current.sessionId != expectedSessionId) {
+                false
+            } else {
+                lines.addLast("${tsFormatter.format(Instant.now())} [$tag] $message")
+                var dropped = current.droppedLines
+                while (lines.size > MAX_LINES) {
+                    lines.removeFirst()
+                    dropped += 1
+                }
+                stateFlow.value =
+                    current.copy(
+                        bufferedLines = lines.size,
+                        droppedLines = dropped,
+                        totalLoggedLines = current.totalLoggedLines + 1L,
+                    )
+                persistCurrentLocked()
+                true
             }
-            stateFlow.value =
-                current.copy(
-                    bufferedLines = lines.size,
-                    droppedLines = dropped,
-                    totalLoggedLines = current.totalLoggedLines + 1L,
-                )
-            persistCurrentLocked()
         }
     }
 

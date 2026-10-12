@@ -7,7 +7,6 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PointF
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -824,29 +823,21 @@ internal fun CompanionMapScreen(
         ) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
             coroutineScope.launch {
-                val imported =
-                    withContext(Dispatchers.IO) {
-                        offlineMapStore.import(context.contentResolver, uri)
-                    }
-                when (imported) {
-                    is PhoneOfflineMapImportResult.Success -> {
-                        Log.i(
-                            PhoneOfflineMapImportDiagnostics.TAG,
-                            PhoneOfflineMapImportDiagnostics.latestAttempt()?.toCaptureLine()
-                                ?: "event=offline_map_import outcome=SUCCESS",
-                        )
-                        val importedMap = imported.map
-                        offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-                        switchToOfflineMap(importedMap)
-                    }
+                withOfflineMapLoading {
+                    val imported =
+                        withContext(Dispatchers.IO) {
+                            offlineMapStore.import(context.contentResolver, uri)
+                        }
+                    when (imported) {
+                        is PhoneOfflineMapImportResult.Success -> {
+                            val importedMap = imported.map
+                            offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                            switchToOfflineMap(importedMap)
+                        }
 
-                    is PhoneOfflineMapImportResult.Failure -> {
-                        Log.w(
-                            PhoneOfflineMapImportDiagnostics.TAG,
-                            PhoneOfflineMapImportDiagnostics.latestAttempt()?.toCaptureLine()
-                                ?: "event=offline_map_import outcome=FAILED error=${imported.error}",
-                        )
-                        offlineMapError = imported.error
+                        is PhoneOfflineMapImportResult.Failure -> {
+                            offlineMapError = imported.error
+                        }
                     }
                 }
             }

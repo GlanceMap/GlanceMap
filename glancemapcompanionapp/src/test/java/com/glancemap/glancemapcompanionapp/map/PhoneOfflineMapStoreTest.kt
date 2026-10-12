@@ -98,7 +98,7 @@ class PhoneOfflineMapStoreTest {
 
             val result = store.import("example.map", "valid Mapsforge data".byteInputStream())
 
-            assertEquals("example.map.part", validatedName)
+            assertTrue(validatedName?.endsWith(".part") == true)
             assertEquals(
                 "example.map",
                 (result as PhoneOfflineMapImportResult.Success).map.displayName,
@@ -194,18 +194,16 @@ class PhoneOfflineMapStoreTest {
     }
 
     @Test
-    fun duplicateImportsUseSafeNameCollisionsAndAreFoundByFolderSyncMatching() {
+    fun differentContentWithTheSameNameUsesSafeNameCollisions() {
         val directory = Files.createTempDirectory("glancemap-phone-maps").toFile()
         try {
             val store = PhoneOfflineMapStore(directory) { PhoneOfflineMapValidation() }
 
             val first = store.import("example.map", "first".byteInputStream())
-            val second = store.import("example.map", "second".byteInputStream())
+            val second = store.import("example.map", "other".byteInputStream())
 
             assertEquals("example.map", (first as PhoneOfflineMapImportResult.Success).map.displayName)
             assertEquals("example (1).map", (second as PhoneOfflineMapImportResult.Success).map.displayName)
-            assertEquals("example.map", store.findSynchronizedMap("example.map", 5L)?.displayName)
-            assertEquals("example (1).map", store.findSynchronizedMap("example.map", 6L)?.displayName)
         } finally {
             directory.deleteRecursively()
         }

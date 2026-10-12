@@ -31,7 +31,7 @@ object CompanionDiagnosticsEmailComposer {
         val diagnosticsText =
             PhoneDebugCapture.buildReport(
                 context = appContext,
-                additionalSections = phoneDiagnosticsAdditionalSections(),
+                additionalSections = phoneDiagnosticsAdditionalSections(PhoneDebugCapture.sessionId(slot)),
                 slot = slot,
             )
         val file = saveLatestPhoneDiagnosticsFile(appContext, diagnosticsText)
@@ -151,9 +151,10 @@ object CompanionDiagnosticsEmailComposer {
     }
 }
 
-internal fun phoneDiagnosticsAdditionalSections(): List<String> =
+internal fun phoneDiagnosticsAdditionalSections(reportSessionId: Long? = null): List<String> =
     listOfNotNull(
-        PhoneOfflineMapImportDiagnostics.latestReportSection(),
+        PhoneOfflineMapImportDiagnostics.latestReportSection(reportSessionId),
+        PhoneOfflineMapImportDiagnostics.latestFolderScanReportSection(reportSessionId),
         PhoneOfflineMapRendererDiagnostics.latestReportSection(),
         PhoneCompassDiagnostics.latestReportSection(),
     )

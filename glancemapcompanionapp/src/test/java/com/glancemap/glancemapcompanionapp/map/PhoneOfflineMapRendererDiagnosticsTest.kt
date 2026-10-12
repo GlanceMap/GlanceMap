@@ -89,8 +89,6 @@ class PhoneOfflineMapRendererDiagnosticsTest {
             PhoneOfflineMapImportAttempt(
                 outcome = PhoneOfflineMapImportOutcome.SUCCESS,
                 failureStage = null,
-                displayName = "alps.map",
-                mimeType = "application/octet-stream",
                 sourceSizeBytes = 1L,
                 streamOpened = true,
                 bytesCopied = 1L,
@@ -99,8 +97,6 @@ class PhoneOfflineMapRendererDiagnosticsTest {
                 mapFileOpened = true,
                 metadata = null,
                 finalError = null,
-                exceptionClass = null,
-                exceptionMessage = null,
             ),
         )
         PhoneOfflineMapRendererDiagnostics.record(
