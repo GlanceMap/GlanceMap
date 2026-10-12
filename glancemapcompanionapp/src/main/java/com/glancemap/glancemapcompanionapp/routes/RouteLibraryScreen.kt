@@ -33,9 +33,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 import kotlin.math.roundToInt
 
 @Composable
@@ -47,6 +49,7 @@ fun RouteLibraryScreen(
     onOpenWeather: (RouteLibraryRoute) -> Unit,
     onSendToWatch: (RouteLibraryRoute) -> Unit,
 ) {
+    val textResources = LocalResources.current
     val importRouteLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) onImportRoute(uri)
@@ -63,17 +66,17 @@ fun RouteLibraryScreen(
             FilledTonalIconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to home",
+                    contentDescription = textResources.getString(R.string.common_back_to_home_content_description),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Routes",
+                    text = textResources.getString(R.string.menu_routes),
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = "Build a briefing before you hike",
+                    text = textResources.getString(R.string.route_library_build_a_briefing_before_you_hike),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -92,11 +95,11 @@ fun RouteLibraryScreen(
                     strokeWidth = 2.dp,
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("Importing route…")
+                Text(textResources.getString(R.string.route_library_importing_route))
             } else {
                 Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Import GPX route")
+                Text(textResources.getString(R.string.route_library_import_gpx_route))
             }
         }
 
@@ -135,12 +138,12 @@ fun RouteLibraryScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "No routes yet",
+                        text = textResources.getString(R.string.route_library_no_routes_yet),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Import a GPX to see distance, climb and the first 30 minutes.",
+                        text = textResources.getString(R.string.route_library_import_a_gpx_to_see_distance_climb),
                         modifier = Modifier.padding(horizontal = 24.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
@@ -176,6 +179,7 @@ private fun RouteLibraryRouteCard(
     onOpenWeather: () -> Unit,
     onSendToWatch: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors =
@@ -207,7 +211,7 @@ private fun RouteLibraryRouteCard(
                 if (selected) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected route",
+                        contentDescription = textResources.getString(R.string.route_library_selected_route),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -233,7 +237,15 @@ private fun RouteLibraryRouteCard(
                     enabled = !selected,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (selected) "Selected" else "Choose")
+                    Text(
+                        if (selected) {
+                            textResources.getString(
+                                R.string.map_bundle_area_selected,
+                            )
+                        } else {
+                            textResources.getString(R.string.route_library_choose)
+                        },
+                    )
                 }
                 Button(
                     onClick = onSendToWatch,
@@ -244,14 +256,14 @@ private fun RouteLibraryRouteCard(
                         contentDescription = null,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Send")
+                    Text(textResources.getString(R.string.quick_guide_transfer_send_title))
                 }
             }
             OutlinedButton(
                 onClick = onOpenWeather,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Weather")
+                Text(textResources.getString(R.string.route_library_weather))
             }
         }
     }
@@ -264,9 +276,15 @@ private fun routeSummary(summary: RouteLibrarySummary): String =
         formatDuration(summary.estimatedDurationSeconds),
     ).joinToString("  •  ")
 
-private fun firstThirtyMinutesSummary(summary: RouteLibrarySummary): String =
-    "First 30 min  •  ${formatDistance(summary.firstThirtyMinutesDistanceMeters)}  •  " +
-        "+${summary.firstThirtyMinutesAscentMeters.roundToInt()} m climb"
+@Composable
+private fun firstThirtyMinutesSummary(summary: RouteLibrarySummary): String {
+    val textResources = LocalResources.current
+    return textResources.getString(
+        R.string.route_first_thirty_minutes_summary,
+        formatDistance(summary.firstThirtyMinutesDistanceMeters),
+        summary.firstThirtyMinutesAscentMeters.roundToInt(),
+    )
+}
 
 private fun formatDistance(distanceMeters: Double): String =
     if (distanceMeters < 1_000.0) {

@@ -291,7 +291,7 @@ internal fun RoutingDownloadDialog(
                         Text(
                             stringResource(
                                 R.string.routing_watch_disconnected_hint,
-                                selectedWatchDisconnectedStatusMessage(),
+                                selectedWatchDisconnectedStatusMessage(context::getString),
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
@@ -414,7 +414,7 @@ internal fun RoutingDownloadDialog(
                                     Text(
                                         stringResource(
                                             R.string.routing_watch_disconnected_hint,
-                                            selectedWatchDisconnectedStatusMessage(),
+                                            selectedWatchDisconnectedStatusMessage(context::getString),
                                         ),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.error,
@@ -657,7 +657,7 @@ internal fun RoutingDownloadDialog(
                 TextButton(
                     onClick = {
                         if (isDownloadingRouting) {
-                            viewModel.cancelRoutingDownload()
+                            viewModel.cancelRoutingDownload(context)
                         } else {
                             viewModel.resetRoutingDownloadProgress()
                             onDismiss()

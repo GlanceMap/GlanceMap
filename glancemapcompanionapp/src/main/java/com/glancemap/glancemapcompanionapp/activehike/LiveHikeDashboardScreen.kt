@@ -24,10 +24,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.routes.LiveHikeWeatherContext
 import com.glancemap.glancemapcompanionapp.routes.MissionDayWeatherSampleUi
+import com.glancemap.glancemapcompanionapp.routes.labelResource
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
@@ -43,6 +46,7 @@ fun LiveHikeDashboardScreen(
     onLoadWeather: ((Boolean) -> Unit)?,
     onBack: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     val snapshot = update.snapshot
     val recording = snapshot.phase.isRecording()
     Column(
@@ -56,17 +60,24 @@ fun LiveHikeDashboardScreen(
             FilledTonalIconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to home",
+                    contentDescription = textResources.getString(R.string.common_back_to_home_content_description),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (recording) "Live Recording" else "Live Hike",
+                    text =
+                        if (recording) {
+                            textResources.getString(
+                                R.string.live_hike_live_recording,
+                            )
+                        } else {
+                            textResources.getString(R.string.menu_live_hike)
+                        },
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = snapshot.routeTitle ?: "Watch session",
+                    text = snapshot.routeTitle ?: textResources.getString(R.string.live_hike_watch_session),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -95,7 +106,11 @@ fun LiveHikeDashboardScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Watch update ${snapshot.recordedAtEpochMillis.toLiveTimeText()}",
+                    text =
+                        textResources.getString(
+                            R.string.live_hike_watch_update_value,
+                            snapshot.recordedAtEpochMillis.toLiveTimeText(),
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -120,6 +135,7 @@ private fun LiveHikeWeatherCard(
     snapshot: ActiveHikeSnapshot,
     onLoadWeather: ((Boolean) -> Unit)?,
 ) {
+    val textResources = LocalResources.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -129,14 +145,14 @@ private fun LiveHikeWeatherCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "WEATHER ALONG THE HIKE",
+                text = textResources.getString(R.string.live_hike_weather_along_the_hike),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelMedium,
             )
             when {
                 weather == null -> {
                     Text(
-                        text = "No selected Mission Plan day matches this watch route.",
+                        text = textResources.getString(R.string.live_hike_no_selected_mission_plan_day_matches_this),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -144,7 +160,11 @@ private fun LiveHikeWeatherCard(
 
                 weather.plannedDate == null -> {
                     Text(
-                        text = "Add a date to ${weather.dayName} in Mission Plan before loading its forecast.",
+                        text =
+                            textResources.getString(
+                                R.string.live_hike_add_a_date_to_value_in_mission,
+                                weather.dayName,
+                            ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -152,20 +172,20 @@ private fun LiveHikeWeatherCard(
 
                 weather.plannedStartTime == null -> {
                     Text(
-                        text = "Add a planned start time in Mission Plan to align weather with the GPX locations.",
+                        text = textResources.getString(R.string.live_hike_add_a_planned_start_time_in_mission),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     onLoadWeather?.let { load ->
                         TextButton(onClick = { load(false) }) {
-                            Text("Load daily forecast")
+                            Text(textResources.getString(R.string.live_hike_load_daily_forecast))
                         }
                     }
                 }
 
                 weather.isLoading -> {
                     Text(
-                        text = "Loading planned weather…",
+                        text = textResources.getString(R.string.mission_profile_loading_planned_weather),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -173,26 +193,42 @@ private fun LiveHikeWeatherCard(
 
                 weather.samples.isEmpty() -> {
                     Text(
-                        text = "Prepare weather for ${weather.plannedDate} • start ${weather.plannedStartTime} before you lose signal.",
+                        text =
+                            textResources.getString(
+                                R.string.live_hike_prepare_weather_for_value_start_value_before,
+                                weather.plannedDate,
+                                weather.plannedStartTime,
+                            ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     onLoadWeather?.let { load ->
                         TextButton(onClick = { load(false) }) {
-                            Text("Load planned weather")
+                            Text(textResources.getString(R.string.live_hike_load_planned_weather))
                         }
                     }
                 }
 
                 else -> {
                     Text(
-                        text = "${weather.plannedDate} • planned start ${weather.plannedStartTime}",
+                        text =
+                            textResources.getString(
+                                R.string.live_hike_value_planned_start_value,
+                                weather.plannedDate,
+                                weather.plannedStartTime,
+                            ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     nearestWeatherSample(weather.samples, snapshot)?.let { sample ->
                         Text(
-                            text = "Nearest planned point: ${sample.target.position.label.lowercase()}",
+                            text =
+                                textResources.getString(
+                                    R.string.live_hike_nearest_planned_point_value,
+                                    textResources
+                                        .getString(sample.target.position.labelResource())
+                                        .lowercase(),
+                                ),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -211,11 +247,14 @@ private fun LiveHikeWeatherCard(
                     fetchedAt?.let { updatedAt ->
                         Text(
                             text =
-                                "Updated ${updatedAt.toLiveDateTimeText()}" +
+                                textResources.getString(
+                                    R.string.mission_plan_updated_value,
+                                    updatedAt.toLiveDateTimeText(),
+                                ) +
                                     if (weather.samples.any(MissionDayWeatherSampleUi::isStale)) {
-                                        " • cached, unable to update"
+                                        textResources.getString(R.string.mission_plan_cached_unable_to_update)
                                     } else if (weather.samples.any(MissionDayWeatherSampleUi::isCached)) {
-                                        " • cached"
+                                        textResources.getString(R.string.mission_plan_cached)
                                     } else {
                                         ""
                                     },
@@ -225,7 +264,7 @@ private fun LiveHikeWeatherCard(
                     }
                     onLoadWeather?.let { load ->
                         TextButton(onClick = { load(true) }) {
-                            Text("Refresh planned weather")
+                            Text(textResources.getString(R.string.live_hike_refresh_planned_weather))
                         }
                     }
                 }
@@ -236,12 +275,13 @@ private fun LiveHikeWeatherCard(
 
 @Composable
 private fun LiveHikeWeatherSampleRow(sample: MissionDayWeatherSampleUi) {
+    val textResources = LocalResources.current
     val scheduled = sample.scheduledOutlook
     val daily = sample.dailyOutlook
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text =
-                "${sample.target.position.label.uppercase()} • " +
+                "${textResources.getString(sample.target.position.labelResource()).uppercase()} • " +
                     "${sample.scheduledTimeIso8601?.toLivePlannedTimeText() ?: "time unavailable"} • " +
                     sample.target.location.label,
             color = MaterialTheme.colorScheme.primary,
@@ -250,14 +290,18 @@ private fun LiveHikeWeatherSampleRow(sample: MissionDayWeatherSampleUi) {
         when {
             scheduled != null -> {
                 Text(
-                    text = weatherConditionText(scheduled.weatherCode),
+                    text = weatherConditionText(textResources, scheduled.weatherCode),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 val metrics =
                     listOfNotNull(
                         scheduled.temperatureCelsius?.let { value -> "${value.roundToInt()}°C" },
-                        scheduled.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
-                        scheduled.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                        scheduled.precipitationProbabilityPercent?.let { value ->
+                            textResources.getString(R.string.mission_plan_rain_value, value.roundToInt())
+                        },
+                        scheduled.windGustKilometersPerHour?.let { value ->
+                            textResources.getString(R.string.mission_plan_gusts_value_km_h, value.roundToInt())
+                        },
                     )
                 if (metrics.isNotEmpty()) {
                     Text(
@@ -270,14 +314,22 @@ private fun LiveHikeWeatherSampleRow(sample: MissionDayWeatherSampleUi) {
 
             daily != null -> {
                 Text(
-                    text = "Daily outlook • ${weatherConditionText(daily.weatherCode)}",
+                    text =
+                        textResources.getString(
+                            R.string.mission_profile_daily_outlook_value,
+                            weatherConditionText(textResources, daily.weatherCode),
+                        ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
 
             else -> {
                 Text(
-                    text = sample.message ?: "Forecast unavailable at this GPX location.",
+                    text =
+                        sample.message
+                            ?: textResources.getString(
+                                R.string.mission_profile_forecast_unavailable_at_this_gpx_location,
+                            ),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -301,6 +353,7 @@ fun LiveHikeDashboardWaitingScreen(
     onEnableSync: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -312,12 +365,12 @@ fun LiveHikeDashboardWaitingScreen(
             FilledTonalIconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to home",
+                    contentDescription = textResources.getString(R.string.common_back_to_home_content_description),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Live Hike",
+                text = textResources.getString(R.string.menu_live_hike),
                 style = MaterialTheme.typography.headlineSmall,
             )
         }
@@ -331,22 +384,29 @@ fun LiveHikeDashboardWaitingScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = if (syncEnabled) "Waiting for a watch update" else "Live Hike sync is off",
+                    text =
+                        if (syncEnabled) {
+                            textResources.getString(
+                                R.string.live_hike_waiting_for_a_watch_update,
+                            )
+                        } else {
+                            textResources.getString(R.string.live_hike_live_hike_sync_is_off)
+                        },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text =
                         if (syncEnabled) {
-                            "Progress will appear here as soon as the watch sends an active hike snapshot."
+                            textResources.getString(R.string.live_hike_progress_will_appear_here_as_soon_as)
                         } else {
-                            "Turn it on to receive watch progress during navigation or recording."
+                            textResources.getString(R.string.live_hike_turn_it_on_to_receive_watch_progress)
                         },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (!syncEnabled) {
                     Button(onClick = onEnableSync) {
-                        Text("Turn on Live Hike sync")
+                        Text(textResources.getString(R.string.live_hike_turn_on_live_hike_sync))
                     }
                 }
             }
@@ -354,13 +414,13 @@ fun LiveHikeDashboardWaitingScreen(
 
         if (syncEnabled) {
             Text(
-                text = "Start turn-by-turn navigation or recording on the watch, then keep the companion open while it connects.",
+                text = textResources.getString(R.string.live_hike_start_turn_by_turn_navigation_or_recording),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
         Text(
-            text = "If this stays empty, install a watch build that supports Live Hike sync. The companion never starts or estimates a watch hike on its own.",
+            text = textResources.getString(R.string.live_hike_if_this_stays_empty_install_a_watch),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -369,24 +429,34 @@ fun LiveHikeDashboardWaitingScreen(
 
 @Composable
 private fun RoutedHikeDashboard(snapshot: ActiveHikeSnapshot) {
+    val textResources = LocalResources.current
     val completed = snapshot.distanceFromStartMeters
     val remaining = snapshot.distanceRemainingMeters
     val eta = snapshot.estimatedRemainingSeconds?.let { duration -> snapshot.recordedAtEpochMillis + duration * 1_000L }
     DashboardMetricRow(
-        DashboardMetric("DONE", completed?.toLiveDistanceText() ?: "—"),
-        DashboardMetric("LEFT", remaining?.toLiveDistanceText() ?: "—"),
+        DashboardMetric(textResources.getString(R.string.live_hike_done), completed?.toLiveDistanceText() ?: "—"),
+        DashboardMetric(textResources.getString(R.string.live_hike_left), remaining?.toLiveDistanceText() ?: "—"),
     )
     DashboardMetricRow(
-        DashboardMetric("TIME LEFT", snapshot.estimatedRemainingSeconds?.toLiveDurationText() ?: "—"),
-        DashboardMetric("ETA", eta?.toLiveTimeText() ?: "—"),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_time_left),
+            snapshot.estimatedRemainingSeconds?.toLiveDurationText() ?: "—",
+        ),
+        DashboardMetric(textResources.getString(R.string.map_route_analyzer_eta_header), eta?.toLiveTimeText() ?: "—"),
     )
     DashboardMetricRow(
-        DashboardMetric("CLIMB LEFT", snapshot.remainingAscentMeters?.toLiveElevationText() ?: "—"),
-        DashboardMetric("DESCENT LEFT", snapshot.remainingDescentMeters?.toLiveElevationText() ?: "—"),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_climb_left),
+            snapshot.remainingAscentMeters?.toLiveElevationText() ?: "—",
+        ),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_descent_left),
+            snapshot.remainingDescentMeters?.toLiveElevationText() ?: "—",
+        ),
     )
     snapshot.progressFraction?.let { progress ->
         Text(
-            text = "${(progress * 100).roundToInt()}% of route complete",
+            text = textResources.getString(R.string.live_hike_value_of_route_complete, (progress * 100).roundToInt()),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -395,16 +465,29 @@ private fun RoutedHikeDashboard(snapshot: ActiveHikeSnapshot) {
 
 @Composable
 private fun RecordingDashboard(snapshot: ActiveHikeSnapshot) {
+    val textResources = LocalResources.current
     DashboardMetricRow(
-        DashboardMetric("DISTANCE", snapshot.distanceFromStartMeters?.toLiveDistanceText() ?: "—"),
-        DashboardMetric("ACTIVE TIME", snapshot.activeDurationSeconds?.toLiveDurationText() ?: "—"),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_distance),
+            snapshot.distanceFromStartMeters?.toLiveDistanceText() ?: "—",
+        ),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_active_time),
+            snapshot.activeDurationSeconds?.toLiveDurationText() ?: "—",
+        ),
     )
     DashboardMetricRow(
-        DashboardMetric("SPEED", snapshot.currentSpeedMetersPerSecond?.toLiveSpeedText() ?: "—"),
-        DashboardMetric("ALTITUDE", snapshot.currentAltitudeMeters?.toLiveElevationText() ?: "—"),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_speed),
+            snapshot.currentSpeedMetersPerSecond?.toLiveSpeedText() ?: "—",
+        ),
+        DashboardMetric(
+            textResources.getString(R.string.live_hike_altitude),
+            snapshot.currentAltitudeMeters?.toLiveElevationText() ?: "—",
+        ),
     )
     Text(
-        text = "No planned finish is set for this recording.",
+        text = textResources.getString(R.string.live_hike_no_planned_finish_is_set_for_this),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -449,19 +532,22 @@ private data class DashboardMetric(
 
 private fun ActiveHikePhase.isRecording(): Boolean = this == ActiveHikePhase.RECORDING || this == ActiveHikePhase.RECORDING_PAUSED
 
-private fun ActiveHikeSnapshot.liveStatusText(): String =
-    when {
-        offRoute -> "Off route — check the watch"
-        phase == ActiveHikePhase.RECORDING_PAUSED -> "Recording paused"
-        phase == ActiveHikePhase.RECORDING -> "Recording"
-        phase == ActiveHikePhase.PAUSED -> "Navigation paused"
-        phase == ActiveHikePhase.FOLLOWING_ROUTE -> "On route"
-        phase == ActiveHikePhase.TO_START -> "Heading to the start"
-        phase == ActiveHikePhase.WAITING_FOR_LOCATION -> "Waiting for GPS"
-        phase == ActiveHikePhase.FINISHED -> "Route complete"
-        phase == ActiveHikePhase.IDLE -> "No active hike"
-        else -> "Active hike"
+@Composable
+private fun ActiveHikeSnapshot.liveStatusText(): String {
+    val textResources = LocalResources.current
+    return when {
+        offRoute -> textResources.getString(R.string.live_hike_off_route_check_the_watch)
+        phase == ActiveHikePhase.RECORDING_PAUSED -> textResources.getString(R.string.live_hike_recording_paused)
+        phase == ActiveHikePhase.RECORDING -> textResources.getString(R.string.live_hike_recording)
+        phase == ActiveHikePhase.PAUSED -> textResources.getString(R.string.live_hike_navigation_paused)
+        phase == ActiveHikePhase.FOLLOWING_ROUTE -> textResources.getString(R.string.live_hike_on_route)
+        phase == ActiveHikePhase.TO_START -> textResources.getString(R.string.live_hike_heading_to_the_start)
+        phase == ActiveHikePhase.WAITING_FOR_LOCATION -> textResources.getString(R.string.live_hike_waiting_for_gps)
+        phase == ActiveHikePhase.FINISHED -> textResources.getString(R.string.live_hike_route_complete)
+        phase == ActiveHikePhase.IDLE -> textResources.getString(R.string.live_hike_no_active_hike)
+        else -> textResources.getString(R.string.live_hike_active_hike)
     }
+}
 
 private fun Double.toLiveDistanceText(): String = if (this < 1_000.0) "${roundToInt()} m" else "%.1f km".format(this / 1_000.0)
 

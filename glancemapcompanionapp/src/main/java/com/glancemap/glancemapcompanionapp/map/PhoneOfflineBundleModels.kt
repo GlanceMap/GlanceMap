@@ -3,6 +3,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.trailcore.oam.OamDownloadArea
 import com.glancemap.trailcore.oam.OamDownloadCatalog
 import org.json.JSONArray
@@ -858,3 +859,21 @@ private fun String?.toTileIds(): List<String> =
         ?.distinct()
         ?.toList()
         .orEmpty()
+
+internal fun PhoneOfflineDemSource.labelResource(): Int =
+    when (this) {
+        PhoneOfflineDemSource.STANDARD -> R.string.dem_standard_title
+        PhoneOfflineDemSource.DETAILED -> R.string.dem_detailed_title
+    }
+
+internal fun PhoneOfflineDemSource.shortLabelResource(): Int =
+    when (this) {
+        PhoneOfflineDemSource.STANDARD -> R.string.dem_standard_short
+        PhoneOfflineDemSource.DETAILED -> R.string.dem_detailed_short
+    }
+
+internal fun PhoneOfflineDemSource.detailLabelResource(): Int =
+    when (this) {
+        PhoneOfflineDemSource.STANDARD -> R.string.dem_standard_detail
+        PhoneOfflineDemSource.DETAILED -> R.string.dem_detailed_detail
+    }

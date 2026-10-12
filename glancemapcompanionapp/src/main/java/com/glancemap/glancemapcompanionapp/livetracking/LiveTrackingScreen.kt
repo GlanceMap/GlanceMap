@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -84,6 +85,7 @@ fun LiveTrackingScreen(
     lastTransferGpxUri: Uri? = null,
     lastTransferGpxName: String = "",
 ) {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     val fontScale = LocalDensity.current.fontScale
     val coroutineScope = rememberCoroutineScope()
@@ -176,7 +178,13 @@ fun LiveTrackingScreen(
         uri: Uri,
         name: String,
     ) {
-        val cleanName = name.ifBlank { resolveUriDisplayName(context, uri).ifBlank { "Selected GPX" } }
+        val cleanName =
+            name.ifBlank {
+                resolveUriDisplayName(
+                    context,
+                    uri,
+                ).ifBlank { textResources.getString(R.string.live_tracking_selected_gpx_fallback) }
+            }
         selectedGpxUri = uri
         selectedGpxName = cleanName
         planSent = false
@@ -234,11 +242,16 @@ fun LiveTrackingScreen(
             if (uri == null || download == null) {
                 download?.delete()
                 isDownloadingRecordedTrack = false
-                if (download != null) recordedTrackDownloadStatusMessage = "Download cancelled"
+                if (download !=
+                    null
+                ) {
+                    recordedTrackDownloadStatusMessage =
+                        textResources.getString(R.string.live_tracking_download_cancelled)
+                }
                 return@rememberLauncherForActivityResult
             }
 
-            recordedTrackDownloadStatusMessage = "Saving recorded GPX"
+            recordedTrackDownloadStatusMessage = textResources.getString(R.string.live_tracking_saving_recorded_gpx)
             coroutineScope.launch {
                 runCatching {
                     ArkluzLiveTrackingClient(context).saveRecordedGpx(
@@ -249,7 +262,10 @@ fun LiveTrackingScreen(
                     recordedTrackDownloadStatusMessage = result.message
                 }.onFailure { error ->
                     recordedTrackDownloadStatusMessage =
-                        "Download failed: ${error.toArkluzFailureDetail()}"
+                        textResources.getString(
+                            R.string.live_tracking_download_failed_value,
+                            error.toArkluzFailureDetail(),
+                        )
                 }
                 isDownloadingRecordedTrack = false
             }
@@ -257,7 +273,7 @@ fun LiveTrackingScreen(
 
     fun downloadRecordedTrack(target: RecordedTrackDownloadTarget) {
         isDownloadingRecordedTrack = true
-        recordedTrackDownloadStatusMessage = "Downloading recorded GPX"
+        recordedTrackDownloadStatusMessage = textResources.getString(R.string.live_tracking_downloading_recorded_gpx)
         val downloadSettings =
             LiveTrackingSettings(
                 trackingUrl = effectiveTrackingUrl,
@@ -288,11 +304,12 @@ fun LiveTrackingScreen(
             }.onSuccess { download ->
                 pendingRecordedTrackDownload?.delete()
                 pendingRecordedTrackDownload = download
-                recordedTrackDownloadStatusMessage = "Choose where to save the recorded GPX"
+                recordedTrackDownloadStatusMessage =
+                    textResources.getString(R.string.live_tracking_choose_where_to_save_the_recorded_gpx)
                 recordedTrackSavePicker.launch(download.suggestedFileName)
             }.onFailure { error ->
                 recordedTrackDownloadStatusMessage =
-                    "Download failed: ${error.toArkluzFailureDetail()}"
+                    textResources.getString(R.string.live_tracking_download_failed_value, error.toArkluzFailureDetail())
                 isDownloadingRecordedTrack = false
             }
         }
@@ -306,7 +323,7 @@ fun LiveTrackingScreen(
 
     fun addAlertRecipient(recipient: AlertRecipient) {
         if (alertRecipients.any { it.equals(recipient.value, ignoreCase = true) }) {
-            alertRecipientStatusMessage = "Recipient already added"
+            alertRecipientStatusMessage = textResources.getString(R.string.live_tracking_recipient_already_added_error)
             return
         }
         if (recipient.type == AlertRecipientType.EMAIL) {
@@ -331,11 +348,17 @@ fun LiveTrackingScreen(
                     alertRecipientStatusMessage = null
                 } else {
                     alertRecipientStatusMessage =
-                        "SMS alerts are not supported for ${recipient.value}."
+                        textResources.getString(
+                            R.string.live_tracking_sms_alerts_are_not_supported_for_value,
+                            recipient.value,
+                        )
                 }
             }.onFailure { error ->
                 alertRecipientStatusMessage =
-                    "Could not check SMS support: ${error.toArkluzFailureDetail()}"
+                    textResources.getString(
+                        R.string.live_tracking_could_not_check_sms_support_value,
+                        error.toArkluzFailureDetail(),
+                    )
             }
             isValidatingAlertRecipient = false
         }
@@ -353,13 +376,14 @@ fun LiveTrackingScreen(
                     ?.data
                     ?.let { uri -> resolveSelectedContactEmail(context, uri) }
             if (email.isNullOrBlank()) {
-                saveSettingsStatusMessage = "No email address selected"
+                saveSettingsStatusMessage = textResources.getString(R.string.live_tracking_no_email_address_selected)
                 return@rememberLauncherForActivityResult
             }
             when (target) {
                 EmailPickerTarget.NOTIFICATION -> {
                     if (notificationEmailAddresses.any { it.equals(email, ignoreCase = true) }) {
-                        saveSettingsStatusMessage = "Email already added"
+                        saveSettingsStatusMessage =
+                            textResources.getString(R.string.live_tracking_email_already_added_error)
                     } else {
                         notificationEmailAddresses = notificationEmailAddresses + email
                         notificationEmailInput = ""
@@ -383,7 +407,7 @@ fun LiveTrackingScreen(
                     ?.let { uri -> resolveSelectedContactPhone(context, uri) }
             if (phoneNumber.isNullOrBlank()) {
                 alertRecipientStatusMessage =
-                    "Choose a phone number with a country code starting with +"
+                    textResources.getString(R.string.live_tracking_choose_a_phone_number_with_a_country)
                 return@rememberLauncherForActivityResult
             }
             addAlertRecipient(AlertRecipient(phoneNumber, AlertRecipientType.SMS))
@@ -406,7 +430,10 @@ fun LiveTrackingScreen(
                 when (liveTrackingPermissionOutcome(locationGranted, notificationGranted)) {
                     LiveTrackingPermissionOutcome.LOCATION_REQUIRED -> {
                         isStartingSession = false
-                        validationMessage = "Location permission is required to start live tracking."
+                        validationMessage =
+                            textResources.getString(
+                                R.string.live_tracking_location_permission_is_required_to_start_live,
+                            )
                     }
 
                     LiveTrackingPermissionOutcome.NOTIFICATION_WARNING -> {
@@ -574,18 +601,24 @@ fun LiveTrackingScreen(
             }
         }
 
-        fun unsupportedSmsRecipientMessage(phoneNumbers: List<String>): String = "SMS alerts are not supported for ${phoneNumbers.joinToString()}. Update or remove them."
+        fun unsupportedSmsRecipientMessage(phoneNumbers: List<String>): String =
+            textResources.getString(
+                R.string.live_tracking_sms_alerts_are_not_supported_for_value_2,
+                phoneNumbers.joinToString(),
+            )
 
         fun saveSettings(exitAfterSave: Boolean = false) {
             saveSettingsStatusMessage =
                 validateStartSettings(
+                    context::getString,
                     group = group,
                     participantPassword = participantPassword,
                     followerPassword = followerPassword,
                     userName = userName,
-                    stuckAlarmMinutes = stuckAlarmMinutes,
                 )
+                    ?: validateNoMovementAlertMinutes(context::getString, stuckAlarmMinutes)
                     ?: validatePendingRecipientInputs(
+                        context::getString,
                         notificationEmailInput = notificationEmailInput,
                         alertRecipientInput = alertRecipientInput,
                     )
@@ -602,7 +635,7 @@ fun LiveTrackingScreen(
                 )
 
             isSavingSettings = true
-            saveSettingsStatusMessage = "Checking SMS alerts"
+            saveSettingsStatusMessage = textResources.getString(R.string.live_tracking_checking_sms_alerts)
             coroutineScope.launch {
                 runCatching { unsupportedSmsRecipients(committedAlertRecipients) }
                     .onSuccess { unsupportedRecipients ->
@@ -611,7 +644,7 @@ fun LiveTrackingScreen(
                             alertRecipientWarning = message
                             saveSettingsStatusMessage = message
                         } else {
-                            saveSettingsStatusMessage = "Saving settings"
+                            saveSettingsStatusMessage = textResources.getString(R.string.live_tracking_saving_settings)
                             runCatching {
                                 ArkluzLiveTrackingClient(context).saveSettings(settingsForSave)
                             }.onSuccess { result ->
@@ -640,18 +673,25 @@ fun LiveTrackingScreen(
                                         stuckAlarmMinutes = settingsForSave.stuckAlarmMinutes,
                                     )
                                 }
-                                saveSettingsStatusMessage = "Settings saved"
+                                saveSettingsStatusMessage =
+                                    textResources.getString(R.string.live_tracking_settings_saved)
                                 if (exitAfterSave) {
                                     page = LiveTrackingPage.MAIN
                                 }
                             }.onFailure { error ->
                                 saveSettingsStatusMessage =
-                                    "Save failed: ${error.toArkluzFailureDetail()}"
+                                    textResources.getString(
+                                        R.string.live_tracking_save_failed_value,
+                                        error.toArkluzFailureDetail(),
+                                    )
                             }
                         }
                     }.onFailure { error ->
                         saveSettingsStatusMessage =
-                            "Could not verify SMS alerts: ${error.toArkluzFailureDetail()}"
+                            textResources.getString(
+                                R.string.live_tracking_could_not_verify_sms_alerts_value,
+                                error.toArkluzFailureDetail(),
+                            )
                     }
                 isSavingSettings = false
             }
@@ -706,7 +746,7 @@ fun LiveTrackingScreen(
         fun uploadPlanThenStart(settings: LiveTrackingSettings) {
             isStartingSession = true
             isSendingPlan = true
-            sendStatusMessage = "Sending planned route"
+            sendStatusMessage = textResources.getString(R.string.live_tracking_sending_planned_route)
             coroutineScope.launch {
                 runCatching {
                     val client = ArkluzLiveTrackingClient(context)
@@ -720,7 +760,8 @@ fun LiveTrackingScreen(
                         settings = settings,
                     )
                 }.onFailure { error ->
-                    sendStatusMessage = "Send failed: ${error.toArkluzFailureDetail()}"
+                    sendStatusMessage =
+                        textResources.getString(R.string.live_tracking_send_failed_value, error.toArkluzFailureDetail())
                 }
                 isSendingPlan = false
                 isStartingSession = false
@@ -793,13 +834,15 @@ fun LiveTrackingScreen(
             }
             validationMessage =
                 validateStartSettings(
+                    context::getString,
                     group = group,
                     participantPassword = participantPassword,
                     followerPassword = followerPassword,
                     userName = userName,
-                    stuckAlarmMinutes = stuckAlarmMinutes,
                 )
+                    ?: validateNoMovementAlertMinutes(context::getString, stuckAlarmMinutes)
                     ?: validatePendingRecipientInputs(
+                        context::getString,
                         notificationEmailInput = notificationEmailInput,
                         alertRecipientInput = alertRecipientInput,
                     )
@@ -816,7 +859,7 @@ fun LiveTrackingScreen(
             if (isSendingPlan) {
                 isStartWaitingForPermissionResult = false
                 isStartingSession = false
-                sendStatusMessage = "Please wait for the current send to finish before starting."
+                sendStatusMessage = textResources.getString(R.string.live_tracking_please_wait_for_the_current_send_to)
                 return
             }
             isStartingSession = true
@@ -958,31 +1001,41 @@ fun LiveTrackingScreen(
                         planSent = planSent,
                         onSendPlan = {
                             if (!sessionState.isTracking) {
-                                sendStatusMessage = "Start live tracking before sending a route or comment."
+                                sendStatusMessage =
+                                    textResources.getString(
+                                        R.string.live_tracking_start_live_tracking_before_sending_a_route,
+                                    )
                                 return@MainTrackingContent
                             }
                             validationMessage =
                                 validateAccountSettings(
+                                    context::getString,
                                     group = group,
                                     participantPassword = participantPassword,
                                     followerPassword = followerPassword,
                                 )
                                     ?: validatePendingRecipientInputs(
+                                        context::getString,
                                         notificationEmailInput = notificationEmailInput,
                                         alertRecipientInput = alertRecipientInput,
                                     )
                             if (validationMessage != null) return@MainTrackingContent
                             isSendingPlan = true
-                            sendStatusMessage = "Sending planned route"
+                            sendStatusMessage = textResources.getString(R.string.live_tracking_sending_planned_route)
                             coroutineScope.launch {
                                 runCatching {
                                     val client = ArkluzLiveTrackingClient(context)
                                     client.uploadPlannedRoute(settings)
                                 }.onSuccess { result ->
                                     planSent = true
-                                    sendStatusMessage = result.message.ifBlank { "Sent" }
+                                    sendStatusMessage =
+                                        result.message.ifBlank { textResources.getString(R.string.live_tracking_sent) }
                                 }.onFailure { error ->
-                                    sendStatusMessage = "Send failed: ${error.toArkluzFailureDetail()}"
+                                    sendStatusMessage =
+                                        textResources.getString(
+                                            R.string.live_tracking_send_failed_value,
+                                            error.toArkluzFailureDetail(),
+                                        )
                                 }
                                 isSendingPlan = false
                             }
@@ -1004,20 +1057,27 @@ fun LiveTrackingScreen(
                         isDeletingTracks = isDeletingTracks,
                         deleteTracksStatusMessage = deleteTracksStatusMessage,
                         onDeleteRecordedTracks = {
-                            deleteTracksStatusMessage = validatePlanSettings(group, participantPassword)
+                            deleteTracksStatusMessage =
+                                validatePlanSettings(context::getString, group, participantPassword)
                             if (deleteTracksStatusMessage == null) {
                                 isDeletingTracks = true
-                                deleteTracksStatusMessage = "Deleting recorded tracks"
+                                deleteTracksStatusMessage =
+                                    textResources.getString(R.string.live_tracking_deleting_recorded_tracks)
                                 coroutineScope.launch {
                                     runCatching {
                                         ArkluzLiveTrackingClient(context).deleteRecordedTracks(settings)
                                     }.onSuccess { result ->
                                         deleteTracksStatusMessage =
                                             result.message.takeUnless { it == "Server accepted request" }
-                                                ?: "Recorded tracks deleted"
+                                                ?: textResources.getString(
+                                                    R.string.live_tracking_recorded_tracks_deleted,
+                                                )
                                     }.onFailure { error ->
                                         deleteTracksStatusMessage =
-                                            "Delete failed: ${error.toArkluzFailureDetail()}"
+                                            textResources.getString(
+                                                R.string.live_tracking_delete_failed_value,
+                                                error.toArkluzFailureDetail(),
+                                            )
                                     }
                                     isDeletingTracks = false
                                 }
@@ -1026,6 +1086,7 @@ fun LiveTrackingScreen(
                         onDownloadUserTrack = {
                             recordedTrackDownloadStatusMessage =
                                 validateRecordedTrackDownloadSettings(
+                                    context::getString,
                                     group = group,
                                     followerPassword = followerPassword,
                                     userName = userName,
@@ -1070,11 +1131,13 @@ fun LiveTrackingScreen(
                             isLoginJoinLoading = isLoginJoinLoading,
                             loginJoinStatusMessage = loginJoinStatusMessage,
                             onLoginJoin = {
-                                loginJoinStatusMessage = validatePlanSettings(group, participantPassword)
+                                loginJoinStatusMessage =
+                                    validatePlanSettings(context::getString, group, participantPassword)
                                 if (loginJoinStatusMessage == null) {
                                     val cleanGroup = group.trim()
                                     isLoginJoinLoading = true
-                                    loginJoinStatusMessage = "Checking group"
+                                    loginJoinStatusMessage =
+                                        textResources.getString(R.string.live_tracking_checking_group)
                                     coroutineScope.launch {
                                         runCatching {
                                             val client = ArkluzLiveTrackingClient(context)
@@ -1084,22 +1147,32 @@ fun LiveTrackingScreen(
                                                 "Group available"
                                             } else {
                                                 checkNotNull(checkResult.viewerPassword) {
-                                                    "Connected, but viewer password was not returned"
+                                                    textResources.getString(
+                                                        R.string.live_tracking_viewer_password_missing,
+                                                    )
                                                 }.let { followerPassword = it }
-                                                "Connected"
+                                                textResources.getString(R.string.live_tracking_connected)
                                             }
                                         }.onSuccess { status ->
                                             if (status == "Group available") {
-                                                loginJoinStatusMessage = "Group does not exist."
+                                                loginJoinStatusMessage =
+                                                    textResources.getString(R.string.live_tracking_group_does_not_exist)
                                                 createGroupPasswordConfirmation = ""
                                                 showCreateGroupDialog = true
                                             } else {
                                                 restoreGroupProfile(cleanGroup)
-                                                loginJoinStatusMessage = "Connected to $cleanGroup"
+                                                loginJoinStatusMessage =
+                                                    textResources.getString(
+                                                        R.string.live_tracking_connected_to_group,
+                                                        cleanGroup,
+                                                    )
                                             }
                                         }.onFailure { error ->
                                             loginJoinStatusMessage =
-                                                "Unable to connect: ${error.toArkluzFailureDetail()}"
+                                                textResources.getString(
+                                                    R.string.live_tracking_unable_to_connect_value,
+                                                    error.toArkluzFailureDetail(),
+                                                )
                                         }
                                         isLoginJoinLoading = false
                                     }
@@ -1113,15 +1186,20 @@ fun LiveTrackingScreen(
                                 createGroupPasswordConfirmation = ""
                             },
                             onConfirmCreateGroup = {
-                                loginJoinStatusMessage = validatePlanSettings(group, participantPassword)
+                                loginJoinStatusMessage =
+                                    validatePlanSettings(context::getString, group, participantPassword)
                                 if (loginJoinStatusMessage == null) {
                                     if (createGroupPasswordConfirmation.trim() != participantPassword.trim()) {
-                                        loginJoinStatusMessage = "Password confirmation does not match."
+                                        loginJoinStatusMessage =
+                                            textResources.getString(
+                                                R.string.live_tracking_password_confirmation_does_not_match,
+                                            )
                                         return@LoginJoinContent
                                     }
                                     showCreateGroupDialog = false
                                     isLoginJoinLoading = true
-                                    loginJoinStatusMessage = "Creating group"
+                                    loginJoinStatusMessage =
+                                        textResources.getString(R.string.live_tracking_creating_group)
                                     coroutineScope.launch {
                                         runCatching {
                                             val client = ArkluzLiveTrackingClient(context)
@@ -1130,18 +1208,28 @@ fun LiveTrackingScreen(
                                                 registerResult.viewerPassword
                                                     ?: client.checkGroup(settings).viewerPassword
                                             checkNotNull(viewerPassword) {
-                                                "Group created, but viewer password was not returned"
+                                                textResources.getString(
+                                                    R.string.live_tracking_group_created_but_viewer_password_was_not,
+                                                )
                                             }.let { followerPassword = it }
                                             pendingRegistrationGroup = null
                                             createGroupPasswordConfirmation = ""
-                                            "Created + connected"
+                                            textResources.getString(R.string.live_tracking_created_connected)
                                         }.onSuccess { status ->
                                             val cleanGroup = group.trim()
                                             restoreGroupProfile(cleanGroup)
-                                            loginJoinStatusMessage = "$status to $cleanGroup"
+                                            loginJoinStatusMessage =
+                                                textResources.getString(
+                                                    R.string.live_tracking_value_to_value,
+                                                    status,
+                                                    cleanGroup,
+                                                )
                                         }.onFailure { error ->
                                             loginJoinStatusMessage =
-                                                "Unable to create group: ${error.toArkluzFailureDetail()}"
+                                                textResources.getString(
+                                                    R.string.live_tracking_unable_to_create_group_value,
+                                                    error.toArkluzFailureDetail(),
+                                                )
                                         }
                                         isLoginJoinLoading = false
                                     }
@@ -1180,7 +1268,8 @@ fun LiveTrackingScreen(
                                     contactEmailPicker.launch(contactEmailPickerIntent())
                                 }.onFailure {
                                     emailPickerTarget = null
-                                    saveSettingsStatusMessage = "No contacts app found"
+                                    saveSettingsStatusMessage =
+                                        textResources.getString(R.string.live_tracking_no_contacts_app_found)
                                 }
                             },
                             alertRecipientInput = alertRecipientInput,
@@ -1202,14 +1291,16 @@ fun LiveTrackingScreen(
                                     contactEmailPicker.launch(contactEmailPickerIntent())
                                 }.onFailure {
                                     emailPickerTarget = null
-                                    saveSettingsStatusMessage = "No contacts app found"
+                                    saveSettingsStatusMessage =
+                                        textResources.getString(R.string.live_tracking_no_contacts_app_found)
                                 }
                             },
                             onPickAlertPhoneFromContacts = {
                                 runCatching {
                                     contactPhonePicker.launch(contactPhonePickerIntent())
                                 }.onFailure {
-                                    alertRecipientStatusMessage = "No contacts app found"
+                                    alertRecipientStatusMessage =
+                                        textResources.getString(R.string.live_tracking_no_contacts_app_found)
                                 }
                             },
                             isValidatingAlertRecipient = isValidatingAlertRecipient,

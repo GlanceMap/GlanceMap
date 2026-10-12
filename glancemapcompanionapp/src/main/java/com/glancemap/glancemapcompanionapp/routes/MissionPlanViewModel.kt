@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.diagnostics.MissionDayUpdateDiagnosticFields
 import com.glancemap.glancemapcompanionapp.diagnostics.MissionDayWeatherDiagnosticSummary
@@ -121,7 +122,10 @@ class MissionPlanViewModel(
                 dayId = dayId,
                 weather =
                     MissionDayWeatherUiState(
-                        message = "Add a date to this day before loading its planned forecast.",
+                        message =
+                            getApplication<android.app.Application>().getString(
+                                R.string.mission_plan_add_a_date_to_this_day_before,
+                            ),
                     ),
             )
             return
@@ -146,9 +150,19 @@ class MissionPlanViewModel(
                     withContext(Dispatchers.IO) {
                         val details =
                             routeLibraryRepository.routeDetails(dayUi.route.id)
-                                ?: error("This day's GPX is no longer available.")
+                                ?: error(
+                                    getApplication<android.app.Application>().getString(
+                                        R.string.mission_plan_this_day_s_gpx_is_no_longer,
+                                    ),
+                                )
                         val targets = details.missionDayWeatherTargets(dayUi.day)
-                        if (targets.isEmpty()) error("This GPX day has no route distance to sample.")
+                        if (targets.isEmpty()) {
+                            error(
+                                getApplication<android.app.Application>().getString(
+                                    R.string.mission_plan_this_gpx_day_has_no_route_distance,
+                                ),
+                            )
+                        }
                         targets.map { target -> loadDayWeatherSample(target, dayUi.day, forceRefresh) }
                     }
                 }.getOrElse { error ->
@@ -160,7 +174,10 @@ class MissionPlanViewModel(
                             MissionDayWeatherUiState(
                                 plannedDate = plannedDate,
                                 plannedStartTime = dayUi.day.plannedStartTime,
-                                message = "Day weather is unavailable. Check your connection and try again.",
+                                message =
+                                    getApplication<android.app.Application>().getString(
+                                        R.string.mission_plan_day_weather_is_unavailable_check_your_connection,
+                                    ),
                             ),
                     )
                     return@launch
@@ -187,8 +204,15 @@ class MissionPlanViewModel(
                             when {
                                 unavailableCount == 0 -> null
                                 unavailableCount == samples.size ->
-                                    "Day weather is unavailable. Check your connection and try again."
-                                else -> "$unavailableCount of ${samples.size} weather samples could not be loaded."
+                                    getApplication<android.app.Application>().getString(
+                                        R.string.mission_plan_day_weather_is_unavailable_check_your_connection,
+                                    )
+                                else ->
+                                    getApplication<android.app.Application>().getString(
+                                        R.string.mission_plan_value_of_value_weather_samples_could_not,
+                                        unavailableCount,
+                                        samples.size,
+                                    )
                             },
                     ),
             )
@@ -216,7 +240,9 @@ class MissionPlanViewModel(
                     isPreparingTransfer = false,
                     message =
                         if (transferUri == null) {
-                            "Could not prepare this day's GPX for transfer."
+                            getApplication<android.app.Application>().getString(
+                                R.string.mission_plan_could_not_prepare_this_day_s_gpx,
+                            )
                         } else {
                             null
                         },
@@ -240,7 +266,11 @@ class MissionPlanViewModel(
                 _uiState.value =
                     _uiState.value.copy(
                         isLoading = false,
-                        message = error.message ?: "Could not update the mission plan.",
+                        message =
+                            error.message
+                                ?: getApplication<android.app.Application>().getString(
+                                    R.string.mission_plan_could_not_update_the_mission_plan,
+                                ),
                     )
                 return
             }
@@ -257,7 +287,11 @@ class MissionPlanViewModel(
                 _uiState.value =
                     _uiState.value.copy(
                         isLoading = false,
-                        message = error.message ?: "Could not load the mission plan.",
+                        message =
+                            error.message
+                                ?: getApplication<android.app.Application>().getString(
+                                    R.string.mission_plan_could_not_load_the_mission_plan,
+                                ),
                     )
                 return
             }
@@ -273,7 +307,11 @@ class MissionPlanViewModel(
                 _uiState.value =
                     _uiState.value.copy(
                         isLoading = false,
-                        message = error.message ?: "Could not load routes for this mission plan.",
+                        message =
+                            error.message
+                                ?: getApplication<android.app.Application>().getString(
+                                    R.string.mission_plan_could_not_load_routes_for_this_mission,
+                                ),
                     )
                 return
             }
@@ -345,7 +383,10 @@ class MissionPlanViewModel(
         } catch (_: Throwable) {
             MissionDayWeatherSampleUi(
                 target = target,
-                message = "Unavailable",
+                message =
+                    getApplication<android.app.Application>().getString(
+                        R.string.map_tools_settings_sensor_unavailable,
+                    ),
             )
         }
 

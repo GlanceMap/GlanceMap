@@ -49,7 +49,7 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
             )
 
         val chooserIntent =
-            Intent.createChooser(emailIntent, "Send diagnostics").apply {
+            Intent.createChooser(emailIntent, getString(R.string.diagnostics_send_title)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
@@ -186,8 +186,8 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp)
-                .setContentTitle("Diagnostics Ready")
-                .setContentText("Tap to open email draft")
+                .setContentTitle(getString(R.string.diagnostics_notification_diagnostics_ready))
+                .setContentText(getString(R.string.diagnostics_notification_tap_to_open_email_draft))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
@@ -214,10 +214,10 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
-                "Diagnostics Email",
+                getString(R.string.diagnostics_notification_diagnostics_email),
                 NotificationManager.IMPORTANCE_HIGH,
             )
-        channel.description = "Notifications for diagnostics email drafts"
+        channel.description = getString(R.string.diagnostics_notification_notifications_for_diagnostics_email_drafts)
         manager.createNotificationChannel(channel)
     }
 

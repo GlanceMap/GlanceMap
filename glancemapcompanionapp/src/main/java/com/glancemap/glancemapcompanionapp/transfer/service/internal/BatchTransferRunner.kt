@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.FileTransferHistoryItem
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.WatchNode
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.FileExistenceChecker
@@ -682,7 +683,13 @@ internal class BatchTransferRunner(
             }
 
             notificationHelper.showCompletion(
-                if (skipped > 0) "$sent sent, $skipped skipped" else "$sent file(s)",
+                if (skipped >
+                    0
+                ) {
+                    context.getString(R.string.transfer_completion_value_sent_value_skipped, sent, skipped)
+                } else {
+                    context.getString(R.string.transfer_completion_value_file_s, sent)
+                },
                 targetNode.displayName,
             )
             Log.d(TAG, "Batch completed in ${SystemClock.elapsedRealtime() - batchStartMs}ms")

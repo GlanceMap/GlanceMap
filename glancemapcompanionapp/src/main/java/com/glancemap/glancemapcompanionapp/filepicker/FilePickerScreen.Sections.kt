@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -469,6 +470,7 @@ internal fun FilePickerTransferSection(
     onPause: () -> Unit,
     onCancelRequested: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     SectionCard(
         title = stringResource(R.string.transfer_section_transfer_title),
         modifier =
@@ -495,10 +497,10 @@ internal fun FilePickerTransferSection(
             ) {
                 Text(
                     when {
-                        !transferSessionActive -> "Send"
-                        cancellingTransfer -> "Stopping..."
-                        waitingForReconnect -> "Waiting..."
-                        else -> "Sending..."
+                        !transferSessionActive -> textResources.getString(R.string.quick_guide_transfer_send_title)
+                        cancellingTransfer -> textResources.getString(R.string.transfer_status_stopping)
+                        waitingForReconnect -> textResources.getString(R.string.transfer_status_waiting)
+                        else -> textResources.getString(R.string.transfer_status_sending_2)
                     },
                 )
             }
@@ -534,7 +536,7 @@ internal fun FilePickerTransferSection(
                         else -> uiState.progressText
                     }
                 val progressText =
-                    TransferTextFormatter.formatCardText(
+                    TransferTextFormatter(textResources::getString).formatCardText(
                         rawProgressText = rawProgressText,
                         statusMessage = uiState.statusMessage,
                         isPaused = uiState.isPaused,

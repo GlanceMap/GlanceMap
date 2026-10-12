@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp
 
+import com.glancemap.glancemapcompanionapp.R
 import java.util.Locale
 import java.util.concurrent.TimeoutException
 
@@ -11,13 +12,16 @@ internal fun isSelectedWatchReachable(
     return availableWatches.any { it.id == selectedWatch.id }
 }
 
-internal fun selectedWatchDisconnectedStatusMessage(): String = "Selected watch is not currently connected to the phone over Bluetooth / Wear OS. Reconnect it and tap refresh."
+internal fun selectedWatchDisconnectedStatusMessage(text: (Int) -> String) = text(R.string.watch_status_disconnected)
 
-internal fun selectedWatchTimeoutStatusMessage(): String = "The watch did not answer. Check the Bluetooth / Wear OS connection, open the watch app, then tap refresh."
+internal fun selectedWatchTimeoutStatusMessage(text: (Int) -> String) = text(R.string.watch_status_timeout)
 
-internal fun normalizeWatchMapsStatusMessage(error: Throwable): String {
+internal fun normalizeWatchMapsStatusMessage(
+    text: (Int) -> String,
+    error: Throwable,
+): String {
     if (error is TimeoutException) {
-        return selectedWatchTimeoutStatusMessage()
+        return selectedWatchTimeoutStatusMessage(text)
     }
 
     val normalized = buildErrorMessageChain(error)
@@ -25,15 +29,16 @@ internal fun normalizeWatchMapsStatusMessage(error: Throwable): String {
         normalized.contains("target_node_not_connected") ||
             normalized.contains("target node not connected") ||
             normalized.contains("node not connected") ->
-            selectedWatchDisconnectedStatusMessage()
+            selectedWatchDisconnectedStatusMessage(text)
 
         normalized.contains("did not answer in time") ||
             normalized.contains("timed out") ||
             normalized.contains("timeout") ->
-            selectedWatchTimeoutStatusMessage()
+            selectedWatchTimeoutStatusMessage(text)
 
         else ->
-            error.localizedMessage?.takeIf { it.isNotBlank() } ?: "Failed to read watch maps."
+            error.localizedMessage?.takeIf { it.isNotBlank() }
+                ?: text(R.string.watch_connection_failed_to_read_watch_maps)
     }
 }
 

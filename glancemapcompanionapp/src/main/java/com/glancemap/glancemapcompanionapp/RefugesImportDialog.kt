@@ -381,7 +381,7 @@ internal fun RefugesImportDialog(
                         Text(
                             stringResource(
                                 R.string.refuges_watch_disconnected_hint,
-                                selectedWatchDisconnectedStatusMessage(),
+                                selectedWatchDisconnectedStatusMessage(context::getString),
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
@@ -657,7 +657,7 @@ internal fun RefugesImportDialog(
                                 Text(
                                     stringResource(
                                         R.string.refuges_watch_map_disconnected_hint,
-                                        selectedWatchDisconnectedStatusMessage(),
+                                        selectedWatchDisconnectedStatusMessage(context::getString),
                                     ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
@@ -984,7 +984,7 @@ internal fun RefugesImportDialog(
                 TextButton(
                     onClick = {
                         if (isImportingRefuges) {
-                            viewModel.cancelPoiImport()
+                            viewModel.cancelPoiImport(context)
                         } else {
                             viewModel.resetPoiImportProgress()
                             onDismiss()
@@ -1102,7 +1102,7 @@ internal fun OsmPoiCategoryPresetChips(
             FilterChip(
                 selected = selectedIds == preset.categoryIds,
                 onClick = { onPresetSelected(preset.categoryIds) },
-                label = { Text(preset.label) },
+                label = { Text(stringResource(preset.labelResource)) },
                 colors = companionFilterChipColors(),
             )
         }
@@ -1145,7 +1145,7 @@ internal fun OsmPoiCategorySelectionGroup(
                         },
                     )
                     Text(
-                        text = category.label,
+                        text = stringResource(category.labelResource),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

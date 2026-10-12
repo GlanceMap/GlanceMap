@@ -44,19 +44,20 @@ internal data class WatchGpxSuccessNotificationDescription(
 internal fun buildWatchGpxSuccessNotificationDescription(
     fileName: String,
     downloadsUriAvailable: Boolean,
+    text: (Int) -> String,
 ): WatchGpxSuccessNotificationDescription {
     val location =
         if (downloadsUriAvailable) {
-            "Saved to Downloads/GlanceMap"
+            text(R.string.gpx_notification_saved_to_downloads_glancemap)
         } else {
-            "Received from watch"
+            text(R.string.gpx_notification_received_from_watch)
         }
     return WatchGpxSuccessNotificationDescription(
-        contentText = "$location. $fileName",
-        expandedText = "$location\n$fileName",
-        saveCopyActionLabel = "Save copy",
-        openActionLabel = "Open",
-        shareActionLabel = "Share",
+        contentText = text(R.string.gpx_notification_content).format(location, fileName),
+        expandedText = text(R.string.gpx_notification_expanded).format(location, fileName),
+        saveCopyActionLabel = text(R.string.gpx_notification_save_copy),
+        openActionLabel = text(R.string.gpx_notification_open),
+        shareActionLabel = text(R.string.gpx_notification_share),
     )
 }
 
@@ -87,7 +88,10 @@ class WatchGpxExportListenerService : WearableListenerService() {
                 throw cancellation
             } catch (error: Throwable) {
                 Log.e(TAG, "Watch GPX export failed", error)
-                showError(error.localizedMessage?.takeIf { it.isNotBlank() } ?: "Could not receive GPX")
+                showError(
+                    error.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: getString(R.string.gpx_notification_could_not_receive_gpx),
+                )
             }
         }
     }
@@ -100,7 +104,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
     private suspend fun receiveGpx(channel: ChannelClient.Channel) {
         val request =
             parseChannelPath(channel.path)
-                ?: throw IllegalArgumentException("Invalid GPX export request.")
+                ?: throw IllegalArgumentException(getString(R.string.gpx_notification_invalid_gpx_export_request))
         val exportDir = PhoneOfflineStorage(applicationContext).watchGpxExportsDirectory().apply { mkdirs() }
         val tempFile = File(exportDir, ".${request.transferId}.part")
         val finalFile = uniqueFile(exportDir, request.fileName)
@@ -115,7 +119,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
             val actualSha256 = tempFile.sha256()
             if (!actualSha256.equals(request.sha256, ignoreCase = true)) {
                 tempFile.delete()
-                error("Received GPX checksum did not match.")
+                error(getString(R.string.gpx_notification_received_gpx_checksum_did_not_match))
             }
 
             if (!tempFile.renameTo(finalFile)) {
@@ -153,7 +157,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
                         file.inputStream().use { input ->
                             input.copyTo(output, WATCH_GPX_COPY_BUFFER_BYTES)
                         }
-                    } ?: error("Unable to open Downloads destination.")
+                    } ?: error(getString(R.string.gpx_notification_unable_to_open_downloads_destination))
 
                     values.clear()
                     values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -203,20 +207,21 @@ class WatchGpxExportListenerService : WearableListenerService() {
             PendingIntent.getActivity(
                 this,
                 file.name.hashCode() + SHARE_REQUEST_OFFSET,
-                Intent.createChooser(shareIntent, "Share GPX"),
+                Intent.createChooser(shareIntent, getString(R.string.gpx_notification_share_gpx)),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         val description =
             buildWatchGpxSuccessNotificationDescription(
                 fileName = file.name,
                 downloadsUriAvailable = downloadsUri != null,
+                text = this::getString,
             )
 
         val notification =
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
-                .setContentTitle("GPX ready")
+                .setContentTitle(getString(R.string.gpx_notification_gpx_ready))
                 .setContentText(description.contentText)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(description.expandedText))
                 .setAutoCancel(true)
@@ -241,7 +246,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
-                .setContentTitle("GPX transfer failed")
+                .setContentTitle(getString(R.string.gpx_notification_gpx_transfer_failed))
                 .setContentText(message)
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
@@ -255,7 +260,7 @@ class WatchGpxExportListenerService : WearableListenerService() {
         notificationManager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Watch GPX exports",
+                getString(R.string.gpx_notification_watch_gpx_exports),
                 NotificationManager.IMPORTANCE_DEFAULT,
             ),
         )

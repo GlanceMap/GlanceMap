@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
 import com.glancemap.glancemapcompanionapp.refuges.RefugesGeoJsonPoiImporter
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloadException
@@ -317,7 +318,7 @@ internal class PhoneOfflineBundleDownloader(
                 onProgress(
                     PhoneOfflineBundleProgress(
                         phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-                        detail = "Map already on phone.",
+                        detail = applicationContext.getString(R.string.offline_bundle_map_already_on_phone),
                     ),
                 )
                 InstalledMap(it.displayName, reusedExisting = true)
@@ -347,14 +348,16 @@ internal class PhoneOfflineBundleDownloader(
             ),
         )
         if (selection.includeRouting || selection.includeDem || selection.includeRefugesInfo) {
-            checkNotNull(mapFileName) { "Maps must be installed before routing, elevation, or Refuges.info." }
+            checkNotNull(mapFileName) {
+                applicationContext.getString(R.string.offline_bundle_maps_must_be_installed_before_routing_elevation)
+            }
         }
         val poiResult =
             existingPoi?.let {
                 onProgress(
                     PhoneOfflineBundleProgress(
                         phase = PhoneOfflineBundlePhase.DOWNLOADING_POI,
-                        detail = "POI already on phone.",
+                        detail = applicationContext.getString(R.string.offline_bundle_poi_already_on_phone),
                     ),
                 )
                 InstalledPoi(it.name, reusedExisting = true)
@@ -386,24 +389,30 @@ internal class PhoneOfflineBundleDownloader(
         )
         val storedMapFileName =
             checkNotNull(mapResult?.fileName) {
-                "A map is required for a phone bundle."
+                applicationContext.getString(R.string.offline_bundle_a_map_is_required_for_a_phone)
             }
         val storedPoiFileName =
             checkNotNull(poiResult?.fileName) {
-                "POI must be installed for a phone bundle."
+                applicationContext.getString(R.string.offline_bundle_poi_must_be_installed_for_a_phone)
             }
 
         val mapBounds = mapBounds(storedMapFileName)
         val routingExpected =
             if (selection.includeRouting) {
-                val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for routing." }
+                val bounds =
+                    checkNotNull(
+                        mapBounds,
+                    ) { applicationContext.getString(R.string.offline_bundle_cannot_read_map_bounds_for_routing) }
                 routingFileNamesForBounds(bounds)
             } else {
                 existing?.routingFileNames.orEmpty().ifEmpty { recovery?.routingFileNames.orEmpty() }
             }
         val demExpected =
             if (selection.includeDem) {
-                val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
+                val bounds =
+                    checkNotNull(
+                        mapBounds,
+                    ) { applicationContext.getString(R.string.offline_bundle_cannot_read_map_bounds_for_elevation) }
                 phoneDemTileIdsForBounds(bounds)
             } else {
                 existing?.demTileIds.orEmpty().ifEmpty { recovery?.demTileIds.orEmpty() }
@@ -470,7 +479,10 @@ internal class PhoneOfflineBundleDownloader(
         }
         val downloadedRoutingFileNames =
             if (selection.includeRouting) {
-                val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for routing." }
+                val bounds =
+                    checkNotNull(
+                        mapBounds,
+                    ) { applicationContext.getString(R.string.offline_bundle_cannot_read_map_bounds_for_routing) }
                 setFailureContext(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_ROUTING,
                     component = PhoneOfflineBundleComponent.ROUTING,
@@ -508,7 +520,7 @@ internal class PhoneOfflineBundleDownloader(
                                 .filterNot(downloaded::contains)
                                 .distinct()
                         check((downloaded + unavailableRouting).containsAll(routingExpected)) {
-                            "Routing bundle is incomplete."
+                            applicationContext.getString(R.string.offline_bundle_routing_bundle_is_incomplete)
                         }
                         checkpoint(
                             recoveryState.copy(
@@ -536,7 +548,10 @@ internal class PhoneOfflineBundleDownloader(
         val routingFileNames = routingExpected
         val downloadedDemTileIds =
             if (selection.includeDem) {
-                val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for elevation." }
+                val bounds =
+                    checkNotNull(
+                        mapBounds,
+                    ) { applicationContext.getString(R.string.offline_bundle_cannot_read_map_bounds_for_elevation) }
                 setFailureContext(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_DEM,
                     component = PhoneOfflineBundleComponent.DEM,
@@ -613,7 +628,10 @@ internal class PhoneOfflineBundleDownloader(
             )
         val refugesInfoFileName =
             if (selection.includeRefugesInfo) {
-                val bounds = checkNotNull(mapBounds) { "Cannot read map bounds for Refuges.info." }
+                val bounds =
+                    checkNotNull(mapBounds) {
+                        applicationContext.getString(R.string.offline_bundle_cannot_read_map_bounds_for_refuges_info)
+                    }
                 setFailureContext(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_REFUGES,
                     component = PhoneOfflineBundleComponent.REFUGES_INFO,
@@ -863,7 +881,11 @@ internal class PhoneOfflineBundleDownloader(
             onProgress(
                 PhoneOfflineBundleProgress(
                     phase = phase,
-                    detail = "Using saved $reuseLabel archive.",
+                    detail =
+                        applicationContext.getString(
+                            R.string.offline_bundle_using_saved_value_archive,
+                            reuseLabel,
+                        ),
                 ),
             )
             return reusableArchive
@@ -1192,7 +1214,12 @@ internal class PhoneOfflineBundleDownloader(
                 }
                 if (totalBytes != null && temporary.length() != totalBytes) {
                     throw IOException(
-                        "Incomplete download for ${temporary.name}: ${temporary.length()}/$totalBytes bytes.",
+                        applicationContext.getString(
+                            R.string.offline_bundle_incomplete_download_for_value_value_value_bytes,
+                            temporary.name,
+                            temporary.length(),
+                            totalBytes,
+                        ),
                     )
                 }
                 return temporary.length()
@@ -1228,7 +1255,17 @@ internal class PhoneOfflineBundleDownloader(
                             httpStatusCode = responseCode,
                         )
                     } else {
-                        if (responseCode !in 200..399) throw IOException("HTTP $responseCode for ${request.url}")
+                        if (responseCode !in
+                            200..399
+                        ) {
+                            throw IOException(
+                                applicationContext.getString(
+                                    R.string.offline_bundle_http_value_for_value,
+                                    responseCode,
+                                    request.url,
+                                ),
+                            )
+                        }
                         connection.remoteMetadata(request.url, request.fileName)
                     }
                 } finally {

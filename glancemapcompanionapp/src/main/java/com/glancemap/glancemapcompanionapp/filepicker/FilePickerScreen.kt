@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -116,6 +117,7 @@ internal fun FilePickerScreen(
     watchGpxSaveFiles: List<GeneratedPhoneFile> = emptyList(),
 ) {
     val context = LocalContext.current
+    val fileSaveTextResources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val uiState by viewModel.uiState.collectAsState()
@@ -465,7 +467,11 @@ internal fun FilePickerScreen(
             { files ->
                 when {
                     files.isEmpty() -> {
-                        Toast.makeText(context, "No file available to save.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            fileSaveTextResources.getString(R.string.phone_files_no_file_available_to_save),
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
 
                     files.size == 1 -> {
@@ -1641,6 +1647,7 @@ private fun TodayHikeCard(
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     val liveHikeSnapshot =
         activeHikeSnapshot?.takeIf { update -> update.snapshot.phase != ActiveHikePhase.IDLE }
     val trailIntelligence =
@@ -1649,7 +1656,7 @@ private fun TodayHikeCard(
                 ?.takeIf { dayUi -> dayUi.route.id == selectedRoute?.id }
                 ?.let { dayUi -> selectedRouteDetails?.trailIntelligenceFor(dayUi.day) }
     SectionCard(
-        title = "TODAY'S HIKE",
+        title = textResources.getString(R.string.briefing_today_s_hike),
     ) {
         liveHikeSnapshot?.let { update -> ActiveHikeBriefing(update) }
         trailIntelligence?.let { intelligence ->
@@ -1664,7 +1671,7 @@ private fun TodayHikeCard(
         }
         if (selectedRoute == null) {
             Text(
-                text = "Choose a GPX route to prepare a briefing before you leave.",
+                text = textResources.getString(R.string.briefing_choose_a_gpx_route_to_prepare_a),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -1678,12 +1685,12 @@ private fun TodayHikeCard(
                     contentDescription = null,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Choose a route")
+                Text(textResources.getString(R.string.briefing_choose_a_route))
             }
         } else {
             missionDay?.let { dayUi ->
                 Text(
-                    text = "DAY ${dayUi.day.dayNumber} • MISSION PLAN",
+                    text = textResources.getString(R.string.briefing_day_value_mission_plan, dayUi.day.dayNumber),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelMedium,
                 )
@@ -1737,11 +1744,11 @@ private fun TodayHikeCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     if (isPreparingMissionTransfer) {
-                        "Preparing day GPX…"
+                        textResources.getString(R.string.briefing_preparing_day_gpx)
                     } else if (missionDay != null) {
-                        "Send planned day to watch"
+                        textResources.getString(R.string.briefing_send_planned_day_to_watch)
                     } else {
-                        "Send selected route to watch"
+                        textResources.getString(R.string.briefing_send_selected_route_to_watch)
                     },
                 )
             }
@@ -1749,7 +1756,7 @@ private fun TodayHikeCard(
                 onClick = onOpenRoutes,
                 modifier = Modifier.align(Alignment.End),
             ) {
-                Text("Change route")
+                Text(textResources.getString(R.string.briefing_change_route))
             }
         }
     }
@@ -1764,6 +1771,7 @@ private fun RouteWeatherScreen(
     onChooseRoute: () -> Unit,
     onLoadWeather: (Boolean) -> Unit,
 ) {
+    val textResources = LocalResources.current
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1775,17 +1783,17 @@ private fun RouteWeatherScreen(
             FilledTonalIconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to home",
+                    contentDescription = textResources.getString(R.string.common_back_to_home_content_description),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Route Weather",
+                    text = textResources.getString(R.string.menu_route_weather),
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = "Forecasts are available without a mission plan.",
+                    text = textResources.getString(R.string.briefing_forecasts_are_available_without_a_mission_plan),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -1794,7 +1802,7 @@ private fun RouteWeatherScreen(
 
         if (route == null) {
             Text(
-                text = "Choose an imported GPX route to load its forecast.",
+                text = textResources.getString(R.string.briefing_choose_an_imported_gpx_route_to_load),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -1818,7 +1826,7 @@ private fun RouteWeatherScreen(
                         strokeWidth = 2.dp,
                     )
                     Text(
-                        text = "Preparing GPX forecast location…",
+                        text = textResources.getString(R.string.briefing_preparing_gpx_forecast_location),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1835,22 +1843,31 @@ private fun RouteWeatherScreen(
             onClick = onChooseRoute,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (route == null) "Choose a route" else "Choose another route")
+            Text(
+                if (route ==
+                    null
+                ) {
+                    textResources.getString(R.string.briefing_choose_a_route)
+                } else {
+                    textResources.getString(R.string.briefing_choose_another_route)
+                },
+            )
         }
     }
 }
 
 @Composable
 private fun ActiveHikeBriefing(update: PhoneActiveHikeSnapshot) {
+    val textResources = LocalResources.current
     val snapshot = update.snapshot
     Text(
-        text = "LIVE FROM WATCH",
+        text = textResources.getString(R.string.briefing_live_from_watch),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = snapshot.routeTitle ?: "Active hike",
+        text = snapshot.routeTitle ?: textResources.getString(R.string.live_hike_active_hike),
         style = MaterialTheme.typography.titleMedium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -1867,9 +1884,15 @@ private fun ActiveHikeBriefing(update: PhoneActiveHikeSnapshot) {
     )
     val metrics =
         listOfNotNull(
-            snapshot.distanceRemainingMeters?.let { distance -> "${distance.toKilometersText()} left" },
-            snapshot.estimatedRemainingSeconds?.let { duration -> "${duration.toDouble().toDurationText()} remaining" },
-            snapshot.remainingAscentMeters?.let { ascent -> "+${ascent.toInt()} m to climb" },
+            snapshot.distanceRemainingMeters?.let { distance ->
+                textResources.getString(R.string.briefing_value_left, distance.toKilometersText())
+            },
+            snapshot.estimatedRemainingSeconds?.let { duration ->
+                textResources.getString(R.string.briefing_value_remaining, duration.toDouble().toDurationText())
+            },
+            snapshot.remainingAscentMeters?.let { ascent ->
+                textResources.getString(R.string.briefing_value_m_to_climb, ascent.toInt())
+            },
         )
     if (metrics.isNotEmpty()) {
         Spacer(modifier = Modifier.height(6.dp))
@@ -1886,6 +1909,7 @@ private fun TrailIntelligenceBriefing(
     intelligence: TrailIntelligence,
     weatherUiState: RouteWeatherUiState,
 ) {
+    val textResources = LocalResources.current
     val window = intelligence.window
     val remainingMinutes = (window.estimatedDurationSeconds / 60.0).toInt().coerceAtLeast(1)
     Text(
@@ -1897,8 +1921,12 @@ private fun TrailIntelligenceBriefing(
     val metrics =
         listOfNotNull(
             window.distanceMeters.toKilometersText(),
-            window.ascentMeters.takeIf { it > 0.0 }?.let { ascent -> "+${ascent.toInt()} m climb" },
-            window.descentMeters.takeIf { it > 0.0 }?.let { descent -> "−${descent.toInt()} m descent" },
+            window.ascentMeters.takeIf { it > 0.0 }?.let { ascent ->
+                textResources.getString(R.string.route_library_value_m_climb, ascent.toInt())
+            },
+            window.descentMeters.takeIf { it > 0.0 }?.let { descent ->
+                textResources.getString(R.string.briefing_value_m_descent, descent.toInt())
+            },
         )
     Text(
         text = metrics.joinToString("  •  "),
@@ -1908,7 +1936,12 @@ private fun TrailIntelligenceBriefing(
     intelligence.upcomingWaypoints.forEach { waypoint ->
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Up next: ${waypoint.title} in ${waypoint.distanceAheadMeters.toKilometersText()}",
+            text =
+                textResources.getString(
+                    R.string.briefing_up_next_value_in_value,
+                    waypoint.title,
+                    waypoint.distanceAheadMeters.toKilometersText(),
+                ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -1921,15 +1954,16 @@ private fun TrailIntelligenceBriefing(
 
 @Composable
 private fun TrailIntelligenceWeatherBriefing(uiState: RouteWeatherUiState) {
+    val textResources = LocalResources.current
     Text(
-        text = "WEATHER",
+        text = textResources.getString(R.string.briefing_weather),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
     when {
         uiState.isLoading -> {
             Text(
-                text = "Loading route forecast…",
+                text = textResources.getString(R.string.briefing_loading_route_forecast),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1937,7 +1971,7 @@ private fun TrailIntelligenceWeatherBriefing(uiState: RouteWeatherUiState) {
 
         uiState.forecast == null -> {
             Text(
-                text = "Weather is not loaded for this route segment.",
+                text = textResources.getString(R.string.briefing_weather_is_not_loaded_for_this_route),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1950,15 +1984,15 @@ private fun TrailIntelligenceWeatherBriefing(uiState: RouteWeatherUiState) {
                 listOfNotNull(
                     forecast.current.temperatureCelsius?.let { temperature -> temperature.toWeatherTemperatureText() },
                     nextHour?.precipitationProbabilityPercent?.let { probability ->
-                        "rain ${probability.roundToInt()}%"
+                        textResources.getString(R.string.mission_plan_rain_value, probability.roundToInt())
                     },
                     nextHour?.windGustKilometersPerHour?.let { gust ->
-                        "gusts ${gust.roundToInt()} km/h"
+                        textResources.getString(R.string.mission_plan_gusts_value_km_h, gust.roundToInt())
                     },
                 )
             Text(
                 text =
-                    "${weatherConditionText(forecast.current.weatherCode)}" +
+                    "${weatherConditionText(textResources, forecast.current.weatherCode)}" +
                         metrics
                             .takeIf { values -> values.isNotEmpty() }
                             ?.let { values -> " • ${values.joinToString("  •  ")}" }
@@ -1968,8 +2002,17 @@ private fun TrailIntelligenceWeatherBriefing(uiState: RouteWeatherUiState) {
             )
             Text(
                 text =
-                    "Updated ${forecast.fetchedAtEpochMillis.toWeatherUpdatedText()}" +
-                        if (uiState.isStale) " • cached, unable to update" else "",
+                    textResources.getString(
+                        R.string.mission_plan_updated_value,
+                        forecast.fetchedAtEpochMillis.toWeatherUpdatedText(),
+                    ) +
+                        if (uiState.isStale) {
+                            textResources.getString(
+                                R.string.mission_plan_cached_unable_to_update,
+                            )
+                        } else {
+                            ""
+                        },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1982,9 +2025,10 @@ private fun RouteWeatherBriefing(
     uiState: RouteWeatherUiState,
     onLoad: (Boolean) -> Unit,
 ) {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     Text(
-        text = "ROUTE WEATHER",
+        text = textResources.getString(R.string.briefing_route_weather),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
@@ -2000,7 +2044,7 @@ private fun RouteWeatherBriefing(
                     strokeWidth = 2.dp,
                 )
                 Text(
-                    text = "Loading route forecast…",
+                    text = textResources.getString(R.string.briefing_loading_route_forecast),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -2010,7 +2054,7 @@ private fun RouteWeatherBriefing(
         uiState.forecast == null -> {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Load a forecast for this route. Weather is context, not a safety decision.",
+                text = textResources.getString(R.string.briefing_load_a_forecast_for_this_route_weather),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -2023,7 +2067,7 @@ private fun RouteWeatherBriefing(
                 )
             }
             TextButton(onClick = { onLoad(false) }) {
-                Text("Load route weather")
+                Text(textResources.getString(R.string.briefing_load_route_weather))
             }
         }
 
@@ -2032,13 +2076,22 @@ private fun RouteWeatherBriefing(
             val outlook = forecast.nextHour
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "${forecast.location.label} • ${weatherConditionText(forecast.current.weatherCode)}",
+                text = "${localizedWeatherLocationLabel(
+                    forecast.location.label,
+                )} • ${weatherConditionText(textResources, forecast.current.weatherCode)}",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
                 text =
-                    "Updated ${forecast.fetchedAtEpochMillis.toWeatherUpdatedText()}" +
-                        " • ${uiState.savedSnapshotCount} saved snapshot${if (uiState.savedSnapshotCount == 1) "" else "s"}",
+                    textResources.getString(
+                        R.string.mission_plan_updated_value,
+                        forecast.fetchedAtEpochMillis.toWeatherUpdatedText(),
+                    ) +
+                        textResources.getQuantityString(
+                            R.plurals.weather_saved_snapshots,
+                            uiState.savedSnapshotCount,
+                            uiState.savedSnapshotCount,
+                        ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -2046,13 +2099,13 @@ private fun RouteWeatherBriefing(
                 listOfNotNull(
                     forecast.current.temperatureCelsius?.let { temperature -> temperature.toWeatherTemperatureText() },
                     forecast.current.apparentTemperatureCelsius?.let { apparent ->
-                        "feels ${apparent.toWeatherTemperatureText()}"
+                        textResources.getString(R.string.briefing_feels_value, apparent.toWeatherTemperatureText())
                     },
                     forecast.current.windSpeedKilometersPerHour?.let { wind ->
-                        "wind ${wind.roundToInt()} km/h"
+                        textResources.getString(R.string.briefing_wind_value_km_h, wind.roundToInt())
                     },
                     forecast.current.windGustKilometersPerHour?.let { gust ->
-                        "gusts ${gust.roundToInt()} km/h"
+                        textResources.getString(R.string.mission_plan_gusts_value_km_h, gust.roundToInt())
                     },
                 )
             if (currentMetrics.isNotEmpty()) {
@@ -2065,22 +2118,26 @@ private fun RouteWeatherBriefing(
             val nextHourMetrics =
                 listOfNotNull(
                     outlook?.precipitationProbabilityPercent?.let { probability ->
-                        "rain ${probability.roundToInt()}%"
+                        textResources.getString(R.string.mission_plan_rain_value, probability.roundToInt())
                     },
                     outlook?.windGustKilometersPerHour?.let { gust ->
-                        "gusts ${gust.roundToInt()} km/h"
+                        textResources.getString(R.string.mission_plan_gusts_value_km_h, gust.roundToInt())
                     },
                     outlook?.visibilityMeters?.let { visibility ->
-                        "visibility ${visibility.toKilometersText()}"
+                        textResources.getString(R.string.mission_plan_visibility_value, visibility.toKilometersText())
                     },
                     outlook?.freezingLevelHeightMeters?.let { height ->
-                        "freezing ${height.roundToInt()} m"
+                        textResources.getString(R.string.briefing_freezing_value_m, height.roundToInt())
                     },
                 )
             if (nextHourMetrics.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Next hour • ${nextHourMetrics.joinToString("  •  ")}",
+                    text =
+                        textResources.getString(
+                            R.string.briefing_next_hour_value,
+                            nextHourMetrics.joinToString("  •  "),
+                        ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -2088,21 +2145,29 @@ private fun RouteWeatherBriefing(
             if (forecast.daily.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "OUTLOOK",
+                    text = textResources.getString(R.string.briefing_outlook),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelMedium,
                 )
                 forecast.daily.take(3).forEach { day ->
                     val dayMetrics =
                         listOfNotNull(
-                            day.minimumTemperatureCelsius?.let { value -> "${value.toWeatherTemperatureText()} low" },
-                            day.maximumTemperatureCelsius?.let { value -> "${value.toWeatherTemperatureText()} high" },
-                            day.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
-                            day.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                            day.minimumTemperatureCelsius?.let { value ->
+                                textResources.getString(R.string.briefing_value_low, value.toWeatherTemperatureText())
+                            },
+                            day.maximumTemperatureCelsius?.let { value ->
+                                textResources.getString(R.string.briefing_value_high, value.toWeatherTemperatureText())
+                            },
+                            day.precipitationProbabilityPercent?.let { value ->
+                                textResources.getString(R.string.mission_plan_rain_value, value.roundToInt())
+                            },
+                            day.windGustKilometersPerHour?.let { value ->
+                                textResources.getString(R.string.mission_plan_gusts_value_km_h, value.roundToInt())
+                            },
                         )
                     Text(
                         text =
-                            "${day.date} • ${weatherConditionText(day.weatherCode)}" +
+                            "${day.date} • ${weatherConditionText(textResources, day.weatherCode)}" +
                                 dayMetrics
                                     .takeIf { metrics -> metrics.isNotEmpty() }
                                     ?.let { metrics -> " • ${metrics.joinToString("  •  ")}" }
@@ -2115,7 +2180,7 @@ private fun RouteWeatherBriefing(
             if (uiState.isStale) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Showing a cached forecast — unable to update.",
+                    text = textResources.getString(R.string.briefing_showing_a_cached_forecast_unable_to_update),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -2129,12 +2194,20 @@ private fun RouteWeatherBriefing(
                 )
             }
             TextButton(onClick = { onLoad(true) }) {
-                Text(if (uiState.isCached) "Update weather" else "Refresh weather")
+                Text(
+                    if (uiState.isCached) {
+                        textResources.getString(
+                            R.string.briefing_update_weather,
+                        )
+                    } else {
+                        textResources.getString(R.string.briefing_refresh_weather)
+                    },
+                )
             }
         }
     }
     TextButton(onClick = { openCompanionUrl(context, OPEN_METEO_URL) }) {
-        Text("Weather data by Open-Meteo.com")
+        Text(textResources.getString(R.string.briefing_weather_data_by_open_meteo_com))
     }
 }
 
@@ -2142,27 +2215,44 @@ private fun Double.toWeatherTemperatureText(): String = "${roundToInt()}°C"
 
 private fun Long.toWeatherUpdatedText(): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(this))
 
+@Composable
 private fun TrailIntelligence.trailIntelligenceTitle(remainingMinutes: Int): String {
-    val windowLabel = if (remainingMinutes >= 30) "NEXT 30 MINUTES" else "TO FINISH • NEXT $remainingMinutes MIN"
-    return if (context == TrailIntelligenceContext.PLANNED_DAY) "DAY START • $windowLabel" else windowLabel
+    val textResources = LocalResources.current
+    val windowLabel =
+        if (remainingMinutes >=
+            30
+        ) {
+            textResources.getString(R.string.briefing_next_30_minutes)
+        } else {
+            textResources.getString(R.string.briefing_to_finish_next_value_min, remainingMinutes)
+        }
+    return if (context ==
+        TrailIntelligenceContext.PLANNED_DAY
+    ) {
+        textResources.getString(R.string.briefing_day_start_value, windowLabel)
+    } else {
+        windowLabel
+    }
 }
 
 private const val OPEN_METEO_URL = "https://open-meteo.com/"
 
+@Composable
 private fun activeHikeStatusText(
     phase: ActiveHikePhase,
     offRoute: Boolean,
 ): String {
-    if (offRoute) return "Off route — check the watch"
+    val textResources = LocalResources.current
+    if (offRoute) return textResources.getString(R.string.live_hike_off_route_check_the_watch)
     return when (phase) {
-        ActiveHikePhase.WAITING_FOR_LOCATION -> "Waiting for a GPS position"
-        ActiveHikePhase.TO_START -> "Heading to the route start"
-        ActiveHikePhase.FOLLOWING_ROUTE -> "Following the route"
-        ActiveHikePhase.PAUSED -> "Navigation paused on watch"
-        ActiveHikePhase.FINISHED -> "Route complete"
-        ActiveHikePhase.RECORDING -> "Recording on watch"
-        ActiveHikePhase.RECORDING_PAUSED -> "Recording paused on watch"
-        ActiveHikePhase.IDLE -> "No active hike"
+        ActiveHikePhase.WAITING_FOR_LOCATION -> textResources.getString(R.string.briefing_waiting_for_a_gps_position)
+        ActiveHikePhase.TO_START -> textResources.getString(R.string.briefing_heading_to_the_route_start)
+        ActiveHikePhase.FOLLOWING_ROUTE -> textResources.getString(R.string.briefing_following_the_route)
+        ActiveHikePhase.PAUSED -> textResources.getString(R.string.briefing_navigation_paused_on_watch)
+        ActiveHikePhase.FINISHED -> textResources.getString(R.string.live_hike_route_complete)
+        ActiveHikePhase.RECORDING -> textResources.getString(R.string.briefing_recording_on_watch)
+        ActiveHikePhase.RECORDING_PAUSED -> textResources.getString(R.string.briefing_recording_paused_on_watch)
+        ActiveHikePhase.IDLE -> textResources.getString(R.string.live_hike_no_active_hike)
     }
 }
 
@@ -2173,9 +2263,15 @@ private fun todayRouteSummary(route: RouteLibraryRoute): String =
         route.summary.estimatedDurationSeconds.toDurationText(),
     ).joinToString("  •  ")
 
-private fun firstThirtyMinutesBriefing(route: RouteLibraryRoute): String =
-    "First 30 min  •  ${route.summary.firstThirtyMinutesDistanceMeters.toKilometersText()}  •  " +
-        "+${route.summary.firstThirtyMinutesAscentMeters.toInt()} m climb"
+@Composable
+private fun firstThirtyMinutesBriefing(route: RouteLibraryRoute): String {
+    val textResources = LocalResources.current
+    return textResources.getString(
+        R.string.route_first_thirty_minutes_summary,
+        route.summary.firstThirtyMinutesDistanceMeters.toKilometersText(),
+        route.summary.firstThirtyMinutesAscentMeters.toInt(),
+    )
+}
 
 private fun Double.toKilometersText(): String =
     if (this < 1_000.0) {
@@ -2387,6 +2483,15 @@ private fun openCompanionUrl(
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }.onFailure { error ->
         Log.w("FilePickerScreen", "Unable to open URL: $url", error)
-        Toast.makeText(context, "Unable to open link.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.briefing_unable_to_open_link), Toast.LENGTH_SHORT).show()
     }
 }
+
+@Composable
+private fun localizedWeatherLocationLabel(label: String): String =
+    when (label) {
+        "Current route position" -> stringResource(R.string.weather_location_current_route_position)
+        "Planned day start" -> stringResource(R.string.weather_location_planned_day_start)
+        "Route start" -> stringResource(R.string.weather_location_route_start)
+        else -> label
+    }

@@ -1,5 +1,7 @@
 package com.glancemap.glancemapcompanionapp.transfer.presentation
 
+import com.glancemap.glancemapcompanionapp.R
+
 internal data class NotificationTextPresentation(
     val title: String,
     val contentText: String,
@@ -8,7 +10,9 @@ internal data class NotificationTextPresentation(
     val waitingForReconnect: Boolean,
 )
 
-internal object TransferTextFormatter {
+internal class TransferTextFormatter(
+    private val text: (Int) -> String,
+) {
     fun formatCardText(
         rawProgressText: String,
         statusMessage: String,
@@ -27,8 +31,8 @@ internal object TransferTextFormatter {
                 isPaused = isPaused,
                 canResume = canResume,
             )
-        val fileLine = extractFileLine(normalized)
-        val progressLine = extractProgressLine(normalized)
+        val fileLine = extractFileLine(normalized)?.let { text(R.string.transfer_file_line).format(it.substring(5)) }
+        val progressLine = extractProgressLine(normalized)?.let { localizeProgressPrefix(it) }
         return listOfNotNull(fileLine, simpleStatus, progressLine)
             .joinToString("\n")
             .ifBlank { simpleStatus }
@@ -54,10 +58,13 @@ internal object TransferTextFormatter {
             val waitingForReconnect = normalized.contains("Waiting for watch reconnect", ignoreCase = true)
             val title =
                 when {
-                    waitingForReconnect && progress < 0 -> "Waiting for watch reconnect…"
-                    waitingForReconnect -> "Waiting for watch reconnect… ${progress.coerceIn(0, 100)}%"
-                    progress < 0 -> "Sending file to watch…"
-                    else -> "Sending file to watch… ${progress.coerceIn(0, 100)}%"
+                    waitingForReconnect && progress < 0 -> text(R.string.transfer_status_waiting_for_watch_reconnect)
+                    waitingForReconnect ->
+                        text(
+                            R.string.transfer_status_waiting_for_watch_reconnect_value,
+                        ).format(progress.coerceIn(0, 100))
+                    progress < 0 -> text(R.string.transfer_status_sending_file_to_watch)
+                    else -> text(R.string.transfer_status_sending_file_to_watch_value).format(progress.coerceIn(0, 100))
                 }
             return NotificationTextPresentation(
                 title = title,
@@ -74,8 +81,8 @@ internal object TransferTextFormatter {
                 isPaused = isPaused,
                 canResume = normalized.contains("paused by user", ignoreCase = true),
             )
-        val fileLine = extractFileLine(normalized)
-        val progressLine = extractProgressLine(normalized)
+        val fileLine = extractFileLine(normalized)?.let { text(R.string.transfer_file_line).format(it.substring(5)) }
+        val progressLine = extractProgressLine(normalized)?.let { localizeProgressPrefix(it) }
         val title =
             if (progress < 0) {
                 simpleStatus
@@ -105,7 +112,7 @@ internal object TransferTextFormatter {
     private fun normalizedText(
         primary: String,
         secondary: String,
-    ): String = primary.trim().ifBlank { secondary.trim() }.ifBlank { "Sending…" }
+    ): String = primary.trim().ifBlank { secondary.trim() }.ifBlank { text(R.string.transfer_status_sending) }
 
     private fun simpleStatus(
         rawText: String,
@@ -119,22 +126,25 @@ internal object TransferTextFormatter {
                 .lowercase()
 
         return when {
-            combined.contains("cancelling") || combined.contains("stopping current transfer") -> "Stopping…"
+            combined.contains(
+                "cancelling",
+            ) ||
+                combined.contains("stopping current transfer") -> text(R.string.transfer_action_stopping)
             combined.contains("validating checksum") ||
                 combined.contains("checksum:") ||
                 combined.contains("verifying") ||
                 combined.contains("checking partial file") ||
                 combined.contains("repairing partial file") ||
-                combined.contains("preparing checksum") -> "Verifying…"
+                combined.contains("preparing checksum") -> text(R.string.transfer_status_verifying)
             combined.contains("checking existing files on watch") ||
                 combined.contains("connecting to phone") ||
                 combined.contains("starting") ||
-                combined.contains("preparing") -> "Preparing…"
-            isWaitingText(combined) -> "Waiting…"
-            isPaused && canResume -> "Paused"
-            isPaused -> "Waiting…"
-            combined.contains("resuming") -> "Sending…"
-            else -> "Sending…"
+                combined.contains("preparing") -> text(R.string.transfer_status_preparing)
+            isWaitingText(combined) -> text(R.string.common_status_waiting)
+            isPaused && canResume -> text(R.string.transfer_status_paused)
+            isPaused -> text(R.string.common_status_waiting)
+            combined.contains("resuming") -> text(R.string.transfer_status_sending)
+            else -> text(R.string.transfer_status_sending)
         }
     }
 
@@ -146,6 +156,25 @@ internal object TransferTextFormatter {
             normalized.contains("network lost") ||
             normalized.contains("connection interrupted")
     }
+
+    private fun localizeProgressPrefix(
+        line: String,
+    ): String =
+        when {
+            line.startsWith(
+                "Channel:",
+                ignoreCase = true,
+            ) -> text(R.string.transfer_channel_progress).format(line.substring(8))
+            line.startsWith(
+                "Message:",
+                ignoreCase = true,
+            ) -> text(R.string.transfer_message_progress).format(line.substring(8))
+            line.startsWith(
+                "Checksum:",
+                ignoreCase = true,
+            ) -> text(R.string.transfer_checksum_progress).format(line.substring(9))
+            else -> line
+        }
 
     private fun extractFileLine(text: String): String? =
         text

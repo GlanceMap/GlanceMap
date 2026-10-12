@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,6 +99,7 @@ internal fun ColumnScope.MainTrackingContent(
     isCompactScreen: Boolean,
     adaptive: CompanionAdaptiveSpec,
 ) {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     val isArkluzNotificationPending = sessionState.status.contains("Arkluz notification pending")
     var showArkluzPendingWarning by remember { mutableStateOf(false) }
@@ -237,7 +239,7 @@ internal fun ColumnScope.MainTrackingContent(
                 }
             }
             Text(
-                text = sessionStatusText(sessionState),
+                text = sessionStatusText(textResources::getString, sessionState),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

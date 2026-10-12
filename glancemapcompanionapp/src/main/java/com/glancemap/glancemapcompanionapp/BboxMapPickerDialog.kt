@@ -32,10 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.glancemap.glancemapcompanionapp.R
 
 private const val DEFAULT_PICKER_BBOX = "6.00,45.30,6.90,45.90"
 private const val OSM_PICKER_WARNING_AREA_DEGREES = 4.0
@@ -56,11 +59,12 @@ internal fun BboxMapPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     val nativeMapPickerAvailable = remember(context) { context.hasNativeMapPickerGraphicsSupport() }
     if (!nativeMapPickerAvailable) {
         NativeMapPickerUnavailableDialog(
-            title = "Map picker unavailable",
+            title = textResources.getString(R.string.map_picker_map_picker_unavailable),
             onDismiss = onDismiss,
         )
         return
@@ -144,6 +148,7 @@ private fun BboxMapPickerSurface(
     state: BboxMapPickerState,
     actions: BboxMapPickerActions,
 ) {
+    val textResources = LocalResources.current
     var fineControlEnabled by remember { mutableStateOf(false) }
 
     Surface(
@@ -172,7 +177,7 @@ private fun BboxMapPickerSurface(
             )
             Spacer(modifier = Modifier.height(2.dp))
             MapPickerHelpText(
-                text = "Pan the map, tap to recenter, long-press the center icon to move the area, then resize it.",
+                text = textResources.getString(R.string.map_picker_pan_the_map_tap_to_recenter_long),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -201,8 +206,9 @@ private fun BboxMapPickerSurface(
 
 @Composable
 private fun BboxMapPickerHeader() {
+    val textResources = LocalResources.current
     Text(
-        "Pick area",
+        textResources.getString(R.string.map_picker_pick_area),
         style = MaterialTheme.typography.titleLarge,
     )
 }
@@ -257,7 +263,7 @@ private fun BboxMapPickerMap(
         }
         if (mapState.mapReady) {
             MapPickerCoverageLegend(
-                text = "Darker square: POI already imported",
+                text = stringResource(R.string.map_picker_darker_square_poi_already_imported),
                 color = Color(0x662AB16D),
                 modifier =
                     Modifier
@@ -284,6 +290,7 @@ private fun BboxMapPickerControls(
     onFineControlChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val textResources = LocalResources.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -292,13 +299,13 @@ private fun BboxMapPickerControls(
         MapPickerControlRow(
             checked = centerOnLocation,
             onCheckedChange = onCenterOnLocationChanged,
-            label = "Center on my location",
+            label = textResources.getString(R.string.map_picker_center_on_my_location),
             modifier = Modifier.weight(1f),
         )
         MapPickerControlRow(
             checked = fineControlEnabled,
             onCheckedChange = onFineControlChanged,
-            label = "Fine control",
+            label = textResources.getString(R.string.map_picker_fine_control),
         )
     }
 }
@@ -310,6 +317,7 @@ private fun BboxMapPickerFooter(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val textResources = LocalResources.current
     Text(
         sizeStatus.label,
         style = MaterialTheme.typography.bodySmall,
@@ -321,14 +329,14 @@ private fun BboxMapPickerFooter(
         horizontalArrangement = Arrangement.End,
     ) {
         OutlinedButton(onClick = onDismiss) {
-            Text("Cancel")
+            Text(textResources.getString(R.string.common_action_cancel))
         }
         Spacer(modifier = Modifier.width(8.dp))
         Button(
             onClick = { onConfirm(selectedBbox) },
             enabled = MapPickerBounds.parseOrNull(selectedBbox) != null && sizeStatus.canConfirm,
         ) {
-            Text("Use area")
+            Text(textResources.getString(R.string.map_picker_use_area))
         }
     }
 }
@@ -344,6 +352,7 @@ private fun describeBboxSize(
     bbox: String,
     selectedSource: PoiImportSource,
 ): BboxSizeStatus {
+    val textResources = LocalResources.current
     val bounds = MapPickerBounds.parseOrNull(bbox)
     val defaultColor = MaterialTheme.colorScheme.onSurfaceVariant
     val warningColor = MaterialTheme.colorScheme.tertiary
@@ -351,13 +360,13 @@ private fun describeBboxSize(
     val labelAndColor =
         when {
             bounds == null ->
-                Triple("Move or zoom the map to select an area.", defaultColor, false)
+                Triple(textResources.getString(R.string.map_picker_move_or_zoom_the_map_to_select), defaultColor, false)
             bounds.isTooLargeForPoiImport(selectedSource) ->
-                Triple("Too large for POI import. Zoom in or pick a smaller area.", errorColor, false)
+                Triple(textResources.getString(R.string.map_picker_too_large_for_poi_import_zoom_in), errorColor, false)
             bounds.isLargeForOsm(selectedSource) ->
-                Triple("Large for OSM. It may be slow or fail on dense areas.", warningColor, true)
+                Triple(textResources.getString(R.string.map_picker_large_for_osm_it_may_be_slow), warningColor, true)
             else ->
-                Triple("Area size looks OK. POI count is checked during import.", defaultColor, true)
+                Triple(textResources.getString(R.string.map_picker_area_size_looks_ok_poi_count_is), defaultColor, true)
         }
     return BboxSizeStatus(
         label = labelAndColor.first,

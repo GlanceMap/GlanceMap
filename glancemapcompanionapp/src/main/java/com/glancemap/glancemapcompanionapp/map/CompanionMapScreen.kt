@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -327,6 +328,7 @@ internal fun CompanionMapScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val migrationTextResources = LocalResources.current
     val coroutineScope = rememberCoroutineScope()
     val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
     val bundleStore = remember(context) { PhoneOfflineBundleStore(context.applicationContext) }
@@ -420,7 +422,10 @@ internal fun CompanionMapScreen(
                     phase = journal.phase,
                     source = journal.source,
                     target = journal.target,
-                    message = "A previous data move can be resumed.",
+                    message =
+                        migrationTextResources.getString(
+                            R.string.storage_migration_a_previous_data_move_can_be_resumed,
+                        ),
                 )
             } ?: PhoneOfflineStorageMigrationState(),
         )
@@ -948,8 +953,8 @@ internal fun CompanionMapScreen(
                 )
             bundleViewModel.cancel()
             fileTransferViewModel.cancelTransfer()
-            fileTransferViewModel.cancelPoiImport()
-            fileTransferViewModel.cancelRoutingDownload()
+            fileTransferViewModel.cancelPoiImport(context)
+            fileTransferViewModel.cancelRoutingDownload(context)
             if (selectedOfflineMapName != null) {
                 mapUiState = mapUiState.changeBaseSource(PhoneMapSource.Online)
                 mapRuntime = mapRuntime.invalidate()
@@ -966,7 +971,10 @@ internal fun CompanionMapScreen(
                         phase = PhoneOfflineStorageMigrationPhase.FAILED,
                         source = current,
                         target = target,
-                        message = "Active data operations did not stop in time.",
+                        message =
+                            migrationTextResources.getString(
+                                R.string.storage_migration_active_data_operations_did_not_stop_in,
+                            ),
                     )
                 return@launch
             }

@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDownloadDiagnostics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -159,6 +160,7 @@ internal class PhoneOfflineStorageMigration(
     private val fixedSourceLocation: PhoneOfflineStorageLocation?,
     private val fixedTargetLocation: PhoneOfflineStorageLocation?,
     private val reconciler: PhoneOfflineStorageReconciler,
+    private val text: (Int) -> String,
     private val availableSpace: (File) -> Long = { directory -> directory.usableSpace },
 ) {
     private val mutex = Mutex()
@@ -166,6 +168,7 @@ internal class PhoneOfflineStorageMigration(
     constructor(context: Context) :
         this(
             storage = PhoneOfflineStorage(context.applicationContext),
+            text = context.applicationContext::getString,
             fixedSourceRoot = null,
             fixedTargetRoot = null,
             fixedJournalFile = null,
@@ -178,11 +181,13 @@ internal class PhoneOfflineStorageMigration(
         sourceRoot: File,
         targetRoot: File,
         journalFile: File,
+        text: (Int) -> String,
         reconciler: PhoneOfflineStorageReconciler = PhoneOfflineStorageReconciler(),
         availableSpace: (File) -> Long = { directory -> directory.usableSpace },
     ) :
         this(
             storage = null,
+            text = text,
             fixedSourceRoot = sourceRoot,
             fixedTargetRoot = targetRoot,
             fixedJournalFile = journalFile,
@@ -220,13 +225,15 @@ internal class PhoneOfflineStorageMigration(
             (fixedTargetRoot ?: storage?.canonicalRoot(target))
                 ?: return PhoneOfflineStorageMigrationResult.Failure(
                     PhoneOfflineStorageMigrationError.EXTERNAL_UNAVAILABLE,
-                    "The selected storage is unavailable.",
+                    text(R.string.storage_migration_the_selected_storage_is_unavailable),
                 )
         val pending = readJournal(journalFile())
         if (pending != null && pending.target != target) {
             return PhoneOfflineStorageMigrationResult.Failure(
                 PhoneOfflineStorageMigrationError.MIGRATION_ALREADY_PENDING,
-                "Finish the pending move to ${pending.target.label} first.",
+                text(
+                    R.string.storage_migration_finish_the_pending_move_to_value_first,
+                ).format(text(pending.target.labelResource())),
             )
         }
         val sourceLocation = pending?.source ?: fixedSourceLocation ?: checkNotNull(storage).location()
@@ -259,7 +266,7 @@ internal class PhoneOfflineStorageMigration(
                 failure(
                     journal,
                     PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                    error.message ?: "The interrupted storage switch could not be recovered.",
+                    error.message ?: text(R.string.storage_migration_the_interrupted_storage_switch_could_not_be),
                 )
             }
         }
@@ -340,14 +347,14 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                "The selected storage directory cannot be created.",
+                text(R.string.storage_migration_the_selected_storage_directory_cannot_be_created),
             )
         }
         if (!pruneStaging(File(journal.stagingRootPath), expectedFiles)) {
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.COPY_FAILED,
-                "Obsolete migration staging files could not be removed.",
+                text(R.string.storage_migration_obsolete_migration_staging_files_could_not_be),
             )
         }
         val stagedFiles = expectedFiles.filter { entry -> matches(File(stagingRoot, entry.relativePath), entry) }
@@ -369,8 +376,10 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.INSUFFICIENT_SPACE,
-                "Not enough free space: ${spaceRequirement.requiredSpaceBytes} bytes required " +
-                    "for the remaining files, $availableBytes available.",
+                text(
+                    R.string.storage_migration_not_enough_free_space_value_bytes_required,
+                ).format(spaceRequirement.requiredSpaceBytes) +
+                    text(R.string.storage_migration_for_the_remaining_files_value_available).format(availableBytes),
             )
         }
 
@@ -386,8 +395,12 @@ internal class PhoneOfflineStorageMigration(
                     return failure(
                         journal,
                         PhoneOfflineStorageMigrationError.INSUFFICIENT_SPACE,
-                        "Not enough free space: ${spaceRequirement.requiredSpaceBytes} bytes required " +
-                            "for the remaining files, $availableBytes available.",
+                        text(
+                            R.string.storage_migration_not_enough_free_space_value_bytes_required,
+                        ).format(spaceRequirement.requiredSpaceBytes) +
+                            text(
+                                R.string.storage_migration_for_the_remaining_files_value_available,
+                            ).format(availableBytes),
                     )
                 }
             }
@@ -397,7 +410,7 @@ internal class PhoneOfflineStorageMigration(
                     return failure(
                         journal,
                         PhoneOfflineStorageMigrationError.COPY_FAILED,
-                        "The migration staging directory cannot be created.",
+                        text(R.string.storage_migration_the_migration_staging_directory_cannot_be_created),
                     )
                 }
                 onProgress(
@@ -428,7 +441,9 @@ internal class PhoneOfflineStorageMigration(
                         return failure(
                             journal,
                             PhoneOfflineStorageMigrationError.COPY_FAILED,
-                            "The copied file could not be verified: ${entry.relativePath}",
+                            text(
+                                R.string.storage_migration_the_copied_file_could_not_be_verified,
+                            ).format(entry.relativePath),
                         )
                     }
                     if (!wasAlreadyStaged) copiedFiles += 1
@@ -462,7 +477,7 @@ internal class PhoneOfflineStorageMigration(
                 return failure(
                     journal,
                     PhoneOfflineStorageMigrationError.VERIFY_FAILED,
-                    "The staged GlanceMap data did not pass integrity verification.",
+                    text(R.string.storage_migration_the_staged_glancemap_data_did_not_pass),
                 )
             }
             onProgress(
@@ -526,7 +541,7 @@ internal class PhoneOfflineStorageMigration(
             failure(
                 journal = journal,
                 error = PhoneOfflineStorageMigrationError.COPY_FAILED,
-                message = error.message ?: "The GlanceMap data move failed.",
+                message = error.message ?: text(R.string.storage_migration_the_glancemap_data_move_failed),
             )
         }
     }
@@ -565,7 +580,7 @@ internal class PhoneOfflineStorageMigration(
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                        "The duplicate migration staging directory could not be removed.",
+                        text(R.string.storage_migration_the_duplicate_migration_staging_directory_could_not),
                     )
                 } else {
                     val cleanupJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.CLEANUP)
@@ -591,7 +606,7 @@ internal class PhoneOfflineStorageMigration(
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                        "The invalid migration staging directory could not be removed.",
+                        text(R.string.storage_migration_the_invalid_migration_staging_directory_could_not),
                     )
                 } else {
                     val cleanupJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.CLEANUP)
@@ -603,7 +618,7 @@ internal class PhoneOfflineStorageMigration(
                 failure(
                     journal,
                     PhoneOfflineStorageMigrationError.VERIFY_FAILED,
-                    "The migration staging data is incomplete and the target is not verified.",
+                    text(R.string.storage_migration_the_migration_staging_data_is_incomplete_and),
                     recoveryPhase = PhoneOfflineStorageMigrationPhase.COPYING,
                 )
         }
@@ -639,13 +654,13 @@ internal class PhoneOfflineStorageMigration(
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                        "The unverified migration staging directory could not be removed.",
+                        text(R.string.storage_migration_the_unverified_migration_staging_directory_could_not),
                     )
                 } else {
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                        "The unverified migration was kept inactive and can be retried.",
+                        text(R.string.storage_migration_the_unverified_migration_was_kept_inactive_and),
                         recoveryPhase = PhoneOfflineStorageMigrationPhase.COPYING,
                     )
                 }
@@ -655,14 +670,14 @@ internal class PhoneOfflineStorageMigration(
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                        "The previous target directory could not be restored.",
+                        text(R.string.storage_migration_the_previous_target_directory_could_not_be),
                     )
                 } else {
                     stagingRoot.deleteRecursively()
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                        "The migration was restored safely and can be retried.",
+                        text(R.string.storage_migration_the_migration_was_restored_safely_and_can),
                         recoveryPhase = PhoneOfflineStorageMigrationPhase.COPYING,
                     )
                 }
@@ -673,13 +688,13 @@ internal class PhoneOfflineStorageMigration(
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                        "The unverified migration staging directory could not be removed.",
+                        text(R.string.storage_migration_the_unverified_migration_staging_directory_could_not),
                     )
                 } else {
                     failure(
                         journal,
                         PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                        "The incomplete migration was kept inactive and can be retried.",
+                        text(R.string.storage_migration_the_incomplete_migration_was_kept_inactive_and),
                         recoveryPhase = PhoneOfflineStorageMigrationPhase.COPYING,
                     )
                 }
@@ -688,7 +703,7 @@ internal class PhoneOfflineStorageMigration(
                 failure(
                     journal,
                     PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                    "The interrupted storage switch cannot be verified yet.",
+                    text(R.string.storage_migration_the_interrupted_storage_switch_cannot_be_verified),
                 )
         }
     }
@@ -704,21 +719,21 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                "The previous target directory could not be restored.",
+                text(R.string.storage_migration_the_previous_target_directory_could_not_be),
             )
         }
         if (stagingRoot.exists() && !stagingRoot.deleteRecursively()) {
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                "The invalid migration staging directory could not be removed.",
+                text(R.string.storage_migration_the_invalid_migration_staging_directory_could_not),
             )
         }
         val retryJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.COPYING)
         writeJournal(journalFile(), retryJournal)
         return PhoneOfflineStorageMigrationResult.Failure(
             PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-            "The incomplete migration was rolled back safely and can be retried.",
+            text(R.string.storage_migration_the_incomplete_migration_was_rolled_back_safely),
         )
     }
 
@@ -738,14 +753,14 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                "The existing target directory could not be preserved.",
+                text(R.string.storage_migration_the_existing_target_directory_could_not_be),
             )
         }
         if (finalTargetRoot.exists() && backupRoot.exists()) {
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                "The existing target directory could not be disambiguated safely.",
+                text(R.string.storage_migration_the_existing_target_directory_could_not_be_2),
             )
         }
         if (!stagingRoot.renameTo(finalTargetRoot)) {
@@ -753,7 +768,7 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.SWITCH_FAILED,
-                "The verified GlanceMap directory could not be activated.",
+                text(R.string.storage_migration_the_verified_glancemap_directory_could_not_be),
             )
         }
         val cleanupJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.CLEANUP)
@@ -801,7 +816,7 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.VERIFY_FAILED,
-                "The active GlanceMap directory did not pass integrity verification.",
+                text(R.string.storage_migration_the_active_glancemap_directory_did_not_pass),
                 recoveryPhase = PhoneOfflineStorageMigrationPhase.CLEANUP,
             )
         }
@@ -810,14 +825,14 @@ internal class PhoneOfflineStorageMigration(
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                "The new storage is active, but the old data could not be deleted yet.",
+                text(R.string.storage_migration_the_new_storage_is_active_but_the),
             )
         }
         if (journal.manifestPath != null && !deleteMigrationManifest(File(journal.manifestPath))) {
             return failure(
                 journal,
                 PhoneOfflineStorageMigrationError.CLEANUP_FAILED,
-                "The migration manifest could not be removed yet.",
+                text(R.string.storage_migration_the_migration_manifest_could_not_be_removed),
             )
         }
         journalFile().delete()

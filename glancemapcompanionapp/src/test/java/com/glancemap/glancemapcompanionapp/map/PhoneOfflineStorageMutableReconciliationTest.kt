@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDay
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibrarySummary
+import com.glancemap.glancemapcompanionapp.testsupport.englishCompanionText
 import com.google.gson.Gson
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -14,6 +15,8 @@ import java.nio.charset.StandardCharsets
 import kotlin.io.path.createTempDirectory
 
 class PhoneOfflineStorageMutableReconciliationTest {
+    private val text = ::englishCompanionText
+
     @Test
     fun routeLibraryMergesSourceAndTargetByStableId() {
         withRouteRoots(
@@ -181,7 +184,7 @@ class PhoneOfflineStorageMutableReconciliationTest {
                 writeMissionPlan(sd, missionPlanIndex("V1"))
 
                 val first =
-                    PhoneOfflineStorageMigration(sd, internal, File(root, "first.properties"))
+                    PhoneOfflineStorageMigration(sd, internal, File(root, "first.properties"), text)
                         .move(PhoneOfflineStorageLocation.EXTERNAL)
                 assertTrue(first is PhoneOfflineStorageMigrationResult.Success)
                 assertTrue(File(internal, "migration-conflicts").isDirectory)
@@ -204,7 +207,7 @@ class PhoneOfflineStorageMutableReconciliationTest {
                 )
 
                 val second =
-                    PhoneOfflineStorageMigration(internal, sd, File(root, "second.properties"))
+                    PhoneOfflineStorageMigration(internal, sd, File(root, "second.properties"), text)
                         .move(PhoneOfflineStorageLocation.EXTERNAL)
                 assertTrue(second is PhoneOfflineStorageMigrationResult.Success)
 

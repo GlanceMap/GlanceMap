@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -110,17 +111,22 @@ private fun RowScope.AnalysisCell(
     )
 }
 
+@Composable
 private fun formatRouteAnalysisElevation(
     meters: Double,
     isMetric: Boolean,
-): String =
-    if (isMetric) {
+): String {
+    val textResources = LocalResources.current
+    return if (isMetric) {
         "${meters.roundToInt()} m"
     } else {
-        "${(meters * 3.28084).roundToInt()} ft"
+        textResources.getString(R.string.route_analysis_value_ft, (meters * 3.28084).roundToInt())
     }
+}
 
+@Composable
 private fun formatRouteAnalysisDuration(seconds: Double): String {
+    val textResources = LocalResources.current
     if (!seconds.isFinite()) return "—"
     val totalMinutes = (seconds / 60.0).roundToInt().coerceAtLeast(1)
     val hours = totalMinutes / 60
@@ -128,6 +134,6 @@ private fun formatRouteAnalysisDuration(seconds: Double): String {
     return if (hours == 0) {
         "$minutes min"
     } else {
-        "$hours h ${minutes.toString().padStart(2, '0')} min"
+        textResources.getString(R.string.route_library_value_h_value_min, hours, minutes.toString().padStart(2, '0'))
     }
 }

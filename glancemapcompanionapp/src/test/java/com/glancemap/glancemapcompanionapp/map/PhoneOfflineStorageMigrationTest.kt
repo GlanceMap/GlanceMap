@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.glancemapcompanionapp.testsupport.englishCompanionText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -47,7 +48,7 @@ class PhoneOfflineStorageMigrationTest {
                 val journal = File(root, "migration.properties")
 
                 val result =
-                    PhoneOfflineStorageMigration(source, target, journal)
+                    PhoneOfflineStorageMigration(source, target, journal, text = ::englishCompanionText)
                         .move(PhoneOfflineStorageLocation.EXTERNAL)
 
                 assertEquals(PhoneOfflineStorageMigrationResult.Success::class, result::class)
@@ -88,7 +89,12 @@ class PhoneOfflineStorageMigrationTest {
                 var cancelled = false
 
                 try {
-                    PhoneOfflineStorageMigration(source, target, journal).move(PhoneOfflineStorageLocation.EXTERNAL) {
+                    PhoneOfflineStorageMigration(
+                        source,
+                        target,
+                        journal,
+                        text = ::englishCompanionText,
+                    ).move(PhoneOfflineStorageLocation.EXTERNAL) {
                         if (!cancelled) {
                             cancelled = true
                             throw CancellationException("test interruption")
@@ -100,11 +106,16 @@ class PhoneOfflineStorageMigrationTest {
                 assertTrue(journal.isFile)
                 assertEquals(
                     PhoneOfflineStorageMigrationPhase.COPYING,
-                    PhoneOfflineStorageMigration(source, target, journal).pending()!!.phase,
+                    PhoneOfflineStorageMigration(
+                        source,
+                        target,
+                        journal,
+                        text = ::englishCompanionText,
+                    ).pending()!!.phase,
                 )
 
                 val result =
-                    PhoneOfflineStorageMigration(source, target, journal)
+                    PhoneOfflineStorageMigration(source, target, journal, text = ::englishCompanionText)
                         .move(PhoneOfflineStorageLocation.EXTERNAL)
 
                 assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
@@ -153,7 +164,7 @@ class PhoneOfflineStorageMigrationTest {
                 journal.outputStream().use { properties.store(it, "test") }
 
                 val result =
-                    PhoneOfflineStorageMigration(source, target, journal)
+                    PhoneOfflineStorageMigration(source, target, journal, text = ::englishCompanionText)
                         .move(PhoneOfflineStorageLocation.EXTERNAL)
 
                 assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
@@ -399,7 +410,7 @@ class PhoneOfflineStorageMigrationTest {
                 val progress = mutableListOf<PhoneOfflineStorageMigrationProgress>()
 
                 val result =
-                    PhoneOfflineStorageMigration(source, target, journal)
+                    PhoneOfflineStorageMigration(source, target, journal, text = ::englishCompanionText)
                         .move(PhoneOfflineStorageLocation.EXTERNAL) { progress += it }
 
                 assertTrue(result is PhoneOfflineStorageMigrationResult.Success)
@@ -617,7 +628,7 @@ class PhoneOfflineStorageMigrationTest {
                 val journal = File(root, "journal.properties")
 
                 try {
-                    PhoneOfflineStorageMigration(source, target, journal)
+                    PhoneOfflineStorageMigration(source, target, journal, text = ::englishCompanionText)
                         .move(PhoneOfflineStorageLocation.EXTERNAL) {
                             throw CancellationException("test interruption")
                         }
@@ -642,6 +653,7 @@ class PhoneOfflineStorageMigrationTest {
         journal: File,
     ): PhoneOfflineStorageMigration =
         PhoneOfflineStorageMigration(
+            text = ::englishCompanionText,
             sourceRoot = source,
             targetRoot = target,
             journalFile = journal,

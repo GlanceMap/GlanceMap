@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.PhoneCompassDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapImportDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapRendererDiagnostics
@@ -46,7 +47,9 @@ object CompanionDiagnosticsEmailComposer {
         val appContext = context.applicationContext
         val file =
             latestSavedPhoneDiagnosticsFile(appContext)
-                ?: throw IllegalStateException("No saved phone recording available")
+                ?: throw IllegalStateException(
+                    appContext.getString(R.string.diagnostics_no_saved_phone_recording_available),
+                )
         composeEmailWithFile(context, file)
     }
 
@@ -90,14 +93,14 @@ object CompanionDiagnosticsEmailComposer {
             }
 
         val chooserIntent =
-            Intent.createChooser(emailIntent, "Send diagnostics").apply {
+            Intent.createChooser(emailIntent, context.getString(R.string.diagnostics_send_title)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
         try {
             context.startActivity(chooserIntent)
         } catch (error: ActivityNotFoundException) {
-            throw IllegalStateException("No email app available", error)
+            throw IllegalStateException(context.getString(R.string.diagnostics_no_email_app_available), error)
         }
     }
 

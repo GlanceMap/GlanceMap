@@ -56,7 +56,11 @@ class NotificationHelper(
     fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "File Transfers", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(
+                    CHANNEL_ID,
+                    service.getString(R.string.transfer_notification_file_transfers),
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
             )
         }
     }
@@ -132,9 +136,10 @@ class NotificationHelper(
             NOTIFICATION_ID,
             NotificationCompat
                 .Builder(service, CHANNEL_ID)
-                .setContentTitle("Transfer Complete")
-                .setContentText("Sent $fileName to $targetName")
-                .setSmallIcon(smallNotificationIconRes)
+                .setContentTitle(service.getString(R.string.transfer_notification_transfer_complete))
+                .setContentText(
+                    service.getString(R.string.transfer_notification_sent_value_to_value, fileName, targetName),
+                ).setSmallIcon(smallNotificationIconRes)
                 .setOngoing(false)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
@@ -147,7 +152,7 @@ class NotificationHelper(
      * ✅ Call this when a transfer fails, so the user can swipe it away.
      */
     fun showError(
-        title: String = "Transfer Failed",
+        title: String = service.getString(R.string.transfer_notification_transfer_failed),
         message: String,
     ) {
         // Remove any foreground ongoing notification first
@@ -190,9 +195,9 @@ class NotificationHelper(
         text: String,
         isPaused: Boolean,
     ): NotificationCompat.Builder {
-        val normalizedText = text.trim().ifBlank { "Transferring…" }
+        val normalizedText = text.trim().ifBlank { service.getString(R.string.transfer_notification_transferring) }
         val presentation =
-            TransferTextFormatter.buildNotificationPresentation(
+            TransferTextFormatter(service::getString).buildNotificationPresentation(
                 rawText = normalizedText,
                 progress = progress,
                 isPaused = isPaused,
@@ -218,7 +223,14 @@ class NotificationHelper(
             )
 
         val toggleAction = if (isPaused) FileTransferService.ACTION_RESUME else FileTransferService.ACTION_PAUSE
-        val toggleLabel = if (isPaused) "Resume" else "Pause"
+        val toggleLabel =
+            if (isPaused) {
+                service.getString(
+                    R.string.common_action_resume,
+                )
+            } else {
+                service.getString(R.string.common_action_pause)
+            }
         val toggleIcon = if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
 
         val toggleIntent =
@@ -244,7 +256,11 @@ class NotificationHelper(
                 .setCategory(NotificationCompat.CATEGORY_PROGRESS)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(expandedBody))
                 .setContentIntent(contentIntent)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPending)
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    service.getString(R.string.common_action_cancel),
+                    cancelPending,
+                )
 
         if (!waitingForReconnect) {
             builder.addAction(toggleIcon, toggleLabel, togglePending)

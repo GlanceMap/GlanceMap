@@ -16,10 +16,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapcompanionapp.R
 
 @Composable
 internal fun rememberMapPickerLocationAllowed(requestPermission: Boolean): Boolean {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     var allowed by remember {
         mutableStateOf(context.hasApproximateLocationPermission())
@@ -45,11 +48,10 @@ internal fun rememberMapPickerLocationAllowed(requestPermission: Boolean): Boole
                 showDisclosure = false
                 disclosureHandled = true
             },
-            title = { Text("Location for map selection") },
+            title = { Text(textResources.getString(R.string.map_picker_location_for_map_selection)) },
             text = {
                 Text(
-                    "GlanceMap uses your location only to centre this map selector on your current " +
-                        "position. Your location stays on this device and is not sent to the tracking service.",
+                    textResources.getString(R.string.map_picker_glancemap_uses_your_location_only_to_centre),
                 )
             },
             confirmButton = {
@@ -60,7 +62,7 @@ internal fun rememberMapPickerLocationAllowed(requestPermission: Boolean): Boole
                         launcher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     },
                 ) {
-                    Text("Continue")
+                    Text(textResources.getString(R.string.common_action_continue))
                 }
             },
             dismissButton = {
@@ -70,7 +72,7 @@ internal fun rememberMapPickerLocationAllowed(requestPermission: Boolean): Boole
                         disclosureHandled = true
                     },
                 ) {
-                    Text("Cancel")
+                    Text(textResources.getString(R.string.common_action_cancel))
                 }
             },
         )

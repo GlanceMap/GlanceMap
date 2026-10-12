@@ -359,13 +359,13 @@ internal fun mapToolsStorageSetting(
 ) {
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_settings_storage_selector),
-        selectedLabel = location.label,
+        selectedLabel = stringResource(location.labelResource()),
         options =
             PhoneOfflineStorageLocation.entries.mapNotNull { location ->
                 if (location == PhoneOfflineStorageLocation.EXTERNAL && !externalStorageAvailable) {
                     null
                 } else {
-                    location to location.label
+                    location to stringResource(location.labelResource())
                 }
             },
         onSelect = onStorageChangeRequested,
@@ -457,34 +457,44 @@ private fun mapToolsCompassSettings(
     Text(stringResource(R.string.map_tools_maps_compass_heading))
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_maps_compass_provider),
-        selectedLabel = compass.providerMode.label,
-        options = PhoneCompassProviderMode.entries.map { mode -> mode to mode.label },
+        selectedLabel = stringResource(compass.providerMode.localizedLabelResource()),
+        options =
+            PhoneCompassProviderMode.entries.map { mode ->
+                mode to stringResource(mode.localizedLabelResource())
+            },
         onSelect = { mode -> actions.onCompassSettingsChanged(compass.copy(providerMode = mode)) },
     )
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_maps_compass_settings_mode),
-        selectedLabel = compass.settingsMode.label,
-        options = PhoneCompassSettingsMode.entries.map { mode -> mode to mode.label },
+        selectedLabel = stringResource(compass.settingsMode.localizedLabelResource()),
+        options =
+            PhoneCompassSettingsMode.entries.map { mode ->
+                mode to stringResource(mode.localizedLabelResource())
+            },
         onSelect = { mode -> actions.onCompassSettingsChanged(compass.copy(settingsMode = mode)) },
     )
     if (compass.settingsMode == PhoneCompassSettingsMode.ADVANCED) {
         mapToolsMapSettingPicker(
             label = stringResource(R.string.map_tools_maps_compass_heading_source),
-            selectedLabel = compass.headingSourceMode.label,
-            options = PhoneCompassHeadingSourceMode.entries.map { mode -> mode to mode.label },
+            selectedLabel = stringResource(compass.headingSourceMode.localizedLabelResource()),
+            options =
+                PhoneCompassHeadingSourceMode.entries.map { mode ->
+                    mode to
+                        stringResource(mode.localizedLabelResource())
+                },
             onSelect = { mode -> actions.onCompassSettingsChanged(compass.copy(headingSourceMode = mode)) },
         )
     }
     Text(
         stringResource(
             R.string.map_tools_maps_compass_accuracy,
-            phoneCompassAccuracyLabel(compassState.accuracy),
+            stringResource(phoneCompassAccuracyLabelResource(compassState.accuracy)),
         ),
     )
     Text(
         stringResource(
             R.string.map_tools_maps_compass_source,
-            compassState.pipeline.label,
+            stringResource(compassState.pipeline.localizedLabelResource()),
         ),
     )
     if (compass.calibrationAlertsEnabled && compassState.calibrationRecommended) {
@@ -606,10 +616,15 @@ private fun mapToolsMapTerrainSettings(
     Text(stringResource(R.string.map_tools_maps_terrain_heading))
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_maps_dem_source),
-        selectedLabel = settings.demSource.shortLabel,
+        selectedLabel = stringResource(settings.demSource.shortLabelResource()),
         options =
             PhoneOfflineDemSource.entries.map { source ->
-                source to stringResource(R.string.map_tools_maps_dem_source_detail, source.label, source.detailLabel)
+                source to
+                    stringResource(
+                        R.string.map_tools_maps_dem_source_detail,
+                        stringResource(source.labelResource()),
+                        stringResource(source.detailLabelResource()),
+                    )
             },
         onSelect = { source -> onSettingsChanged(settings.copy(demSource = source)) },
     )
@@ -1336,4 +1351,41 @@ private fun PhoneMapPoiMarkerStyle.labelResource(): Int =
     when (this) {
         PhoneMapPoiMarkerStyle.BADGE -> R.string.map_tools_poi_marker_style_badge
         PhoneMapPoiMarkerStyle.THEME_ICON -> R.string.map_tools_poi_marker_style_theme_icon
+    }
+
+private fun PhoneCompassProviderMode.localizedLabelResource(): Int =
+    when (this) {
+        PhoneCompassProviderMode.GOOGLE_FUSED -> R.string.compass_label_google_fused_default
+        PhoneCompassProviderMode.SENSOR_MANAGER -> R.string.compass_label_android_sensors
+    }
+
+private fun PhoneCompassSettingsMode.localizedLabelResource(): Int =
+    when (this) {
+        PhoneCompassSettingsMode.AUTOMATIC -> R.string.compass_label_automatic_recommended
+        PhoneCompassSettingsMode.ADVANCED -> R.string.compass_label_advanced
+    }
+
+private fun PhoneCompassHeadingSourceMode.localizedLabelResource(): Int =
+    when (this) {
+        PhoneCompassHeadingSourceMode.AUTO -> R.string.compass_label_auto_recommended
+        PhoneCompassHeadingSourceMode.TYPE_HEADING -> R.string.compass_label_heading_sensor
+        PhoneCompassHeadingSourceMode.ROTATION_VECTOR -> R.string.compass_label_rotation_vector
+        PhoneCompassHeadingSourceMode.MAGNETOMETER -> R.string.compass_label_magnetometer_accelerometer
+    }
+
+private fun PhoneCompassPipeline.localizedLabelResource(): Int =
+    when (this) {
+        PhoneCompassPipeline.NONE -> R.string.map_tools_settings_sensor_unavailable
+        PhoneCompassPipeline.GOOGLE_FUSED -> R.string.compass_label_google_fused
+        PhoneCompassPipeline.ROTATION_VECTOR -> R.string.compass_label_rotation_vector
+        PhoneCompassPipeline.HEADING_SENSOR -> R.string.compass_label_heading_sensor
+        PhoneCompassPipeline.MAG_ACCEL_FALLBACK -> R.string.compass_label_magnetometer_accelerometer
+    }
+
+private fun phoneCompassAccuracyLabelResource(accuracy: Int): Int =
+    when (accuracy) {
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> R.string.compass_accuracy_high
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> R.string.map_tools_poi_icon_size_medium
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> R.string.compass_accuracy_low
+        else -> R.string.map_tools_settings_sensor_unavailable
     }

@@ -34,13 +34,16 @@ internal object PhoneOfflineBundleDownloadRuntime {
     private val mutableState = MutableStateFlow<PhoneOfflineBundleDownloadState>(PhoneOfflineBundleDownloadState.Idle)
     val state: StateFlow<PhoneOfflineBundleDownloadState> = mutableState.asStateFlow()
 
-    fun initialize(operation: PhoneOfflineBundleOperation?) {
+    fun initialize(
+        operation: PhoneOfflineBundleOperation?,
+        context: Context,
+    ) {
         if (mutableState.value !is PhoneOfflineBundleDownloadState.Idle) return
         operation?.currentSelection()?.let { selection ->
             val progress =
                 PhoneOfflineBundleProgress(
                     phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-                    detail = "Preparing ${selection.area.region}",
+                    detail = context.getString(R.string.bundle_notification_preparing_value, selection.area.region),
                 )
             mutableState.value =
                 when (operation.status) {
@@ -64,7 +67,7 @@ internal class PhoneOfflineBundleDownloadClient(
     private val operationStore = PhoneOfflineBundleOperationStore(applicationContext)
 
     init {
-        PhoneOfflineBundleDownloadRuntime.initialize(operationStore.load())
+        PhoneOfflineBundleDownloadRuntime.initialize(operationStore.load(), applicationContext)
     }
 
     fun start(selection: PhoneOfflineBundleSelection) {
@@ -91,7 +94,7 @@ internal class PhoneOfflineBundleDownloadClient(
                 )
             }
         operationStore.save(operation)
-        PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState())
+        PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState(applicationContext))
         PhoneOfflineBundleDownloadService.start(applicationContext)
     }
 
@@ -104,7 +107,7 @@ internal class PhoneOfflineBundleDownloadClient(
     fun resume() {
         val operation = operationStore.load() ?: return
         operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
-        PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState())
+        PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState(applicationContext))
         PhoneOfflineBundleDownloadService.start(applicationContext)
     }
 
@@ -221,7 +224,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         val initialProgress =
             PhoneOfflineBundleProgress(
                 phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-                detail = "Preparing ${selection.area.region}",
+                detail = this.getString(R.string.bundle_notification_preparing_value, selection.area.region),
             )
         if (!startForegroundFor(selection.area.region, initialProgress)) {
             handleFailure(operation, selection.area.id, PhoneOfflineBundleFailure.STORAGE)
@@ -242,7 +245,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                 val initialProgress =
                     PhoneOfflineBundleProgress(
                         phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-                        detail = "Preparing ${area.region}",
+                        detail = this.getString(R.string.bundle_notification_preparing_value, area.region),
                     )
                 PhoneOfflineBundleDownloadRuntime.publish(
                     PhoneOfflineBundleDownloadState.Downloading(area.id, initialProgress),
@@ -298,8 +301,8 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                 ?: PhoneOfflineBundleDownloadState.Idle,
         )
         showTerminalNotification(
-            title = "Offline bundle download complete",
-            detail = selections.lastOrNull()?.area?.region ?: "Bundle ready",
+            title = this.getString(R.string.bundle_notification_offline_bundle_download_complete),
+            detail = selections.lastOrNull()?.area?.region ?: this.getString(R.string.bundle_notification_bundle_ready),
             includeResumeAction = false,
         )
     }
@@ -335,7 +338,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         when (val request = stopRequest) {
             null -> {
                 operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
-                PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState())
+                PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState(this))
             }
             StopRequest.CANCEL -> cancelOperation(operation)
             else -> {
@@ -371,7 +374,11 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                 else ->
                     PhoneOfflineBundleProgress(
                         phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-                        detail = "Partial files saved for ${selection.area.region}",
+                        detail =
+                            this.getString(
+                                R.string.bundle_notification_partial_files_saved_for_value,
+                                selection.area.region,
+                            ),
                     )
             }
         PhoneOfflineBundleDownloadRuntime.publish(
@@ -384,11 +391,11 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         showTerminalNotification(
             title =
                 if (request == StopRequest.PAUSE) {
-                    "Offline bundle download paused"
+                    this.getString(R.string.bundle_notification_offline_bundle_download_paused)
                 } else {
-                    "Offline bundle download stopped"
+                    this.getString(R.string.bundle_notification_offline_bundle_download_stopped)
                 },
-            detail = "Partial files saved for ${selection.area.region}",
+            detail = this.getString(R.string.bundle_notification_partial_files_saved_for_value, selection.area.region),
             includeResumeAction = true,
         )
     }
@@ -403,10 +410,14 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         PhoneOfflineBundleDownloadRuntime.publish(
             PhoneOfflineBundleDownloadState.Failed(reason = reason, areaId = areaId, context = context),
         )
-        val notificationDetail = context?.detail.orEmpty().ifBlank { failureLabel(reason) }
+        val notificationDetail = context?.detail.orEmpty().ifBlank { failureLabel(this, reason) }
         showTerminalNotification(
-            title = "Offline bundle download failed",
-            detail = "$notificationDetail Partial files saved; retry to resume.",
+            title = this.getString(R.string.bundle_notification_offline_bundle_download_failed),
+            detail =
+                this.getString(
+                    R.string.bundle_notification_value_partial_files_saved_retry_to_resume,
+                    notificationDetail,
+                ),
             includeResumeAction = true,
         )
     }
@@ -467,8 +478,8 @@ internal class PhoneOfflineBundleDownloadService : Service() {
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
-                .setContentTitle("Downloading offline bundle")
-                .setContentText("$areaLabel · ${progress.detail.ifBlank { phaseLabel(progress.phase) }}")
+                .setContentTitle(this.getString(R.string.bundle_notification_downloading_offline_bundle))
+                .setContentText("$areaLabel · ${progress.detail.ifBlank { phaseLabel(this, progress.phase) }}")
                 .setContentIntent(contentIntent())
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -477,11 +488,11 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(progress.detail))
                 .addAction(
                     android.R.drawable.ic_media_pause,
-                    "Pause",
+                    this.getString(R.string.common_action_pause),
                     serviceAction(ACTION_PAUSE, REQUEST_PAUSE),
                 ).addAction(
                     android.R.drawable.ic_menu_close_clear_cancel,
-                    "Stop",
+                    this.getString(R.string.common_action_stop),
                     serviceAction(ACTION_STOP, REQUEST_STOP),
                 )
         val percent = progress.percent
@@ -522,7 +533,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         if (includeResumeAction) {
             builder.addAction(
                 android.R.drawable.ic_media_play,
-                "Resume",
+                this.getString(R.string.common_action_resume),
                 serviceAction(ACTION_RESUME, REQUEST_RESUME),
             )
         }
@@ -545,7 +556,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
             notificationManager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Offline map downloads",
+                    this.getString(R.string.bundle_notification_offline_map_downloads),
                     NotificationManager.IMPORTANCE_LOW,
                 ),
             )
@@ -660,14 +671,14 @@ private fun notificationProgress(progress: PhoneOfflineBundleProgress): Int? =
 
 private fun PhoneOfflineBundleOperation.currentSelection(): PhoneOfflineBundleSelection? = selections.getOrNull(nextSelectionIndex)
 
-private fun PhoneOfflineBundleOperation.asInitialState(): PhoneOfflineBundleDownloadState {
+private fun PhoneOfflineBundleOperation.asInitialState(context: Context): PhoneOfflineBundleDownloadState {
     val selection =
         currentSelection()
             ?: return PhoneOfflineBundleDownloadState.Idle
     val progress =
         PhoneOfflineBundleProgress(
             phase = PhoneOfflineBundlePhase.DOWNLOADING_MAP,
-            detail = "Preparing ${selection.area.region}",
+            detail = context.getString(R.string.bundle_notification_preparing_value, selection.area.region),
         )
     return when (status) {
         PhoneOfflineBundleOperationStatus.RUNNING ->
@@ -687,25 +698,49 @@ internal fun PhoneOfflineBundleOperation.canResumeSameOperation(
 
 private fun PhoneOfflineBundleDownloadState.isRunning(): Boolean = this is PhoneOfflineBundleDownloadState.Downloading
 
-private fun phaseLabel(phase: PhoneOfflineBundlePhase): String =
+private fun phaseLabel(
+    context: Context,
+    phase: PhoneOfflineBundlePhase,
+): String =
     when (phase) {
-        PhoneOfflineBundlePhase.DOWNLOADING_MAP -> "Downloading map"
-        PhoneOfflineBundlePhase.INSTALLING_MAP -> "Installing map"
-        PhoneOfflineBundlePhase.DOWNLOADING_POI -> "Downloading POI"
-        PhoneOfflineBundlePhase.INSTALLING_POI -> "Installing POI"
-        PhoneOfflineBundlePhase.DOWNLOADING_ROUTING -> "Downloading routing"
-        PhoneOfflineBundlePhase.DOWNLOADING_DEM -> "Downloading elevation"
-        PhoneOfflineBundlePhase.DOWNLOADING_REFUGES -> "Downloading Refuges.info"
+        PhoneOfflineBundlePhase.DOWNLOADING_MAP -> context.getString(R.string.map_bundle_phase_downloading_map)
+        PhoneOfflineBundlePhase.INSTALLING_MAP -> context.getString(R.string.map_bundle_phase_installing_map)
+        PhoneOfflineBundlePhase.DOWNLOADING_POI -> context.getString(R.string.bundle_notification_downloading_poi)
+        PhoneOfflineBundlePhase.INSTALLING_POI -> context.getString(R.string.bundle_notification_installing_poi)
+        PhoneOfflineBundlePhase.DOWNLOADING_ROUTING ->
+            context.getString(
+                R.string.bundle_notification_downloading_routing,
+            )
+        PhoneOfflineBundlePhase.DOWNLOADING_DEM -> context.getString(R.string.map_bundle_phase_downloading_dem)
+        PhoneOfflineBundlePhase.DOWNLOADING_REFUGES ->
+            context.getString(
+                R.string.bundle_notification_downloading_refuges_info,
+            )
     }
 
-private fun failureLabel(reason: PhoneOfflineBundleFailure): String =
+private fun failureLabel(
+    context: Context,
+    reason: PhoneOfflineBundleFailure,
+): String =
     when (reason) {
-        PhoneOfflineBundleFailure.NETWORK -> "Network error."
-        PhoneOfflineBundleFailure.HTTP -> "The download server rejected the file."
-        PhoneOfflineBundleFailure.STORAGE -> "Storage error."
-        PhoneOfflineBundleFailure.ARCHIVE -> "The archive was invalid."
-        PhoneOfflineBundleFailure.INVALID_MAP -> "The map was invalid."
-        PhoneOfflineBundleFailure.INVALID_POI -> "The POI database was invalid."
-        PhoneOfflineBundleFailure.INVALID_REFUGES_INFO -> "The Refuges.info database was invalid."
-        PhoneOfflineBundleFailure.CANCELLED -> "The download was cancelled."
+        PhoneOfflineBundleFailure.NETWORK -> context.getString(R.string.bundle_notification_network_error)
+        PhoneOfflineBundleFailure.HTTP ->
+            context.getString(
+                R.string.bundle_notification_the_download_server_rejected_the_file,
+            )
+        PhoneOfflineBundleFailure.STORAGE -> context.getString(R.string.bundle_notification_storage_error)
+        PhoneOfflineBundleFailure.ARCHIVE -> context.getString(R.string.bundle_notification_the_archive_was_invalid)
+        PhoneOfflineBundleFailure.INVALID_MAP -> context.getString(R.string.bundle_notification_the_map_was_invalid)
+        PhoneOfflineBundleFailure.INVALID_POI ->
+            context.getString(
+                R.string.bundle_notification_the_poi_database_was_invalid,
+            )
+        PhoneOfflineBundleFailure.INVALID_REFUGES_INFO ->
+            context.getString(
+                R.string.bundle_notification_the_refuges_info_database_was_invalid,
+            )
+        PhoneOfflineBundleFailure.CANCELLED ->
+            context.getString(
+                R.string.bundle_notification_the_download_was_cancelled,
+            )
     }

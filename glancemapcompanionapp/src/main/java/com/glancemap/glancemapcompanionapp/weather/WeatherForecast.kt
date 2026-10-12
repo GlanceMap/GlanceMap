@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.weather
 
+import com.glancemap.glancemapcompanionapp.R
 import kotlinx.coroutines.CancellationException
 
 data class WeatherForecastLocation(
@@ -171,18 +172,21 @@ internal class WeatherForecastRepository(
     }
 }
 
-fun weatherConditionText(weatherCode: Int?): String =
+fun weatherConditionText(
+    resources: android.content.res.Resources,
+    weatherCode: Int?,
+): String =
     when (weatherCode) {
-        0 -> "Clear"
-        1 -> "Mainly clear"
-        2 -> "Partly cloudy"
-        3 -> "Overcast"
-        45, 48 -> "Fog"
-        51, 53, 55, 56, 57 -> "Drizzle"
-        61, 63, 65, 66, 67 -> "Rain"
-        71, 73, 75, 77 -> "Snow"
-        80, 81, 82 -> "Rain showers"
-        85, 86 -> "Snow showers"
-        95, 96, 99 -> "Thunderstorm"
-        else -> "Forecast unavailable"
+        0 -> resources.getString(R.string.weather_condition_clear_sky)
+        1 -> resources.getString(R.string.weather_condition_mainly_clear)
+        2 -> resources.getString(R.string.weather_condition_partly_cloudy)
+        3 -> resources.getString(R.string.weather_condition_overcast)
+        45, 48 -> resources.getString(R.string.weather_condition_fog)
+        51, 53, 55, 56, 57 -> resources.getString(R.string.weather_condition_drizzle)
+        61, 63, 65, 66, 67 -> resources.getString(R.string.weather_condition_rain)
+        71, 73, 75, 77 -> resources.getString(R.string.weather_condition_snow)
+        80, 81, 82 -> resources.getString(R.string.weather_condition_rain_showers)
+        85, 86 -> resources.getString(R.string.weather_condition_snow_showers)
+        95, 96, 99 -> resources.getString(R.string.weather_condition_thunderstorm)
+        else -> resources.getString(R.string.mission_plan_forecast_unavailable)
     }

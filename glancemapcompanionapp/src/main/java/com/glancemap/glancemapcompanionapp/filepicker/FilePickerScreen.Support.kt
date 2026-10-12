@@ -12,6 +12,7 @@ import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
 import com.glancemap.glancemapcompanionapp.PoiImportSource
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import java.io.File
 
@@ -199,12 +200,12 @@ internal fun saveGeneratedFileToUri(
         context.contentResolver.openInputStream(source.uri)?.use { input ->
             context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
                 input.copyTo(output)
-            } ?: error("Unable to open destination file.")
-        } ?: error("Unable to open source file.")
-        "${source.fileName} saved on phone."
+            } ?: error(context.getString(R.string.phone_files_unable_to_open_destination_file))
+        } ?: error(context.getString(R.string.phone_files_unable_to_open_source_file))
+        context.getString(R.string.phone_files_value_saved_on_phone, source.fileName)
     }.getOrElse {
         it.localizedMessage?.takeIf { message -> message.isNotBlank() }
-            ?: "Failed to save ${source.fileName}."
+            ?: context.getString(R.string.phone_files_failed_to_save_value, source.fileName)
     }
 
 internal fun saveGeneratedFilesToTree(
@@ -214,7 +215,7 @@ internal fun saveGeneratedFilesToTree(
 ): String {
     val folder =
         DocumentFile.fromTreeUri(context, treeUri)
-            ?: return "Failed to open selected folder."
+            ?: return context.getString(R.string.phone_files_failed_to_open_selected_folder)
 
     var savedCount = 0
     var firstFailure: String? = null
@@ -226,13 +227,13 @@ internal fun saveGeneratedFilesToTree(
                 folder.createFile(
                     guessGeneratedFileMimeType(file.fileName),
                     file.fileName,
-                ) ?: error("Unable to create ${file.fileName}.")
+                ) ?: error(context.getString(R.string.phone_files_unable_to_create_value, file.fileName))
 
             context.contentResolver.openInputStream(file.uri)?.use { input ->
                 context.contentResolver.openOutputStream(destination.uri, "w")?.use { output ->
                     input.copyTo(output)
-                } ?: error("Unable to open ${file.fileName} for writing.")
-            } ?: error("Unable to open ${file.fileName}.")
+                } ?: error(context.getString(R.string.phone_files_unable_to_open_value_for_writing, file.fileName))
+            } ?: error(context.getString(R.string.phone_files_unable_to_open_value, file.fileName))
             savedCount += 1
         }.onFailure {
             if (firstFailure == null) {
@@ -242,9 +243,16 @@ internal fun saveGeneratedFilesToTree(
     }
 
     return when {
-        savedCount == files.size -> "${files.size} file(s) saved on phone."
-        savedCount > 0 -> "$savedCount/${files.size} file(s) saved on phone. ${firstFailure.orEmpty()}".trim()
-        else -> firstFailure ?: "Failed to save files on phone."
+        savedCount == files.size -> context.getString(R.string.phone_files_value_file_s_saved_on_phone, files.size)
+        savedCount > 0 ->
+            context
+                .getString(
+                    R.string.phone_files_value_value_file_s_saved_on_phone,
+                    savedCount,
+                    files.size,
+                    firstFailure.orEmpty(),
+                ).trim()
+        else -> firstFailure ?: context.getString(R.string.phone_files_failed_to_save_files_on_phone)
     }
 }
 
@@ -333,10 +341,10 @@ internal fun clearPhoneStoredFiles(
 
     val message =
         when {
-            removedCount == 0 -> "No phone files were removed."
-            clearPoi && clearRouting -> "$removedCount phone file(s) cleared."
-            clearPoi -> "$removedCount POI file(s) cleared."
-            else -> "$removedCount routing file(s) cleared."
+            removedCount == 0 -> context.getString(R.string.phone_files_no_phone_files_were_removed)
+            clearPoi && clearRouting -> context.getString(R.string.phone_files_value_phone_file_s_cleared, removedCount)
+            clearPoi -> context.getString(R.string.phone_files_value_poi_file_s_cleared, removedCount)
+            else -> context.getString(R.string.phone_files_value_routing_file_s_cleared, removedCount)
         }
 
     return ClearPhoneStoredFilesResult(
@@ -372,9 +380,13 @@ internal fun formatPhoneStoredFilesSummary(
     group: PhoneStoredFilesGroup,
 ): String =
     if (group.fileCount > 0) {
-        "${group.fileCount} file(s) · ${Formatter.formatShortFileSize(context, group.totalBytes)}"
+        context.getString(
+            R.string.phone_files_value_file_s_value,
+            group.fileCount,
+            Formatter.formatShortFileSize(context, group.totalBytes),
+        )
     } else {
-        "No files"
+        context.getString(R.string.phone_files_no_files)
     }
 
 private const val COMPANION_UI_PREFS = "companion_ui_prefs"

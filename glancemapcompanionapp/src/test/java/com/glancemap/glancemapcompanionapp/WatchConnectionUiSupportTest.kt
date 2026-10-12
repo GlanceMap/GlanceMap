@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp
 
+import com.glancemap.glancemapcompanionapp.testsupport.englishCompanionText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,19 +27,21 @@ class WatchConnectionUiSupportTest {
     fun targetNodeNotConnectedIsMappedToFriendlyDisconnectedMessage() {
         val message =
             normalizeWatchMapsStatusMessage(
+                ::englishCompanionText,
                 IllegalStateException("4000: TARGET_NODE_NOT_CONNECTED"),
             )
 
-        assertEquals(selectedWatchDisconnectedStatusMessage(), message)
+        assertEquals(selectedWatchDisconnectedStatusMessage(::englishCompanionText), message)
     }
 
     @Test
     fun timeoutIsMappedToFriendlyTimeoutMessage() {
         val message =
             normalizeWatchMapsStatusMessage(
+                ::englishCompanionText,
                 TimeoutException("Watch did not answer in time while reading maps."),
             )
 
-        assertEquals(selectedWatchTimeoutStatusMessage(), message)
+        assertEquals(selectedWatchTimeoutStatusMessage(::englishCompanionText), message)
     }
 }

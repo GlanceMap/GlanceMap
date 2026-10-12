@@ -24,8 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import kotlin.math.roundToInt
 
@@ -35,9 +37,10 @@ internal fun MissionDayPlanProfileDialog(
     weather: MissionDayWeatherUiState?,
     onDismiss: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Day ${dayUi.day.dayNumber} plan profile") },
+        title = { Text(textResources.getString(R.string.mission_profile_day_value_plan_profile, dayUi.day.dayNumber)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -49,8 +52,7 @@ internal fun MissionDayPlanProfileDialog(
                 )
                 Text(
                     text =
-                        "Elevation comes from the GPX. Weather is shown only at prepared GPX start, " +
-                            "midpoint, and finish samples—there is no invented weather between them.",
+                        textResources.getString(R.string.mission_profile_elevation_comes_from_the_gpx_weather_is),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -66,7 +68,7 @@ internal fun MissionDayPlanProfileDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Done")
+                Text(textResources.getString(R.string.common_action_done))
             }
         },
     )
@@ -77,9 +79,10 @@ private fun MissionDayPlanGraph(
     profile: MissionDayPlanProfile,
     weatherSamples: List<MissionDayWeatherSampleUi>,
 ) {
+    val textResources = LocalResources.current
     if (profile.points.size < 2) {
         Text(
-            text = "This GPX day does not contain enough points for an elevation profile.",
+            text = textResources.getString(R.string.mission_profile_this_gpx_day_does_not_contain_enough),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -90,13 +93,18 @@ private fun MissionDayPlanGraph(
     val elevationRange = elevations.minOrNull()?.let { minimum -> elevations.maxOrNull()?.let { maximum -> minimum to maximum } }
 
     Text(
-        text = "ELEVATION • DISTANCE • PLANNED TIME",
+        text = textResources.getString(R.string.mission_profile_elevation_distance_planned_time),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
     elevationRange?.let { (minimum, maximum) ->
         Text(
-            text = "${minimum.roundToInt()}–${maximum.roundToInt()} m • scroll sideways to inspect the route",
+            text =
+                textResources.getString(
+                    R.string.mission_profile_value_value_m_scroll_sideways_to_inspect,
+                    minimum.roundToInt(),
+                    maximum.roundToInt(),
+                ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -177,12 +185,16 @@ private fun MissionDayPlanGraph(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "Start • 0 km",
+                text = textResources.getString(R.string.mission_profile_start_0_km),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                text = "Finish • ${profile.totalDistanceMeters.toProfileDistance()}",
+                text =
+                    textResources.getString(
+                        R.string.mission_profile_finish_value,
+                        profile.totalDistanceMeters.toProfileDistance(),
+                    ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -190,7 +202,7 @@ private fun MissionDayPlanGraph(
     }
     if (elevations.size < 2) {
         Text(
-            text = "The GPX has insufficient elevation values, so only the distance and weather markers are shown.",
+            text = textResources.getString(R.string.mission_profile_the_gpx_has_insufficient_elevation_values_so),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -202,15 +214,16 @@ private fun MissionDayProfileWeatherSummary(
     dayUi: MissionPlanDayUi,
     weather: MissionDayWeatherUiState?,
 ) {
+    val textResources = LocalResources.current
     Text(
-        text = "WEATHER MARKERS",
+        text = textResources.getString(R.string.mission_profile_weather_markers),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelMedium,
     )
     when {
         dayUi.day.plannedDate == null || dayUi.day.plannedStartTime == null -> {
             Text(
-                text = "Add a date and planned start time, then load Day weather to place weather on the timeline.",
+                text = textResources.getString(R.string.mission_profile_add_a_date_and_planned_start_time),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -218,7 +231,7 @@ private fun MissionDayProfileWeatherSummary(
 
         weather?.isLoading == true -> {
             Text(
-                text = "Loading planned weather…",
+                text = textResources.getString(R.string.mission_profile_loading_planned_weather),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -226,7 +239,7 @@ private fun MissionDayProfileWeatherSummary(
 
         weather?.samples?.isEmpty() != false -> {
             Text(
-                text = "Load Day weather to add start, midpoint, and finish conditions to this profile.",
+                text = textResources.getString(R.string.mission_profile_load_day_weather_to_add_start_midpoint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -242,6 +255,7 @@ private fun MissionDayProfileWeatherSummary(
 
 @Composable
 private fun MissionDayProfileWeatherRow(sample: MissionDayWeatherSampleUi) {
+    val textResources = LocalResources.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -252,21 +266,31 @@ private fun MissionDayProfileWeatherRow(sample: MissionDayWeatherSampleUi) {
         ) {
             Text(
                 text =
-                    "${sample.target.position.label.uppercase()} • " +
+                    "${textResources.getString(sample.target.position.labelResource()).uppercase()} • " +
                         "${sample.target.distanceFromDayStartMeters.toProfileDistance()} • " +
-                        (sample.scheduledTimeIso8601?.toProfileTime() ?: "planned time unavailable"),
+                        (
+                            sample.scheduledTimeIso8601?.toProfileTime()
+                                ?: textResources.getString(R.string.mission_profile_planned_time_unavailable)
+                        ),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelMedium,
             )
             val scheduled = sample.scheduledOutlook
             val daily = sample.dailyOutlook
             if (scheduled != null) {
-                Text(text = weatherConditionText(scheduled.weatherCode), fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = weatherConditionText(textResources, scheduled.weatherCode),
+                    fontWeight = FontWeight.SemiBold,
+                )
                 val metrics =
                     listOfNotNull(
                         scheduled.temperatureCelsius?.let { value -> "${value.roundToInt()}°C" },
-                        scheduled.precipitationProbabilityPercent?.let { value -> "rain ${value.roundToInt()}%" },
-                        scheduled.windGustKilometersPerHour?.let { value -> "gusts ${value.roundToInt()} km/h" },
+                        scheduled.precipitationProbabilityPercent?.let { value ->
+                            textResources.getString(R.string.mission_plan_rain_value, value.roundToInt())
+                        },
+                        scheduled.windGustKilometersPerHour?.let { value ->
+                            textResources.getString(R.string.mission_plan_gusts_value_km_h, value.roundToInt())
+                        },
                     )
                 if (metrics.isNotEmpty()) {
                     Text(
@@ -277,13 +301,21 @@ private fun MissionDayProfileWeatherRow(sample: MissionDayWeatherSampleUi) {
                 }
             } else if (daily != null) {
                 Text(
-                    text = "Daily outlook • ${weatherConditionText(daily.weatherCode)}",
+                    text =
+                        textResources.getString(
+                            R.string.mission_profile_daily_outlook_value,
+                            weatherConditionText(textResources, daily.weatherCode),
+                        ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else {
                 Text(
-                    text = sample.message ?: "Forecast unavailable at this GPX location.",
+                    text =
+                        sample.message
+                            ?: textResources.getString(
+                                R.string.mission_profile_forecast_unavailable_at_this_gpx_location,
+                            ),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -292,12 +324,15 @@ private fun MissionDayProfileWeatherRow(sample: MissionDayWeatherSampleUi) {
     }
 }
 
-private fun Double.toProfileDistance(): String =
-    if (this < 1_000.0) {
+@Composable
+private fun Double.toProfileDistance(): String {
+    val textResources = LocalResources.current
+    return if (this < 1_000.0) {
         "${roundToInt()} m"
     } else {
-        "%.1f km".format(this / 1_000.0)
+        textResources.getString(R.string.route_library_1f_km).format(this / 1_000.0)
     }
+}
 
 private fun String.toProfileTime(): String = substringAfter('T', missingDelimiterValue = this).take(5)
 

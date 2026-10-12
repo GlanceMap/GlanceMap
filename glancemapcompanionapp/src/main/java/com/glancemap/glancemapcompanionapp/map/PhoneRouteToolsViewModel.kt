@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRepository
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
 import com.glancemap.glancemapcompanionapp.routing.PhoneBRouterRoutePlanner
@@ -273,7 +274,12 @@ internal class PhoneRouteToolsViewModel(
                 .onSuccess { saved ->
                     _uiState.value =
                         PhoneRouteToolsUiState(
-                            message = "Route saved: ${saved.selectedRoute?.displayName ?: "new GPX"}",
+                            message =
+                                getApplication<Application>().getString(
+                                    R.string.route_tools_route_saved_value,
+                                    saved.selectedRoute?.displayName
+                                        ?: getApplication<Application>().getString(R.string.route_tools_new_gpx),
+                                ),
                             savedRouteId = saved.selectedRouteId,
                         )
                 }.onFailure { error ->
@@ -281,7 +287,11 @@ internal class PhoneRouteToolsViewModel(
                     _uiState.value =
                         state.copy(
                             isRouting = false,
-                            message = error.message ?: "Could not create route.",
+                            message =
+                                error.message
+                                    ?: getApplication<Application>().getString(
+                                        R.string.route_tools_could_not_create_route,
+                                    ),
                         )
                 }
         }
@@ -292,68 +302,111 @@ internal class PhoneRouteToolsViewModel(
         currentLocation: PhoneMapLocation?,
     ): String? =
         runCatching {
+            val text: (Int) -> String = getApplication<Application>()::getString
             when (state.mode) {
                 PhoneRouteCreationMode.CURRENT_TO_DESTINATION -> {
-                    requireNotNull(currentLocation) { "A current location is required." }
-                    requireNotNull(state.destination) { "Pick a destination first." }
+                    requireNotNull(currentLocation) {
+                        text(R.string.map_route_tools_current_location_missing)
+                    }
+                    requireNotNull(state.destination) {
+                        text(R.string.route_tools_pick_a_destination_first)
+                    }
                 }
 
                 PhoneRouteCreationMode.POINT_A_TO_B -> {
-                    requireNotNull(state.pointA) { "Pick point A first." }
-                    requireNotNull(state.pointB) { "Pick point B first." }
+                    requireNotNull(state.pointA) {
+                        text(R.string.route_tools_pick_point_a_first)
+                    }
+                    requireNotNull(state.pointB) {
+                        text(R.string.route_tools_pick_point_b_first)
+                    }
                 }
 
                 PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
                     require(state.chainPoints.size >= MIN_CHAIN_POINTS) {
-                        "Pick at least two points first."
+                        text(R.string.route_tools_pick_at_least_two_points_first)
                     }
 
                 PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION -> {
                     val route = selectedEditableRoute(state)
-                    require(route.track.points.size >= 2) { "The selected GPX has no editable route." }
-                    requireNotNull(state.destination) { "Pick a destination first." }
-                }
-
-                PhoneRouteCreationMode.COORDINATES -> {
-                    requireNotNull(currentLocation) { "A current location is required." }
-                    state.coordinatesDestination()
-                }
-
-                PhoneRouteCreationMode.MODIFY_ROUTE -> {
-                    val route = selectedEditableRoute(state)
-                    require(route.track.points.size >= 2) { "The selected GPX has no editable route." }
-                    when (state.modificationMode) {
-                        PhoneRouteModificationMode.RESHAPE_ROUTE -> {
-                            val anchor = requireNotNull(state.pointA) { "Select a route point first." }
-                            val bend = requireNotNull(state.destination) { "Pick the new bend point first." }
-                            require(anchor != bend) { "Select two different points." }
-                            requireNearRoute(route, anchor)
-                        }
-
-                        PhoneRouteModificationMode.REPLACE_SECTION_A_TO_B,
-                        PhoneRouteModificationMode.KEEP_ONLY_A_TO_B,
-                        -> {
-                            val pointA = requireNotNull(state.pointA) { "Pick point A on the route first." }
-                            val pointB = requireNotNull(state.pointB) { "Pick point B on the route first." }
-                            require(pointA != pointB) { "Select two different points on the route." }
-                            requireNearRoute(route, pointA)
-                            requireNearRoute(route, pointB)
-                            requireDifferentRoutePoints(route, pointA, pointB)
-                        }
-
-                        PhoneRouteModificationMode.TRIM_START_TO_HERE ->
-                            requireNotNull(state.pointA) { "Pick the new start first." }
-
-                        PhoneRouteModificationMode.TRIM_END_FROM_HERE ->
-                            requireNotNull(state.pointB) { "Pick the new end first." }
-
-                        PhoneRouteModificationMode.REVERSE_GPX -> Unit
+                    require(route.track.points.size >= 2) {
+                        text(R.string.route_tools_the_selected_gpx_has_no_editable_route)
+                    }
+                    requireNotNull(state.destination) {
+                        text(R.string.route_tools_pick_a_destination_first)
                     }
                 }
 
-                null -> error("Choose a route type first.")
+                PhoneRouteCreationMode.COORDINATES -> {
+                    requireNotNull(currentLocation) {
+                        text(R.string.map_route_tools_current_location_missing)
+                    }
+                    state.coordinatesDestination()
+                }
+
+                PhoneRouteCreationMode.MODIFY_ROUTE -> validateModification(state)
+
+                null ->
+                    error(
+                        text(R.string.route_tools_choose_a_route_type_first),
+                    )
             }
         }.exceptionOrNull()?.message
+
+    private fun validateModification(state: PhoneRouteToolsUiState) {
+        val text: (Int) -> String = getApplication<Application>()::getString
+        val route = selectedEditableRoute(state)
+        require(route.track.points.size >= 2) {
+            text(R.string.route_tools_the_selected_gpx_has_no_editable_route)
+        }
+        when (state.modificationMode) {
+            PhoneRouteModificationMode.RESHAPE_ROUTE -> {
+                val anchor =
+                    requireNotNull(state.pointA) {
+                        text(R.string.route_tools_select_a_route_point_first)
+                    }
+                val bend =
+                    requireNotNull(state.destination) {
+                        text(R.string.route_tools_pick_the_new_bend_point_first)
+                    }
+                require(anchor != bend) {
+                    text(R.string.route_tools_select_two_different_points)
+                }
+                requireNearRoute(route, anchor)
+            }
+
+            PhoneRouteModificationMode.REPLACE_SECTION_A_TO_B,
+            PhoneRouteModificationMode.KEEP_ONLY_A_TO_B,
+            -> {
+                val pointA =
+                    requireNotNull(state.pointA) {
+                        text(R.string.route_tools_pick_point_a_on_the_route_first)
+                    }
+                val pointB =
+                    requireNotNull(state.pointB) {
+                        text(R.string.route_tools_pick_point_b_on_the_route_first)
+                    }
+                require(pointA != pointB) {
+                    text(R.string.route_tools_select_two_different_points_on_the_route)
+                }
+                requireNearRoute(route, pointA)
+                requireNearRoute(route, pointB)
+                requireDifferentRoutePoints(route, pointA, pointB)
+            }
+
+            PhoneRouteModificationMode.TRIM_START_TO_HERE ->
+                requireNotNull(state.pointA) {
+                    text(R.string.route_tools_pick_the_new_start_first)
+                }
+
+            PhoneRouteModificationMode.TRIM_END_FROM_HERE ->
+                requireNotNull(state.pointB) {
+                    text(R.string.route_tools_pick_the_new_end_first)
+                }
+
+            PhoneRouteModificationMode.REVERSE_GPX -> Unit
+        }
+    }
 
     private suspend fun createAndSave(
         state: PhoneRouteToolsUiState,
@@ -387,7 +440,10 @@ internal class PhoneRouteToolsViewModel(
                 }
 
                 PhoneRouteCreationMode.MODIFY_ROUTE -> createModifiedRoute(state)
-                null -> error("Choose a route type first.")
+                null ->
+                    error(
+                        getApplication<Application>().getString(R.string.route_tools_choose_a_route_type_first),
+                    )
             }
         return repository.saveGeneratedRoute(generated)
     }
@@ -422,7 +478,10 @@ internal class PhoneRouteToolsViewModel(
                     destination = state.coordinatesDestination(),
                 )
 
-            else -> error("This route action does not use a single route request.")
+            else ->
+                error(
+                    getApplication<Application>().getString(R.string.route_tools_this_route_action_does_not_use_a),
+                )
         }
 
     private suspend fun createModifiedRoute(state: PhoneRouteToolsUiState): BRouterRouteOutput {
@@ -517,8 +576,12 @@ internal class PhoneRouteToolsViewModel(
             original.indices
                 .filter { index -> index > anchorIndex }
                 .minByOrNull { index -> haversineDistanceMeters(original[index].location, bend) }
-                ?: error("Pick a route point before the end of the GPX.")
-        require(rejoinIndex > anchorIndex) { "Pick a route point before the end of the GPX." }
+                ?: error(
+                    getApplication<Application>().getString(R.string.route_tools_pick_a_route_point_before_the_end),
+                )
+        require(rejoinIndex > anchorIndex) {
+            getApplication<Application>().getString(R.string.route_tools_pick_a_route_point_before_the_end)
+        }
         val firstLeg =
             planner.createRoute(
                 routeRequest(
@@ -570,7 +633,9 @@ internal class PhoneRouteToolsViewModel(
     private fun selectedEditableRoute(state: PhoneRouteToolsUiState): PhoneMapGpxItem =
         state.editableRoutes
             .firstOrNull { route -> route.id == state.selectedRouteId && route.isEditable }
-            ?: error("Choose an editable GPX route.")
+            ?: error(
+                getApplication<Application>().getString(R.string.route_tools_choose_an_editable_gpx_route),
+            )
 
     private fun requireNearRoute(
         route: PhoneMapGpxItem,
@@ -578,9 +643,11 @@ internal class PhoneRouteToolsViewModel(
     ) {
         val distance =
             route.track.points.minOfOrNull { point -> haversineDistanceMeters(point.location, target) }
-                ?: error("The selected GPX has no route points.")
+                ?: error(
+                    getApplication<Application>().getString(R.string.route_tools_the_selected_gpx_has_no_route_points),
+                )
         require(distance <= ROUTE_POINT_MATCH_THRESHOLD_METERS) {
-            "Move the selected point closer to the active GPX."
+            getApplication<Application>().getString(R.string.route_tools_move_the_selected_point_closer_to_the)
         }
     }
 
@@ -593,7 +660,7 @@ internal class PhoneRouteToolsViewModel(
             nearestPhoneRoutePointIndex(route.track.points, first) !=
                 nearestPhoneRoutePointIndex(route.track.points, second),
         ) {
-            "Select two different points on the route."
+            getApplication<Application>().getString(R.string.route_tools_select_two_different_points_on_the_route)
         }
     }
 
@@ -606,10 +673,10 @@ internal class PhoneRouteToolsViewModel(
         val latitude = coordinateLatitude.trim().toDoubleOrNull()
         val longitude = coordinateLongitude.trim().toDoubleOrNull()
         require(latitude != null && latitude.isFinite() && latitude in -90.0..90.0) {
-            "Enter a valid latitude between -90 and 90."
+            getApplication<Application>().getString(R.string.route_tools_enter_a_valid_latitude_between_90_and)
         }
         require(longitude != null && longitude.isFinite() && longitude in -180.0..180.0) {
-            "Enter a valid longitude between -180 and 180."
+            getApplication<Application>().getString(R.string.route_tools_enter_a_valid_longitude_between_180_and)
         }
         return GeoPoint(latitude = latitude, longitude = longitude)
     }

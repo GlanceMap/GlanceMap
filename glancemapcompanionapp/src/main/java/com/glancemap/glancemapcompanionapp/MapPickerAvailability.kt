@@ -16,8 +16,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.glancemap.glancemapcompanionapp.R
 
 private const val REQUIRED_MAP_PICKER_VULKAN_VERSION = 0x400003
 
@@ -32,6 +34,7 @@ internal fun NativeMapPickerUnavailableDialog(
     title: String,
     onDismiss: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
@@ -47,7 +50,7 @@ internal fun NativeMapPickerUnavailableDialog(
             ) {
                 Text(title, style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "This device does not report Vulkan support. Use manual bbox or watch map area instead.",
+                    textResources.getString(R.string.map_picker_this_device_does_not_report_vulkan_support),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -56,7 +59,7 @@ internal fun NativeMapPickerUnavailableDialog(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Button(onClick = onDismiss) {
-                        Text("OK")
+                        Text(textResources.getString(R.string.common_action_ok))
                     }
                 }
             }

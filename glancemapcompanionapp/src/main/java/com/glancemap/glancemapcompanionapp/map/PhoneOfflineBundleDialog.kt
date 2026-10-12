@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -313,13 +314,22 @@ private fun phoneOfflineBundleRefreshResults(
     }
 }
 
-private fun PhoneOfflineBundleUpdateStatus.refreshLabel(): String =
-    when (this) {
-        PhoneOfflineBundleUpdateStatus.REPAIR_NEEDED -> "Repair needed"
-        PhoneOfflineBundleUpdateStatus.UPDATE_AVAILABLE -> "Update available"
-        PhoneOfflineBundleUpdateStatus.UP_TO_DATE -> "Up to date"
-        PhoneOfflineBundleUpdateStatus.UNKNOWN -> "Could not verify — retry refresh"
+@Composable
+private fun PhoneOfflineBundleUpdateStatus.refreshLabel(): String {
+    val textResources = LocalResources.current
+    return when (this) {
+        PhoneOfflineBundleUpdateStatus.REPAIR_NEEDED -> textResources.getString(R.string.offline_bundle_repair_needed)
+        PhoneOfflineBundleUpdateStatus.UPDATE_AVAILABLE ->
+            textResources.getString(
+                R.string.offline_bundle_update_available,
+            )
+        PhoneOfflineBundleUpdateStatus.UP_TO_DATE -> textResources.getString(R.string.offline_bundle_up_to_date)
+        PhoneOfflineBundleUpdateStatus.UNKNOWN ->
+            textResources.getString(
+                R.string.offline_bundle_could_not_verify_retry_refresh,
+            )
     }
+}
 
 @Composable
 @Suppress(
@@ -334,6 +344,7 @@ private fun phoneOfflineBundleDialogContent(
     onFolderSelected: (String) -> Unit,
     onFolderCleared: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     Column {
         when (state) {
             is PhoneOfflineBundleDownloadState.Downloading -> {
@@ -357,7 +368,12 @@ private fun phoneOfflineBundleDialogContent(
                     state.bundle.unavailableRoutingFileNames.size +
                         state.bundle.unavailableDemTileIds.size
                 if (unavailableCount > 0) {
-                    Text("$unavailableCount optional coverage tile(s) unavailable.")
+                    Text(
+                        textResources.getString(
+                            R.string.offline_bundle_value_optional_coverage_tile_s_unavailable,
+                            unavailableCount,
+                        ),
+                    )
                 }
             }
             is PhoneOfflineBundleDownloadState.Failed -> {
@@ -541,21 +557,26 @@ private fun bundleOptions(
     demSource: PhoneOfflineDemSource,
     onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
 ) {
+    val textResources = LocalResources.current
     Column(modifier = Modifier.fillMaxWidth()) {
         ListItem(
-            headlineContent = { Text("BRouter routing") },
-            supportingContent = { Text("Download routing packs for this map") },
+            headlineContent = { Text(textResources.getString(R.string.offline_bundle_brouter_routing)) },
+            supportingContent = {
+                Text(
+                    textResources.getString(R.string.offline_bundle_download_routing_packs_for_this_map),
+                )
+            },
             trailingContent = { Switch(checked = includeRouting, onCheckedChange = onIncludeRoutingChanged) },
         )
         ListItem(
-            headlineContent = { Text("Elevation") },
-            supportingContent = { Text(demSource.label) },
+            headlineContent = { Text(textResources.getString(R.string.map_tools_gpx_color_mode_elevation)) },
+            supportingContent = { Text(stringResource(demSource.labelResource())) },
             trailingContent = { Switch(checked = includeDem, onCheckedChange = onIncludeDemChanged) },
         )
         if (includeDem) {
             PhoneOfflineDemSource.entries.forEach { source ->
                 ListItem(
-                    headlineContent = { Text(source.shortLabel) },
+                    headlineContent = { Text(stringResource(source.shortLabelResource())) },
                     leadingContent = {
                         RadioButton(
                             selected = source == demSource,
@@ -567,7 +588,9 @@ private fun bundleOptions(
         }
         ListItem(
             headlineContent = { Text("Refuges.info") },
-            supportingContent = { Text("Download refuges and mountain POI for this map") },
+            supportingContent = {
+                Text(textResources.getString(R.string.offline_bundle_download_refuges_and_mountain_poi_for_this))
+            },
             trailingContent = { Switch(checked = includeRefugesInfo, onCheckedChange = onIncludeRefugesInfoChanged) },
         )
     }

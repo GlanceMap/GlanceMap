@@ -1,13 +1,15 @@
 package com.glancemap.glancemapcompanionapp.refuges
 
+import com.glancemap.glancemapcompanionapp.R
+
 internal data class OsmPoiImportCategory(
     val id: String,
-    val label: String,
+    val labelResource: Int,
     val tagValues: Map<String, Set<String>>,
 )
 
 internal data class OsmPoiImportCategoryPreset(
-    val label: String,
+    val labelResource: Int,
     val categoryIds: Set<String>,
 )
 
@@ -15,7 +17,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
     listOf(
         OsmPoiImportCategory(
             id = "huts",
-            label = "Huts",
+            labelResource = R.string.refuges_osm_category_huts,
             tagValues =
                 mapOf(
                     "tourism" to setOf("alpine_hut", "wilderness_hut", "hut", "hostel", "guest_house"),
@@ -24,7 +26,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "water",
-            label = "Water",
+            labelResource = R.string.refuges_osm_category_water,
             tagValues =
                 mapOf(
                     "amenity" to setOf("drinking_water", "water_point", "fountain"),
@@ -33,7 +35,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "toilets",
-            label = "Toilets",
+            labelResource = R.string.refuges_osm_category_toilets,
             tagValues =
                 mapOf(
                     "amenity" to setOf("toilets"),
@@ -41,7 +43,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "food",
-            label = "Food",
+            labelResource = R.string.refuges_osm_category_food,
             tagValues =
                 mapOf(
                     "amenity" to setOf("restaurant", "cafe", "fast_food", "bar", "pub"),
@@ -49,7 +51,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "parking",
-            label = "Parking",
+            labelResource = R.string.refuges_osm_category_parking,
             tagValues =
                 mapOf(
                     "amenity" to setOf("parking", "parking_space"),
@@ -57,7 +59,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "peaks",
-            label = "Peaks",
+            labelResource = R.string.refuges_osm_category_peaks,
             tagValues =
                 mapOf(
                     "natural" to setOf("peak", "volcano"),
@@ -65,7 +67,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "camping",
-            label = "Camping",
+            labelResource = R.string.refuges_osm_category_camping,
             tagValues =
                 mapOf(
                     "tourism" to setOf("camp_site", "caravan_site"),
@@ -73,7 +75,7 @@ private val OSM_POI_IMPORT_CATEGORIES =
         ),
         OsmPoiImportCategory(
             id = "viewpoints",
-            label = "Viewpoints",
+            labelResource = R.string.refuges_osm_category_viewpoints,
             tagValues =
                 mapOf(
                     "tourism" to setOf("viewpoint"),
@@ -109,11 +111,11 @@ internal fun buildOsmPoiCategoryPresets(allCategoryIds: Set<String>): List<OsmPo
     val essentials = allCategoryIds.intersect(defaultOsmPoiCategoryIds())
     return listOf(
         OsmPoiImportCategoryPreset(
-            label = "Essentials",
+            labelResource = R.string.refuges_osm_category_essentials,
             categoryIds = essentials.ifEmpty { allCategoryIds },
         ),
         OsmPoiImportCategoryPreset(
-            label = "All",
+            labelResource = R.string.refuges_osm_category_all,
             categoryIds = allCategoryIds,
         ),
     )

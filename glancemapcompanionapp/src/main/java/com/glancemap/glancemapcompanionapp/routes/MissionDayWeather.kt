@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapcompanionapp.routes
 
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.weather.WeatherDailyOutlook
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecast
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation
@@ -136,3 +137,10 @@ private fun MissionPlanDay.plannedStartDateTime(): LocalDateTime? {
 }
 
 private const val MAX_HOURLY_MATCH_DIFFERENCE_SECONDS = 90L * 60L
+
+internal fun MissionDayWeatherSamplePosition.labelResource(): Int =
+    when (this) {
+        MissionDayWeatherSamplePosition.START -> R.string.mission_weather_start
+        MissionDayWeatherSamplePosition.MIDPOINT -> R.string.mission_weather_midpoint
+        MissionDayWeatherSamplePosition.FINISH -> R.string.mission_weather_finish
+    }

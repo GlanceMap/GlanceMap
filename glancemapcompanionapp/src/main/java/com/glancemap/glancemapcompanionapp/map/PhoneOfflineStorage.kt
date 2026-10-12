@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import android.os.Environment
+import com.glancemap.glancemapcompanionapp.R
 import java.io.File
 
 internal enum class PhoneOfflineStorageLocation(
@@ -137,3 +138,9 @@ internal const val PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME = "migration-
 private fun File.containsPhoneOfflineData(): Boolean =
     (PHONE_OFFLINE_MANAGED_DIRECTORY_NAMES + PHONE_OFFLINE_MIGRATION_CONFLICT_DIRECTORY_NAME)
         .any { name -> File(this, name).exists() }
+
+internal fun PhoneOfflineStorageLocation.labelResource(): Int =
+    when (this) {
+        PhoneOfflineStorageLocation.INTERNAL -> R.string.storage_label_internal_storage_glancemap
+        PhoneOfflineStorageLocation.EXTERNAL -> R.string.storage_label_sd_card_glancemap
+    }

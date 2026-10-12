@@ -47,6 +47,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -278,8 +279,9 @@ private fun NoMovementAlertInput(
     minutes: String,
     onMinutesChange: (String) -> Unit,
 ) {
+    val textResources = LocalResources.current
     val isDisabled = minutes == "-1"
-    val validationMessage = validateNoMovementAlertMinutes(minutes)
+    val validationMessage = validateNoMovementAlertMinutes(textResources::getString, minutes)
     var lastEnabledMinutes by remember {
         mutableStateOf(
             minutes.takeUnless { it == "-1" } ?: DEFAULT_NO_MOVEMENT_ALERT_MINUTES,
@@ -287,7 +289,7 @@ private fun NoMovementAlertInput(
     }
 
     LaunchedEffect(minutes) {
-        if (minutes != "-1" && validateNoMovementAlertMinutes(minutes) == null) {
+        if (minutes != "-1" && validateNoMovementAlertMinutes(textResources::getString, minutes) == null) {
             lastEnabledMinutes = minutes
         }
     }
@@ -335,7 +337,7 @@ private fun NoMovementAlertInput(
             OutlinedTextField(
                 value = if (isDisabled) "" else minutes,
                 onValueChange = { value ->
-                    if (validateNoMovementAlertMinutes(value) == null && value != "-1") {
+                    if (validateNoMovementAlertMinutes(textResources::getString, value) == null && value != "-1") {
                         lastEnabledMinutes = value
                     }
                     onMinutesChange(value)

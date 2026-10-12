@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
 import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
@@ -56,7 +57,11 @@ class RouteLibraryViewModel(
                 }.getOrElse { error ->
                     RouteLibraryUiState(
                         isLoading = false,
-                        message = error.message ?: "Could not load routes.",
+                        message =
+                            error.message
+                                ?: getApplication<android.app.Application>().getString(
+                                    R.string.route_library_could_not_load_routes,
+                                ),
                     )
                 },
             )
@@ -76,7 +81,11 @@ class RouteLibraryViewModel(
                     .getOrElse { error ->
                         _uiState.value.copy(
                             isImporting = false,
-                            message = error.message ?: "Could not import the GPX route.",
+                            message =
+                                error.message
+                                    ?: getApplication<android.app.Application>().getString(
+                                        R.string.route_library_could_not_import_the_gpx_route,
+                                    ),
                         )
                     }.copy(isImporting = false),
             )
@@ -89,7 +98,13 @@ class RouteLibraryViewModel(
                 runCatching {
                     withContext(Dispatchers.IO) { repository.selectRoute(routeId) }
                 }.getOrElse { error ->
-                    _uiState.value.copy(message = error.message ?: "Could not select the route.")
+                    _uiState.value.copy(
+                        message =
+                            error.message
+                                ?: getApplication<android.app.Application>().getString(
+                                    R.string.route_library_could_not_select_the_route,
+                                ),
+                    )
                 },
             )
         }
@@ -164,7 +179,10 @@ class RouteLibraryViewModel(
                 _routeWeatherUiState.value =
                     _routeWeatherUiState.value.copy(
                         isLoading = false,
-                        message = "Weather forecast is unavailable. Check your connection and try again.",
+                        message =
+                            getApplication<android.app.Application>().getString(
+                                R.string.route_library_weather_forecast_is_unavailable_check_your_connection,
+                            ),
                     )
             }
         }

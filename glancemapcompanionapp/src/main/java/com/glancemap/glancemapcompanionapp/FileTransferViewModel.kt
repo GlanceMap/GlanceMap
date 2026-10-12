@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.activehike.CompanionLiveHikeSyncPreferences
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
@@ -32,11 +33,11 @@ import com.glancemap.glancemapcompanionapp.routing.BRouterTileDownloader
 import com.glancemap.glancemapcompanionapp.routing.RoutingDownloadRequest
 import com.glancemap.glancemapcompanionapp.transfer.WatchInstalledMapsRequester
 import com.glancemap.glancemapcompanionapp.transfer.service.FileTransferService
-import com.glancemap.shared.transfer.LiveHikeSyncSettingsCodec
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.FileItem
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.SelectionRequestState
 import com.glancemap.glancemapcompanionapp.transfer.service.internal.prepareSelectionMetadata
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
+import com.glancemap.shared.transfer.LiveHikeSyncSettingsCodec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -376,7 +377,12 @@ class FileTransferViewModel : ViewModel() {
         uris: List<Uri>,
     ) {
         if (isTransferInProgress()) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_transfer_in_progress_please_wait_or_cancel),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         if (uris.isEmpty()) return
@@ -402,7 +408,7 @@ class FileTransferViewModel : ViewModel() {
             if (selectionRequestState.isCurrent(requestId)) {
                 val message =
                     error.localizedMessage?.takeIf { it.isNotBlank() }
-                        ?: "Failed to read selected file(s)."
+                        ?: appContext.getString(R.string.phone_files_failed_to_read_selected_file_s)
                 Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
             }
             return
@@ -415,7 +421,7 @@ class FileTransferViewModel : ViewModel() {
                 Toast
                     .makeText(
                         appContext,
-                        "Transfer in progress. Please wait or cancel.",
+                        appContext.getString(R.string.phone_files_transfer_in_progress_please_wait_or_cancel),
                         Toast.LENGTH_SHORT,
                     ).show()
             }
@@ -469,17 +475,26 @@ class FileTransferViewModel : ViewModel() {
             Toast
                 .makeText(
                     context,
-                    "Converted ${preparedUris.convertedGeoJsonCount} file(s) to .poi",
+                    context.getString(
+                        R.string.phone_files_converted_value_file_s_to_poi,
+                        preparedUris.convertedGeoJsonCount,
+                    ),
                     Toast.LENGTH_SHORT,
                 ).show()
         }
         if (preparedUris.extractedPoiFromGpxCount > 0) {
             val message =
                 if (preparedUris.extractedPoiFromMixedGpxCount > 0) {
-                    "Extracted POI from ${preparedUris.extractedPoiFromGpxCount} GPX file(s), " +
-                        "route kept when present."
+                    context.getString(
+                        R.string.phone_files_extracted_poi_from_value_gpx_file_s,
+                        preparedUris.extractedPoiFromGpxCount,
+                    ) +
+                        context.getString(R.string.phone_files_route_kept_when_present)
                 } else {
-                    "Converted ${preparedUris.extractedPoiFromGpxCount} waypoint GPX file(s) to .poi"
+                    context.getString(
+                        R.string.phone_files_converted_value_waypoint_gpx_file_s_to,
+                        preparedUris.extractedPoiFromGpxCount,
+                    )
                 }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
@@ -498,7 +513,12 @@ class FileTransferViewModel : ViewModel() {
         uris: List<Uri>,
     ) {
         if (_uiState.value.isTransferring) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_transfer_in_progress_please_wait_or_cancel),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         if (uris.isEmpty()) return
@@ -532,12 +552,13 @@ class FileTransferViewModel : ViewModel() {
                 if (error != null) {
                     if (error is CancellationException) throw error
                     if (selectionRequestState.isCurrent(requestId)) {
-                        Toast.makeText(
-                            appContext,
-                            error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "Failed to read selected file(s).",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        Toast
+                            .makeText(
+                                appContext,
+                                error.localizedMessage?.takeIf { it.isNotBlank() }
+                                    ?: context.getString(R.string.phone_files_failed_to_read_selected_file_s),
+                                Toast.LENGTH_LONG,
+                            ).show()
                     }
                     return@launch
                 }
@@ -648,7 +669,7 @@ class FileTransferViewModel : ViewModel() {
             pendingWatchMapsRefresh = false
             _watchInstalledMaps.value = emptyList()
             _watchInstalledCoverageAreas.value = emptyList()
-            val message = selectedWatchDisconnectedStatusMessage()
+            val message = selectedWatchDisconnectedStatusMessage(context::getString)
             _watchInstalledMapsStatusMessage.value = message
             if (showToastIfUnavailable) {
                 Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
@@ -659,7 +680,12 @@ class FileTransferViewModel : ViewModel() {
         if (!isBound || service == null) {
             pendingWatchMapsRefresh = true
             if (showToastIfUnavailable) {
-                Toast.makeText(context, "Connect to watch first.", Toast.LENGTH_SHORT).show()
+                Toast
+                    .makeText(
+                        context,
+                        context.getString(R.string.phone_files_connect_to_watch_first),
+                        Toast.LENGTH_SHORT,
+                    ).show()
             }
             return
         }
@@ -693,13 +719,13 @@ class FileTransferViewModel : ViewModel() {
                     is WatchInstalledMapsRequester.Result.Timeout -> {
                         _watchInstalledMaps.value = emptyList()
                         _watchInstalledCoverageAreas.value = emptyList()
-                        _watchInstalledMapsStatusMessage.value = selectedWatchTimeoutStatusMessage()
+                        _watchInstalledMapsStatusMessage.value = selectedWatchTimeoutStatusMessage(context::getString)
                     }
 
                     is WatchInstalledMapsRequester.Result.Error -> {
                         _watchInstalledMaps.value = emptyList()
                         _watchInstalledCoverageAreas.value = emptyList()
-                        val message = normalizeWatchMapsStatusMessage(result.exception)
+                        val message = normalizeWatchMapsStatusMessage(context::getString, result.exception)
                         _watchInstalledMapsStatusMessage.value = message
                         Toast
                             .makeText(
@@ -712,7 +738,7 @@ class FileTransferViewModel : ViewModel() {
             } catch (e: Exception) {
                 _watchInstalledMaps.value = emptyList()
                 _watchInstalledCoverageAreas.value = emptyList()
-                val message = normalizeWatchMapsStatusMessage(e)
+                val message = normalizeWatchMapsStatusMessage(context::getString, e)
                 _watchInstalledMapsStatusMessage.value = message
                 Toast
                     .makeText(
@@ -787,7 +813,7 @@ class FileTransferViewModel : ViewModel() {
                     if (!enrichWithOsm) {
                         refugesResult
                     } else {
-                        reportProgress(60, "Importing OSM data for enrichment…")
+                        reportProgress(60, context.getString(R.string.phone_files_importing_osm_data_for_enrichment))
                         val osmTempFileName = buildOsmEnrichTempFileName(refugesResult.fileName)
                         val osmResult =
                             getOsmImporter(appContext).importFromBbox(
@@ -805,7 +831,7 @@ class FileTransferViewModel : ViewModel() {
                                     )
                                 },
                             )
-                        reportProgress(80, "Merging Refuges.info + OSM…")
+                        reportProgress(80, context.getString(R.string.phone_files_merging_refuges_info_osm))
                         val merged =
                             getPoiFileMerger(appContext).mergeImportedFiles(
                                 outputFileName = refugesResult.fileName,
@@ -819,13 +845,16 @@ class FileTransferViewModel : ViewModel() {
                         runCatching {
                             File(PhoneOfflineStorage(appContext).poiDirectory(), osmResult.fileName).delete()
                         }
-                        reportProgress(90, "Finalizing merged POI…")
+                        reportProgress(90, context.getString(R.string.phone_files_finalizing_merged_poi))
                         merged
                     }
                 }
 
                 PoiImportSource.OSM -> {
-                    reportProgress(OSM_DIRECT_STAGE_START_PERCENT, "Preparing OpenStreetMap import…")
+                    reportProgress(
+                        OSM_DIRECT_STAGE_START_PERCENT,
+                        context.getString(R.string.phone_files_preparing_openstreetmap_import),
+                    )
                     getOsmImporter(appContext)
                         .importFromBbox(
                             bboxInput = bbox,
@@ -842,7 +871,7 @@ class FileTransferViewModel : ViewModel() {
                                 )
                             },
                         ).also {
-                            reportProgress(90, "Finalizing OSM POI…")
+                            reportProgress(90, context.getString(R.string.phone_files_finalizing_osm_poi))
                         }
                 }
             }
@@ -858,7 +887,12 @@ class FileTransferViewModel : ViewModel() {
         val lastRequest = importer.getLastRequest()
         if (lastRequest == null || lastRequest.bbox.isBlank()) {
             _lastRefugesRequest.value = null
-            Toast.makeText(appContext, "No previous Refuges import found.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    appContext,
+                    context.getString(R.string.phone_files_no_previous_refuges_import_found),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         _lastRefugesRequest.value = lastRequest
@@ -886,20 +920,20 @@ class FileTransferViewModel : ViewModel() {
         appendToSelection: Boolean = true,
     ) {
         runRefugesImport(context, appendToSelection) { importer, reportProgress ->
-            reportProgress(20, "Reading map bounds…")
+            reportProgress(20, context.getString(R.string.phone_files_reading_map_bounds))
             val bbox =
                 MapsforgeMapBoundsParser.readBboxString(
                     context = context.applicationContext,
                     uri = mapUri,
                 )
-            reportProgress(35, "Importing from Refuges.info…")
+            reportProgress(35, context.getString(R.string.phone_files_importing_from_refuges_info))
             importer
                 .importFromBbox(
                     bboxInput = bbox,
                     fileNameInput = fileName,
                     typePointIds = selectedTypeIds,
                 ).also {
-                    reportProgress(90, "Finalizing POI…")
+                    reportProgress(90, context.getString(R.string.phone_files_finalizing_poi))
                 }
         }
     }
@@ -911,22 +945,25 @@ class FileTransferViewModel : ViewModel() {
     ) {
         runRefugesImport(context, appendToSelection) { importer, reportProgress ->
             val appContext = context.applicationContext
-            reportProgress(20, "Reading GeoJSON file…")
+            reportProgress(20, context.getString(R.string.phone_files_reading_geojson_file))
             val geoJsonSize = queryUriSize(appContext, uri)
             if (geoJsonSize != null && geoJsonSize > MAX_GEOJSON_IMPORT_BYTES) {
                 throw IllegalArgumentException(
-                    "GeoJSON is too large (${geoJsonSize / (1024 * 1024)}MB). Please use a smaller file.",
+                    context.getString(
+                        R.string.phone_files_geojson_is_too_large_valuemb_please_use,
+                        geoJsonSize / (1024 * 1024),
+                    ),
                 )
             }
             val text = readGeoJsonTextWithLimit(appContext, uri, MAX_GEOJSON_IMPORT_BYTES)
             val poiFileName = suggestPoiFileName(appContext, uri)
-            reportProgress(60, "Converting GeoJSON to POI…")
+            reportProgress(60, context.getString(R.string.phone_files_converting_geojson_to_poi))
             importer
                 .importFromGeoJsonText(
                     geoJsonText = text,
                     fileNameInput = poiFileName,
                 ).also {
-                    reportProgress(90, "Finalizing POI…")
+                    reportProgress(90, context.getString(R.string.phone_files_finalizing_poi))
                 }
         }
     }
@@ -940,11 +977,21 @@ class FileTransferViewModel : ViewModel() {
         ) -> RefugesImportResult,
     ) {
         if (_isImportingRefuges.value) {
-            Toast.makeText(context, "POI import already running.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_poi_import_already_running),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         if (_uiState.value.isTransferring || _uiState.value.isPaused) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_transfer_in_progress_please_wait_or_cancel),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
 
@@ -957,7 +1004,7 @@ class FileTransferViewModel : ViewModel() {
                     PoiImportProgressState(
                         isRunning = true,
                         progressPercent = 0,
-                        status = "Starting import…",
+                        status = context.getString(R.string.phone_files_starting_import),
                         completed = false,
                         success = false,
                         message = "",
@@ -979,13 +1026,17 @@ class FileTransferViewModel : ViewModel() {
                     _poiImportProgress.value =
                         _poiImportProgress.value.copy(
                             progressPercent = 95,
-                            status = "Adding imported POI to selected files…",
+                            status = context.getString(R.string.phone_files_adding_imported_poi_to_selected_files),
                         )
                     val existing = if (appendToSelection) _uiState.value.selectedFileUris else emptyList()
                     val merged = (existing + result.poiUri).distinctBy { it.toString() }
                     loadFilesFromUris(appContext, merged)
 
-                    val successMessage = "POI imported: ${result.pointCount} points"
+                    val successMessage =
+                        context.getString(
+                            R.string.phone_files_poi_imported_value_points,
+                            result.pointCount,
+                        )
                     _lastImportedPoiFile.value =
                         GeneratedPhoneFile(
                             uri = result.poiUri,
@@ -995,7 +1046,7 @@ class FileTransferViewModel : ViewModel() {
                         _poiImportProgress.value.copy(
                             isRunning = false,
                             progressPercent = 100,
-                            status = "Import complete.",
+                            status = context.getString(R.string.phone_files_import_complete),
                             completed = true,
                             success = true,
                             message = successMessage,
@@ -1008,7 +1059,7 @@ class FileTransferViewModel : ViewModel() {
                         ).show()
                 } catch (t: Throwable) {
                     if (t is CancellationException) {
-                        val message = "POI import cancelled."
+                        val message = context.getString(R.string.phone_files_poi_import_cancelled)
                         _poiImportProgress.value =
                             _poiImportProgress.value.copy(
                                 isRunning = false,
@@ -1023,10 +1074,10 @@ class FileTransferViewModel : ViewModel() {
                     val message =
                         when (t) {
                             is OutOfMemoryError ->
-                                "Import area is too large for this phone. Please use a smaller area."
+                                context.getString(R.string.phone_files_import_area_is_too_large_for_this)
                             else ->
                                 t.localizedMessage?.takeIf { it.isNotBlank() }
-                                    ?: "POI import failed."
+                                    ?: context.getString(R.string.phone_files_poi_import_failed)
                         }
                     _poiImportProgress.value =
                         _poiImportProgress.value.copy(
@@ -1047,13 +1098,13 @@ class FileTransferViewModel : ViewModel() {
         _poiImportProgress.value = PoiImportProgressState()
     }
 
-    fun cancelPoiImport() {
+    fun cancelPoiImport(context: Context) {
         val job = poiImportJob
         if (job?.isActive != true) return
 
         _poiImportProgress.value =
             _poiImportProgress.value.copy(
-                status = "Cancelling POI import…",
+                status = context.getString(R.string.phone_files_cancelling_poi_import),
             )
         osmOverpassImporter?.cancelActiveImport()
         job.cancel(CancellationException("Cancelled by user"))
@@ -1063,13 +1114,13 @@ class FileTransferViewModel : ViewModel() {
         _routingDownloadProgress.value = RoutingDownloadProgressState()
     }
 
-    fun cancelRoutingDownload() {
+    fun cancelRoutingDownload(context: Context) {
         val job = routingDownloadJob
         if (job?.isActive != true) return
 
         _routingDownloadProgress.value =
             _routingDownloadProgress.value.copy(
-                status = "Cancelling routing download…",
+                status = context.getString(R.string.phone_files_cancelling_routing_download),
                 detail = "",
             )
         brouterTileDownloader?.cancelActiveDownload()
@@ -1083,11 +1134,21 @@ class FileTransferViewModel : ViewModel() {
         forceRefresh: Boolean = false,
     ) {
         if (_isDownloadingRouting.value) {
-            Toast.makeText(context, "Routing download already running.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_routing_download_already_running),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         if (_uiState.value.isTransferring || _uiState.value.isPaused) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.phone_files_transfer_in_progress_please_wait_or_cancel),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
 
@@ -1100,7 +1161,7 @@ class FileTransferViewModel : ViewModel() {
                     RoutingDownloadProgressState(
                         isRunning = true,
                         progressPercent = 0,
-                        status = "Preparing routing packs…",
+                        status = context.getString(R.string.phone_files_preparing_routing_packs),
                         detail = "",
                     )
                 try {
@@ -1129,9 +1190,9 @@ class FileTransferViewModel : ViewModel() {
                             progressPercent = 95,
                             status =
                                 if (forceRefresh) {
-                                    "Refreshing selected routing packs…"
+                                    context.getString(R.string.phone_files_refreshing_selected_routing_packs)
                                 } else {
-                                    "Adding routing packs to selected files…"
+                                    context.getString(R.string.phone_files_adding_routing_packs_to_selected_files)
                                 },
                             detail = "",
                         )
@@ -1143,25 +1204,59 @@ class FileTransferViewModel : ViewModel() {
                     val message =
                         when {
                             result.availableTileNames.isEmpty() && result.unavailableTileNames.isNotEmpty() ->
-                                "No requested routing packs are available " +
-                                    "(${result.unavailableTileNames.size} unavailable)."
+                                context.getString(R.string.phone_files_no_requested_routing_packs_are_available) +
+                                    context.getString(
+                                        R.string.phone_files_value_unavailable,
+                                        result.unavailableTileNames.size,
+                                    )
                             forceRefresh && result.downloadedCount > 0 && result.unavailableTileNames.isNotEmpty() ->
-                                "Routing refreshed: ${result.downloadedCount} pack(s) updated, " +
-                                    "${result.unavailableTileNames.size} unavailable."
+                                context.getString(
+                                    R.string.phone_files_routing_refreshed_value_pack_s_updated,
+                                    result.downloadedCount,
+                                ) +
+                                    context.getString(
+                                        R.string.phone_files_value_unavailable_2,
+                                        result.unavailableTileNames.size,
+                                    )
                             forceRefresh && result.downloadedCount > 0 ->
-                                "Routing refreshed: ${result.downloadedCount} pack(s) updated."
+                                context.getString(
+                                    R.string.phone_files_routing_refreshed_value_pack_s_updated_2,
+                                    result.downloadedCount,
+                                )
                             result.downloadedCount > 0 && result.unavailableTileNames.isNotEmpty() ->
-                                "Routing ready: ${result.downloadedCount} downloaded, " +
-                                    "${result.unavailableTileNames.size} unavailable."
+                                context.getString(
+                                    R.string.phone_files_routing_ready_value_downloaded,
+                                    result.downloadedCount,
+                                ) +
+                                    context.getString(
+                                        R.string.phone_files_value_unavailable_2,
+                                        result.unavailableTileNames.size,
+                                    )
                             result.downloadedCount > 0 && result.skippedCount > 0 ->
-                                "Routing ready: ${result.downloadedCount} downloaded, ${result.skippedCount} already present."
+                                context.getString(
+                                    R.string.phone_files_routing_ready_value_downloaded_value_already_present,
+                                    result.downloadedCount,
+                                    result.skippedCount,
+                                )
                             result.unavailableTileNames.isNotEmpty() ->
-                                "Routing already available (${result.skippedCount} pack(s) already present), " +
-                                    "${result.unavailableTileNames.size} unavailable."
+                                context.getString(
+                                    R.string.phone_files_routing_already_available_value_pack_s_already,
+                                    result.skippedCount,
+                                ) +
+                                    context.getString(
+                                        R.string.phone_files_value_unavailable_2,
+                                        result.unavailableTileNames.size,
+                                    )
                             result.downloadedCount > 0 ->
-                                "Routing ready: ${result.downloadedCount} pack(s) downloaded."
+                                context.getString(
+                                    R.string.phone_files_routing_ready_value_pack_s_downloaded,
+                                    result.downloadedCount,
+                                )
                             else ->
-                                "Routing already available (${result.skippedCount} pack(s) already present)."
+                                context.getString(
+                                    R.string.phone_files_routing_already_available_value_pack_s_already_2,
+                                    result.skippedCount,
+                                )
                         }
 
                     _lastRoutingDownloadedFiles.value =
@@ -1172,7 +1267,7 @@ class FileTransferViewModel : ViewModel() {
                         _routingDownloadProgress.value.copy(
                             isRunning = false,
                             progressPercent = 100,
-                            status = "Routing packs ready.",
+                            status = context.getString(R.string.phone_files_routing_packs_ready),
                             detail = "",
                             completed = true,
                             success = true,
@@ -1181,7 +1276,7 @@ class FileTransferViewModel : ViewModel() {
                     Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
                 } catch (t: Throwable) {
                     if (t is CancellationException) {
-                        val message = "Routing download cancelled."
+                        val message = context.getString(R.string.phone_files_routing_download_cancelled)
                         _routingDownloadProgress.value =
                             _routingDownloadProgress.value.copy(
                                 isRunning = false,
@@ -1196,7 +1291,7 @@ class FileTransferViewModel : ViewModel() {
                     }
                     val message =
                         t.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Routing download failed."
+                            ?: context.getString(R.string.phone_files_routing_download_failed)
                     _routingDownloadProgress.value =
                         _routingDownloadProgress.value.copy(
                             isRunning = false,
@@ -1222,7 +1317,12 @@ class FileTransferViewModel : ViewModel() {
         val lastRequest = downloader.getLastRequest()
         if (lastRequest == null || lastRequest.bbox.isBlank()) {
             _lastRoutingRequest.value = null
-            Toast.makeText(appContext, "No previous routing download found.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    appContext,
+                    context.getString(R.string.phone_files_no_previous_routing_download_found),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         _lastRoutingRequest.value = lastRequest
@@ -1326,7 +1426,7 @@ class FileTransferViewModel : ViewModel() {
         Toast
             .makeText(
                 context.applicationContext,
-                "Phone debug capture started",
+                context.getString(R.string.phone_files_phone_debug_capture_started),
                 Toast.LENGTH_SHORT,
             ).show()
     }
@@ -1340,7 +1440,7 @@ class FileTransferViewModel : ViewModel() {
                 Toast
                     .makeText(
                         context.applicationContext,
-                        error.localizedMessage ?: "Could not open email draft",
+                        error.localizedMessage ?: context.getString(R.string.phone_files_could_not_open_email_draft),
                         Toast.LENGTH_LONG,
                     ).show()
             }
@@ -1355,7 +1455,8 @@ class FileTransferViewModel : ViewModel() {
                 Toast
                     .makeText(
                         context.applicationContext,
-                        error.localizedMessage ?: "No saved phone recording available",
+                        error.localizedMessage
+                            ?: context.getString(R.string.phone_files_no_saved_phone_recording_available),
                         Toast.LENGTH_LONG,
                     ).show()
             }
@@ -1370,7 +1471,7 @@ class FileTransferViewModel : ViewModel() {
                 Toast
                     .makeText(
                         context.applicationContext,
-                        error.localizedMessage ?: "No phone recording available",
+                        error.localizedMessage ?: context.getString(R.string.phone_files_no_phone_recording_available),
                         Toast.LENGTH_LONG,
                     ).show()
             }
@@ -1385,7 +1486,8 @@ class FileTransferViewModel : ViewModel() {
                 Toast
                     .makeText(
                         context.applicationContext,
-                        error.localizedMessage ?: "No previous phone recording available",
+                        error.localizedMessage
+                            ?: context.getString(R.string.phone_files_no_previous_phone_recording_available),
                         Toast.LENGTH_LONG,
                     ).show()
             }

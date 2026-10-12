@@ -201,9 +201,12 @@ class OsmOverpassPoiImporterSupportTest {
             )
 
         assertEquals(2, presets.size)
-        assertEquals("Essentials", presets[0].label)
+        assertEquals(
+            com.glancemap.glancemapcompanionapp.R.string.refuges_osm_category_essentials,
+            presets[0].labelResource,
+        )
         assertEquals(linkedSetOf("huts", "water", "peaks"), presets[0].categoryIds)
-        assertEquals("All", presets[1].label)
+        assertEquals(com.glancemap.glancemapcompanionapp.R.string.refuges_osm_category_all, presets[1].labelResource)
         assertEquals(
             linkedSetOf("huts", "water", "peaks", "camping", "viewpoints", "food"),
             presets[1].categoryIds,

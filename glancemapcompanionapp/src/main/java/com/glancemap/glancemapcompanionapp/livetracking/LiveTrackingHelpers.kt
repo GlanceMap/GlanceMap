@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapcompanionapp.R
 import java.io.ByteArrayOutputStream
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -16,61 +17,67 @@ import java.util.Date
 import java.util.Locale
 
 internal fun validatePlanSettings(
+    text: (Int) -> String,
     group: String,
     participantPassword: String,
 ): String? =
     when {
-        group.isBlank() -> "Private group is required."
-        participantPassword.isBlank() -> "Participant password is required."
+        group.isBlank() -> text(R.string.live_tracking_private_group_is_required)
+        participantPassword.isBlank() -> text(R.string.live_tracking_participant_password_is_required)
         else -> null
     }
 
 internal fun validateAccountSettings(
+    text: (Int) -> String,
     group: String,
     participantPassword: String,
     followerPassword: String,
 ): String? =
     when {
-        group.isBlank() -> "Private group is required."
-        participantPassword.isBlank() -> "Participant password is required."
-        followerPassword.isBlank() -> "Set up live tracking first."
+        group.isBlank() -> text(R.string.live_tracking_private_group_is_required)
+        participantPassword.isBlank() -> text(R.string.live_tracking_participant_password_is_required)
+        followerPassword.isBlank() -> text(R.string.live_tracking_set_up_live_tracking_first)
         else -> null
     }
 
 internal fun validateStartSettings(
+    text: (Int) -> String,
     group: String,
     participantPassword: String,
     followerPassword: String,
     userName: String,
-    stuckAlarmMinutes: String,
 ): String? =
     when {
-        group.isBlank() -> "Private group is required."
-        participantPassword.isBlank() -> "Participant password is required."
-        followerPassword.isBlank() -> "Create / Join in settings first."
-        userName.isBlank() -> "Participant name is required."
-        else -> validateNoMovementAlertMinutes(stuckAlarmMinutes)
+        group.isBlank() -> text(R.string.live_tracking_private_group_is_required)
+        participantPassword.isBlank() -> text(R.string.live_tracking_participant_password_is_required)
+        followerPassword.isBlank() -> text(R.string.live_tracking_create_join_in_settings_first)
+        userName.isBlank() -> text(R.string.live_tracking_participant_name_is_required)
+        else -> null
     }
 
-internal fun validateNoMovementAlertMinutes(minutes: String): String? {
+internal fun validateNoMovementAlertMinutes(
+    text: (Int) -> String,
+    minutes: String,
+): String? {
     val value = minutes.trim().toIntOrNull()
     return when {
         value == -1 -> null
-        value == null || value < 10 -> "No-movement alert must be at least 10 minutes, or disabled."
+        value == null || value < 10 -> text(R.string.live_tracking_no_movement_alert_must_be_at_least)
         else -> null
     }
 }
 
 internal fun validateRecordedTrackDownloadSettings(
+    text: (Int) -> String,
     group: String,
     followerPassword: String,
     userName: String,
     userOnly: Boolean,
 ): String? =
     when {
-        group.isBlank() -> "Private group is required."
-        followerPassword.isBlank() -> "Set up live tracking first."
-        userOnly && userName.isBlank() -> "Participant name is required."
+        group.isBlank() -> text(R.string.live_tracking_private_group_is_required)
+        followerPassword.isBlank() -> text(R.string.live_tracking_set_up_live_tracking_first)
+        userOnly && userName.isBlank() -> text(R.string.live_tracking_participant_name_is_required)
         else -> null
     }
 
@@ -85,16 +92,19 @@ internal data class AlertRecipient(
 )
 
 internal fun validatePendingRecipientInputs(
+    text: (Int) -> String,
     notificationEmailInput: String,
     alertRecipientInput: String,
 ): String? =
     validatePendingEmailInput(
+        text,
         input = notificationEmailInput,
-        label = "tracking notification email",
+        label = text(R.string.live_tracking_tracking_notification_email),
     )
-        ?: validatePendingAlertRecipientInput(alertRecipientInput)
+        ?: validatePendingAlertRecipientInput(text, alertRecipientInput)
 
 internal fun validatePendingEmailInput(
+    text: (Int) -> String,
     input: String,
     label: String,
 ): String? {
@@ -102,15 +112,18 @@ internal fun validatePendingEmailInput(
     return when {
         email.isBlank() -> null
         email.isValidEmailAddress() -> null
-        else -> "Enter a valid $label address."
+        else -> text(R.string.live_tracking_enter_a_valid_value_address).format(label)
     }
 }
 
-internal fun validatePendingAlertRecipientInput(input: String): String? =
+internal fun validatePendingAlertRecipientInput(
+    text: (Int) -> String,
+    input: String,
+): String? =
     when {
         input.isBlank() -> null
         normalizedAlertRecipient(input) != null -> null
-        else -> "Enter a valid alert email address or phone number starting with +."
+        else -> text(R.string.live_tracking_enter_a_valid_alert_email_address_or)
     }
 
 internal fun emailAddressesForRequest(
@@ -334,15 +347,20 @@ internal fun needsLiveTrackingLocationDisclosure(missingPermissions: Array<Strin
             permission == Manifest.permission.ACCESS_COARSE_LOCATION
     }
 
-internal fun sessionStatusText(state: LiveTrackingUiState): String {
+internal fun sessionStatusText(
+    text: (Int) -> String,
+    state: LiveTrackingUiState,
+): String {
     val lastUpdate = state.lastSuccessfulUpdateEpochMs
     val lastUpdateText =
         if (lastUpdate == null) {
-            "none"
+            text(R.string.live_tracking_none)
         } else {
             DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastUpdate))
         }
-    return "${state.status}. Last successful update: $lastUpdateText"
+    return text(
+        R.string.live_tracking_value_last_successful_update_value,
+    ).format(localizedSessionStatus(state.status, text), lastUpdateText)
 }
 
 internal fun arkluzTrackUrl(
@@ -445,7 +463,7 @@ internal fun shareUrl(
         Intent(Intent.ACTION_SEND)
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, url)
-    context.startActivity(Intent.createChooser(intent, "Share track link"))
+    context.startActivity(Intent.createChooser(intent, context.getString(R.string.live_tracking_share_track_link)))
 }
 
 internal fun emailArkluzSupport(
@@ -473,3 +491,29 @@ internal fun emailArkluzSupport(
         context.startActivity(intent)
     }
 }
+
+private fun localizedSessionStatus(
+    status: String,
+    text: (Int) -> String,
+): String =
+    when (status) {
+        "Not started" -> text(R.string.live_tracking_status_not_started)
+        "Starting" -> text(R.string.live_tracking_action_starting)
+        "Position sent" -> text(R.string.tracking_notification_position_sent)
+        "Paused" -> text(R.string.transfer_status_paused)
+        "Paused on phone. Arkluz has not received the pause yet; a no-movement alert may still be sent." ->
+            text(
+                R.string.live_tracking_status_paused_on_phone_arkluz_has_not_received,
+            )
+        "Waiting for network to start tracking" ->
+            text(
+                R.string.tracking_notification_waiting_for_network_to_start_tracking,
+            )
+        "Tracking resumed — Arkluz notification pending" ->
+            text(
+                R.string.live_tracking_status_tracking_resumed_arkluz_notification_pending,
+            )
+        "Tracking with errors" -> text(R.string.live_tracking_status_tracking_with_errors)
+        "Stopped" -> text(R.string.live_tracking_status_stopped)
+        else -> status
+    }

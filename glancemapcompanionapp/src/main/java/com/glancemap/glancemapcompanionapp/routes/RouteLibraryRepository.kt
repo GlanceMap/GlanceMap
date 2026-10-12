@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.map.PhoneGeneralSettingsPreferences
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettingsPreferences
@@ -118,14 +119,17 @@ class RouteLibraryRepository(
             val displayName = displayNameFor(uri)
             appContext.contentResolver.openInputStream(uri)?.use { input ->
                 destination.outputStream().use { output -> input.copyTo(output) }
-            } ?: error("Cannot read the selected GPX file.")
+            } ?: error(appContext.getString(R.string.route_library_cannot_read_the_selected_gpx_file))
 
             val parsed =
                 runCatching {
                     destination.inputStream().use(CompanionGpxRouteParser::parse)
                 }.getOrElse { error ->
                     destination.delete()
-                    throw IllegalArgumentException(error.message ?: "Could not read the GPX route.", error)
+                    throw IllegalArgumentException(
+                        error.message ?: appContext.getString(R.string.route_library_could_not_read_the_gpx_route),
+                        error,
+                    )
                 }
             saveParsedRouteLocked(
                 destination = destination,
@@ -145,7 +149,11 @@ class RouteLibraryRepository(
                     destination.inputStream().use(CompanionGpxRouteParser::parse)
                 }.getOrElse { error ->
                     destination.delete()
-                    throw IllegalArgumentException(error.message ?: "Could not read the generated GPX route.", error)
+                    throw IllegalArgumentException(
+                        error.message
+                            ?: appContext.getString(R.string.route_library_could_not_read_the_generated_gpx_route),
+                        error,
+                    )
                 }
             saveParsedRouteLocked(
                 destination = destination,
@@ -173,9 +181,15 @@ class RouteLibraryRepository(
     ): RouteLibraryUiState =
         mutex.withLock {
             val index = readIndex()
-            require(newTitle.trim().isNotBlank()) { "Enter a GPX name first." }
+            require(
+                newTitle.trim().isNotBlank(),
+            ) { appContext.getString(R.string.route_library_enter_a_gpx_name_first) }
             val normalizedDisplayName = phoneGpxDisplayNameFromFileName(newTitle)
-            require(index.routes.any { route -> route.id == routeId }) { "The GPX route could not be found." }
+            require(
+                index.routes.any { route ->
+                    route.id == routeId
+                },
+            ) { appContext.getString(R.string.route_library_the_gpx_route_could_not_be_found) }
             val next =
                 index.copy(
                     routes =
@@ -196,9 +210,11 @@ class RouteLibraryRepository(
             val index = readIndex()
             val route =
                 index.routes.firstOrNull { item -> item.id == routeId }
-                    ?: error("The GPX route could not be found.")
+                    ?: error(appContext.getString(R.string.route_library_the_gpx_route_could_not_be_found))
             val file = File(routesDirectory, route.storedFileName)
-            require(!file.exists() || file.delete()) { "The GPX route could not be deleted." }
+            require(!file.exists() || file.delete()) {
+                appContext.getString(R.string.route_library_the_gpx_route_could_not_be_deleted)
+            }
             val next =
                 index.copy(
                     routes = index.routes.filterNot { item -> item.id == routeId },

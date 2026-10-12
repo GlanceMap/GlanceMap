@@ -33,11 +33,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.routing.BRouterTileMath
 
 private const val DEFAULT_ROUTING_PICKER_BBOX = "5.00,43.00,10.00,48.00"
@@ -49,11 +51,12 @@ internal fun RoutingTilePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val textResources = LocalResources.current
     val context = LocalContext.current
     val nativeMapPickerAvailable = remember(context) { context.hasNativeMapPickerGraphicsSupport() }
     if (!nativeMapPickerAvailable) {
         NativeMapPickerUnavailableDialog(
-            title = "Routing picker unavailable",
+            title = textResources.getString(R.string.routing_picker_routing_picker_unavailable),
             onDismiss = onDismiss,
         )
         return
@@ -123,6 +126,7 @@ private fun RoutingTilePickerSurface(
     initialBbox: String,
     watchInstalledCoverageAreas: List<WatchInstalledCoverageArea>,
 ) {
+    val textResources = LocalResources.current
     Surface(
         shape = MaterialTheme.shapes.large,
         tonalElevation = 6.dp,
@@ -138,17 +142,20 @@ private fun RoutingTilePickerSurface(
                     .fillMaxSize()
                     .padding(16.dp),
         ) {
-            Text("Pick routing tiles", style = MaterialTheme.typography.titleLarge)
+            Text(
+                textResources.getString(R.string.routing_area_method_tile_picker),
+                style = MaterialTheme.typography.titleLarge,
+            )
             Spacer(modifier = Modifier.height(4.dp))
             MapPickerControlRow(
                 checked = state.centerOnLocation,
                 onCheckedChange = actions.onCenterOnLocationChanged,
-                label = "Center on my location",
+                label = textResources.getString(R.string.map_picker_center_on_my_location),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(modifier = Modifier.height(2.dp))
             MapPickerHelpText(
-                text = "Pan the map, then tap tiles to select or remove routing packs.",
+                text = textResources.getString(R.string.routing_picker_pan_the_map_then_tap_tiles_to),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -226,8 +233,9 @@ private fun RoutingTilePickerMap(
 private fun BoxScope.RoutingTilePickerMapOverlays(
     pickerView: MapLibreRoutingTilePickerView?,
 ) {
+    val textResources = LocalResources.current
     MapPickerCoverageLegend(
-        text = "Darker square: routing already on watch",
+        text = textResources.getString(R.string.routing_picker_darker_square_routing_already_on_watch),
         color = Color(0x665A80FF),
         modifier =
             Modifier
@@ -249,25 +257,28 @@ private fun RoutingTilePickerFooter(
     state: RoutingTilePickerState,
     actions: RoutingTilePickerActions,
 ) {
+    val textResources = LocalResources.current
     Text(
-        "Selected routing packs (${state.selectedTiles.size})",
+        textResources.getString(R.string.routing_picker_selected_routing_packs_value, state.selectedTiles.size),
         style = MaterialTheme.typography.labelSmall,
     )
     Text(
-        state.selectedTiles.joinToString(", ").ifBlank { "Tap tiles on the map." },
+        state.selectedTiles.joinToString(", ").ifBlank {
+            textResources.getString(R.string.routing_picker_tap_tiles_on_the_map)
+        },
         style = MaterialTheme.typography.bodySmall,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
     Spacer(modifier = Modifier.height(12.dp))
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        OutlinedButton(onClick = actions.onDismiss) { Text("Cancel") }
+        OutlinedButton(onClick = actions.onDismiss) { Text(textResources.getString(R.string.common_action_cancel)) }
         Spacer(modifier = Modifier.width(8.dp))
         Button(
             onClick = { actions.onConfirm(state.selectedBbox) },
             enabled = state.selectedTiles.isNotEmpty(),
         ) {
-            Text("Use tiles")
+            Text(textResources.getString(R.string.routing_picker_use_tiles))
         }
     }
 }
