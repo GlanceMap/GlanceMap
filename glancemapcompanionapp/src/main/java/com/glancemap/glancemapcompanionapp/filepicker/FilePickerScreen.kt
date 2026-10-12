@@ -28,19 +28,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SpatialTracking
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
@@ -64,8 +60,11 @@ import com.glancemap.glancemapcompanionapp.activehike.LiveHikeDashboardWaitingSc
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryActions
+import com.glancemap.glancemapcompanionapp.library.phoneLibraryScreen
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
+import com.glancemap.glancemapcompanionapp.map.MapTool
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSource
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
@@ -92,18 +91,6 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
-
-private enum class CompanionHomeArea {
-    HOME,
-    SEND_TO_WATCH,
-    LIVE_TRACKING,
-    LIVE_HIKE,
-    MAP,
-    MAP_LEGEND,
-    MISSION_PLAN,
-    ROUTES,
-    ROUTE_WEATHER,
-}
 
 @Composable
 internal fun FilePickerScreen(
@@ -164,13 +151,9 @@ internal fun FilePickerScreen(
     var quickGuideMode by remember { mutableStateOf(QuickGuideMode.GENERAL) }
     var showHowToDialog by remember(autoOpenHelpOnFirstLaunch) { mutableStateOf(autoOpenHelpOnFirstLaunch) }
     var showDebugDialog by remember { mutableStateOf(false) }
-    var activeHomeArea by remember {
+    var activeHomeArea by rememberSaveable {
         mutableStateOf(
-            when {
-                openLiveTrackingToken != 0L -> CompanionHomeArea.LIVE_TRACKING
-                openSendToWatchToken != 0L -> CompanionHomeArea.SEND_TO_WATCH
-                else -> CompanionHomeArea.HOME
-            },
+            initialCompanionHomeArea(openLiveTrackingToken, openSendToWatchToken),
         )
     }
     var weatherRouteId by remember { mutableStateOf<String?>(null) }
@@ -184,25 +167,35 @@ internal fun FilePickerScreen(
     var pendingSinglePhoneSave by remember { mutableStateOf<GeneratedPhoneFile?>(null) }
     var pendingFolderPhoneSave by remember { mutableStateOf<List<GeneratedPhoneFile>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var libraryMapTool by rememberSaveable { mutableStateOf<MapTool?>(null) }
+    val returnToMapMenu: () -> Unit = {
+        libraryMapTool = null
+        activeHomeArea = CompanionHomeArea.MAP
+        coroutineScope.launch { drawerState.open() }
+    }
     var phoneStoredFilesSummary by remember { mutableStateOf(emptyPhoneStoredFilesSummary()) }
     var isLoadingPhoneStoredFiles by remember { mutableStateOf(false) }
     var isClearingPhoneStoredFiles by remember { mutableStateOf(false) }
     var phoneStoredFilesRefreshToken by remember { mutableIntStateOf(0) }
 
-    BackHandler(enabled = activeHomeArea != CompanionHomeArea.HOME) {
-        activeHomeArea = CompanionHomeArea.HOME
-    }
+    BackHandler(enabled = activeHomeArea != CompanionHomeArea.MAP, onBack = returnToMapMenu)
 
+    // The initial destination is already applied above; recreation must not replay launch intents.
+    var handledSendToWatchToken by remember { mutableStateOf(openSendToWatchToken) }
+    var handledLiveTrackingToken by remember { mutableStateOf(openLiveTrackingToken) }
     LaunchedEffect(openSendToWatchToken) {
-        if (openSendToWatchToken != 0L) {
+        if (openSendToWatchToken != handledSendToWatchToken && openSendToWatchToken != 0L) {
             activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
         }
+        handledSendToWatchToken = openSendToWatchToken
     }
 
     LaunchedEffect(openLiveTrackingToken) {
-        if (openLiveTrackingToken != 0L) {
+        if (openLiveTrackingToken != handledLiveTrackingToken && openLiveTrackingToken != 0L) {
             activeHomeArea = CompanionHomeArea.LIVE_TRACKING
         }
+        handledLiveTrackingToken = openLiveTrackingToken
     }
 
     val topographicMapsCategory = stringResource(R.string.map_sources_category_topographic)
@@ -527,6 +520,7 @@ internal fun FilePickerScreen(
                 }
             }
 
+            CompanionHomeArea.LIBRARY,
             CompanionHomeArea.HOME,
             CompanionHomeArea.LIVE_HIKE,
             CompanionHomeArea.MAP,
@@ -658,56 +652,99 @@ internal fun FilePickerScreen(
             }
         }
 
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (activeHomeArea == CompanionHomeArea.MAP) {
-                            Modifier
-                        } else {
-                            Modifier.padding(adaptive.pagePadding)
-                        },
-                    ),
-        ) {
-            when (activeHomeArea) {
-                CompanionHomeArea.HOME -> {
-                    CompanionHomeScreen(
-                        adaptive = adaptive,
-                        selectedRoute = routeLibraryUiState.selectedRoute,
-                        selectedRouteDetails = selectedRouteDetails,
-                        activeHikeSnapshot = activeHikeSnapshot,
-                        liveHikeSyncEnabled = liveHikeSyncEnabled,
-                        routeWeatherUiState = routeWeatherUiState,
-                        missionPlanUiState = missionPlanUiState,
-                        debugCaptureActive = debugCaptureState.active,
-                        onOpenDebugCapture = { showDebugDialog = true },
-                        onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
-                        onOpenRouteWeather = {
+        companionNavigationDrawer(
+            drawerState = drawerState,
+            state =
+                CompanionMenuState(
+                    activeArea = activeHomeArea,
+                    debugCaptureActive = debugCaptureState.active,
+                    liveHikeSyncEnabled = liveHikeSyncEnabled,
+                ),
+            actions =
+                CompanionMenuActions(
+                    onNavigate = { area ->
+                        libraryMapTool = null
+                        if (area == CompanionHomeArea.LIVE_HIKE) {
+                            CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
+                        }
+                        if (area == CompanionHomeArea.ROUTE_WEATHER) {
                             weatherRouteId = routeLibraryUiState.selectedRoute?.id
-                            activeHomeArea =
-                                if (weatherRouteId == null) {
-                                    CompanionHomeArea.ROUTES
+                        }
+                        activeHomeArea =
+                            if (area == CompanionHomeArea.ROUTE_WEATHER && weatherRouteId == null) {
+                                CompanionHomeArea.ROUTES
+                            } else {
+                                area
+                            }
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    onLiveHikeSyncChanged = { enabled ->
+                        viewModel.setLiveHikeSyncEnabled(context, enabled)
+                    },
+                    onDebug = {
+                        showDebugDialog = true
+                    },
+                    onQuickGuide = {
+                        quickGuideMode = QuickGuideMode.GENERAL
+                        showHowToDialog = true
+                    },
+                    onCreditsLegal = {
+                        context.startActivity(PrivacyPolicyActivity.creditsAndLegalIntent(context))
+                    },
+                ),
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (activeHomeArea == CompanionHomeArea.MAP) {
+                                Modifier
+                            } else {
+                                Modifier.padding(adaptive.pagePadding)
+                            },
+                        ),
+            ) {
+                when (activeHomeArea) {
+                    CompanionHomeArea.HOME -> {
+                        CompanionTodayHikeScreen(
+                            adaptive = adaptive,
+                            selectedRoute = routeLibraryUiState.selectedRoute,
+                            selectedRouteDetails = selectedRouteDetails,
+                            activeHikeSnapshot = activeHikeSnapshot,
+                            routeWeatherUiState = routeWeatherUiState,
+                            missionPlanUiState = missionPlanUiState,
+                            onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
+                                routeLibraryViewModel.loadRouteWeather(
+                                    activeHikeSnapshot = snapshot,
+                                    forceRefresh = forceRefresh,
+                                    plannedStartDistanceMeters = plannedStartDistanceMeters,
+                                )
+                            },
+                            onSendSelectedRouteToWatch = {
+                                val plannedDay = missionPlanUiState.selectedDay
+                                if (plannedDay?.route?.id == routeLibraryUiState.selectedRoute?.id) {
+                                    missionPlanViewModel.prepareSelectedDayForTransfer { routeUri ->
+                                        if (routeUri == null) {
+                                            Toast
+                                                .makeText(
+                                                    context,
+                                                    "The planned GPX is no longer available.",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                        } else {
+                                            viewModel.selectFilesForTransfer(context, listOf(routeUri))
+                                            activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                        }
+                                    }
                                 } else {
-                                    CompanionHomeArea.ROUTE_WEATHER
-                                }
-                        },
-                        onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
-                            routeLibraryViewModel.loadRouteWeather(
-                                activeHikeSnapshot = snapshot,
-                                forceRefresh = forceRefresh,
-                                plannedStartDistanceMeters = plannedStartDistanceMeters,
-                            )
-                        },
-                        onSendSelectedRouteToWatch = {
-                            val plannedDay = missionPlanUiState.selectedDay
-                            if (plannedDay?.route?.id == routeLibraryUiState.selectedRoute?.id) {
-                                missionPlanViewModel.prepareSelectedDayForTransfer { routeUri ->
+                                    val routeUri = routeLibraryViewModel.selectedRouteContentUri()
                                     if (routeUri == null) {
                                         Toast
                                             .makeText(
                                                 context,
-                                                "The planned GPX is no longer available.",
+                                                "The selected GPX is no longer available.",
                                                 Toast.LENGTH_SHORT,
                                             ).show()
                                     } else {
@@ -715,8 +752,53 @@ internal fun FilePickerScreen(
                                         activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                                     }
                                 }
-                            } else {
-                                val routeUri = routeLibraryViewModel.selectedRouteContentUri()
+                            },
+                            onBack = returnToMapMenu,
+                        )
+                    }
+
+                    CompanionHomeArea.LIBRARY -> {
+                        LaunchedEffect(Unit) {
+                            routeLibraryViewModel.refresh()
+                            phoneMapPoiViewModel.refresh()
+                        }
+                        phoneLibraryScreen(
+                            routes = routeLibraryUiState,
+                            poiSources = phoneMapPoiUiState.sources,
+                            actions =
+                                PhoneLibraryActions(
+                                    onBack = returnToMapMenu,
+                                    onRefresh = {
+                                        routeLibraryViewModel.refresh()
+                                        phoneMapPoiViewModel.refresh()
+                                    },
+                                    onImportGpx = routeLibraryViewModel::importLibraryGpx,
+                                    onUseRoute = { id ->
+                                        routeLibraryViewModel.selectRoute(id)
+                                        activeHomeArea = CompanionHomeArea.HOME
+                                    },
+                                    onOpenMapTools = { tool ->
+                                        libraryMapTool = tool
+                                        activeHomeArea = CompanionHomeArea.MAP
+                                    },
+                                ),
+                        )
+                    }
+
+                    CompanionHomeArea.ROUTES -> {
+                        RouteLibraryScreen(
+                            uiState = routeLibraryUiState,
+                            onBack = returnToMapMenu,
+                            onImportRoute = routeLibraryViewModel::importRoute,
+                            onSelectRoute = routeLibraryViewModel::selectRoute,
+                            onOpenWeather = { route ->
+                                weatherRouteId = route.id
+                                routeLibraryViewModel.selectRoute(route.id)
+                                activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
+                            },
+                            onSendToWatch = { route ->
+                                routeLibraryViewModel.selectRoute(route.id)
+                                val routeUri = routeLibraryViewModel.contentUriFor(route.id)
                                 if (routeUri == null) {
                                     Toast
                                         .makeText(
@@ -728,526 +810,479 @@ internal fun FilePickerScreen(
                                     viewModel.selectFilesForTransfer(context, listOf(routeUri))
                                     activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
                                 }
-                            }
-                        },
-                        onOpenMissionPlan = { activeHomeArea = CompanionHomeArea.MISSION_PLAN },
-                        onOpenLiveHike = {
-                            CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
-                            activeHomeArea = CompanionHomeArea.LIVE_HIKE
-                        },
-                        onLiveHikeSyncEnabledChange = { enabled ->
-                            viewModel.setLiveHikeSyncEnabled(context, enabled)
-                        },
-                        onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
-                        onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
-                        onOpenMap = { activeHomeArea = CompanionHomeArea.MAP },
-                        onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
-                        onOpenQuickGuide = {
-                            quickGuideMode = QuickGuideMode.GENERAL
-                            showHowToDialog = true
-                        },
-                        onOpenCreditsLegal = {
-                            context.startActivity(PrivacyPolicyActivity.creditsAndLegalIntent(context))
-                        },
-                    )
-                }
-
-                CompanionHomeArea.ROUTES -> {
-                    RouteLibraryScreen(
-                        uiState = routeLibraryUiState,
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                        onImportRoute = routeLibraryViewModel::importRoute,
-                        onSelectRoute = routeLibraryViewModel::selectRoute,
-                        onOpenWeather = { route ->
-                            weatherRouteId = route.id
-                            routeLibraryViewModel.selectRoute(route.id)
-                            activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
-                        },
-                        onSendToWatch = { route ->
-                            routeLibraryViewModel.selectRoute(route.id)
-                            val routeUri = routeLibraryViewModel.contentUriFor(route.id)
-                            if (routeUri == null) {
-                                Toast
-                                    .makeText(
-                                        context,
-                                        "The selected GPX is no longer available.",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                            } else {
-                                viewModel.selectFilesForTransfer(context, listOf(routeUri))
-                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
-                            }
-                        },
-                    )
-                }
-
-                CompanionHomeArea.ROUTE_WEATHER -> {
-                    val weatherRoute =
-                        routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
-                    val isPreparingWeatherRoute =
-                        weatherRoute != null && selectedRouteDetails?.route?.id != weatherRoute.id
-                    RouteWeatherScreen(
-                        route = weatherRoute,
-                        isPreparingRoute = isPreparingWeatherRoute,
-                        uiState =
-                            routeWeatherUiState.takeIf { weatherRoute?.id == routeLibraryUiState.selectedRoute?.id }
-                                ?: RouteWeatherUiState(),
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                        onChooseRoute = { activeHomeArea = CompanionHomeArea.ROUTES },
-                        onLoadWeather = { forceRefresh ->
-                            routeLibraryViewModel.loadRouteWeather(
-                                activeHikeSnapshot = null,
-                                forceRefresh = forceRefresh,
-                            )
-                        },
-                    )
-                }
-
-                CompanionHomeArea.MISSION_PLAN -> {
-                    MissionPlanScreen(
-                        uiState = missionPlanUiState,
-                        routes = routeLibraryUiState.routes,
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                        onAddDay = missionPlanViewModel::addDay,
-                        onSetToday = { dayUi ->
-                            missionPlanViewModel.selectDay(dayUi.day.id)
-                            routeLibraryViewModel.selectRoute(dayUi.route.id)
-                            activeHomeArea = CompanionHomeArea.HOME
-                        },
-                        onUpdateDay = missionPlanViewModel::updateDay,
-                        onMoveDay = missionPlanViewModel::moveDay,
-                        onRemoveDay = missionPlanViewModel::removeDay,
-                        onLoadDayWeather = missionPlanViewModel::loadDayWeather,
-                        onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
-                        onRetry = missionPlanViewModel::refresh,
-                    )
-                }
-
-                CompanionHomeArea.LIVE_HIKE -> {
-                    activeHikeSnapshot?.let { update ->
-                        val activeMissionDay =
-                            missionPlanUiState.selectedDay?.takeIf { dayUi ->
-                                dayUi.matchesActiveHike(update.snapshot)
-                            }
-                        val weather =
-                            activeMissionDay?.let { dayUi ->
-                                missionPlanUiState.weatherByDayId[dayUi.day.id]
-                                    ?.takeIf { state ->
-                                        state.plannedDate == dayUi.day.plannedDate &&
-                                            state.plannedStartTime == dayUi.day.plannedStartTime
-                                    }
-                            }
-                        LiveHikeDashboardScreen(
-                            update = update,
-                            weather = activeMissionDay?.liveHikeWeatherContext(weather),
-                            onLoadWeather =
-                                activeMissionDay?.let { dayUi ->
-                                    { forceRefresh ->
-                                        missionPlanViewModel.loadDayWeather(dayUi.day.id, forceRefresh)
-                                    }
-                                },
-                            onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                        )
-                    } ?: LiveHikeDashboardWaitingScreen(
-                        syncEnabled = liveHikeSyncEnabled,
-                        onEnableSync = { viewModel.setLiveHikeSyncEnabled(context, true) },
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                    )
-                }
-
-                CompanionHomeArea.LIVE_TRACKING -> {
-                    LiveTrackingScreen(
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                        onOpenQuickGuide = {
-                            quickGuideMode = QuickGuideMode.LIVE_TRACKING
-                            showHowToDialog = true
-                        },
-                        lastTransferGpxUri = lastTransferGpx?.first,
-                        lastTransferGpxName = lastTransferGpx?.second.orEmpty(),
-                    )
-                }
-
-                CompanionHomeArea.MAP -> {
-                    CompanionMapScreen(
-                        gpxSources =
-                            routeLibraryUiState.routes.map { route ->
-                                PhoneMapGpxSource(id = route.id, displayName = route.displayName)
                             },
-                        initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
-                        gpxSourcesLoading = routeLibraryUiState.isLoading,
-                        pois = phoneMapPoiUiState.pois,
-                        poiSources = phoneMapPoiUiState.sources,
-                        onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
-                        onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
-                        onPoiSourceVisibilityChanged = phoneMapPoiViewModel::setSourceVisible,
-                        onRenamePoiSource = phoneMapPoiViewModel::renameSource,
-                        onDeletePoiSource = phoneMapPoiViewModel::deleteSource,
-                        onPoiDataChanged = phoneMapPoiViewModel::refresh,
-                        onRenameRoute = routeLibraryViewModel::renameRoute,
-                        onDeleteRoute = routeLibraryViewModel::deleteRoute,
-                        onRouteSaved = routeLibraryViewModel::refresh,
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                    )
-                }
-
-                CompanionHomeArea.MAP_LEGEND -> {
-                    CompanionMapLegendScreen(
-                        adaptive = adaptive,
-                        selectedThemeLegend = selectedThemeLegend,
-                        themeLegendSources = themeLegendSources,
-                        showThemeLegendMenu = showThemeLegendMenu,
-                        onShowThemeLegendMenuChange = { showThemeLegendMenu = it },
-                        onThemeLegendSelected = { selectedThemeLegend = it },
-                        onOpenLink = { openCompanionUrl(context, it) },
-                        onOpenHelp = {
-                            quickGuideMode = QuickGuideMode.MAP_LEGEND
-                            showHowToDialog = true
-                        },
-                        onBack = { activeHomeArea = CompanionHomeArea.HOME },
-                    )
-                }
-
-                CompanionHomeArea.SEND_TO_WATCH -> {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = adaptive.helpIconButtonSize),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = { activeHomeArea = CompanionHomeArea.HOME },
-                            modifier = Modifier.size(adaptive.helpIconButtonSize),
-                            colors = companionTonalIconButtonColors(),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription =
-                                    stringResource(R.string.common_back_to_home_content_description),
-                                modifier = Modifier.size(adaptive.helpIconSize),
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.transfer_title_send_to_watch),
-                            style =
-                                if (isCompactScreen) {
-                                    MaterialTheme.typography.titleSmall
-                                } else {
-                                    MaterialTheme.typography.headlineSmall
-                                },
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
                         )
-                        FilledTonalIconButton(
-                            onClick = {
-                                quickGuideMode = QuickGuideMode.TRANSFER
+                    }
+
+                    CompanionHomeArea.ROUTE_WEATHER -> {
+                        val weatherRoute =
+                            routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
+                        val isPreparingWeatherRoute =
+                            weatherRoute != null && selectedRouteDetails?.route?.id != weatherRoute.id
+                        RouteWeatherScreen(
+                            route = weatherRoute,
+                            isPreparingRoute = isPreparingWeatherRoute,
+                            uiState =
+                                routeWeatherUiState.takeIf { weatherRoute?.id == routeLibraryUiState.selectedRoute?.id }
+                                    ?: RouteWeatherUiState(),
+                            onBack = returnToMapMenu,
+                            onChooseRoute = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onLoadWeather = { forceRefresh ->
+                                routeLibraryViewModel.loadRouteWeather(
+                                    activeHikeSnapshot = null,
+                                    forceRefresh = forceRefresh,
+                                )
+                            },
+                        )
+                    }
+
+                    CompanionHomeArea.MISSION_PLAN -> {
+                        MissionPlanScreen(
+                            uiState = missionPlanUiState,
+                            routes = routeLibraryUiState.routes,
+                            onBack = returnToMapMenu,
+                            onAddDay = missionPlanViewModel::addDay,
+                            onSetToday = { dayUi ->
+                                missionPlanViewModel.selectDay(dayUi.day.id)
+                                routeLibraryViewModel.selectRoute(dayUi.route.id)
+                                activeHomeArea = CompanionHomeArea.MAP
+                            },
+                            onUpdateDay = missionPlanViewModel::updateDay,
+                            onMoveDay = missionPlanViewModel::moveDay,
+                            onRemoveDay = missionPlanViewModel::removeDay,
+                            onLoadDayWeather = missionPlanViewModel::loadDayWeather,
+                            onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onRetry = missionPlanViewModel::refresh,
+                        )
+                    }
+
+                    CompanionHomeArea.LIVE_HIKE -> {
+                        activeHikeSnapshot?.let { update ->
+                            val activeMissionDay =
+                                missionPlanUiState.selectedDay?.takeIf { dayUi ->
+                                    dayUi.matchesActiveHike(update.snapshot)
+                                }
+                            val weather =
+                                activeMissionDay?.let { dayUi ->
+                                    missionPlanUiState.weatherByDayId[dayUi.day.id]
+                                        ?.takeIf { state ->
+                                            state.plannedDate == dayUi.day.plannedDate &&
+                                                state.plannedStartTime == dayUi.day.plannedStartTime
+                                        }
+                                }
+                            LiveHikeDashboardScreen(
+                                update = update,
+                                weather = activeMissionDay?.liveHikeWeatherContext(weather),
+                                onLoadWeather =
+                                    activeMissionDay?.let { dayUi ->
+                                        { forceRefresh ->
+                                            missionPlanViewModel.loadDayWeather(dayUi.day.id, forceRefresh)
+                                        }
+                                    },
+                                onBack = returnToMapMenu,
+                            )
+                        } ?: LiveHikeDashboardWaitingScreen(
+                            syncEnabled = liveHikeSyncEnabled,
+                            onEnableSync = { viewModel.setLiveHikeSyncEnabled(context, true) },
+                            onBack = returnToMapMenu,
+                        )
+                    }
+
+                    CompanionHomeArea.LIVE_TRACKING -> {
+                        LiveTrackingScreen(
+                            onBack = returnToMapMenu,
+                            onOpenQuickGuide = {
+                                quickGuideMode = QuickGuideMode.LIVE_TRACKING
                                 showHowToDialog = true
                             },
-                            modifier = Modifier.size(adaptive.helpIconButtonSize),
-                            colors = companionTonalIconButtonColors(),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription =
-                                    stringResource(R.string.common_quick_guide_content_description),
-                                modifier = Modifier.size(adaptive.helpIconSize),
-                            )
-                        }
-                    }
-
-                    if (showManagePhoneFilesDialog) {
-                        ManagePhoneFilesDialog(
-                            context = context,
-                            viewModel = viewModel,
-                            uiState = uiState,
-                            uiLocked = uiLocked,
-                            isLoadingPhoneStoredFiles = isLoadingPhoneStoredFiles,
-                            isClearingPhoneStoredFiles = isClearingPhoneStoredFiles,
-                            onIsClearingPhoneStoredFilesChange = { isClearingPhoneStoredFiles = it },
-                            phoneStoredFilesSummary = phoneStoredFilesSummary,
-                            onRefreshRequested = { phoneStoredFilesRefreshToken += 1 },
-                            onDismiss = { showManagePhoneFilesDialog = false },
-                            coroutineScope = coroutineScope,
+                            lastTransferGpxUri = lastTransferGpx?.first,
+                            lastTransferGpxName = lastTransferGpx?.second.orEmpty(),
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(adaptive.titleGap))
+                    CompanionHomeArea.MAP -> {
+                        CompanionMapScreen(
+                            gpxSources =
+                                routeLibraryUiState.routes.map { route ->
+                                    PhoneMapGpxSource(id = route.id, displayName = route.displayName)
+                                },
+                            initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
+                            gpxSourcesLoading = routeLibraryUiState.isLoading,
+                            pois = phoneMapPoiUiState.pois,
+                            poiSources = phoneMapPoiUiState.sources,
+                            onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,
+                            onPoiVisibilityChanged = phoneMapPoiViewModel::setPoiVisible,
+                            onPoiSourceVisibilityChanged = phoneMapPoiViewModel::setSourceVisible,
+                            onRenamePoiSource = phoneMapPoiViewModel::renameSource,
+                            onDeletePoiSource = phoneMapPoiViewModel::deleteSource,
+                            onPoiDataChanged = phoneMapPoiViewModel::refresh,
+                            onRenameRoute = routeLibraryViewModel::renameRoute,
+                            onDeleteRoute = routeLibraryViewModel::deleteRoute,
+                            onRouteSaved = routeLibraryViewModel::refresh,
+                            onOpenMenu = { coroutineScope.launch { drawerState.open() } },
+                            initialTool = libraryMapTool,
+                        )
+                    }
 
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                    ) {
-                        Column(
+                    CompanionHomeArea.MAP_LEGEND -> {
+                        CompanionMapLegendScreen(
+                            adaptive = adaptive,
+                            selectedThemeLegend = selectedThemeLegend,
+                            themeLegendSources = themeLegendSources,
+                            showThemeLegendMenu = showThemeLegendMenu,
+                            onShowThemeLegendMenuChange = { showThemeLegendMenu = it },
+                            onThemeLegendSelected = { selectedThemeLegend = it },
+                            onOpenLink = { openCompanionUrl(context, it) },
+                            onOpenHelp = {
+                                quickGuideMode = QuickGuideMode.MAP_LEGEND
+                                showHowToDialog = true
+                            },
+                            onBack = returnToMapMenu,
+                        )
+                    }
+
+                    CompanionHomeArea.SEND_TO_WATCH -> {
+                        Row(
                             modifier =
-                                if (enablePageScroll) {
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .verticalScroll(pageScrollState)
-                                        .padding(end = 10.dp)
-                                } else {
-                                    Modifier.fillMaxWidth()
-                                },
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = adaptive.helpIconButtonSize),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            FilePickerDownloadSection(
-                                context = context,
-                                adaptive = adaptive,
-                                uiLocked = uiLocked,
-                                hasNotificationPermission = hasNotificationPermission,
-                                hasBluetoothConnectPermission = hasBluetoothConnectPermission,
-                                canRefreshLastRefuges = canRefreshLastRefuges,
-                                canRefreshLastRouting = canRefreshLastRouting,
-                                mapDownloadSources = mapDownloadSources,
-                                showMapSourcesMenu = showMapSourcesMenu,
-                                onShowMapSourcesMenuChange = { showMapSourcesMenu = it },
-                                showRefugesMenu = showRefugesMenu,
-                                onShowRefugesMenuChange = { showRefugesMenu = it },
-                                showRoutingMenu = showRoutingMenu,
-                                onShowRoutingMenuChange = { showRoutingMenu = it },
-                                onRequestMissingPermissions = requestMissingPermissions,
-                                onShowManagePhoneFiles = { showManagePhoneFilesDialog = true },
-                                onShowRefugesDialog = { showRefugesDialog = true },
-                                onShowRoutingDialog = { showRoutingDialog = true },
-                                onRefreshLastRefuges = {
-                                    viewModel.refreshLastRefuges(
-                                        context = context,
-                                        appendToSelection = true,
-                                    )
-                                },
-                                onRefreshLastRouting = {
-                                    viewModel.refreshLastRouting(
-                                        context = context,
-                                        appendToSelection = true,
-                                    )
-                                },
-                            )
-
-                            Spacer(modifier = Modifier.height(adaptive.sectionGap))
-
-                            SectionCard(
-                                title = stringResource(R.string.transfer_section_select_files_title),
-                                headerAction = {
-                                    TextButton(
-                                        onClick = { viewModel.clearSelectedFiles() },
-                                        enabled = uiState.selectedFileUris.isNotEmpty() && !uiLocked,
-                                    ) {
-                                        Text(stringResource(R.string.common_action_clear))
-                                    }
-                                },
-                                modifier =
-                                    if (useCompactPageLayout) {
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(min = 120.dp)
-                                    } else {
-                                        Modifier.fillMaxWidth()
-                                    },
+                            FilledTonalIconButton(
+                                onClick = returnToMapMenu,
+                                modifier = Modifier.size(adaptive.helpIconButtonSize),
+                                colors = companionTonalIconButtonColors(),
                             ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-                                ) {
-                                    Button(
-                                        onClick = { multiPickerLauncher.launch(arrayOf("*/*")) },
-                                        enabled = !uiLocked,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text(stringResource(R.string.transfer_action_select_files))
-                                    }
-                                    SelectedFilesCompactSummary(
-                                        fileNames = uiState.selectedFileDisplayNames,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription =
+                                        stringResource(R.string.common_back_to_home_content_description),
+                                    modifier = Modifier.size(adaptive.helpIconSize),
+                                )
                             }
-
-                            Spacer(modifier = Modifier.height(adaptive.sectionGap))
-
-                            SectionCard(
-                                title = stringResource(R.string.transfer_section_select_watch_title),
-                                headerAction = {
-                                    IconButton(
-                                        onClick = { viewModel.findWatchNodes() },
-                                        enabled = !uiLocked,
-                                        modifier = Modifier.size(48.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription =
-                                                stringResource(
-                                                    R.string.common_refresh_watch_list_content_description,
-                                                ),
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                    }
+                            Text(
+                                text = stringResource(R.string.transfer_title_send_to_watch),
+                                style =
+                                    if (isCompactScreen) {
+                                        MaterialTheme.typography.titleSmall
+                                    } else {
+                                        MaterialTheme.typography.headlineSmall
+                                    },
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            FilledTonalIconButton(
+                                onClick = {
+                                    quickGuideMode = QuickGuideMode.TRANSFER
+                                    showHowToDialog = true
                                 },
+                                modifier = Modifier.size(adaptive.helpIconButtonSize),
+                                colors = companionTonalIconButtonColors(),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                    contentDescription =
+                                        stringResource(R.string.common_quick_guide_content_description),
+                                    modifier = Modifier.size(adaptive.helpIconSize),
+                                )
+                            }
+                        }
+
+                        if (showManagePhoneFilesDialog) {
+                            ManagePhoneFilesDialog(
+                                context = context,
+                                viewModel = viewModel,
+                                uiState = uiState,
+                                uiLocked = uiLocked,
+                                isLoadingPhoneStoredFiles = isLoadingPhoneStoredFiles,
+                                isClearingPhoneStoredFiles = isClearingPhoneStoredFiles,
+                                onIsClearingPhoneStoredFilesChange = { isClearingPhoneStoredFiles = it },
+                                phoneStoredFilesSummary = phoneStoredFilesSummary,
+                                onRefreshRequested = { phoneStoredFilesRefreshToken += 1 },
+                                onDismiss = { showManagePhoneFilesDialog = false },
+                                coroutineScope = coroutineScope,
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(adaptive.titleGap))
+
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                        ) {
+                            Column(
                                 modifier =
-                                    if (useCompactPageLayout) {
+                                    if (enablePageScroll) {
                                         Modifier
                                             .fillMaxWidth()
-                                            .heightIn(min = 110.dp)
+                                            .verticalScroll(pageScrollState)
+                                            .padding(end = 10.dp)
                                     } else {
                                         Modifier.fillMaxWidth()
                                     },
                             ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    if (uiState.availableWatches.isEmpty()) {
-                                        Text(
-                                            stringResource(R.string.transfer_no_watches_found),
-                                            style = MaterialTheme.typography.bodySmall,
+                                FilePickerDownloadSection(
+                                    context = context,
+                                    adaptive = adaptive,
+                                    uiLocked = uiLocked,
+                                    hasNotificationPermission = hasNotificationPermission,
+                                    hasBluetoothConnectPermission = hasBluetoothConnectPermission,
+                                    canRefreshLastRefuges = canRefreshLastRefuges,
+                                    canRefreshLastRouting = canRefreshLastRouting,
+                                    mapDownloadSources = mapDownloadSources,
+                                    showMapSourcesMenu = showMapSourcesMenu,
+                                    onShowMapSourcesMenuChange = { showMapSourcesMenu = it },
+                                    showRefugesMenu = showRefugesMenu,
+                                    onShowRefugesMenuChange = { showRefugesMenu = it },
+                                    showRoutingMenu = showRoutingMenu,
+                                    onShowRoutingMenuChange = { showRoutingMenu = it },
+                                    onRequestMissingPermissions = requestMissingPermissions,
+                                    onShowManagePhoneFiles = { showManagePhoneFilesDialog = true },
+                                    onShowRefugesDialog = { showRefugesDialog = true },
+                                    onShowRoutingDialog = { showRoutingDialog = true },
+                                    onRefreshLastRefuges = {
+                                        viewModel.refreshLastRefuges(
+                                            context = context,
+                                            appendToSelection = true,
                                         )
-                                    } else {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    },
+                                    onRefreshLastRouting = {
+                                        viewModel.refreshLastRouting(
+                                            context = context,
+                                            appendToSelection = true,
+                                        )
+                                    },
+                                )
+
+                                Spacer(modifier = Modifier.height(adaptive.sectionGap))
+
+                                SectionCard(
+                                    title = stringResource(R.string.transfer_section_select_files_title),
+                                    headerAction = {
+                                        TextButton(
+                                            onClick = { viewModel.clearSelectedFiles() },
+                                            enabled = uiState.selectedFileUris.isNotEmpty() && !uiLocked,
                                         ) {
-                                            uiState.availableWatches.forEach { watch ->
-                                                val isSelected = uiState.selectedWatch?.id == watch.id
-                                                Button(
-                                                    onClick = { viewModel.onWatchSelected(context, watch) },
-                                                    enabled = !uiLocked,
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    colors =
-                                                        ButtonDefaults.buttonColors(
-                                                            containerColor =
-                                                                if (isSelected) {
-                                                                    Color(0xFF4CAF50)
-                                                                } else {
-                                                                    MaterialTheme.colorScheme.primary
-                                                                },
-                                                        ),
-                                                ) {
-                                                    Text(
-                                                        text = watch.displayName,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
+                                            Text(stringResource(R.string.common_action_clear))
+                                        }
+                                    },
+                                    modifier =
+                                        if (useCompactPageLayout) {
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 120.dp)
+                                        } else {
+                                            Modifier.fillMaxWidth()
+                                        },
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+                                    ) {
+                                        Button(
+                                            onClick = { multiPickerLauncher.launch(arrayOf("*/*")) },
+                                            enabled = !uiLocked,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Text(stringResource(R.string.transfer_action_select_files))
+                                        }
+                                        SelectedFilesCompactSummary(
+                                            fileNames = uiState.selectedFileDisplayNames,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(adaptive.sectionGap))
+
+                                SectionCard(
+                                    title = stringResource(R.string.transfer_section_select_watch_title),
+                                    headerAction = {
+                                        IconButton(
+                                            onClick = { viewModel.findWatchNodes() },
+                                            enabled = !uiLocked,
+                                            modifier = Modifier.size(48.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Refresh,
+                                                contentDescription =
+                                                    stringResource(
+                                                        R.string.common_refresh_watch_list_content_description,
+                                                    ),
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    },
+                                    modifier =
+                                        if (useCompactPageLayout) {
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 110.dp)
+                                        } else {
+                                            Modifier.fillMaxWidth()
+                                        },
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        if (uiState.availableWatches.isEmpty()) {
+                                            Text(
+                                                stringResource(R.string.transfer_no_watches_found),
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        } else {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                uiState.availableWatches.forEach { watch ->
+                                                    val isSelected = uiState.selectedWatch?.id == watch.id
+                                                    Button(
+                                                        onClick = { viewModel.onWatchSelected(context, watch) },
+                                                        enabled = !uiLocked,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors =
+                                                            ButtonDefaults.buttonColors(
+                                                                containerColor =
+                                                                    if (isSelected) {
+                                                                        Color(0xFF4CAF50)
+                                                                    } else {
+                                                                        MaterialTheme.colorScheme.primary
+                                                                    },
+                                                            ),
+                                                    ) {
+                                                        Text(
+                                                            text = watch.displayName,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(adaptive.sectionGap))
+
+                                FilePickerTransferSection(
+                                    adaptive = adaptive,
+                                    uiState = uiState,
+                                    uiLocked = uiLocked,
+                                    isAllowedSelection = isAllowedSelection,
+                                    transferSessionActive = transferSessionActive,
+                                    cancellingTransfer = cancellingTransfer,
+                                    waitingForReconnect = waitingForReconnect,
+                                    debugCaptureState = debugCaptureState,
+                                    onSend = { viewModel.sendFiles(context) },
+                                    onResume = { viewModel.resumeTransfer() },
+                                    onPause = { viewModel.pauseTransfer() },
+                                    onCancelRequested = { showCancelDialog = true },
+                                )
+
+                                Spacer(modifier = Modifier.height(adaptive.sectionGap))
+
+                                FilePickerHistorySection(
+                                    adaptive = adaptive,
+                                    uiState = uiState,
+                                    historyListState = historyListState,
+                                    onClearHistory = { viewModel.clearHistory() },
+                                )
                             }
-
-                            Spacer(modifier = Modifier.height(adaptive.sectionGap))
-
-                            FilePickerTransferSection(
-                                adaptive = adaptive,
-                                uiState = uiState,
-                                uiLocked = uiLocked,
-                                isAllowedSelection = isAllowedSelection,
-                                transferSessionActive = transferSessionActive,
-                                cancellingTransfer = cancellingTransfer,
-                                waitingForReconnect = waitingForReconnect,
-                                debugCaptureState = debugCaptureState,
-                                onSend = { viewModel.sendFiles(context) },
-                                onResume = { viewModel.resumeTransfer() },
-                                onPause = { viewModel.pauseTransfer() },
-                                onCancelRequested = { showCancelDialog = true },
-                            )
-
-                            Spacer(modifier = Modifier.height(adaptive.sectionGap))
-
-                            FilePickerHistorySection(
-                                adaptive = adaptive,
-                                uiState = uiState,
-                                historyListState = historyListState,
-                                onClearHistory = { viewModel.clearHistory() },
-                            )
-                        }
-                        if (enablePageScroll) {
-                            PageScrollbar(
-                                scrollState = pageScrollState,
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .fillMaxHeight(),
-                            )
+                            if (enablePageScroll) {
+                                PageScrollbar(
+                                    scrollState = pageScrollState,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .fillMaxHeight(),
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            if (showDebugDialog) {
-                DebugCaptureDialog(
-                    context = context,
-                    viewModel = viewModel,
-                    debugCaptureState = debugCaptureState,
-                    onDismiss = { showDebugDialog = false },
-                )
-            }
+                if (showDebugDialog) {
+                    DebugCaptureDialog(
+                        context = context,
+                        viewModel = viewModel,
+                        debugCaptureState = debugCaptureState,
+                        onDismiss = { showDebugDialog = false },
+                    )
+                }
 
-            if (showHowToDialog) {
-                FilePickerQuickGuideDialog(
-                    adaptive = adaptive,
-                    mode = quickGuideMode,
-                    onDismiss = {
-                        if (autoOpenHelpOnFirstLaunch && quickGuideMode == QuickGuideMode.GENERAL) {
-                            markHelpShown(context)
-                        }
-                        showHowToDialog = false
-                    },
-                )
-            }
+                if (showHowToDialog) {
+                    FilePickerQuickGuideDialog(
+                        adaptive = adaptive,
+                        mode = quickGuideMode,
+                        onDismiss = {
+                            if (autoOpenHelpOnFirstLaunch && quickGuideMode == QuickGuideMode.GENERAL) {
+                                markHelpShown(context)
+                            }
+                            showHowToDialog = false
+                        },
+                    )
+                }
 
-            if (showCancelDialog) {
-                CancelTransferDialog(
-                    onConfirm = {
-                        viewModel.cancelTransfer()
-                        showCancelDialog = false
-                    },
-                    onDismiss = { showCancelDialog = false },
-                )
-            }
+                if (showCancelDialog) {
+                    CancelTransferDialog(
+                        onConfirm = {
+                            viewModel.cancelTransfer()
+                            showCancelDialog = false
+                        },
+                        onDismiss = { showCancelDialog = false },
+                    )
+                }
 
-            if (showRefugesDialog) {
-                RefugesImportDialog(
-                    context = context,
-                    adaptive = adaptive,
-                    viewModel = viewModel,
-                    uiState = uiState,
-                    isImportingRefuges = isImportingRefuges,
-                    poiImportProgress = poiImportProgress,
-                    lastRefugesRequest = lastRefugesRequest,
-                    refugesRegionPresets = refugesRegionPresets,
-                    useDetailedRefugesRegionPresets = useDetailedRefugesRegionPresets,
-                    onUseDetailedRefugesRegionPresetsChange = { enabled ->
-                        viewModel.setUseDetailedRefugesRegionPresets(context, enabled)
-                    },
-                    watchInstalledMaps = watchInstalledMaps,
-                    watchInstalledCoverageAreas = watchInstalledCoverageAreas,
-                    isLoadingWatchInstalledMaps = isLoadingWatchInstalledMaps,
-                    watchInstalledMapsStatusMessage = watchInstalledMapsStatusMessage,
-                    lastImportedPoiFile = lastImportedPoiFile,
-                    saveGeneratedFilesOnPhone = saveGeneratedFilesOnPhone,
-                    onDismiss = { showRefugesDialog = false },
-                )
-            }
+                if (showRefugesDialog) {
+                    RefugesImportDialog(
+                        context = context,
+                        adaptive = adaptive,
+                        viewModel = viewModel,
+                        uiState = uiState,
+                        isImportingRefuges = isImportingRefuges,
+                        poiImportProgress = poiImportProgress,
+                        lastRefugesRequest = lastRefugesRequest,
+                        refugesRegionPresets = refugesRegionPresets,
+                        useDetailedRefugesRegionPresets = useDetailedRefugesRegionPresets,
+                        onUseDetailedRefugesRegionPresetsChange = { enabled ->
+                            viewModel.setUseDetailedRefugesRegionPresets(context, enabled)
+                        },
+                        watchInstalledMaps = watchInstalledMaps,
+                        watchInstalledCoverageAreas = watchInstalledCoverageAreas,
+                        isLoadingWatchInstalledMaps = isLoadingWatchInstalledMaps,
+                        watchInstalledMapsStatusMessage = watchInstalledMapsStatusMessage,
+                        lastImportedPoiFile = lastImportedPoiFile,
+                        saveGeneratedFilesOnPhone = saveGeneratedFilesOnPhone,
+                        onDismiss = { showRefugesDialog = false },
+                    )
+                }
 
-            if (showRoutingDialog) {
-                RoutingDownloadDialog(
-                    context = context,
-                    adaptive = adaptive,
-                    viewModel = viewModel,
-                    uiState = uiState,
-                    isDownloadingRouting = isDownloadingRouting,
-                    routingDownloadProgress = routingDownloadProgress,
-                    watchInstalledMaps = watchInstalledMaps,
-                    watchInstalledCoverageAreas = watchInstalledCoverageAreas,
-                    isLoadingWatchInstalledMaps = isLoadingWatchInstalledMaps,
-                    watchInstalledMapsStatusMessage = watchInstalledMapsStatusMessage,
-                    lastRoutingDownloadedFiles = lastRoutingDownloadedFiles,
-                    saveGeneratedFilesOnPhone = saveGeneratedFilesOnPhone,
-                    onDismiss = { showRoutingDialog = false },
-                )
+                if (showRoutingDialog) {
+                    RoutingDownloadDialog(
+                        context = context,
+                        adaptive = adaptive,
+                        viewModel = viewModel,
+                        uiState = uiState,
+                        isDownloadingRouting = isDownloadingRouting,
+                        routingDownloadProgress = routingDownloadProgress,
+                        watchInstalledMaps = watchInstalledMaps,
+                        watchInstalledCoverageAreas = watchInstalledCoverageAreas,
+                        isLoadingWatchInstalledMaps = isLoadingWatchInstalledMaps,
+                        watchInstalledMapsStatusMessage = watchInstalledMapsStatusMessage,
+                        lastRoutingDownloadedFiles = lastRoutingDownloadedFiles,
+                        saveGeneratedFilesOnPhone = saveGeneratedFilesOnPhone,
+                        onDismiss = { showRoutingDialog = false },
+                    )
+                }
             }
         }
     }
@@ -1360,277 +1395,46 @@ private fun SelectedFilesCompactSummary(
 }
 
 @Composable
-private fun CompanionHomeScreen(
+private fun CompanionTodayHikeScreen(
     adaptive: CompanionAdaptiveSpec,
     selectedRoute: RouteLibraryRoute?,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
-    liveHikeSyncEnabled: Boolean,
     routeWeatherUiState: RouteWeatherUiState,
     missionPlanUiState: MissionPlanUiState,
-    debugCaptureActive: Boolean,
-    onOpenDebugCapture: () -> Unit,
     onOpenRoutes: () -> Unit,
-    onOpenRouteWeather: () -> Unit,
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
-    onOpenMissionPlan: () -> Unit,
-    onOpenLiveHike: () -> Unit,
-    onLiveHikeSyncEnabledChange: (Boolean) -> Unit,
-    onOpenSendToWatch: () -> Unit,
-    onOpenLiveTracking: () -> Unit,
-    onOpenMap: () -> Unit,
-    onOpenMapLegend: () -> Unit,
-    onOpenQuickGuide: () -> Unit,
-    onOpenCreditsLegal: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize(),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = adaptive.helpIconButtonSize),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalIconButton(
-                onClick = onOpenDebugCapture,
-                modifier = Modifier.size(adaptive.helpIconButtonSize),
-                colors =
-                    IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor =
-                            if (debugCaptureActive) {
-                                MaterialTheme.colorScheme.errorContainer
-                            } else {
-                                MaterialTheme.colorScheme.primaryContainer
-                            },
-                        contentColor =
-                            if (debugCaptureActive) {
-                                MaterialTheme.colorScheme.onErrorContainer
-                            } else {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            },
-                    ),
-            ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilledTonalIconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.Filled.BugReport,
-                    contentDescription =
-                        stringResource(
-                            if (debugCaptureActive) {
-                                R.string.home_debug_capture_stop_content_description
-                            } else {
-                                R.string.home_debug_capture_start_content_description
-                            },
-                        ),
-                    modifier = Modifier.size(adaptive.helpIconSize),
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.common_back_to_home_content_description),
                 )
             }
             Text(
-                text = stringResource(R.string.home_title),
-                style =
-                    if (adaptive.isCompactScreen) {
-                        MaterialTheme.typography.titleLarge
-                    } else {
-                        MaterialTheme.typography.headlineMedium
-                    },
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.menu_today_hike),
+                modifier = Modifier.padding(start = 12.dp),
+                style = MaterialTheme.typography.headlineSmall,
             )
-            FilledTonalIconButton(
-                onClick = onOpenQuickGuide,
-                modifier = Modifier.size(adaptive.helpIconButtonSize),
-                colors = companionTonalIconButtonColors(),
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription =
-                        stringResource(R.string.common_quick_guide_content_description),
-                    modifier = Modifier.size(adaptive.helpIconSize),
-                )
-            }
         }
-
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            contentAlignment = Alignment.Center,
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
         ) {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
-            ) {
-                TodayHikeCard(
-                    selectedRoute = selectedRoute,
-                    selectedRouteDetails = selectedRouteDetails,
-                    activeHikeSnapshot = activeHikeSnapshot,
-                    routeWeatherUiState = routeWeatherUiState,
-                    missionDay =
-                        missionPlanUiState.selectedDay?.takeIf { dayUi ->
-                            dayUi.route.id == selectedRoute?.id
-                        },
-                    isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
-                    onOpenRoutes = onOpenRoutes,
-                    onLoadRouteWeather = onLoadRouteWeather,
-                    onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
-                )
-
-                Button(
-                    onClick = onOpenSendToWatch,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 72.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.SendToMobile,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.transfer_title_send_to_watch),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = stringResource(R.string.transfer_send_to_watch_description),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-
-                HomeActionButton(
-                    icon = Icons.Filled.SpatialTracking,
-                    title = "Live Hike Dashboard",
-                    description =
-                        if (
-                            activeHikeSnapshot?.snapshot?.let { snapshot ->
-                                snapshot.phase != ActiveHikePhase.IDLE &&
-                                    snapshot.phase != ActiveHikePhase.FINISHED
-                            } == true
-                        ) {
-                            "See live progress from the watch"
-                        } else {
-                            "Open status while waiting for the watch"
-                        },
-                    onClick = onOpenLiveHike,
-                )
-                LiveHikeSyncSetting(
-                    enabled = liveHikeSyncEnabled,
-                    onEnabledChange = onLiveHikeSyncEnabledChange,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.CalendarMonth,
-                    title = "Mission Plan",
-                    description =
-                        missionPlanUiState.selectedDay?.let { dayUi ->
-                            "Day ${dayUi.day.dayNumber}: ${dayUi.route.displayName}"
-                        } ?: "Plan multiple hiking days",
-                    onClick = onOpenMissionPlan,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.Map,
-                    title = "Route Weather",
-                    description = "Check a forecast for any imported GPX",
-                    onClick = onOpenRouteWeather,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.SpatialTracking,
-                    title = stringResource(R.string.live_tracking_title),
-                    description = stringResource(R.string.live_tracking_home_description),
-                    onClick = onOpenLiveTracking,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.Map,
-                    title = stringResource(R.string.map_title),
-                    description = stringResource(R.string.map_home_description),
-                    onClick = onOpenMap,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.Map,
-                    title = stringResource(R.string.map_legend_title),
-                    description = stringResource(R.string.map_legend_home_description),
-                    onClick = onOpenMapLegend,
-                )
-                HomeActionButton(
-                    icon = Icons.Filled.Gavel,
-                    title = stringResource(R.string.settings_credits_legal_title),
-                    description = stringResource(R.string.settings_credits_legal_home_description),
-                    onClick = onOpenCreditsLegal,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveHikeSyncSetting(
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    if (enabled) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-            ),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SpatialTracking,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = "Live Hike sync",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text =
-                        if (enabled) {
-                            "Watch progress is shared during navigation and recording"
-                        } else {
-                            "Off — the watch will not send Live Hike updates"
-                        },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onEnabledChange,
+            TodayHikeCard(
+                selectedRoute = selectedRoute,
+                selectedRouteDetails = selectedRouteDetails,
+                activeHikeSnapshot = activeHikeSnapshot,
+                routeWeatherUiState = routeWeatherUiState,
+                missionDay = missionPlanUiState.selectedDay?.takeIf { it.route.id == selectedRoute?.id },
+                isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
+                onOpenRoutes = onOpenRoutes,
+                onLoadRouteWeather = onLoadRouteWeather,
+                onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
             )
         }
     }
@@ -2286,48 +2090,6 @@ private fun Double.toDurationText(): String {
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return if (hours == 0) "$minutes min" else "$hours h ${minutes.toString().padStart(2, '0')} min"
-}
-
-@Composable
-private fun HomeActionButton(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 62.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
 }
 
 @Composable

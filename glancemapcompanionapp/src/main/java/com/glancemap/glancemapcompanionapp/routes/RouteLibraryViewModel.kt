@@ -68,11 +68,18 @@ class RouteLibraryViewModel(
         }
     }
 
-    fun importRoute(uri: android.net.Uri) {
+    fun importRoute(uri: android.net.Uri) = importLibraryGpx(uri, isRecording = false)
+
+    fun importLibraryGpx(
+        uri: android.net.Uri,
+        isRecording: Boolean,
+        sourceExportId: String? = null,
+    ) {
         CompanionJourneyDiagnostics.routeImportStarted()
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isImporting = true, message = null)
-            val result = runCatching { withContext(Dispatchers.IO) { repository.importRoute(uri) } }
+            val result =
+                runCatching { withContext(Dispatchers.IO) { repository.importRoute(uri, isRecording, sourceExportId) } }
             result.onFailure { error ->
                 if (error !is CancellationException) CompanionJourneyDiagnostics.routeImportFailed()
             }

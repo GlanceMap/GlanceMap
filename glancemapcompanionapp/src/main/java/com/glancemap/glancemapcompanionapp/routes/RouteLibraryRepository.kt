@@ -40,6 +40,10 @@ data class RouteLibraryRoute(
     val summary: RouteLibrarySummary,
     @field:SerializedName(value = "metadataTitle", alternate = ["f"])
     val metadataTitle: String? = null,
+    @field:SerializedName("recording")
+    val isRecording: Boolean = false,
+    @field:SerializedName("sourceExportId")
+    val sourceExportId: String? = null,
 )
 
 data class RouteLibrarySummary(
@@ -110,7 +114,11 @@ class RouteLibraryRepository(
         }
 
     @Suppress("LongMethod") // Import, parse, profile, and index updates are one atomic repository operation.
-    suspend fun importRoute(uri: Uri): RouteLibraryUiState =
+    suspend fun importRoute(
+        uri: Uri,
+        isRecording: Boolean = false,
+        sourceExportId: String? = null,
+    ): RouteLibraryUiState =
         mutex.withLock {
             routesDirectory.mkdirs()
             val id = UUID.randomUUID().toString()
@@ -135,6 +143,8 @@ class RouteLibraryRepository(
                 destination = destination,
                 parsed = parsed,
                 displayName = displayName,
+                isRecording = isRecording,
+                sourceExportId = sourceExportId,
             )
         }
 
@@ -319,6 +329,8 @@ class RouteLibraryRepository(
         destination: File,
         parsed: ParsedCompanionRoute,
         displayName: String,
+        isRecording: Boolean = false,
+        sourceExportId: String? = null,
     ): RouteLibraryUiState {
         val id = destination.nameWithoutExtension
         val profile =
@@ -351,6 +363,8 @@ class RouteLibraryRepository(
                         firstThirtyMinutesAscentMeters = firstThirtyMinutes.ascentMeters,
                     ),
                 metadataTitle = parsed.title,
+                isRecording = isRecording,
+                sourceExportId = sourceExportId,
             )
         val previous = readIndex()
         val next =

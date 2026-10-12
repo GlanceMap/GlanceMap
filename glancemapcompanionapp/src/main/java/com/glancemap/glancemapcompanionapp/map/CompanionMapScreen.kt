@@ -31,10 +31,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Remove
@@ -408,7 +408,8 @@ internal fun CompanionMapScreen(
     onRenameRoute: suspend (String, String) -> Unit,
     onDeleteRoute: suspend (String) -> Unit,
     onRouteSaved: () -> Unit,
-    onBack: () -> Unit,
+    onOpenMenu: () -> Unit,
+    initialTool: MapTool? = null,
 ) {
     val context = LocalContext.current
     val migrationTextResources = LocalResources.current
@@ -454,7 +455,7 @@ internal fun CompanionMapScreen(
     val phoneDebugCaptureState by PhoneDebugCapture.state.collectAsState()
     var mapUiState by rememberSaveable(stateSaver = phoneMapUiStateSaver) {
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
-        mutableStateOf(initialState)
+        mutableStateOf(initialTool?.let(initialState::selectTool) ?: initialState)
     }
     var mapSourcePreference by remember(mapSourcePreferences) {
         mutableStateOf(mapSourcePreferences.load())
@@ -3010,7 +3011,7 @@ internal fun CompanionMapScreen(
                         compassState.isRenderable,
                     )
                 mapControls(
-                    onBack = onBack,
+                    onOpenMenu = onOpenMenu,
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
                     onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
                     camera = mapCamera,
@@ -4276,7 +4277,7 @@ private fun mapSurface(
 @Composable
 @Suppress("LongMethod", "LongParameterList") // Controls are one compact UI cluster; wrappers add no state boundary.
 private fun mapControls(
-    onBack: () -> Unit,
+    onOpenMenu: () -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
     camera: PhoneMapCameraSnapshot,
@@ -4303,15 +4304,15 @@ private fun mapControls(
             }
 
         FilledTonalIconButton(
-            onClick = onBack,
+            onClick = onOpenMenu,
             modifier =
                 Modifier
                     .align(Alignment.TopStart)
                     .padding(16.dp),
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.common_action_back),
+                imageVector = Icons.Filled.Menu,
+                contentDescription = stringResource(R.string.menu_open_content_description),
             )
         }
         Column(
