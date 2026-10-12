@@ -874,6 +874,7 @@ internal fun FilePickerScreen(
                                 PhoneMapGpxSource(id = route.id, displayName = route.displayName)
                             },
                         initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
+                        gpxSourcesLoading = routeLibraryUiState.isLoading,
                         pois = phoneMapPoiUiState.pois,
                         poiSources = phoneMapPoiUiState.sources,
                         onPoiViewportChanged = phoneMapPoiViewModel::onViewportChanged,

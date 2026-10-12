@@ -79,6 +79,7 @@ private fun preparePhoneMapsforgeFramebuffer(transparentBackground: Boolean): Bo
 
 internal data class PhoneOfflineMapsforgeCallbacks(
     val onCameraChanged: (PhoneMapCameraSnapshot) -> Unit,
+    val onUserCameraInput: () -> Unit = {},
     val onLiveMapPositionChanged: (PhoneMapLiveMetricsPosition) -> Unit,
     val onViewportChanged: (PhoneMapViewport) -> Unit,
     val onPoiSelected: (PhoneMapPoi) -> Unit,
@@ -147,6 +148,7 @@ internal fun offlineMapSurface(
                     callbacks =
                         PhoneOfflineMapsforgeCallbacks(
                             onCameraChanged = { currentCallbacks.onCameraChanged(it) },
+                            onUserCameraInput = { currentCallbacks.onUserCameraInput() },
                             onLiveMapPositionChanged = { currentCallbacks.onLiveMapPositionChanged(it) },
                             onViewportChanged = { currentCallbacks.onViewportChanged(it) },
                             onPoiSelected = { currentCallbacks.onPoiSelected(it) },
@@ -263,10 +265,10 @@ private class PhoneOfflineMapsforgeView(
     private val inputListener =
         object : InputListener {
             override fun onMoveEvent() {
-                post { if (!disposed) callbacks.onUserPan(currentMapBearing()) }
+                publishUserCameraInput { callbacks.onUserPan(currentMapBearing()) }
             }
 
-            override fun onZoomEvent() = Unit
+            override fun onZoomEvent() = publishUserCameraInput()
         }
     private val mapViewLayoutListener =
         View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onMapViewLifecycleChanged() }
@@ -476,6 +478,9 @@ private class PhoneOfflineMapsforgeView(
         val baseZoomMin = renderer.mapZoomLevelMin?.toInt()
         val baseZoomMax = renderer.mapZoomLevelMax?.toInt()
         val viewportWidthPx = mapView.width.toDouble()
+        val tileSizePx =
+            mapView.model.displayModel.tileSize
+                .toDouble()
         if (baseZoomMin != null && baseZoomMax != null && viewportWidthPx > 0.0) {
             val center = mapView.model.mapViewPosition.center
             val settingsZoomMin =
@@ -483,12 +488,14 @@ private class PhoneOfflineMapsforgeView(
                     latitudeDegrees = center.latitude,
                     scaleMeters = settings.zoomMinScaleMeters,
                     viewportWidthPx = viewportWidthPx,
+                    tileSizePx = tileSizePx,
                 )?.roundToInt()
             val settingsZoomMax =
                 phoneMapZoomForScale(
                     latitudeDegrees = center.latitude,
                     scaleMeters = settings.zoomMaxScaleMeters,
                     viewportWidthPx = viewportWidthPx,
+                    tileSizePx = tileSizePx,
                 )?.roundToInt()
             val zoomMin = maxOf(baseZoomMin, settingsZoomMin ?: baseZoomMin)
             val zoomMax = minOf(baseZoomMax, settingsZoomMax ?: baseZoomMax)
@@ -501,6 +508,7 @@ private class PhoneOfflineMapsforgeView(
                     latitudeDegrees = center.latitude,
                     scaleMeters = settings.zoomDefaultScaleMeters,
                     viewportWidthPx = viewportWidthPx,
+                    tileSizePx = tileSizePx,
                 )?.let { defaultZoom ->
                     mapView.model.mapViewPosition.setZoom(defaultZoom, false)
                 }
@@ -949,7 +957,17 @@ private class PhoneOfflineMapsforgeView(
                 bearingDegrees = currentMapBearing(),
                 reportUserRotation = !applyingProgrammaticRotation,
             ) ?: return
-        post { if (!disposed) callbacks.onUserRotation(bearing) }
+        publishUserCameraInput { callbacks.onUserRotation(bearing) }
+    }
+
+    private fun publishUserCameraInput(onInput: () -> Unit = {}) {
+        post {
+            if (!disposed) {
+                callbacks.onUserCameraInput()
+                onInput()
+                publishCamera()
+            }
+        }
     }
 
     private fun currentReadiness(): PhoneMapViewRenderReadiness =

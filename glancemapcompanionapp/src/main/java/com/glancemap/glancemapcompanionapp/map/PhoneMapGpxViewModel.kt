@@ -29,6 +29,8 @@ internal class PhoneMapGpxViewModel(
     private var routeSources: List<PhoneMapGpxSource> = emptyList()
     private var folderSources: List<PhoneGpxFolderFile> = emptyList()
     private var loadJob: Job? = null
+    val loadedSources: Pair<List<PhoneMapGpxSource>, List<PhoneGpxFolderFile>>?
+        get() = if (_uiState.value.isLoading) null else routeSources to folderSources
 
     fun synchronize(
         nextRouteSources: List<PhoneMapGpxSource>,

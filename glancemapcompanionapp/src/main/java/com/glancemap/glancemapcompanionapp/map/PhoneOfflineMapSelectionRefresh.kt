@@ -5,7 +5,9 @@ internal fun PhoneOfflineMap.refreshedFrom(
 ): PhoneOfflineMap = offlineMaps.firstOrNull { it.selectionIdentity == selectionIdentity } ?: this
 
 /** Rebind installed revisions while retaining presentation, follow mode, and pending commands. */
-internal fun PhoneMapUiState.refreshOfflineMapSelections(offlineMaps: List<PhoneOfflineMap>): PhoneMapUiState {
+internal fun PhoneMapUiState.refreshOfflineMapSelections(offlineMaps: List<PhoneOfflineMap>?): PhoneMapUiState {
+    // An undiscovered list cannot invalidate a restored selection.
+    if (offlineMaps == null) return this
     val refreshedSource =
         when (val selectedSource = source) {
             PhoneMapSource.Online -> selectedSource

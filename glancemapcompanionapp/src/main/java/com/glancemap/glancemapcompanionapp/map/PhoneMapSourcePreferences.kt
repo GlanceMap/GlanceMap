@@ -18,6 +18,27 @@ internal fun PhoneMapSourcePreference.restoredOnline(): PhoneMapSourcePreference
         mode = PhoneMapSourcePreferenceMode.ONLINE,
     )
 
+internal data class PhoneMapOfflineStartupSelection(
+    val map: PhoneOfflineMap? = null,
+    val missingMap: Boolean = false,
+)
+
+internal fun resolvePhoneMapOfflineStartupSelection(
+    preference: PhoneMapSourcePreference,
+    restoredSource: PhoneMapSource,
+    discoveredMaps: List<PhoneOfflineMap>,
+): PhoneMapOfflineStartupSelection {
+    val restoredMap = (restoredSource as? PhoneMapSource.Offline)?.map
+    val requestedOffline = preference.mode == PhoneMapSourcePreferenceMode.OFFLINE
+    val selected =
+        if (requestedOffline) {
+            discoveredMaps.firstOrNull { it.displayName == preference.offlineMapName }
+        } else {
+            discoveredMaps.firstOrNull { it.selectionIdentity == restoredMap?.selectionIdentity }
+        }
+    return PhoneMapOfflineStartupSelection(selected, (requestedOffline || restoredMap != null) && selected == null)
+}
+
 /** Remembers the map source toggle plus the last selected map for each renderer. */
 internal class PhoneMapSourcePreferences(
     context: Context,

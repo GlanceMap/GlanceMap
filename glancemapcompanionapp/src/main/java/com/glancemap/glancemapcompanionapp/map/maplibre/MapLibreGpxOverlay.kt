@@ -72,9 +72,10 @@ internal fun MapLibreMap.fitGpxTrackBounds(
     segments: List<PhoneMapRouteSegment>,
     isCurrent: () -> Boolean,
     onFitted: () -> Unit,
+    onCameraInput: () -> Unit,
 ) {
     val bounds = segments.boundsOrNull()?.toMapLibreBounds() ?: return
-    mapView.fitBoundsWhenLaidOut(this, bounds, isCurrent, onFitted)
+    mapView.fitBoundsWhenLaidOut(this, bounds, isCurrent, onFitted, onCameraInput)
 }
 
 internal fun phoneMapGpxFitIsStillEligible(
@@ -116,13 +117,15 @@ private fun MapView.fitBoundsWhenLaidOut(
     bounds: LatLngBounds,
     isCurrent: () -> Boolean,
     onFitted: () -> Unit,
+    onCameraInput: () -> Unit,
 ) {
     post {
         if (isDestroyed || !isCurrent()) return@post
         if (width == 0 || height == 0) {
-            fitBoundsWhenLaidOut(map, bounds, isCurrent, onFitted)
+            fitBoundsWhenLaidOut(map, bounds, isCurrent, onFitted, onCameraInput)
             return@post
         }
+        onCameraInput()
         map.moveCamera(
             CameraUpdateFactory.newLatLngBounds(
                 bounds,
