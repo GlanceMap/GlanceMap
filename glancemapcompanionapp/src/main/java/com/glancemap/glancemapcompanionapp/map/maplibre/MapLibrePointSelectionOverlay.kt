@@ -37,12 +37,12 @@ internal fun Style.renderPointSelectionMarkers(
     }
 
     val layerVisibility = if (markers.isEmpty()) Property.NONE else Property.VISIBLE
-    val existingLayer = getLayer(LAYER_ID)
+    val existingLayer = getLayer(POINT_SELECTION_LAYER_ID)
     if (existingLayer != null && existingLayer !is SymbolLayer) removeLayer(existingLayer)
-    val layer = getLayerAs<SymbolLayer>(LAYER_ID)
+    val layer = getLayerAs<SymbolLayer>(POINT_SELECTION_LAYER_ID)
     if (layer == null) {
         addLayer(
-            SymbolLayer(LAYER_ID, SOURCE_ID).withProperties(
+            SymbolLayer(POINT_SELECTION_LAYER_ID, SOURCE_ID).withProperties(
                 iconImage("{$IMAGE_PROPERTY}"),
                 iconAnchor("center"),
                 iconAllowOverlap(true),
@@ -64,5 +64,5 @@ internal fun Style.renderPointSelectionMarkers(
 private fun imageIdFor(kindName: String): String = "companion-point-selection-$kindName"
 
 private const val IMAGE_PROPERTY = "point_selection_image"
-private const val LAYER_ID = "companion-point-selection"
+internal const val POINT_SELECTION_LAYER_ID = "companion-point-selection"
 private const val SOURCE_ID = "companion-point-selection"

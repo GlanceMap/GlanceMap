@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import kotlin.math.roundToInt
@@ -181,19 +183,36 @@ private fun mapToolsMapsDataSettings(
     actions: MapToolsMapsActions,
 ) {
     mapToolPanelColumn {
-        Button(onClick = actions.onImportMap, modifier = Modifier.fillMaxWidth()) {
+        if (state.isLoading) mapToolsOfflineMapLoadingIndicator()
+        Button(
+            onClick = actions.onImportMap,
+            enabled = !state.isLoading,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text(stringResource(R.string.map_source_import_local_map))
         }
         if (state.hasSelectedFolder) {
             Text(stringResource(R.string.map_source_map_folder_selected))
-            OutlinedButton(onClick = actions.onRescanFolder, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = actions.onRescanFolder,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.map_source_rescan_map_folder))
             }
-            OutlinedButton(onClick = actions.onClearFolder, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = actions.onClearFolder,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.map_source_clear_map_folder))
             }
         } else {
-            OutlinedButton(onClick = actions.onSelectFolder, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = actions.onSelectFolder,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.map_source_select_map_folder))
             }
         }
@@ -730,7 +749,13 @@ internal fun <T> mapToolsMapSettingPicker(
     var expanded by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("$label: $selectedLabel")
+            Text(
+                text = "$label: $selectedLabel",
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Column(

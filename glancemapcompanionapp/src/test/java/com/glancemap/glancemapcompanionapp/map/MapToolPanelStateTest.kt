@@ -78,18 +78,7 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun headerSwipeUpExpandsAndSwipeDownClosesThePanel() {
-        val split = MapToolPanelState().select(MapTool.MAPS)
-        val expanded = split.onHeaderSwipe(MapToolHeaderSwipe.UP)
-
-        assertEquals(MapToolPanelMode.EXPANDED, expanded.mode)
-        assertEquals(MapToolPanelMode.CLOSED, expanded.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
-        assertEquals(MapToolPanelMode.CLOSED, split.onHeaderSwipe(MapToolHeaderSwipe.DOWN).mode)
-        assertEquals(expanded, expanded.onHeaderSwipe(MapToolHeaderSwipe.UP))
-    }
-
-    @Test
-    fun headerExpandButtonActionsToggleSplitAndExpandedModes() {
+    fun explicitExpandAndCollapsePreserveTheSplitMode() {
         val split = MapToolPanelState().select(MapTool.MAPS)
         val expanded = split.expand()
 

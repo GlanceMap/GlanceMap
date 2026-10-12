@@ -1156,7 +1156,7 @@ internal fun CompanionMapScreen(
             maps =
                 MapToolsMapsState(
                     source = mapUiState.source,
-                    onlineSources = PhoneMapRendererCatalog.supportedOnlineSources(),
+                    onlineSources = PhoneMapRendererCatalog.availableOnlineSources(),
                     selectedOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
                     offlineMapAvailability =
@@ -1596,11 +1596,14 @@ internal fun CompanionMapScreen(
                 onToggleLauncher = { mapUiState = mapUiState.toggleToolLauncher() },
                 onAddPoi = onAddPoi,
                 onOpenGpxTools = onOpenRouteTools,
-                onExpand = { mapUiState = mapUiState.expandTool() },
-                onCollapse = { mapUiState = mapUiState.collapseTool() },
-                onHeaderSwipe = { swipe ->
-                    mapUiState = mapUiState.copy(toolPanel = mapUiState.toolPanel.onHeaderSwipe(swipe))
+                onCycleSize = {
+                    mapUiState = mapUiState.copy(toolPanel = mapUiState.toolPanel.cycleSize())
+                    mapSettingsPreferences.saveToolPanelSizing(mapUiState.toolPanel)
                 },
+                onResize = { fraction ->
+                    mapUiState = mapUiState.copy(toolPanel = mapUiState.toolPanel.resize(fraction))
+                },
+                onResizeFinished = { mapSettingsPreferences.saveToolPanelSizing(mapUiState.toolPanel) },
                 onBack = onToolPanelBack,
                 onClose = { mapUiState = mapUiState.closeTool() },
                 onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
@@ -2400,7 +2403,12 @@ internal fun CompanionMapScreen(
                 distanceMeasurement?.let { measurement ->
                     phoneMapDistanceMeasurementCard(
                         measurement = measurement,
+                        elevationRepository = elevationRepository,
+                        terrainDataVersion = terrainDataVersion,
+                        isMetric = generalSettings.isMetric,
                         onClear = { distanceMeasurement = null },
+                        onlineElevationRepository =
+                            onlineElevationRepository.takeIf { mapSettings.onlineElevationEnabled },
                     )
                 }
                 phoneMapLiveMetrics(
@@ -3854,23 +3862,6 @@ private fun phoneMapNorthIndicator(compassPresentation: PhoneMapCompassPresentat
             color = Color.Black,
             fontSize = 8.sp,
         )
-    }
-}
-
-@Composable
-private fun BoxScope.phoneMapDistanceMeasurementCard(
-    measurement: PhoneMapDistanceMeasurement,
-    onClear: () -> Unit,
-) {
-    PhoneMapPopupCard(
-        modifier =
-            Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 8.dp),
-        onDismiss = onClear,
-    ) {
-        Text(text = formatPhoneMapDistanceMeters(measurement.distanceMeters))
     }
 }
 

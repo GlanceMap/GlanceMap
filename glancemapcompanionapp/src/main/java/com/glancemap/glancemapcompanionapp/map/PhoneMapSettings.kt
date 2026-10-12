@@ -240,8 +240,29 @@ internal class PhoneMapSettingsPreferences(
         return normalized
     }
 
+    fun loadToolPanelSizing(): MapToolPanelState =
+        MapToolPanelState(
+            splitFraction = preferences.getFloat(KEY_TOOL_PANEL_FRACTION, DEFAULT_MAP_TOOL_PANEL_FRACTION),
+            customSplitFraction =
+                if (preferences.contains(KEY_TOOL_PANEL_CUSTOM_FRACTION)) {
+                    preferences.getFloat(KEY_TOOL_PANEL_CUSTOM_FRACTION, DEFAULT_MAP_TOOL_PANEL_FRACTION)
+                } else {
+                    null
+                },
+        ).normalizedSizing()
+
+    fun saveToolPanelSizing(state: MapToolPanelState) {
+        val normalized = state.normalizedSizing()
+        val editor = preferences.edit().putFloat(KEY_TOOL_PANEL_FRACTION, normalized.splitFraction)
+        normalized.customSplitFraction?.let { editor.putFloat(KEY_TOOL_PANEL_CUSTOM_FRACTION, it) }
+            ?: editor.remove(KEY_TOOL_PANEL_CUSTOM_FRACTION)
+        editor.apply()
+    }
+
     private companion object {
         const val PREFERENCES_NAME = "phone_map_settings"
+        const val KEY_TOOL_PANEL_FRACTION = "tool_panel_fraction"
+        const val KEY_TOOL_PANEL_CUSTOM_FRACTION = "tool_panel_custom_fraction"
         const val KEY_MARKER_ANCHOR = "marker_anchor"
         const val KEY_AUTO_RECENTER_ENABLED = "auto_recenter_enabled"
         const val KEY_AUTO_RECENTER_DELAY_SECONDS = "auto_recenter_delay_seconds"

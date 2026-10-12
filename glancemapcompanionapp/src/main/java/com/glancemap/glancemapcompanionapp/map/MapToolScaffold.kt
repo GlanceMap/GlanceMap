@@ -3,7 +3,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,19 +25,25 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.layout.CompanionWidthClass
 import com.glancemap.glancemapcompanionapp.layout.LocalCompanionLayoutContext
+import kotlin.math.roundToInt
 
 /** Hosts the map and every tool panel without letting a panel own map renderer state. */
 internal data class MapToolScaffoldActions(
@@ -46,9 +51,9 @@ internal data class MapToolScaffoldActions(
     val onToggleLauncher: () -> Unit,
     val onAddPoi: () -> Unit,
     val onOpenGpxTools: () -> Unit,
-    val onExpand: () -> Unit,
-    val onCollapse: () -> Unit,
-    val onHeaderSwipe: (MapToolHeaderSwipe) -> Unit,
+    val onCycleSize: () -> Unit,
+    val onResize: (Float) -> Unit,
+    val onResizeFinished: () -> Unit,
     val onBack: () -> Unit,
     val onClose: () -> Unit,
     val onFeatureSettings: () -> Unit,
@@ -68,8 +73,14 @@ internal fun MapToolScaffold(
     panelContent: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
 ) {
     val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
+    var availableSize by remember { mutableStateOf(IntSize.Zero) }
+    val axisSize = if (isWide) availableSize.width else availableSize.height
+    val minPanelSize = with(LocalDensity.current) { (if (isWide) 200.dp else 144.dp).roundToPx() }
+    val minMapSize = with(LocalDensity.current) { (if (isWide) 240.dp else 160.dp).roundToPx() }
+    val fractionRange = mapToolPanelFractionRange(axisSize, minPanelSize, minMapSize)
+    val resizeModifier = mapToolPanelResizeModifier(state, isWide, axisSize, fractionRange, actions)
     Layout(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onSizeChanged { availableSize = it },
         content = {
             // Keep this slot unconditional: Android map views retain their composition identity as panels resize.
             mapToolMapSurface(
@@ -83,7 +94,7 @@ internal fun MapToolScaffold(
                 if (state.activeTool != null && state.mode != MapToolPanelMode.CLOSED) {
                     mapToolPanelSurface(
                         state = state,
-                        headerSwipeEnabled = !isWide,
+                        resizeModifier = resizeModifier,
                         actions = actions,
                         modifier = Modifier.fillMaxSize(),
                         content = panelContent,
@@ -97,15 +108,17 @@ internal fun MapToolScaffold(
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val panelOpen = state.activeTool != null && state.mode != MapToolPanelMode.CLOSED
+        val range = mapToolPanelFractionRange(if (isWide) width else height, minPanelSize, minMapSize)
+        val panelFraction = state.normalizedSizing().splitFraction.coerceIn(range)
         val mapWidth =
             if (panelOpen && state.mode == MapToolPanelMode.SPLIT && isWide) {
-                (width * MAP_SPLIT_FRACTION).toInt()
+                width - (width * panelFraction).roundToInt()
             } else {
                 width
             }
         val mapHeight =
             if (panelOpen && state.mode == MapToolPanelMode.SPLIT && !isWide) {
-                (height * MAP_SPLIT_FRACTION).toInt()
+                height - (height * panelFraction).roundToInt()
             } else {
                 height
             }
@@ -129,9 +142,6 @@ internal fun MapToolScaffold(
         }
     }
 }
-
-private const val MAP_SPLIT_FRACTION = 0.6f
-private val MAP_TOOL_HEADER_SWIPE_MIN_DISTANCE = 48.dp
 
 @Composable
 private fun mapToolMapSurface(
@@ -161,7 +171,7 @@ private fun mapToolMapSurface(
 @Composable
 private fun mapToolPanelSurface(
     state: MapToolPanelState,
-    headerSwipeEnabled: Boolean,
+    resizeModifier: Modifier,
     actions: MapToolScaffoldActions,
     modifier: Modifier,
     content: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
@@ -171,7 +181,7 @@ private fun mapToolPanelSurface(
         Column(modifier = Modifier.fillMaxSize()) {
             mapToolPanelHeader(
                 state = state,
-                headerSwipeEnabled = headerSwipeEnabled,
+                resizeModifier = resizeModifier,
                 actions = actions,
             )
             HorizontalDivider()
@@ -185,22 +195,15 @@ private fun mapToolPanelSurface(
 @Composable
 private fun mapToolPanelHeader(
     state: MapToolPanelState,
-    headerSwipeEnabled: Boolean,
+    resizeModifier: Modifier,
     actions: MapToolScaffoldActions,
 ) {
-    val headerSwipeModifier =
-        mapToolHeaderSwipeModifier(
-            mode = state.mode,
-            enabled = headerSwipeEnabled,
-            onHeaderSwipe = actions.onHeaderSwipe,
-        )
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .then(headerSwipeModifier)
                 .heightIn(min = 44.dp)
                 .padding(start = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -218,17 +221,20 @@ private fun mapToolPanelHeader(
             tool = tool,
             onFeatureSettings = actions.onFeatureSettings,
         )
-        IconButton(onClick = if (isExpanded) actions.onCollapse else actions.onExpand) {
+        val nextSizeDescription =
+            when (state.nextSizeTarget) {
+                MapToolPanelSizeTarget.FULL -> stringResource(R.string.map_tool_action_expand_content_description)
+                MapToolPanelSizeTarget.DEFAULT -> stringResource(R.string.map_tool_action_default_size, 32)
+                MapToolPanelSizeTarget.CUSTOM ->
+                    stringResource(
+                        R.string.map_tool_action_custom_size,
+                        (requireNotNull(state.customSplitFraction) * 100).roundToInt(),
+                    )
+            }
+        IconButton(onClick = actions.onCycleSize, modifier = resizeModifier) {
             Icon(
                 imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
-                contentDescription =
-                    stringResource(
-                        if (isExpanded) {
-                            R.string.map_tool_action_collapse_content_description
-                        } else {
-                            R.string.map_tool_action_expand_content_description
-                        },
-                    ),
+                contentDescription = nextSizeDescription + ". " + stringResource(R.string.map_tool_resize_hint),
             )
         }
         IconButton(onClick = actions.onClose) {
@@ -271,34 +277,6 @@ private fun RowScope.mapToolHeaderTitle(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun mapToolHeaderSwipeModifier(
-    mode: MapToolPanelMode,
-    enabled: Boolean,
-    onHeaderSwipe: (MapToolHeaderSwipe) -> Unit,
-): Modifier {
-    if (!enabled) return Modifier
-
-    val swipeThresholdPx = with(LocalDensity.current) { MAP_TOOL_HEADER_SWIPE_MIN_DISTANCE.toPx() }
-    return Modifier.pointerInput(mode, swipeThresholdPx) {
-        var totalVerticalDrag = 0f
-        detectVerticalDragGestures(
-            onDragStart = { totalVerticalDrag = 0f },
-            onDragEnd = {
-                val swipe =
-                    when {
-                        totalVerticalDrag <= -swipeThresholdPx -> MapToolHeaderSwipe.UP
-                        totalVerticalDrag >= swipeThresholdPx -> MapToolHeaderSwipe.DOWN
-                        else -> null
-                    }
-                swipe?.let(onHeaderSwipe)
-            },
-            onDragCancel = { totalVerticalDrag = 0f },
-            onVerticalDrag = { _, dragAmount -> totalVerticalDrag += dragAmount },
-        )
     }
 }
 

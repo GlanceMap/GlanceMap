@@ -21,11 +21,6 @@ internal enum class MapToolPanelMode {
     EXPANDED,
 }
 
-internal enum class MapToolHeaderSwipe {
-    UP,
-    DOWN,
-}
-
 internal enum class MapToolContentMode {
     MAIN,
     FEATURE_SETTINGS,
@@ -55,6 +50,8 @@ internal data class MapToolPanelState(
     val mode: MapToolPanelMode = MapToolPanelMode.CLOSED,
     val contentMode: MapToolContentMode = MapToolContentMode.MAIN,
     val featureSettingsSection: MapToolFeatureSettingsSection = MapToolFeatureSettingsSection.ROOT,
+    val splitFraction: Float = DEFAULT_MAP_TOOL_PANEL_FRACTION,
+    val customSplitFraction: Float? = null,
 ) {
     val hasFeatureSettingsBack: Boolean
         get() = contentMode == MapToolContentMode.FEATURE_SETTINGS
@@ -62,7 +59,7 @@ internal data class MapToolPanelState(
     fun select(tool: MapTool): MapToolPanelState =
         when (mode) {
             MapToolPanelMode.CLOSED ->
-                MapToolPanelState(activeTool = tool, mode = MapToolPanelMode.SPLIT)
+                copy(activeTool = tool, mode = MapToolPanelMode.SPLIT)
             MapToolPanelMode.SPLIT,
             MapToolPanelMode.EXPANDED,
             -> if (activeTool == tool) close() else copy(activeTool = tool, contentMode = MapToolContentMode.MAIN)
@@ -102,12 +99,6 @@ internal data class MapToolPanelState(
             ?.copy(mode = MapToolPanelMode.SPLIT)
             ?: this
 
-    fun onHeaderSwipe(swipe: MapToolHeaderSwipe): MapToolPanelState =
-        when (swipe) {
-            MapToolHeaderSwipe.UP -> expand()
-            MapToolHeaderSwipe.DOWN -> close()
-        }
-
     fun back(): MapToolPanelState =
         when {
             contentMode == MapToolContentMode.FEATURE_SETTINGS &&
@@ -117,12 +108,16 @@ internal data class MapToolPanelState(
             else ->
                 when (mode) {
                     MapToolPanelMode.EXPANDED -> collapse()
-                    MapToolPanelMode.SPLIT -> MapToolPanelState()
+                    MapToolPanelMode.SPLIT -> close()
                     MapToolPanelMode.CLOSED -> this
                 }
         }
 
-    fun close(): MapToolPanelState = MapToolPanelState()
+    fun close(): MapToolPanelState =
+        MapToolPanelState(
+            splitFraction = splitFraction,
+            customSplitFraction = customSplitFraction,
+        )
 
     private fun sectionBelongsToTool(
         section: MapToolFeatureSettingsSection,

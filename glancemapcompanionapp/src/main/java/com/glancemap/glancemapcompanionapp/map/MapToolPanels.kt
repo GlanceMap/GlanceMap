@@ -8,6 +8,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,13 +19,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -51,6 +57,7 @@ internal data class MapToolsMapsState(
     val onlineSources: List<PhoneOnlineMapSource>,
     val selectedOnlineSource: PhoneOnlineMapSource,
     val offlineMaps: List<PhoneOfflineMap>,
+    val isLoading: Boolean = false,
     val offlineMapAvailability: Map<String, PhoneOfflineMapAvailability> = emptyMap(),
     val preferredOfflineMapName: String? = null,
     val hasSelectedFolder: Boolean,
@@ -305,12 +312,6 @@ private fun mapToolsLayerPanel(
                 )
             }
         }
-        if (!PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.SATELLITE)) {
-            Text(stringResource(R.string.map_layer_satellite_unavailable))
-        }
-        if (!PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.TRACESTRACK_TOPO)) {
-            Text(stringResource(R.string.map_layer_tracestrack_unavailable))
-        }
         state.comparison.layer?.let {
             Text(
                 stringResource(
@@ -411,11 +412,18 @@ private fun PhoneMapSource.asComparisonLayer(
     }
 
 @Composable
-private fun mapToolsMapsPanel(
+internal fun mapToolsOfflineMapLoadingIndicator() {
+    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    Text(stringResource(R.string.map_source_loading_offline_maps))
+}
+
+@Composable
+internal fun mapToolsMapsPanel(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
 ) {
     mapToolPanelColumn {
+        if (state.isLoading) mapToolsOfflineMapLoadingIndicator()
         val isOffline = state.source is PhoneMapSource.Offline
         val offlineMapToActivate =
             state.preferredOfflineMapName
@@ -447,59 +455,29 @@ private fun mapToolsMapsPanel(
         )
         if (state.source is PhoneMapSource.Offline) {
             if (state.offlineMaps.isEmpty()) {
-                Text(stringResource(R.string.map_source_no_offline_maps))
+                if (!state.isLoading) Text(stringResource(R.string.map_source_no_offline_maps))
             } else {
                 val selectedOfflineMap = state.source.map
-                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    state.offlineMaps.forEach { offlineMap ->
-                        val availability =
-                            state.offlineMapAvailability[offlineMap.displayName]
-                                ?: PhoneOfflineMapAvailability()
-                        mapToolsOfflineMapRow(
-                            map = offlineMap,
-                            availability = availability,
-                            selected = selectedOfflineMap == offlineMap,
-                            onClick = { actions.onSelectOffline(offlineMap) },
-                            onRename = { actions.onRenameOfflineMap(offlineMap) },
-                            onDelete = { actions.onDeleteOfflineMap(offlineMap) },
-                            onDownloadElevation = actions.onDownloadElevationForBundleArea,
-                        )
-                    }
-                }
+                mapToolsMapSettingPicker(
+                    label = stringResource(R.string.map_source_offline_label),
+                    selectedLabel = selectedOfflineMap.displayName,
+                    options = state.offlineMaps.map { map -> map to map.displayName },
+                    onSelect = actions.onSelectOffline,
+                )
+                mapToolsOfflineMapDetails(
+                    availability =
+                        state.offlineMapAvailability[selectedOfflineMap.displayName] ?: PhoneOfflineMapAvailability(),
+                    onRename = { actions.onRenameOfflineMap(selectedOfflineMap) },
+                    onDelete = { actions.onDeleteOfflineMap(selectedOfflineMap) },
+                    onDownloadElevation = actions.onDownloadElevationForBundleArea,
+                )
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                state.onlineSources.forEach { onlineSource ->
-                    val available = PhoneMapRendererCatalog.isOnlineSourceAvailable(onlineSource)
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = available) { actions.onSelectOnline(onlineSource) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = onlineSource == state.selectedOnlineSource,
-                            onClick = { actions.onSelectOnline(onlineSource) },
-                            enabled = available,
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = PhoneMapRendererCatalog.onlineSourceLabel(onlineSource))
-                            if (!available) {
-                                val messageResId =
-                                    when (onlineSource) {
-                                        PhoneOnlineMapSource.SATELLITE ->
-                                            R.string.map_online_source_satellite_unavailable
-                                        PhoneOnlineMapSource.TRACESTRACK_TOPO ->
-                                            R.string.map_online_source_tracestrack_unavailable
-                                        else -> R.string.map_online_source_unavailable
-                                    }
-                                Text(stringResource(messageResId))
-                            }
-                        }
-                    }
-                }
-            }
+            mapToolsOnlineSourcePicker(
+                sources = state.onlineSources,
+                selected = state.selectedOnlineSource,
+                onSelect = actions.onSelectOnline,
+            )
         }
         if (state.source is PhoneMapSource.Offline) {
             Text(
@@ -524,11 +502,43 @@ private fun mapToolsMapsPanel(
 }
 
 @Composable
-private fun mapToolsOfflineMapRow(
-    map: PhoneOfflineMap,
+internal fun mapToolsOnlineSourcePicker(
+    sources: List<PhoneOnlineMapSource>,
+    selected: PhoneOnlineMapSource,
+    onSelect: (PhoneOnlineMapSource) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = PhoneMapRendererCatalog.onlineSourceLabel(selected)
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "${stringResource(R.string.map_source_online)}: $selectedLabel",
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            sources.forEach { source ->
+                DropdownMenuItem(
+                    text = { Text(PhoneMapRendererCatalog.onlineSourceLabel(source)) },
+                    leadingIcon = {
+                        if (source == selected) Icon(Icons.Filled.Check, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(source)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun mapToolsOfflineMapDetails(
     availability: PhoneOfflineMapAvailability,
-    selected: Boolean,
-    onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onDownloadElevation: (String) -> Unit,
@@ -537,19 +547,12 @@ private fun mapToolsOfflineMapRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
                 .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onClick)
         Column(
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         ) {
-            Text(
-                text = map.displayName,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
             Text(
                 stringResource(
                     R.string.map_source_capability,

@@ -23,8 +23,8 @@ internal enum class PhoneMapPointSelectionMarkerKind(
     POINT_B(label = "B", colorArgb = 0xFFEA580C.toInt()),
     DESTINATION(label = "D", colorArgb = 0xFF7C3AED.toInt()),
     WAYPOINT(label = "•", colorArgb = 0xFF0891B2.toInt()),
-    MEASUREMENT_FIRST(label = "1", colorArgb = 0xFF0284C7.toInt()),
-    MEASUREMENT_SECOND(label = "2", colorArgb = 0xFFDC2626.toInt()),
+    MEASUREMENT_FIRST(label = "A", colorArgb = 0xFF0284C7.toInt()),
+    MEASUREMENT_SECOND(label = "B", colorArgb = 0xFFDC2626.toInt()),
 }
 
 internal enum class PhoneMapPointSelectionPhase {
