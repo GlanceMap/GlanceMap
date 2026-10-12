@@ -49,6 +49,7 @@ internal fun View.cancelPhoneMapNativeGesture() {
 internal class PhoneMapTouchDetectorCleanup(
     private val twoFingerTapDetector: PhoneTwoFingerTapDetector,
     private val longPressDetector: GestureDetector,
+    private val onDispose: () -> Unit = {},
 ) {
     private var disposed = false
 
@@ -57,5 +58,6 @@ internal class PhoneMapTouchDetectorCleanup(
         disposed = true
         twoFingerTapDetector.reset()
         longPressDetector.cancelPhoneMapLongPress()
+        onDispose()
     }
 }

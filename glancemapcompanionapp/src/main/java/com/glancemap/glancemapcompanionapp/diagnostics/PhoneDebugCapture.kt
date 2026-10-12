@@ -50,6 +50,7 @@ object PhoneDebugCapture {
     private val lock = Any()
     private val lines = ArrayDeque<String>()
     private val sections = linkedMapOf<String, String>()
+    private val beforeStopListeners = linkedSetOf<() -> Unit>()
     private val stateFlow = MutableStateFlow(PhoneDebugCaptureState())
     private val persistenceScheduled = AtomicBoolean(false)
     private val persistenceWriter =
@@ -100,6 +101,10 @@ object PhoneDebugCapture {
     }
 
     fun stop(): PhoneDebugCaptureState {
+        val listeners = synchronized(lock) { if (enabled.get()) beforeStopListeners.toList() else emptyList() }
+        listeners.forEach { listener ->
+            runCatching(listener).onFailure { log("PhoneDebugCapture", "event=final_summary_failed") }
+        }
         flushPersistedWrites()
         return synchronized(lock) {
             enabled.set(false)
@@ -107,6 +112,12 @@ object PhoneDebugCapture {
             writeCapture(CURRENT_FILE, snapshotLocked())
             stateFlow.value
         }
+    }
+
+    /** Flush aggregates while logging is enabled; invoke on the same thread as stop and remove on disposal. */
+    fun addBeforeStopListener(listener: () -> Unit): () -> Unit {
+        synchronized(lock) { beforeStopListeners.add(listener) }
+        return { synchronized(lock) { beforeStopListeners.remove(listener) } }
     }
 
     fun isActive(): Boolean = enabled.get()
@@ -180,9 +191,7 @@ object PhoneDebugCapture {
                 ?: PersistedPhoneDebugCapture(PhoneDebugCaptureState(), emptyList(), emptyMap())
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
-        val reportSections =
-            capture.sections.values +
-                additionalSections.filter { it.isNotBlank() && it !in capture.sections.values }
+        val reportSections = phoneDebugReportSections(capture.sections, additionalSections)
         return buildString {
             appendLine("GlanceMap Companion Diagnostics")
             appendLine("Generated: ${timestampFormatter.format(Instant.now())}")
@@ -394,4 +403,17 @@ object PhoneDebugCapture {
 
     @Suppress("MaxLineLength") // One direct timestamp conversion is clearer than another formatting helper.
     private fun formatTime(epochMs: Long?): String = epochMs?.let { tsFormatter.format(Instant.ofEpochMilli(it)) } ?: "na"
+}
+
+internal fun phoneDebugReportSections(
+    capturedSections: Map<String, String>,
+    additionalSections: List<String>,
+): List<String> {
+    val captured = capturedSections.filterKeys { key -> key != "offline_map_runtime" }.values.toList()
+    val capturedHeaders = captured.mapNotNull { it.lineSequence().firstOrNull()?.takeIf(String::isNotBlank) }.toSet()
+    return captured +
+        additionalSections.filter { section ->
+            val header = section.lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+            section.isNotBlank() && section !in captured && header !in capturedHeaders
+        }
 }

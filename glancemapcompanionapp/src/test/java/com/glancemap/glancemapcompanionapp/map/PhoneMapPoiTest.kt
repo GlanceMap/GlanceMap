@@ -98,7 +98,9 @@ class PhoneMapPoiTest {
                     )
                 }
 
-            assertTrue(pois.isEmpty())
+            assertTrue(pois.pois.isEmpty())
+            assertEquals(0, pois.queriedSources)
+            assertEquals(0, pois.failedSources)
         } finally {
             directory.delete()
         }

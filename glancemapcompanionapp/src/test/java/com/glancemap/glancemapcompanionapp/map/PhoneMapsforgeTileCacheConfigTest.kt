@@ -52,6 +52,18 @@ class PhoneMapsforgeTileCacheConfigTest {
     }
 
     @Test
+    fun cacheDiagnosticsRetainActualConfigurationAndLabelBitmapBytesAsAnEstimate() {
+        val config = phoneMapsforgeTileCacheConfig(768, 4, 128, 512L * MEBIBYTE)
+        val actualCapacity = 2
+
+        assertEquals(768, config.tileSizePx)
+        assertEquals(4, config.bytesPerPixel)
+        assertEquals(8L * MEBIBYTE, config.memoryBudgetBytes)
+        assertEquals(4_718_592L, phoneMapsforgeEstimatedFirstLevelBitmapBytes(768, 4, actualCapacity))
+        assertTrue(config.estimatedFirstLevelBitmapBytes < config.memoryBudgetBytes)
+    }
+
+    @Test
     fun smallTilesRetainTheExistingMaximumCapacities() {
         val regular = phoneMapsforgeTileCacheConfig(128, 2, 512, 512L * MEBIBYTE)
         val constrained = phoneMapsforgeTileCacheConfig(128, 2, 128, 512L * MEBIBYTE)

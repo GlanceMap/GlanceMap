@@ -5,12 +5,19 @@ import android.database.sqlite.SQLiteDatabase
 import com.glancemap.glancemapcompanionapp.refuges.PoiSqliteViewport
 import com.glancemap.glancemapcompanionapp.refuges.isReadablePoiSqliteFile
 import com.glancemap.glancemapcompanionapp.refuges.readPoiSqliteViewport
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+
+internal data class PhoneMapPoiQueryResult(
+    val pois: List<PhoneMapPoi> = emptyList(),
+    val queriedSources: Int = 0,
+    val failedSources: Int = 0,
+)
 
 /** Reads the companion's canonical locally-imported POI files without involving the watch. */
 internal class PhoneMapPoiRepository(
@@ -24,20 +31,23 @@ internal class PhoneMapPoiRepository(
         viewport: PhoneMapViewport,
         limit: Int,
         enabledSourceFileNames: Set<String>? = null,
-    ): List<PhoneMapPoi> =
+    ): PhoneMapPoiQueryResult =
         withContext(Dispatchers.IO) {
-            if (viewport.zoom < MINIMUM_POI_ZOOM || limit <= 0) return@withContext emptyList()
+            if (viewport.zoom < MINIMUM_POI_ZOOM || limit <= 0) return@withContext PhoneMapPoiQueryResult()
             val sources =
                 poiSourceFiles().filter { source ->
                     enabledSourceFileNames == null || source.name in enabledSourceFileNames
                 }
-            if (sources.isEmpty()) return@withContext emptyList()
+            if (sources.isEmpty()) return@withContext PhoneMapPoiQueryResult()
 
             val pois = mutableListOf<PhoneMapPoi>()
+            var queriedSources = 0
+            var failedSources = 0
             val perSourceLimit = max(MINIMUM_PER_SOURCE_LIMIT, limit / sources.size)
             for (source in sources) {
                 val remaining = limit - pois.size
                 if (remaining <= 0) break
+                queriedSources += 1
                 val points =
                     runCatching {
                         readPoiSqliteViewport(
@@ -51,12 +61,16 @@ internal class PhoneMapPoiRepository(
                                 ),
                             limit = min(perSourceLimit, remaining),
                         )
-                    }.getOrDefault(emptyList())
+                    }.getOrElse { failure ->
+                        if (failure is CancellationException) throw failure
+                        failedSources += 1
+                        emptyList()
+                    }
                 points.mapNotNullTo(pois) { point ->
                     point.toPhoneMapPoi(sourceKey = source.name)
                 }
             }
-            pois
+            PhoneMapPoiQueryResult(pois, queriedSources, failedSources)
         }
 
     suspend fun sources(disabledSourceFileNames: Set<String> = emptySet()): List<PhoneMapPoiSource> =

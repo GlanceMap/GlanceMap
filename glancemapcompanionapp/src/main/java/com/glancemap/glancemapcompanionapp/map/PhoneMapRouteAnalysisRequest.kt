@@ -5,10 +5,45 @@ internal enum class PhoneMapRouteAnalysisSelectionPhase {
     POINT_B,
 }
 
+internal enum class PhoneMapRouteAnalysisDiagnosticOutcome(
+    val value: String,
+) {
+    STARTED("started"),
+    COMPLETED("completed"),
+    NO_MATCH("no_match"),
+    STALE_RESULT_REJECTED("stale_result_rejected"),
+    CANCELLED("cancelled"),
+    FAILED("failed"),
+}
+
+internal fun phoneMapRouteAnalysisDiagnosticLine(
+    outcome: PhoneMapRouteAnalysisDiagnosticOutcome,
+    request: PhoneMapRouteAnalysisRequest,
+    durationMillis: Long,
+    stale: Boolean? = null,
+): String =
+    buildString {
+        append("event=route_analysis_${outcome.value} request=${request.generation} ")
+        append("phase=${request.input.phase.name.lowercase()} candidates=${request.input.candidateItems.size} ")
+        append("duration_ms=${durationMillis.coerceAtLeast(0L)}")
+        stale?.let { append(" stale=$it") }
+    }
+
+internal fun phoneMapRouteAnalysisDiagnosticOutcome(
+    result: PhoneMapRouteAnalysisRequestResult?,
+    canPublish: Boolean,
+): PhoneMapRouteAnalysisDiagnosticOutcome =
+    when {
+        result == null -> PhoneMapRouteAnalysisDiagnosticOutcome.NO_MATCH
+        canPublish -> PhoneMapRouteAnalysisDiagnosticOutcome.COMPLETED
+        else -> PhoneMapRouteAnalysisDiagnosticOutcome.STALE_RESULT_REJECTED
+    }
+
 internal data class PhoneMapRouteAnalysisTrackRevision(
     val trackId: String,
     val displayName: String,
     val track: PhoneMapGpxTrack,
+    val contentRevision: String = track.analysisContentRevision(),
 ) {
     fun isAvailableIn(
         items: List<PhoneMapGpxItem>,

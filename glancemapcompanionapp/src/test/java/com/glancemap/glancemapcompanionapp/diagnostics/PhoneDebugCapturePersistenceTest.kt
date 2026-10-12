@@ -24,6 +24,57 @@ class PhoneDebugCapturePersistenceTest {
     }
 
     @Test
+    fun stopFlushesFinalAggregatesBeforeDisablingLoggingAndPersistsThem() {
+        PhoneDebugCapture.start()
+        var calls = 0
+        val removeListener =
+            PhoneDebugCapture.addBeforeStopListener {
+                calls += 1
+                assertTrue(PhoneDebugCapture.isActive())
+                assertTrue(PhoneDebugCapture.log("PhoneMapLocation", "event=location_callback_summary accepted=1"))
+                PhoneDebugCapture.updateSection("final_counts", "Final counts\nAccepted: 1")
+            }
+        try {
+            PhoneDebugCapture.stop()
+            assertEquals(1, calls)
+            assertFalse(PhoneDebugCapture.isActive())
+            PhoneDebugCapture.reloadFromStorageForTest()
+            assertTrue(PhoneDebugCapture.snapshot().single().contains("event=location_callback_summary accepted=1"))
+            assertEquals(
+                "Final counts\nAccepted: 1",
+                PhoneDebugCapture.sectionForTest(PhoneDebugCaptureSlot.CURRENT, "final_counts"),
+            )
+            PhoneDebugCapture.stop()
+            assertEquals(1, calls)
+        } finally {
+            removeListener()
+        }
+    }
+
+    @Test
+    fun disposedListenersAreRemovedAndOneBrokenSummaryDoesNotPreventCaptureStop() {
+        var removedCalls = 0
+        val removeDisposed = PhoneDebugCapture.addBeforeStopListener { removedCalls += 1 }
+        removeDisposed()
+        val removeBroken = PhoneDebugCapture.addBeforeStopListener { error("private details") }
+        val removeHealthy = PhoneDebugCapture.addBeforeStopListener { PhoneDebugCapture.log("Map", "final") }
+        try {
+            PhoneDebugCapture.start()
+            PhoneDebugCapture.stop()
+
+            assertEquals(0, removedCalls)
+            assertFalse(PhoneDebugCapture.isActive())
+            val logs = PhoneDebugCapture.snapshot().joinToString()
+            assertTrue(logs.contains("event=final_summary_failed"))
+            assertTrue(logs.contains("[Map] final"))
+            assertFalse(logs.contains("private details"))
+        } finally {
+            removeBroken()
+            removeHealthy()
+        }
+    }
+
+    @Test
     fun activeCaptureIsRecoveredAsInterruptedWithItsLogsAndSections() {
         PhoneDebugCapture.start()
         PhoneDebugCapture.log("Renderer", "event=ready")

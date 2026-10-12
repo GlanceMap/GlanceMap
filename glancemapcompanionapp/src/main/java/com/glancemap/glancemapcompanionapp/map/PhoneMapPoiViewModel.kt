@@ -3,6 +3,8 @@ package com.glancemap.glancemapcompanionapp.map
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +16,57 @@ internal data class PhoneMapPoiUiState(
     val pois: List<PhoneMapPoi> = emptyList(),
     val sources: List<PhoneMapPoiSource> = emptyList(),
 )
+
+internal enum class PhoneMapPoiQueryDiagnosticOutcome(
+    val value: String,
+) {
+    COMPLETED("completed"),
+    PARTIAL("partial"),
+    STALE_RESULT_REJECTED("stale_result_rejected"),
+    CANCELLED("cancelled"),
+    FAILED("failed"),
+}
+
+internal fun phoneMapPoiQueryOutcome(
+    result: PhoneMapPoiQueryResult,
+    isCurrent: Boolean,
+): PhoneMapPoiQueryDiagnosticOutcome =
+    when {
+        !isCurrent -> PhoneMapPoiQueryDiagnosticOutcome.STALE_RESULT_REJECTED
+        result.failedSources == 0 -> PhoneMapPoiQueryDiagnosticOutcome.COMPLETED
+        result.failedSources == result.queriedSources -> PhoneMapPoiQueryDiagnosticOutcome.FAILED
+        else -> PhoneMapPoiQueryDiagnosticOutcome.PARTIAL
+    }
+
+internal fun phoneMapPoiQueryDiagnosticLine(
+    outcome: PhoneMapPoiQueryDiagnosticOutcome,
+    requestId: Long,
+    resultCount: Int,
+    durationMillis: Long,
+    sourceCounts: PhoneMapPoiQueryResult = PhoneMapPoiQueryResult(),
+): String =
+    "event=poi_query_${outcome.value} request=$requestId results=${resultCount.coerceAtLeast(0)} " +
+        "duration_ms=${durationMillis.coerceAtLeast(0L)} " +
+        "queried_sources=${sourceCounts.queriedSources.coerceAtLeast(0)} " +
+        "failed_sources=${sourceCounts.failedSources.coerceAtLeast(0)}"
+
+private fun recordPhoneMapPoiQuery(
+    outcome: PhoneMapPoiQueryDiagnosticOutcome,
+    requestId: Long,
+    result: PhoneMapPoiQueryResult,
+    startedAtNanos: Long,
+    category: String? = null,
+) {
+    val line =
+        phoneMapPoiQueryDiagnosticLine(
+            outcome,
+            requestId,
+            result.pois.size,
+            (System.nanoTime() - startedAtNanos) / 1_000_000L,
+            result,
+        )
+    PhoneDebugCapture.log("PhoneMapPoi", category?.let { "$line category=$it" } ?: line)
+}
 
 /** Owns cancellable, debounced phone POI viewport queries outside the MapLibre composable. */
 internal class PhoneMapPoiViewModel(
@@ -113,17 +166,54 @@ internal class PhoneMapPoiViewModel(
         }
         queryJob =
             viewModelScope.launch {
-                delay(QUERY_DEBOUNCE_MILLIS)
-                val pois =
-                    repository.queryViewport(
-                        viewport = viewport,
-                        limit = MAXIMUM_POI_RESULTS,
-                        enabledSourceFileNames = enabledSourceFileNames,
-                    )
-                if (poiVisible && expectedRequestId == requestId) {
-                    _uiState.value = _uiState.value.copy(pois = pois)
-                }
+                executeQuery(viewport, enabledSourceFileNames, expectedRequestId)
             }
+    }
+
+    private suspend fun executeQuery(
+        viewport: PhoneMapViewport,
+        enabledSourceFileNames: Set<String>,
+        expectedRequestId: Long,
+    ) {
+        delay(QUERY_DEBOUNCE_MILLIS)
+        val startedAtNanos = System.nanoTime()
+        val queryResult =
+            runCatching {
+                repository.queryViewport(
+                    viewport = viewport,
+                    limit = MAXIMUM_POI_RESULTS,
+                    enabledSourceFileNames = enabledSourceFileNames,
+                )
+            }
+        val result =
+            queryResult.getOrElse { failure ->
+                val stale = !poiVisible || expectedRequestId != requestId
+                val outcome =
+                    if (failure is CancellationException && stale) {
+                        PhoneMapPoiQueryDiagnosticOutcome.STALE_RESULT_REJECTED
+                    } else if (failure is CancellationException) {
+                        PhoneMapPoiQueryDiagnosticOutcome.CANCELLED
+                    } else {
+                        PhoneMapPoiQueryDiagnosticOutcome.FAILED
+                    }
+                recordPhoneMapPoiQuery(
+                    outcome,
+                    expectedRequestId,
+                    PhoneMapPoiQueryResult(),
+                    startedAtNanos,
+                    category = if (outcome == PhoneMapPoiQueryDiagnosticOutcome.FAILED) "query_error" else null,
+                )
+                throw failure
+            }
+        val isCurrent = poiVisible && expectedRequestId == requestId
+        if (isCurrent) _uiState.value = _uiState.value.copy(pois = result.pois)
+        recordPhoneMapPoiQuery(
+            phoneMapPoiQueryOutcome(result, isCurrent),
+            expectedRequestId,
+            result,
+            startedAtNanos,
+            category = "source_read_error".takeIf { result.failedSources > 0 },
+        )
     }
 
     private companion object {

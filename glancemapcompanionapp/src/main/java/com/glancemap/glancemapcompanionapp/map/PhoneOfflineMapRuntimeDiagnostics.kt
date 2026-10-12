@@ -5,11 +5,17 @@ import kotlin.math.roundToInt
 
 /** Runtime-only facts for explicit debug capture; this deliberately contains no coordinates or paths. */
 internal data class PhoneOfflineMapRuntimeDiagnostics(
-    val displayName: String,
-    val rendererId: Int,
+    val role: PhoneOfflineMapRendererRole,
+    val rendererId: Long,
+    val generation: Long,
+    val offlineMapId: String?,
     val mapViewId: Int,
     val layerId: Int?,
     val cacheId: String?,
+    val tileSizePx: Int? = null,
+    val firstLevelCacheCapacity: Int? = null,
+    val estimatedFirstLevelBitmapBytes: Long? = null,
+    val configuredCacheMemoryBudgetBytes: Long? = null,
     val mapViewAttached: Boolean,
     val mapViewHasWindowFocus: Boolean,
     val mapViewWidth: Int,
@@ -46,11 +52,18 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
 ) {
     fun toReportSection(): String =
         buildString {
-            appendLine("Offline map runtime")
-            appendLine("Renderer id: $rendererId")
+            appendLine("Runtime details")
             appendLine("MapView id: $mapViewId")
             appendLine("Base layer id: ${layerId ?: "none"}")
             appendLine("Tile cache id: ${cacheId ?: "none"}")
+            append(
+                phoneMapsforgeCacheReportDetails(
+                    tileSizePx,
+                    firstLevelCacheCapacity,
+                    estimatedFirstLevelBitmapBytes,
+                    configuredCacheMemoryBudgetBytes,
+                ),
+            )
             appendLine("MapView attached: $mapViewAttached")
             appendLine("MapView window focus: $mapViewHasWindowFocus")
             appendLine("MapView size: ${mapViewWidth}x$mapViewHeight")
@@ -85,6 +98,22 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
             append("Location marker last draw result: ${locationMarkerLastDrawResult ?: "unknown"}")
         }
 }
+
+private fun phoneMapsforgeCacheReportDetails(
+    tileSizePx: Int?,
+    firstLevelCapacity: Int?,
+    estimatedBitmapBytes: Long?,
+    memoryBudgetBytes: Long?,
+): String =
+    buildString {
+        appendLine("Mapsforge tile size (actual px): ${tileSizePx ?: "unknown"}")
+        appendLine("First-level cache capacity (actual tiles): ${firstLevelCapacity ?: "unknown"}")
+        appendLine(
+            "Estimated first-level bitmap bytes (estimate; pixel storage only): " +
+                (estimatedBitmapBytes ?: "unknown"),
+        )
+        appendLine("Configured cache memory budget bytes: ${memoryBudgetBytes ?: "unknown"}")
+    }
 
 /** One renderer-neutral follow decision, kept pure so outside-map fixes can never move the camera. */
 internal data class PhoneOfflineLocationFollowDecision(

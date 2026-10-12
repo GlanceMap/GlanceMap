@@ -120,6 +120,11 @@ internal data class PhoneOfflineMapSurfaceState(
     val hasLocationPermission: Boolean = false,
 )
 
+internal data class PhoneOfflineMapsforgeRendererOwner(
+    val role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
+    val generation: Long = 0L,
+)
+
 internal fun phoneOfflineBaseLayerOpacityUpdate(
     currentAlpha: Float,
     requestedOpacity: Float,
@@ -134,9 +139,9 @@ internal fun offlineMapSurface(
     callbacks: PhoneOfflineMapsforgeCallbacks,
     modifier: Modifier = Modifier.fillMaxSize(),
     isVisible: Boolean = true,
-    rendererGeneration: Long = 0L,
+    rendererOwner: PhoneOfflineMapsforgeRendererOwner = PhoneOfflineMapsforgeRendererOwner(),
 ) {
-    key(rendererGeneration) {
+    key(rendererOwner.generation, rendererOwner.role) {
         val currentCallbacks by rememberUpdatedState(callbacks)
         var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
 
@@ -145,6 +150,7 @@ internal fun offlineMapSurface(
                 PhoneOfflineMapsforgeView(
                     context = context,
                     transparentBackground = state.transparentBackground,
+                    rendererRole = rendererOwner.role,
                     callbacks =
                         PhoneOfflineMapsforgeCallbacks(
                             onCameraChanged = { currentCallbacks.onCameraChanged(it) },
@@ -188,6 +194,7 @@ internal fun offlineMapSurface(
 private class PhoneOfflineMapsforgeView(
     context: Context,
     transparentBackground: Boolean,
+    rendererRole: PhoneOfflineMapRendererRole,
     private val callbacks: PhoneOfflineMapsforgeCallbacks,
 ) : FrameLayout(context) {
     private val usesTransparentFramebuffer = transparentBackground
@@ -239,6 +246,7 @@ private class PhoneOfflineMapsforgeView(
         PhoneMapsforgeRenderer(
             context = context.applicationContext,
             mapView = mapView,
+            role = rendererRole,
             onMapBoundsChanged = { bounds ->
                 mapBounds = bounds
                 post { if (!disposed) applyLocationFromLatestState() }
@@ -802,11 +810,17 @@ private class PhoneOfflineMapsforgeView(
                 .toInt()
         PhoneOfflineMapRendererDiagnostics.recordRuntime(
             PhoneOfflineMapRuntimeDiagnostics(
-                displayName = rendererSnapshot.displayName ?: latestState?.map?.displayName ?: "unknown",
+                role = rendererSnapshot.role,
                 rendererId = rendererSnapshot.rendererId,
+                generation = rendererSnapshot.generation,
+                offlineMapId = rendererSnapshot.offlineMapId,
                 mapViewId = System.identityHashCode(mapView),
                 layerId = rendererSnapshot.layerId,
                 cacheId = rendererSnapshot.cacheId,
+                tileSizePx = rendererSnapshot.tileSizePx,
+                firstLevelCacheCapacity = rendererSnapshot.firstLevelCacheCapacity,
+                estimatedFirstLevelBitmapBytes = rendererSnapshot.estimatedFirstLevelBitmapBytes,
+                configuredCacheMemoryBudgetBytes = rendererSnapshot.configuredCacheMemoryBudgetBytes,
                 mapViewAttached = mapView.isAttachedToWindow,
                 mapViewHasWindowFocus = mapView.hasWindowFocus(),
                 mapViewWidth = mapView.width,

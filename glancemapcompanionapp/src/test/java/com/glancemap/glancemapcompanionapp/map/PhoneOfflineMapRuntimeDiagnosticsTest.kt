@@ -113,6 +113,10 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
         assertTrue(tileLayerDrawnWithoutVisibleTile.contains("Location inside map bounds: false"))
         assertTrue(visibleTile.contains("First visible base tile: true"))
         assertTrue(visibleTile.contains("Drawable visible tiles: 2"))
+        assertTrue(visibleTile.contains("Mapsforge tile size (actual px): 512"))
+        assertTrue(visibleTile.contains("First-level cache capacity (actual tiles): 14"))
+        assertTrue(visibleTile.contains("Estimated first-level bitmap bytes (estimate; pixel storage only): 14680064"))
+        assertTrue(visibleTile.contains("Configured cache memory budget bytes: 33554432"))
         assertTrue(visibleTile.contains("Location inside map bounds: true"))
         assertTrue(visibleTile.contains("Location marker attached: true"))
         assertTrue(visibleTile.contains("Location marker bitmap draw observed: true"))
@@ -145,11 +149,17 @@ class PhoneOfflineMapRuntimeDiagnosticsTest {
         location: PhoneMapLocation?,
     ): PhoneOfflineMapRuntimeDiagnostics =
         PhoneOfflineMapRuntimeDiagnostics(
-            displayName = "alps.map",
-            rendererId = 11,
+            role = PhoneOfflineMapRendererRole.BASE,
+            rendererId = 11L,
+            generation = 1L,
+            offlineMapId = "offline-test",
             mapViewId = 22,
             layerId = 33,
             cacheId = "phone-offline-test",
+            tileSizePx = 512,
+            firstLevelCacheCapacity = 14,
+            estimatedFirstLevelBitmapBytes = 14_680_064L,
+            configuredCacheMemoryBudgetBytes = 32L * 1024L * 1024L,
             mapViewAttached = true,
             mapViewHasWindowFocus = true,
             mapViewWidth = 1080,

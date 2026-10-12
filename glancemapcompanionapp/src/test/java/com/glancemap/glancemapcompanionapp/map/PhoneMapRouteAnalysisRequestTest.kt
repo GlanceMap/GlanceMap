@@ -11,6 +11,48 @@ import org.junit.Test
 
 class PhoneMapRouteAnalysisRequestTest {
     @Test
+    fun diagnosticOutcomeAndLineDistinguishStaleResultsWithoutRouteDetails() {
+        val item = route("private-route-label", 46.0)
+        val (_, request) =
+            PhoneMapRouteAnalysisRequestState().begin(
+                PhoneMapRouteAnalysisRequestInput(
+                    phase = PhoneMapRouteAnalysisSelectionPhase.POINT_A,
+                    press = PhoneMapCoordinate(46.0, 6.005),
+                    candidateItems = listOf(item),
+                    currentAnalysis = null,
+                    currentTrackRevision = null,
+                    settings = PhoneMapGpxSettings(),
+                    generalSettings = PhoneGeneralSettings(),
+                ),
+            )
+        val result = requireNotNull(computePhoneMapRouteAnalysisRequest(request))
+
+        assertEquals(
+            PhoneMapRouteAnalysisDiagnosticOutcome.COMPLETED,
+            phoneMapRouteAnalysisDiagnosticOutcome(result, canPublish = true),
+        )
+        assertEquals(
+            PhoneMapRouteAnalysisDiagnosticOutcome.STALE_RESULT_REJECTED,
+            phoneMapRouteAnalysisDiagnosticOutcome(result, canPublish = false),
+        )
+        assertEquals(
+            PhoneMapRouteAnalysisDiagnosticOutcome.NO_MATCH,
+            phoneMapRouteAnalysisDiagnosticOutcome(null, canPublish = false),
+        )
+        val line =
+            phoneMapRouteAnalysisDiagnosticLine(
+                PhoneMapRouteAnalysisDiagnosticOutcome.STALE_RESULT_REJECTED,
+                request,
+                durationMillis = 42L,
+            )
+        assertTrue(line.contains("event=route_analysis_stale_result_rejected"))
+        assertTrue(line.contains("duration_ms=42"))
+        assertFalse(line.contains("private-route-label"))
+        assertFalse(line.contains("46.0"))
+        assertFalse(line.contains("6.005"))
+    }
+
+    @Test
     fun latestSelectionWinsWhenRequestsCompleteOutOfOrder() {
         val firstTrack = route("first", 46.0)
         val latestTrack = route("latest", 47.0)

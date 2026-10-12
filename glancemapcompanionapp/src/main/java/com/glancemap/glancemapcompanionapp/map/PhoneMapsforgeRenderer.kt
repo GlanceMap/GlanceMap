@@ -19,11 +19,11 @@ import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.cache.TileCache
 import org.mapsforge.map.layer.cache.TwoLevelTileCache
-import org.mapsforge.map.layer.queue.Job
 import org.mapsforge.map.layer.hills.AClasyHillShading
 import org.mapsforge.map.layer.hills.AdaptiveClasyHillShading
 import org.mapsforge.map.layer.hills.HillsRenderConfig
 import org.mapsforge.map.layer.hills.MemoryCachingHgtReaderTileSource
+import org.mapsforge.map.layer.queue.Job
 import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.MapViewPosition
 import org.mapsforge.map.reader.MapFile
@@ -49,7 +49,28 @@ internal data class PhoneMapsforgeTileCacheConfig(
     val firstLevelTiles: Int,
     val memoryBudgetBytes: Long,
     val constrainedMemory: Boolean,
-)
+    val tileSizePx: Int,
+    val bytesPerPixel: Int,
+) {
+    val estimatedFirstLevelBitmapBytes: Long
+        get() = phoneMapsforgeEstimatedFirstLevelBitmapBytes(tileSizePx, bytesPerPixel, firstLevelTiles)
+}
+
+internal fun phoneMapsforgeEstimatedFirstLevelBitmapBytes(
+    tileSizePx: Int,
+    bytesPerPixel: Int,
+    firstLevelCapacity: Int,
+): Long {
+    require(tileSizePx > 0 && bytesPerPixel > 0 && firstLevelCapacity >= 0) {
+        "Tile dimensions, pixel format, and capacity must be valid."
+    }
+    val tileBytes =
+        Math.multiplyExact(
+            Math.multiplyExact(tileSizePx.toLong(), tileSizePx.toLong()),
+            bytesPerPixel.toLong(),
+        )
+    return Math.multiplyExact(tileBytes, firstLevelCapacity.toLong())
+}
 
 internal fun phoneMapsforgeTileCacheConfig(
     tileSize: Int,
@@ -86,6 +107,8 @@ internal fun phoneMapsforgeTileCacheConfig(
         firstLevelTiles = calculated,
         memoryBudgetBytes = budget,
         constrainedMemory = constrained,
+        tileSizePx = tileSize,
+        bytesPerPixel = bytesPerPixel,
     )
 }
 
@@ -93,7 +116,18 @@ internal fun phoneMapsforgeTileCacheConfig(
 internal class PhoneMapsforgeTileCache(
     firstLevel: TileCache,
     secondLevel: TileCache,
+    val tileSizePx: Int = 0,
+    val bytesPerPixel: Int = 0,
+    val configuredMemoryBudgetBytes: Long = 0L,
 ) : TwoLevelTileCache(firstLevel, secondLevel) {
+    val estimatedFirstLevelBitmapBytes: Long
+        get() =
+            if (tileSizePx > 0 && bytesPerPixel > 0) {
+                phoneMapsforgeEstimatedFirstLevelBitmapBytes(tileSizePx, bytesPerPixel, capacityFirstLevel)
+            } else {
+                0L
+            }
+
     override fun getImmediately(key: Job): TileBitmap? = get(key)
 }
 
@@ -233,11 +267,13 @@ private data class PhoneFirstVisibleTileCallbacks(
 internal class PhoneMapsforgeRenderer(
     private val context: Context,
     private val mapView: MapView,
+    private val role: PhoneOfflineMapRendererRole,
     private val onMapBoundsChanged: (BoundingBox?) -> Unit,
     private val onRendererFailure: (PhoneOfflineMapError) -> Unit,
     private val onRuntimeChanged: () -> Unit,
 ) {
-    private val rendererId = System.identityHashCode(this)
+    private var rendererIdentity = PhoneOfflineMapRendererDiagnostics.registerRenderer(role)
+    private val rendererId = rendererIdentity.rendererId
     private var currentIdentity: PhoneMapsforgeBaseLayerIdentity? = null
     private var requestedIdentity: PhoneMapsforgeBaseLayerIdentity? = null
     private var cacheReuseEventFor: PhoneMapsforgeBaseLayerIdentity? = null
@@ -333,15 +369,28 @@ internal class PhoneMapsforgeRenderer(
             event = "renderer_destroyed",
             detail = "renderer=$rendererId mapView=${System.identityHashCode(mapView)}",
         )
+        PhoneOfflineMapRendererDiagnostics.markDisposed(rendererIdentity)
         onRuntimeChanged()
     }
 
     fun runtimeSnapshot(): PhoneMapsforgeRendererRuntimeSnapshot =
         PhoneMapsforgeRendererRuntimeSnapshot(
+            role = rendererIdentity.role,
             rendererId = rendererId,
+            generation = rendererIdentity.generation,
+            offlineMapId = rendererIdentity.offlineMapId,
             layerId = currentBase?.layer?.let(System::identityHashCode),
             cacheId = currentBase?.cacheId,
-            displayName = currentBase?.let { currentTrace?.mapDisplayName },
+            tileSizePx = (currentBase?.cache as? PhoneMapsforgeTileCache)?.tileSizePx?.takeIf { it > 0 },
+            firstLevelCacheCapacity = (currentBase?.cache as? PhoneMapsforgeTileCache)?.capacityFirstLevel,
+            estimatedFirstLevelBitmapBytes =
+                (currentBase?.cache as? PhoneMapsforgeTileCache)
+                    ?.estimatedFirstLevelBitmapBytes
+                    ?.takeIf { it > 0L },
+            configuredCacheMemoryBudgetBytes =
+                (currentBase?.cache as? PhoneMapsforgeTileCache)
+                    ?.configuredMemoryBudgetBytes
+                    ?.takeIf { it > 0L },
             mapBounds = currentBase?.bounds,
             coverage = currentBase?.layer?.latestCoverage ?: PhoneFirstVisibleTileCoverage(),
             tileLayerDrawObserved = currentBase?.layer?.hasDrawObserved == true,
@@ -357,7 +406,12 @@ internal class PhoneMapsforgeRenderer(
         initialCamera: PhoneMapCameraSnapshot,
         change: PhoneMapsforgeBaseLayerChange,
     ) {
-        val trace = PhoneOfflineMapRendererTrace(map.displayName, identity.themeConfig)
+        rendererIdentity =
+            PhoneOfflineMapRendererDiagnostics.beginGeneration(
+                previous = rendererIdentity,
+                offlineMapId = map.opaqueDiagnosticId(),
+            )
+        val trace = PhoneOfflineMapRendererTrace(rendererIdentity, identity.themeConfig)
         currentTrace = trace
         trace.complete(PhoneOfflineMapRendererStage.MAP_SELECTED)
         if (mapView.isAttachedToWindow) trace.viewAttached()
@@ -368,7 +422,9 @@ internal class PhoneMapsforgeRenderer(
             if (change == PhoneMapsforgeBaseLayerChange.MAP_SWAP) {
                 PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
                     event = "map_switched",
-                    detail = "file=${map.displayName} renderer=$rendererId",
+                    detail =
+                        "role=${role.name.lowercase()} renderer=$rendererId " +
+                            "generation=${rendererIdentity.generation} offlineMap=${rendererIdentity.offlineMapId}",
                 )
             }
         } catch (error: Exception) {
@@ -390,7 +446,7 @@ internal class PhoneMapsforgeRenderer(
         var cache: TileCache? = null
         var layer: PhoneFirstVisibleTileRendererLayer? = null
         try {
-            val camera = configureMapFile(map, mapFile, initialCamera, change, trace)
+            val camera = configureMapFile(mapFile, initialCamera, change, trace)
             val cacheId = phoneMapsforgeTileCacheId(identity)
             cache = createTileCache(cacheId)
             trace.tileCacheCreated()
@@ -405,7 +461,6 @@ internal class PhoneMapsforgeRenderer(
     }
 
     private fun configureMapFile(
-        map: PhoneOfflineMap,
         mapFile: MapFile,
         initialCamera: PhoneMapCameraSnapshot,
         change: PhoneMapsforgeBaseLayerChange,
@@ -443,7 +498,9 @@ internal class PhoneMapsforgeRenderer(
         PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
             event = "mapfile_opened",
             detail =
-                "file=${map.displayName} initialZoom=${camera.camera.zoom.toInt()} " +
+                "role=${trace.role.name.lowercase()} renderer=${trace.rendererId} " +
+                    "generation=${trace.generation} offlineMap=${trace.offlineMapId} " +
+                    "initialZoom=${camera.camera.zoom.toInt()} " +
                     "reason=${camera.reason} clamped=${camera.zoomClamped}",
         )
         if (change == PhoneMapsforgeBaseLayerChange.MAP_SWAP) {
@@ -568,11 +625,13 @@ internal class PhoneMapsforgeRenderer(
     }
 
     internal fun createTileCache(cacheId: String): TileCache {
+        val bytesPerPixel =
+            if (AndroidGraphicFactory.INSTANCE.nonTransparentBitmapConfig == Bitmap.Config.RGB_565) 2 else 4
+        val tileSizePx = mapView.model.displayModel.tileSize
         val config =
             phoneMapsforgeTileCacheConfig(
-                tileSize = mapView.model.displayModel.tileSize,
-                bytesPerPixel =
-                    if (AndroidGraphicFactory.INSTANCE.nonTransparentBitmapConfig == Bitmap.Config.RGB_565) 2 else 4,
+                tileSize = tileSizePx,
+                bytesPerPixel = bytesPerPixel,
                 memoryClassMb = context.getSystemService(ActivityManager::class.java)?.memoryClass ?: 0,
                 maxHeapBytes = Runtime.getRuntime().maxMemory(),
             )
@@ -581,7 +640,7 @@ internal class PhoneMapsforgeRenderer(
                 context.applicationContext,
                 cacheId,
                 config.firstLevelTiles,
-                mapView.model.displayModel.tileSize,
+                tileSizePx,
                 false,
             )
         if (cache !is TwoLevelTileCache) {
@@ -591,7 +650,7 @@ internal class PhoneMapsforgeRenderer(
                     context.applicationContext.cacheDir,
                     cacheId,
                     config.firstLevelTiles,
-                    mapView.model.displayModel.tileSize,
+                    tileSizePx,
                     false,
                 )
         }
@@ -599,7 +658,14 @@ internal class PhoneMapsforgeRenderer(
             cache.destroy()
             error("Offline tile cache storage is unavailable.")
         }
-        val drawableCache = PhoneMapsforgeTileCache(cache.firstLevelTileCache, cache.secondLevelTileCache)
+        val drawableCache =
+            PhoneMapsforgeTileCache(
+                cache.firstLevelTileCache,
+                cache.secondLevelTileCache,
+                tileSizePx = config.tileSizePx,
+                bytesPerPixel = config.bytesPerPixel,
+                configuredMemoryBudgetBytes = config.memoryBudgetBytes,
+            )
         PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
             event = "tile_cache_created",
             detail =
@@ -825,10 +891,16 @@ internal class PhoneMapsforgeRenderer(
 }
 
 internal data class PhoneMapsforgeRendererRuntimeSnapshot(
-    val rendererId: Int,
+    val role: PhoneOfflineMapRendererRole,
+    val rendererId: Long,
+    val generation: Long,
+    val offlineMapId: String?,
     val layerId: Int?,
     val cacheId: String?,
-    val displayName: String?,
+    val tileSizePx: Int?,
+    val firstLevelCacheCapacity: Int?,
+    val estimatedFirstLevelBitmapBytes: Long?,
+    val configuredCacheMemoryBudgetBytes: Long?,
     val mapBounds: BoundingBox?,
     val coverage: PhoneFirstVisibleTileCoverage,
     val tileLayerDrawObserved: Boolean,

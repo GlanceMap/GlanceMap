@@ -55,6 +55,7 @@ class PhoneMapsforgeTileCacheTest {
                             PhoneMapsforgeRenderer(
                                 context = cacheContext,
                                 mapView = mapView,
+                                role = PhoneOfflineMapRendererRole.BASE,
                                 onMapBoundsChanged = {},
                                 onRendererFailure = {},
                                 onRuntimeChanged = {},

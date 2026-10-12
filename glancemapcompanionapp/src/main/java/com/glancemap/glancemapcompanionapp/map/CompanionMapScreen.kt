@@ -94,6 +94,7 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarke
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineHillshade
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineRasterOpacity
 import com.glancemap.trailcore.geo.GeoPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -123,6 +124,8 @@ private const val PHONE_POI_SELECTION_PREVIEW_DELAY_MS = 700L
 private const val PHONE_STORAGE_OPERATION_STOP_TIMEOUT_MS = 5_000L
 private const val PHONE_STORAGE_OPERATION_POLL_DELAY_MS = 50L
 private const val PHONE_STORAGE_RENDER_STOP_DELAY_MS = 100L
+private const val PHONE_MAP_FEATURE_DIAGNOSTICS_TAG = "PhoneMapFeature"
+private const val PHONE_MAP_NANOS_PER_MILLISECOND = 1_000_000L
 
 private fun PhoneOfflineStorageMigrationPhase.isPhoneStorageMigrationActive(): Boolean =
     this in
@@ -220,6 +223,17 @@ internal data class MapRuntime(
             mapView === latestRuntime.mapView &&
             map === latestRuntime.map
 
+    fun acceptsRendererCallback(
+        callbackGeneration: Long,
+        callbackMapView: MapView,
+    ): Boolean =
+        phoneMapLibreRendererCallbackIsCurrent(
+            callbackGeneration = callbackGeneration,
+            currentGeneration = generation.renderer,
+            callbackRenderer = callbackMapView,
+            currentRenderer = mapView,
+        )
+
     fun withCurrentLoadedStyle(
         latestRuntime: () -> MapRuntime,
         action: (MapLibreMap, MapView, Style) -> Unit,
@@ -233,6 +247,44 @@ internal data class MapRuntime(
         }
     }
 }
+
+private fun offlineMapDiagnosticRenderer(
+    map: PhoneOfflineMap,
+    role: PhoneOfflineMapRendererRole,
+    rendererRefs: Map<PhoneOfflineMapRendererRole, PhoneOfflineMapRendererRef>,
+): PhoneMapDiagnosticRenderer {
+    val offlineMapId = map.opaqueDiagnosticId()
+    val renderer = rendererRefs[role]?.takeIf { ref -> ref.identity.offlineMapId == offlineMapId }
+    return if (renderer == null) {
+        PhoneMapDiagnosticRenderer("mapsforge-$offlineMapId", 0L, PhoneMapDiagnosticRendererStatus.PENDING)
+    } else {
+        PhoneMapDiagnosticRenderer(
+            identity = "mapsforge-${renderer.identity.rendererId}",
+            generation = renderer.identity.generation,
+            status =
+                when (renderer.status) {
+                    PhoneOfflineMapRendererStatus.ACTIVE -> PhoneMapDiagnosticRendererStatus.ACTIVE
+                    PhoneOfflineMapRendererStatus.DISPOSED -> PhoneMapDiagnosticRendererStatus.DISPOSED
+                },
+        )
+    }
+}
+
+private fun mapLibreDiagnosticRenderer(
+    identity: String,
+    generation: Long,
+    mapView: MapView?,
+): PhoneMapDiagnosticRenderer =
+    PhoneMapDiagnosticRenderer(
+        identity = identity,
+        generation = generation,
+        status =
+            when {
+                mapView == null -> PhoneMapDiagnosticRendererStatus.PENDING
+                mapView.isDestroyed -> PhoneMapDiagnosticRendererStatus.DISPOSED
+                else -> PhoneMapDiagnosticRendererStatus.ACTIVE
+            },
+    )
 
 internal data class PhoneOnlineCameraSyncSkipKey(
     val reason: String,
@@ -268,14 +320,40 @@ private data class GpxFitRequest(
     val isOwner: Boolean,
 )
 
+private data class PhoneMapLibreRendererRef(
+    val identity: PhoneMapLibreRendererIdentity,
+    val generation: Long,
+    val mapView: MapView,
+    val source: PhoneOnlineMapSource,
+    val providerId: String,
+) {
+    fun isCurrentIn(
+        runtime: MapRuntime,
+        activeSource: PhoneMapLibreActiveSource,
+        expectedRole: PhoneMapLibreRendererRole,
+    ): Boolean =
+        identity.role == expectedRole &&
+            runtime.acceptsRendererCallback(generation, mapView) &&
+            source == activeSource.source &&
+            providerId == activeSource.providerId
+}
+
+private data class PhoneMapLibreRenderFailure(
+    val renderer: PhoneMapLibreRendererRef,
+    val category: PhoneMapLibreErrorCategory,
+)
+
 private data class PhoneMapViewCallbacks(
     val onTwoFingerTap: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit,
     val onMeasurementPointMoved: (Int, PhoneMapCoordinate) -> Unit = { _, _ -> },
     val onMapTap: (PhoneMapCoordinate) -> Unit,
     val onMapLongPress: (PhoneMapCoordinate) -> Unit,
     val onCreated: (MapView) -> Long,
+    val isRendererCurrent: (PhoneMapLibreRendererRef) -> Boolean,
     val onMapReady: (Long, MapView, MapLibreMap) -> Unit,
     val onStyleReady: (Long, MapView, MapLibreMap) -> Unit,
+    val onRendererFailure: (PhoneMapLibreRenderFailure) -> Unit,
+    val onRendererRecovered: (PhoneMapLibreRendererRef, PhoneMapLibreErrorCategory) -> Unit,
 )
 
 private sealed interface PhoneMapManagedContent {
@@ -372,6 +450,8 @@ internal fun CompanionMapScreen(
     val mapLocation by mapLocationSource.location.collectAsState()
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var comparisonMapRuntime by remember { mutableStateOf(MapRuntime()) }
+    val offlineRendererRefs by PhoneOfflineMapRendererDiagnostics.rendererRefs.collectAsState()
+    val phoneDebugCaptureState by PhoneDebugCapture.state.collectAsState()
     var mapUiState by rememberSaveable(stateSaver = phoneMapUiStateSaver) {
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
         mutableStateOf(initialState)
@@ -466,6 +546,7 @@ internal fun CompanionMapScreen(
     var elevationBundleAreaId by remember { mutableStateOf<String?>(null) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var missingStartupOfflineMap by rememberSaveable { mutableStateOf(false) }
+    var mapLibreRenderErrors by remember { mutableStateOf(PhoneMapLibreRenderErrorState()) }
     var mapLocationMessage by remember { mutableStateOf<Int?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasPhoneMapLocationPermission()) }
     var shouldCenterOnInitialLocation by rememberSaveable { mutableStateOf(true) }
@@ -996,6 +1077,14 @@ internal fun CompanionMapScreen(
     }
     LaunchedEffect(pois) {
         if (selectedPoi?.id !in pois.map(PhoneMapPoi::id).toSet()) selectedPoi = null
+    }
+    LaunchedEffect(pois.size, phoneDebugCaptureState.sessionId, phoneDebugCaptureState.active) {
+        if (phoneDebugCaptureState.active) {
+            PhoneDebugCapture.log(
+                PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                "event=poi_result_state results=${pois.size}",
+            )
+        }
     }
     LaunchedEffect(
         selectedPoi?.id,
@@ -1546,10 +1635,45 @@ internal fun CompanionMapScreen(
                 )
             routeAnalysisRequestState = requestState
             routeAnalysisPendingRequest = request
+            val startedAtNanos = System.nanoTime()
+            PhoneDebugCapture.log(
+                PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                phoneMapRouteAnalysisDiagnosticLine(
+                    PhoneMapRouteAnalysisDiagnosticOutcome.STARTED,
+                    request,
+                    durationMillis = 0L,
+                ),
+            )
             val job =
                 coroutineScope.launch {
                     try {
-                        val result = withContext(Dispatchers.Default) { computePhoneMapRouteAnalysisRequest(request) }
+                        val result =
+                            runCatching {
+                                withContext(Dispatchers.Default) { computePhoneMapRouteAnalysisRequest(request) }
+                            }.getOrElse { failure ->
+                                val outcome =
+                                    if (failure is CancellationException) {
+                                        PhoneMapRouteAnalysisDiagnosticOutcome.CANCELLED
+                                    } else {
+                                        PhoneMapRouteAnalysisDiagnosticOutcome.FAILED
+                                    }
+                                PhoneDebugCapture.log(
+                                    PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                                    phoneMapRouteAnalysisDiagnosticLine(
+                                        outcome,
+                                        request,
+                                        (System.nanoTime() - startedAtNanos) / PHONE_MAP_NANOS_PER_MILLISECOND,
+                                        stale = routeAnalysisRequestState.generation != request.generation,
+                                    ) +
+                                        if (outcome == PhoneMapRouteAnalysisDiagnosticOutcome.FAILED) {
+                                            " category=analysis_error"
+                                        } else {
+                                            ""
+                                        },
+                                )
+                                throw failure
+                            }
+                        var outcome = phoneMapRouteAnalysisDiagnosticOutcome(result, canPublish = false)
                         if (result != null) {
                             val currentItems = gpxViewModel.uiState.value.items
                             val routeAnalysisAvailable =
@@ -1560,7 +1684,7 @@ internal fun CompanionMapScreen(
                                     poiCreationActive = poiCreationActive,
                                     poiCreationPointSet = poiCreationPoint != null,
                                 )
-                            if (
+                            val canPublish =
                                 routeAnalysisRequestState.canPublish(
                                     request = request,
                                     result = result,
@@ -1581,7 +1705,8 @@ internal fun CompanionMapScreen(
                                             generalSettings = generalSettings,
                                         ),
                                 )
-                            ) {
+                            outcome = phoneMapRouteAnalysisDiagnosticOutcome(result, canPublish)
+                            if (canPublish) {
                                 if (phase == PhoneMapRouteAnalysisSelectionPhase.POINT_A) selectedPoi = null
                                 routeAnalysis = result.analysis
                                 savedRouteAnalysisSelection = result.savedSelection()
@@ -1589,6 +1714,14 @@ internal fun CompanionMapScreen(
                                 routeAnalysisSelectingPointB = false
                             }
                         }
+                        PhoneDebugCapture.log(
+                            PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                            phoneMapRouteAnalysisDiagnosticLine(
+                                outcome,
+                                request,
+                                (System.nanoTime() - startedAtNanos) / PHONE_MAP_NANOS_PER_MILLISECOND,
+                            ),
+                        )
                     } finally {
                         if (routeAnalysisPendingRequest === request) {
                             routeAnalysisPendingRequest = null
@@ -1680,6 +1813,25 @@ internal fun CompanionMapScreen(
             PhoneMapRendererCatalog.providerForOnlineSource(comparison.source)
         }
     val onlineComparisonActive = onlineComparisonProvider != null && comparisonOverlayAlpha > 0f
+    val activeOnlineBaseSource = selectedOnlineSource.takeIf { mapUiState.source == PhoneMapSource.Online }
+    val activeOnlineBaseProviderId = selectedOnlineProvider.id.takeIf { activeOnlineBaseSource != null }
+    val activeOnlineComparisonSource = onlineComparison?.source
+    val activeOnlineComparisonProviderId = onlineComparisonProvider?.id
+    val activeOnlineBase = PhoneMapLibreActiveSource(activeOnlineBaseSource, activeOnlineBaseProviderId)
+    val activeOnlineComparison =
+        PhoneMapLibreActiveSource(activeOnlineComparisonSource, activeOnlineComparisonProviderId)
+    val activeMapLibreRenderErrors =
+        mapLibreRenderErrors.errorsForSources(
+            baseSource = activeOnlineBase,
+            comparisonSource = activeOnlineComparison,
+        )
+    LaunchedEffect(activeOnlineBase, activeOnlineComparison) {
+        mapLibreRenderErrors =
+            mapLibreRenderErrors.clearObsoleteSources(
+                baseSource = activeOnlineBase,
+                comparisonSource = activeOnlineComparison,
+            )
+    }
     val comparisonOwnsSemanticOverlays =
         phoneMapComparisonOwnsSemanticOverlays(
             offlineComparisonActive = offlineComparisonActive,
@@ -1713,6 +1865,210 @@ internal fun CompanionMapScreen(
             baseSource = mapUiState.source,
             onlineComparisonActive = onlineComparisonActive,
         )
+    val baseOfflineMap = (mapUiState.source as? PhoneMapSource.Offline)?.map
+    val requestedBaseSourceId =
+        if (missingStartupOfflineMap) {
+            "offline-preferred"
+        } else {
+            baseOfflineMap?.opaqueDiagnosticId() ?: mapSourcePreference.onlineSource.diagnosticProviderId()
+        }
+    val effectiveBaseSourceId =
+        when {
+            baseOfflineMap == null -> selectedOnlineProvider.id
+            !offlineMapsLoaded || baseOfflineMap in offlineMaps -> baseOfflineMap.opaqueDiagnosticId()
+            else -> "none"
+        }
+    val baseFallbackReason =
+        when {
+            missingStartupOfflineMap -> "preferred_offline_map_missing"
+            baseOfflineMap == null && requestedBaseSourceId != effectiveBaseSourceId -> "provider_unavailable"
+            baseOfflineMap != null && offlineMapsLoaded && baseOfflineMap !in offlineMaps ->
+                "offline_source_unavailable"
+            else -> null
+        }
+    val selectedComparisonLayer = mapUiState.comparison.layer
+    val requestedComparisonSourceId =
+        when (selectedComparisonLayer) {
+            null -> "none"
+            is PhoneMapComparisonLayer.Online -> selectedComparisonLayer.source.diagnosticProviderId()
+            is PhoneMapComparisonLayer.Offline -> selectedComparisonLayer.map.opaqueDiagnosticId()
+        }
+    val effectiveComparisonSourceId =
+        when (selectedComparisonLayer) {
+            null -> "none"
+            is PhoneMapComparisonLayer.Online -> onlineComparisonProvider?.id ?: "none"
+            is PhoneMapComparisonLayer.Offline ->
+                selectedComparisonLayer.map.opaqueDiagnosticId().takeIf {
+                    !offlineMapsLoaded || selectedComparisonLayer.map in offlineMaps
+                } ?: "none"
+        }
+    val comparisonFallbackReason =
+        when (selectedComparisonLayer) {
+            null -> null
+            is PhoneMapComparisonLayer.Online -> "provider_unavailable".takeIf { onlineComparisonProvider == null }
+            is PhoneMapComparisonLayer.Offline ->
+                "offline_source_unavailable".takeIf {
+                    offlineMapsLoaded && selectedComparisonLayer.map !in offlineMaps
+                }
+        }
+    val mapDiagnosticState =
+        PhoneMapDiagnosticState(
+            requestedBaseSourceId = requestedBaseSourceId,
+            effectiveBaseSourceId = effectiveBaseSourceId,
+            baseFallbackReason = baseFallbackReason,
+            requestedComparisonSourceId = requestedComparisonSourceId,
+            effectiveComparisonSourceId = effectiveComparisonSourceId,
+            comparisonFallbackReason = comparisonFallbackReason,
+            baseRenderer =
+                baseOfflineMap?.let {
+                    offlineMapDiagnosticRenderer(it, PhoneOfflineMapRendererRole.BASE, offlineRendererRefs)
+                } ?: mapLibreDiagnosticRenderer(
+                    "maplibre-base",
+                    mapRuntime.generation.renderer,
+                    mapRuntime.mapView,
+                ),
+            comparisonRenderer =
+                when (selectedComparisonLayer) {
+                    null -> null
+                    is PhoneMapComparisonLayer.Online ->
+                        mapLibreDiagnosticRenderer(
+                            "maplibre-comparison",
+                            comparisonMapRuntime.generation.renderer,
+                            comparisonMapRuntime.mapView,
+                        )
+                    is PhoneMapComparisonLayer.Offline ->
+                        offlineMapDiagnosticRenderer(
+                            selectedComparisonLayer.map,
+                            PhoneOfflineMapRendererRole.COMPARISON,
+                            offlineRendererRefs,
+                        )
+                },
+            comparisonMode =
+                when (selectedComparisonLayer) {
+                    null -> "none"
+                    is PhoneMapComparisonLayer.Online -> "online"
+                    is PhoneMapComparisonLayer.Offline -> "offline"
+                },
+            comparisonTransparencyPercent =
+                mapUiState.comparison.transparencyPercent.takeIf { selectedComparisonLayer != null },
+            appliedComparisonOpacity = comparisonOverlayAlpha.takeIf { selectedComparisonLayer != null },
+            cameraAuthority = cameraState.publisher.name.lowercase(),
+            touchOwner = if (comparisonOwnsUserCamera) "comparison" else "base",
+            overlayOwner = if (comparisonOwnsSemanticOverlays) "comparison" else "base",
+            locationOwner = phoneMapDiagnosticLocationOwner(offlineComparisonActive, onlineComparisonActive),
+            locationFollowOwner = if (comparisonOwnsFollowAndCommands) "comparison" else "base",
+            followMode =
+                mapUiState.mapMode.follow.name
+                    .lowercase(),
+            orientation =
+                mapUiState.mapMode.orientation.name
+                    .lowercase(),
+            panelMode =
+                mapUiState.toolPanel.mode.name
+                    .lowercase(),
+            panelTool =
+                mapUiState.toolPanel.activeTool
+                    ?.name
+                    ?.lowercase() ?: "none",
+            panelContent =
+                mapUiState.toolPanel.contentMode.name
+                    .lowercase(),
+            toolLauncherExpanded = mapUiState.toolLauncherExpanded,
+        )
+    val offlineMapRevisionSelections =
+        buildMap<PhoneOfflineMapRendererRole, PhoneMapOfflineRevisionSelection> {
+            baseOfflineMap?.let { map ->
+                put(
+                    PhoneOfflineMapRendererRole.BASE,
+                    PhoneMapOfflineRevisionSelection(map.selectionIdentity, requestedBaseSourceId),
+                )
+            }
+            (selectedComparisonLayer as? PhoneMapComparisonLayer.Offline)
+                ?.map
+                ?.let { map ->
+                    put(
+                        PhoneOfflineMapRendererRole.COMPARISON,
+                        PhoneMapOfflineRevisionSelection(map.selectionIdentity, requestedComparisonSourceId),
+                    )
+                }
+        }
+
+    LaunchedEffect(
+        mapDiagnosticState,
+        offlineMapRevisionSelections,
+        phoneDebugCaptureState.sessionId,
+        phoneDebugCaptureState.active,
+    ) {
+        PhoneMapStateDiagnostics.record(
+            state = mapDiagnosticState,
+            captureSessionId = phoneDebugCaptureState.sessionId,
+            captureActive = phoneDebugCaptureState.active,
+            offlineMapSelections = offlineMapRevisionSelections,
+        )
+    }
+    DisposableEffect(mapLocationSource) {
+        val removeBeforeStopListener =
+            PhoneDebugCapture.addBeforeStopListener {
+                mapLocationSource.finishCaptureDiagnostics()
+                PhoneMapLibreRenderDiagnostics.publishCaptureSnapshot()
+            }
+        onDispose { removeBeforeStopListener() }
+    }
+    LaunchedEffect(phoneDebugCaptureState.sessionId, phoneDebugCaptureState.active) {
+        if (phoneDebugCaptureState.active) {
+            PhoneMapLibreRenderDiagnostics.publishCaptureSnapshot()
+            mapLocationSource.publishCaptureSnapshot()
+        }
+    }
+    val visibleGpxPointCount =
+        gpxOverlays.sumOf { overlay -> overlay.segments.sumOf { segment -> segment.points.size } }
+    val measurementEndpointCount = if (distanceMeasurement == null) 0 else 2
+    val selectionMarkerCount = pointSelectionMarkers.size - measurementEndpointCount
+    val routeAnalysisPointCount =
+        routeAnalysis?.let { analysis -> if (analysis.pointB == null) 1 else 2 } ?: 0
+    val selectionPhase =
+        when {
+            routeAnalysisSelectingPointB -> "route_analysis_point_b"
+            routeAnalysisPointCount > 0 -> "route_analysis_complete"
+            routeToolsState.pointSelectionPhase() != null ->
+                routeToolsState.pointSelectionPhase()?.name?.lowercase() ?: "none"
+            poiCreationActive -> "poi_location"
+            else -> "none"
+        }
+    LaunchedEffect(
+        phoneDebugCaptureState.sessionId,
+        phoneDebugCaptureState.active,
+        gpxUiState.isLoading,
+        gpxOverlays.size,
+        visibleGpxPointCount,
+        mapDiagnosticState.overlayOwner,
+    ) {
+        if (phoneDebugCaptureState.active) {
+            PhoneDebugCapture.log(
+                PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                "event=gpx_overlay_state loading=${gpxUiState.isLoading} tracks=${gpxOverlays.size} " +
+                    "points=$visibleGpxPointCount owner=${mapDiagnosticState.overlayOwner}",
+            )
+        }
+    }
+    LaunchedEffect(
+        phoneDebugCaptureState.sessionId,
+        phoneDebugCaptureState.active,
+        selectionMarkerCount,
+        selectionPhase,
+        routeAnalysisPointCount,
+        measurementEndpointCount,
+        mapDiagnosticState.overlayOwner,
+    ) {
+        if (phoneDebugCaptureState.active) {
+            PhoneDebugCapture.log(
+                PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
+                "event=map_selection_state phase=$selectionPhase markers=$selectionMarkerCount " +
+                    "route_analysis_points=$routeAnalysisPointCount " +
+                    "measurement_endpoints=$measurementEndpointCount owner=${mapDiagnosticState.overlayOwner}",
+            )
+        }
+    }
 
     MapToolScaffold(
         state = mapUiState.toolPanel,
@@ -1887,6 +2243,7 @@ internal fun CompanionMapScreen(
                             )
                             mapSurface(
                                 initialCamera = mapCamera,
+                                onlineSource = selectedOnlineSource,
                                 onlineProvider = selectedOnlineProvider,
                                 surfaceMode = PhoneMapLibreSurfaceMode.PRIMARY,
                                 onMapTap = onMapTap,
@@ -1901,6 +2258,9 @@ internal fun CompanionMapScreen(
                                 onMapViewCreated = { createdMapView ->
                                     mapRuntime = mapRuntime.beginMapView(createdMapView)
                                     mapRuntime.generation.renderer
+                                },
+                                isRendererCurrent = { renderer ->
+                                    renderer.isCurrentIn(mapRuntime, activeOnlineBase, PhoneMapLibreRendererRole.BASE)
                                 },
                                 onMapReady = { callbackGeneration, callbackMapView, callbackMap ->
                                     mapRuntime =
@@ -1917,6 +2277,47 @@ internal fun CompanionMapScreen(
                                             callbackMapView = callbackMapView,
                                             callbackMap = callbackMap,
                                         )
+                                },
+                                onRendererFailure = { failure ->
+                                    val renderer = failure.renderer
+                                    val nextErrors =
+                                        mapLibreRenderErrors.recordFailureIfCurrent(
+                                            error =
+                                                PhoneMapLibreRenderError(
+                                                    providerId = renderer.providerId,
+                                                    source = renderer.source,
+                                                    role = PhoneMapLibreRendererRole.BASE,
+                                                    generation = renderer.generation,
+                                                    category = failure.category,
+                                                ),
+                                            rendererIsCurrent =
+                                                mapRuntime.acceptsRendererCallback(
+                                                    renderer.generation,
+                                                    renderer.mapView,
+                                                ),
+                                            activeSource = activeOnlineBase,
+                                        )
+                                    if (nextErrors != null) {
+                                        mapLibreRenderErrors = nextErrors
+                                    }
+                                },
+                                onRendererRecovered = { renderer, recoveryCategory ->
+                                    mapLibreRenderErrors
+                                        .clearAfterRecoveryIfCurrent(
+                                            source =
+                                                PhoneMapLibreRenderErrorSource(
+                                                    renderer.source,
+                                                    renderer.providerId,
+                                                ),
+                                            role = PhoneMapLibreRendererRole.BASE,
+                                            rendererIsCurrent =
+                                                mapRuntime.acceptsRendererCallback(
+                                                    renderer.generation,
+                                                    renderer.mapView,
+                                                ),
+                                            activeSource = activeOnlineBase,
+                                            recoveryCategory = recoveryCategory,
+                                        )?.let { nextErrors -> mapLibreRenderErrors = nextErrors }
                                 },
                             )
                             onlineComparison?.let {
@@ -2035,6 +2436,7 @@ internal fun CompanionMapScreen(
                                 }
                                 mapSurface(
                                     initialCamera = mapCamera,
+                                    onlineSource = onlineComparison.source,
                                     surfaceMode = PhoneMapLibreSurfaceMode.COMPARISON,
                                     additionalAttribution = selectedOnlineProvider.attribution,
                                     isInteractive = onlineComparisonActive,
@@ -2054,6 +2456,13 @@ internal fun CompanionMapScreen(
                                             comparisonMapRuntime.beginMapView(createdMapView)
                                         comparisonMapRuntime.generation.renderer
                                     },
+                                    isRendererCurrent = { renderer ->
+                                        renderer.isCurrentIn(
+                                            comparisonMapRuntime,
+                                            activeOnlineComparison,
+                                            PhoneMapLibreRendererRole.COMPARISON,
+                                        )
+                                    },
                                     onMapReady = { callbackGeneration, callbackMapView, callbackMap ->
                                         comparisonMapRuntime =
                                             comparisonMapRuntime.acceptMapReady(
@@ -2069,6 +2478,47 @@ internal fun CompanionMapScreen(
                                                 callbackMapView = callbackMapView,
                                                 callbackMap = callbackMap,
                                             )
+                                    },
+                                    onRendererFailure = { failure ->
+                                        val renderer = failure.renderer
+                                        val nextErrors =
+                                            mapLibreRenderErrors.recordFailureIfCurrent(
+                                                error =
+                                                    PhoneMapLibreRenderError(
+                                                        providerId = renderer.providerId,
+                                                        source = renderer.source,
+                                                        role = PhoneMapLibreRendererRole.COMPARISON,
+                                                        generation = renderer.generation,
+                                                        category = failure.category,
+                                                    ),
+                                                rendererIsCurrent =
+                                                    comparisonMapRuntime.acceptsRendererCallback(
+                                                        renderer.generation,
+                                                        renderer.mapView,
+                                                    ),
+                                                activeSource = activeOnlineComparison,
+                                            )
+                                        if (nextErrors != null) {
+                                            mapLibreRenderErrors = nextErrors
+                                        }
+                                    },
+                                    onRendererRecovered = { renderer, recoveryCategory ->
+                                        mapLibreRenderErrors
+                                            .clearAfterRecoveryIfCurrent(
+                                                source =
+                                                    PhoneMapLibreRenderErrorSource(
+                                                        renderer.source,
+                                                        renderer.providerId,
+                                                    ),
+                                                role = PhoneMapLibreRendererRole.COMPARISON,
+                                                rendererIsCurrent =
+                                                    comparisonMapRuntime.acceptsRendererCallback(
+                                                        renderer.generation,
+                                                        renderer.mapView,
+                                                    ),
+                                                activeSource = activeOnlineComparison,
+                                                recoveryCategory = recoveryCategory,
+                                            )?.let { nextErrors -> mapLibreRenderErrors = nextErrors }
                                     },
                                     modifier = Modifier.fillMaxSize(),
                                     isVisible = onlineComparisonActive,
@@ -2173,7 +2623,11 @@ internal fun CompanionMapScreen(
                                         ),
                                     modifier = Modifier.fillMaxSize(),
                                     isVisible = offlineComparisonActive,
-                                    rendererGeneration = offlineComparisonSelectionGeneration,
+                                    rendererOwner =
+                                        PhoneOfflineMapsforgeRendererOwner(
+                                            role = PhoneOfflineMapRendererRole.COMPARISON,
+                                            generation = offlineComparisonSelectionGeneration,
+                                        ),
                                 )
                             }
                         }
@@ -2451,6 +2905,7 @@ internal fun CompanionMapScreen(
                                 }
                                 mapSurface(
                                     initialCamera = mapCamera,
+                                    onlineSource = onlineComparison.source,
                                     surfaceMode = PhoneMapLibreSurfaceMode.COMPARISON,
                                     isInteractive = onlineComparisonActive,
                                     onlineProvider =
@@ -2469,6 +2924,13 @@ internal fun CompanionMapScreen(
                                             comparisonMapRuntime.beginMapView(createdMapView)
                                         comparisonMapRuntime.generation.renderer
                                     },
+                                    isRendererCurrent = { renderer ->
+                                        renderer.isCurrentIn(
+                                            comparisonMapRuntime,
+                                            activeOnlineComparison,
+                                            PhoneMapLibreRendererRole.COMPARISON,
+                                        )
+                                    },
                                     onMapReady = { callbackGeneration, callbackMapView, callbackMap ->
                                         comparisonMapRuntime =
                                             comparisonMapRuntime.acceptMapReady(
@@ -2484,6 +2946,47 @@ internal fun CompanionMapScreen(
                                                 callbackMapView = callbackMapView,
                                                 callbackMap = callbackMap,
                                             )
+                                    },
+                                    onRendererFailure = { failure ->
+                                        val renderer = failure.renderer
+                                        val nextErrors =
+                                            mapLibreRenderErrors.recordFailureIfCurrent(
+                                                error =
+                                                    PhoneMapLibreRenderError(
+                                                        providerId = renderer.providerId,
+                                                        source = renderer.source,
+                                                        role = PhoneMapLibreRendererRole.COMPARISON,
+                                                        generation = renderer.generation,
+                                                        category = failure.category,
+                                                    ),
+                                                rendererIsCurrent =
+                                                    comparisonMapRuntime.acceptsRendererCallback(
+                                                        renderer.generation,
+                                                        renderer.mapView,
+                                                    ),
+                                                activeSource = activeOnlineComparison,
+                                            )
+                                        if (nextErrors != null) {
+                                            mapLibreRenderErrors = nextErrors
+                                        }
+                                    },
+                                    onRendererRecovered = { renderer, recoveryCategory ->
+                                        mapLibreRenderErrors
+                                            .clearAfterRecoveryIfCurrent(
+                                                source =
+                                                    PhoneMapLibreRenderErrorSource(
+                                                        renderer.source,
+                                                        renderer.providerId,
+                                                    ),
+                                                role = PhoneMapLibreRendererRole.COMPARISON,
+                                                rendererIsCurrent =
+                                                    comparisonMapRuntime.acceptsRendererCallback(
+                                                        renderer.generation,
+                                                        renderer.mapView,
+                                                    ),
+                                                activeSource = activeOnlineComparison,
+                                                recoveryCategory = recoveryCategory,
+                                            )?.let { nextErrors -> mapLibreRenderErrors = nextErrors }
                                     },
                                     modifier = Modifier.fillMaxSize(),
                                     isVisible = onlineComparisonActive,
@@ -2597,17 +3100,40 @@ internal fun CompanionMapScreen(
                         )
                     }
                 }
-                mapLocationMessage?.takeIf { offlineMapError == null }?.let { messageResource ->
+                if (offlineMapError == null && activeMapLibreRenderErrors.isNotEmpty()) {
                     PhoneMapPopupCard(
                         modifier =
                             Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(16.dp),
-                        onDismiss = { mapLocationMessage = null },
+                        onDismiss = { mapLibreRenderErrors = PhoneMapLibreRenderErrorState() },
                     ) {
-                        Text(text = stringResource(messageResource))
+                        Column {
+                            activeMapLibreRenderErrors.forEach { error ->
+                                val messageResource =
+                                    when (error.role) {
+                                        PhoneMapLibreRendererRole.BASE -> R.string.map_online_base_render_failed
+                                        PhoneMapLibreRendererRole.COMPARISON ->
+                                            R.string.map_online_comparison_render_failed
+                                    }
+                                Text(text = stringResource(messageResource))
+                            }
+                        }
                     }
                 }
+                mapLocationMessage
+                    ?.takeIf { offlineMapError == null && activeMapLibreRenderErrors.isEmpty() }
+                    ?.let { messageResource ->
+                        PhoneMapPopupCard(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(16.dp),
+                            onDismiss = { mapLocationMessage = null },
+                        ) {
+                            Text(text = stringResource(messageResource))
+                        }
+                    }
                 routeToolsState.message?.takeIf { !routeToolsState.isOpen }?.let { message ->
                     PhoneMapPopupCard(
                         modifier =
@@ -3671,6 +4197,7 @@ private fun synchronizeDistanceMeasurementOverlay(
 @Suppress("LongParameterList") // The Android map surface callbacks intentionally stay explicit.
 private fun mapSurface(
     initialCamera: PhoneMapCameraSnapshot,
+    onlineSource: PhoneOnlineMapSource,
     onlineProvider: RasterOnlineMapProvider = PhoneMapRendererCatalog.mainOnlineRasterProvider,
     additionalAttribution: String? = null,
     surfaceMode: PhoneMapLibreSurfaceMode,
@@ -3683,8 +4210,11 @@ private fun mapSurface(
     onMeasurementPointMoved: (Int, PhoneMapCoordinate) -> Unit = { _, _ -> },
     distanceMeasurement: PhoneMapDistanceMeasurement? = null,
     onMapViewCreated: (MapView) -> Long,
+    isRendererCurrent: (PhoneMapLibreRendererRef) -> Boolean,
     onMapReady: (Long, MapView, MapLibreMap) -> Unit,
     onStyleReady: (Long, MapView, MapLibreMap) -> Unit,
+    onRendererFailure: (PhoneMapLibreRenderFailure) -> Unit,
+    onRendererRecovered: (PhoneMapLibreRendererRef, PhoneMapLibreErrorCategory) -> Unit,
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     val latestOnTwoFingerTap = rememberUpdatedState(onTwoFingerTap)
@@ -3693,12 +4223,16 @@ private fun mapSurface(
     val latestOnMapLongPress = rememberUpdatedState(onMapLongPress)
     val latestDistanceMeasurement = rememberUpdatedState(distanceMeasurement)
     val latestIsMeasurementEnabled = rememberUpdatedState(isMeasurementEnabled)
-    key(surfaceMode, onlineProvider.id, additionalAttribution) {
+    val latestIsRendererCurrent = rememberUpdatedState(isRendererCurrent)
+    val latestOnRendererFailure = rememberUpdatedState(onRendererFailure)
+    val latestOnRendererRecovered = rememberUpdatedState(onRendererRecovered)
+    key(surfaceMode, onlineSource, onlineProvider.id, additionalAttribution) {
         AndroidView(
             factory = { viewContext ->
                 createMapView(
                     context = viewContext,
                     initialCamera = initialCamera,
+                    onlineSource = onlineSource,
                     onlineProvider = onlineProvider,
                     additionalAttribution = additionalAttribution,
                     surfaceMode = surfaceMode,
@@ -3713,8 +4247,13 @@ private fun mapSurface(
                             onMapTap = { point -> latestOnMapTap.value(point) },
                             onMapLongPress = { point -> latestOnMapLongPress.value(point) },
                             onCreated = onMapViewCreated,
+                            isRendererCurrent = { renderer -> latestIsRendererCurrent.value(renderer) },
                             onMapReady = onMapReady,
                             onStyleReady = onStyleReady,
+                            onRendererFailure = { failure -> latestOnRendererFailure.value(failure) },
+                            onRendererRecovered = { renderer, recoveryCategory ->
+                                latestOnRendererRecovered.value(renderer, recoveryCategory)
+                            },
                         ),
                 ).apply {
                     visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
@@ -4242,6 +4781,7 @@ private fun phoneMapScaleBar(
 private fun createMapView(
     context: Context,
     initialCamera: PhoneMapCameraSnapshot,
+    onlineSource: PhoneOnlineMapSource,
     onlineProvider: RasterOnlineMapProvider,
     additionalAttribution: String?,
     surfaceMode: PhoneMapLibreSurfaceMode,
@@ -4352,7 +4892,6 @@ private fun createMapView(
                     if (!cancelled) suppressNextMapTap = true
                 },
             )
-        mapView.tag = PhoneMapTouchDetectorCleanup(twoFingerTapDetector, longPressDetector)
         mapView.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) suppressNextMapTap = false
             val measurementOwnsGesture = twoFingerTapDetector.onTouchEvent(event)
@@ -4376,6 +4915,107 @@ private fun createMapView(
             },
         )
         val generation = callbacks.onCreated(mapView)
+        val role =
+            if (surfaceMode == PhoneMapLibreSurfaceMode.COMPARISON) {
+                PhoneMapLibreRendererRole.COMPARISON
+            } else {
+                PhoneMapLibreRendererRole.BASE
+            }
+        val rendererIdentity =
+            PhoneMapLibreRenderDiagnostics.rendererCreated(
+                role = role,
+                generation = generation,
+                source = onlineSource,
+                providerId = onlineProvider.id,
+            )
+        val renderer = PhoneMapLibreRendererRef(rendererIdentity, generation, mapView, onlineSource, onlineProvider.id)
+        val mapLoadFailureListener =
+            MapView.OnDidFailLoadingMapListener { _ ->
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.failure(renderer.identity, PhoneMapLibreErrorCategory.MAP_LOAD)
+                }
+                callbacks.onRendererFailure(
+                    PhoneMapLibreRenderFailure(renderer, PhoneMapLibreErrorCategory.MAP_LOAD),
+                )
+            }
+        val renderFailureListener =
+            MapView.OnRenderErrorListener {
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.failure(renderer.identity, PhoneMapLibreErrorCategory.RENDER)
+                }
+                callbacks.onRendererFailure(
+                    PhoneMapLibreRenderFailure(renderer, PhoneMapLibreErrorCategory.RENDER),
+                )
+            }
+        val renderFrameFinishedListener =
+            MapView.OnDidFinishRenderingMapListener { fullyRendered ->
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.renderFrameFinished(renderer.identity, fullyRendered)
+                    if (fullyRendered) {
+                        callbacks.onRendererRecovered(renderer, PhoneMapLibreErrorCategory.RENDER)
+                    }
+                }
+            }
+        // MapLibre 13.6.1 provides the operation, but not HTTP status; discard tile coordinates and source.
+        val tileActionListener =
+            MapView.OnTileActionListener { operation, _, _, _, _, _, _ ->
+                if (
+                    operation == org.maplibre.android.tile.TileOperation.Error &&
+                    callbacks.isRendererCurrent(renderer)
+                ) {
+                    PhoneMapLibreRenderDiagnostics.resourceFailure(
+                        renderer.identity,
+                        PhoneMapLibreResourceFailureKind.TILE,
+                    )
+                }
+            }
+        val glyphsErrorListener =
+            MapView.OnGlyphsErrorListener { _, _, _ ->
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.resourceFailure(
+                        renderer.identity,
+                        PhoneMapLibreResourceFailureKind.GLYPHS,
+                    )
+                }
+            }
+        val spriteErrorListener =
+            MapView.OnSpriteErrorListener { _, _ ->
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.resourceFailure(
+                        renderer.identity,
+                        PhoneMapLibreResourceFailureKind.SPRITE,
+                    )
+                }
+            }
+        val styleLoadedListener =
+            MapView.OnDidFinishLoadingStyleListener {
+                if (callbacks.isRendererCurrent(renderer)) {
+                    PhoneMapLibreRenderDiagnostics.styleLoadCompleted(renderer.identity)
+                }
+                callbacks.onRendererRecovered(renderer, PhoneMapLibreErrorCategory.MAP_LOAD)
+            }
+        mapView.addOnDidFailLoadingMapListener(mapLoadFailureListener)
+        mapView.addOnRenderErrorListener(renderFailureListener)
+        mapView.addOnDidFinishRenderingMapListener(renderFrameFinishedListener)
+        mapView.addOnTileActionListener(tileActionListener)
+        mapView.addOnGlyphsErrorListener(glyphsErrorListener)
+        mapView.addOnSpriteErrorListener(spriteErrorListener)
+        mapView.addOnDidFinishLoadingStyleListener(styleLoadedListener)
+        mapView.tag =
+            PhoneMapTouchDetectorCleanup(
+                twoFingerTapDetector = twoFingerTapDetector,
+                longPressDetector = longPressDetector,
+                onDispose = {
+                    mapView.removeOnDidFailLoadingMapListener(mapLoadFailureListener)
+                    mapView.removeOnRenderErrorListener(renderFailureListener)
+                    mapView.removeOnDidFinishRenderingMapListener(renderFrameFinishedListener)
+                    mapView.removeOnTileActionListener(tileActionListener)
+                    mapView.removeOnGlyphsErrorListener(glyphsErrorListener)
+                    mapView.removeOnSpriteErrorListener(spriteErrorListener)
+                    mapView.removeOnDidFinishLoadingStyleListener(styleLoadedListener)
+                    PhoneMapLibreRenderDiagnostics.rendererDisposed(renderer.identity)
+                },
+            )
         mapView.onCreate(null)
         mapView.getMapAsync { map ->
             if (mapView.isDestroyed) return@getMapAsync
@@ -4391,11 +5031,12 @@ private fun createMapView(
                 }
                 false
             }
-            map.setStyle(
+            val initialStyle =
                 Style.Builder().fromJson(
                     onlineProvider.mapLibreRasterStyleJson(additionalAttribution),
-                ),
-            ) {
+                )
+            PhoneMapLibreRenderDiagnostics.styleLoadStarted(renderer.identity)
+            map.setStyle(initialStyle) {
                 if (!mapView.isDestroyed) {
                     map.moveCamera(
                         initialCamera.toMapLibreCameraUpdate(

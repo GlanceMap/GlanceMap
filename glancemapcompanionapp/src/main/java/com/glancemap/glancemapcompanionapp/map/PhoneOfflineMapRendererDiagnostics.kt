@@ -1,7 +1,88 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
-import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
+
+internal enum class PhoneOfflineMapRendererRole { BASE, COMPARISON }
+
+internal enum class PhoneOfflineMapRendererStatus { ACTIVE, DISPOSED }
+
+internal data class PhoneOfflineMapRendererIdentity(
+    val role: PhoneOfflineMapRendererRole,
+    val rendererId: Long,
+    val generation: Long,
+    val offlineMapId: String? = null,
+)
+
+internal data class PhoneOfflineMapRendererRef(
+    val identity: PhoneOfflineMapRendererIdentity,
+    val status: PhoneOfflineMapRendererStatus,
+)
+
+internal data class PhoneOfflineMapRendererSnapshot(
+    val identity: PhoneOfflineMapRendererIdentity,
+    val status: PhoneOfflineMapRendererStatus,
+    val updatedAtMs: Long,
+    val attempt: PhoneOfflineMapRendererAttempt? = null,
+    val runtime: PhoneOfflineMapRuntimeDiagnostics? = null,
+) {
+    fun toReportSection(): String =
+        buildString {
+            appendLine("${identity.role.name.lowercase()} offline renderer")
+            appendLine("Renderer id: ${identity.rendererId}")
+            appendLine("Generation: ${identity.generation}")
+            appendLine("Offline map id: ${identity.offlineMapId ?: "none"}")
+            appendLine("Status: $status")
+            appendLine("Updated at (epoch ms): $updatedAtMs")
+            attempt?.let { append(it.toReportDetails()) } ?: appendLine("Attempt: none")
+            runtime?.let {
+                appendLine()
+                append(it.toReportSection())
+            }
+        }
+}
+
+internal fun PhoneOfflineMap.opaqueDiagnosticId(): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(rendererIdentity.toByteArray(Charsets.UTF_8))
+    return "offline-${digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }}"
+}
+
+private fun offlineRendererReportSection(snapshots: Collection<PhoneOfflineMapRendererSnapshot>): String? =
+    snapshots
+        .sortedBy { it.identity.role.ordinal }
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(separator = "\n\n", prefix = "Offline map renderer snapshots\n\n") { it.toReportSection() }
+
+private fun publishOfflineRendererSnapshots(
+    snapshots: Map<PhoneOfflineMapRendererRole, PhoneOfflineMapRendererSnapshot>,
+    rendererRefs: MutableStateFlow<Map<PhoneOfflineMapRendererRole, PhoneOfflineMapRendererRef>>,
+) {
+    rendererRefs.value =
+        snapshots.mapValues { (_, snapshot) ->
+            PhoneOfflineMapRendererRef(snapshot.identity, snapshot.status)
+        }
+    offlineRendererReportSection(snapshots.values)
+        ?.let { report -> PhoneDebugCapture.updateSection("offline_map_renderer", report) }
+}
+
+private fun PhoneOfflineMapRendererSnapshot.matches(identity: PhoneOfflineMapRendererIdentity): Boolean = this.identity == identity
+
+private fun PhoneOfflineMapRendererSnapshot.matches(attempt: PhoneOfflineMapRendererAttempt): Boolean =
+    identity.role == attempt.role &&
+        identity.rendererId == attempt.rendererId &&
+        identity.generation == attempt.generation &&
+        identity.offlineMapId == attempt.offlineMapId &&
+        status == PhoneOfflineMapRendererStatus.ACTIVE
+
+private fun PhoneOfflineMapRendererSnapshot.matches(runtime: PhoneOfflineMapRuntimeDiagnostics): Boolean =
+    identity.role == runtime.role &&
+        identity.rendererId == runtime.rendererId &&
+        identity.generation == runtime.generation &&
+        identity.offlineMapId == runtime.offlineMapId &&
+        status == PhoneOfflineMapRendererStatus.ACTIVE
 
 internal enum class PhoneOfflineMapRendererStage {
     MAP_SELECTED,
@@ -27,7 +108,10 @@ internal enum class PhoneOfflineMapRendererOutcome {
 
 internal data class PhoneOfflineMapRendererAttempt(
     val outcome: PhoneOfflineMapRendererOutcome,
-    val displayName: String?,
+    val role: PhoneOfflineMapRendererRole,
+    val rendererId: Long,
+    val generation: Long,
+    val offlineMapId: String,
     val lastSuccessfulStage: PhoneOfflineMapRendererStage?,
     val failureStage: PhoneOfflineMapRendererStage?,
     val themeId: String?,
@@ -48,14 +132,11 @@ internal data class PhoneOfflineMapRendererAttempt(
     val initialZoomSource: PhoneOfflineInitialCameraReason? = null,
     val initialZoomClamped: Boolean? = null,
     val exceptionClass: String? = null,
-    val exceptionMessage: String? = null,
 ) {
     @Suppress("CyclomaticComplexMethod") // Fixed fields make exported renderer state easy to inspect.
-    fun toReportSection(): String =
+    internal fun toReportDetails(): String =
         buildString {
-            appendLine("Latest offline map renderer")
             appendLine("Result: $outcome")
-            appendLine("File: ${displayName ?: "unknown"}")
             appendLine("Last stage: ${lastSuccessfulStage ?: "none"}")
             appendLine("Failure stage: ${failureStage ?: "none"}")
             appendLine("Theme: ${themeId ?: "unknown"} / ${styleId ?: "unknown"}")
@@ -75,41 +156,104 @@ internal data class PhoneOfflineMapRendererAttempt(
             initialZoomSource?.let { appendLine("Initial zoom source: $it") }
             initialZoomClamped?.let { appendLine("Zoom clamped: $it") }
             exceptionClass?.let { appendLine("Exception: $it") }
-            exceptionMessage?.let { appendLine("Exception message: $it") }
             append("Map storage: companion private maps")
         }
 
     fun toCaptureLine(): String =
-        "event=offline_map_renderer result=$outcome file=${displayName ?: "unknown"} " +
+        "event=offline_map_renderer result=$outcome role=${role.name.lowercase()} " +
+            "renderer=$rendererId generation=$generation offlineMap=$offlineMapId " +
             "lastStage=${lastSuccessfulStage ?: "none"} failureStage=${failureStage ?: "none"} " +
             "theme=${themeId ?: "unknown"}/${styleId ?: "unknown"} fallback=$fallbackThemeUsed " +
             "tileLayer=$tileLayerAttached view=$viewAttached camera=$firstCameraPublished " +
             "exception=${exceptionClass ?: "none"}"
 }
 
-/** Retains one safe renderer summary beside the existing import summary in explicit debug capture. */
+/** Retains the current base and comparison renderer snapshots in explicit debug capture. */
 internal object PhoneOfflineMapRendererDiagnostics {
     const val TAG = "PhoneOfflineMapRenderer"
 
-    private val latestAttempt = AtomicReference<PhoneOfflineMapRendererAttempt?>(null)
-    private val latestRuntime = AtomicReference<PhoneOfflineMapRuntimeDiagnostics?>(null)
+    private val rendererIds = AtomicLong()
+    private val snapshots = mutableMapOf<PhoneOfflineMapRendererRole, PhoneOfflineMapRendererSnapshot>()
+    private val rendererRefsFlow =
+        MutableStateFlow<Map<PhoneOfflineMapRendererRole, PhoneOfflineMapRendererRef>>(emptyMap())
 
-    fun record(attempt: PhoneOfflineMapRendererAttempt) {
-        latestAttempt.set(attempt)
-        latestRuntime.set(null)
-        PhoneDebugCapture.log(TAG, attempt.toCaptureLine())
-        PhoneDebugCapture.updateSection("offline_map_renderer", attempt.toReportSection())
+    val rendererRefs = rendererRefsFlow.asStateFlow()
+
+    @Synchronized
+    fun registerRenderer(
+        role: PhoneOfflineMapRendererRole,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PhoneOfflineMapRendererIdentity {
+        val identity = PhoneOfflineMapRendererIdentity(role, rendererIds.incrementAndGet(), generation = 0L)
+        snapshots[role] = PhoneOfflineMapRendererSnapshot(identity, PhoneOfflineMapRendererStatus.ACTIVE, nowMs)
+        publishOfflineRendererSnapshots(snapshots, rendererRefsFlow)
+        return identity
     }
 
-    fun update(attempt: PhoneOfflineMapRendererAttempt) {
-        latestAttempt.set(attempt)
-        PhoneDebugCapture.updateSection("offline_map_renderer", attempt.toReportSection())
+    @Synchronized
+    fun beginGeneration(
+        previous: PhoneOfflineMapRendererIdentity,
+        offlineMapId: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PhoneOfflineMapRendererIdentity {
+        val identity = previous.copy(generation = previous.generation + 1L, offlineMapId = offlineMapId)
+        val current = snapshots[previous.role]
+        if (current?.matches(previous) == true && current.status == PhoneOfflineMapRendererStatus.ACTIVE) {
+            snapshots[previous.role] =
+                PhoneOfflineMapRendererSnapshot(identity, PhoneOfflineMapRendererStatus.ACTIVE, nowMs)
+            publishOfflineRendererSnapshots(snapshots, rendererRefsFlow)
+        }
+        return identity
     }
 
+    @Synchronized
+    fun markDisposed(
+        identity: PhoneOfflineMapRendererIdentity,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val current = snapshots[identity.role]
+        val canDispose =
+            current != null &&
+                current.matches(identity) &&
+                current.status != PhoneOfflineMapRendererStatus.DISPOSED
+        if (canDispose) {
+            val active = checkNotNull(current)
+            snapshots[identity.role] = active.copy(status = PhoneOfflineMapRendererStatus.DISPOSED, updatedAtMs = nowMs)
+            publishOfflineRendererSnapshots(snapshots, rendererRefsFlow)
+        }
+        return canDispose
+    }
+
+    @Synchronized
+    fun record(
+        attempt: PhoneOfflineMapRendererAttempt,
+        logEvent: Boolean = true,
+    ) {
+        val current = snapshots[attempt.role]
+        if (current != null && current.matches(attempt)) {
+            snapshots[attempt.role] =
+                current.copy(
+                    updatedAtMs = System.currentTimeMillis(),
+                    attempt = attempt,
+                    runtime = null,
+                )
+            publishOfflineRendererSnapshots(snapshots, rendererRefsFlow)
+            if (logEvent) PhoneDebugCapture.log(TAG, attempt.toCaptureLine())
+        }
+    }
+
+    @Synchronized
     fun recordRuntime(runtime: PhoneOfflineMapRuntimeDiagnostics) {
-        if (latestAttempt.get()?.displayName == runtime.displayName) {
-            latestRuntime.set(runtime)
-            PhoneDebugCapture.updateSection("offline_map_runtime", runtime.toReportSection())
+        val current = snapshots[runtime.role]
+        if (current != null && current.matches(runtime)) {
+            val previousRuntime = current.runtime
+            val unchangedExceptLocationAge =
+                previousRuntime != null &&
+                    previousRuntime.copy(locationAgeMillis = runtime.locationAgeMillis) == runtime
+            if (!unchangedExceptLocationAge) {
+                snapshots[runtime.role] = current.copy(updatedAtMs = System.currentTimeMillis(), runtime = runtime)
+                publishOfflineRendererSnapshots(snapshots, rendererRefsFlow)
+            }
         }
     }
 
@@ -120,27 +264,36 @@ internal object PhoneOfflineMapRendererDiagnostics {
         PhoneDebugCapture.log(TAG, "event=$event $detail")
     }
 
-    fun latestReportSection(): String? =
-        latestAttempt.get()?.toReportSection()?.let { renderer ->
-            latestRuntime.get()?.toReportSection()?.let { runtime -> "$renderer\n\n$runtime" } ?: renderer
-        }
+    @Synchronized
+    fun latestReportSection(): String? = offlineRendererReportSection(snapshots.values)
 
-    internal fun latestAttempt(): PhoneOfflineMapRendererAttempt? = latestAttempt.get()
+    @Synchronized
+    internal fun snapshot(role: PhoneOfflineMapRendererRole): PhoneOfflineMapRendererSnapshot? = snapshots[role]
 
+    @Synchronized
+    internal fun latestAttempt(): PhoneOfflineMapRendererAttempt? =
+        snapshots.values
+            .mapNotNull { snapshot -> snapshot.attempt?.let { snapshot.updatedAtMs to it } }
+            .maxByOrNull { (updatedAt, _) -> updatedAt }
+            ?.second
+
+    @Synchronized
     internal fun clear() {
-        latestAttempt.set(null)
-        latestRuntime.set(null)
+        snapshots.clear()
+        rendererRefsFlow.value = emptyMap()
     }
 }
 
 /** Collects only initialization facts; it never stores a URI, full path, or map contents. */
 @Suppress("TooManyFunctions") // Each short method maps directly to one renderer initialization fact.
 internal class PhoneOfflineMapRendererTrace(
-    displayName: String,
+    private val identity: PhoneOfflineMapRendererIdentity,
     config: PhoneOfflineThemeConfig,
 ) {
-    internal val mapDisplayName = displayName
-    private val fileName = displayName
+    internal val role: PhoneOfflineMapRendererRole = identity.role
+    internal val rendererId: Long = identity.rendererId
+    internal val generation: Long = identity.generation
+    internal val offlineMapId: String = requireNotNull(identity.offlineMapId)
     private var themeId = config.themeId
     private var styleId = config.styleId
     private var currentStage = PhoneOfflineMapRendererStage.MAP_SELECTED
@@ -230,7 +383,12 @@ internal class PhoneOfflineMapRendererTrace(
     @Synchronized
     fun resourceProviderFailed() {
         resourceProviderFailed = true
-        readyAttempt?.let { PhoneOfflineMapRendererDiagnostics.update(snapshot(it.outcome, it.failureStage, null)) }
+        readyAttempt?.let { attempt ->
+            PhoneOfflineMapRendererDiagnostics.record(
+                snapshot(attempt.outcome, attempt.failureStage, null),
+                logEvent = false,
+            )
+        }
     }
 
     @Synchronized
@@ -255,7 +413,10 @@ internal class PhoneOfflineMapRendererTrace(
     ): PhoneOfflineMapRendererAttempt =
         PhoneOfflineMapRendererAttempt(
             outcome = outcome,
-            displayName = fileName,
+            role = identity.role,
+            rendererId = identity.rendererId,
+            generation = identity.generation,
+            offlineMapId = offlineMapId,
             lastSuccessfulStage = lastSuccessfulStage,
             failureStage = failureStage,
             themeId = themeId,
@@ -276,17 +437,14 @@ internal class PhoneOfflineMapRendererTrace(
             initialZoomSource = initialZoomSource,
             initialZoomClamped = initialZoomClamped,
             exceptionClass = error?.className,
-            exceptionMessage = error?.message,
         )
 }
 
 internal data class PhoneOfflineMapRendererException(
     val className: String,
-    val message: String?,
 )
 
 internal fun Throwable.toPhoneOfflineMapRendererException(): PhoneOfflineMapRendererException =
     PhoneOfflineMapRendererException(
         className = javaClass.simpleName.ifBlank { javaClass.name },
-        message = message?.redactPhoneOfflineMapDiagnosticMessage(),
     )
