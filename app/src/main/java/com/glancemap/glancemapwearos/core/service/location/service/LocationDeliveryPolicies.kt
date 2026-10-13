@@ -9,6 +9,18 @@ import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractiv
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.trailcore.recording.recordingScreenOffIntervalMillis
+
+internal fun locationScreenOffIntervalMillis(
+    screenOnIntervalMs: Long,
+    screenOffSeconds: Int,
+): Long =
+    if (screenOffSeconds == SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) {
+        SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
+    } else {
+        recordingScreenOffIntervalMillis(screenOnIntervalMs, screenOffSeconds)
+    }
 
 internal fun shouldSuppressImmediateBurstForFreshStream(
     runtimeReason: String,

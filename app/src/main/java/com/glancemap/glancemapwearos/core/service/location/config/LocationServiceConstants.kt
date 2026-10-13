@@ -21,9 +21,9 @@ internal const val FOREGROUND_MIN_DISTANCE_M = 1f
 internal const val BACKGROUND_MIN_DISTANCE_M = 5f
 
 // Keep auto-resume responsive without spending the normal REC cadence while stationary.
-internal const val AUTO_PAUSE_GPS_INTERVAL_MS = 5_000L
-internal const val AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS = 12_000L
-internal const val AUTO_PAUSE_PROLONGED_AFTER_MS = 60_000L
+internal const val AUTO_PAUSE_GPS_INTERVAL_MS = RecordingSettings.AUTO_PAUSE_GPS_INTERVAL_MS
+internal const val AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS = RecordingSettings.AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS
+internal const val AUTO_PAUSE_PROLONGED_AFTER_MS = RecordingSettings.AUTO_PAUSE_PROLONGED_AFTER_MS
 internal const val AUTO_PAUSE_MIN_DISTANCE_M = 5f
 internal const val SCREEN_OFF_RECORDING_MAX_BATCH_DELAY_MS = 15_000L
 

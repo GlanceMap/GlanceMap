@@ -1,6 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
-import org.mapsforge.core.model.LatLong
+import com.glancemap.trailcore.geo.GeoPoint
 
 /** Immutable views keep drawing on the Mapsforge thread without copying canonical coordinates. */
 internal class RecordingTraceGeometry(
@@ -9,19 +9,19 @@ internal class RecordingTraceGeometry(
     val revision: Long,
     val startedAtMillis: Long?,
 ) {
-    val segments: List<List<LatLong>> =
-        object : AbstractList<List<LatLong>>() {
+    val segments: List<List<GeoPoint>> =
+        object : AbstractList<List<GeoPoint>>() {
             override val size: Int = segmentStarts.size
 
-            override fun get(index: Int): List<LatLong> {
+            override fun get(index: Int): List<GeoPoint> {
                 val start = segmentStarts[index]
                 val end = segmentStarts.getOrNull(index + 1) ?: points.size
-                return object : AbstractList<LatLong>() {
+                return object : AbstractList<GeoPoint>() {
                     override val size: Int = end - start
 
-                    override fun get(index: Int): LatLong {
+                    override fun get(index: Int): GeoPoint {
                         checkElementIndex(index)
-                        return points[start + index].latLong
+                        return points[start + index].location
                     }
 
                     private fun checkElementIndex(index: Int) {

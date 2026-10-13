@@ -1,11 +1,17 @@
 package com.glancemap.glancemapwearos.core.service.location.service
 
+import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
+import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_PROLONGED_AFTER_MS
+import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.engine.RequestSpec
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.trailcore.recording.RecordingSettings
+import com.glancemap.trailcore.recording.recordingScreenOffIntervalMillis
 import com.google.android.gms.location.Priority
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,6 +20,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocationDeliveryPoliciesTest {
+    @Test
+    fun watchScreenOffTimingUsesSharedRecordingPolicyAndKeepsGuidanceAdaptiveMode() {
+        val modes =
+            RecordingSettings.recordingGpsFixedIntervalSecondsOptions +
+                listOf(
+                    RecordingSettings.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+                    RecordingSettings.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS,
+                )
+        listOf(1_000L, 3_000L, Long.MAX_VALUE).forEach { screenOn ->
+            modes.forEach { mode ->
+                assertEquals(
+                    recordingScreenOffIntervalMillis(screenOn, mode),
+                    locationScreenOffIntervalMillis(screenOn, mode),
+                )
+            }
+            assertEquals(
+                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
+                locationScreenOffIntervalMillis(screenOn, SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS),
+            )
+        }
+    }
+
+    @Test
+    fun autoPauseTimingUsesSharedConstants() {
+        assertEquals(RecordingSettings.AUTO_PAUSE_GPS_INTERVAL_MS, AUTO_PAUSE_GPS_INTERVAL_MS)
+        assertEquals(RecordingSettings.AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS, AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS)
+        assertEquals(RecordingSettings.AUTO_PAUSE_PROLONGED_AFTER_MS, AUTO_PAUSE_PROLONGED_AFTER_MS)
+    }
+
     @Test
     fun freshRecordingStreamSuppressesRedundantBurst() {
         assertTrue(

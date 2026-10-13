@@ -326,9 +326,7 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setGpsUsageProfile(profile: String) {
         context.dataStore.edit { preferences ->
-            val selectedProfile =
-                profile.takeIf { it in allowedSelectableGpsUsageProfiles }
-                    ?: SettingsRepository.DEFAULT_GPS_USAGE_PROFILE
+            val selectedProfile = Rec.normalizeGpsUsageProfile(profile)
             val activityProfile = sanitizeActivityProfile(preferences[PrefKeys.ACTIVITY_PROFILE])
             if (selectedProfile == SettingsRepository.GPS_USAGE_PROFILE_CUSTOM) {
                 preferences[PrefKeys.GPS_USAGE_PROFILE] = selectedProfile
@@ -343,11 +341,12 @@ class SettingsRepositoryImpl private constructor(
 
     override val recordingSampleIntervalSeconds: Flow<Int> =
         context.dataStore.data.map {
-            it[PrefKeys.RECORDING_SAMPLE_INTERVAL_SECONDS]
-                .takeIf { seconds -> seconds in allowedScreenOnGpsIntervalsSeconds }
-                ?: defaultRecordingSampleIntervalSecondsForProfile(
+            sanitizeScreenOnGpsIntervalSeconds(
+                it[PrefKeys.RECORDING_SAMPLE_INTERVAL_SECONDS],
+                defaultRecordingSampleIntervalSecondsForProfile(
                     sanitizeActivityProfile(it[PrefKeys.ACTIVITY_PROFILE]),
-                )
+                ),
+            )
         }
 
     override val recordingScreenOnFixedGpsIntervalSeconds: Flow<Int> =
@@ -380,11 +379,7 @@ class SettingsRepositoryImpl private constructor(
                     defaultSeconds = defaultRecordingSampleIntervalSecondsForProfile(profile),
                 )
             val sanitized =
-                if (seconds in allowedScreenOnGpsIntervalsSeconds) {
-                    seconds
-                } else {
-                    defaultRecordingSampleIntervalSecondsForProfile(profile)
-                }
+                sanitizeScreenOnGpsIntervalSeconds(seconds, defaultRecordingSampleIntervalSecondsForProfile(profile))
             it[PrefKeys.RECORDING_SAMPLE_INTERVAL_SECONDS] = sanitized
             it[PrefKeys.RECORDING_SCREEN_ON_FIXED_GPS_INTERVAL_SECONDS] =
                 if (sanitized > 0) sanitized else rememberedFixedSeconds
@@ -2160,19 +2155,6 @@ class SettingsRepositoryImpl private constructor(
                 SettingsRepository.GPX_TOOL_ROUTE_STYLE_BIKE_GRAVEL,
                 SettingsRepository.GPX_TOOL_ROUTE_STYLE_BIKE_MTB,
             )
-        private val allowedScreenOnGpsIntervalsSeconds =
-            setOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + (1..60) + setOf(90, 120)
-        private val allowedScreenOffGpsIntervalsSeconds =
-            allowedScreenOnGpsIntervalsSeconds + SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
-        private val allowedTurnByTurnScreenOffGpsIntervalsSeconds =
-            allowedScreenOffGpsIntervalsSeconds + SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS
-        private val allowedSelectableGpsUsageProfiles =
-            setOf(
-                SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE,
-                SettingsRepository.GPS_USAGE_PROFILE_BALANCED,
-                SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY,
-                SettingsRepository.GPS_USAGE_PROFILE_CUSTOM,
-            )
         private const val LEGACY_ZOOM_BUTTONS_HIDE_MINUS = "HIDE_MINUS"
         private const val CACHE_PREFS_NAME = "settings_runtime_cache"
         private const val CACHE_KEY_NAVIGATION_MARKER_STYLE = "navigation_marker_style"
@@ -2364,9 +2346,11 @@ class SettingsRepositoryImpl private constructor(
             seconds: Int?,
             defaultSeconds: Int,
         ): Int =
-            seconds
-                ?.takeIf { it in allowedTurnByTurnScreenOffGpsIntervalsSeconds }
-                ?: defaultSeconds
+            if (seconds == SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) {
+                seconds
+            } else {
+                Rec.normalizeRecordingScreenOffGpsInterval(seconds, defaultSeconds)
+            }
 
         private fun sanitizeRecordingAutoPauseMode(mode: String?): String = Rec.normalizeAutoPauseMode(mode)
 
@@ -2502,8 +2486,12 @@ class SettingsRepositoryImpl private constructor(
 
         private fun sanitizeTurnByTurnScreenOffGpsIntervalSeconds(preferences: Preferences): Int {
             preferences[PrefKeys.TURN_BY_TURN_SCREEN_OFF_GPS_INTERVAL_SECONDS]
-                ?.takeIf { it in allowedTurnByTurnScreenOffGpsIntervalsSeconds }
-                ?.let { return it }
+                ?.takeIf {
+                    sanitizeTurnByTurnScreenOffGpsIntervalSeconds(
+                        it,
+                        SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS,
+                    ) == it
+                }?.let { return it }
             preferences[PrefKeys.TURN_BY_TURN_GPS_IN_AMBIENT_MODE]?.let { legacyEnabled ->
                 // The legacy boolean captured only whether GPS continued while the screen was
                 // off, not the cadence. Preserve an explicit modern cadence above, but migrate
@@ -2600,7 +2588,7 @@ class SettingsRepositoryImpl private constructor(
         val nextFlatSpeed = defaultGpxFlatSpeedMpsForProfile(nextProfile)
         val managedGpsUsageProfile =
             preferences[PrefKeys.GPS_USAGE_PROFILE]
-                ?.takeIf { it in allowedSelectableGpsUsageProfiles }
+                ?.takeIf { Rec.normalizeGpsUsageProfile(it) == it }
                 ?: inferGpsUsageProfile(
                     activityProfile = previousProfile,
                     timing = gpsUsageTimingFromPreferences(preferences, previousProfile),
@@ -2620,7 +2608,7 @@ class SettingsRepositoryImpl private constructor(
             preferences[PrefKeys.GPX_FLAT_SPEED_MPS] = nextFlatSpeed
         }
         if (
-            managedGpsUsageProfile in allowedSelectableGpsUsageProfiles &&
+            Rec.normalizeGpsUsageProfile(managedGpsUsageProfile) == managedGpsUsageProfile &&
             managedGpsUsageProfile != SettingsRepository.GPS_USAGE_PROFILE_CUSTOM
         ) {
             preferences.applyGpsUsageTiming(

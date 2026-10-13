@@ -8,6 +8,25 @@ import org.junit.Test
 
 class RecordingFoundationTest {
     @Test
+    fun fixedPickerOptionsAndNormalizationKeepStoredTimingCompatibility() {
+        val options = RecordingSettings.recordingGpsFixedIntervalSecondsOptions
+        assertEquals((1..60).toList() + listOf(90, 120), options)
+        options.forEach { seconds ->
+            assertEquals(seconds, RecordingSettings.normalizeScreenOnGpsInterval(seconds, 3))
+            assertEquals(seconds, RecordingSettings.normalizeRecordingScreenOffGpsInterval(seconds, 10))
+        }
+        listOf(null, -3, -2, 0, 61, 89, 91, 119, 121).forEach { invalid ->
+            assertEquals(3, RecordingSettings.normalizeScreenOnGpsInterval(invalid, 3))
+        }
+        listOf(null, -3, -2, 61, 89, 91, 119, 121).forEach { invalid ->
+            assertEquals(10, RecordingSettings.normalizeRecordingScreenOffGpsInterval(invalid, 10))
+        }
+        assertEquals(-1, RecordingSettings.normalizeScreenOnGpsInterval(-1, 3))
+        assertEquals(-1, RecordingSettings.normalizeRecordingScreenOffGpsInterval(-1, 10))
+        assertEquals(0, RecordingSettings.normalizeRecordingScreenOffGpsInterval(0, 10))
+    }
+
+    @Test
     fun recordingPoliciesKeepPresetDefaultsAndScreenOffModes() {
         assertEquals(
             RecordingGpsUsageTiming(1, 3, 1, RecordingSettings.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS),

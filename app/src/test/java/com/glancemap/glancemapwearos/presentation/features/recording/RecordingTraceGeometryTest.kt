@@ -71,6 +71,17 @@ class RecordingTraceGeometryTest {
     }
 
     @Test
+    fun repeatedDrawingReadsReuseCanonicalCoordinatesForLargeHistory() {
+        val points = List(20_000, ::point)
+        val state = TraceRecordingUiState(points = points, startedAtMillis = 1_000L, pointsRevision = 1)
+        val segment = prepareRecordingTraceGeometry(state, null).segments.single()
+
+        repeat(3) {
+            points.indices.forEach { index -> assertSame(points[index].location, segment[index]) }
+        }
+    }
+
+    @Test
     fun missedUpdatesAndNewSessionsRebuildChangedEarlierBoundaries() {
         val points = List(12, ::point)
         val initial = TraceRecordingUiState(points = points, startedAtMillis = 1_000L, pointsRevision = 2)
@@ -130,7 +141,7 @@ class RecordingTraceGeometryTest {
         state: TraceRecordingUiState,
         geometry: RecordingTraceGeometry,
     ) {
-        val expected = recordedTraceSegments(state.points).map { segment -> segment.map { it.latLong } }
+        val expected = recordedTraceSegments(state.points).map { segment -> segment.map { it.location } }
         assertEquals(expected, geometry.segments)
         listOf(false, true).forEach { following ->
             val expectedRender = recordingTraceRenderState(expected, following)

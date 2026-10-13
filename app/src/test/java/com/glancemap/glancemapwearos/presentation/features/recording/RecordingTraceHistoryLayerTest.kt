@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.mapsforge.core.graphics.Canvas
@@ -21,8 +22,8 @@ class RecordingTraceHistoryLayerTest {
         val drawing = RecordingDrawing()
         val segments =
             listOf(
-                listOf(LatLong(45.0, 6.0), LatLong(45.0001, 6.0003), LatLong(45.0002, 6.0)),
-                listOf(LatLong(45.001, 6.002), LatLong(45.002, 6.001)),
+                listOf(GeoPoint(45.0, 6.0), GeoPoint(45.0001, 6.0003), GeoPoint(45.0002, 6.0)),
+                listOf(GeoPoint(45.001, 6.002), GeoPoint(45.002, 6.001)),
             )
         val display = drawing.display
         val bounds = BoundingBox(44.0, 5.0, 46.0, 7.0)
@@ -57,7 +58,7 @@ class RecordingTraceHistoryLayerTest {
             }
 
         fun drawPolylines(
-            segments: List<List<LatLong>>,
+            segments: List<List<GeoPoint>>,
             zoom: Byte,
             bounds: BoundingBox,
             topLeft: Point,
@@ -66,7 +67,7 @@ class RecordingTraceHistoryLayerTest {
             segments.filter { it.size >= 2 }.forEach { points ->
                 Polyline(paint, factory).apply {
                     displayModel = display
-                    latLongs.addAll(points)
+                    latLongs.addAll(points.map { LatLong(it.latitude, it.longitude) })
                     draw(bounds, zoom, canvas, topLeft, rotation)
                 }
             }

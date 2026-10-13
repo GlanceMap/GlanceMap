@@ -83,13 +83,15 @@ object RecordingSettings {
     const val RECORDING_WATCH_GPS_EFFECTIVE_ACCURACY_M = 18f
     const val RECORDING_FIX_FALLBACK_ACCURACY_M = 12.0
 
-    private val screenOnIntervals = setOf(RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + (1..60) + setOf(90, 120)
+    private val fixedGpsIntervals = (1..60).toList() + listOf(90, 120)
+    private val screenOnIntervals = setOf(RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) + fixedGpsIntervals
     private val screenOffIntervals = screenOnIntervals + GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS
     private val progressDistanceIntervals = (50..1_000 step 50).toList() + (1_500..10_000 step 500).toList()
     private val progressTimeIntervals = (1..10).toList() + (15..120 step 5).toList()
 
     val recordingProgressVibrationDistanceMetersOptions: List<Int> get() = progressDistanceIntervals
     val recordingProgressVibrationTimeMinutesOptions: List<Int> get() = progressTimeIntervals
+    val recordingGpsFixedIntervalSecondsOptions: List<Int> get() = fixedGpsIntervals
 
     fun normalizeActivityProfile(profile: String?): String =
         when (profile) {

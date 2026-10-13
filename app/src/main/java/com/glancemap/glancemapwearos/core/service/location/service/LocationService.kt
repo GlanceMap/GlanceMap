@@ -78,6 +78,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.glancemap.trailcore.recording.recordingGpsIntervalMillis as gpsIntervalMillis
 
 class LocationService : Service() {
     private enum class KeepAliveNotificationMode {
@@ -485,7 +486,7 @@ class LocationService : Service() {
             }
             runCatching {
                 latestRecordingScreenOffIntervalMs =
-                    screenOffIntervalMillis(
+                    locationScreenOffIntervalMillis(
                         screenOnIntervalMs = latestRecordingIntervalMs,
                         screenOffSeconds = settingsRepository.recordingScreenOffSampleIntervalSeconds.first(),
                     )
@@ -496,7 +497,7 @@ class LocationService : Service() {
             }
             runCatching {
                 latestTurnByTurnScreenOffIntervalMs =
-                    screenOffIntervalMillis(
+                    locationScreenOffIntervalMillis(
                         screenOnIntervalMs = latestTurnByTurnIntervalMs,
                         screenOffSeconds = settingsRepository.turnByTurnScreenOffGpsIntervalSeconds.first(),
                     )
@@ -508,24 +509,6 @@ class LocationService : Service() {
     }
 
     private fun recordingIntervalMillis(recordingSampleSeconds: Int): Long = gpsIntervalMillis(recordingSampleSeconds)
-
-    private fun gpsIntervalMillis(seconds: Int): Long =
-        if (seconds == SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS) {
-            Long.MAX_VALUE
-        } else {
-            seconds.coerceAtLeast(1) * 1_000L
-        }
-
-    private fun screenOffIntervalMillis(
-        screenOnIntervalMs: Long,
-        screenOffSeconds: Int,
-    ): Long =
-        when (screenOffSeconds) {
-            SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS ->
-                SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L
-            SettingsRepository.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> screenOnIntervalMs
-            else -> gpsIntervalMillis(screenOffSeconds)
-        }
 
     override fun onStartCommand(
         intent: Intent?,
@@ -1050,7 +1033,7 @@ class LocationService : Service() {
             }.combine(settingsRepository.recordingScreenOffSampleIntervalSeconds) { state, recordingScreenOffSeconds ->
                 state.copy(
                     recordingScreenOffIntervalMs =
-                        screenOffIntervalMillis(
+                        locationScreenOffIntervalMillis(
                             screenOnIntervalMs = state.recordingIntervalMs,
                             screenOffSeconds = recordingScreenOffSeconds,
                         ),
@@ -1060,7 +1043,7 @@ class LocationService : Service() {
             }.combine(settingsRepository.turnByTurnScreenOffGpsIntervalSeconds) { state, turnByTurnScreenOffSeconds ->
                 state.copy(
                     turnByTurnScreenOffIntervalMs =
-                        screenOffIntervalMillis(
+                        locationScreenOffIntervalMillis(
                             screenOnIntervalMs = state.turnByTurnIntervalMs,
                             screenOffSeconds = turnByTurnScreenOffSeconds,
                         ),

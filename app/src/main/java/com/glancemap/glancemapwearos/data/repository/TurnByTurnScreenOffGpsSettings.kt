@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.data.repository
 
+import com.glancemap.trailcore.recording.RecordingSettings.recordingGpsFixedIntervalSecondsOptions
+
 internal fun rememberedFixedGpsIntervalSeconds(
     persistedSeconds: Int?,
     activeSeconds: Int,
@@ -54,4 +56,4 @@ internal fun nextTurnByTurnScreenOffGpsMode(
             ),
     )
 
-private fun isFixedGpsIntervalSeconds(seconds: Int): Boolean = seconds in 1..60 || seconds == 90 || seconds == 120
+private fun isFixedGpsIntervalSeconds(seconds: Int): Boolean = seconds in recordingGpsFixedIntervalSecondsOptions

@@ -10,6 +10,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.navigate.MapTopOverlayCoordinator
 import com.glancemap.glancemapwearos.presentation.features.navigate.requestLayerRedrawSafely
+import com.glancemap.trailcore.geo.GeoPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.graphics.Canvas
@@ -89,8 +90,8 @@ internal fun RecordingTraceOverlayEffect(
 }
 
 internal data class RecordingTraceRenderState(
-    val segments: List<List<LatLong>>,
-    val liveTailStart: LatLong?,
+    val segments: List<List<GeoPoint>>,
+    val liveTailStart: GeoPoint?,
 )
 
 /**
@@ -99,7 +100,7 @@ internal data class RecordingTraceRenderState(
  * instead of shifting sideways when the recording filter corrects its tail.
  */
 internal fun recordingTraceRenderState(
-    segments: List<List<LatLong>>,
+    segments: List<List<GeoPoint>>,
     followLocationMarker: Boolean,
 ): RecordingTraceRenderState =
     if (!followLocationMarker || segments.isEmpty() || segments.last().isEmpty()) {
@@ -161,12 +162,12 @@ private class RecordingTraceLayers(
 
     private fun syncLiveTail(
         layers: Layers,
-        startLatLong: LatLong?,
+        startLocation: GeoPoint?,
         locationMarker: RotatableMarker?,
     ): Boolean {
         liveTailLayer.anchorMarker = locationMarker
-        liveTailLayer.startLatLong = startLatLong
-        val shouldShow = startLatLong != null && locationMarker != null
+        liveTailLayer.startLatLong = startLocation?.let { LatLong(it.latitude, it.longitude) }
+        val shouldShow = startLocation != null && locationMarker != null
         return when {
             shouldShow && !layers.contains(liveTailLayer) -> {
                 layers.add(liveTailLayer)
@@ -182,7 +183,7 @@ internal class RecordingTraceHistoryLayer(
     private val paint: Paint,
     private val graphicFactory: GraphicFactory = AndroidGraphicFactory.INSTANCE,
 ) : Layer() {
-    @Volatile var segments: List<List<LatLong>> = emptyList()
+    @Volatile var segments: List<List<GeoPoint>> = emptyList()
 
     override fun draw(
         boundingBox: BoundingBox,

@@ -44,6 +44,7 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.nextGpsTimingMode
 import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
+import com.glancemap.trailcore.recording.RecordingSettings
 import kotlin.math.abs
 
 @Composable
@@ -808,7 +809,7 @@ private const val GPS_PICKER_DRAG_DISMISS_PX = 55f
 private const val GPS_STEPPER_ROTARY_STEP_PX = 48f
 private const val GPS_STEPPER_LONG_PRESS_SECONDS = 5
 
-private val GPS_TIMING_SECONDS_OPTIONS = (1..60).toList() + listOf(90, 120)
+private val GPS_TIMING_SECONDS_OPTIONS = RecordingSettings.recordingGpsFixedIntervalSecondsOptions
 
 private val SCREEN_ON_GPS_TIMING_MODES =
     listOf(SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS)
