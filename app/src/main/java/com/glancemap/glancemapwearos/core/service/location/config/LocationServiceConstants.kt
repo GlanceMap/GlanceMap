@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.location.config
 
+import com.glancemap.trailcore.recording.RecordingSettings
 import kotlin.math.abs
 
 internal const val NOTIFICATION_ID = 1
@@ -45,9 +46,10 @@ internal const val WATCH_GPS_BURST_EARLY_STOP_ACCURACY_M = WATCH_GPS_MAX_ACCEPTE
 internal const val WATCH_GPS_AUTO_FALLBACK_INTERACTIVE_MAX_ACCURACY_M = 65f
 internal const val WATCH_GPS_DEGRADED_ACCURACY_M = 100f
 internal const val WATCH_GPS_DEGRADED_STREAK_THRESHOLD = 4
-internal const val WATCH_GPS_ACCURACY_FLOOR_M = 125f
-internal const val WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M = 3f
-internal const val WATCH_GPS_EFFECTIVE_ACCURACY_M = 18f
+internal const val WATCH_GPS_ACCURACY_FLOOR_M = RecordingSettings.RECORDING_WATCH_GPS_ACCURACY_FLOOR_M
+internal const val WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M =
+    RecordingSettings.RECORDING_WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+internal const val WATCH_GPS_EFFECTIVE_ACCURACY_M = RecordingSettings.RECORDING_WATCH_GPS_EFFECTIVE_ACCURACY_M
 
 internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
     accuracyMeters?.let { accuracy ->

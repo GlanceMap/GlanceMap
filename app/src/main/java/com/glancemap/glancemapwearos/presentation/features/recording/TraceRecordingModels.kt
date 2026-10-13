@@ -1,38 +1,69 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.recording.RecordingExternalDistanceSessionState
+import com.glancemap.trailcore.recording.RecordingPoint
+import com.glancemap.trailcore.recording.effectiveRecordingAutoPauseStartMillis
+import com.glancemap.trailcore.recording.recordingAutoPauseAddedMillisAtResume
 import org.mapsforge.core.model.LatLong
+import com.glancemap.trailcore.recording.RECORDING_ACCURACY_INTERPRETATION_RAW as RAW_ACCURACY
+import com.glancemap.trailcore.recording.RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS as SUSPECT_GPS
+import com.glancemap.trailcore.recording.advanceRecordingExternalDistanceSession as advanceExternalSession
 
-data class RecordedTracePoint(
-    val latLong: LatLong,
-    val elevationMeters: Double?,
-    val timeMillis: Long,
-    val accuracyMeters: Float?,
-    val speedMps: Float?,
-    val effectiveAccuracyMeters: Float? = accuracyMeters,
-    val accuracyInterpretation: String = RECORDING_ACCURACY_INTERPRETATION_RAW,
-    val elevationSource: String? = null,
-    val heartRateBpm: Int? = null,
-    val stepCount: Int? = null,
-    val cadenceSpm: Int? = null,
-    val powerWatts: Int? = null,
-    val barometricPressureHpa: Double? = null,
-    val startsNewSegment: Boolean = false,
-    val segmentStartReason: String? = null,
-    /** Internal fixed-lag provenance; it is not written to GPX. */
-    val trajectoryFinalized: Boolean = false,
-)
+typealias RecordedTracePoint = RecordingPoint
 
-internal const val RECORDING_ACCURACY_INTERPRETATION_RAW = "raw"
+/** Mapsforge conversion stays at the watch adapter boundary. */
+val RecordingPoint.latLong: LatLong get() = LatLong(location.latitude, location.longitude)
+
+@Suppress("LongParameterList")
+fun RecordedTracePoint(
+    latLong: LatLong,
+    elevationMeters: Double?,
+    timeMillis: Long,
+    accuracyMeters: Float?,
+    speedMps: Float?,
+    effectiveAccuracyMeters: Float? = accuracyMeters,
+    accuracyInterpretation: String = RECORDING_ACCURACY_INTERPRETATION_RAW,
+    elevationSource: String? = null,
+    heartRateBpm: Int? = null,
+    stepCount: Int? = null,
+    cadenceSpm: Int? = null,
+    powerWatts: Int? = null,
+    barometricPressureHpa: Double? = null,
+    startsNewSegment: Boolean = false,
+    segmentStartReason: String? = null,
+    trajectoryFinalized: Boolean = false,
+): RecordedTracePoint =
+    RecordingPoint(
+        location = GeoPoint(latLong.latitude, latLong.longitude),
+        elevationMeters = elevationMeters,
+        timeMillis = timeMillis,
+        accuracyMeters = accuracyMeters,
+        speedMps = speedMps,
+        effectiveAccuracyMeters = effectiveAccuracyMeters,
+        accuracyInterpretation = accuracyInterpretation,
+        elevationSource = elevationSource,
+        heartRateBpm = heartRateBpm,
+        stepCount = stepCount,
+        cadenceSpm = cadenceSpm,
+        powerWatts = powerWatts,
+        barometricPressureHpa = barometricPressureHpa,
+        startsNewSegment = startsNewSegment,
+        segmentStartReason = segmentStartReason,
+        trajectoryFinalized = trajectoryFinalized,
+    )
+
+internal const val RECORDING_ACCURACY_INTERPRETATION_RAW = RAW_ACCURACY
 internal const val RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS =
-    "suspect_constant_watch_gps"
+    SUSPECT_GPS
 
 internal object RecordingSegmentStartReason {
-    const val MANUAL_PAUSE = "MANUAL_PAUSE"
-    const val AUTO_PAUSE = "AUTO_PAUSE"
-    const val GPS_GAP = "GPS_GAP"
-    const val SOURCE_RELOCATION = "SOURCE_RELOCATION"
-    const val SESSION_RECOVERY = "SESSION_RECOVERY"
+    const val MANUAL_PAUSE = com.glancemap.trailcore.recording.RecordingSegmentStartReason.MANUAL_PAUSE
+    const val AUTO_PAUSE = com.glancemap.trailcore.recording.RecordingSegmentStartReason.AUTO_PAUSE
+    const val GPS_GAP = com.glancemap.trailcore.recording.RecordingSegmentStartReason.GPS_GAP
+    const val SOURCE_RELOCATION = com.glancemap.trailcore.recording.RecordingSegmentStartReason.SOURCE_RELOCATION
+    const val SESSION_RECOVERY = com.glancemap.trailcore.recording.RecordingSegmentStartReason.SESSION_RECOVERY
 }
 
 data class TraceRecordingUiState(
@@ -127,49 +158,23 @@ internal fun effectiveAutoPauseStartMillis(
     state: TraceRecordingUiState,
     confirmationMillis: Long,
     stationaryDurationMillis: Long,
-): Long {
-    val confirmation = confirmationMillis.coerceAtLeast(0L)
-    val earliest = state.startedAtMillis?.coerceIn(0L, confirmation) ?: 0L
-    return (confirmation - stationaryDurationMillis.coerceAtLeast(0L)).coerceAtLeast(earliest)
-}
+): Long = effectiveRecordingAutoPauseStartMillis(state.startedAtMillis, confirmationMillis, stationaryDurationMillis)
 
 internal fun autoPauseAddedMillisAtResume(
     state: TraceRecordingUiState,
     confirmationMillis: Long,
     movingDurationMillis: Long,
-): Long {
-    val confirmation = confirmationMillis.coerceAtLeast(0L)
-    val pausedAt = state.pausedAtMillis?.coerceIn(0L, confirmation) ?: return 0L
-    val effectiveResume =
-        (confirmation - movingDurationMillis.coerceAtLeast(0L)).coerceIn(pausedAt, confirmation)
-    return (effectiveResume - pausedAt).coerceAtLeast(0L)
-}
+): Long = recordingAutoPauseAddedMillisAtResume(state.pausedAtMillis, confirmationMillis, movingDurationMillis)
 
-internal data class ExternalDistanceSessionState(
-    val baseMeters: Double,
-    val sessionMeters: Double,
-)
+internal typealias ExternalDistanceSessionState = RecordingExternalDistanceSessionState
 
 internal fun advanceExternalDistanceSession(
     totalDistanceMeters: Double,
     baseMeters: Double?,
     previousSessionMeters: Double?,
-): ExternalDistanceSessionState? {
-    if (!totalDistanceMeters.isFinite() || totalDistanceMeters < 0.0) return null
-    val previousSession = previousSessionMeters?.takeIf { it.isFinite() }?.coerceAtLeast(0.0) ?: 0.0
-    val proposedBase = baseMeters?.takeIf { it.isFinite() } ?: (totalDistanceMeters - previousSession)
-    val proposedSession = (totalDistanceMeters - proposedBase).coerceAtLeast(0.0)
-    return if (proposedSession + EXTERNAL_DISTANCE_RESET_TOLERANCE_METERS < previousSession) {
-        ExternalDistanceSessionState(
-            baseMeters = totalDistanceMeters - previousSession,
-            sessionMeters = previousSession,
-        )
-    } else {
-        ExternalDistanceSessionState(
-            baseMeters = proposedBase,
-            sessionMeters = maxOf(previousSession, proposedSession),
-        )
-    }
-}
-
-private const val EXTERNAL_DISTANCE_RESET_TOLERANCE_METERS = 0.5
+): ExternalDistanceSessionState? =
+    advanceExternalSession(
+        totalDistanceMeters,
+        baseMeters,
+        previousSessionMeters,
+    )

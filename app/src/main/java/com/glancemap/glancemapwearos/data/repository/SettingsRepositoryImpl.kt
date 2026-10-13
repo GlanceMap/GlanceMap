@@ -19,10 +19,12 @@ import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_LATITUDE_
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_VIEWPORT_WIDTH_PX
 import com.glancemap.glancemapwearos.core.maps.sanitizeMapZoomScaleMeters
 import com.glancemap.glancemapwearos.core.maps.scaleMetersForZoomLevel
+import com.glancemap.trailcore.recording.recordingGpsUsageTiming
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
+import com.glancemap.trailcore.recording.RecordingSettings as Rec
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 private const val RECORDING_DASHBOARD_SLOT_SEPARATOR = ","
@@ -522,31 +524,23 @@ class SettingsRepositoryImpl private constructor(
 
     override val recordingElevationSource: Flow<String> =
         context.dataStore.data.map {
-            it[PrefKeys.RECORDING_ELEVATION_SOURCE]
-                .takeIf { source -> source in allowedRecordingElevationSources }
-                ?: SettingsRepository.DEFAULT_RECORDING_ELEVATION_SOURCE
+            Rec.normalizeElevationSource(it[PrefKeys.RECORDING_ELEVATION_SOURCE])
         }
 
     override suspend fun setRecordingElevationSource(source: String) {
         context.dataStore.edit {
-            it[PrefKeys.RECORDING_ELEVATION_SOURCE] =
-                source.takeIf { candidate -> candidate in allowedRecordingElevationSources }
-                    ?: SettingsRepository.DEFAULT_RECORDING_ELEVATION_SOURCE
+            it[PrefKeys.RECORDING_ELEVATION_SOURCE] = Rec.normalizeElevationSource(source)
         }
     }
 
     override val recordingHeartRateSource: Flow<String> =
         context.dataStore.data.map {
-            it[PrefKeys.RECORDING_HEART_RATE_SOURCE]
-                .takeIf { source -> source in allowedRecordingHeartRateSources }
-                ?: SettingsRepository.DEFAULT_RECORDING_HEART_RATE_SOURCE
+            Rec.normalizeHeartRateSource(it[PrefKeys.RECORDING_HEART_RATE_SOURCE])
         }
 
     override suspend fun setRecordingHeartRateSource(source: String) {
         context.dataStore.edit {
-            it[PrefKeys.RECORDING_HEART_RATE_SOURCE] =
-                source.takeIf { candidate -> candidate in allowedRecordingHeartRateSources }
-                    ?: SettingsRepository.DEFAULT_RECORDING_HEART_RATE_SOURCE
+            it[PrefKeys.RECORDING_HEART_RATE_SOURCE] = Rec.normalizeHeartRateSource(source)
         }
     }
 
@@ -2080,12 +2074,6 @@ class SettingsRepositoryImpl private constructor(
                 SettingsRepository.TURN_BY_TURN_REVERSE_SUGGESTION_ASK,
                 SettingsRepository.TURN_BY_TURN_REVERSE_SUGGESTION_NEVER,
             )
-        private val allowedActivityProfiles =
-            setOf(
-                SettingsRepository.ACTIVITY_PROFILE_HIKE,
-                SettingsRepository.ACTIVITY_PROFILE_WALK_HIKE,
-                SettingsRepository.ACTIVITY_PROFILE_BIKE,
-            )
         private val LEGACY_RECORDING_DASHBOARD_ALL_METRICS =
             listOf(
                 SettingsRepository.RECORDING_METRIC_DISTANCE,
@@ -2118,52 +2106,6 @@ class SettingsRepositoryImpl private constructor(
                 SettingsRepository.TURN_BY_TURN_METRIC_PROGRESS,
                 SettingsRepository.TURN_BY_TURN_METRIC_DISTANCE_COVERED,
                 SettingsRepository.TURN_BY_TURN_METRIC_CURRENT_ALTITUDE,
-            )
-        private val allowedRecordingElevationSources =
-            setOf(
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO,
-                SettingsRepository.RECORDING_SOURCE_DISABLED,
-            )
-        private val allowedRecordingHeartRateSources =
-            setOf(
-                SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH,
-                SettingsRepository.RECORDING_HEART_RATE_SOURCE_STRAP,
-                SettingsRepository.RECORDING_SOURCE_DISABLED,
-            )
-        private val allowedRecordingSensorSources =
-            setOf(
-                SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
-                SettingsRepository.RECORDING_SOURCE_DISABLED,
-            )
-        private val allowedRecordingStepsSources =
-            setOf(
-                SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                SettingsRepository.RECORDING_SOURCE_DISABLED,
-            )
-        private val allowedRecordingAutoPauseModes =
-            setOf(
-                SettingsRepository.RECORDING_AUTO_PAUSE_OFF,
-                SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS,
-            )
-        private val allowedRecordingTrackSmoothingModes =
-            setOf(
-                SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF,
-                SettingsRepository.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
-                SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG,
-            )
-        private val allowedRecordingProgressVibrationModes =
-            setOf(
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_OFF,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
-                SettingsRepository.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES,
             )
         private val allowedPoiIconSizesPx =
             setOf(
@@ -2340,12 +2282,7 @@ class SettingsRepositoryImpl private constructor(
                 PrefKeys.GPX_TOOL_HIKE_ROUTE_STYLE
             }
 
-        private fun sanitizeActivityProfile(profile: String?): String =
-            when (profile?.takeIf { it in allowedActivityProfiles }) {
-                SettingsRepository.ACTIVITY_PROFILE_WALK_HIKE -> SettingsRepository.ACTIVITY_PROFILE_HIKE
-                SettingsRepository.ACTIVITY_PROFILE_BIKE -> SettingsRepository.ACTIVITY_PROFILE_BIKE
-                else -> SettingsRepository.DEFAULT_ACTIVITY_PROFILE
-            }
+        private fun sanitizeActivityProfile(profile: String?): String = Rec.normalizeActivityProfile(profile)
 
         private fun recordingDashboardMetricSlotsKeyForProfile(profile: String): Preferences.Key<String> =
             if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
@@ -2361,25 +2298,16 @@ class SettingsRepositoryImpl private constructor(
             }
 
         private fun defaultRecordingSampleIntervalSecondsForProfile(profile: String): Int =
-            when (profile) {
-                SettingsRepository.ACTIVITY_PROFILE_BIKE ->
-                    SettingsRepository.DEFAULT_BIKE_RECORDING_SAMPLE_INTERVAL_SECONDS
-                else -> SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
-            }
+            recordingGpsUsageTiming(Rec.GPS_USAGE_PROFILE_BALANCED, profile)
+                .recordingScreenOnSeconds
 
         private fun defaultRecordingScreenOffSampleIntervalSecondsForProfile(profile: String): Int =
-            when (profile) {
-                SettingsRepository.ACTIVITY_PROFILE_BIKE ->
-                    SettingsRepository.DEFAULT_BIKE_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS
-                else -> SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS
-            }
+            recordingGpsUsageTiming(Rec.GPS_USAGE_PROFILE_BALANCED, profile)
+                .recordingScreenOffSeconds
 
         private fun defaultTurnByTurnGpsIntervalSecondsForProfile(profile: String): Int =
-            when (profile) {
-                SettingsRepository.ACTIVITY_PROFILE_BIKE ->
-                    SettingsRepository.DEFAULT_BIKE_TURN_BY_TURN_GPS_INTERVAL_SECONDS
-                else -> SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS
-            }
+            recordingGpsUsageTiming(Rec.GPS_USAGE_PROFILE_BALANCED, profile)
+                .turnByTurnScreenOnSeconds
 
         private fun gpsUsageTimingFromPreferences(
             preferences: Preferences,
@@ -2425,18 +2353,12 @@ class SettingsRepositoryImpl private constructor(
         private fun sanitizeScreenOnGpsIntervalSeconds(
             seconds: Int?,
             defaultSeconds: Int,
-        ): Int =
-            seconds
-                ?.takeIf { it in allowedScreenOnGpsIntervalsSeconds }
-                ?: defaultSeconds
+        ): Int = Rec.normalizeScreenOnGpsInterval(seconds, defaultSeconds)
 
         private fun sanitizeScreenOffGpsIntervalSeconds(
             seconds: Int?,
             defaultSeconds: Int,
-        ): Int =
-            seconds
-                ?.takeIf { it in allowedScreenOffGpsIntervalsSeconds }
-                ?: defaultSeconds
+        ): Int = Rec.normalizeRecordingScreenOffGpsInterval(seconds, defaultSeconds)
 
         private fun sanitizeTurnByTurnScreenOffGpsIntervalSeconds(
             seconds: Int?,
@@ -2446,10 +2368,7 @@ class SettingsRepositoryImpl private constructor(
                 ?.takeIf { it in allowedTurnByTurnScreenOffGpsIntervalsSeconds }
                 ?: defaultSeconds
 
-        private fun sanitizeRecordingAutoPauseMode(mode: String?): String =
-            mode
-                ?.takeIf { it in allowedRecordingAutoPauseModes }
-                ?: SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE
+        private fun sanitizeRecordingAutoPauseMode(mode: String?): String = Rec.normalizeAutoPauseMode(mode)
 
         private fun sanitizeRecordingAutoPauseMode(
             mode: String?,
@@ -2466,17 +2385,7 @@ class SettingsRepositoryImpl private constructor(
         private fun legacyRecordingAutoPauseModeForProfile(
             legacyMode: String?,
             profile: String,
-        ): String =
-            when (legacyMode) {
-                SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS -> SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
-                SettingsRepository.RECORDING_AUTO_PAUSE_BIKE_ONLY ->
-                    if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-                        SettingsRepository.RECORDING_AUTO_PAUSE_ALWAYS
-                    } else {
-                        SettingsRepository.RECORDING_AUTO_PAUSE_OFF
-                    }
-                else -> SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE
-            }
+        ): String = Rec.normalizeLegacyAutoPauseMode(legacyMode, profile)
 
         private fun autoPauseModeKeyFor(profile: String): Preferences.Key<String> =
             if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
@@ -2485,10 +2394,7 @@ class SettingsRepositoryImpl private constructor(
                 PrefKeys.RECORDING_AUTO_PAUSE_MODE_HIKE
             }
 
-        private fun sanitizeRecordingTrackSmoothingMode(mode: String?): String =
-            mode
-                ?.takeIf { it in allowedRecordingTrackSmoothingModes }
-                ?: SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
+        private fun sanitizeRecordingTrackSmoothingMode(mode: String?): String = Rec.normalizeTrackSmoothingMode(mode)
 
         private fun recordingTrackSmoothingModeKeyFor(profile: String): Preferences.Key<String> =
             if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
@@ -2497,10 +2403,7 @@ class SettingsRepositoryImpl private constructor(
                 PrefKeys.RECORDING_TRACK_SMOOTHING_MODE_HIKE
             }
 
-        private fun sanitizeRecordingProgressVibrationMode(mode: String?): String =
-            mode
-                ?.takeIf { it in allowedRecordingProgressVibrationModes }
-                ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
+        private fun sanitizeRecordingProgressVibrationMode(mode: String?): String = normalizeProgressMode(mode)
 
         private fun recordingProgressVibrationSettingsFor(
             preferences: Preferences,
@@ -2557,17 +2460,10 @@ class SettingsRepositoryImpl private constructor(
                 else -> RecordingProgressVibrationSettings()
             }
 
-        private fun sanitizeRecordingProgressVibrationDistanceMeters(distanceMeters: Int?): Int =
-            nearestRecordingProgressVibrationInterval(
-                value = distanceMeters ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
-                options = recordingProgressVibrationDistanceMetersOptions,
-            )
+        private fun sanitizeRecordingProgressVibrationDistanceMeters(meters: Int?): Int =
+            normalizeProgressDistance(meters)
 
-        private fun sanitizeRecordingProgressVibrationTimeMinutes(timeMinutes: Int?): Int =
-            nearestRecordingProgressVibrationInterval(
-                value = timeMinutes ?: SettingsRepository.DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
-                options = recordingProgressVibrationTimeMinutesOptions,
-            )
+        private fun sanitizeRecordingProgressVibrationTimeMinutes(minutes: Int?): Int = normalizeProgressTime(minutes)
 
         private fun recordingProgressVibrationModeKeyFor(profile: String): Preferences.Key<String> =
             if (profile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
@@ -2624,10 +2520,7 @@ class SettingsRepositoryImpl private constructor(
         private fun sanitizeRecordingSensorSource(
             source: String?,
             defaultSource: String,
-        ): String =
-            source
-                ?.takeIf { it in allowedRecordingSensorSources }
-                ?: defaultSource
+        ): String = Rec.normalizeSensorSource(source, defaultSource)
 
         private fun sanitizeDiagnosticsCaptureMode(mode: String?): String =
             mode
@@ -2636,10 +2529,7 @@ class SettingsRepositoryImpl private constructor(
                         it == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY
                 } ?: SettingsRepository.DEFAULT_DIAGNOSTICS_CAPTURE_MODE
 
-        private fun sanitizeRecordingStepsSource(source: String?): String =
-            source
-                ?.takeIf { it in allowedRecordingStepsSources }
-                ?: SettingsRepository.DEFAULT_RECORDING_STEPS_SOURCE
+        private fun sanitizeRecordingStepsSource(source: String?): String = Rec.normalizeStepsSource(source)
 
         private fun sanitizeRecordingDashboardMetricSlots(
             raw: String?,
@@ -2679,23 +2569,11 @@ class SettingsRepositoryImpl private constructor(
             return normalizeTurnByTurnDashboardMetricSlots(parsed)
         }
 
-        private fun sanitizeUserWeightKg(weightKg: Float?): Float =
-            weightKg
-                ?.takeIf { it.isFinite() }
-                ?.coerceIn(SettingsRepository.MIN_USER_WEIGHT_KG, SettingsRepository.MAX_USER_WEIGHT_KG)
-                ?: SettingsRepository.DEFAULT_USER_WEIGHT_KG
+        private fun sanitizeUserWeightKg(weightKg: Float?): Float = Rec.normalizeUserWeightKg(weightKg)
 
-        private fun sanitizeBackpackWeightKg(weightKg: Float?): Float =
-            weightKg
-                ?.takeIf { it.isFinite() }
-                ?.coerceIn(SettingsRepository.MIN_BACKPACK_WEIGHT_KG, SettingsRepository.MAX_BACKPACK_WEIGHT_KG)
-                ?: SettingsRepository.DEFAULT_BACKPACK_WEIGHT_KG
+        private fun sanitizeBackpackWeightKg(weightKg: Float?): Float = Rec.normalizeBackpackWeightKg(weightKg)
 
-        private fun sanitizeBikeWeightKg(weightKg: Float?): Float =
-            weightKg
-                ?.takeIf { it.isFinite() }
-                ?.coerceIn(SettingsRepository.MIN_BIKE_WEIGHT_KG, SettingsRepository.MAX_BIKE_WEIGHT_KG)
-                ?: SettingsRepository.DEFAULT_BIKE_WEIGHT_KG
+        private fun sanitizeBikeWeightKg(weightKg: Float?): Float = Rec.normalizeBikeWeightKg(weightKg)
 
         private fun sanitizeCyclingWheelCircumferenceMeters(meters: Float?): Float =
             meters

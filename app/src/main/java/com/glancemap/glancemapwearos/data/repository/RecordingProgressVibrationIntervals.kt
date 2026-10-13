@@ -1,14 +1,20 @@
 package com.glancemap.glancemapwearos.data.repository
 
-import kotlin.math.abs
+import com.glancemap.trailcore.recording.RecordingSettings
 
 internal val recordingProgressVibrationDistanceMetersOptions: List<Int> =
-    (50..1_000 step 50).toList() + (1_500..10_000 step 500).toList()
+    RecordingSettings.recordingProgressVibrationDistanceMetersOptions
 
 internal val recordingProgressVibrationTimeMinutesOptions: List<Int> =
-    (1..10).toList() + (15..120 step 5).toList()
+    RecordingSettings.recordingProgressVibrationTimeMinutesOptions
 
 internal fun nearestRecordingProgressVibrationInterval(
     value: Int,
     options: List<Int>,
-): Int = options.minWithOrNull(compareBy<Int> { abs(it - value) }.thenBy { it }) ?: value
+): Int = RecordingSettings.nearestProgressVibrationInterval(value, options)
+
+internal fun normalizeProgressMode(mode: String?): String = RecordingSettings.normalizeProgressVibrationMode(mode)
+
+internal fun normalizeProgressDistance(meters: Int?): Int = RecordingSettings.normalizeProgressDistanceMeters(meters)
+
+internal fun normalizeProgressTime(minutes: Int?): Int = RecordingSettings.normalizeProgressTimeMinutes(minutes)

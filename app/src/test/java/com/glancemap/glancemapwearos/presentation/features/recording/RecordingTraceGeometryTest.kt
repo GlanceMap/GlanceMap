@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.trailcore.geo.GeoPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -89,7 +90,7 @@ class RecordingTraceGeometryTest {
         val initial = TraceRecordingUiState(points = points.toList(), startedAtMillis = 1_000L, pointsRevision = 1)
         val before = prepareRecordingTraceGeometry(initial, null)
         assertEquals(listOf(0), before.segmentStarts)
-        points[5] = points[5].copy(latLong = LatLong(46.0, 6.0))
+        points[5] = points[5].copy(location = GeoPoint(46.0, 6.0))
         val revised = initial.copy(points = points.toList(), pointsRevision = 2, pointsChangedFromIndex = 5)
         val after = prepareRecordingTraceGeometry(revised, before)
         assertCanonicalGeometry(revised, after)

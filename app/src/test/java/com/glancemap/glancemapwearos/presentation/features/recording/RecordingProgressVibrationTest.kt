@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
+import com.glancemap.trailcore.recording.RecordingProgressVibrationTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
