@@ -15,6 +15,11 @@ import org.maplibre.android.style.sources.TileSet
 private const val ONLINE_DEM_SOURCE_ID = "online-terrain-dem"
 private const val ONLINE_HILLSHADE_LAYER_ID = "online-terrain-hillshade"
 
+internal fun phoneMapHillshadeOpacity(
+    enabled: Boolean,
+    opacity: Float,
+): Float = if (enabled) phoneMapLibreRasterOpacity(opacity) else 0f
+
 internal fun phoneMapHillshadeColor(
     rgb: String,
     opacity: Float,

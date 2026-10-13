@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -87,6 +88,7 @@ import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
 import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
 import com.glancemap.glancemapcompanionapp.map.maplibre.phoneMapGpxFitIsStillEligible
+import com.glancemap.glancemapcompanionapp.map.maplibre.phoneMapHillshadeOpacity
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderDistanceMeasurement
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMarkers
@@ -452,7 +454,10 @@ internal fun CompanionMapScreen(
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var comparisonMapRuntime by remember { mutableStateOf(MapRuntime()) }
     val offlineRendererRefs by PhoneOfflineMapRendererDiagnostics.rendererRefs.collectAsState()
-    val phoneDebugCaptureState by PhoneDebugCapture.state.collectAsState()
+    val phoneDebugCaptureState = PhoneDebugCapture.state.collectAsState()
+    // Log counters change per entry; the map only needs capture lifecycle changes.
+    val captureSessionId by remember { derivedStateOf { phoneDebugCaptureState.value.sessionId } }
+    val captureActive by remember { derivedStateOf { phoneDebugCaptureState.value.active } }
     var mapUiState by rememberSaveable(stateSaver = phoneMapUiStateSaver) {
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
         mutableStateOf(initialTool?.let(initialState::selectTool) ?: initialState)
@@ -1079,8 +1084,8 @@ internal fun CompanionMapScreen(
     LaunchedEffect(pois) {
         if (selectedPoi?.id !in pois.map(PhoneMapPoi::id).toSet()) selectedPoi = null
     }
-    LaunchedEffect(pois.size, phoneDebugCaptureState.sessionId, phoneDebugCaptureState.active) {
-        if (phoneDebugCaptureState.active) {
+    LaunchedEffect(pois.size, captureSessionId, captureActive) {
+        if (captureActive) {
             PhoneDebugCapture.log(
                 PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
                 "event=poi_result_state results=${pois.size}",
@@ -1997,13 +2002,13 @@ internal fun CompanionMapScreen(
     LaunchedEffect(
         mapDiagnosticState,
         offlineMapRevisionSelections,
-        phoneDebugCaptureState.sessionId,
-        phoneDebugCaptureState.active,
+        captureSessionId,
+        captureActive,
     ) {
         PhoneMapStateDiagnostics.record(
             state = mapDiagnosticState,
-            captureSessionId = phoneDebugCaptureState.sessionId,
-            captureActive = phoneDebugCaptureState.active,
+            captureSessionId = captureSessionId,
+            captureActive = captureActive,
             offlineMapSelections = offlineMapRevisionSelections,
         )
     }
@@ -2015,8 +2020,8 @@ internal fun CompanionMapScreen(
             }
         onDispose { removeBeforeStopListener() }
     }
-    LaunchedEffect(phoneDebugCaptureState.sessionId, phoneDebugCaptureState.active) {
-        if (phoneDebugCaptureState.active) {
+    LaunchedEffect(captureSessionId, captureActive) {
+        if (captureActive) {
             PhoneMapLibreRenderDiagnostics.publishCaptureSnapshot()
             mapLocationSource.publishCaptureSnapshot()
         }
@@ -2037,14 +2042,14 @@ internal fun CompanionMapScreen(
             else -> "none"
         }
     LaunchedEffect(
-        phoneDebugCaptureState.sessionId,
-        phoneDebugCaptureState.active,
+        captureSessionId,
+        captureActive,
         gpxUiState.isLoading,
         gpxOverlays.size,
         visibleGpxPointCount,
         mapDiagnosticState.overlayOwner,
     ) {
-        if (phoneDebugCaptureState.active) {
+        if (captureActive) {
             PhoneDebugCapture.log(
                 PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
                 "event=gpx_overlay_state loading=${gpxUiState.isLoading} tracks=${gpxOverlays.size} " +
@@ -2053,15 +2058,15 @@ internal fun CompanionMapScreen(
         }
     }
     LaunchedEffect(
-        phoneDebugCaptureState.sessionId,
-        phoneDebugCaptureState.active,
+        captureSessionId,
+        captureActive,
         selectionMarkerCount,
         selectionPhase,
         routeAnalysisPointCount,
         measurementEndpointCount,
         mapDiagnosticState.overlayOwner,
     ) {
-        if (phoneDebugCaptureState.active) {
+        if (captureActive) {
             PhoneDebugCapture.log(
                 PHONE_MAP_FEATURE_DIAGNOSTICS_TAG,
                 "event=map_selection_state phase=$selectionPhase markers=$selectionMarkerCount " +
@@ -4064,10 +4069,11 @@ private fun synchronizeOnlineHillshade(
     enabled: Boolean,
     opacity: Float,
 ) {
+    val effectiveOpacity = phoneMapHillshadeOpacity(enabled, opacity)
     val currentRuntime by rememberUpdatedState(runtime)
     val currentEnabled by rememberUpdatedState(enabled)
-    val currentOpacity by rememberUpdatedState(opacity)
-    LaunchedEffect(runtime.map, runtime.generation.styleRevision, enabled, opacity) {
+    val currentOpacity by rememberUpdatedState(effectiveOpacity)
+    LaunchedEffect(runtime.map, runtime.generation.styleRevision, enabled, effectiveOpacity) {
         runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, _, style ->
             runCatching { style.setOnlineHillshade(currentEnabled, currentOpacity) }
                 .onSuccess {

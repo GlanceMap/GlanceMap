@@ -134,6 +134,8 @@ internal object PhoneMapStateDiagnostics {
         offlineMapSelections: Map<PhoneOfflineMapRendererRole, PhoneMapOfflineRevisionSelection> = emptyMap(),
     ) {
         val changed = latest != state
+        val transitionLine = state.toTransitionLine()
+        val transitionChanged = latest?.toTransitionLine() != transitionLine
         val revisionEvents = phoneMapOfflineRevisionChangeLines(latestOfflineMapSelections, offlineMapSelections)
         val captureStarted = captureActive && captureSessionId > 0L && captureSessionId != lastCaptureSessionId
         val activeCaptureSession = captureActive && captureSessionId > 0L
@@ -146,7 +148,7 @@ internal object PhoneMapStateDiagnostics {
                 state.toReportSection(timestampMs),
                 expectedSessionId = captureSessionId,
             )
-            if (changed) PhoneDebugCapture.log(TAG, state.toTransitionLine(), expectedSessionId = captureSessionId)
+            if (transitionChanged) PhoneDebugCapture.log(TAG, transitionLine, expectedSessionId = captureSessionId)
             revisionEvents.forEach { line -> PhoneDebugCapture.log(TAG, line, expectedSessionId = captureSessionId) }
         }
         if (activeCaptureSession) lastCaptureSessionId = captureSessionId

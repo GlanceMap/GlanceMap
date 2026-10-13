@@ -81,6 +81,38 @@ class PhoneMapStateDiagnosticsTest {
     }
 
     @Test
+    fun opacityChangesKeepTheLatestSnapshotWithoutDuplicatingOwnershipTransitions() {
+        PhoneDebugCapture.start()
+        val sessionId = requireNotNull(PhoneDebugCapture.activeSessionId())
+        val initial = state().copy(comparisonTransparencyPercent = 0f, appliedComparisonOpacity = 1f)
+        PhoneMapStateDiagnostics.record(initial, sessionId, captureActive = true)
+        val initialLogs = PhoneDebugCapture.snapshot().size
+
+        (1..99).forEach { transparency ->
+            PhoneMapStateDiagnostics.record(
+                initial.copy(
+                    comparisonTransparencyPercent = transparency.toFloat(),
+                    appliedComparisonOpacity = 1f - transparency / 100f,
+                ),
+                sessionId,
+                captureActive = true,
+            )
+        }
+        assertEquals(initialLogs, PhoneDebugCapture.snapshot().size)
+        assertTrue(
+            requireNotNull(PhoneDebugCapture.sectionForTest(PhoneDebugCaptureSlot.CURRENT, MAP_STATE_SECTION_KEY))
+                .contains("Comparison transparency: 99.0%"),
+        )
+
+        PhoneMapStateDiagnostics.record(
+            initial.copy(touchOwner = "comparison", overlayOwner = "comparison", locationOwner = "comparison"),
+            sessionId,
+            captureActive = true,
+        )
+        assertEquals(initialLogs + 1, PhoneDebugCapture.snapshot().size)
+    }
+
+    @Test
     fun offlineMapRevisionTransitionUsesOnlyOpaqueIdsForTheSameSelection() {
         val previous =
             mapOf(

@@ -5,6 +5,15 @@ import org.junit.Test
 
 class MapLibreHillshadeTest {
     @Test
+    fun disabledHillshadeKeepsOneUpdateKeyWhileComparisonOpacityChanges() {
+        val opacities = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+        assertEquals(listOf(0f), opacities.map { phoneMapHillshadeOpacity(false, it) }.distinct())
+        assertEquals(opacities, opacities.map { phoneMapHillshadeOpacity(true, it) })
+        assertEquals(0f, phoneMapHillshadeOpacity(true, -1f))
+        assertEquals(1f, phoneMapHillshadeOpacity(true, 2f))
+    }
+
+    @Test
     fun hillshadeColorsFollowComparisonOpacityIncludingFullyTransparent() {
         listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach { opacity ->
             assertEquals("rgba(0, 0, 0, $opacity)", phoneMapHillshadeColor("0, 0, 0", opacity))

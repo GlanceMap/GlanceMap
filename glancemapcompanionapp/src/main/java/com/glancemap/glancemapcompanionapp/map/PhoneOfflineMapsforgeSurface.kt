@@ -1025,7 +1025,7 @@ private class PhoneOfflineMapsforgeMapView(
 private fun MapView.currentCameraInside(bounds: BoundingBox?): Boolean? = bounds?.contains(model.mapViewPosition.center)
 
 /** Keeps semantic GPX and POI overlays above the persistent base renderer layer. */
-private class PhoneOfflineMapsforgeOverlayLayers(
+internal class PhoneOfflineMapsforgeOverlayLayers(
     private val mapView: MapView,
     private val baseLayer: () -> TileRendererLayer?,
     private val onPoiSelected: (PhoneMapPoi) -> Unit,
@@ -1056,48 +1056,54 @@ private class PhoneOfflineMapsforgeOverlayLayers(
     private var appliedPoiSettings = PhoneMapPoiSettings()
     private var appliedMapSettings = PhoneMapSettings()
     private var appliedLocation: PhoneMapLocation? = null
+    private var updatePending = false
 
     fun update(state: PhoneOfflineMapSurfaceState) {
-        val gpxOverlays = state.gpxOverlays
-        val gpxSettings = state.gpxSettings
-        val pois = state.pois
-        val poiSettings = state.poiSettings
-        val mapSettings = state.mapSettings
-        val distanceMeasurement = state.distanceMeasurement
-        val location = state.location
-        val isUnchanged =
-            listOf(
-                appliedGpxOverlays == gpxOverlays,
-                appliedGpxSettings == gpxSettings,
-                appliedRouteAnalysis == state.routeAnalysis,
-                appliedPointSelectionMarkers == state.pointSelectionMarkers,
-                appliedDistanceMeasurement == distanceMeasurement,
-                appliedPois == pois,
-                appliedPoiSettings == poiSettings,
-                appliedMapSettings == mapSettings,
-                appliedLocation == location,
-            ).all { it }
-        if (isUnchanged) {
-            return
-        }
-        appliedGpxOverlays = gpxOverlays
-        appliedGpxSettings = gpxSettings
-        appliedRouteAnalysis = state.routeAnalysis
-        appliedPointSelectionMarkers = state.pointSelectionMarkers
-        appliedDistanceMeasurement = distanceMeasurement
-        appliedPois = pois
-        appliedPoiSettings = poiSettings
-        appliedMapSettings = mapSettings
-        appliedLocation = location
+        if (!updatePending && matchesAppliedState(state)) return
+        // Even a return to the applied state must replace an older gesture-deferred update.
+        updatePending = true
         PhoneMapLayerMutationCoordinator.mutateLayers(mapView, OVERLAY_MUTATION_KEY) { layers ->
-            syncGpxLayers(layers, gpxOverlays, gpxSettings)
-            syncRouteAnalysisMarkers(layers, state.routeAnalysis)
-            syncDistanceMeasurementLine(layers, distanceMeasurement)
-            syncPoiMarkers(layers, pois, poiSettings)
-            syncPointSelectionMarkers(layers, state.pointSelectionMarkers)
-            syncLocationAccuracyCircle(layers, mapSettings, location)
+            if (appliedGpxOverlays != state.gpxOverlays || appliedGpxSettings != state.gpxSettings) {
+                syncGpxLayers(layers, state.gpxOverlays, state.gpxSettings)
+            }
+            if (appliedRouteAnalysis != state.routeAnalysis) {
+                syncRouteAnalysisMarkers(layers, state.routeAnalysis)
+            }
+            if (appliedDistanceMeasurement != state.distanceMeasurement) {
+                syncDistanceMeasurementLine(layers, state.distanceMeasurement)
+            }
+            if (appliedPois != state.pois || appliedPoiSettings != state.poiSettings) {
+                syncPoiMarkers(layers, state.pois, state.poiSettings)
+            }
+            if (appliedPointSelectionMarkers != state.pointSelectionMarkers) {
+                syncPointSelectionMarkers(layers, state.pointSelectionMarkers)
+            }
+            if (appliedMapSettings != state.mapSettings || appliedLocation != state.location) {
+                syncLocationAccuracyCircle(layers, state.mapSettings, state.location)
+            }
+            appliedGpxOverlays = state.gpxOverlays
+            appliedGpxSettings = state.gpxSettings
+            appliedRouteAnalysis = state.routeAnalysis
+            appliedPointSelectionMarkers = state.pointSelectionMarkers
+            appliedDistanceMeasurement = state.distanceMeasurement
+            appliedPois = state.pois
+            appliedPoiSettings = state.poiSettings
+            appliedMapSettings = state.mapSettings
+            appliedLocation = state.location
+            updatePending = false
         }
     }
+
+    private fun matchesAppliedState(state: PhoneOfflineMapSurfaceState): Boolean =
+        appliedGpxOverlays == state.gpxOverlays &&
+            appliedGpxSettings == state.gpxSettings &&
+            appliedRouteAnalysis == state.routeAnalysis &&
+            appliedPointSelectionMarkers == state.pointSelectionMarkers &&
+            appliedDistanceMeasurement == state.distanceMeasurement &&
+            appliedPois == state.pois &&
+            appliedPoiSettings == state.poiSettings &&
+            appliedMapSettings == state.mapSettings &&
+            appliedLocation == state.location
 
     fun dispose() {
         PhoneMapLayerMutationCoordinator.mutateLayersImmediately(mapView) { layers ->
