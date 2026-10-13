@@ -219,6 +219,7 @@ internal fun MapToolPanelContent(
     featureSettingsSection: MapToolFeatureSettingsSection,
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
+    onOpenMapLegend: () -> Unit = {},
 ) {
     if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
         MapToolFeatureSettingsContent(
@@ -258,6 +259,7 @@ internal fun MapToolPanelContent(
                     onLayerChanged = actions.onComparisonLayerChanged,
                     onTransparencyChanged = actions.onComparisonTransparencyChanged,
                     onMapSettingsChanged = actions.onLayerMapSettingsChanged,
+                    onOpenMapLegend = onOpenMapLegend,
                 )
             MapTool.SETTINGS ->
                 mapToolsSettingsPanel(
@@ -267,6 +269,7 @@ internal fun MapToolPanelContent(
                     onOpenBundleDownload = actions.onOpenBundleDownload,
                     onStorageChangeRequested = actions.onStorageChangeRequested,
                     onOpenSettingsSection = actions.onFeatureSettingsSection,
+                    onOpenContentSettings = actions.onFeatureSettings,
                 )
         }
     }
@@ -278,6 +281,7 @@ internal fun mapToolsLayerPanel(
     onLayerChanged: (PhoneMapComparisonLayer?) -> Unit,
     onTransparencyChanged: (Float) -> Unit,
     onMapSettingsChanged: (PhoneMapSettings) -> Unit,
+    onOpenMapLegend: () -> Unit = {},
 ) {
     val layerOptions =
         comparisonLayerOptions(
@@ -291,6 +295,9 @@ internal fun mapToolsLayerPanel(
             mutableStateOf(state.mapSettings.reliefOverlayOpacityPercent.toFloat())
         }
     mapToolPanelColumn(verticalSpacing = 0.dp, verticalPadding = 0.dp) {
+        OutlinedButton(onClick = onOpenMapLegend, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_legend_title))
+        }
         val baseLabel = comparisonLayerLabel(state.base.asComparisonLayer(state.baseOnlineSource))
         Text(
             text = "${stringResource(R.string.map_layer_base_source)}: $baseLabel",
@@ -388,6 +395,12 @@ internal fun mapToolsLayerPanel(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        mapToolsMapsQuickDisplaySettings(
+            settings = state.mapSettings,
+            onSettingsChanged = onMapSettingsChanged,
+            showOfflineOnlyOptions = state.base is PhoneMapSource.Offline,
+            showReliefOption = false,
+        )
     }
 }
 
@@ -504,11 +517,6 @@ internal fun mapToolsMapsPanel(
                 ),
             )
         }
-        mapToolsMapsQuickDisplaySettings(
-            settings = state.settings,
-            onSettingsChanged = actions.onSettingsChanged,
-            showOfflineOnlyOptions = isOffline,
-        )
     }
 }
 
@@ -804,11 +812,19 @@ internal fun mapToolsSettingsPanel(
     onOpenBundleDownload: () -> Unit,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
     onOpenSettingsSection: (MapToolFeatureSettingsSection) -> Unit,
+    onOpenContentSettings: (MapTool) -> Unit = {},
 ) {
     when (section) {
         MapToolFeatureSettingsSection.ROOT ->
             mapToolPanelColumn(verticalSpacing = 4.dp) {
                 Text(stringResource(R.string.map_tools_settings_heading))
+                libraryMapTools.forEach { tool ->
+                    mapToolsSettingsSection(
+                        title = stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)),
+                        summary = stringResource(R.string.library_settings_summary),
+                        onClick = { onOpenContentSettings(tool) },
+                    )
+                }
                 mapToolsSettingsSection(
                     title = stringResource(R.string.map_tools_settings_data_title),
                     summary =

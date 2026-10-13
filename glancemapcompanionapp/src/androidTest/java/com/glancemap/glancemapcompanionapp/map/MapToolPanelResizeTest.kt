@@ -203,8 +203,7 @@ class MapToolPanelResizeTest {
             ) {
                 MaterialTheme {
                     MapToolScaffold(
-                        state = ui.value.toolPanel,
-                        launcherExpanded = false,
+                        presentation = MapToolScaffoldState(ui.value.toolPanel),
                         actions =
                             MapToolScaffoldActions(
                                 onToolSelected = { ui.value = ui.value.selectTool(it) },

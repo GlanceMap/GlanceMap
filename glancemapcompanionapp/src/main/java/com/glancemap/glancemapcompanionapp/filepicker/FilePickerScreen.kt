@@ -28,18 +28,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -61,9 +61,14 @@ import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryActions
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryFilter
+import com.glancemap.glancemapcompanionapp.library.phoneLibraryGpxPicker
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryScreen
+import com.glancemap.glancemapcompanionapp.library.todayHikeGpxActions
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
 import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
+import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
+import com.glancemap.glancemapcompanionapp.map.MapNavigationActions
 import com.glancemap.glancemapcompanionapp.map.MapTool
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSource
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
@@ -73,7 +78,7 @@ import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRouteDetails
-import com.glancemap.glancemapcompanionapp.routes.RouteLibraryScreen
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryViewModel
 import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import com.glancemap.glancemapcompanionapp.routes.TrailIntelligence
@@ -169,8 +174,17 @@ internal fun FilePickerScreen(
     val coroutineScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var libraryMapTool by rememberSaveable { mutableStateOf<MapTool?>(null) }
+    var libraryMapAction by rememberSaveable { mutableStateOf<MapLibraryAction?>(null) }
+    var libraryFilter by rememberSaveable { mutableStateOf(PhoneLibraryFilter.GPX) }
+    val librarySaveableState = rememberSaveableStateHolder()
+    var contentSettingsTool by rememberSaveable { mutableStateOf(MapTool.SETTINGS) }
+    var settingsReturnArea by rememberSaveable { mutableStateOf(CompanionHomeArea.MAP) }
+    var settingsReturnToGeneral by rememberSaveable { mutableStateOf(false) }
+    var showGpxPicker by rememberSaveable { mutableStateOf(false) }
+    var pickGpxForWeather by rememberSaveable { mutableStateOf(false) }
     val returnToMapMenu: () -> Unit = {
         libraryMapTool = null
+        libraryMapAction = null
         activeHomeArea = CompanionHomeArea.MAP
         coroutineScope.launch { drawerState.open() }
     }
@@ -179,7 +193,33 @@ internal fun FilePickerScreen(
     var isClearingPhoneStoredFiles by remember { mutableStateOf(false) }
     var phoneStoredFilesRefreshToken by remember { mutableIntStateOf(0) }
 
-    BackHandler(enabled = activeHomeArea != CompanionHomeArea.MAP, onBack = returnToMapMenu)
+    val returnFromSettings: () -> Unit = {
+        if (settingsReturnToGeneral) {
+            contentSettingsTool = MapTool.SETTINGS
+            settingsReturnToGeneral = false
+        } else if (settingsReturnArea == CompanionHomeArea.LIBRARY) {
+            libraryMapTool = null
+            libraryMapAction = null
+            activeHomeArea = CompanionHomeArea.LIBRARY
+        } else {
+            returnToMapMenu()
+        }
+    }
+    BackHandler(enabled = activeHomeArea != CompanionHomeArea.MAP) {
+        if (activeHomeArea == CompanionHomeArea.SETTINGS) returnFromSettings() else returnToMapMenu()
+    }
+    if (showGpxPicker) {
+        phoneLibraryGpxPicker(
+            state = routeLibraryUiState,
+            onPick = { id ->
+                routeLibraryViewModel.selectRoute(id)
+                if (pickGpxForWeather) weatherRouteId = id
+                showGpxPicker = false
+                pickGpxForWeather = false
+            },
+            onDismiss = { showGpxPicker = false },
+        )
+    }
 
     // The initial destination is already applied above; recreation must not replay launch intents.
     var handledSendToWatchToken by remember { mutableStateOf(openSendToWatchToken) }
@@ -460,11 +500,12 @@ internal fun FilePickerScreen(
             { files ->
                 when {
                     files.isEmpty() -> {
-                        Toast.makeText(
-                            context,
-                            fileSaveTextResources.getString(R.string.phone_files_no_file_available_to_save),
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        Toast
+                            .makeText(
+                                context,
+                                fileSaveTextResources.getString(R.string.phone_files_no_file_available_to_save),
+                                Toast.LENGTH_SHORT,
+                            ).show()
                     }
 
                     files.size == 1 -> {
@@ -528,6 +569,7 @@ internal fun FilePickerScreen(
             CompanionHomeArea.MISSION_PLAN,
             CompanionHomeArea.ROUTES,
             CompanionHomeArea.ROUTE_WEATHER,
+            CompanionHomeArea.SETTINGS,
             -> Unit
         }
     }
@@ -658,28 +700,25 @@ internal fun FilePickerScreen(
                 CompanionMenuState(
                     activeArea = activeHomeArea,
                     debugCaptureActive = debugCaptureState.active,
-                    liveHikeSyncEnabled = liveHikeSyncEnabled,
                 ),
             actions =
                 CompanionMenuActions(
                     onNavigate = { area ->
                         libraryMapTool = null
+                        libraryMapAction = null
+                        if (area == CompanionHomeArea.SETTINGS) {
+                            contentSettingsTool = MapTool.SETTINGS
+                            settingsReturnArea = CompanionHomeArea.MAP
+                            settingsReturnToGeneral = false
+                        }
                         if (area == CompanionHomeArea.LIVE_HIKE) {
                             CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
                         }
                         if (area == CompanionHomeArea.ROUTE_WEATHER) {
                             weatherRouteId = routeLibraryUiState.selectedRoute?.id
                         }
-                        activeHomeArea =
-                            if (area == CompanionHomeArea.ROUTE_WEATHER && weatherRouteId == null) {
-                                CompanionHomeArea.ROUTES
-                            } else {
-                                area
-                            }
+                        activeHomeArea = area
                         coroutineScope.launch { drawerState.close() }
-                    },
-                    onLiveHikeSyncChanged = { enabled ->
-                        viewModel.setLiveHikeSyncEnabled(context, enabled)
                     },
                     onDebug = {
                         showDebugDialog = true
@@ -698,7 +737,7 @@ internal fun FilePickerScreen(
                     Modifier
                         .fillMaxSize()
                         .then(
-                            if (activeHomeArea == CompanionHomeArea.MAP) {
+                            if (activeHomeArea == CompanionHomeArea.MAP || activeHomeArea == CompanionHomeArea.SETTINGS) {
                                 Modifier
                             } else {
                                 Modifier.padding(adaptive.pagePadding)
@@ -706,15 +745,21 @@ internal fun FilePickerScreen(
                         ),
             ) {
                 when (activeHomeArea) {
-                    CompanionHomeArea.HOME -> {
+                    CompanionHomeArea.HOME,
+                    CompanionHomeArea.ROUTES,
+                    -> {
                         CompanionTodayHikeScreen(
                             adaptive = adaptive,
-                            selectedRoute = routeLibraryUiState.selectedRoute,
+                            libraryState = routeLibraryUiState,
                             selectedRouteDetails = selectedRouteDetails,
                             activeHikeSnapshot = activeHikeSnapshot,
                             routeWeatherUiState = routeWeatherUiState,
                             missionPlanUiState = missionPlanUiState,
-                            onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onImportGpx = routeLibraryViewModel::importRoute,
+                            onChooseGpx = {
+                                pickGpxForWeather = false
+                                showGpxPicker = true
+                            },
                             onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
                                 routeLibraryViewModel.loadRouteWeather(
                                     activeHikeSnapshot = snapshot,
@@ -762,56 +807,52 @@ internal fun FilePickerScreen(
                             routeLibraryViewModel.refresh()
                             phoneMapPoiViewModel.refresh()
                         }
-                        phoneLibraryScreen(
-                            routes = routeLibraryUiState,
-                            poiSources = phoneMapPoiUiState.sources,
-                            actions =
-                                PhoneLibraryActions(
-                                    onBack = returnToMapMenu,
-                                    onRefresh = {
-                                        routeLibraryViewModel.refresh()
-                                        phoneMapPoiViewModel.refresh()
-                                    },
-                                    onImportGpx = routeLibraryViewModel::importLibraryGpx,
-                                    onUseRoute = { id ->
-                                        routeLibraryViewModel.selectRoute(id)
-                                        activeHomeArea = CompanionHomeArea.HOME
-                                    },
-                                    onOpenMapTools = { tool ->
-                                        libraryMapTool = tool
-                                        activeHomeArea = CompanionHomeArea.MAP
-                                    },
-                                ),
-                        )
-                    }
-
-                    CompanionHomeArea.ROUTES -> {
-                        RouteLibraryScreen(
-                            uiState = routeLibraryUiState,
-                            onBack = returnToMapMenu,
-                            onImportRoute = routeLibraryViewModel::importRoute,
-                            onSelectRoute = routeLibraryViewModel::selectRoute,
-                            onOpenWeather = { route ->
-                                weatherRouteId = route.id
-                                routeLibraryViewModel.selectRoute(route.id)
-                                activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
-                            },
-                            onSendToWatch = { route ->
-                                routeLibraryViewModel.selectRoute(route.id)
-                                val routeUri = routeLibraryViewModel.contentUriFor(route.id)
-                                if (routeUri == null) {
-                                    Toast
-                                        .makeText(
-                                            context,
-                                            "The selected GPX is no longer available.",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                } else {
-                                    viewModel.selectFilesForTransfer(context, listOf(routeUri))
-                                    activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
-                                }
-                            },
-                        )
+                        librarySaveableState.SaveableStateProvider("phone-library") {
+                            phoneLibraryScreen(
+                                routes = routeLibraryUiState,
+                                poiSources = phoneMapPoiUiState.sources,
+                                filter = libraryFilter,
+                                actions =
+                                    PhoneLibraryActions(
+                                        onBack = returnToMapMenu,
+                                        onRefresh = {
+                                            routeLibraryViewModel.refresh()
+                                            phoneMapPoiViewModel.refresh()
+                                        },
+                                        onImportGpx = routeLibraryViewModel::importLibraryGpx,
+                                        onUseRoute = { id ->
+                                            routeLibraryViewModel.selectRoute(id)
+                                            activeHomeArea = CompanionHomeArea.HOME
+                                        },
+                                        onOpenMapTools = { tool ->
+                                            libraryMapAction = null
+                                            libraryMapTool = tool
+                                            activeHomeArea = CompanionHomeArea.MAP
+                                        },
+                                        onOpenSettings = { tool ->
+                                            contentSettingsTool = tool
+                                            settingsReturnArea = CompanionHomeArea.LIBRARY
+                                            settingsReturnToGeneral = false
+                                            activeHomeArea = CompanionHomeArea.SETTINGS
+                                        },
+                                        onMapAction = { action ->
+                                            libraryMapTool = if (action == MapLibraryAction.ADD_POI) null else MapTool.MAPS
+                                            libraryMapAction = action
+                                            activeHomeArea = CompanionHomeArea.MAP
+                                        },
+                                        onSendGpx = { id ->
+                                            val uri = routeLibraryViewModel.contentUriFor(id)
+                                            if (uri == null) {
+                                                Toast.makeText(context, R.string.library_gpx_unavailable, Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                viewModel.selectFilesForTransfer(context, listOf(uri))
+                                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                            }
+                                        },
+                                        onFilterChanged = { libraryFilter = it },
+                                    ),
+                            )
+                        }
                     }
 
                     CompanionHomeArea.ROUTE_WEATHER -> {
@@ -826,7 +867,10 @@ internal fun FilePickerScreen(
                                 routeWeatherUiState.takeIf { weatherRoute?.id == routeLibraryUiState.selectedRoute?.id }
                                     ?: RouteWeatherUiState(),
                             onBack = returnToMapMenu,
-                            onChooseRoute = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onChooseRoute = {
+                                pickGpxForWeather = true
+                                showGpxPicker = true
+                            },
                             onLoadWeather = { forceRefresh ->
                                 routeLibraryViewModel.loadRouteWeather(
                                     activeHikeSnapshot = null,
@@ -851,7 +895,10 @@ internal fun FilePickerScreen(
                             onMoveDay = missionPlanViewModel::moveDay,
                             onRemoveDay = missionPlanViewModel::removeDay,
                             onLoadDayWeather = missionPlanViewModel::loadDayWeather,
-                            onOpenRoutes = { activeHomeArea = CompanionHomeArea.ROUTES },
+                            onOpenRoutes = {
+                                libraryFilter = PhoneLibraryFilter.GPX
+                                activeHomeArea = CompanionHomeArea.LIBRARY
+                            },
                             onRetry = missionPlanViewModel::refresh,
                         )
                     }
@@ -900,7 +947,9 @@ internal fun FilePickerScreen(
                         )
                     }
 
-                    CompanionHomeArea.MAP -> {
+                    CompanionHomeArea.MAP,
+                    CompanionHomeArea.SETTINGS,
+                    -> {
                         CompanionMapScreen(
                             gpxSources =
                                 routeLibraryUiState.routes.map { route ->
@@ -919,8 +968,32 @@ internal fun FilePickerScreen(
                             onRenameRoute = routeLibraryViewModel::renameRoute,
                             onDeleteRoute = routeLibraryViewModel::deleteRoute,
                             onRouteSaved = routeLibraryViewModel::refresh,
-                            onOpenMenu = { coroutineScope.launch { drawerState.open() } },
-                            initialTool = libraryMapTool,
+                            onOpenMenu = {
+                                if (activeHomeArea == CompanionHomeArea.SETTINGS) {
+                                    returnFromSettings()
+                                } else {
+                                    coroutineScope.launch { drawerState.open() }
+                                }
+                            },
+                            initialTool = if (activeHomeArea == CompanionHomeArea.SETTINGS) contentSettingsTool else libraryMapTool,
+                            initialToolSettings = activeHomeArea == CompanionHomeArea.SETTINGS && contentSettingsTool != MapTool.SETTINGS,
+                            initialLibraryAction = if (activeHomeArea == CompanionHomeArea.MAP) libraryMapAction else null,
+                            liveHikeSyncEnabled = liveHikeSyncEnabled,
+                            navigation =
+                                MapNavigationActions(
+                                    onOpenLibrary = { activeHomeArea = CompanionHomeArea.LIBRARY },
+                                    onOpenSettings = { tool ->
+                                        contentSettingsTool = tool
+                                        settingsReturnToGeneral = true
+                                    },
+                                    onSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
+                                    onLiveHike = {
+                                        CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
+                                        activeHomeArea = CompanionHomeArea.LIVE_HIKE
+                                    },
+                                    onMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
+                                    onLiveHikeSyncChanged = { enabled -> viewModel.setLiveHikeSyncEnabled(context, enabled) },
+                                ),
                         )
                     }
 
@@ -1397,12 +1470,13 @@ private fun SelectedFilesCompactSummary(
 @Composable
 private fun CompanionTodayHikeScreen(
     adaptive: CompanionAdaptiveSpec,
-    selectedRoute: RouteLibraryRoute?,
+    libraryState: RouteLibraryUiState,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     routeWeatherUiState: RouteWeatherUiState,
     missionPlanUiState: MissionPlanUiState,
-    onOpenRoutes: () -> Unit,
+    onImportGpx: (Uri) -> Unit,
+    onChooseGpx: () -> Unit,
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
     onBack: () -> Unit,
@@ -1425,14 +1499,14 @@ private fun CompanionTodayHikeScreen(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
         ) {
+            todayHikeGpxActions(libraryState, onImportGpx, onChooseGpx)
             TodayHikeCard(
-                selectedRoute = selectedRoute,
+                selectedRoute = libraryState.selectedRoute,
                 selectedRouteDetails = selectedRouteDetails,
                 activeHikeSnapshot = activeHikeSnapshot,
                 routeWeatherUiState = routeWeatherUiState,
-                missionDay = missionPlanUiState.selectedDay?.takeIf { it.route.id == selectedRoute?.id },
+                missionDay = missionPlanUiState.selectedDay?.takeIf { it.route.id == libraryState.selectedRoute?.id },
                 isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
-                onOpenRoutes = onOpenRoutes,
                 onLoadRouteWeather = onLoadRouteWeather,
                 onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
             )
@@ -1448,7 +1522,6 @@ private fun TodayHikeCard(
     routeWeatherUiState: RouteWeatherUiState,
     missionDay: MissionPlanDayUi?,
     isPreparingMissionTransfer: Boolean,
-    onOpenRoutes: () -> Unit,
     onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
@@ -1481,17 +1554,6 @@ private fun TodayHikeCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onOpenRoutes,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Map,
-                    contentDescription = null,
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(textResources.getString(R.string.briefing_choose_a_route))
-            }
         } else {
             missionDay?.let { dayUi ->
                 Text(
@@ -1556,12 +1618,6 @@ private fun TodayHikeCard(
                         textResources.getString(R.string.briefing_send_selected_route_to_watch)
                     },
                 )
-            }
-            TextButton(
-                onClick = onOpenRoutes,
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text(textResources.getString(R.string.briefing_change_route))
             }
         }
     }

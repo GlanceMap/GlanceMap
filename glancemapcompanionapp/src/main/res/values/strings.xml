@@ -1,4 +1,27 @@
 <resources>
+    <string name="library_open_gpx_library">Open GPX Library</string>
+    <string name="library_filter_bundles">Bundles</string>
+    <string name="library_add_gpx">Add GPX</string>
+    <string name="library_more_import_options">More GPX import options</string>
+    <string name="library_import_map">Import map</string>
+    <string name="library_choose_gpx">Choose GPX from Library</string>
+    <string name="library_change_gpx">Change GPX from Library</string>
+    <string name="library_picker_empty">No matching GPX files. Add a GPX to your Library first.</string>
+    <string name="library_gpx_unavailable">This GPX is no longer available on the phone.</string>
+    <string name="library_settings_summary">Manage sources and preferences</string>
+    <string name="library_bundle_summary">Offline bundle · %1$d/%2$d files available</string>
+    <string name="library_bundle_attention">Needs attention</string>
+    <string name="library_bundle_ready">Ready to use offline</string>
+    <string name="library_bundle_missing">Bundle files are missing from this phone</string>
+    <string name="library_bundle_contents">Show contents</string>
+    <string name="library_hide_contents">Hide contents</string>
+    <string name="library_bundle_map">Map: %1$s</string>
+    <string name="library_bundle_poi">POIs: %1$s</string>
+    <string name="library_bundle_routing">Routing: %1$d files</string>
+    <string name="library_bundle_elevation">Elevation: %1$d tiles</string>
+
+    <string name="map_navigation_layers">Layers</string>
+    <string name="map_navigation_watch">Watch</string>
     <string name="library_filter_pois">"POIs"</string>
     <string name="library_item_route">"Route"</string>
     <string name="library_item_recording">"Recording"</string>
@@ -1536,4 +1559,14 @@
     <string name="diagnostics_no_saved_phone_recording_available">"No saved phone recording available"</string>
     <string name="diagnostics_no_email_app_available">"No email app available"</string>
     <string name="phone_files_no_file_available_to_save">"No file available to save."</string>
+    <string name="map_search_hint">POI, addresses…</string>
+    <string name="map_search_poi_hint">POI name…</string>
+    <string name="map_search_title">Search the map</string>
+    <string name="map_search_action">Search</string>
+    <string name="map_search_offline_scope">Offline: downloaded POIs only</string>
+    <string name="map_search_loading">Searching… First-time POI indexing can take longer.</string>
+    <string name="map_search_empty">No matching places found.</string>
+    <string name="map_search_online_failed">Online search is unavailable. Local POI results are shown when available.</string>
+    <string name="map_search_local_failed">Some downloaded POI files could not be searched.</string>
+    <string name="map_search_attribution">Search: Photon · © OpenStreetMap contributors</string>
 </resources>

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,10 +39,13 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -71,8 +75,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -412,6 +418,10 @@ internal fun CompanionMapScreen(
     onRouteSaved: () -> Unit,
     onOpenMenu: () -> Unit,
     initialTool: MapTool? = null,
+    initialToolSettings: Boolean = false,
+    initialLibraryAction: MapLibraryAction? = null,
+    navigation: MapNavigationActions = MapNavigationActions(),
+    liveHikeSyncEnabled: Boolean = false,
 ) {
     val context = LocalContext.current
     val migrationTextResources = LocalResources.current
@@ -447,6 +457,15 @@ internal fun CompanionMapScreen(
     val fileTransferViewModel: FileTransferViewModel = viewModel()
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val routeToolsViewModel: PhoneRouteToolsViewModel = viewModel()
+    val searchViewModel: PhoneMapSearchViewModel = viewModel()
+    val searchState by searchViewModel.controller.state.collectAsState()
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchSelection by rememberSaveable(stateSaver = phoneMapSearchResultSaver) {
+        mutableStateOf<PhoneMapSearchResult?>(null)
+    }
+    DisposableEffect(searchViewModel) {
+        onDispose { searchViewModel.controller.cancel() }
+    }
     val gpxUiState by gpxViewModel.uiState.collectAsState()
     val routeToolsState by routeToolsViewModel.uiState.collectAsState()
     val compassState by compassSensorSource.state.collectAsState()
@@ -460,7 +479,20 @@ internal fun CompanionMapScreen(
     val captureActive by remember { derivedStateOf { phoneDebugCaptureState.value.active } }
     var mapUiState by rememberSaveable(stateSaver = phoneMapUiStateSaver) {
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
-        mutableStateOf(initialTool?.let(initialState::selectTool) ?: initialState)
+        mutableStateOf(initialTool?.let { initialState.openToolPage(it, initialToolSettings) } ?: initialState)
+    }
+    val settingsPage = initialToolSettings || initialTool == MapTool.SETTINGS
+    var handledInitialTool by rememberSaveable { mutableStateOf(initialTool) }
+    var handledToolSettings by rememberSaveable { mutableStateOf(initialToolSettings) }
+    LaunchedEffect(initialTool, initialToolSettings) {
+        if (initialTool != handledInitialTool || initialToolSettings != handledToolSettings) {
+            handledInitialTool = initialTool
+            handledToolSettings = initialToolSettings
+            if (initialTool != null) mapUiState = mapUiState.openToolPage(initialTool, initialToolSettings)
+        }
+    }
+    LaunchedEffect(mapUiState.source is PhoneMapSource.Online, poiSources) {
+        searchViewModel.controller.setContext(mapUiState.source is PhoneMapSource.Online, poiSources.enabledFileNames())
     }
     var mapSourcePreference by remember(mapSourcePreferences) {
         mutableStateOf(mapSourcePreferences.load())
@@ -548,7 +580,7 @@ internal fun CompanionMapScreen(
     var liveMapElevation by remember { mutableStateOf<Double?>(null) }
     var liveMapPosition by remember { mutableStateOf<PhoneMapLiveMetricsPosition?>(null) }
     var showOfflineThemeSelector by remember { mutableStateOf(false) }
-    var showOfflineBundleDownload by remember { mutableStateOf(false) }
+    var showOfflineBundleDownload by rememberSaveable { mutableStateOf(false) }
     var elevationBundleAreaId by remember { mutableStateOf<String?>(null) }
     var offlineMapError by remember { mutableStateOf<PhoneOfflineMapError?>(null) }
     var missingStartupOfflineMap by rememberSaveable { mutableStateOf(false) }
@@ -560,7 +592,7 @@ internal fun CompanionMapScreen(
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
     var hasFittedGpxOverlay by rememberSaveable { mutableStateOf(false) }
     var selectedPoi by remember { mutableStateOf<PhoneMapPoi?>(null) }
-    var poiCreationActive by remember { mutableStateOf(false) }
+    var poiCreationActive by rememberSaveable { mutableStateOf(false) }
     var poiCreationPoint by remember { mutableStateOf<PhoneMapCoordinate?>(null) }
     var poiCreationDialogVisible by remember { mutableStateOf(false) }
     var poiNameInput by remember { mutableStateOf("") }
@@ -601,7 +633,12 @@ internal fun CompanionMapScreen(
     }
     val pointSelectionMarkers =
         phoneMapPointSelectionMarkers(poiCreationPoint, routeToolsState) +
-            phoneMapDistanceMeasurementMarkers(distanceMeasurement)
+            phoneMapDistanceMeasurementMarkers(distanceMeasurement) +
+            listOfNotNull(
+                searchSelection?.let {
+                    PhoneMapPointSelectionMarker(PhoneMapPointSelectionMarkerKind.SEARCH, it.point)
+                },
+            )
     val routePointSelectionPhase = routeToolsState.pointSelectionPhase()
     val currentLocationAvailable = mapLocation != null && hasLocationPermission
     val routeCreationControlsVisible = routeToolsState.usesMapRouteCreationControls()
@@ -1561,6 +1598,21 @@ internal fun CompanionMapScreen(
         poiCreationMessage = null
         mapUiState = mapUiState.closeTool().copy(toolLauncherExpanded = false)
     }
+    var handledLibraryAction by rememberSaveable { mutableStateOf<MapLibraryAction?>(null) }
+    LaunchedEffect(initialLibraryAction) {
+        if (initialLibraryAction != handledLibraryAction) {
+            handledLibraryAction = initialLibraryAction
+            when (initialLibraryAction) {
+                MapLibraryAction.ADD_POI -> onAddPoi()
+                MapLibraryAction.IMPORT_MAP -> selectLocalMapLauncher.launch(arrayOf("application/octet-stream"))
+                MapLibraryAction.DOWNLOAD_BUNDLE -> {
+                    elevationBundleAreaId = null
+                    showOfflineBundleDownload = true
+                }
+                null -> Unit
+            }
+        }
+    }
     val onDistanceMeasurementGesture: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit = { first, second ->
         if (mapSettings.distanceMeasurementEnabled) {
             distanceMeasurement = PhoneMapDistanceMeasurement(first, second)
@@ -1768,9 +1820,22 @@ internal fun CompanionMapScreen(
             }
         }
     }
-    val onToolPanelBack = { mapUiState = mapUiState.onMapBack() }
+    val onToolPanelBack = {
+        if (settingsPage && mapUiState.toolPanel.featureSettingsSection == MapToolFeatureSettingsSection.ROOT) {
+            mapUiState = mapUiState.closeTool()
+            onOpenMenu()
+        } else {
+            mapUiState = mapUiState.onMapBack()
+        }
+    }
     val onMapBack = {
         when {
+            settingsPage -> onToolPanelBack()
+            searchOpen -> {
+                searchOpen = false
+                searchViewModel.controller.cancel()
+            }
+            searchSelection != null -> searchSelection = null
             selectedGpxAnalysisId != null -> selectedGpxAnalysisId = null
             routeAnalysis != null ||
                 savedRouteAnalysisSelection != null ||
@@ -1788,7 +1853,9 @@ internal fun CompanionMapScreen(
 
     BackHandler(
         enabled =
-            mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
+            searchOpen ||
+                searchSelection != null ||
+                mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
                 mapUiState.toolLauncherExpanded ||
                 poiCreationActive ||
                 poiCreationPoint != null ||
@@ -2039,6 +2106,7 @@ internal fun CompanionMapScreen(
             routeToolsState.pointSelectionPhase() != null ->
                 routeToolsState.pointSelectionPhase()?.name?.lowercase() ?: "none"
             poiCreationActive -> "poi_location"
+            searchSelection != null -> "search_result"
             else -> "none"
         }
     LaunchedEffect(
@@ -2077,8 +2145,14 @@ internal fun CompanionMapScreen(
     }
 
     MapToolScaffold(
-        state = mapUiState.toolPanel,
-        launcherExpanded = mapUiState.toolLauncherExpanded,
+        presentation =
+            MapToolScaffoldState(
+                panel = mapUiState.toolPanel,
+                launcherExpanded = mapUiState.toolLauncherExpanded,
+                liveHikeSyncEnabled = liveHikeSyncEnabled,
+                fullScreenPage = settingsPage,
+            ),
+        navigation = navigation,
         actions =
             MapToolScaffoldActions(
                 onToolSelected = { tool -> mapUiState = mapUiState.selectTool(tool) },
@@ -2094,7 +2168,10 @@ internal fun CompanionMapScreen(
                 },
                 onResizeFinished = { mapSettingsPreferences.saveToolPanelSizing(mapUiState.toolPanel) },
                 onBack = onToolPanelBack,
-                onClose = { mapUiState = mapUiState.closeTool() },
+                onClose = {
+                    mapUiState = mapUiState.closeTool()
+                    if (settingsPage) onOpenMenu()
+                },
                 onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
             ),
         mapContent = {
@@ -3017,6 +3094,10 @@ internal fun CompanionMapScreen(
                     )
                 mapControls(
                     onOpenMenu = onOpenMenu,
+                    onOpenSearch = {
+                        searchOpen = !searchOpen
+                        if (!searchOpen) searchViewModel.controller.cancel()
+                    },
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
                     onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
                     camera = mapCamera,
@@ -3028,6 +3109,68 @@ internal fun CompanionMapScreen(
                     compassPresentation = compassPresentation,
                     showModeControl = !routeCreationControlsVisible,
                 )
+
+                if (searchOpen) {
+                    PhoneMapSearchPanel(
+                        state = searchState,
+                        actions =
+                            PhoneMapSearchActions(
+                                onQueryChanged = searchViewModel.controller::edit,
+                                onSearch = {
+                                    searchViewModel.controller.submit(
+                                        PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
+                                    )
+                                },
+                                onResultSelected = { result ->
+                                    if (searchViewModel.controller.state.value.reply.results
+                                            .any { it.id == result.id }
+                                    ) {
+                                        searchViewModel.controller.cancel()
+                                        searchOpen = false
+                                        selectedPoi = null
+                                        searchSelection = result
+                                        shouldCenterOnInitialLocation = false
+                                        hasFittedGpxOverlay = true
+                                        if (comparisonOwnsFollowAndCommands) {
+                                            onComparisonCameraInput()
+                                        } else {
+                                            onBaseCameraInput()
+                                        }
+                                        mapUiState =
+                                            mapUiState.requestSearchTarget(result.point, mapCamera.bearingDegrees)
+                                    }
+                                },
+                                onDismiss = {
+                                    searchOpen = false
+                                    searchViewModel.controller.cancel()
+                                },
+                            ),
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(start = 16.dp, end = 16.dp, top = 72.dp),
+                    )
+                }
+
+                searchSelection?.takeUnless { searchOpen }?.let { result ->
+                    PhoneMapPopupCard(
+                        title = result.label,
+                        onDismiss = { searchSelection = null },
+                        modifier =
+                            Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 128.dp),
+                    ) {
+                        if (result.detail.isNotBlank()) {
+                            Text(
+                                result.detail,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
 
                 if (routePointSelectionPhase != null) {
                     phoneMapRouteSelectionCrosshair()
@@ -3287,6 +3430,7 @@ internal fun CompanionMapScreen(
                 contentMode = contentMode,
                 featureSettingsSection = featureSettingsSection,
                 state = toolsState,
+                onOpenMapLegend = navigation.onMapLegend,
                 actions =
                     MapToolsPanelActions(
                         maps = mapActions,
@@ -3373,7 +3517,13 @@ internal fun CompanionMapScreen(
                         onLayerMapSettingsChanged = { settings ->
                             mapSettings = mapSettingsPreferences.save(settings)
                         },
-                        onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
+                        onFeatureSettings = { tool ->
+                            if (settingsPage) {
+                                navigation.onOpenSettings(tool)
+                            } else {
+                                mapUiState = mapUiState.closeTool().selectTool(tool).showFeatureSettings()
+                            }
+                        },
                         onFeatureSettingsSection = { section ->
                             mapUiState =
                                 mapUiState.copy(
@@ -3866,7 +4016,13 @@ private fun synchronizeOnlineMapControls(
     LaunchedEffect(runtime.map, runtime.mapView, command, mapSettings) {
         val activeMap = runtime.map ?: return@LaunchedEffect
         val camera = activeMap.cameraPosition
-        val target = camera.target ?: return@LaunchedEffect
+        val requestedTarget = command?.target
+        val target =
+            if (requestedTarget == null) {
+                camera.target ?: return@LaunchedEffect
+            } else {
+                LatLng(requestedTarget.latitude, requestedTarget.longitude)
+            }
         val viewportWidthPx = activeMap.width.toDouble()
         val tileSizePx = PHONE_MAPLIBRE_CAMERA_TILE_SIZE_PX * (runtime.mapView?.pixelRatio?.toDouble() ?: 1.0)
         if (viewportWidthPx > 0.0) {
@@ -3897,12 +4053,17 @@ private fun synchronizeOnlineMapControls(
         }
         val pendingCommand = command ?: return@LaunchedEffect
         val requestedZoom =
-            (activeMap.cameraPosition.zoom + pendingCommand.zoomDelta)
+            pendingCommand
+                .requestedZoom(activeMap.cameraPosition.zoom, mapSettings, viewportWidthPx, tileSizePx)
                 .coerceIn(activeMap.minZoomLevel, activeMap.maxZoomLevel)
         currentOnCameraInput()
         activeMap.animateCamera(
             CameraUpdateFactory.newCameraPosition(
-                CameraPosition.Builder(activeMap.cameraPosition).zoom(requestedZoom).build(),
+                CameraPosition
+                    .Builder(activeMap.cameraPosition)
+                    .target(target)
+                    .zoom(requestedZoom)
+                    .build(),
             ),
         )
         currentOnCameraCommandHandled(pendingCommand.id)
@@ -4284,6 +4445,7 @@ private fun mapSurface(
 @Suppress("LongMethod", "LongParameterList") // Controls are one compact UI cluster; wrappers add no state boundary.
 private fun mapControls(
     onOpenMenu: () -> Unit,
+    onOpenSearch: () -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
     camera: PhoneMapCameraSnapshot,
@@ -4295,25 +4457,13 @@ private fun mapControls(
     compassPresentation: PhoneMapCompassPresentation,
     showModeControl: Boolean,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val viewportWidthPx = maxWidth.value * LocalDensity.current.density
-        val viewportWidth = maxWidth
-        val scaleIndicator =
-            remember(camera.groundResolutionMetersPerPixel, viewportWidthPx, isMetric) {
-                camera.groundResolutionMetersPerPixel?.let { resolution ->
-                    calculatePhoneMapScaleIndicator(
-                        groundResolutionMetersPerPixel = resolution,
-                        viewportWidthPx = viewportWidthPx.toDouble(),
-                        isMetric = isMetric,
-                    )
-                }
-            }
-
+    Box(modifier = Modifier.fillMaxSize()) {
         FilledTonalIconButton(
             onClick = onOpenMenu,
             modifier =
                 Modifier
                     .align(Alignment.TopStart)
+                    .statusBarsPadding()
                     .padding(16.dp),
         ) {
             Icon(
@@ -4365,20 +4515,17 @@ private fun mapControls(
             }
         }
 
-        scaleIndicator?.let { indicator ->
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(top = 16.dp),
-            ) {
-                phoneMapScaleBar(
-                    indicator = indicator,
-                    width = viewportWidth * indicator.widthRatio,
-                )
-            }
-        }
+        phoneMapSearchControl(
+            camera = camera,
+            isMetric = isMetric,
+            onClick = onOpenSearch,
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(start = 72.dp, end = 72.dp, top = 16.dp)
+                    .fillMaxWidth(),
+        )
 
         if (showModeControl) {
             FilledTonalIconButton(
@@ -4727,6 +4874,53 @@ private fun BoxScope.phoneMapLiveDistanceCard(
 }
 
 @Composable
+internal fun phoneMapSearchControl(
+    camera: PhoneMapCameraSnapshot,
+    isMetric: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val scaleBudget = (maxWidth * 0.34f).coerceAtMost(80.dp)
+        // The scale's physical pixel width stays accurate inside the smaller search control.
+        val scaleViewport = scaleBudget / PHONE_MAP_SCALE_TARGET_RATIO.toFloat()
+        val scaleViewportPx = with(LocalDensity.current) { scaleViewport.toPx().toDouble() }
+        val indicator =
+            remember(camera.groundResolutionMetersPerPixel, scaleViewportPx, isMetric) {
+                camera.groundResolutionMetersPerPixel?.let {
+                    calculatePhoneMapScaleIndicator(it, scaleViewportPx, isMetric)
+                }
+            }
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(
+                    stringResource(R.string.map_search_hint),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                indicator?.let {
+                    Box(modifier = Modifier.width(scaleBudget), contentAlignment = Alignment.CenterEnd) {
+                        phoneMapScaleBar(it, scaleViewport * it.widthRatio)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun phoneMapScaleBar(
     indicator: PhoneMapScaleIndicator,
     width: Dp,
@@ -4734,6 +4928,9 @@ private fun phoneMapScaleBar(
     Column(horizontalAlignment = Alignment.End) {
         Text(
             text = indicator.label,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             color = Color.White,
             modifier =
                 Modifier
@@ -4745,7 +4942,8 @@ private fun phoneMapScaleBar(
                 Modifier
                     .padding(top = 2.dp)
                     .width(width)
-                    .height(10.dp),
+                    .height(10.dp)
+                    .testTag("map-search-scale-bar"),
         ) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 val centerY = size.height / 2f

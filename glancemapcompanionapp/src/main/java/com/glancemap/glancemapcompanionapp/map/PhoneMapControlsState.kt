@@ -13,6 +13,17 @@ internal enum class PhoneMapFollowMode {
 
 internal const val PHONE_MAP_DEFAULT_ZOOM = 14.0
 
+/** Each SDK resolves search targets to the configured scale using its own tile units. */
+internal fun PhoneMapCameraCommand.requestedZoom(
+    currentZoom: Double,
+    settings: PhoneMapSettings,
+    viewportWidthPx: Double,
+    tileSizePx: Double,
+): Double =
+    target?.let {
+        phoneMapZoomForScale(it.latitude, settings.zoomDefaultScaleMeters, viewportWidthPx, tileSizePx) ?: currentZoom
+    } ?: (currentZoom + zoomDelta)
+
 internal data class PhoneMapMode(
     val orientation: PhoneMapOrientation = PhoneMapOrientation.NORTH_UP,
     val follow: PhoneMapFollowMode = PhoneMapFollowMode.FOLLOW_LOCATION,
@@ -52,10 +63,11 @@ internal data class PhoneMapMode(
 /** One renderer-neutral request from the map controls; the active renderer consumes it once. */
 internal data class PhoneMapCameraCommand(
     val id: Long,
-    val zoomDelta: Int,
+    val zoomDelta: Int = 0,
+    val target: PhoneMapCoordinate? = null,
 ) {
     init {
         require(id > 0L)
-        require(zoomDelta in setOf(-1, 1))
+        require(if (target == null) zoomDelta in setOf(-1, 1) else zoomDelta == 0 && target.isValidSearchPoint())
     }
 }

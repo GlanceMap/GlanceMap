@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.refuges
 
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.os.CancellationSignal
 import java.io.File
 import java.util.Locale
 import kotlin.math.max
@@ -337,6 +338,26 @@ private fun readPoiSqlitePoints(
         }
     } finally {
         db.close()
+    }
+}
+
+/** Streams an imported source once while building the phone's separate, disposable name index. */
+internal fun visitPoiSqlitePoints(
+    file: File,
+    cancellation: CancellationSignal,
+    onPoint: (PoiSqlitePoint) -> Unit,
+) {
+    val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+    try {
+        database.rawQuery(ALL_POI_SQL, null, cancellation).use { cursor ->
+            val indices = PoiSqliteColumnIndices(cursor)
+            while (cursor.moveToNext()) {
+                cancellation.throwIfCanceled()
+                indices.pointOrNull(cursor)?.let(onPoint)
+            }
+        }
+    } finally {
+        database.close()
     }
 }
 

@@ -10,6 +10,26 @@ import java.io.File
 
 class MapToolPanelStateTest {
     @Test
+    fun contentSettingsOpenFullScreenWithoutChangingMapContentAndOpeningAgainDoesNotCloseThem() {
+        val before = PhoneMapUiState().selectTool(MapTool.LAYER).toggleToolLauncher()
+        listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS).forEach { tool ->
+            val opened = before.openToolPage(tool, featureSettings = true)
+            assertEquals(MapToolPanelMode.EXPANDED, opened.toolPanel.mode)
+            assertEquals(MapToolContentMode.FEATURE_SETTINGS, opened.toolPanel.contentMode)
+            assertEquals(MapToolFeatureSettingsSection.ROOT, opened.toolPanel.featureSettingsSection)
+            assertEquals(tool, opened.toolPanel.activeTool)
+            assertFalse(opened.toolLauncherExpanded)
+            assertEquals(before.source, opened.source)
+            assertEquals(before.comparison, opened.comparison)
+            assertEquals(before.contentVisibility, opened.contentVisibility)
+            assertEquals(opened, opened.openToolPage(tool, featureSettings = true))
+        }
+        val general = before.openToolPage(MapTool.SETTINGS, featureSettings = false)
+        assertEquals(MapToolPanelMode.EXPANDED, general.toolPanel.mode)
+        assertEquals(MapToolContentMode.MAIN, general.toolPanel.contentMode)
+    }
+
+    @Test
     fun toolSelectionAndBackFollowClosedSplitExpandedOrder() {
         val split = MapToolPanelState().select(MapTool.GPX)
         val expanded = split.expand()
@@ -38,9 +58,19 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun primaryMapControlsStayOutsideTheSecondaryToolsLauncher() {
-        assertEquals(listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS), primaryMapTools)
-        assertEquals(listOf(MapTool.LAYER, MapTool.SETTINGS), secondaryMapTools)
+    fun libraryShortcutsKeepExistingContentPanels() {
+        assertEquals(listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS), libraryMapTools)
+    }
+
+    @Test
+    fun backDismissesLauncherWithoutChangingTheUnderlyingPanelOrMap() {
+        val state = PhoneMapUiState().selectTool(MapTool.LAYER).expandTool().toggleToolLauncher()
+        val dismissed = state.onMapBack()
+
+        assertFalse(dismissed.toolLauncherExpanded)
+        assertEquals(state.toolPanel, dismissed.toolPanel)
+        assertEquals(state.source, dismissed.source)
+        assertEquals(state.contentVisibility, dismissed.contentVisibility)
     }
 
     @Test
@@ -53,7 +83,7 @@ class MapToolPanelStateTest {
         assertTrue(selected.toolLauncherExpanded)
         assertEquals(MapTool.SETTINGS, selected.toolPanel.activeTool)
         assertEquals(MapToolPanelMode.SPLIT, selected.toolPanel.mode)
-        assertFalse(primaryMapTools.contains(selected.toolPanel.activeTool))
+        assertFalse(libraryMapTools.contains(selected.toolPanel.activeTool))
 
         val collapsed = selected.toggleToolLauncher()
 
@@ -177,6 +207,26 @@ class MapToolPanelStateTest {
         assertEquals(1L, command.id)
         assertEquals(1, command.zoomDelta)
         assertNull(requested.consumeCommand(command.id).cameraCommand)
+    }
+
+    @Test
+    fun searchTargetsDetachFollowAndOldCompletionCannotConsumeNewerCommands() {
+        val target = PhoneMapCoordinate(48.85, 2.35)
+        val first = PhoneMapUiState().requestZoom(1)
+        val searched = first.requestSearchTarget(target)
+        val command = requireNotNull(searched.cameraCommand)
+        assertEquals(target, command.target)
+        assertEquals(0, command.zoomDelta)
+        assertEquals(2L, command.id)
+        assertTrue(searched.mapMode.isDetachedFromLocation)
+        assertEquals(command, searched.consumeCommand(1L).cameraCommand)
+        assertNull(searched.consumeCommand(command.id).cameraCommand)
+        assertEquals(1, requireNotNull(searched.requestZoom(1).cameraCommand).zoomDelta)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun invalidSearchCoordinatesCannotReachARenderer() {
+        PhoneMapUiState().requestSearchTarget(PhoneMapCoordinate(Double.NaN, 2.35))
     }
 
     @Test

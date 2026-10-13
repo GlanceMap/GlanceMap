@@ -744,21 +744,21 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyCameraCommand(command: PhoneMapCameraCommand?) {
         if (command == null || command.id == lastHandledCameraCommandId) return
-        when (command.zoomDelta) {
-            1,
-            -1,
-            -> {
-                val position = mapView.model.mapViewPosition
-                val currentZoom = position.zoom
-                val targetZoom =
-                    (currentZoom + command.zoomDelta).coerceIn(
-                        position.zoomLevelMin.toDouble(),
-                        position.zoomLevelMax.toDouble(),
-                    )
-                if (targetZoom != currentZoom) {
-                    position.setZoom(targetZoom, false)
-                }
-            }
+        val position = mapView.model.mapViewPosition
+        val target = command.target
+        if (target != null) mapView.setCenter(LatLong(target.latitude, target.longitude))
+        val requestedZoom =
+            command.requestedZoom(
+                currentZoom = position.zoom,
+                settings = latestState?.mapSettings ?: PhoneMapSettings(),
+                viewportWidthPx = mapView.width.toDouble(),
+                tileSizePx =
+                    mapView.model.displayModel.tileSize
+                        .toDouble(),
+            )
+        val targetZoom = requestedZoom.coerceIn(position.zoomLevelMin.toDouble(), position.zoomLevelMax.toDouble())
+        if (targetZoom != position.zoom) {
+            position.setZoom(targetZoom, false)
         }
         lastHandledCameraCommandId = command.id
         post { if (!disposed) callbacks.onCameraCommandHandled(command.id) }

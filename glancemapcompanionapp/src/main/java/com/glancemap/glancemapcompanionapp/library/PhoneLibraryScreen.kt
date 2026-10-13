@@ -1,8 +1,6 @@
 package com.glancemap.glancemapcompanionapp.library
 
 import android.text.format.Formatter
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,12 +32,12 @@ internal fun phoneLibraryScreen(
     routes: RouteLibraryUiState,
     poiSources: List<PhoneMapPoiSource>,
     actions: PhoneLibraryActions,
+    filter: PhoneLibraryFilter,
 ) {
     val model: PhoneLibraryViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val local by model.uiState.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf(PhoneLibraryFilter.ALL) }
     var selected by remember { mutableStateOf<PhoneLibraryItem?>(null) }
     val items =
         remember(routes.routes, local.items, poiSources) {
@@ -53,9 +51,10 @@ internal fun phoneLibraryScreen(
             actions.onRefresh()
         }
         librarySearch(query, { query = it })
-        libraryFilters(filter) { filter = it }
+        libraryFilters(filter, actions.onFilterChanged)
+        libraryCategoryControls(filter, routes.isImporting, actions)
         Text(
-            stringResource(R.string.library_local_count, items.size),
+            stringResource(R.string.library_local_count, visible.size),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -70,7 +69,7 @@ internal fun phoneLibraryScreen(
                 onSelect = { selected = it },
             )
         }
-        if (filter == PhoneLibraryFilter.POIS || filter == PhoneLibraryFilter.OFFLINE) {
+        if (filter == PhoneLibraryFilter.POIS || filter == PhoneLibraryFilter.MAPS) {
             OutlinedButton(
                 onClick = {
                     actions.onOpenMapTools(if (filter == PhoneLibraryFilter.POIS) MapTool.POI else MapTool.MAPS)
@@ -109,42 +108,6 @@ private fun libraryHeader(
         )
         IconButton(onClick = onRefresh, enabled = !loading && !importing) {
             Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh))
-        }
-        libraryImportButton(importing, actions)
-    }
-}
-
-@Composable
-private fun libraryImportButton(
-    importing: Boolean,
-    actions: PhoneLibraryActions,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var asRecording by rememberSaveable { mutableStateOf(false) }
-    val launcher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) actions.onImportGpx(uri, asRecording, null)
-        }
-    Box {
-        IconButton(onClick = { expanded = true }, enabled = !importing) {
-            Icon(Icons.Filled.Add, stringResource(R.string.library_import_gpx))
-        }
-        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            val importOptions =
-                listOf(
-                    false to R.string.library_import_route,
-                    true to R.string.library_import_recording,
-                )
-            importOptions.forEach { (recorded, title) ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(title)) },
-                    onClick = {
-                        asRecording = recorded
-                        expanded = false
-                        launcher.launch(arrayOf("*/*"))
-                    },
-                )
-            }
         }
     }
 }
@@ -231,7 +194,13 @@ private fun libraryContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                stringResource(R.string.library_on_phone),
+                                stringResource(
+                                    if (item is PhoneLibraryItem.Bundle && !item.health.isComplete) {
+                                        R.string.library_bundle_attention
+                                    } else {
+                                        R.string.library_on_phone
+                                    },
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -250,6 +219,7 @@ private fun PhoneLibraryItem.icon(): ImageVector =
         is PhoneLibraryItem.ReceivedGpx -> Icons.Filled.Description
         is PhoneLibraryItem.Pois -> Icons.Filled.Place
         is PhoneLibraryItem.OfflineMap -> Icons.Filled.Map
+        is PhoneLibraryItem.Bundle -> Icons.Filled.Inventory2
     }
 
 @Composable
@@ -284,5 +254,11 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
             stringResource(
                 R.string.library_offline_summary,
                 Formatter.formatShortFileSize(LocalContext.current, item.sizeBytes),
+            )
+        is PhoneLibraryItem.Bundle ->
+            stringResource(
+                R.string.library_bundle_summary,
+                item.health.availableFileNames.size,
+                item.health.expectedFileNames.size,
             )
     }

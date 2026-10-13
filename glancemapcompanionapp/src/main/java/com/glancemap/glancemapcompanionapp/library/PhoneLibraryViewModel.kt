@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.PhoneMapSourcePreferences
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleStore
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapStore
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
+import com.glancemap.glancemapcompanionapp.map.phoneOfflineBundleHealth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,7 @@ internal class PhoneLibraryViewModel(
 ) : AndroidViewModel(application) {
     private val storage = PhoneOfflineStorage(application)
     private val maps = PhoneOfflineMapStore(application)
+    private val bundles = PhoneOfflineBundleStore(application)
     private val preferences = PhoneMapSourcePreferences(application)
     private val state = MutableStateFlow(PhoneLibraryLocalState())
     val uiState = state.asStateFlow()
@@ -41,7 +44,20 @@ internal class PhoneLibraryViewModel(
                     val items =
                         withContext(Dispatchers.IO) {
                             receivedPhoneLibraryFiles(storage.watchGpxExportsDirectory()) +
-                                maps.discover().map { PhoneLibraryItem.OfflineMap(it, it.file.length()) }
+                                maps.discover().map { PhoneLibraryItem.OfflineMap(it, it.file.length()) } +
+                                bundles.list().map { bundle ->
+                                    PhoneLibraryItem.Bundle(
+                                        bundle = bundle,
+                                        health =
+                                            phoneOfflineBundleHealth(
+                                                context = getApplication(),
+                                                mapStore = maps,
+                                                bundle = bundle,
+                                                recovery = bundles.findRecovery(bundle.areaId),
+                                            ),
+                                        map = maps.findValidBundleMap(bundle.mapFileName),
+                                    )
+                                }
                         }
                     state.value = PhoneLibraryLocalState(items)
                 } catch (_: IOException) {

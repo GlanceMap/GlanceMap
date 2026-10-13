@@ -11,9 +11,8 @@ internal enum class MapTool {
     SETTINGS,
 }
 
-/** Primary content stays directly reachable; the smaller secondary launcher can grow later. */
-internal val primaryMapTools = listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)
-internal val secondaryMapTools = listOf(MapTool.LAYER, MapTool.SETTINGS)
+/** Existing map content panels grouped under the Library shortcut menu. */
+internal val libraryMapTools = listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)
 
 internal enum class MapToolPanelMode {
     CLOSED,
@@ -221,6 +220,15 @@ internal data class PhoneMapUiState(
 ) {
     fun selectTool(tool: MapTool): PhoneMapUiState = copy(toolPanel = toolPanel.select(tool))
 
+    fun openToolPage(
+        tool: MapTool,
+        featureSettings: Boolean,
+    ): PhoneMapUiState {
+        val selected = closeTool().selectTool(tool).copy(toolLauncherExpanded = false)
+        val content = if (featureSettings) selected.showFeatureSettings() else selected
+        return if (featureSettings || tool == MapTool.SETTINGS) content.expandTool() else content
+    }
+
     fun toggleToolLauncher(): PhoneMapUiState = copy(toolLauncherExpanded = !toolLauncherExpanded)
 
     fun expandTool(): PhoneMapUiState = copy(toolPanel = toolPanel.expand())
@@ -301,6 +309,16 @@ internal data class PhoneMapUiState(
             nextCameraCommandId = nextCameraCommandId + 1L,
         )
 
+    fun requestSearchTarget(
+        target: PhoneMapCoordinate,
+        currentBearingDegrees: Float? = null,
+    ): PhoneMapUiState =
+        copy(
+            mapMode = mapMode.detachFromLocation(currentBearingDegrees),
+            cameraCommand = PhoneMapCameraCommand(id = nextCameraCommandId, target = target),
+            nextCameraCommandId = nextCameraCommandId + 1L,
+        )
+
     fun consumeCommand(id: Long): PhoneMapUiState = if (cameraCommand?.id == id) copy(cameraCommand = null) else this
 
     fun toggleMapOrientation(): PhoneMapUiState = copy(mapMode = mapMode.toggleOrientation())
@@ -308,8 +326,8 @@ internal data class PhoneMapUiState(
     fun onMapBack(): PhoneMapUiState {
         val panelAfterBack = toolPanel.back()
         return when {
-            panelAfterBack != toolPanel -> copy(toolPanel = panelAfterBack)
             toolLauncherExpanded -> copy(toolLauncherExpanded = false)
+            panelAfterBack != toolPanel -> copy(toolPanel = panelAfterBack)
             else -> this
         }
     }

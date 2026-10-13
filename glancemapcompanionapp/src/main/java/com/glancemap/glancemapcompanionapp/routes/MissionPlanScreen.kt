@@ -192,7 +192,7 @@ fun MissionPlanScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(onClick = onOpenRoutes) {
-                            Text(textResources.getString(R.string.mission_plan_open_route_library))
+                            Text(textResources.getString(R.string.library_open_gpx_library))
                         }
                     }
                 } else {

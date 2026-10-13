@@ -3,20 +3,23 @@ package com.glancemap.glancemapcompanionapp.library
 import android.net.Uri
 import androidx.annotation.StringRes
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
 import com.glancemap.glancemapcompanionapp.map.MapTool
+import com.glancemap.glancemapcompanionapp.map.PhoneInstalledBundle
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSource
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleHealth
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import java.io.File
 
 internal enum class PhoneLibraryFilter(
     @StringRes val label: Int,
+    val tool: MapTool?,
 ) {
-    ALL(R.string.library_filter_all),
-    ROUTES(R.string.menu_routes),
-    RECORDED(R.string.library_filter_recorded),
-    POIS(R.string.library_filter_pois),
-    OFFLINE(R.string.map_source_offline_label),
+    GPX(R.string.map_tool_gpx_title, MapTool.GPX),
+    POIS(R.string.library_filter_pois, MapTool.POI),
+    MAPS(R.string.map_tool_maps_title, MapTool.MAPS),
+    BUNDLES(R.string.library_filter_bundles, null),
 }
 
 internal sealed interface PhoneLibraryItem {
@@ -29,7 +32,7 @@ internal sealed interface PhoneLibraryItem {
     ) : PhoneLibraryItem {
         override val key = "gpx/${route.id}"
         override val title = route.displayName
-        override val filter = if (route.isRecording) PhoneLibraryFilter.RECORDED else PhoneLibraryFilter.ROUTES
+        override val filter = PhoneLibraryFilter.GPX
     }
 
     data class ReceivedGpx(
@@ -41,7 +44,7 @@ internal sealed interface PhoneLibraryItem {
         val exportId = "${file.name}:$sizeBytes:$modifiedMillis"
         override val key = "received/${file.absolutePath}"
         override val title = file.name
-        override val filter = PhoneLibraryFilter.ALL
+        override val filter = PhoneLibraryFilter.GPX
     }
 
     data class Pois(
@@ -58,7 +61,17 @@ internal sealed interface PhoneLibraryItem {
     ) : PhoneLibraryItem {
         override val key = "offline/${map.selectionIdentity}"
         override val title = map.displayName
-        override val filter = PhoneLibraryFilter.OFFLINE
+        override val filter = PhoneLibraryFilter.MAPS
+    }
+
+    data class Bundle(
+        val bundle: PhoneInstalledBundle,
+        val health: PhoneOfflineBundleHealth,
+        val map: PhoneOfflineMap?,
+    ) : PhoneLibraryItem {
+        override val key = "bundle/${bundle.areaId}"
+        override val title = bundle.areaLabel
+        override val filter = PhoneLibraryFilter.BUNDLES
     }
 }
 
@@ -68,6 +81,10 @@ internal data class PhoneLibraryActions(
     val onImportGpx: (Uri, Boolean, String?) -> Unit,
     val onUseRoute: (String) -> Unit,
     val onOpenMapTools: (MapTool) -> Unit,
+    val onOpenSettings: (MapTool) -> Unit,
+    val onMapAction: (MapLibraryAction) -> Unit,
+    val onSendGpx: (String) -> Unit,
+    val onFilterChanged: (PhoneLibraryFilter) -> Unit,
 )
 
 internal fun phoneLibraryItems(
@@ -87,7 +104,7 @@ internal fun filterPhoneLibraryItems(
     query: String,
 ): List<PhoneLibraryItem> =
     items.filter { item ->
-        (filter == PhoneLibraryFilter.ALL || item.filter == filter) &&
+        (item.filter == filter) &&
             item.title.contains(query.trim(), ignoreCase = true)
     }
 

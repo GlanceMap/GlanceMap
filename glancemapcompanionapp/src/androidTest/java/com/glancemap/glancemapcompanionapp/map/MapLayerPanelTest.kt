@@ -54,6 +54,19 @@ class MapLayerPanelTest {
     private val progress = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 
     @Test
+    fun quickDisplayIsAvailableInLayersAndOfflineControlsFollowTheBaseMap() {
+        setContent()
+        quickControl(R.string.map_tools_maps_quick_display_heading).assertExists()
+        quickControl(R.string.map_tools_maps_live_elevation).assertExists()
+        quickControl(R.string.map_tools_maps_live_distance).assertExists()
+        quickControl(R.string.map_tools_maps_night_mode).assertDoesNotExist()
+        composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
+        quickControl(R.string.map_tools_maps_night_mode).assertExists()
+    }
+
+    private fun quickControl(label: Int) = composeRule.onNodeWithText(composeRule.activity.getString(label))
+
+    @Test
     fun onlineBaseDropdownSelectsOnlineAndOfflineLayersAndClearKeepsTransparency() {
         setContent()
         composeRule.onNode(progress).assertIsNotEnabled()
@@ -158,8 +171,7 @@ class MapLayerPanelTest {
             MaterialTheme {
                 Box(Modifier.size(width = 360.dp, height = 660.dp)) {
                     MapToolScaffold(
-                        state = MapToolPanelState().select(MapTool.LAYER),
-                        launcherExpanded = false,
+                        presentation = MapToolScaffoldState(MapToolPanelState().select(MapTool.LAYER)),
                         actions =
                             MapToolScaffoldActions(
                                 onToolSelected = {},

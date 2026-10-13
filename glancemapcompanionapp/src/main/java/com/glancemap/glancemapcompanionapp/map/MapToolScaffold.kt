@@ -6,7 +6,6 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
@@ -15,13 +14,9 @@ import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +30,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -47,6 +41,13 @@ import com.glancemap.glancemapcompanionapp.layout.LocalCompanionLayoutContext
 import kotlin.math.roundToInt
 
 private val mapToolLauncherHeight = 64.dp
+
+internal data class MapToolScaffoldState(
+    val panel: MapToolPanelState,
+    val launcherExpanded: Boolean = false,
+    val liveHikeSyncEnabled: Boolean = false,
+    val fullScreenPage: Boolean = false,
+)
 
 /** Hosts the map and every tool panel without letting a panel own map renderer state. */
 internal data class MapToolScaffoldActions(
@@ -69,12 +70,13 @@ internal data class MapToolScaffoldActions(
     "FunctionNaming", // Public Compose entry points follow the project's screen naming convention.
 ) // One fixed layout pass keeps the Android map host in one composition slot.
 internal fun MapToolScaffold(
-    state: MapToolPanelState,
-    launcherExpanded: Boolean,
+    presentation: MapToolScaffoldState,
     actions: MapToolScaffoldActions,
     mapContent: @Composable () -> Unit,
     panelContent: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
+    navigation: MapNavigationActions = MapNavigationActions(),
 ) {
+    val state = presentation.panel
     val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
     var availableSize by remember { mutableStateOf(IntSize.Zero) }
     val axisSize = if (isWide) availableSize.width else availableSize.height
@@ -91,9 +93,9 @@ internal fun MapToolScaffold(
         content = {
             // Keep this slot unconditional: Android map views retain their composition identity as panels resize.
             mapToolMapSurface(
-                launcherExpanded = launcherExpanded,
-                activeTool = state.activeTool,
+                presentation = presentation,
                 actions = actions,
+                navigation = navigation,
                 modifier = Modifier,
                 mapContent = mapContent,
             )
@@ -103,7 +105,7 @@ internal fun MapToolScaffold(
                         state = state,
                         resizeModifier = resizeModifier,
                         actions = actions,
-                        modifier = Modifier.fillMaxSize(),
+                        fullScreenPage = presentation.fullScreenPage,
                         content = panelContent,
                     )
                 }
@@ -155,26 +157,22 @@ internal fun MapToolScaffold(
 
 @Composable
 private fun mapToolMapSurface(
-    launcherExpanded: Boolean,
-    activeTool: MapTool?,
+    presentation: MapToolScaffoldState,
     actions: MapToolScaffoldActions,
+    navigation: MapNavigationActions,
     modifier: Modifier,
     mapContent: @Composable () -> Unit,
 ) {
     Box(modifier = modifier) {
         mapContent()
-        mapToolLauncher(
-            expanded = launcherExpanded,
-            activeTool = activeTool,
-            onToolSelected = actions.onToolSelected,
-            onToggle = actions.onToggleLauncher,
-            onAddPoi = actions.onAddPoi,
-            onOpenGpxTools = actions.onOpenGpxTools,
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-        )
+        if (!presentation.fullScreenPage) {
+            mapToolLauncher(
+                presentation = presentation,
+                actions = actions,
+                navigation = navigation,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -183,16 +181,17 @@ private fun mapToolPanelSurface(
     state: MapToolPanelState,
     resizeModifier: Modifier,
     actions: MapToolScaffoldActions,
-    modifier: Modifier,
+    fullScreenPage: Boolean,
     content: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
 ) {
     val tool = state.activeTool ?: return
-    Surface(modifier = modifier) {
+    Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             mapToolPanelHeader(
                 state = state,
                 resizeModifier = resizeModifier,
                 actions = actions,
+                fullScreenPage = fullScreenPage,
             )
             HorizontalDivider()
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -207,6 +206,7 @@ private fun mapToolPanelHeader(
     state: MapToolPanelState,
     resizeModifier: Modifier,
     actions: MapToolScaffoldActions,
+    fullScreenPage: Boolean,
 ) {
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
@@ -218,7 +218,7 @@ private fun mapToolPanelHeader(
                 .padding(start = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (state.hasFeatureSettingsBack) {
+        if (fullScreenPage || state.hasFeatureSettingsBack) {
             IconButton(onClick = actions.onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -241,11 +241,13 @@ private fun mapToolPanelHeader(
                         (requireNotNull(state.customSplitFraction) * 100).roundToInt(),
                     )
             }
-        IconButton(onClick = actions.onCycleSize, modifier = resizeModifier) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
-                contentDescription = nextSizeDescription + ". " + stringResource(R.string.map_tool_resize_hint),
-            )
+        if (!fullScreenPage) {
+            IconButton(onClick = actions.onCycleSize, modifier = resizeModifier) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
+                    contentDescription = nextSizeDescription + ". " + stringResource(R.string.map_tool_resize_hint),
+                )
+            }
         }
         IconButton(onClick = actions.onClose) {
             Icon(
@@ -290,93 +292,7 @@ private fun RowScope.mapToolHeaderTitle(
     }
 }
 
-@Composable
-@Suppress("LongMethod", "LongParameterList") // The launcher keeps its fixed bottom-navigation layout in one slot.
-private fun mapToolLauncher(
-    expanded: Boolean,
-    activeTool: MapTool?,
-    onToolSelected: (MapTool) -> Unit,
-    onToggle: () -> Unit,
-    onAddPoi: () -> Unit,
-    onOpenGpxTools: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier = modifier) {
-        if (expanded) {
-            Column(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 88.dp),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = onAddPoi,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Place,
-                            contentDescription = stringResource(R.string.map_tool_shortcut_add_poi),
-                        )
-                    },
-                    text = { Text(stringResource(R.string.map_tool_shortcut_add_poi)) },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                )
-                ExtendedFloatingActionButton(
-                    onClick = onOpenGpxTools,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Route,
-                            contentDescription = stringResource(R.string.map_tool_shortcut_gpx),
-                        )
-                    },
-                    text = { Text(stringResource(R.string.map_tool_shortcut_gpx)) },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                )
-                secondaryMapTools.forEach { tool ->
-                    ExtendedFloatingActionButton(
-                        onClick = { onToolSelected(tool) },
-                        icon = {
-                            Icon(
-                                imageVector = tool.icon(),
-                                contentDescription = stringResource(tool.titleResource()),
-                            )
-                        },
-                        text = { Text(stringResource(tool.titleResource())) },
-                        containerColor =
-                            if (activeTool == tool) {
-                                MaterialTheme.colorScheme.secondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHigh
-                            },
-                    )
-                }
-            }
-        }
-        NavigationBar(
-            modifier = Modifier.align(Alignment.BottomCenter).height(mapToolLauncherHeight).testTag("map-tool-toolbar"),
-        ) {
-            primaryMapTools.forEach { tool ->
-                NavigationBarItem(
-                    selected = activeTool == tool,
-                    onClick = { onToolSelected(tool) },
-                    icon = { Icon(imageVector = tool.icon(), contentDescription = null) },
-                    label = { Text(stringResource(tool.titleResource())) },
-                    alwaysShowLabel = true,
-                )
-            }
-            NavigationBarItem(
-                selected = expanded || activeTool in secondaryMapTools,
-                onClick = onToggle,
-                icon = { Icon(imageVector = Icons.Filled.Build, contentDescription = null) },
-                label = { Text(stringResource(R.string.map_tool_launcher_label)) },
-                alwaysShowLabel = true,
-            )
-        }
-    }
-}
-
-private fun MapTool.icon(): ImageVector =
+internal fun MapTool.icon(): ImageVector =
     when (this) {
         MapTool.POI -> Icons.Filled.Place
         MapTool.GPX -> Icons.Filled.Route

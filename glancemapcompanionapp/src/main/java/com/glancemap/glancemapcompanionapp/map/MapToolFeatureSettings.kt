@@ -101,6 +101,7 @@ internal fun MapToolFeatureSettingsContent(
                 onOpenBundleDownload = actions.onOpenBundleDownload,
                 onStorageChangeRequested = actions.onStorageChangeRequested,
                 onOpenSettingsSection = actions.onFeatureSettingsSection,
+                onOpenContentSettings = actions.onFeatureSettings,
             )
     }
 }
@@ -798,6 +799,7 @@ internal fun mapToolsMapsQuickDisplaySettings(
     settings: PhoneMapSettings,
     onSettingsChanged: (PhoneMapSettings) -> Unit,
     showOfflineOnlyOptions: Boolean = true,
+    showReliefOption: Boolean = true,
 ) {
     HorizontalDivider()
     Text(stringResource(R.string.map_tools_maps_quick_display_heading))
@@ -822,11 +824,13 @@ internal fun mapToolsMapsQuickDisplaySettings(
         onCheckedChange = { enabled -> onSettingsChanged(settings.copy(hillShadingEnabled = enabled)) },
     )
     if (showOfflineOnlyOptions) {
-        mapToolsMapsToggle(
-            label = stringResource(R.string.map_tools_maps_relief_overlay),
-            checked = settings.reliefOverlayEnabled,
-            onCheckedChange = { enabled -> onSettingsChanged(settings.copy(reliefOverlayEnabled = enabled)) },
-        )
+        if (showReliefOption) {
+            mapToolsMapsToggle(
+                label = stringResource(R.string.map_tools_maps_relief_overlay),
+                checked = settings.reliefOverlayEnabled,
+                onCheckedChange = { enabled -> onSettingsChanged(settings.copy(reliefOverlayEnabled = enabled)) },
+            )
+        }
         mapToolsMapsToggle(
             label = stringResource(R.string.map_tools_maps_night_mode),
             checked = settings.nightModeEnabled,

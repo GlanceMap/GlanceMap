@@ -18,8 +18,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -54,11 +52,10 @@ class CompanionNavigationDrawerTest {
             MaterialTheme {
                 companionNavigationDrawer(
                     drawerState = drawer,
-                    state = CompanionMenuState(CompanionHomeArea.MAP, debugCaptureActive = false, liveHikeSyncEnabled = false),
+                    state = CompanionMenuState(CompanionHomeArea.MAP, debugCaptureActive = false),
                     actions =
                         CompanionMenuActions(
                             onNavigate = { selected = it },
-                            onLiveHikeSyncChanged = {},
                             onDebug = { utilities += "debug" },
                             onQuickGuide = { utilities += "guide" },
                             onCreditsLegal = { utilities += "legal" },
@@ -84,16 +81,12 @@ class CompanionNavigationDrawerTest {
                 .fetchSemanticsNode()
                 .boundsInRoot
         assertEquals(mapBounds.width / 2f, menuBounds.width, 1f)
-        listOf(
-            R.string.home_debug_capture_start_content_description,
-            R.string.common_quick_guide_content_description,
-            R.string.settings_credits_legal_title,
-        ).forEach { resource ->
-            composeRule.onNodeWithContentDescription(composeRule.activity.getString(resource)).assertIsDisplayed().performClick()
-        }
+        clickUtilities()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.library_title)).assertDoesNotExist()
         assertEquals(listOf("debug", "guide", "legal"), utilities)
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_routes)).performClick()
-        assertEquals(CompanionHomeArea.ROUTES, selected)
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_today_hike)).performClick()
+        assertEquals(CompanionHomeArea.HOME, selected)
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
         composeRule.waitForIdle()
         composeRule.runOnIdle {
@@ -105,8 +98,7 @@ class CompanionNavigationDrawerTest {
     }
 
     @Test
-    fun liveHikeSwitchDoesNotNavigateAndDashboardBackReopensTheMenu() {
-        val syncEnabled = mutableStateOf(false)
+    fun settingsDestinationBackReopensTheMenu() {
         val area = mutableStateOf(CompanionHomeArea.MAP)
         lateinit var drawer: DrawerState
         composeRule.setContent {
@@ -120,14 +112,13 @@ class CompanionNavigationDrawerTest {
             MaterialTheme {
                 companionNavigationDrawer(
                     drawerState = drawer,
-                    state = CompanionMenuState(area.value, debugCaptureActive = false, liveHikeSyncEnabled = syncEnabled.value),
+                    state = CompanionMenuState(area.value, debugCaptureActive = false),
                     actions =
                         CompanionMenuActions(
                             onNavigate = {
                                 area.value = it
                                 scope.launch { drawer.close() }
                             },
-                            onLiveHikeSyncChanged = { syncEnabled.value = it },
                             onDebug = {},
                             onQuickGuide = {},
                             onCreditsLegal = {},
@@ -144,29 +135,30 @@ class CompanionNavigationDrawerTest {
             }
         }
         composeRule.onNodeWithText("Open menu").performClick()
-        val sync = composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_live_hike_sync))
-        sync
-            .assertIsOff()
-            .performClick()
-            .assertIsOn()
-            .performClick()
-            .assertIsOff()
-        composeRule.runOnIdle {
-            assertEquals(CompanionHomeArea.MAP, area.value)
-            assertTrue(drawer.isOpen)
-        }
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_live_hike)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_tool_settings_title)).performClick()
         composeRule.onNodeWithText("Back to map menu").assertIsDisplayed()
         composeRule.runOnIdle {
-            assertEquals(CompanionHomeArea.LIVE_HIKE, area.value)
+            assertEquals(CompanionHomeArea.SETTINGS, area.value)
             assertFalse(drawer.isOpen)
         }
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_title)).assertIsDisplayed()
-        sync.assertIsOff()
         composeRule.runOnIdle {
             assertEquals(CompanionHomeArea.MAP, area.value)
             assertTrue(drawer.isOpen)
+        }
+    }
+
+    private fun clickUtilities() {
+        listOf(
+            R.string.home_debug_capture_start_content_description,
+            R.string.common_quick_guide_content_description,
+            R.string.settings_credits_legal_title,
+        ).forEach { resource ->
+            composeRule
+                .onNodeWithContentDescription(composeRule.activity.getString(resource))
+                .assertIsDisplayed()
+                .performClick()
         }
     }
 }

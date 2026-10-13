@@ -1,6 +1,10 @@
 package com.glancemap.glancemapcompanionapp.library
 
+import com.glancemap.glancemapcompanionapp.map.PhoneInstalledBundle
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSource
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleHealth
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleStatus
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibrarySummary
 import com.google.gson.Gson
@@ -25,11 +29,11 @@ class PhoneLibraryItemTest {
                 PhoneLibraryItem.Gpx(route("recording", "ALPINE day", recorded = true)),
                 PhoneLibraryItem.Pois(PhoneMapPoiSource("alpine.poi", isReadable = true)),
             )
-        val recordings = filterPhoneLibraryItems(items, PhoneLibraryFilter.RECORDED, " alpine ")
-        assertEquals(listOf("recording"), recordings.map { (it as PhoneLibraryItem.Gpx).route.id })
-        assertEquals(3, filterPhoneLibraryItems(items, PhoneLibraryFilter.ALL, "ALPINE").size)
-        assertTrue(filterPhoneLibraryItems(items, PhoneLibraryFilter.OFFLINE, "").isEmpty())
-        assertTrue(filterPhoneLibraryItems(items, PhoneLibraryFilter.ROUTES, "missing").isEmpty())
+        val gpx = filterPhoneLibraryItems(items, PhoneLibraryFilter.GPX, " alpine ")
+        assertEquals(listOf("route", "recording"), gpx.map { (it as PhoneLibraryItem.Gpx).route.id })
+        assertEquals(1, filterPhoneLibraryItems(items, PhoneLibraryFilter.POIS, "ALPINE").size)
+        assertTrue(filterPhoneLibraryItems(items, PhoneLibraryFilter.MAPS, "").isEmpty())
+        assertTrue(filterPhoneLibraryItems(items, PhoneLibraryFilter.GPX, "missing").isEmpty())
     }
 
     @Test
@@ -38,7 +42,7 @@ class PhoneLibraryItemTest {
         val imported = route("recording", "My hike", recorded = true).copy(sourceExportId = received.exportId)
         val result = phoneLibraryItems(listOf(imported), listOf(received), emptyList())
         assertEquals(listOf(PhoneLibraryItem.Gpx(imported)), result)
-        assertEquals(PhoneLibraryFilter.RECORDED, result.single().filter)
+        assertEquals(PhoneLibraryFilter.GPX, result.single().filter)
     }
 
     @Test
@@ -77,6 +81,21 @@ class PhoneLibraryItemTest {
         assertTrue(restored.isRecording)
         assertEquals("watch.gpx", restored.sourceExportId)
         assertEquals("Renamed", restored.displayName)
+    }
+
+    @Test
+    fun receivedFilesStayReachableInGpxAndBundlesRemainSeparateFromTheirMaps() {
+        val map = PhoneOfflineMap(File("Alps.map"))
+        val bundle = PhoneInstalledBundle("alps", "Alps", "Alps.map", "Alps.poi", installedAtMillis = 1L)
+        val received = PhoneLibraryItem.ReceivedGpx(File("alps.gpx"), 100L, 1L)
+        val bundled = PhoneLibraryItem.Bundle(bundle, PhoneOfflineBundleHealth(PhoneOfflineBundleStatus.PARTIAL), map)
+        val mapItem = PhoneLibraryItem.OfflineMap(map, 100L)
+        val items = phoneLibraryItems(emptyList(), listOf(received, mapItem, bundled), emptyList())
+
+        assertEquals(listOf(received), filterPhoneLibraryItems(items, PhoneLibraryFilter.GPX, ""))
+        assertEquals(listOf(mapItem), filterPhoneLibraryItems(items, PhoneLibraryFilter.MAPS, " alps "))
+        assertEquals(listOf(bundled), filterPhoneLibraryItems(items, PhoneLibraryFilter.BUNDLES, "ALPS"))
+        assertFalse(bundled.health.isComplete)
     }
 
     private fun route(

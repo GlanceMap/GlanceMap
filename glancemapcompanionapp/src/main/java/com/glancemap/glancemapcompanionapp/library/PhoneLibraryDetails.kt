@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
 import com.glancemap.glancemapcompanionapp.map.MapTool
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
 
@@ -39,20 +40,7 @@ private fun libraryDetailActions(
     onDismiss: () -> Unit,
 ) {
     when (item) {
-        is PhoneLibraryItem.Gpx -> {
-            Button(onClick = {
-                onDismiss()
-                actions.onUseRoute(item.route.id)
-            }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.library_use_for_hike))
-            }
-            OutlinedButton(onClick = {
-                onDismiss()
-                actions.onOpenMapTools(MapTool.GPX)
-            }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.library_open_gpx_tools))
-            }
-        }
+        is PhoneLibraryItem.Gpx -> libraryGpxActions(item, actions, onDismiss)
         is PhoneLibraryItem.ReceivedGpx -> {
             Text(stringResource(R.string.library_received_description))
             val importOptions =
@@ -84,5 +72,37 @@ private fun libraryDetailActions(
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.library_open_map)) }
+        is PhoneLibraryItem.Bundle ->
+            libraryBundleDetails(
+                item = item,
+                onOpenMap = { map ->
+                    onDismiss()
+                    onOpenOfflineMap(map)
+                },
+                onManage = {
+                    onDismiss()
+                    actions.onMapAction(MapLibraryAction.DOWNLOAD_BUNDLE)
+                },
+            )
     }
+}
+
+@Composable
+private fun libraryGpxActions(
+    item: PhoneLibraryItem.Gpx,
+    actions: PhoneLibraryActions,
+    onDismiss: () -> Unit,
+) {
+    Button(onClick = {
+        onDismiss()
+        actions.onUseRoute(item.route.id)
+    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.library_use_for_hike)) }
+    OutlinedButton(onClick = {
+        onDismiss()
+        actions.onSendGpx(item.route.id)
+    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.transfer_title_send_to_watch)) }
+    OutlinedButton(onClick = {
+        onDismiss()
+        actions.onOpenMapTools(MapTool.GPX)
+    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.library_open_gpx_tools)) }
 }

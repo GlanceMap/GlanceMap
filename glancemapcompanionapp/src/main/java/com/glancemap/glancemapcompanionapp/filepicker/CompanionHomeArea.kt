@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SpatialTracking
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.WbCloudy
@@ -28,17 +29,25 @@ internal enum class CompanionHomeArea(
     ROUTE_WEATHER(R.string.menu_route_weather, Icons.Filled.WbCloudy),
     LIVE_TRACKING(R.string.live_tracking_title, Icons.Filled.SpatialTracking),
     MAP_LEGEND(R.string.map_legend_title, Icons.AutoMirrored.Filled.MenuBook),
+    SETTINGS(R.string.map_tool_settings_title, Icons.Filled.Settings),
 }
+
+internal val companionMenuAreas =
+    listOf(
+        CompanionHomeArea.HOME,
+        CompanionHomeArea.MISSION_PLAN,
+        CompanionHomeArea.ROUTE_WEATHER,
+        CompanionHomeArea.LIVE_TRACKING,
+        CompanionHomeArea.SETTINGS,
+    )
 
 internal data class CompanionMenuState(
     val activeArea: CompanionHomeArea,
     val debugCaptureActive: Boolean,
-    val liveHikeSyncEnabled: Boolean,
 )
 
 internal data class CompanionMenuActions(
     val onNavigate: (CompanionHomeArea) -> Unit,
-    val onLiveHikeSyncChanged: (Boolean) -> Unit,
     val onDebug: () -> Unit,
     val onQuickGuide: () -> Unit,
     val onCreditsLegal: () -> Unit,

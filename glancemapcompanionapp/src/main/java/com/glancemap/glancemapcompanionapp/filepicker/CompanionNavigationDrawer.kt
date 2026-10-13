@@ -24,14 +24,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -53,15 +51,26 @@ internal fun companionNavigationDrawer(
             gesturesEnabled = drawerState.isOpen,
             drawerContent = {
                 ModalDrawerSheet(modifier = Modifier.width(menuWidth)) {
-                    Text(
-                        text = stringResource(R.string.menu_title),
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.menu_title),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        IconButton(onClick = actions.onQuickGuide) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = stringResource(R.string.common_quick_guide_content_description),
+                            )
+                        }
+                    }
                     Column(
                         modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                     ) {
-                        CompanionHomeArea.entries.forEach { area ->
+                        companionMenuAreas.forEach { area ->
                             companionMenuItem(area, state, actions)
                         }
                     }
@@ -86,19 +95,6 @@ private fun companionMenuItem(
         label = { Text(stringResource(area.titleResource), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         icon = { Icon(area.icon, contentDescription = null, modifier = Modifier.size(20.dp)) },
         selected = state.activeArea == area,
-        badge =
-            if (area == CompanionHomeArea.LIVE_HIKE) {
-                {
-                    val label = stringResource(R.string.menu_live_hike_sync)
-                    Switch(
-                        checked = state.liveHikeSyncEnabled,
-                        onCheckedChange = actions.onLiveHikeSyncChanged,
-                        modifier = Modifier.semantics { contentDescription = label },
-                    )
-                }
-            } else {
-                null
-            },
         onClick = { actions.onNavigate(area) },
         modifier = Modifier.padding(horizontal = 4.dp),
     )
@@ -130,12 +126,6 @@ private fun companionMenuFooter(
                     } else {
                         MaterialTheme.colorScheme.primary
                     },
-            )
-        }
-        IconButton(onClick = actions.onQuickGuide, modifier = Modifier.size(48.dp)) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                contentDescription = stringResource(R.string.common_quick_guide_content_description),
             )
         }
         IconButton(onClick = actions.onCreditsLegal, modifier = Modifier.size(48.dp)) {
