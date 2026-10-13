@@ -668,10 +668,12 @@ private fun LiveTrackingDiagnosticResult.toDisplayText(httpCode: Int?): String =
     when (this) {
         LiveTrackingDiagnosticResult.SUCCESS -> httpCode?.let { "HTTP $it" } ?: "Success"
         LiveTrackingDiagnosticResult.HTTP_ERROR -> httpCode?.let { "HTTP $it" } ?: "HTTP error"
-        LiveTrackingDiagnosticResult.SERVER_REJECTED -> "Server rejected"
+        LiveTrackingDiagnosticResult.SERVER_REJECTED ->
+            httpCode?.let { "Server rejected (HTTP $it)" } ?: "Server rejected"
         LiveTrackingDiagnosticResult.SMS_SUPPORTED -> "Supported"
         LiveTrackingDiagnosticResult.SMS_UNSUPPORTED -> "Unsupported"
-        LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE -> "Unexpected response"
+        LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE ->
+            httpCode?.let { "Unexpected response (HTTP $it)" } ?: "Unexpected response"
         LiveTrackingDiagnosticResult.TIMEOUT -> "Timeout"
         LiveTrackingDiagnosticResult.OFFLINE -> "Offline"
         LiveTrackingDiagnosticResult.NETWORK_ERROR -> "Network error"

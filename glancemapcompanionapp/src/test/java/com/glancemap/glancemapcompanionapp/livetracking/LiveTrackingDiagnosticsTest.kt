@@ -59,6 +59,25 @@ class LiveTrackingDiagnosticsTest {
     }
 
     @Test
+    fun serverAndResponseErrorsIncludeHttpStatusWithoutResponseBodies() {
+        listOf(
+            LiveTrackingDiagnosticResult.SERVER_REJECTED to "Server rejected (HTTP 200)",
+            LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE to "Unexpected response (HTTP 200)",
+        ).forEach { (result, expected) ->
+            val event =
+                LiveTrackingDiagnosticEvent(
+                    timestampEpochMs = 0L,
+                    request =
+                        LiveTrackingDiagnosticRequest(operation = LiveTrackingDiagnosticOperation.LOCATION_UPDATE),
+                    result = result,
+                    httpCode = 200,
+                    durationMs = 10L,
+                )
+            assertTrue(event.toDisplayText().contains(expected))
+        }
+    }
+
+    @Test
     fun keepsOnlyTheMostRecentOneHundredEvents() {
         repeat(105) { index ->
             LiveTrackingDiagnostics.record(

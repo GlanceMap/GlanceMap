@@ -78,11 +78,7 @@ internal data class ArkluzLocationUpdate(
             isCatchUp = false,
         )
 
-    fun asCatchUpPoint(): ArkluzLocationUpdate =
-        asStoredGpsPoint().copy(
-            gsmSignalPercent = 0,
-            isCatchUp = true,
-        )
+    fun asCatchUpPoint(): ArkluzLocationUpdate = asStoredGpsPoint().copy(isCatchUp = true)
 }
 
 internal data class ArkluzRecordedGpxDownload(
@@ -783,8 +779,6 @@ internal fun Throwable.isRetryableArkluzFailure(): Boolean =
     this is IOException &&
         (this !is ArkluzHttpException || code >= 500 || code in setOf(401, 403, 408, 429))
 
-internal class ArkluzUnconfirmedResponseException : IOException("Arkluz did not clearly acknowledge the request")
-
 internal class ArkluzRetryDeferredException(
     val remainingMillis: Long,
 ) : IOException("Waiting before retrying Arkluz")
@@ -893,19 +887,9 @@ private fun String.toArkluzServerResult(): ArkluzServerResult {
     )
 }
 
-internal fun String.toArkluzTrackingResult(): ArkluzServerResult {
-    // Preserve legacy empty/OK acknowledgements until Arkluz confirms a stricter response contract.
-    if (isNotBlank() &&
-        lineSequence()
-            .first()
-            .trim()
-            .equals("OK", ignoreCase = true)
-            .not()
-    ) {
-        throw ArkluzUnconfirmedResponseException()
-    }
-    return toArkluzServerResult()
-}
+// Legacy tracking GET accepts successful HTTP responses after execute checks known server errors.
+// Do not impose a new response-body contract before Arkluz supplies one.
+internal fun String.toArkluzTrackingResult(): ArkluzServerResult = toArkluzServerResult()
 
 internal fun String.toArkluzUploadResult(): ArkluzServerResult {
     val response = trim()

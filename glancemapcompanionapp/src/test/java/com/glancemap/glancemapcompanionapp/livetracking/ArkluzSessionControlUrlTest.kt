@@ -41,11 +41,11 @@ class ArkluzSessionControlUrlTest {
     }
 
     @Test
-    fun catchUpPointAlwaysUsesZeroCellularSignalAndKeepsGpsTime() {
+    fun catchUpPointKeepsMeasuredCellularSignalAndGpsTime() {
         val original = update(gsmSignalPercent = 100, altitudeMeters = 1234.5, speedMetersPerSecond = 7.5f)
         val url = buildArkluzLocationUrl(original.asCatchUpPoint())
 
-        assertEquals("0", url.queryParameter("gsm_signal"))
+        assertEquals("100", url.queryParameter("gsm_signal"))
         assertEquals(original.latitude.toString(), url.queryParameter("lat"))
         assertEquals(original.longitude.toString(), url.queryParameter("lon"))
         assertEquals(original.accuracyMeters.toString(), url.queryParameter("acc"))

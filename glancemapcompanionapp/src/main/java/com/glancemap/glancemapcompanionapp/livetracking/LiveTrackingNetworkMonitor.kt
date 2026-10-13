@@ -69,6 +69,12 @@ internal class LiveTrackingNetworkStateTracker<N> {
         mutableState.value = LiveTrackingNetworkState.UNKNOWN
     }
 
+    @Synchronized
+    fun isDisconnected(): Boolean {
+        val networkMissing = currentNetwork == null
+        return networkMissing && !stopped && mutableState.value == LiveTrackingNetworkState.UNAVAILABLE
+    }
+
     private fun availability(validated: Boolean): LiveTrackingNetworkState =
         if (validated) {
             LiveTrackingNetworkState.VALIDATED
@@ -106,6 +112,8 @@ internal class LiveTrackingNetworkMonitor(
 
             override fun onLost(network: Network) = tracker.lost(network)
         }
+
+    fun isDisconnected(): Boolean = tracker.isDisconnected()
 
     @Synchronized
     fun start() {

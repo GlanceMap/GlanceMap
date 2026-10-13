@@ -74,9 +74,40 @@ class LiveTrackingDeliveryRecoveryTest {
                 ),
             )
             assertEquals(accepted.epochMilliseconds, transmitted?.epochMilliseconds)
-            assertEquals(0, transmitted?.gsmSignalPercent)
+            assertEquals(accepted.gsmSignalPercent, transmitted?.gsmSignalPercent)
             assertTrue(transmitted?.isCatchUp == true)
             assertTrue(recreatedQueue.load().isEmpty())
+        }
+
+    @Test
+    fun laterReplayFailureKeepsSignalAtTheHistoricalPointForTheNextRecovery() =
+        runTest {
+            val storage = Storage()
+            val original = point(1L).copy(gsmSignalPercent = 80)
+            storage.queue().enqueue(original)
+            val failure =
+                runCatching {
+                    replayOneLiveTrackingPosition(
+                        storage.queue().load(),
+                        { true },
+                        { throw java.io.IOException("simulated replay outage at another location") },
+                        { storage.queue().acknowledge(it) },
+                    )
+                }
+            assertTrue(failure.exceptionOrNull() is java.io.IOException)
+            assertEquals(listOf(original), storage.queue().load())
+            var transmitted: ArkluzLocationUpdate? = null
+            assertTrue(
+                replayOneLiveTrackingPosition(
+                    storage.queue().load(),
+                    { true },
+                    { transmitted = it.asCatchUpPoint() },
+                    { storage.queue().acknowledge(it) },
+                ),
+            )
+            assertEquals(original.gsmSignalPercent, transmitted?.gsmSignalPercent)
+            assertEquals(original.epochMilliseconds, transmitted?.epochMilliseconds)
+            assertTrue(storage.queue().load().isEmpty())
         }
 
     @Test
@@ -115,7 +146,6 @@ class LiveTrackingDeliveryRecoveryTest {
                     ArkluzHttpException(401, "test authentication"),
                     ArkluzHttpException(408, "test timeout"),
                     ArkluzHttpException(429, "test rate limit"),
-                    ArkluzUnconfirmedResponseException(),
                     CancellationException("test cancellation"),
                 )
             for (failure in failures) {
@@ -287,12 +317,65 @@ class LiveTrackingDeliveryRecoveryTest {
     }
 
     @Test
-    fun legacyAcknowledgementsAreAcceptedButAnUnknownSuccessfulBodyIsNotAnAcknowledgement() {
+    fun legacySuccessfulTrackingResponsesDoNotRequireAnExactOkBody() {
         assertEquals("Server accepted request", "OK\n".toArkluzTrackingResult().message)
         assertEquals("session-1", "OK\nsession-1".toArkluzTrackingResult().dateId)
         assertEquals("Server accepted request", "".toArkluzTrackingResult().message)
-        val error = runCatching { "Maintenance in progress".toArkluzTrackingResult() }.exceptionOrNull()
-        assertTrue(error is ArkluzUnconfirmedResponseException)
+        assertEquals("Server accepted request", "OK session-1".toArkluzTrackingResult().message)
+        assertEquals("Tracking started", "Tracking started".toArkluzTrackingResult().message)
+    }
+
+    @Test
+    fun failedTransmissionMarksOnlyItsPhysicalPointAndSurvivesProcessRecreation() {
+        val storage = Storage()
+        val queue = storage.queue()
+        val attempted = point(1L).copy(pointId = "attempted", gsmSignalPercent = 80)
+        val neverAttempted = point(2L).copy(pointId = "never-attempted", gsmSignalPercent = 20)
+        queue.enqueue(attempted)
+        queue.enqueue(neverAttempted)
+        queue.markTransmissionFailed(attempted.copy(start = true))
+        queue.markTransmissionFailed(point(3L))
+        val restored = storage.queue().load()
+        assertEquals(listOf(attempted.copy(gsmSignalPercent = 0), neverAttempted), restored)
+        assertEquals(listOf(0, 20), restored.map { it.asCatchUpPoint().gsmSignalPercent })
+        assertEquals(
+            listOf(attempted.epochMilliseconds, neverAttempted.epochMilliseconds),
+            restored.map { it.epochMilliseconds },
+        )
+        queue.acknowledge(attempted)
+        queue.markTransmissionFailed(attempted)
+        assertEquals(listOf(neverAttempted), queue.load())
+    }
+
+    @Test
+    fun failedAttemptCannotMarkARefinedReplacementOrDropMalformedRecords() {
+        val storage = Storage()
+        val attempted = point(1L).copy(pointId = "cycle", gsmSignalPercent = 80)
+        val malformed = JsonObject().apply { addProperty("unrecognized", "preserve") }
+        storage.raw = JsonArray().apply { add(malformed) }.toString()
+        val queue = storage.queue()
+        queue.enqueue(attempted)
+        val replacement = point(2L).copy(pointId = attempted.pointId, gsmSignalPercent = 60)
+        queue.enqueue(replacement)
+        val original = storage.raw
+        queue.markTransmissionFailed(attempted)
+        assertEquals(original, storage.raw)
+        assertEquals(listOf(replacement), queue.load())
+    }
+
+    @Test
+    fun onlyTransportFailuresAreEvidenceOfLostTransmission() {
+        assertTrue(java.io.IOException("test connection failure").isArkluzTransportFailure())
+        assertTrue(java.net.SocketTimeoutException("test timeout").isArkluzTransportFailure())
+        listOf(
+            ArkluzHttpException(401, "test authentication"),
+            ArkluzHttpException(503, "test server failure"),
+            LiveTrackingSendDeferredException(),
+            ArkluzRetryDeferredException(1000L),
+            LiveTrackingOfflineException(),
+            LiveTrackingQueueException("test storage failure"),
+            CancellationException("test cancellation"),
+        ).forEach { assertFalse(it.isArkluzTransportFailure()) }
     }
 
     @Test

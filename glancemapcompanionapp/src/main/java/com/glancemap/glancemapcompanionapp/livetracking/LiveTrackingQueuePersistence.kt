@@ -45,6 +45,19 @@ internal class LiveTrackingQueuePersistence(
         return remaining.size()
     }
 
+    fun markTransmissionFailed(update: ArkluzLocationUpdate) {
+        val records = readArray()
+        var changed = false
+        records.forEach { record ->
+            val stored = decode(record)
+            if (stored?.isSameGpsPoint(update) == true && stored.gsmSignalPercent != 0) {
+                record.asJsonObject.addProperty("gsmSignalPercent", 0)
+                changed = true
+            }
+        }
+        if (changed) save(records, "transmission_failed", update)
+    }
+
     fun removeFirst() {
         val records = readArray()
         val firstValid = records.indexOfFirst { decode(it) != null }

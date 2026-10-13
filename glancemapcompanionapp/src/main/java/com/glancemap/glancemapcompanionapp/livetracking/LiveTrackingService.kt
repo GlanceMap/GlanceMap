@@ -1338,6 +1338,7 @@ class LiveTrackingService : Service() {
                         stop = false,
                         locationDiagnostics = selected.decision.toDiagnostics(),
                     ).copy(pointId = pointId)
+                    .withRetainedSignal()
             val retainedUnderOwner =
                 orchestration.withGeneration(generation) {
                     if (canContinueLiveTrackingSend(isPaused, isStopping, false, pauseRequested)) {
@@ -1407,12 +1408,14 @@ class LiveTrackingService : Service() {
             )
             throw error
         } catch (error: Exception) {
+            // A failed replay elsewhere must not alter signal measured at the historical point.
+            attemptedUpdate?.let { markFailedGpsTransmission(it, error) }
             attemptedUpdate?.takeIf { it.start && !sentStart }?.let { startup ->
                 orchestration.withGeneration(generation) {
                     if (canContinueLiveTrackingSend(isPaused, isStopping, false, pauseRequested) &&
                         LiveTrackingControlQueue.load(this).none { it.start }
                     ) {
-                        LiveTrackingControlQueue.enqueue(this, startup)
+                        LiveTrackingControlQueue.enqueue(this, startup.withRetainedSignal())
                     }
                 }
             }
@@ -1458,7 +1461,11 @@ class LiveTrackingService : Service() {
                     start = false,
                     stop = false,
                     locationDiagnostics = selected.decision.toDiagnostics(),
-                ).copy(pointId = pointId)
+                ).copy(
+                    pointId = pointId,
+                    gsmSignalPercent =
+                        if (networkMonitor.isDisconnected()) 0 else cellularSignalMonitor.currentPercent(),
+                )
         val previous = LiveTrackingPositionQueue.load(this).firstOrNull { it.pointId == pointId }
         if (previous?.isSameGpsPoint(update) != true) {
             val size = LiveTrackingPositionQueue.enqueue(this, update)
@@ -1475,15 +1482,6 @@ class LiveTrackingService : Service() {
                 ),
             )
         }
-    }
-
-    private fun ensurePendingSessionControls(position: ArkluzLocationUpdate) {
-        val controls = LiveTrackingControlQueue.load(this)
-        if (!sentStart && controls.none { it.start }) {
-            LiveTrackingControlQueue.enqueue(this, position.copy(start = true))
-        }
-        ensurePendingPause(position)
-        ensurePendingResume(position)
     }
 
     private fun ensurePendingPause(position: ArkluzLocationUpdate) {
@@ -1562,6 +1560,17 @@ class LiveTrackingService : Service() {
                 retryNotBeforeElapsedMillis = now + delayMillis.coerceAtMost(Long.MAX_VALUE - now)
             }
             throw error
+        }
+    }
+
+    private fun markFailedGpsTransmission(
+        update: ArkluzLocationUpdate,
+        error: Exception,
+    ) {
+        if (error.isArkluzTransportFailure() ||
+            (error is LiveTrackingOfflineException && networkMonitor.isDisconnected())
+        ) {
+            LiveTrackingPositionQueue.markTransmissionFailed(this, update)
         }
     }
 
@@ -1691,7 +1700,7 @@ class LiveTrackingService : Service() {
                 send = { stored ->
                     val update = stored.asCatchUpPoint().withCurrentAlertSettings()
                     try {
-                        sendTrackingUpdate(update)
+                        sendTrackingUpdate(update, canSend = { !isStopping })
                         LiveTrackingDiagnostics.recordLiveTrackingTransmission(
                             true,
                             update.epochMilliseconds,
@@ -1963,7 +1972,7 @@ class LiveTrackingService : Service() {
             }
         }
         var sentCount = 0
-        while (true) {
+        while (!isStopping) {
             val update = LiveTrackingControlQueue.load(this).firstOrNull() ?: break
             if (update.start && sentStart) {
                 LiveTrackingPositionQueue.acknowledge(this, update)
@@ -1978,11 +1987,11 @@ class LiveTrackingService : Service() {
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun sendPendingSessionControlLocked(update: ArkluzLocationUpdate) {
-        val updateToSend = update.withCurrentAlertSettings()
+        val updateToSend = update.withRetainedSignal().withCurrentAlertSettings()
         val queueSizeBefore = diagnosticPositionQueueSize()
         val result =
             try {
-                sendTrackingUpdate(updateToSend)
+                sendTrackingUpdate(updateToSend, canSend = { !isStopping })
             } catch (error: Throwable) {
                 LiveTrackingDiagnostics.recordLiveTrackingTransmission(
                     isCatchUp = false,
@@ -2013,6 +2022,13 @@ class LiveTrackingService : Service() {
         }
         persistActiveSession()
         LiveTrackingControlQueue.removeFirst(this)
+    }
+
+    private fun ArkluzLocationUpdate.withRetainedSignal(): ArkluzLocationUpdate {
+        val retained =
+            LiveTrackingPositionQueue.load(this@LiveTrackingService).firstOrNull { it.isSameGpsPoint(this) }
+                ?: return this
+        return copy(gsmSignalPercent = retained.gsmSignalPercent)
     }
 
     private fun ArkluzLocationUpdate.withCurrentAlertSettings(): ArkluzLocationUpdate {
@@ -2123,7 +2139,9 @@ class LiveTrackingService : Service() {
             awaitNetworkForRetry()
             val result = runCatching { sendStopConfirmation(location) }
             if (result.isSuccess) {
-                finishStopped("Stopped", clearPlannedDraft = true)
+                val pending = diagnosticPositionQueueSize() ?: 0
+                val status = if (pending > 0) "Stopped; $pending positions retained for retry" else "Stopped"
+                finishStopped(status, clearPlannedDraft = true)
                 return
             }
             val error = result.exceptionOrNull()!!
@@ -2151,27 +2169,8 @@ class LiveTrackingService : Service() {
     @Suppress("TooGenericExceptionCaught")
     private suspend fun sendStopConfirmation(location: Location) {
         scheduledCycleMutex.withLock { /* Wait for bounded acquisition cleanup and release of retained ownership. */ }
-        while (true) {
-            val drained =
-                sendMutex.withLock {
-                    lastStoredPosition?.let { ensurePendingSessionControls(it.asStoredGpsPoint()) }
-                    recoverLiveTrackingPendingUploads(
-                        canAttemptUpload = { networkMonitor.state.value.canAttemptUpload() },
-                        flushControls = { flushPendingSessionControlsLocked() },
-                        replayPositions = { replayStoredGpsPointsLocked() },
-                    )
-                    LiveTrackingPositionQueue.load(this).isEmpty()
-                }
-            if (drained) break
-            yield()
-        }
         sendMutex.withLock {
             val activeSettings = settings ?: return@withLock
-            recoverLiveTrackingPendingUploads(
-                canAttemptUpload = { networkMonitor.state.value.canAttemptUpload() },
-                flushControls = { flushPendingSessionControlsLocked() },
-                replayPositions = {},
-            )
             val update =
                 arkluzClient.buildLocationUpdate(
                     settings = activeSettings,
@@ -2179,31 +2178,37 @@ class LiveTrackingService : Service() {
                     start = false,
                     stop = true,
                 )
-            val queueSizeBefore = diagnosticPositionQueueSize()
-            try {
-                val result = sendTrackingUpdate(update)
-                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                    isCatchUp = false,
-                    fixTimestampEpochMillis = update.epochMilliseconds,
-                    fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
-                    gsmSignalPercent = update.gsmSignalPercent,
-                    queueSizeBefore = queueSizeBefore,
-                    queueSizeAfter = diagnosticPositionQueueSize(),
-                    outcome = "success",
-                )
-                result
-            } catch (error: Throwable) {
-                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                    isCatchUp = false,
-                    fixTimestampEpochMillis = update.epochMilliseconds,
-                    fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
-                    gsmSignalPercent = update.gsmSignalPercent,
-                    queueSizeBefore = queueSizeBefore,
-                    queueSizeAfter = diagnosticPositionQueueSize(),
-                    outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
-                )
-                throw error
-            }
+            recoverLiveTrackingPendingUploads(
+                canAttemptUpload = { networkMonitor.state.value.canAttemptUpload() },
+                flushControls = { flushPendingSessionControlsLocked() },
+                replayPositions = { replayStoredGpsPointsLocked() },
+                stopInstead = {
+                    val queueSizeBefore = diagnosticPositionQueueSize()
+                    try {
+                        sendTrackingUpdate(update)
+                        LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                            isCatchUp = false,
+                            fixTimestampEpochMillis = update.epochMilliseconds,
+                            fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
+                            gsmSignalPercent = update.gsmSignalPercent,
+                            queueSizeBefore = queueSizeBefore,
+                            queueSizeAfter = diagnosticPositionQueueSize(),
+                            outcome = "success",
+                        )
+                    } catch (error: Throwable) {
+                        LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                            isCatchUp = false,
+                            fixTimestampEpochMillis = update.epochMilliseconds,
+                            fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
+                            gsmSignalPercent = update.gsmSignalPercent,
+                            queueSizeBefore = queueSizeBefore,
+                            queueSizeAfter = diagnosticPositionQueueSize(),
+                            outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
+                        )
+                        throw error
+                    }
+                },
+            )
         }
     }
 

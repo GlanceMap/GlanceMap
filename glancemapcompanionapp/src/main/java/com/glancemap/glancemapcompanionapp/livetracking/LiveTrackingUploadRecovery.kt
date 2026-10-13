@@ -24,8 +24,14 @@ internal suspend fun recoverLiveTrackingPendingUploads(
     canAttemptUpload: () -> Boolean,
     flushControls: suspend () -> Unit,
     replayPositions: suspend () -> Unit,
+    stopInstead: (suspend () -> Unit)? = null,
 ) {
     if (!canAttemptUpload()) throw LiveTrackingOfflineException()
+    // STOP supersedes pending session controls; historical points stay stored for a later recovery.
+    if (stopInstead != null) {
+        stopInstead()
+        return
+    }
     flushControls()
     if (!canAttemptUpload()) throw LiveTrackingOfflineException()
     replayPositions()
@@ -87,10 +93,17 @@ internal fun <T> selectLiveTrackingRetryCandidate(
         nowEpochMilliseconds,
     )
 
+internal fun Throwable.isArkluzTransportFailure(): Boolean =
+    this is java.io.IOException &&
+        this !is ArkluzHttpException &&
+        this !is LiveTrackingSendDeferredException &&
+        this !is ArkluzRetryDeferredException &&
+        this !is LiveTrackingOfflineException &&
+        this !is LiveTrackingQueueException
+
 internal fun Throwable.toLiveTrackingFailureCode(): String =
     when (this) {
         is ArkluzHttpException -> "http_$code"
-        is ArkluzUnconfirmedResponseException -> "unconfirmed_response"
         is ArkluzRetryDeferredException -> "retry_deferred"
         is LiveTrackingOfflineException -> "offline"
         is LiveTrackingQueueException -> "storage"

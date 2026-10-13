@@ -153,17 +153,89 @@ class LiveTrackingNetworkRecoveryTest {
         }
 
     @Test
-    fun stopConfirmationFollowsSuccessfulPendingUploads() =
+    fun stopBypassesFailedStartupAndRetainsEveryHistoricalPosition() =
         runTest {
-            val order = mutableListOf<String>()
-            recoverLiveTrackingPendingUploads(
-                canAttemptUpload = { true },
-                flushControls = { order += "start" },
-                replayPositions = { order += "catch_up" },
-            )
-            order += "stop"
-            assertEquals(listOf("start", "catch_up", "stop"), order)
+            val controls = listOf(point(1L).copy(start = true))
+            val positions = listOf(point(1L), point(2L))
+            val sent = mutableListOf<ArkluzLocationUpdate>()
+            var recoveredControls = false
+            var replayedPositions = false
+            var stopConfirmed = false
+            repeat(2) {
+                if (!stopConfirmed) {
+                    recoverLiveTrackingPendingUploads(
+                        canAttemptUpload = { true },
+                        flushControls = {
+                            recoveredControls = true
+                            throw IOException("simulated unacknowledged START")
+                        },
+                        replayPositions = { replayedPositions = true },
+                        stopInstead = {
+                            sent += positions.last().copy(stop = true)
+                            stopConfirmed = true
+                        },
+                    )
+                }
+            }
+            assertFalse(recoveredControls)
+            assertFalse(replayedPositions)
+            assertTrue(stopConfirmed)
+            assertEquals(1, sent.size)
+            assertTrue(sent.single().stop)
+            assertFalse(sent.single().start)
+            assertEquals(1, controls.size)
+            assertEquals(2, positions.size)
         }
+
+    @Test
+    fun offlineStopWaitsWithoutStartingOrReplayingAndRetriesOnlyStop() =
+        runTest {
+            var online = false
+            var attempt = 0
+            val controls = listOf(point(1L).copy(start = true))
+            val positions = listOf(point(1L), point(2L))
+            val actions = mutableListOf<String>()
+
+            suspend fun recoverStop() =
+                recoverLiveTrackingPendingUploads(
+                    canAttemptUpload = { online },
+                    flushControls = { actions += "start" },
+                    replayPositions = { actions += "catch_up" },
+                    stopInstead = {
+                        actions += "stop"
+                        if (attempt++ == 0) throw IOException("simulated lost STOP acknowledgement")
+                    },
+                )
+            assertTrue(runCatching { recoverStop() }.exceptionOrNull() is LiveTrackingOfflineException)
+            assertTrue(actions.isEmpty())
+            online = true
+            assertTrue(runCatching { recoverStop() }.exceptionOrNull() is IOException)
+            recoverStop()
+            assertEquals(listOf("stop", "stop"), actions)
+            assertEquals(1, controls.size)
+            assertEquals(2, positions.size)
+        }
+
+    @Test
+    fun signalLossRequiresDisconnectionAndNotJustUnvalidatedOrUnknownConnectivity() {
+        val tracker = LiveTrackingNetworkStateTracker<String>()
+        assertFalse(tracker.isDisconnected())
+        tracker.initialize(null, validated = false)
+        assertTrue(tracker.isDisconnected())
+        tracker.available("cellular")
+        assertFalse(tracker.state.value.canAttemptUpload())
+        assertFalse(tracker.isDisconnected())
+        tracker.capabilitiesChanged("cellular", validated = true)
+        assertFalse(tracker.isDisconnected())
+        tracker.capabilitiesChanged("cellular", validated = false)
+        assertFalse(tracker.isDisconnected())
+        tracker.lost("cellular")
+        assertTrue(tracker.isDisconnected())
+        tracker.monitoringUnavailable()
+        assertFalse(tracker.isDisconnected())
+        tracker.stop()
+        assertFalse(tracker.isDisconnected())
+    }
 
     @Test
     fun acknowledgementSurvivesAlertSettingChangesButKeepsOtherFixesAndSessions() {

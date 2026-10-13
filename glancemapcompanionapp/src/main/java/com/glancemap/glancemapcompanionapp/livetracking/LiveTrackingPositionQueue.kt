@@ -18,6 +18,11 @@ internal object LiveTrackingPositionQueue {
         update: ArkluzLocationUpdate,
     ): Int = synchronized(lock) { store(context).acknowledge(update) }
 
+    fun markTransmissionFailed(
+        context: Context,
+        update: ArkluzLocationUpdate,
+    ) = synchronized(lock) { store(context).markTransmissionFailed(update) }
+
     private fun store(context: Context): LiveTrackingQueuePersistence =
         LiveTrackingQueuePersistence.fromPreferences(
             context,
