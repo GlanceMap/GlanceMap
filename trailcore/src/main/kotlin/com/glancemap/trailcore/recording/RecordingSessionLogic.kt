@@ -21,6 +21,16 @@ data class RecordingSessionLifecycleState(
     val isActive: Boolean get() = phase != RecordingSessionPhase.IDLE
     val acceptsFixes: Boolean get() = phase == RecordingSessionPhase.RECORDING
 
+    fun isPausedForAutoResumeMonitoring(
+        autoPauseEnabled: Boolean,
+    ): Boolean =
+        shouldMonitorRecordingAutoResume(
+            active = isActive,
+            paused = phase == RecordingSessionPhase.PAUSED,
+            autoPaused = autoPaused,
+            autoPauseEnabled = autoPauseEnabled,
+        )
+
     fun elapsedMillis(nowMillis: Long): Long {
         val start = startedAtMillis ?: return 0L
         val pausedMillis =
@@ -71,10 +81,13 @@ class RecordingSessionLifecycle(
         return state
     }
 
-    fun resume(atMillis: Long): RecordingSessionLifecycleState {
+    fun resume(
+        atMillis: Long,
+        automatic: Boolean = false,
+    ): RecordingSessionLifecycleState {
         if (state.phase != RecordingSessionPhase.PAUSED) return state
         val reason =
-            if (state.autoPaused) {
+            if (automatic && state.autoPaused) {
                 RecordingSegmentStartReason.AUTO_PAUSE
             } else {
                 RecordingSegmentStartReason.MANUAL_PAUSE

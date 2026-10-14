@@ -25,7 +25,7 @@ class RecordingSessionLogicTest {
         val session = RecordingSessionLifecycle()
         val oldGeneration = session.start(startedAtMillis = 1L).generation
         session.pause(atMillis = 2L, automatic = true)
-        session.resume(atMillis = 3L)
+        session.resume(atMillis = 3L, automatic = true)
         assertEquals(RecordingSegmentStartReason.AUTO_PAUSE, session.state.pendingSegmentStartReason)
         session.beginSave()
         session.discard()
@@ -33,6 +33,44 @@ class RecordingSessionLogicTest {
         val current = session.state
         assertEquals(current, session.saveSucceeded(oldGeneration))
         assertTrue(session.state.acceptsFixes)
+    }
+
+    @Test
+    fun manualResumeFromAutomaticPauseKeepsTheWatchManualSegmentReason() {
+        val session = RecordingSessionLifecycle()
+        session.start(1_000L)
+        session.pause(10_000L, automatic = true)
+
+        val resumed = session.resume(20_000L)
+
+        assertEquals(RecordingSegmentStartReason.MANUAL_PAUSE, resumed.pendingSegmentStartReason)
+        assertEquals(10_000L, resumed.accumulatedPausedMillis)
+    }
+
+    @Test
+    fun manualPauseCanMonitorMovementAndAutomaticResumeRetainsItsManualOrigin() {
+        val session = RecordingSessionLifecycle()
+        session.start(1_000L)
+        val paused = session.pause(10_000L)
+
+        assertTrue(paused.isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
+        assertFalse(paused.isPausedForAutoResumeMonitoring(autoPauseEnabled = false))
+        val resumed = session.resume(20_000L, automatic = true)
+        assertEquals(RecordingSegmentStartReason.MANUAL_PAUSE, resumed.pendingSegmentStartReason)
+        assertFalse(resumed.isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
+    }
+
+    @Test
+    fun pausedMonitoringSurvivesRecoveryAndFailedSaveButNotSuccessfulSave() {
+        val session = RecordingSessionLifecycle()
+        val recovered = session.recover(1_000L, 10_000L, 0L, paused = true, autoPaused = true)
+        assertTrue(recovered.isPausedForAutoResumeMonitoring(autoPauseEnabled = false))
+        val generation = recovered.generation
+        val saving = session.beginSave()
+        assertFalse(saving.isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
+        assertTrue(session.saveFailed(generation).isPausedForAutoResumeMonitoring(autoPauseEnabled = false))
+        session.beginSave()
+        assertFalse(session.saveSucceeded(generation).isPausedForAutoResumeMonitoring(autoPauseEnabled = true))
     }
 
     @Test

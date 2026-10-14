@@ -23,8 +23,11 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.computeTurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.isGuidanceStartReached
-import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.projectLocationToRoute
+import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.toTrailSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.updateGuidanceOffRouteConfirmation
+import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.guidance.TrailGuidanceStartDecision
+import com.glancemap.trailcore.guidance.evaluateTrailGuidanceStartDecision
 import org.mapsforge.core.model.LatLong
 
 internal data class NavigateGuidanceRuntime(
@@ -301,73 +304,34 @@ internal fun rememberNavigateGuidanceRuntime(
     ) {
         val currentSession = activeSession
         val location = guidanceLocation
-        val rawGuidanceLocation =
-            rawCurrentLocation?.let { rawLocation ->
-                LatLong(rawLocation.latitude, rawLocation.longitude)
-            }
         if (currentSession == null || location == null || currentSession.startReached) {
             pendingStartDecision = null
             dismissedStartDecisionKey = null
             startHereStableSampleCount = 0
             return@LaunchedEffect
         }
-
-        val points = currentSession.trackPoints.map { it.latLong }
-        val start = points.firstOrNull()
-        val end = points.lastOrNull()
-        val projection =
-            projectLocationToRoute(
-                points = points,
-                cumulativeDistancesMeters = currentSession.cumulativeDistancesMeters,
-                location = location,
+        val decisionResult =
+            evaluateTrailGuidanceStartDecision(
+                session = currentSession.toTrailSession(),
+                location = GeoPoint(location.latitude, location.longitude),
+                locationAccuracyMeters = rawCurrentLocation?.accuracy,
+                hasFreshLocationFix = rawCurrentLocation != null,
+                previousStableMidRouteSampleCount = startHereStableSampleCount,
+                routeStartBehavior = routeStartBehavior,
+                reverseSuggestionMode = reverseSuggestionMode,
+                tuning = tuning,
             )
-        if (start == null || end == null || projection == null) {
+        startHereStableSampleCount = decisionResult.stableMidRouteSampleCount
+        if (decisionResult.markNearestPointStartReached) {
+            gpxViewModel.markTurnByTurnStartReached()
             pendingStartDecision = null
-            startHereStableSampleCount = 0
             return@LaunchedEffect
         }
-        RecordingScreenOffDiagnostics.recordTbtProjection(points.lastIndex)
-
-        val distanceToStart = haversineMeters(location, start)
-        val distanceToEnd = haversineMeters(location, end)
-        val closeToRoute = projection.distanceToRouteMeters <= offRouteThresholdMeters.toDouble()
-        val midRouteCandidate =
-            closeToRoute &&
-                distanceToStart > tuning.startReachedDistanceMeters &&
-                projection.distanceFromStartMeters > START_HERE_MIN_PROGRESS_METERS &&
-                currentSession.totalDistanceMeters - projection.distanceFromStartMeters > START_HERE_MIN_REMAINING_METERS
-        val locationAccurateEnough =
-            rawCurrentLocation?.accuracy?.let { accuracy ->
-                accuracy <= START_HERE_MAX_ACCURACY_METERS
-            } ?: false
-        val hasFreshGpsLocation = rawGuidanceLocation != null
-        if (midRouteCandidate && locationAccurateEnough) {
-            startHereStableSampleCount += 1
-        } else {
-            startHereStableSampleCount = 0
-        }
-        val stableMidRouteCandidate =
-            midRouteCandidate &&
-                hasFreshGpsLocation &&
-                startHereStableSampleCount >= START_HERE_STABLE_SAMPLE_COUNT
-        val reverseCandidate =
-            !currentSession.reversed &&
-                reverseSuggestionMode == SettingsRepository.TURN_BY_TURN_REVERSE_SUGGESTION_ASK &&
-                distanceToEnd + REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS < distanceToStart &&
-                distanceToEnd <= REVERSE_SUGGESTION_MAX_DISTANCE_METERS
-
         val nextDecision =
-            when {
-                reverseCandidate -> GuidanceStartDecision.REVERSE_ROUTE
-                stableMidRouteCandidate &&
-                    routeStartBehavior == SettingsRepository.TURN_BY_TURN_ROUTE_START_NEAREST_POINT -> {
-                    gpxViewModel.markTurnByTurnStartReached()
-                    null
-                }
-                stableMidRouteCandidate &&
-                    routeStartBehavior == SettingsRepository.TURN_BY_TURN_ROUTE_START_ASK ->
-                    GuidanceStartDecision.START_HERE
-                else -> null
+            when (decisionResult.decision) {
+                TrailGuidanceStartDecision.REVERSE_ROUTE -> GuidanceStartDecision.REVERSE_ROUTE
+                TrailGuidanceStartDecision.START_HERE -> GuidanceStartDecision.START_HERE
+                null -> null
             }
 
         val nextKey = nextDecision?.let { "${currentSession.trackId}:${currentSession.reversed}:$it" }

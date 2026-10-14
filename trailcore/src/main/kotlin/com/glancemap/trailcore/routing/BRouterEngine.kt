@@ -91,7 +91,7 @@ class BRouterEngine(
             RoutingContext().apply {
                 localFunction = profileFile.absolutePath
                 outputFormat = "gpx"
-                keyValues = buildProfileParams(request)
+                keyValues = buildBRouterProfileParams(request)
             }
         val engine =
             RoutingEngine(
@@ -159,62 +159,6 @@ class BRouterEngine(
             add(request.destination.toWaypoint("to"))
         }
 
-    private fun buildProfileParams(request: BRouterRouteRequest): HashMap<String, String> =
-        hashMapOf<String, String>().apply {
-            put("allow_ferries", request.allowFerries.toProfileNumber())
-            put("consider_elevation", request.useElevation.toProfileNumber())
-            if (!request.preset.isBikePreset()) {
-                put(
-                    "consider_forest",
-                    (request.customHikeParams?.considerForest ?: false).toProfileNumber(),
-                )
-            }
-            when (request.preset) {
-                BRouterRoutePreset.BALANCED_HIKE -> {
-                    put("hiking_routes_preference", "0.20")
-                    put("path_preference", "0.0")
-                    put("SAC_scale_limit", "3")
-                    put("SAC_scale_preferred", "1")
-                }
-
-                BRouterRoutePreset.PREFER_TRAILS -> {
-                    put("hiking_routes_preference", "0.60")
-                    put("path_preference", "20.0")
-                    put("SAC_scale_limit", "3")
-                    put("SAC_scale_preferred", "2")
-                }
-
-                BRouterRoutePreset.PREFER_EASIEST -> {
-                    put("hiking_routes_preference", "0.0")
-                    put("path_preference", "0.0")
-                    put("SAC_scale_limit", "1")
-                    put("SAC_scale_preferred", "1")
-                }
-
-                BRouterRoutePreset.CUSTOM_HIKE -> {
-                    val params = request.customHikeParams ?: DEFAULT_CUSTOM_HIKE_PARAMS
-                    put("hiking_routes_preference", params.hikingRoutesPreference.toProfileNumber())
-                    put("path_preference", params.pathPreference.toProfileNumber())
-                    put("SAC_scale_limit", params.sacScaleLimit.toString())
-                    put("SAC_scale_preferred", params.sacScalePreferred.toString())
-                }
-
-                BRouterRoutePreset.BIKE_TOURING -> {
-                    put("allow_steps", "0")
-                    put("consider_noise", "1")
-                    put("consider_traffic", "1")
-                    put("avoid_unsafe", "1")
-                }
-
-                BRouterRoutePreset.BIKE_ROAD,
-                BRouterRoutePreset.BIKE_QUIET_ROAD,
-                -> put("allow_steps", "0")
-
-                BRouterRoutePreset.BIKE_GRAVEL -> put("avoid_steep_inclines", request.useElevation.toProfileNumber())
-                BRouterRoutePreset.BIKE_MTB -> put("allow_steps", "0")
-            }
-        }
-
     private fun BRouterRoutePreset.profileFileName(): String =
         when (this) {
             BRouterRoutePreset.BALANCED_HIKE,
@@ -237,10 +181,6 @@ class BRouterEngine(
             ilat = ((latitude + 90.0) * B_ROUTER_COORDINATE_SCALE + 0.5).toInt()
         }
 
-    private fun Boolean.toProfileNumber(): String = if (this) "1" else "0"
-
-    private fun Float.toProfileNumber(): String = toString()
-
     private companion object {
         const val B_ROUTER_COORDINATE_SCALE = 1_000_000.0
         const val B_ROUTER_LATITUDE_OFFSET = 90_000_000
@@ -253,16 +193,77 @@ class BRouterEngine(
         const val BIKE_QUIET_ROAD_PROFILE_FILE_NAME = "fastbike-verylowtraffic.brf"
         const val BIKE_GRAVEL_PROFILE_FILE_NAME = "gravel.brf"
         const val BIKE_MTB_PROFILE_FILE_NAME = "mtb.brf"
-        val DEFAULT_CUSTOM_HIKE_PARAMS =
-            BRouterHikeProfileParams(
-                hikingRoutesPreference = 0.20f,
-                pathPreference = 0f,
-                sacScaleLimit = 3,
-                sacScalePreferred = 1,
-                considerForest = false,
-            )
     }
 }
+
+fun buildBRouterProfileParams(request: BRouterRouteRequest): HashMap<String, String> =
+    hashMapOf<String, String>().apply {
+        put("allow_ferries", request.allowFerries.toProfileNumber())
+        put("consider_elevation", request.useElevation.toProfileNumber())
+        if (!request.preset.isBikePreset()) {
+            put(
+                "consider_forest",
+                (request.customHikeParams?.considerForest ?: false).toProfileNumber(),
+            )
+        }
+        when (request.preset) {
+            BRouterRoutePreset.BALANCED_HIKE -> {
+                put("hiking_routes_preference", "0.20")
+                put("path_preference", "0.0")
+                put("SAC_scale_limit", "3")
+                put("SAC_scale_preferred", "1")
+            }
+
+            BRouterRoutePreset.PREFER_TRAILS -> {
+                put("hiking_routes_preference", "0.60")
+                put("path_preference", "20.0")
+                put("SAC_scale_limit", "3")
+                put("SAC_scale_preferred", "2")
+            }
+
+            BRouterRoutePreset.PREFER_EASIEST -> {
+                put("hiking_routes_preference", "0.0")
+                put("path_preference", "0.0")
+                put("SAC_scale_limit", "1")
+                put("SAC_scale_preferred", "1")
+            }
+
+            BRouterRoutePreset.CUSTOM_HIKE -> {
+                val params = request.customHikeParams ?: DEFAULT_CUSTOM_HIKE_PARAMS
+                put("hiking_routes_preference", params.hikingRoutesPreference.toProfileNumber())
+                put("path_preference", params.pathPreference.toProfileNumber())
+                put("SAC_scale_limit", params.sacScaleLimit.toString())
+                put("SAC_scale_preferred", params.sacScalePreferred.toString())
+            }
+
+            BRouterRoutePreset.BIKE_TOURING -> {
+                put("allow_steps", "0")
+                put("consider_noise", "1")
+                put("consider_traffic", "1")
+                put("avoid_unsafe", "1")
+            }
+
+            BRouterRoutePreset.BIKE_ROAD,
+            BRouterRoutePreset.BIKE_QUIET_ROAD,
+            -> put("allow_steps", "0")
+
+            BRouterRoutePreset.BIKE_GRAVEL -> put("avoid_steep_inclines", request.useElevation.toProfileNumber())
+            BRouterRoutePreset.BIKE_MTB -> put("allow_steps", "0")
+        }
+    }
+
+private fun Boolean.toProfileNumber(): String = if (this) "1" else "0"
+
+private fun Float.toProfileNumber(): String = toString()
+
+private val DEFAULT_CUSTOM_HIKE_PARAMS =
+    BRouterHikeProfileParams(
+        hikingRoutesPreference = 0.20f,
+        pathPreference = 0f,
+        sacScaleLimit = 3,
+        sacScalePreferred = 1,
+        considerForest = false,
+    )
 
 fun requiredRoutingSegmentFileNames(points: List<GeoPoint>): List<String> {
     require(points.isNotEmpty()) { "At least one point is required." }

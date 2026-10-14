@@ -10,6 +10,12 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.pro
 import org.mapsforge.core.model.LatLong
 import java.util.Locale
 import kotlin.math.abs
+import com.glancemap.trailcore.guidance.REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS as CORE_REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS
+import com.glancemap.trailcore.guidance.REVERSE_SUGGESTION_MAX_DISTANCE_METERS as CORE_REVERSE_SUGGESTION_MAX_DISTANCE_METERS
+import com.glancemap.trailcore.guidance.START_HERE_MAX_ACCURACY_METERS as CORE_START_HERE_MAX_ACCURACY_METERS
+import com.glancemap.trailcore.guidance.START_HERE_MIN_PROGRESS_METERS as CORE_START_HERE_MIN_PROGRESS_METERS
+import com.glancemap.trailcore.guidance.START_HERE_MIN_REMAINING_METERS as CORE_START_HERE_MIN_REMAINING_METERS
+import com.glancemap.trailcore.guidance.START_HERE_STABLE_SAMPLE_COUNT as CORE_START_HERE_STABLE_SAMPLE_COUNT
 
 internal fun shouldUpdateZoomReferenceLatitude(
     currentLatitude: Double,
@@ -160,12 +166,12 @@ internal enum class GuidanceStartDecision {
     REVERSE_ROUTE,
 }
 
-internal const val START_HERE_MIN_PROGRESS_METERS = 50.0
-internal const val START_HERE_MIN_REMAINING_METERS = 50.0
-internal const val START_HERE_STABLE_SAMPLE_COUNT = 2
-internal const val START_HERE_MAX_ACCURACY_METERS = 60f
-internal const val REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS = 50.0
-internal const val REVERSE_SUGGESTION_MAX_DISTANCE_METERS = 300.0
+internal const val START_HERE_MIN_PROGRESS_METERS = CORE_START_HERE_MIN_PROGRESS_METERS
+internal const val START_HERE_MIN_REMAINING_METERS = CORE_START_HERE_MIN_REMAINING_METERS
+internal const val START_HERE_STABLE_SAMPLE_COUNT = CORE_START_HERE_STABLE_SAMPLE_COUNT
+internal const val START_HERE_MAX_ACCURACY_METERS = CORE_START_HERE_MAX_ACCURACY_METERS
+internal const val REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS = CORE_REVERSE_SUGGESTION_DISTANCE_MARGIN_METERS
+internal const val REVERSE_SUGGESTION_MAX_DISTANCE_METERS = CORE_REVERSE_SUGGESTION_MAX_DISTANCE_METERS
 private const val MAX_TELEMETRY_TRACK_NAME_CHARS = 48
 private const val GUIDE_BACK_ROUTE_BEARING_LOOKAHEAD_METERS = 20.0
 private const val MAP_ZOOM_LATITUDE_UPDATE_THRESHOLD_DEGREES = 0.25

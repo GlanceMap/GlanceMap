@@ -1,5 +1,12 @@
 package com.glancemap.trailcore.recording
 
+fun shouldMonitorRecordingAutoResume(
+    active: Boolean,
+    paused: Boolean,
+    autoPaused: Boolean,
+    autoPauseEnabled: Boolean,
+): Boolean = active && paused && (autoPaused || autoPauseEnabled)
+
 fun effectiveRecordingAutoPauseStartMillis(
     startedAtMillis: Long?,
     confirmationMillis: Long,

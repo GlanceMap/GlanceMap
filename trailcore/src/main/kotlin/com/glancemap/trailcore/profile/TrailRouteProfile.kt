@@ -3,10 +3,20 @@ package com.glancemap.trailcore.profile
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.geo.haversineDistanceMeters
 
+data class TrailGuidanceHint(
+    val commandCode: String?,
+    val message: String?,
+    val source: TrailGuidanceHintSource,
+)
+
+enum class TrailGuidanceHintSource { BROUTER, GPX_SYMBOL }
+
 data class TrailPoint(
     val location: GeoPoint,
     val elevationMeters: Double? = null,
     val startsNewSegment: Boolean = false,
+    val guidanceHint: TrailGuidanceHint? = null,
+    val hasTimestamp: Boolean = false,
 ) {
     init {
         require(elevationMeters == null || elevationMeters.isFinite()) {

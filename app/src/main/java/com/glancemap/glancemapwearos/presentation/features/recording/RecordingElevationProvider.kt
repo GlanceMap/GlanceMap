@@ -5,8 +5,11 @@ import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemRepository
+import com.glancemap.trailcore.recording.RecordingSettings
+import com.glancemap.trailcore.recording.resolveRecordingAbsoluteElevation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.glancemap.trailcore.recording.RECORDING_ELEVATION_SOURCE_DEM_MISSING as SHARED_DEM_MISSING
 
 class RecordingElevationProvider(
     context: Context,
@@ -27,7 +30,7 @@ class RecordingElevationProvider(
         demSource: DemSource = DemSource.DEFAULT,
     ): RecordingElevationResult =
         withContext(Dispatchers.IO) {
-            val sanitizedSource = sanitizeElevationSource(source)
+            val sanitizedSource = RecordingSettings.normalizeElevationSource(source)
             val demAttempted = shouldReadDem(sanitizedSource)
             val demSample =
                 if (demAttempted) {
@@ -36,66 +39,27 @@ class RecordingElevationProvider(
                     null
                 }
             val demElevation = demSample?.elevationMeters
-            val elevation = resolveElevationValue(sanitizedSource, demElevation, gpsAltitudeMeters)
-            val resolvedSource = resolveElevationSource(sanitizedSource, demElevation, gpsAltitudeMeters)
+            val absolute = resolveRecordingAbsoluteElevation(sanitizedSource, demElevation, gpsAltitudeMeters)
 
             RecordingElevationResult(
-                elevationMeters = elevation,
-                resolvedSource = resolvedSource,
+                elevationMeters = absolute.elevationMeters,
+                resolvedSource = absolute.source,
                 demElevationMeters = demElevation,
                 gpsElevationMeters = gpsAltitudeMeters?.takeIf(Double::isFinite),
                 demAttempted = demAttempted,
                 demHit = demElevation != null,
-                gpsUsed = elevation != null && resolvedSource == SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
+                gpsUsed =
+                    absolute.elevationMeters != null &&
+                        absolute.source == SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
                 demTileId = demSample?.tileId,
                 demAxisLen = demSample?.axisLen,
                 demResolutionLabel = demSample?.resolutionLabel,
             )
         }
 
-    private fun sanitizeElevationSource(source: String): String =
-        when (source) {
-            SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM,
-            SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO,
-            SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
-            SettingsRepository.RECORDING_SOURCE_DISABLED,
-            -> source
-            else -> SettingsRepository.DEFAULT_RECORDING_ELEVATION_SOURCE
-        }
-
     private fun shouldReadDem(source: String): Boolean =
         source != SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS &&
             source != SettingsRepository.RECORDING_SOURCE_DISABLED
-
-    private fun resolveElevationValue(
-        source: String,
-        demElevation: Double?,
-        gpsElevation: Double?,
-    ): Double? =
-        when (source) {
-            SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM -> demElevation
-            SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO -> demElevation ?: gpsElevation
-            SettingsRepository.RECORDING_SOURCE_DISABLED -> null
-            else -> gpsElevation
-        }
-
-    private fun resolveElevationSource(
-        source: String,
-        demElevation: Double?,
-        gpsElevation: Double?,
-    ): String =
-        when {
-            source == SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM && demElevation != null ->
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM
-            source == SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM -> RECORDING_ELEVATION_SOURCE_DEM_MISSING
-            source == SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO && demElevation != null ->
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_DEM
-            source == SettingsRepository.RECORDING_ELEVATION_SOURCE_AUTO && gpsElevation != null ->
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS
-            source == SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS && gpsElevation != null ->
-                SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS
-            else -> source
-        }
 
     private fun resolveDemSample(
         latitude: Double,
@@ -125,4 +89,4 @@ data class RecordingElevationResult(
 )
 
 private const val DEM_VOID_ELEVATION_METERS = -10_000.0
-internal const val RECORDING_ELEVATION_SOURCE_DEM_MISSING = "DEM_MISSING"
+internal const val RECORDING_ELEVATION_SOURCE_DEM_MISSING = SHARED_DEM_MISSING

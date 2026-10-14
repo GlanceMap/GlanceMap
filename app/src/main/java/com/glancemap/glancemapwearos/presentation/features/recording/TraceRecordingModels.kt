@@ -6,6 +6,7 @@ import com.glancemap.trailcore.recording.RecordingExternalDistanceSessionState
 import com.glancemap.trailcore.recording.RecordingPoint
 import com.glancemap.trailcore.recording.effectiveRecordingAutoPauseStartMillis
 import com.glancemap.trailcore.recording.recordingAutoPauseAddedMillisAtResume
+import com.glancemap.trailcore.recording.shouldMonitorRecordingAutoResume
 import org.mapsforge.core.model.LatLong
 import com.glancemap.trailcore.recording.RECORDING_ACCURACY_INTERPRETATION_RAW as RAW_ACCURACY
 import com.glancemap.trailcore.recording.RECORDING_ACCURACY_INTERPRETATION_SUSPECT_CONSTANT_WATCH_GPS as SUSPECT_GPS
@@ -115,7 +116,7 @@ data class TraceRecordingUiState(
 
 internal fun TraceRecordingUiState.isPausedForAutoResumeMonitoring(
     autoPauseEnabled: Boolean,
-): Boolean = active && paused && (autoPaused || autoPauseEnabled)
+): Boolean = shouldMonitorRecordingAutoResume(active, paused, autoPaused, autoPauseEnabled)
 
 internal fun autoResumeSegmentStartReason(
     autoPaused: Boolean,

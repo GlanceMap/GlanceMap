@@ -2199,7 +2199,7 @@ class TraceRecordingViewModel(
                 movingDurationMillis = movingDurationMs,
             )
         val sharedResumeState =
-            sharedSessionLifecycle.resume((state.pausedAtMillis ?: nowMillis) + addedPausedMillis)
+            sharedSessionLifecycle.resume((state.pausedAtMillis ?: nowMillis) + addedPausedMillis, automatic = true)
         lastAcceptedElapsedMs = Long.MIN_VALUE
         lastAppendedFixElapsedRealtimeMillis = null
         watchGpsDistanceGeometry.reset()
