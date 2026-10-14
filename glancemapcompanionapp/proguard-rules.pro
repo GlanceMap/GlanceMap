@@ -29,3 +29,9 @@
 -dontwarn java.lang.instrument.**
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
+
+# REC drafts use Gson reflection and must remain readable across minified releases.
+-keep class com.glancemap.glancemapcompanionapp.map.PhoneRecordingDraft { *; }
+-keep class com.glancemap.glancemapcompanionapp.map.PhoneRecordingSettings { *; }
+-keep class com.glancemap.trailcore.recording.RecordingPoint { *; }
+-keep class com.glancemap.trailcore.geo.GeoPoint { *; }

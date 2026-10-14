@@ -177,6 +177,7 @@ class MapLayerPanelTest {
                                 onToolSelected = {},
                                 onToggleLauncher = {},
                                 onAddPoi = {},
+                                onOpenRecording = {},
                                 onOpenGpxTools = {},
                                 onCycleSize = {},
                                 onResize = {},

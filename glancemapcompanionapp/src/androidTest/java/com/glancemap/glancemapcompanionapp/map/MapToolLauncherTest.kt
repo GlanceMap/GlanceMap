@@ -47,6 +47,9 @@ class MapToolLauncherTest {
         composeRule.onNodeWithText(label(R.string.map_tool_settings_title)).assertDoesNotExist()
         click(R.string.map_tool_shortcut_add_poi)
         assertEquals(listOf("library", "add-poi"), opened)
+        click(R.string.map_tool_launcher_label)
+        click(R.string.map_tool_shortcut_rec)
+        assertEquals(listOf("library", "add-poi", "rec"), opened)
     }
 
     @Test
@@ -100,6 +103,7 @@ class MapToolLauncherTest {
                                 onToolSelected = { ui.value = ui.value.selectTool(it) },
                                 onToggleLauncher = { ui.value = ui.value.toggleToolLauncher() },
                                 onAddPoi = { opened += "add-poi" },
+                                onOpenRecording = { opened += "rec" },
                                 onOpenGpxTools = { opened += "gpx" },
                                 onCycleSize = {},
                                 onResize = {},

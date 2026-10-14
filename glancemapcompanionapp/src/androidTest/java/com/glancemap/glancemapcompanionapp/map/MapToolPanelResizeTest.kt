@@ -209,6 +209,7 @@ class MapToolPanelResizeTest {
                                 onToolSelected = { ui.value = ui.value.selectTool(it) },
                                 onToggleLauncher = {},
                                 onAddPoi = {},
+                                onOpenRecording = {},
                                 onOpenGpxTools = {},
                                 onCycleSize = { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.cycleSize()) },
                                 onResize = { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.resize(it)) },

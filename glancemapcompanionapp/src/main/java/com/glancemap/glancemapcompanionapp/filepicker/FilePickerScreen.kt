@@ -953,7 +953,11 @@ internal fun FilePickerScreen(
                         CompanionMapScreen(
                             gpxSources =
                                 routeLibraryUiState.routes.map { route ->
-                                    PhoneMapGpxSource(id = route.id, displayName = route.displayName)
+                                    PhoneMapGpxSource(
+                                        id = route.id,
+                                        displayName = route.displayName,
+                                        isRecording = route.isRecording,
+                                    )
                                 },
                             initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
                             gpxSourcesLoading = routeLibraryUiState.isLoading,

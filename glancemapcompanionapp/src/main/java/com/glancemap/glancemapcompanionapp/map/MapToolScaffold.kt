@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
@@ -54,6 +55,7 @@ internal data class MapToolScaffoldActions(
     val onToolSelected: (MapTool) -> Unit,
     val onToggleLauncher: () -> Unit,
     val onAddPoi: () -> Unit,
+    val onOpenRecording: () -> Unit,
     val onOpenGpxTools: () -> Unit,
     val onCycleSize: () -> Unit,
     val onResize: (Float) -> Unit,
@@ -295,6 +297,7 @@ private fun RowScope.mapToolHeaderTitle(
 internal fun MapTool.icon(): ImageVector =
     when (this) {
         MapTool.POI -> Icons.Filled.Place
+        MapTool.REC -> Icons.Filled.FiberManualRecord
         MapTool.GPX -> Icons.Filled.Route
         MapTool.MAPS -> Icons.Filled.Map
         MapTool.LAYER -> Icons.Filled.Layers
@@ -305,6 +308,7 @@ internal fun MapTool.icon(): ImageVector =
 internal fun MapTool.titleResource(): Int =
     when (this) {
         MapTool.POI -> R.string.map_tool_poi_title
+        MapTool.REC -> R.string.map_tool_rec_title
         MapTool.GPX -> R.string.map_tool_gpx_title
         MapTool.MAPS -> R.string.map_tool_maps_title
         MapTool.LAYER -> R.string.map_tool_layer_title
@@ -316,6 +320,7 @@ internal fun MapTool.titleResource(contentMode: MapToolContentMode): Int =
     if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
         when (this) {
             MapTool.POI -> R.string.map_tool_poi_settings_title
+            MapTool.REC -> titleResource()
             MapTool.GPX -> R.string.map_tool_gpx_settings_title
             MapTool.MAPS -> R.string.map_tool_maps_settings_title
             MapTool.LAYER,

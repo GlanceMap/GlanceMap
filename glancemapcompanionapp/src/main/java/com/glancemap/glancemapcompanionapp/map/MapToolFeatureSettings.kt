@@ -92,6 +92,7 @@ internal fun MapToolFeatureSettingsContent(
                 actions = actions,
             )
         MapTool.MAPS -> mapToolsMapsSettingsPanel(section, state.maps, actions.maps)
+        MapTool.REC -> PhoneRecordingPanel(state.general, actions.onGeneralSettingsChanged)
         MapTool.LAYER -> Unit
         MapTool.SETTINGS ->
             mapToolsSettingsPanel(

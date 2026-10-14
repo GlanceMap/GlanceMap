@@ -2,7 +2,11 @@ package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.profile.TrailPoint
+import com.glancemap.trailcore.recording.RecordingPoint
+import com.glancemap.trailcore.recording.RecordingSessionLifecycle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -95,6 +99,68 @@ class PhoneMapGpxTrackTest {
         assertTrue(listOf(first, second).enabledOverlays(globalVisible = false).isEmpty())
     }
 
+    @Test
+    fun activeRecordingOverlayReusesPointsAndKeepsPauseSegmentsSeparate() {
+        val recordingPoints =
+            listOf(
+                recordingPoint(11.0),
+                recordingPoint(11.1),
+                recordingPoint(12.0, startsNewSegment = true),
+                recordingPoint(12.1),
+            )
+        val state =
+            PhoneRecordingUiState(
+                session = RecordingSessionLifecycle().start(1_000L),
+                points = recordingPoints,
+                pointsRevision = 4L,
+                segmentStartIndices = listOf(2),
+            )
+
+        val overlay = requireNotNull(phoneRecordingOverlay(state, "Live recording"))
+
+        assertEquals(2, overlay.segments.size)
+        assertSame(recordingPoints[1].location, overlay.segments[0].points[1])
+        assertSame(recordingPoints[2].location, overlay.segments[1].points[0])
+        assertEquals(4L, overlay.renderRevision)
+        assertNotEquals(overlay, phoneRecordingOverlay(state.copy(pointsRevision = 5L), "Live recording"))
+    }
+
+    @Test
+    fun savedRecordingActivitiesRespectTheirVisibilityPreference() {
+        val recorded =
+            PhoneMapGpxItem(
+                id = "recording-id",
+                displayName = "Recorded activity",
+                track = trackWithId("recording-id", point(11.0), point(11.1)),
+                enabled = true,
+                isRecording = true,
+            )
+
+        assertTrue(listOf(recorded).enabledOverlays(globalVisible = true, showSavedActivities = false).isEmpty())
+        assertEquals(1, listOf(recorded).enabledOverlays(globalVisible = true, showSavedActivities = true).size)
+    }
+
+    @Test
+    fun skippedSingletonSegmentsKeepTheirOriginalRecordingOffsets() {
+        val state =
+            PhoneRecordingUiState(
+                session = RecordingSessionLifecycle().start(1_000L),
+                points = listOf(recordingPoint(10.0), recordingPoint(11.0), recordingPoint(12.0), recordingPoint(12.1)),
+                segmentStartIndices = listOf(1, 2),
+                pointsChangedFromIndex = 3,
+            )
+        val overlay = requireNotNull(phoneRecordingOverlay(state, "REC"))
+        assertEquals(1, overlay.segments.size)
+        assertEquals(2, overlay.segments.single().recordingStartIndex)
+        assertEquals(
+            listOf(12.0, 12.1),
+            overlay.segments
+                .single()
+                .points
+                .map(GeoPoint::longitude),
+        )
+    }
+
     private fun track(vararg points: TrailPoint): PhoneMapGpxTrack = trackWithId("test", *points)
 
     private fun trackWithId(
@@ -112,6 +178,19 @@ class PhoneMapGpxTrackTest {
     ): TrailPoint =
         TrailPoint(
             location = GeoPoint(latitude = 46.0, longitude = longitude),
+            startsNewSegment = startsNewSegment,
+        )
+
+    private fun recordingPoint(
+        longitude: Double,
+        startsNewSegment: Boolean = false,
+    ): RecordingPoint =
+        RecordingPoint(
+            location = GeoPoint(latitude = 46.0, longitude = longitude),
+            elevationMeters = null,
+            timeMillis = 1_000L,
+            accuracyMeters = 4f,
+            speedMps = null,
             startsNewSegment = startsNewSegment,
         )
 }

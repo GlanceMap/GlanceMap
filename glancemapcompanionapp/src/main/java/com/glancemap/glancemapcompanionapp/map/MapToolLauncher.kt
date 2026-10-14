@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Place
@@ -69,6 +70,9 @@ internal fun mapToolLauncher(
                     MapLauncherGroup.TOOLS -> {
                         mapShortcut(R.string.map_tool_shortcut_add_poi, Icons.Filled.Place) {
                             openScreen(actions.onAddPoi)
+                        }
+                        mapShortcut(R.string.map_tool_shortcut_rec, Icons.Filled.FiberManualRecord) {
+                            openScreen(actions.onOpenRecording)
                         }
                         mapShortcut(R.string.map_tool_shortcut_gpx, Icons.Filled.Route) {
                             openScreen(actions.onOpenGpxTools)

@@ -2,6 +2,9 @@ package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.profile.TrailPoint
+import kotlin.collections.AbstractList
+
+private const val PHONE_RECORDING_OVERLAY_ID = "phone-recording"
 
 /** Semantic GPX geometry supplied to the phone map after companion parsing has completed. */
 internal data class PhoneMapGpxTrack(
@@ -20,6 +23,7 @@ internal data class PhoneMapGpxItem(
     val track: PhoneMapGpxTrack,
     val enabled: Boolean,
     val isEditable: Boolean = true,
+    val isRecording: Boolean = false,
 ) {
     init {
         require(id.isNotBlank())
@@ -33,12 +37,32 @@ internal data class PhoneMapGpxOverlay(
     val id: String,
     val displayName: String,
     val segments: List<PhoneMapRouteSegment>,
-)
+    /** Non-null only for the live recording overlay, avoiding full-history list equality. */
+    val renderRevision: Long? = null,
+    val renderBaseRevision: Long? = null,
+    val renderStartIndex: Int = 0,
+) {
+    override fun equals(other: Any?): Boolean =
+        if (this === other) {
+            true
+        } else if (other !is PhoneMapGpxOverlay || id != other.id || displayName != other.displayName) {
+            false
+        } else if (renderRevision != null || other.renderRevision != null) {
+            renderRevision == other.renderRevision
+        } else {
+            segments == other.segments
+        }
+
+    override fun hashCode(): Int =
+        31 * (31 * id.hashCode() + displayName.hashCode()) +
+            (renderRevision?.hashCode() ?: segments.hashCode())
+}
 
 /** Small route metadata passed into the phone map without coupling its panel UI to Route Library. */
 internal data class PhoneMapGpxSource(
     val id: String,
     val displayName: String,
+    val isRecording: Boolean = false,
 ) {
     init {
         require(id.isNotBlank())
@@ -57,18 +81,19 @@ internal fun mergePhoneMapGpxItems(
     }
 }
 
-internal fun List<PhoneMapGpxItem>.toggleEnabled(
-    id: String,
-): List<PhoneMapGpxItem> =
+internal fun List<PhoneMapGpxItem>.toggleEnabled(id: String): List<PhoneMapGpxItem> =
     map { item ->
         if (item.id == id) item.copy(enabled = !item.enabled) else item
     }
 
-internal fun List<PhoneMapGpxItem>.enabledOverlays(globalVisible: Boolean): List<PhoneMapGpxOverlay> =
+internal fun List<PhoneMapGpxItem>.enabledOverlays(
+    globalVisible: Boolean,
+    showSavedActivities: Boolean = true,
+): List<PhoneMapGpxOverlay> =
     if (!globalVisible) {
         emptyList()
     } else {
-        filter(PhoneMapGpxItem::enabled).map { item ->
+        filter { item -> item.enabled && (showSavedActivities || !item.isRecording) }.map { item ->
             PhoneMapGpxOverlay(
                 id = item.id,
                 displayName = item.displayName,
@@ -81,10 +106,60 @@ internal fun List<PhoneMapGpxItem>.enabledOverlays(globalVisible: Boolean): List
 internal data class PhoneMapRouteSegment(
     val points: List<GeoPoint>,
     val elevationMeters: List<Double?> = emptyList(),
+    val recordingStartIndex: Int? = null,
 ) {
     init {
         require(elevationMeters.isEmpty() || elevationMeters.size == points.size)
     }
+}
+
+/** Mapsforge/MapLibre receive lazy coordinate views over the service-owned point objects. */
+internal fun phoneRecordingOverlay(
+    state: PhoneRecordingUiState,
+    displayName: String,
+): PhoneMapGpxOverlay? {
+    if (!state.session.isActive || state.points.size < 2) return null
+    val starts = (state.segmentStartIndices + 0).distinct().sorted()
+    val segments =
+        starts.mapIndexedNotNull { segmentIndex, startIndex ->
+            val endIndex = starts.getOrNull(segmentIndex + 1) ?: state.points.size
+            val segmentSize = endIndex - startIndex
+            if (segmentSize >= 2) {
+                PhoneMapRouteSegment(
+                    points = RecordingGeoPointView(state.points, startIndex, segmentSize),
+                    elevationMeters = RecordingElevationView(state.points, startIndex, segmentSize),
+                    recordingStartIndex = startIndex,
+                )
+            } else {
+                null
+            }
+        }
+    return segments.takeIf { it.isNotEmpty() }?.let { renderSegments ->
+        PhoneMapGpxOverlay(
+            id = PHONE_RECORDING_OVERLAY_ID,
+            displayName = displayName,
+            segments = renderSegments,
+            renderRevision = state.pointsRevision,
+            renderBaseRevision = state.pointsBaseRevision,
+            renderStartIndex = state.pointsChangedFromIndex,
+        )
+    }
+}
+
+private class RecordingGeoPointView(
+    private val points: List<com.glancemap.trailcore.recording.RecordingPoint>,
+    private val startIndex: Int,
+    override val size: Int,
+) : AbstractList<GeoPoint>() {
+    override fun get(index: Int): GeoPoint = points[startIndex + index].location
+}
+
+private class RecordingElevationView(
+    private val points: List<com.glancemap.trailcore.recording.RecordingPoint>,
+    private val startIndex: Int,
+    override val size: Int,
+) : AbstractList<Double?>() {
+    override fun get(index: Int): Double? = points[startIndex + index].elevationMeters
 }
 
 internal fun PhoneMapGpxTrack.toRouteSegments(): List<PhoneMapRouteSegment> {

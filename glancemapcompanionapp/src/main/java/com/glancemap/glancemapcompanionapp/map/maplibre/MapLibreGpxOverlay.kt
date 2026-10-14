@@ -6,6 +6,7 @@ import com.glancemap.glancemapcompanionapp.map.PhoneMapRouteBounds
 import com.glancemap.glancemapcompanionapp.map.PhoneMapRouteSegment
 import com.glancemap.glancemapcompanionapp.map.boundsOrNull
 import com.glancemap.glancemapcompanionapp.map.toPhoneMapGpxRenderSegments
+import com.glancemap.trailcore.geo.GeoPoint
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -26,6 +27,10 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import java.util.Collections
+import java.util.WeakHashMap
+
+private val renderedPoints = Collections.synchronizedMap(WeakHashMap<GeoPoint, Point>())
 
 internal fun Style.renderGpxTrack(
     segments: List<PhoneMapRouteSegment>,
@@ -88,11 +93,13 @@ private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(): Feature =
     Feature
         .fromGeometry(
             LineString.fromLngLats(
-                points.map { point -> Point.fromLngLat(point.longitude, point.latitude) },
+                points.map { point -> point.toMapLibrePoint() },
             ),
         ).also { feature ->
             feature.addStringProperty(GPX_TRACK_COLOR_PROPERTY, colorToMapLibre(colorArgb))
         }
+
+private fun GeoPoint.toMapLibrePoint(): Point = renderedPoints.getOrPut(this) { Point.fromLngLat(longitude, latitude) }
 
 private fun PhoneMapRouteBounds.toMapLibreBounds(): LatLngBounds {
     val latitudePadding = ((north - south) / 20.0).coerceAtLeast(MINIMUM_ROUTE_BOUND_PADDING_DEGREES)

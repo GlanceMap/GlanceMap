@@ -134,10 +134,16 @@ internal fun String.isPhoneDemFileName(): Boolean {
 /** Small bounded HGT reader shared by live elevation and the phone relief overlay. */
 internal class PhoneElevationRepository(
     private val demRootDirsProvider: () -> List<File>,
+    private val logTileFailures: Boolean = true,
 ) {
-    constructor(demRootDirs: List<File>) : this({ demRootDirs })
+    constructor(demRootDirsProvider: () -> List<File>) : this(demRootDirsProvider, true)
 
-    constructor(context: Context) : this({ PhoneElevationStore(context).readDirectories() })
+    constructor(demRootDirs: List<File>) : this({ demRootDirs }, true)
+
+    constructor(
+        context: Context,
+        logTileFailures: Boolean = true,
+    ) : this({ PhoneElevationStore(context).readDirectories() }, logTileFailures)
 
     private val demRootDirs: List<File>
         get() = demRootDirsProvider()
@@ -180,8 +186,9 @@ internal class PhoneElevationRepository(
                 resolveDemFile(tileId)?.let { file ->
                     readDemBytes(file)?.let(::decodeDemBytes)
                 }
-            }.onFailure { error -> Log.w(PHONE_TERRAIN_TAG, "Could not read DEM $tileId", error) }
-                .getOrNull()
+            }.onFailure { error ->
+                if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not read DEM $tileId", error)
+            }.getOrNull()
         synchronized(tileCache) { tileCache[tileId] = loaded }
         return loaded
     }

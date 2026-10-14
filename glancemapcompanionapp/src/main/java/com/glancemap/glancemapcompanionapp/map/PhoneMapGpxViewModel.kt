@@ -257,6 +257,7 @@ internal class PhoneMapGpxViewModel(
                 displayName = phoneGpxDisplayNameFromFileName(source.displayName),
                 track = PhoneMapGpxTrack(source.id, details.profile.points),
                 enabled = false,
+                isRecording = source.isRecording,
             )
         }
 

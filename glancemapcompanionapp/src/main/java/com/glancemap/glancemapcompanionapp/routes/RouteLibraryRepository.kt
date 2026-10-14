@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.routes
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.AtomicFile
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
@@ -92,7 +93,9 @@ class RouteLibraryRepository(
 ) {
     private val appContext = context.applicationContext
     private val gson = Gson()
-    private val mutex = Mutex()
+
+    // REC and the library UI use different repository instances over the same files.
+    private val mutex = libraryMutex
     private val storage = PhoneOfflineStorage(appContext)
     private val routesDirectory: File
         get() = storage.routesDirectory()
@@ -170,6 +173,51 @@ class RouteLibraryRepository(
                 parsed = parsed,
                 displayName = output.title,
             )
+        }
+
+    /** Writes a completed phone recording into the managed Library as one retryable operation. */
+    @Suppress("TooGenericExceptionCaught") // Delete the unindexed file after any retryable save failure.
+    suspend fun saveRecordedGpx(
+        displayName: String,
+        gpxBytes: ByteArray,
+        recordingId: String = UUID.randomUUID().toString(),
+    ): RouteLibraryUiState =
+        mutex.withLock {
+            require(gpxBytes.isNotEmpty()) { appContext.getString(R.string.route_library_could_not_read_the_gpx_route) }
+            routesDirectory.mkdirs()
+            val id = UUID.fromString(recordingId).toString()
+            val temporary = File(routesDirectory, ".$id.${UUID.randomUUID()}.tmp")
+            val destination = File(routesDirectory, "$id.gpx")
+            val alreadyFinalized = destination.isFile
+            try {
+                if (!alreadyFinalized) {
+                    temporary.outputStream().use { output ->
+                        output.write(gpxBytes)
+                        output.fd.sync()
+                    }
+                }
+                val parsedFrom = if (alreadyFinalized) destination else temporary
+                val parsed = parsedFrom.inputStream().use(CompanionGpxRouteParser::parse)
+                check(parsed.points.size >= 2) {
+                    appContext.getString(R.string.route_library_could_not_read_the_gpx_route)
+                }
+                if (!alreadyFinalized) {
+                    check(temporary.renameTo(destination)) { "Could not finalize the recording file" }
+                }
+                try {
+                    saveParsedRouteLocked(
+                        destination = destination,
+                        parsed = parsed,
+                        displayName = displayName,
+                        isRecording = true,
+                    )
+                } catch (error: Exception) {
+                    if (!alreadyFinalized) destination.delete()
+                    throw error
+                }
+            } finally {
+                temporary.delete()
+            }
         }
 
     suspend fun selectRoute(routeId: String): RouteLibraryUiState =
@@ -306,22 +354,30 @@ class RouteLibraryRepository(
             )
         }
 
-    private fun readIndex(): RouteLibraryIndex {
-        if (!indexFile.isFile) return RouteLibraryIndex()
-        return runCatching {
-            indexFile.reader().use { reader ->
+    private fun readIndex(): RouteLibraryIndex =
+        runCatching {
+            AtomicFile(indexFile).openRead().reader().use { reader ->
                 gson.fromJson(reader, RouteLibraryIndex::class.java) ?: RouteLibraryIndex()
             }
         }.getOrDefault(RouteLibraryIndex())
-    }
 
     private fun writeIndex(index: RouteLibraryIndex) {
         routesDirectory.mkdirs()
-        val tempFile = File(routesDirectory, "$INDEX_FILE_NAME.tmp")
-        tempFile.writer().use { writer -> gson.toJson(index, writer) }
-        if (!tempFile.renameTo(indexFile)) {
-            tempFile.copyTo(indexFile, overwrite = true)
-            tempFile.delete()
+        val file = AtomicFile(indexFile)
+        val output = file.startWrite()
+        try {
+            val writer = output.writer(Charsets.UTF_8)
+            gson.toJson(index, writer)
+            writer.flush()
+            file.finishWrite(output)
+            val persisted = file.openRead().reader().use { gson.fromJson(it, RouteLibraryIndex::class.java) }
+            check(persisted == index) { "Could not finalize the route library index" }
+        } catch (failure: java.io.IOException) {
+            file.failWrite(output)
+            throw failure
+        } catch (failure: com.google.gson.JsonIOException) {
+            file.failWrite(output)
+            throw failure
         }
     }
 
@@ -428,6 +484,7 @@ class RouteLibraryRepository(
     )
 
     private companion object {
+        val libraryMutex = Mutex()
         const val INDEX_FILE_NAME = "routes.json"
         const val MISSION_PLAN_EXPORT_DIRECTORY = "mission-plan-exports"
         const val NEXT_WINDOW_SECONDS = 30.0 * 60.0

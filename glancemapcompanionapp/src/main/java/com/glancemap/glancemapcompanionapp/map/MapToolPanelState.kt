@@ -5,6 +5,7 @@ import com.glancemap.trailcore.map.MapContentVisibility
 /** The shared phone-map tools; each uses the same panel scaffold. */
 internal enum class MapTool {
     POI,
+    REC,
     GPX,
     MAPS,
     LAYER,
@@ -126,7 +127,9 @@ internal data class MapToolPanelState(
             MapTool.MAPS -> section in mapFeatureSettingsSections
             MapTool.GPX -> section in gpxFeatureSettingsSections
             MapTool.POI -> section in poiFeatureSettingsSections
-            MapTool.LAYER -> false
+            MapTool.LAYER,
+            MapTool.REC,
+            -> false
             MapTool.SETTINGS -> section in generalFeatureSettingsSections
         }
 

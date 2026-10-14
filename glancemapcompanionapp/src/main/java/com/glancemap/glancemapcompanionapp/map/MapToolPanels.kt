@@ -253,6 +253,7 @@ internal fun MapToolPanelContent(
                     onRenameSource = actions.onRenamePoiSource,
                     onDeleteSource = actions.onDeletePoiSource,
                 )
+            MapTool.REC -> PhoneRecordingPanel(state.general, actions.onGeneralSettingsChanged)
             MapTool.LAYER ->
                 mapToolsLayerPanel(
                     state = state.layer,

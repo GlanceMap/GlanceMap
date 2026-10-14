@@ -1143,6 +1143,15 @@ internal class PhoneOfflineMapsforgeOverlayLayers(
         overlaysById.values.forEach { overlay ->
             val segments = overlay.segments.toPhoneMapGpxRenderSegments(gpxSettings)
             val current = gpxLayersById.getOrPut(overlay.id) { mutableListOf() }
+            val previousOverlay = appliedGpxOverlays.firstOrNull { previous -> previous.id == overlay.id }
+            val canAppendLiveTail =
+                canAppendLiveGpxTail(
+                    overlay = overlay,
+                    previousOverlay = previousOverlay,
+                    currentLayerCount = current.size,
+                    segmentCount = segments.size,
+                    currentSettings = gpxSettings,
+                )
             while (current.size > segments.size) {
                 val layer = current.removeAt(current.lastIndex)
                 layers.remove(layer)
@@ -1151,18 +1160,48 @@ internal class PhoneOfflineMapsforgeOverlayLayers(
             while (current.size < segments.size) {
                 current += Polyline(createTrackPaint(gpxSettings), AndroidGraphicFactory.INSTANCE)
             }
+            var pointsBeforeSegment = 0
             current.forEachIndexed { index, layer ->
                 if (!layers.contains(layer)) layers.add(gpxLayerInsertionIndex(layers), layer)
                 val segment = segments[index]
                 layer.setPaintStroke(createTrackPaint(gpxSettings, segment.colorArgb))
-                val points = segment.points.map { point -> LatLong(point.latitude, point.longitude) }
-                if (layer.latLongs != points) {
-                    layer.latLongs.clear()
-                    layer.latLongs.addAll(points)
+                val originalStartIndex =
+                    overlay.segments.getOrNull(index)?.recordingStartIndex ?: pointsBeforeSegment
+                val firstChangedInSegment =
+                    (overlay.renderStartIndex - originalStartIndex).coerceIn(0, segment.points.size)
+                if (canAppendLiveTail && firstChangedInSegment <= layer.latLongs.size) {
+                    while (layer.latLongs.size > firstChangedInSegment) {
+                        layer.latLongs.removeAt(layer.latLongs.lastIndex)
+                    }
+                    for (pointIndex in firstChangedInSegment until segment.points.size) {
+                        val point = segment.points[pointIndex]
+                        layer.latLongs.add(LatLong(point.latitude, point.longitude))
+                    }
+                } else {
+                    val points = segment.points.map { point -> LatLong(point.latitude, point.longitude) }
+                    if (layer.latLongs != points) {
+                        layer.latLongs.clear()
+                        layer.latLongs.addAll(points)
+                    }
                 }
+                pointsBeforeSegment += segment.points.size
             }
         }
     }
+
+    private fun canAppendLiveGpxTail(
+        overlay: PhoneMapGpxOverlay,
+        previousOverlay: PhoneMapGpxOverlay?,
+        currentLayerCount: Int,
+        segmentCount: Int,
+        currentSettings: PhoneMapGpxSettings,
+    ): Boolean =
+        overlay.renderRevision != null &&
+            previousOverlay?.renderRevision == overlay.renderBaseRevision &&
+            appliedGpxSettings == currentSettings &&
+            currentSettings.colorMode == PhoneMapGpxColorMode.SOLID &&
+            !currentSettings.directionArrowsEnabled &&
+            currentLayerCount == segmentCount
 
     private fun syncRouteAnalysisMarkers(
         layers: Layers,

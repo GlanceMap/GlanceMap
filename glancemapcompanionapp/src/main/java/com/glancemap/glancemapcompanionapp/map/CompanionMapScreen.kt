@@ -448,6 +448,8 @@ internal fun CompanionMapScreen(
     val mapLocationSource = remember(context) { PhoneMapLocationSource(context.applicationContext) }
     val generalSettingsPreferences =
         remember(context) { PhoneGeneralSettingsPreferences(context.applicationContext) }
+    val recordingSettingsPreferences =
+        remember(context) { PhoneRecordingSettingsPreferences(context.applicationContext) }
     val offlineThemePreferences = remember(context) { PhoneOfflineThemePreferences(context.applicationContext) }
     val mapSettingsPreferences = remember(context) { PhoneMapSettingsPreferences(context.applicationContext) }
     val mapSourcePreferences = remember(context) { PhoneMapSourcePreferences(context.applicationContext) }
@@ -457,6 +459,8 @@ internal fun CompanionMapScreen(
     val fileTransferViewModel: FileTransferViewModel = viewModel()
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val routeToolsViewModel: PhoneRouteToolsViewModel = viewModel()
+    val recordingState by PhoneRecordingSessionStore.state.collectAsState()
+    val recordingSettings by PhoneRecordingSettingsState.state.collectAsState()
     val searchViewModel: PhoneMapSearchViewModel = viewModel()
     val searchState by searchViewModel.controller.state.collectAsState()
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -469,7 +473,8 @@ internal fun CompanionMapScreen(
     val gpxUiState by gpxViewModel.uiState.collectAsState()
     val routeToolsState by routeToolsViewModel.uiState.collectAsState()
     val compassState by compassSensorSource.state.collectAsState()
-    val mapLocation by mapLocationSource.location.collectAsState()
+    val mapSourceLocation by mapLocationSource.location.collectAsState()
+    val mapLocation = recordingState.latestLocation.takeIf { recordingState.locationUpdatesActive } ?: mapSourceLocation
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var comparisonMapRuntime by remember { mutableStateOf(MapRuntime()) }
     val offlineRendererRefs by PhoneOfflineMapRendererDiagnostics.rendererRefs.collectAsState()
@@ -477,6 +482,12 @@ internal fun CompanionMapScreen(
     // Log counters change per entry; the map only needs capture lifecycle changes.
     val captureSessionId by remember { derivedStateOf { phoneDebugCaptureState.value.sessionId } }
     val captureActive by remember { derivedStateOf { phoneDebugCaptureState.value.active } }
+    LaunchedEffect(recordingSettingsPreferences) {
+        PhoneRecordingSettingsState.publish(recordingSettingsPreferences.load())
+    }
+    LaunchedEffect(recordingState.message) {
+        if (recordingState.message == PhoneRecordingMessage.SAVED) onRouteSaved()
+    }
     var mapUiState by rememberSaveable(stateSaver = phoneMapUiStateSaver) {
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
         mutableStateOf(initialTool?.let { initialState.openToolPage(it, initialToolSettings) } ?: initialState)
@@ -668,9 +679,22 @@ internal fun CompanionMapScreen(
                 }
             }
     }
+    val recordingDisplayName = stringResource(R.string.phone_rec_activity_name)
+    val savedGpxOverlays =
+        remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks, recordingSettings.showSavedActivities) {
+            gpxUiState.items.enabledOverlays(
+                globalVisible = mapUiState.contentVisibility.gpxTracks,
+                showSavedActivities = recordingSettings.showSavedActivities,
+            )
+        }
+    val savedGpxFitSegments = remember(savedGpxOverlays) { savedGpxOverlays.flatMap { it.segments } }
+    val recordingOverlay =
+        remember(recordingState.pointsRevision, recordingState.session.isActive, recordingDisplayName) {
+            phoneRecordingOverlay(recordingState, recordingDisplayName)
+        }
     val gpxOverlays =
-        remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks) {
-            gpxUiState.items.enabledOverlays(mapUiState.contentVisibility.gpxTracks)
+        remember(savedGpxOverlays, recordingOverlay) {
+            if (recordingOverlay == null) savedGpxOverlays else savedGpxOverlays + recordingOverlay
         }
     val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
         mapUiState = mapUiState.nextComparisonSelectionRequest()
@@ -727,6 +751,7 @@ internal fun CompanionMapScreen(
     phoneMapLocationLifecycle(
         source = mapLocationSource,
         hasLocationPermission = hasLocationPermission,
+        recordingActive = recordingState.locationUpdatesActive,
         onPermissionChanged = { hasLocationPermission = it },
     )
     LaunchedEffect(pendingOfflineMap) {
@@ -2158,6 +2183,7 @@ internal fun CompanionMapScreen(
                 onToolSelected = { tool -> mapUiState = mapUiState.selectTool(tool) },
                 onToggleLauncher = { mapUiState = mapUiState.toggleToolLauncher() },
                 onAddPoi = onAddPoi,
+                onOpenRecording = { mapUiState = mapUiState.selectTool(MapTool.REC) },
                 onOpenGpxTools = onOpenRouteTools,
                 onCycleSize = {
                     mapUiState = mapUiState.copy(toolPanel = mapUiState.toolPanel.cycleSize())
@@ -2221,8 +2247,8 @@ internal fun CompanionMapScreen(
                                 hasFittedGpxOverlay = hasFittedGpxOverlay,
                                 fitRequest =
                                     GpxFitRequest(
-                                        segments = gpxOverlayState.segments,
-                                        isRequested = gpxOverlayState.isVisible,
+                                        segments = savedGpxFitSegments,
+                                        isRequested = savedGpxFitSegments.isNotEmpty(),
                                         isOwner = true,
                                     ),
                                 callbacks =
@@ -2440,8 +2466,8 @@ internal fun CompanionMapScreen(
                                     hasFittedGpxOverlay = hasFittedGpxOverlay,
                                     fitRequest =
                                         GpxFitRequest(
-                                            segments = gpxOverlayState.segments,
-                                            isRequested = gpxOverlayState.isVisible && onlineComparisonActive,
+                                            segments = savedGpxFitSegments,
+                                            isRequested = savedGpxFitSegments.isNotEmpty() && onlineComparisonActive,
                                             isOwner = comparisonOwnsInitialGpxFit,
                                         ),
                                     callbacks =
@@ -2890,8 +2916,8 @@ internal fun CompanionMapScreen(
                                     hasFittedGpxOverlay = hasFittedGpxOverlay,
                                     fitRequest =
                                         GpxFitRequest(
-                                            segments = gpxOverlayState.segments,
-                                            isRequested = gpxOverlayState.isVisible && onlineComparisonActive,
+                                            segments = savedGpxFitSegments,
+                                            isRequested = savedGpxFitSegments.isNotEmpty() && onlineComparisonActive,
                                             isOwner = comparisonOwnsInitialGpxFit,
                                         ),
                                     callbacks =
@@ -3783,18 +3809,23 @@ private fun phoneMapCompassLifecycle(source: PhoneCompassSensorSource) {
 private fun phoneMapLocationLifecycle(
     source: PhoneMapLocationSource,
     hasLocationPermission: Boolean,
+    recordingActive: Boolean,
     onPermissionChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnPermissionChanged by rememberUpdatedState(onPermissionChanged)
-    DisposableEffect(source, lifecycleOwner, hasLocationPermission) {
+    DisposableEffect(source, lifecycleOwner, hasLocationPermission, recordingActive) {
         fun updateRegistration() {
             val permissionGranted = context.hasPhoneMapLocationPermission()
             if (permissionGranted != hasLocationPermission) {
                 currentOnPermissionChanged(permissionGranted)
             }
-            if (permissionGranted && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            if (
+                permissionGranted &&
+                !recordingActive &&
+                lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            ) {
                 source.start()
             } else {
                 source.stop()
@@ -4282,7 +4313,7 @@ private fun synchronizeGpxOverlay(
         runtime.map,
         runtime.mapView,
         runtime.generation.styleRevision,
-        overlayState.segments,
+        overlayState.overlays,
         overlayState.isVisible,
         overlayState.settings,
         fitRequest,
@@ -5398,7 +5429,11 @@ private fun MapLibreMap.enableLocationPuck(
 }
 
 private fun MapLibreMap.disableLocationPuck() {
-    locationComponent.setLocationComponentEnabled(false)
+    try {
+        locationComponent.setLocationComponentEnabled(false)
+    } catch (_: SecurityException) {
+        PhoneDebugCapture.log("PhoneMapLocation", "event=puck_disable_failed category=permission")
+    }
     locationComponent.setLocationEngine(null)
     locationComponent.setCompassEngine(null)
 }
