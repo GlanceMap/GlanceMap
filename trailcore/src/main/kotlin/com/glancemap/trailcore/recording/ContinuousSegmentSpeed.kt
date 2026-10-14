@@ -52,6 +52,7 @@ private fun continuousSegmentSpeedMps(
         segmentStartReason = current.segmentStartReason,
     )
 
+@Suppress("LongParameterList") // Keep endpoint provenance explicit in the unchanged speed rule.
 private fun continuousSegmentSpeedMps(
     previous: com.glancemap.trailcore.geo.GeoPoint,
     previousTimeMillis: Long?,

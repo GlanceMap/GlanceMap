@@ -1,3 +1,6 @@
+// Keep the validated public calorie entry points in their original source file.
+@file:Suppress("MatchingDeclarationName")
+
 package com.glancemap.trailcore.recording
 
 import kotlin.math.max
@@ -19,6 +22,8 @@ data class RecordingCalorieEstimate(
     val cyclingPhysicsSegments: Int = 0,
 )
 
+// Preserve the validated calorie model and existing caller signature.
+@Suppress("LongMethod", "LongParameterList", "ReturnCount")
 fun estimateRecordingCalories(
     points: List<RecordingPoint>,
     userWeightKg: Float,
@@ -120,6 +125,7 @@ fun estimateRecordingCalories(
     )
 }
 
+@Suppress("LongMethod") // Preserve the established segment processing order.
 private fun estimateCyclingCalories(
     points: List<RecordingPoint>,
     bodyWeightKg: Double,

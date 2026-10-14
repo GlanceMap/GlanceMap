@@ -58,5 +58,7 @@ class RecordingPointCaptureExpectation {
         accumulatedExpectedSamples += expectedSinceActive(nowElapsedMs)
     }
 
-    private fun expectedSinceActive(nowElapsedMs: Long): Double = (nowElapsedMs - activeSinceElapsedMs).coerceAtLeast(0L).toDouble() / activeIntervalMs.toDouble()
+    private fun expectedSinceActive(
+        nowElapsedMs: Long,
+    ): Double = (nowElapsedMs - activeSinceElapsedMs).coerceAtLeast(0L).toDouble() / activeIntervalMs.toDouble()
 }

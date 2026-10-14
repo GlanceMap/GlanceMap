@@ -30,15 +30,24 @@ class RecordingFoundationTest {
     fun recordingPoliciesKeepPresetDefaultsAndScreenOffModes() {
         assertEquals(
             RecordingGpsUsageTiming(1, 3, 1, RecordingSettings.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS),
-            recordingGpsUsageTiming(RecordingSettings.GPS_USAGE_PROFILE_BEST_TRACE, RecordingSettings.ACTIVITY_PROFILE_BIKE),
+            recordingGpsUsageTiming(
+                RecordingSettings.GPS_USAGE_PROFILE_BEST_TRACE,
+                RecordingSettings.ACTIVITY_PROFILE_BIKE,
+            ),
         )
         assertEquals(
             RecordingGpsUsageTiming(5, 20, 5, RecordingSettings.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS),
-            recordingGpsUsageTiming(RecordingSettings.GPS_USAGE_PROFILE_LONG_BATTERY, RecordingSettings.ACTIVITY_PROFILE_HIKE),
+            recordingGpsUsageTiming(
+                RecordingSettings.GPS_USAGE_PROFILE_LONG_BATTERY,
+                RecordingSettings.ACTIVITY_PROFILE_HIKE,
+            ),
         )
         assertEquals(
             RecordingGpsUsageTiming(1, 5, 1, RecordingSettings.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS),
-            recordingGpsUsageTiming(RecordingSettings.GPS_USAGE_PROFILE_BALANCED, RecordingSettings.ACTIVITY_PROFILE_BIKE),
+            recordingGpsUsageTiming(
+                RecordingSettings.GPS_USAGE_PROFILE_BALANCED,
+                RecordingSettings.ACTIVITY_PROFILE_BIKE,
+            ),
         )
         assertEquals(
             RecordingSettings.GPS_USAGE_PROFILE_CUSTOM,
@@ -87,7 +96,10 @@ class RecordingFoundationTest {
         )
         assertEquals(1_000, RecordingSettings.normalizeProgressDistanceMeters(1_249))
         assertEquals(1_000, RecordingSettings.normalizeProgressDistanceMeters(1_250))
-        assertEquals(RecordingSettings.RECORDING_TRACK_SMOOTHING_ADAPTIVE, RecordingSettings.normalizeTrackSmoothingMode(null))
+        assertEquals(
+            RecordingSettings.RECORDING_TRACK_SMOOTHING_ADAPTIVE,
+            RecordingSettings.normalizeTrackSmoothingMode(null),
+        )
     }
 
     @Test
@@ -124,7 +136,11 @@ class RecordingFoundationTest {
     fun distanceSessionResetRetainsPriorProgress() {
         assertEquals(
             RecordingExternalDistanceSessionState(baseMeters = -74.0, sessionMeters = 74.0),
-            advanceRecordingExternalDistanceSession(totalDistanceMeters = 0.0, baseMeters = 0.0, previousSessionMeters = 74.0),
+            advanceRecordingExternalDistanceSession(
+                totalDistanceMeters = 0.0,
+                baseMeters = 0.0,
+                previousSessionMeters = 74.0,
+            ),
         )
         assertNull(advanceRecordingExternalDistanceSession(Double.NaN, baseMeters = null, previousSessionMeters = null))
     }

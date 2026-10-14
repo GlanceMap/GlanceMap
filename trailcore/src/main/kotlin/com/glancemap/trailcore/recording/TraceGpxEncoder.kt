@@ -1,3 +1,6 @@
+// The encoding helpers share one GPX format; preserve the watch entry points.
+@file:Suppress("TooManyFunctions")
+
 package com.glancemap.trailcore.recording
 
 import java.io.StringWriter

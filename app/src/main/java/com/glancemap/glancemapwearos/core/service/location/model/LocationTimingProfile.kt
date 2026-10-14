@@ -38,10 +38,8 @@ internal fun resolveLocationTimingProfile(gpsIntervalMs: Long): LocationTimingPr
             intervalMs + maxOf(MARKER_PREDICTION_MIN_GRACE_MS, intervalMs / 2L),
         )
     val strictFreshFixMaxAgeMs =
-        maxOf(
-            STRICT_FRESH_FIX_MIN_AGE_MS,
-            intervalMs * STRICT_FRESH_FIX_INTERVAL_MULTIPLIER,
-        )
+        com.glancemap.trailcore.recording
+            .recordingStrictFreshFixMaxAgeMillis(intervalMs)
     val wakeAnchorMaxAgeMs =
         (intervalMs * WAKE_ANCHOR_INTERVAL_MULTIPLIER)
             .coerceIn(WAKE_ANCHOR_MIN_AGE_MS, WAKE_ANCHOR_MAX_AGE_MS)
@@ -97,7 +95,6 @@ private const val MARKER_PREDICTION_MIN_GRACE_MS = 500L
 private const val MARKER_PREDICTION_MIN_FRESHNESS_MAX_AGE_MS = 1_500L
 private const val MARKER_PREDICTION_MAX_FRESHNESS_MAX_AGE_MS = 12_000L
 private const val STRICT_FRESH_FIX_MIN_AGE_MS = 3_000L
-private const val STRICT_FRESH_FIX_INTERVAL_MULTIPLIER = 2L
 private const val WAKE_ANCHOR_INTERVAL_MULTIPLIER = 3L
 private const val WAKE_ANCHOR_MIN_AGE_MS = 5_000L
 private const val WAKE_ANCHOR_MAX_AGE_MS = 60_000L

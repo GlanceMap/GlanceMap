@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.core.gpx
 
+import com.glancemap.trailcore.recording.RecordingElevationProfileDefaults as Defaults
+
 data class GpxElevationFilterConfig(
     val smoothingDistanceMeters: Float,
     val neutralDiffThresholdMeters: Float,
@@ -8,11 +10,11 @@ data class GpxElevationFilterConfig(
 )
 
 object GpxElevationFilterDefaults {
-    const val DEFAULT_SMOOTHING_DISTANCE_METERS = 20f
-    const val DEFAULT_NEUTRAL_DIFF_THRESHOLD_METERS = 0.3f
-    const val DEFAULT_TREND_ACTIVATION_THRESHOLD_METERS = 3f
+    const val DEFAULT_SMOOTHING_DISTANCE_METERS = Defaults.DEFAULT_SMOOTHING_DISTANCE_METERS
+    const val DEFAULT_NEUTRAL_DIFF_THRESHOLD_METERS = Defaults.DEFAULT_NEUTRAL_DIFF_THRESHOLD_METERS
+    const val DEFAULT_TREND_ACTIVATION_THRESHOLD_METERS = Defaults.DEFAULT_TREND_ACTIVATION_THRESHOLD_METERS
 
-    const val MIN_SMOOTHING_DISTANCE_METERS = 5f
+    const val MIN_SMOOTHING_DISTANCE_METERS = Defaults.MIN_SMOOTHING_DISTANCE_METERS
     const val MAX_SMOOTHING_DISTANCE_METERS = 100f
     const val STEP_SMOOTHING_DISTANCE_METERS = 1f
 
@@ -20,7 +22,7 @@ object GpxElevationFilterDefaults {
     const val MAX_NEUTRAL_DIFF_THRESHOLD_METERS = 2f
     const val STEP_NEUTRAL_DIFF_THRESHOLD_METERS = 0.1f
 
-    const val MIN_TREND_ACTIVATION_THRESHOLD_METERS = 0.5f
+    const val MIN_TREND_ACTIVATION_THRESHOLD_METERS = Defaults.MIN_TREND_ACTIVATION_THRESHOLD_METERS
     const val MAX_TREND_ACTIVATION_THRESHOLD_METERS = 10f
     const val STEP_TREND_ACTIVATION_THRESHOLD_METERS = 0.5f
 
@@ -48,7 +50,10 @@ object GpxElevationFilterDefaults {
         GpxElevationFilterConfig(
             smoothingDistanceMeters = sanitizeSmoothingDistanceMeters(config.smoothingDistanceMeters),
             neutralDiffThresholdMeters = sanitizeNeutralDiffThresholdMeters(config.neutralDiffThresholdMeters),
-            trendActivationThresholdMeters = sanitizeTrendActivationThresholdMeters(config.trendActivationThresholdMeters),
+            trendActivationThresholdMeters =
+                sanitizeTrendActivationThresholdMeters(
+                    config.trendActivationThresholdMeters,
+                ),
             autoAdjustPerGpx = config.autoAdjustPerGpx,
         )
 

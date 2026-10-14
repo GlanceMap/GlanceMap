@@ -1,8 +1,10 @@
 package com.glancemap.trailcore.recording
 
 import kotlin.math.abs
+import kotlin.math.max
 
 /** Recording identifiers and defaults shared by every platform adapter. */
+@Suppress("TooManyFunctions")
 object RecordingSettings {
     const val ACTIVITY_PROFILE_HIKE = "HIKE"
     const val ACTIVITY_PROFILE_WALK_HIKE = "WALK_HIKE"
@@ -74,6 +76,25 @@ object RecordingSettings {
     const val MIN_BIKE_WEIGHT_KG = 5f
     const val MAX_BIKE_WEIGHT_KG = 40f
 
+    const val AUTO_PAUSE_MIN_POINTS = 2
+    const val AUTO_PAUSE_START_GRACE_MS = 60_000L
+    const val AUTO_PAUSE_BIKE_STOP_DURATION_MS = 20_000L
+    const val AUTO_PAUSE_HIKE_STOP_DURATION_MS = 45_000L
+    const val AUTO_PAUSE_BIKE_RESUME_DURATION_MS = 5_000L
+    const val AUTO_PAUSE_HIKE_RESUME_DURATION_MS = 8_000L
+    const val AUTO_PAUSE_BIKE_STOP_SPEED_MPS = 0.8f
+    const val AUTO_PAUSE_HIKE_STOP_SPEED_MPS = 0.3f
+    const val AUTO_PAUSE_BIKE_RESUME_SPEED_MPS = 1.8f
+    const val AUTO_PAUSE_HIKE_RESUME_SPEED_MPS = 0.8f
+    const val AUTO_PAUSE_BIKE_MAX_ACCURACY_M = 30f
+    const val AUTO_PAUSE_HIKE_MAX_ACCURACY_M = 25f
+    const val AUTO_PAUSE_BIKE_STATIONARY_RADIUS_M = 15f
+    const val AUTO_PAUSE_HIKE_STATIONARY_RADIUS_M = 8f
+    const val AUTO_PAUSE_BIKE_RESUME_DISTANCE_M = 30f
+    const val AUTO_PAUSE_HIKE_RESUME_DISTANCE_M = 15f
+    const val AUTO_PAUSE_ACCURACY_RADIUS_FACTOR = 1.2f
+    const val AUTO_PAUSE_ACCURACY_RESUME_FACTOR = 1.5f
+
     const val AUTO_PAUSE_GPS_INTERVAL_MS = 5_000L
     const val AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS = 12_000L
     const val AUTO_PAUSE_PROLONGED_AFTER_MS = 60_000L
@@ -102,7 +123,9 @@ object RecordingSettings {
             else -> DEFAULT_ACTIVITY_PROFILE
         }
 
-    fun normalizeGpsUsageProfile(profile: String?): String = profile?.takeIf { it in selectableGpsUsageProfiles } ?: DEFAULT_GPS_USAGE_PROFILE
+    fun normalizeGpsUsageProfile(
+        profile: String?,
+    ): String = profile?.takeIf { it in selectableGpsUsageProfiles } ?: DEFAULT_GPS_USAGE_PROFILE
 
     fun normalizeScreenOnGpsInterval(
         seconds: Int?,
@@ -114,7 +137,9 @@ object RecordingSettings {
         defaultSeconds: Int,
     ): Int = seconds?.takeIf { it in screenOffIntervals } ?: defaultSeconds
 
-    fun normalizeAutoPauseMode(mode: String?): String = mode?.takeIf { it in autoPauseModes } ?: DEFAULT_RECORDING_AUTO_PAUSE_MODE
+    fun normalizeAutoPauseMode(
+        mode: String?,
+    ): String = mode?.takeIf { it in autoPauseModes } ?: DEFAULT_RECORDING_AUTO_PAUSE_MODE
 
     fun normalizeLegacyAutoPauseMode(
         legacyMode: String?,
@@ -127,32 +152,62 @@ object RecordingSettings {
             else -> DEFAULT_RECORDING_AUTO_PAUSE_MODE
         }
 
-    fun normalizeTrackSmoothingMode(mode: String?): String = mode?.takeIf { it in trackSmoothingModes } ?: DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
+    fun normalizeTrackSmoothingMode(
+        mode: String?,
+    ): String = mode?.takeIf { it in trackSmoothingModes } ?: DEFAULT_RECORDING_TRACK_SMOOTHING_MODE
 
-    fun normalizeElevationSource(source: String?): String = source?.takeIf { it in elevationSources } ?: DEFAULT_RECORDING_ELEVATION_SOURCE
+    fun normalizeElevationSource(
+        source: String?,
+    ): String = source?.takeIf { it in elevationSources } ?: DEFAULT_RECORDING_ELEVATION_SOURCE
 
-    fun normalizeHeartRateSource(source: String?): String = source?.takeIf { it in heartRateSources } ?: DEFAULT_RECORDING_HEART_RATE_SOURCE
+    fun normalizeHeartRateSource(
+        source: String?,
+    ): String = source?.takeIf { it in heartRateSources } ?: DEFAULT_RECORDING_HEART_RATE_SOURCE
 
     fun normalizeSensorSource(
         source: String?,
         defaultSource: String,
     ): String = source?.takeIf { it in sensorSources } ?: defaultSource
 
-    fun normalizeStepsSource(source: String?): String = source?.takeIf { it in stepsSources } ?: DEFAULT_RECORDING_STEPS_SOURCE
+    fun normalizeStepsSource(
+        source: String?,
+    ): String = source?.takeIf { it in stepsSources } ?: DEFAULT_RECORDING_STEPS_SOURCE
 
-    fun normalizeProgressVibrationMode(mode: String?): String = mode?.takeIf { it in progressVibrationModes } ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
+    fun normalizeProgressVibrationMode(
+        mode: String?,
+    ): String = mode?.takeIf { it in progressVibrationModes } ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_MODE
 
-    fun normalizeProgressDistanceMeters(value: Int?): Int = nearestInterval(value ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS, progressDistanceIntervals)
+    fun normalizeProgressDistanceMeters(value: Int?): Int =
+        nearestInterval(
+            value ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_DISTANCE_METERS,
+            progressDistanceIntervals,
+        )
 
-    fun normalizeProgressTimeMinutes(value: Int?): Int = nearestInterval(value ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES, progressTimeIntervals)
+    fun normalizeProgressTimeMinutes(value: Int?): Int =
+        nearestInterval(
+            value ?: DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
+            progressTimeIntervals,
+        )
 
-    fun normalizeUserWeightKg(value: Float?): Float = value?.takeIf { it.isFinite() }?.coerceIn(MIN_USER_WEIGHT_KG, MAX_USER_WEIGHT_KG) ?: DEFAULT_USER_WEIGHT_KG
+    fun normalizeUserWeightKg(
+        value: Float?,
+    ): Float {
+        val valid = value?.takeIf { it.isFinite() }
+        return valid?.coerceIn(MIN_USER_WEIGHT_KG, MAX_USER_WEIGHT_KG) ?: DEFAULT_USER_WEIGHT_KG
+    }
 
-    fun normalizeBackpackWeightKg(value: Float?): Float =
+    fun normalizeBackpackWeightKg(
+        value: Float?,
+    ): Float =
         value?.takeIf { it.isFinite() }?.coerceIn(MIN_BACKPACK_WEIGHT_KG, MAX_BACKPACK_WEIGHT_KG)
             ?: DEFAULT_BACKPACK_WEIGHT_KG
 
-    fun normalizeBikeWeightKg(value: Float?): Float = value?.takeIf { it.isFinite() }?.coerceIn(MIN_BIKE_WEIGHT_KG, MAX_BIKE_WEIGHT_KG) ?: DEFAULT_BIKE_WEIGHT_KG
+    fun normalizeBikeWeightKg(
+        value: Float?,
+    ): Float {
+        val valid = value?.takeIf { it.isFinite() }
+        return valid?.coerceIn(MIN_BIKE_WEIGHT_KG, MAX_BIKE_WEIGHT_KG) ?: DEFAULT_BIKE_WEIGHT_KG
+    }
 
     fun nearestProgressVibrationInterval(
         value: Int,
@@ -165,13 +220,23 @@ object RecordingSettings {
     ): Int = options.minWithOrNull(compareBy<Int> { abs(it - value) }.thenBy { it }) ?: value
 
     private val selectableGpsUsageProfiles =
-        setOf(GPS_USAGE_PROFILE_BEST_TRACE, GPS_USAGE_PROFILE_BALANCED, GPS_USAGE_PROFILE_LONG_BATTERY, GPS_USAGE_PROFILE_CUSTOM)
+        setOf(
+            GPS_USAGE_PROFILE_BEST_TRACE,
+            GPS_USAGE_PROFILE_BALANCED,
+            GPS_USAGE_PROFILE_LONG_BATTERY,
+            GPS_USAGE_PROFILE_CUSTOM,
+        )
     private val autoPauseModes =
         setOf(RECORDING_AUTO_PAUSE_OFF, RECORDING_AUTO_PAUSE_ALWAYS)
     private val trackSmoothingModes =
         setOf(RECORDING_TRACK_SMOOTHING_OFF, RECORDING_TRACK_SMOOTHING_ADAPTIVE, RECORDING_TRACK_SMOOTHING_STRONG)
     private val elevationSources =
-        setOf(RECORDING_ELEVATION_SOURCE_AUTO, RECORDING_ELEVATION_SOURCE_DEM, RECORDING_ELEVATION_SOURCE_GPS, RECORDING_SOURCE_DISABLED)
+        setOf(
+            RECORDING_ELEVATION_SOURCE_AUTO,
+            RECORDING_ELEVATION_SOURCE_DEM,
+            RECORDING_ELEVATION_SOURCE_GPS,
+            RECORDING_SOURCE_DISABLED,
+        )
     private val heartRateSources =
         setOf(RECORDING_HEART_RATE_SOURCE_WATCH, RECORDING_HEART_RATE_SOURCE_STRAP, RECORDING_SOURCE_DISABLED)
     private val sensorSources =
@@ -262,6 +327,20 @@ fun recordingGpsIntervalMillis(seconds: Int): Long =
         seconds.coerceAtLeast(1) * 1_000L
     }
 
+/** Uses the shared pause-monitor cadence without requesting fixes faster than the active GPS preset. */
+fun effectiveRecordingAutoPauseGpsIntervalMillis(
+    recordingIntervalMillis: Long,
+    autoPausedDurationMillis: Long,
+): Long {
+    val monitorIntervalMillis =
+        if (autoPausedDurationMillis >= RecordingSettings.AUTO_PAUSE_PROLONGED_AFTER_MS) {
+            RecordingSettings.AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS
+        } else {
+            RecordingSettings.AUTO_PAUSE_GPS_INTERVAL_MS
+        }
+    return max(recordingIntervalMillis, monitorIntervalMillis)
+}
+
 /** REC only accepts fixed, disabled, or same-as-screen-on values. Adaptive is guidance-only. */
 fun recordingScreenOffIntervalMillis(
     screenOnIntervalMs: Long,
@@ -271,3 +350,24 @@ fun recordingScreenOffIntervalMillis(
         RecordingSettings.GPS_INTERVAL_SAME_AS_SCREEN_ON_SECONDS -> screenOnIntervalMs
         else -> recordingGpsIntervalMillis(screenOffSeconds)
     }
+
+/** The watch's configured sample cadence and the provider's active cadence are distinct. */
+fun recordingTrajectoryContinuityIntervalSeconds(
+    effectiveIntervalMs: Long,
+    fallbackSeconds: Int = RecordingSettings.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+): Int {
+    val fallback = fallbackSeconds.takeIf { it > 0 } ?: RecordingSettings.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
+    return if (effectiveIntervalMs > 0L) {
+        (((effectiveIntervalMs - 1L) / 1_000L) + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    } else {
+        fallback
+    }
+}
+
+fun recordingStrictFreshFixMaxAgeMillis(
+    intervalMillis: Long,
+): Long =
+    maxOf(
+        3_000L,
+        intervalMillis.coerceAtLeast(1_000L) * 2L,
+    )

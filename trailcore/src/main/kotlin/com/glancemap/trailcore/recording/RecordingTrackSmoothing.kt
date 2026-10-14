@@ -1155,8 +1155,14 @@ fun smoothRecordingStraightDrift(
         ) / chordLength
     if (detourRatio > RECORDING_STRAIGHT_DRIFT_MAX_DETOUR_RATIO) return null
 
-    val firstAccuracy = firstInterior.accuracyMeters.validAccuracyOr(RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M)
-    val secondAccuracy = secondInterior.accuracyMeters.validAccuracyOr(RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M)
+    val firstAccuracy =
+        firstInterior.accuracyMeters.validAccuracyOr(
+            RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M,
+        )
+    val secondAccuracy =
+        secondInterior.accuracyMeters.validAccuracyOr(
+            RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M,
+        )
     val minimumAccuracyForCorrection =
         if (options.mode == RecordingSettings.RECORDING_TRACK_SMOOTHING_STRONG) {
             RECORDING_STRAIGHT_DRIFT_STRONG_MIN_ACCURACY_M
@@ -1261,7 +1267,10 @@ private fun smoothConfirmedRecordingReversal(
         recoveredDirection.x * recoveredDirection.x + recoveredDirection.y * recoveredDirection.y
     val projectionFraction =
         (candidateLocal.x * recoveredDirection.x + candidateLocal.y * recoveredDirection.y) / baselineSquared
-    val candidateAccuracy = candidate.accuracyMeters.validAccuracyOr(RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M)
+    val candidateAccuracy =
+        candidate.accuracyMeters.validAccuracyOr(
+            RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M,
+        )
     val beforeAccuracy = before.accuracyMeters.validAccuracyOr(RecordingSettings.RECORDING_FIX_FALLBACK_ACCURACY_M)
     val sensorBackedNearOriginExcursion =
         projectionFraction in

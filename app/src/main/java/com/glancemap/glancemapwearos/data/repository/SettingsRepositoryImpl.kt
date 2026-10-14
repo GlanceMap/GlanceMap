@@ -2444,8 +2444,9 @@ class SettingsRepositoryImpl private constructor(
                 else -> RecordingProgressVibrationSettings()
             }
 
-        private fun sanitizeRecordingProgressVibrationDistanceMeters(meters: Int?): Int =
-            normalizeProgressDistance(meters)
+        private fun sanitizeRecordingProgressVibrationDistanceMeters(
+            meters: Int?,
+        ): Int = normalizeProgressDistance(meters)
 
         private fun sanitizeRecordingProgressVibrationTimeMinutes(minutes: Int?): Int = normalizeProgressTime(minutes)
 

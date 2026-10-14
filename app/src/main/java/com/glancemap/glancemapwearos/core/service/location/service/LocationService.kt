@@ -27,9 +27,7 @@ import com.glancemap.glancemapwearos.core.service.location.adapters.PassiveExter
 import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsAvailabilityReason
 import com.glancemap.glancemapwearos.core.service.location.adapters.WatchGpsLocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.WearPhoneConnectionProbe
-import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_PROLONGED_AFTER_MS
-import com.glancemap.glancemapwearos.core.service.location.config.AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS
 import com.glancemap.glancemapwearos.core.service.location.config.BIND_CACHED_FIX_MAX_ACCURACY_COARSE_M
 import com.glancemap.glancemapwearos.core.service.location.config.BIND_CACHED_FIX_MAX_ACCURACY_M
 import com.glancemap.glancemapwearos.core.service.location.config.BIND_CACHED_FIX_MAX_MAX_AGE_MS
@@ -63,6 +61,7 @@ import com.glancemap.glancemapwearos.core.service.location.policy.LocationSource
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.trailcore.recording.effectiveRecordingAutoPauseGpsIntervalMillis
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
@@ -763,17 +762,6 @@ class LocationService : Service() {
         )?.let(immediateLocationCoordinator::cancelNavigateOneShot)
     }
 
-    private fun isProlongedAutoPause(nowElapsedMs: Long = SystemClock.elapsedRealtime()): Boolean =
-        autoPauseStartedAtElapsedMs > 0L &&
-            nowElapsedMs - autoPauseStartedAtElapsedMs >= AUTO_PAUSE_PROLONGED_AFTER_MS
-
-    private fun autoPauseGpsIntervalMs(): Long =
-        if (isProlongedAutoPause()) {
-            AUTO_PAUSE_PROLONGED_GPS_INTERVAL_MS
-        } else {
-            AUTO_PAUSE_GPS_INTERVAL_MS
-        }
-
     private fun currentRequestUpdateState(): RequestUpdateState =
         RequestUpdateState(
             bound = isBound.value,
@@ -797,7 +785,12 @@ class LocationService : Service() {
                 minOf(recordingIntervalForScreen(), guidanceIntervalForScreen())
             latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING -> recordingIntervalForScreen()
             latestRuntimeReason == NavigationRuntimeDemandReason.RECORDING_AUTO_PAUSED ->
-                maxOf(recordingIntervalForScreen(), autoPauseGpsIntervalMs())
+                effectiveRecordingAutoPauseGpsIntervalMillis(
+                    recordingIntervalMillis = recordingIntervalForScreen(),
+                    autoPausedDurationMillis =
+                        (SystemClock.elapsedRealtime() - autoPauseStartedAtElapsedMs)
+                            .coerceAtLeast(0L),
+                )
             latestRuntimeReason.isGuidanceRuntimeReason() -> guidanceIntervalForScreen()
             else -> latestUserIntervalMs
         }
@@ -816,9 +809,7 @@ class LocationService : Service() {
             latestTurnByTurnIntervalMs
         }
 
-    private fun updateTelemetryFixContext(
-        effectiveBackgroundGpsEnabled: Boolean = effectiveBackgroundGpsEnabled(),
-    ) {
+    private fun updateTelemetryFixContext(effectiveBackgroundGpsEnabled: Boolean = effectiveBackgroundGpsEnabled()) {
         telemetry.updateFixContext(
             screenState = latestScreenState.name,
             expectedIntervalMs = _effectiveUpdateIntervalMs.value,
@@ -1017,7 +1008,8 @@ class LocationService : Service() {
                     recordingScreenOffIntervalMs =
                         SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS * 1_000L,
                     turnByTurnIntervalMs = SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
-                    turnByTurnScreenOffIntervalMs = SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
+                    turnByTurnScreenOffIntervalMs =
+                        SettingsRepository.DEFAULT_TURN_BY_TURN_GPS_INTERVAL_SECONDS * 1_000L,
                     turnByTurnScreenOffIntervalAdaptive = false,
                     turnByTurnScreenOffBatchingEnabled =
                         SettingsRepository.DEFAULT_TURN_BY_TURN_SCREEN_OFF_BATCHING_ENABLED,
