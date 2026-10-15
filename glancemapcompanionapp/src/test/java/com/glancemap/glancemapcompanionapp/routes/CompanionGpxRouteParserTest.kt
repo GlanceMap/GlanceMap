@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.routes
 
+import com.glancemap.trailcore.profile.TrailGuidanceHintSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -80,6 +81,31 @@ class CompanionGpxRouteParserTest {
 
         assertNull(parsed.title)
         assertEquals(2, parsed.points.size)
+    }
+
+    @Test
+    fun `retains embedded BRouter and GPX symbol guidance hints`() {
+        val parsed =
+            parseGpx(
+                """
+                <gpx version="1.1">
+                  <trk><trkseg>
+                    <trkpt lat="46.0000" lon="11.0000" />
+                    <trkpt lat="46.0010" lon="11.0010">
+                      <desc>Bear right &amp; climb</desc>
+                      <extensions><brouter:voicehint xmlns:brouter="http://brouter.de/brouter">TR;200m</brouter:voicehint></extensions>
+                    </trkpt>
+                    <trkpt lat="46.0020" lon="11.0020"><sym>left</sym><desc>Turn left</desc></trkpt>
+                  </trkseg></trk>
+                </gpx>
+                """.trimIndent(),
+            )
+
+        assertEquals("TR", parsed.points[1].guidanceHint?.commandCode)
+        assertEquals("Bear right & climb", parsed.points[1].guidanceHint?.message)
+        assertEquals(TrailGuidanceHintSource.BROUTER, parsed.points[1].guidanceHint?.source)
+        assertEquals("left", parsed.points[2].guidanceHint?.commandCode)
+        assertEquals(TrailGuidanceHintSource.GPX_SYMBOL, parsed.points[2].guidanceHint?.source)
     }
 
     private fun parseGpx(gpx: String): ParsedCompanionRoute {

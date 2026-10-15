@@ -35,3 +35,18 @@
 -keep class com.glancemap.glancemapcompanionapp.map.PhoneRecordingSettings { *; }
 -keep class com.glancemap.trailcore.recording.RecordingPoint { *; }
 -keep class com.glancemap.trailcore.geo.GeoPoint { *; }
+
+# Phone guidance drafts are Gson persisted; keep every reflected field and nested model stable.
+-keep class com.glancemap.glancemapcompanionapp.map.PhoneGuidanceRouteDraft { *; }
+-keep class com.glancemap.glancemapcompanionapp.map.PhoneGuidanceProgressDraft { *; }
+-keep class com.glancemap.trailcore.guidance.TrailGuidanceEtaConfig { *; }
+-keep class com.glancemap.trailcore.profile.TrailPoint { *; }
+-keep class com.glancemap.trailcore.profile.TrailGuidanceHint { *; }
+-keep enum com.glancemap.trailcore.profile.TrailGuidanceHintSource { *; }
+
+
+# Library folder and activity metadata must survive minified app updates.
+-keep class com.glancemap.glancemapcompanionapp.library.PhoneLibraryOrganization { *; }
+-keep class com.glancemap.glancemapcompanionapp.library.PhoneLibraryFolder { *; }
+-keep class com.glancemap.glancemapcompanionapp.library.PhoneLibraryEntryOrganization { *; }
+-keep enum com.glancemap.glancemapcompanionapp.library.PhoneLibraryActivity { *; }

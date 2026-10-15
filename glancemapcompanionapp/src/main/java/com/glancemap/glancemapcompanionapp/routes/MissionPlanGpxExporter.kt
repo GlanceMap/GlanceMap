@@ -41,17 +41,35 @@ internal object MissionPlanGpxExporter {
                 }
             append("  <trk><name>")
             append(escape("$routeTitle — Day ${day.dayNumber}"))
-            append("</name><trkseg>\n")
-            profile.points.subList(firstPointIndex, lastPointIndex + 1).forEach { point ->
+            append("</name>")
+            profile.points.subList(firstPointIndex, lastPointIndex + 1).forEachIndexed { localIndex, point ->
+                if (localIndex == 0 || point.startsNewSegment) append("<trkseg>\n")
                 append("    <trkpt lat=\"")
                 append(point.location.latitude)
                 append("\" lon=\"")
                 append(point.location.longitude)
                 append("\">")
                 point.elevationMeters?.let { elevation -> appendTag("ele", elevation.toString()) }
+                point.guidanceHint?.let { hint ->
+                    hint.message?.let { message -> appendTag("desc", message) }
+                    if (hint.source == com.glancemap.trailcore.profile.TrailGuidanceHintSource.GPX_SYMBOL) {
+                        hint.commandCode?.let { symbol -> appendTag("sym", symbol) }
+                    } else {
+                        hint.commandCode?.let { command ->
+                            append("<extensions><brouter:voicehint xmlns:brouter=\"http://brouter.de/brouter\">")
+                            append(escape(command))
+                            append("</brouter:voicehint></extensions>")
+                        }
+                    }
+                }
                 append("</trkpt>\n")
+                if (localIndex == lastPointIndex - firstPointIndex ||
+                    profile.points.getOrNull(firstPointIndex + localIndex + 1)?.startsNewSegment == true
+                ) {
+                    append("  </trkseg>\n")
+                }
             }
-            append("  </trkseg></trk>\n</gpx>\n")
+            append("  </trk>\n</gpx>\n")
         }
     }
 

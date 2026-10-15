@@ -1,6 +1,8 @@
 package com.glancemap.glancemapcompanionapp.routes
 
 import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.profile.TrailGuidanceHint
+import com.glancemap.trailcore.profile.TrailGuidanceHintSource
 import com.glancemap.trailcore.profile.TrailPoint
 import org.w3c.dom.Element
 import org.w3c.dom.NodeList
@@ -92,8 +94,44 @@ object CompanionGpxRouteParser {
                 location = location,
                 elevationMeters = text(ELEVATION_TAG)?.toDoubleOrNull()?.takeIf(Double::isFinite),
                 startsNewSegment = startsNewSegment,
+                guidanceHint = guidanceHint(),
+                hasTimestamp = text(TIME_TAG) != null,
             )
         }
+
+    private fun Element.guidanceHint(): TrailGuidanceHint? {
+        val voiceHint =
+            descendantsNamed(VOICE_HINT_TAG)
+                .firstOrNull { hint ->
+                    hint.nodeName.substringBefore(':').equals(BROUTER_PREFIX, ignoreCase = true) ||
+                        hint.namespaceURI?.contains(BROUTER_PREFIX, ignoreCase = true) == true
+                }?.textContent
+                ?.trim()
+                ?.substringBefore(';')
+                ?.takeIf(String::isNotBlank)
+        if (voiceHint != null) {
+            return TrailGuidanceHint(
+                commandCode = voiceHint,
+                message = text(DESCRIPTION_TAG).guidanceHintMessage(),
+                source = TrailGuidanceHintSource.BROUTER,
+            )
+        }
+        val symbol =
+            text(SYMBOL_TAG)
+                ?.takeUnless { it.equals(PASS_PLACE_SYMBOL, ignoreCase = true) }
+                ?: return null
+        return TrailGuidanceHint(
+            commandCode = symbol,
+            message = text(DESCRIPTION_TAG).guidanceHintMessage(),
+            source = TrailGuidanceHintSource.GPX_SYMBOL,
+        )
+    }
+
+    private fun String?.guidanceHintMessage(): String? =
+        this
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?.takeUnless { it.equals("start", ignoreCase = true) || it.equals("end", ignoreCase = true) }
 
     private fun Element.toRouteWaypoint(): RouteWaypoint? =
         locationOrNull()?.let { location ->
@@ -142,5 +180,10 @@ object CompanionGpxRouteParser {
     private const val TRACK_POINT_TAG = "trkpt"
     private const val TRACK_SEGMENT_TAG = "trkseg"
     private const val TRACK_TAG = "trk"
+    private const val TIME_TAG = "time"
     private const val WAYPOINT_TAG = "wpt"
+    private const val SYMBOL_TAG = "sym"
+    private const val VOICE_HINT_TAG = "voicehint"
+    private const val BROUTER_PREFIX = "brouter"
+    private const val PASS_PLACE_SYMBOL = "pass_place"
 }

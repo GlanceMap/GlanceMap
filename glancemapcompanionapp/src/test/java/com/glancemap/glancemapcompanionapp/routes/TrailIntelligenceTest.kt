@@ -81,6 +81,41 @@ class TrailIntelligenceTest {
     }
 
     @Test
+    fun `phone progress drives reverse mission forecast and weather location`() {
+        val details = routeDetails()
+        val day =
+            MissionPlanDay(
+                id = "day-2",
+                dayNumber = 2,
+                routeId = details.route.id,
+                startDistanceMeters = 1_100.0,
+                endDistanceMeters = 2_000.0,
+            )
+        val reverseDetails = details.reversedForGuidance()
+        val intelligence =
+            details.trailIntelligenceForProgress(
+                originalDistanceFromStartMeters = 1_700.0,
+                reversed = true,
+                missionDay = day,
+                reversedDetails = reverseDetails,
+            )
+        val weatherLocation =
+            details.weatherLocationFor(
+                activeHikeSnapshot = null,
+                plannedStartDistanceMeters = day.startDistanceMeters,
+                phoneGuidanceDistanceMeters = 1_700.0,
+                phoneGuidancePositionLabel = "Phone guidance position",
+            )
+
+        requireNotNull(intelligence)
+        requireNotNull(weatherLocation)
+        assertEquals(details.profile.totalDistanceMeters - 1_700.0, intelligence.window.startDistanceMeters, 0.1)
+        assertTrue(intelligence.window.endDistanceMeters <= details.profile.totalDistanceMeters - day.startDistanceMeters + 0.1)
+        assertEquals("Water source", intelligence.upcomingWaypoints.first().title)
+        assertEquals("Phone guidance position", weatherLocation.label)
+    }
+
+    @Test
     fun `does not forecast a different or completed route`() {
         val details = routeDetails()
         val otherRoute =

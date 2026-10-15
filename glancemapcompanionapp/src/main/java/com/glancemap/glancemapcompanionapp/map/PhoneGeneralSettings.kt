@@ -49,6 +49,12 @@ internal class PhoneGeneralSettingsPreferences(
             bikeWeightKg = preferences.getFloat(KEY_BIKE_WEIGHT_KG, DEFAULT_PHONE_BIKE_WEIGHT_KG),
         ).normalized()
 
+    fun isOnlineRoutingEnabled(): Boolean = preferences.getBoolean(KEY_ONLINE_ROUTING_ENABLED, true)
+
+    fun setOnlineRoutingEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_ONLINE_ROUTING_ENABLED, enabled).apply()
+    }
+
     fun save(settings: PhoneGeneralSettings): PhoneGeneralSettings {
         val normalized = settings.normalized()
         preferences
@@ -69,6 +75,7 @@ internal class PhoneGeneralSettingsPreferences(
         const val KEY_USER_WEIGHT_KG = "user_weight_kg"
         const val KEY_BACKPACK_WEIGHT_KG = "backpack_weight_kg"
         const val KEY_BIKE_WEIGHT_KG = "bike_weight_kg"
+        const val KEY_ONLINE_ROUTING_ENABLED = "online_routing_enabled"
     }
 }
 

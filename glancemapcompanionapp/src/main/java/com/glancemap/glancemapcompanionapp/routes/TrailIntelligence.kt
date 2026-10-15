@@ -2,7 +2,9 @@ package com.glancemap.glancemapcompanionapp.routes
 
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
+import com.glancemap.trailcore.guidance.reverseTrailPoints
 import com.glancemap.trailcore.profile.TrailWindow
+import com.glancemap.trailcore.profile.buildTrailRouteProfile
 import com.glancemap.trailcore.profile.windowBetweenDistances
 import com.glancemap.trailcore.profile.windowFromDistance
 
@@ -61,6 +63,69 @@ fun RouteLibraryRouteDetails.trailIntelligenceFor(day: MissionPlanDay): TrailInt
     return boundedWindow
         .takeIf { window -> window.distanceMeters > 0.0 }
         ?.let { window -> trailIntelligenceForWindow(window, TrailIntelligenceContext.PLANNED_DAY) }
+}
+
+/** Follows live phone progress, preserving a selected mission-day boundary and route direction. */
+fun RouteLibraryRouteDetails.trailIntelligenceForProgress(
+    originalDistanceFromStartMeters: Double,
+    reversed: Boolean,
+    missionDay: MissionPlanDay? = null,
+    reversedDetails: RouteLibraryRouteDetails? = null,
+): TrailIntelligence? {
+    val totalDistance = profile.totalDistanceMeters
+    val directionalDistance = if (reversed) totalDistance - originalDistanceFromStartMeters else originalDistanceFromStartMeters
+    val directionalDay =
+        missionDay?.let { day ->
+            if (reversed) {
+                day.copy(
+                    startDistanceMeters = totalDistance - day.endDistanceFor(totalDistance),
+                    endDistanceMeters = totalDistance - day.startDistanceMeters,
+                )
+            } else {
+                day
+            }
+        }
+    val directionalDetails = if (reversed) reversedDetails ?: reversedForGuidance() else this
+    return directionalDetails.trailIntelligenceForDistance(directionalDistance, directionalDay)
+}
+
+/** The route library's forward pacing profile is reversed once per selected guidance direction. */
+fun RouteLibraryRouteDetails.reversedForGuidance(): RouteLibraryRouteDetails {
+    val totalDistance = profile.totalDistanceMeters
+    return copy(
+        profile = buildTrailRouteProfile(reverseTrailPoints(profile.points), pacing),
+        waypoints =
+            waypoints
+                .map { waypoint ->
+                    waypoint.copy(distanceFromStartMeters = totalDistance - waypoint.distanceFromStartMeters)
+                }.sortedBy(RouteLibraryWaypoint::distanceFromStartMeters),
+    )
+}
+
+fun RouteLibraryRouteDetails.trailIntelligenceForDistance(
+    distanceFromStartMeters: Double,
+    day: MissionPlanDay?,
+): TrailIntelligence? {
+    val startDistance =
+        distanceFromStartMeters.coerceIn(
+            day?.startDistanceMeters ?: 0.0,
+            day?.endDistanceFor(profile.totalDistanceMeters) ?: profile.totalDistanceMeters,
+        )
+    val projectedWindow = profile.windowFromDistance(startDistance, NEXT_WINDOW_SECONDS)
+    val endDistance =
+        minOf(
+            projectedWindow.endDistanceMeters,
+            day?.endDistanceFor(profile.totalDistanceMeters) ?: profile.totalDistanceMeters,
+        )
+    return profile
+        .windowBetweenDistances(startDistance, endDistance)
+        .takeIf { window -> window.distanceMeters > 0.0 }
+        ?.let { window ->
+            trailIntelligenceForWindow(
+                window,
+                if (day == null) TrailIntelligenceContext.ACTIVE_HIKE else TrailIntelligenceContext.PLANNED_DAY,
+            )
+        }
 }
 
 private fun RouteLibraryRouteDetails.trailIntelligenceForWindow(

@@ -13,11 +13,18 @@ import kotlin.math.abs
 fun RouteLibraryRouteDetails.weatherLocationFor(
     activeHikeSnapshot: ActiveHikeSnapshot?,
     plannedStartDistanceMeters: Double = 0.0,
+    phoneGuidanceDistanceMeters: Double? = null,
+    phoneGuidancePositionLabel: String = "Current phone route position",
 ): WeatherForecastLocation? {
+    val phoneDistance =
+        phoneGuidanceDistanceMeters
+            ?.takeIf(Double::isFinite)
+            ?.takeIf { it in 0.0..profile.totalDistanceMeters }
     val activeDistance = activeHikeSnapshot?.matchedActiveDistanceFor(this)
-    val targetDistanceMeters = activeDistance ?: plannedStartDistanceMeters
+    val targetDistanceMeters = phoneDistance ?: activeDistance ?: plannedStartDistanceMeters
     val label =
         when {
+            phoneDistance != null -> phoneGuidancePositionLabel
             activeDistance != null -> "Current route position"
             plannedStartDistanceMeters > 0.0 -> "Planned day start"
             else -> "Route start"

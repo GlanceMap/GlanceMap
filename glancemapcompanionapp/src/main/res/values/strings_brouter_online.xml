@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_route_routing_mode">Route calculation mode</string>
+    <string name="phone_route_online_title">Online routing</string>
+    <string name="phone_route_online_description">Sends the selected route points to brouter.de. No routing files are needed on this phone.</string>
+    <string name="phone_route_offline_title">Offline routing</string>
+    <string name="phone_route_offline_description">Uses routing files stored on this phone and works without internet.</string>
+</resources>
