@@ -16,6 +16,7 @@ import com.glancemap.glancemapcompanionapp.activehike.CompanionLiveHikeSyncPrefe
 import com.glancemap.glancemapcompanionapp.activehike.PhoneActiveHikeSnapshot
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureSlot
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.glancemapcompanionapp.refuges.GpxWaypointPoiImporter
@@ -1431,42 +1432,18 @@ class FileTransferViewModel : ViewModel() {
             ).show()
     }
 
-    fun stopPhoneDebugCaptureAndSend(context: Context) {
+    fun stopPhoneDebugCapture() {
         PhoneDebugCapture.stop()
-        viewModelScope.launch {
-            runCatching {
-                CompanionDiagnosticsEmailComposer.composePhoneDiagnosticsEmail(context)
-            }.onFailure { error ->
-                Toast
-                    .makeText(
-                        context.applicationContext,
-                        error.localizedMessage ?: context.getString(R.string.phone_files_could_not_open_email_draft),
-                        Toast.LENGTH_LONG,
-                    ).show()
-            }
-        }
     }
 
-    fun sendLastPhoneDebugCapture(context: Context) {
+    fun shareLatestPhoneDebugCapture(context: Context) {
         viewModelScope.launch {
             runCatching {
-                CompanionDiagnosticsEmailComposer.composeLatestPhoneDiagnosticsEmail(context)
-            }.onFailure { error ->
-                Toast
-                    .makeText(
-                        context.applicationContext,
-                        error.localizedMessage
-                            ?: context.getString(R.string.phone_files_no_saved_phone_recording_available),
-                        Toast.LENGTH_LONG,
-                    ).show()
-            }
-        }
-    }
-
-    fun sendCurrentPhoneDebugCapture(context: Context) {
-        viewModelScope.launch {
-            runCatching {
-                CompanionDiagnosticsEmailComposer.composePhoneDiagnosticsEmail(context)
+                if (PhoneDebugCapture.hasCapture(PhoneDebugCaptureSlot.CURRENT)) {
+                    CompanionDiagnosticsEmailComposer.composePhoneDiagnosticsEmail(context)
+                } else {
+                    CompanionDiagnosticsEmailComposer.composeLatestPhoneDiagnosticsEmail(context)
+                }
             }.onFailure { error ->
                 Toast
                     .makeText(
@@ -1478,7 +1455,7 @@ class FileTransferViewModel : ViewModel() {
         }
     }
 
-    fun sendPreviousPhoneDebugCapture(context: Context) {
+    fun sharePreviousPhoneDebugCapture(context: Context) {
         viewModelScope.launch {
             runCatching {
                 CompanionDiagnosticsEmailComposer.composePreviousPhoneDiagnosticsEmail(context)

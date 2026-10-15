@@ -111,6 +111,59 @@ class PhoneDebugCapturePersistenceTest {
     }
 
     @Test
+    fun checkpointPersistsPartialSummariesWithoutStoppingCapture() {
+        PhoneDebugCapture.start()
+        val removeListener =
+            PhoneDebugCapture.addBeforeStopListener {
+                PhoneDebugCapture.updateSection("counts", "Location callbacks\nAccepted: 2")
+            }
+        try {
+            PhoneDebugCapture.checkpoint()
+            assertTrue(PhoneDebugCapture.isActive())
+            PhoneDebugCapture.reloadFromStorageForTest()
+            assertTrue(PhoneDebugCapture.state.value.interrupted)
+            assertEquals(
+                "Location callbacks\nAccepted: 2",
+                PhoneDebugCapture.sectionForTest(PhoneDebugCaptureSlot.CURRENT, "counts"),
+            )
+        } finally {
+            removeListener()
+        }
+    }
+
+    @Test
+    fun crashCheckpointKeepsTheLatestSnapshotWhileBackgroundWritesAreQueued() {
+        PhoneDebugCapture.start()
+        repeat(200) { PhoneDebugCapture.log("Map", "line=$it") }
+        PhoneDebugCapture.log("UncaughtException", "class=ExampleFailure")
+
+        PhoneDebugCapture.persistCrashSnapshot()
+        val savedCheckpoint = File(directory, "phone-debug-capture-current.bin").readBytes().toString(Charsets.UTF_8)
+        assertTrue(savedCheckpoint.contains("ExampleFailure"))
+        PhoneDebugCapture.reloadFromStorageForTest()
+
+        assertTrue(PhoneDebugCapture.state.value.interrupted)
+        assertEquals(201, PhoneDebugCapture.snapshot().size)
+        assertTrue(PhoneDebugCapture.snapshot().last().contains("ExampleFailure"))
+    }
+
+    @Test
+    fun failedCheckpointRetainsTheLastReadableCapture() {
+        PhoneDebugCapture.start()
+        PhoneDebugCapture.log("Map", "last-good-checkpoint")
+        PhoneDebugCapture.flushForTest()
+
+        // This cannot be encoded by the existing writeUTF storage format.
+        PhoneDebugCapture.updateSection("too-large", "x".repeat(70_000))
+        PhoneDebugCapture.reloadFromStorageForTest()
+
+        assertTrue(PhoneDebugCapture.state.value.interrupted)
+        assertTrue(PhoneDebugCapture.snapshot().single().contains("last-good-checkpoint"))
+        assertEquals(null, PhoneDebugCapture.sectionForTest(PhoneDebugCaptureSlot.CURRENT, "too-large"))
+        assertFalse(File(directory, "phone-debug-capture-current.bin.tmp").exists())
+    }
+
+    @Test
     fun lineCapAndCoordinateFreeRuntimeSectionsAreRetained() {
         PhoneDebugCapture.start()
         repeat(4_001) { PhoneDebugCapture.log("Map", "line=$it") }

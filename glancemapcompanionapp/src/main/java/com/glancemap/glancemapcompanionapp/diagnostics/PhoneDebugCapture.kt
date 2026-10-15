@@ -11,6 +11,8 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,6 +50,7 @@ object PhoneDebugCapture {
 
     private val enabled = AtomicBoolean(false)
     private val lock = Any()
+    private val persistenceLock = Any()
     private val lines = ArrayDeque<String>()
     private val sections = linkedMapOf<String, String>()
     private val beforeStopListeners = linkedSetOf<() -> Unit>()
@@ -62,7 +65,8 @@ object PhoneDebugCapture {
     private var directory: File? = null
     private var previous: PersistedPhoneDebugCapture? = null
     private var crashHandlerInstalled = false
-    private var persistenceRevision = 0L
+
+    @Volatile private var persistenceRevision = 0L
 
     val state = stateFlow.asStateFlow()
 
@@ -81,6 +85,7 @@ object PhoneDebugCapture {
     fun start() {
         flushPersistedWrites()
         synchronized(lock) {
+            persistenceRevision += 1L
             val current = snapshotLocked()
             if (current.state.sessionId > 0L) {
                 previous = current
@@ -101,20 +106,26 @@ object PhoneDebugCapture {
     }
 
     fun stop(): PhoneDebugCaptureState {
-        val listeners = synchronized(lock) { if (enabled.get()) beforeStopListeners.toList() else emptyList() }
-        listeners.forEach { listener ->
-            runCatching(listener).onFailure { log("PhoneDebugCapture", "event=final_summary_failed") }
-        }
+        checkpoint()
         flushPersistedWrites()
         return synchronized(lock) {
             enabled.set(false)
+            persistenceRevision += 1L
             stateFlow.value = stateFlow.value.copy(active = false, endedAtMs = System.currentTimeMillis())
             writeCapture(CURRENT_FILE, snapshotLocked())
             stateFlow.value
         }
     }
 
-    /** Flush aggregates while logging is enabled; invoke on the same thread as stop and remove on disposal. */
+    /** Flush partial aggregates on their owning thread while capture remains active. */
+    fun checkpoint() {
+        val listeners = synchronized(lock) { if (enabled.get()) beforeStopListeners.toList() else emptyList() }
+        listeners.forEach { listener ->
+            runCatching(listener).onFailure { log("PhoneDebugCapture", "event=final_summary_failed") }
+        }
+    }
+
+    /** Used by stop and periodic checkpoints; invoke on the owning thread and remove on disposal. */
     fun addBeforeStopListener(listener: () -> Unit): () -> Unit {
         synchronized(lock) { beforeStopListeners.add(listener) }
         return { synchronized(lock) { beforeStopListeners.remove(listener) } }
@@ -264,12 +275,17 @@ object PhoneDebugCapture {
         persistenceWriter.execute {
             while (true) {
                 val (capture, revision) = synchronized(lock) { snapshotLocked() to persistenceRevision }
-                writeCapture(storageDirectory, CURRENT_FILE, capture)
-                val complete = synchronized(lock) { revision == persistenceRevision }
-                if (complete) {
-                    persistenceScheduled.set(false)
-                    return@execute
-                }
+                writeCapture(storageDirectory, CURRENT_FILE, capture, expectedRevision = revision)
+                val complete =
+                    synchronized(lock) {
+                        if (revision == persistenceRevision) {
+                            persistenceScheduled.set(false)
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                if (complete) return@execute
             }
         }
     }
@@ -310,12 +326,26 @@ object PhoneDebugCapture {
         storageDirectory: File,
         fileName: String,
         capture: PersistedPhoneDebugCapture,
+        expectedRevision: Long? = null,
+    ) {
+        // A crash checkpoint must not race with, or be overwritten by, an older queued snapshot.
+        synchronized(persistenceLock) {
+            if (expectedRevision != null && expectedRevision != persistenceRevision) return
+            writeCaptureAtomically(storageDirectory, fileName, capture)
+        }
+    }
+
+    private fun writeCaptureAtomically(
+        storageDirectory: File,
+        fileName: String,
+        capture: PersistedPhoneDebugCapture,
     ) {
         storageDirectory.mkdirs()
         val target = File(storageDirectory, fileName)
         val temporary = File(storageDirectory, "$fileName.tmp")
         runCatching {
-            DataOutputStream(FileOutputStream(temporary)).use { output ->
+            FileOutputStream(temporary).use { stream ->
+                val output = DataOutputStream(stream)
                 output.writeInt(STORAGE_VERSION)
                 output.writeBoolean(capture.state.active)
                 output.writeLong(capture.state.sessionId)
@@ -333,12 +363,16 @@ object PhoneDebugCapture {
                     output.writeUTF(value)
                 }
                 output.flush()
+                stream.fd.sync()
             }
-            if (!temporary.renameTo(target)) {
-                target.delete()
-                temporary.renameTo(target)
-            }
+            Files.move(
+                temporary.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
         }
+        temporary.delete()
     }
 
     private fun installCrashCaptureHook() {
@@ -352,10 +386,15 @@ object PhoneDebugCapture {
                     "class=${error.javaClass.name} message=${error.message.orEmpty().take(240)} " +
                         "thread=${thread.name} stack=${error.stackTrace.take(24).joinToString(" | ")}",
                 )
-                synchronized(lock) { writeCapture(CURRENT_FILE, snapshotLocked()) }
+                persistCrashSnapshot()
             }
             if (previousHandler != null) previousHandler.uncaughtException(thread, error) else throw error
         }
+    }
+
+    @VisibleForTesting
+    internal fun persistCrashSnapshot() {
+        synchronized(lock) { writeCapture(CURRENT_FILE, snapshotLocked()) }
     }
 
     @VisibleForTesting
