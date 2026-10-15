@@ -76,7 +76,6 @@ import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionDiagnosticsEmailComposer
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCaptureState
-import com.glancemap.shared.transfer.TransferDataLayerContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -96,7 +95,7 @@ internal fun DebugCaptureDialog(
     debugCaptureState: PhoneDebugCaptureState,
     onDismiss: () -> Unit,
 ) {
-    val hasSavedPhoneRecording =
+    val hasSavedReport =
         remember(debugCaptureState.active, debugCaptureState.sessionId) {
             if (debugCaptureState.active) {
                 false
@@ -105,18 +104,11 @@ internal fun DebugCaptureDialog(
             }
         }
     val hasCurrentCapture = !debugCaptureState.active && debugCaptureState.sessionId > 0L
+    val hasLatestCapture = hasCurrentCapture || hasSavedReport
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                if (debugCaptureState.active) {
-                    stringResource(R.string.home_debug_capture_active_title)
-                } else {
-                    stringResource(R.string.home_debug_capture_start_title)
-                },
-            )
-        },
+        title = { Text(stringResource(R.string.home_debug_capture_title)) },
         text = {
             Text(
                 if (debugCaptureState.active) {
@@ -124,29 +116,16 @@ internal fun DebugCaptureDialog(
                         R.plurals.home_debug_capture_active_message,
                         debugCaptureState.bufferedLines,
                         debugCaptureState.bufferedLines,
-                        TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL,
                     )
                 } else {
-                    stringResource(
-                        if (hasSavedPhoneRecording) {
-                            R.string.home_debug_capture_start_message_saved
-                        } else {
-                            R.string.home_debug_capture_start_message
-                        },
-                        TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL,
-                    )
+                    stringResource(R.string.home_debug_capture_start_message)
                 },
             )
         },
         confirmButton = {
             if (debugCaptureState.active) {
-                TextButton(
-                    onClick = {
-                        onDismiss()
-                        viewModel.stopPhoneDebugCaptureAndSend(context)
-                    },
-                ) {
-                    Text(stringResource(R.string.home_debug_capture_stop_email_action))
+                Button(onClick = viewModel::stopPhoneDebugCapture) {
+                    Text(stringResource(R.string.home_debug_capture_stop_save_action))
                 }
             } else {
                 Column(
@@ -160,55 +139,41 @@ internal fun DebugCaptureDialog(
                     Button(
                         onClick = {
                             onDismiss()
-                            viewModel.startPhoneDebugCapture(context)
+                            if (hasLatestCapture) {
+                                viewModel.shareLatestPhoneDebugCapture(context)
+                            } else {
+                                viewModel.startPhoneDebugCapture(context)
+                            }
                         },
                     ) {
                         Text(
                             stringResource(
-                                if (hasCurrentCapture) {
-                                    R.string.home_debug_capture_start_new_action
+                                if (hasLatestCapture) {
+                                    R.string.home_debug_capture_share_latest_action
                                 } else {
                                     R.string.home_debug_capture_start_action
                                 },
                             ),
                         )
                     }
-                    if (hasSavedPhoneRecording) {
+                    if (hasLatestCapture) {
                         TextButton(
                             onClick = {
                                 onDismiss()
-                                viewModel.sendLastPhoneDebugCapture(context)
+                                viewModel.startPhoneDebugCapture(context)
                             },
                         ) {
-                            Text(stringResource(R.string.home_debug_capture_send_last_action))
-                        }
-                    }
-                    if (hasCurrentCapture) {
-                        TextButton(
-                            onClick = {
-                                onDismiss()
-                                viewModel.sendCurrentPhoneDebugCapture(context)
-                            },
-                        ) {
-                            Text(
-                                stringResource(
-                                    if (debugCaptureState.interrupted) {
-                                        R.string.home_debug_capture_send_recovered_action
-                                    } else {
-                                        R.string.home_debug_capture_send_current_action
-                                    },
-                                ),
-                            )
+                            Text(stringResource(R.string.home_debug_capture_start_new_action))
                         }
                     }
                     if (debugCaptureState.hasPreviousCapture) {
                         TextButton(
                             onClick = {
                                 onDismiss()
-                                viewModel.sendPreviousPhoneDebugCapture(context)
+                                viewModel.sharePreviousPhoneDebugCapture(context)
                             },
                         ) {
-                            Text(stringResource(R.string.home_debug_capture_send_previous_action))
+                            Text(stringResource(R.string.home_debug_capture_share_previous_action))
                         }
                     }
                 }
@@ -216,15 +181,7 @@ internal fun DebugCaptureDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(
-                    stringResource(
-                        if (debugCaptureState.active) {
-                            R.string.home_debug_capture_keep_recording
-                        } else {
-                            R.string.common_action_cancel
-                        },
-                    ),
-                )
+                Text(stringResource(R.string.common_action_close))
             }
         },
     )

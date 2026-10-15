@@ -24,38 +24,56 @@ internal fun libraryCategoryControls(
     filter: PhoneLibraryFilter,
     importing: Boolean,
     actions: PhoneLibraryActions,
+    trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(filter.label), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            filter.tool?.let { tool ->
-                IconButton(onClick = { actions.onOpenSettings(tool) }) {
-                    Icon(Icons.Filled.Settings, stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val narrow = maxWidth < 320.dp
+        Column {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { libraryCategoryAddAction(filter, importing, actions) }
+                filter.tool?.let { tool ->
+                    IconButton(onClick = { actions.onOpenSettings(tool) }, modifier = Modifier.size(40.dp)) {
+                        val description =
+                            stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS))
+                        Icon(Icons.Filled.Settings, description)
+                    }
                 }
+                if (!narrow) trailingContent()
+            }
+            if (narrow) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { trailingContent() }
             }
         }
-        if (filter == PhoneLibraryFilter.GPX) {
-            libraryGpxImport(importing, actions)
-        } else {
-            val label =
-                when (filter) {
-                    PhoneLibraryFilter.POIS -> R.string.map_tool_shortcut_add_poi
-                    PhoneLibraryFilter.MAPS -> R.string.library_import_map
-                    PhoneLibraryFilter.BUNDLES -> R.string.map_bundle_action_download
-                    PhoneLibraryFilter.GPX -> error("GPX has its own importer")
-                }
-            val action =
-                when (filter) {
-                    PhoneLibraryFilter.POIS -> MapLibraryAction.ADD_POI
-                    PhoneLibraryFilter.MAPS -> MapLibraryAction.IMPORT_MAP
-                    PhoneLibraryFilter.BUNDLES -> MapLibraryAction.DOWNLOAD_BUNDLE
-                    PhoneLibraryFilter.GPX -> error("GPX has its own importer")
-                }
-            Button(onClick = { actions.onMapAction(action) }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(label))
+    }
+}
+
+@Composable
+private fun libraryCategoryAddAction(
+    filter: PhoneLibraryFilter,
+    importing: Boolean,
+    actions: PhoneLibraryActions,
+) {
+    if (filter == PhoneLibraryFilter.GPX) {
+        libraryGpxImport(importing, actions)
+    } else {
+        val label =
+            when (filter) {
+                PhoneLibraryFilter.POIS -> R.string.map_tool_shortcut_add_poi
+                PhoneLibraryFilter.MAPS -> R.string.library_import_map
+                PhoneLibraryFilter.BUNDLES -> R.string.map_bundle_action_download
+                PhoneLibraryFilter.GPX -> error("GPX has its own importer")
             }
+        val action =
+            when (filter) {
+                PhoneLibraryFilter.POIS -> MapLibraryAction.ADD_POI
+                PhoneLibraryFilter.MAPS -> MapLibraryAction.IMPORT_MAP
+                PhoneLibraryFilter.BUNDLES -> MapLibraryAction.DOWNLOAD_BUNDLE
+                PhoneLibraryFilter.GPX -> error("GPX has its own importer")
+            }
+        Button(onClick = { actions.onMapAction(action) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(label))
         }
     }
 }

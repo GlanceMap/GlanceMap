@@ -135,10 +135,14 @@ class RouteLibraryViewModel(
 
     fun contentUriFor(routeId: String): android.net.Uri? = repository.contentUriFor(routeId)
 
+    suspend fun contentUriFor(day: MissionPlanDay): android.net.Uri? = withContext(Dispatchers.IO) { repository.contentUriFor(day) }
+
     fun loadRouteWeather(
         activeHikeSnapshot: ActiveHikeSnapshot?,
         forceRefresh: Boolean,
         plannedStartDistanceMeters: Double = 0.0,
+        phoneGuidanceDistanceMeters: Double? = null,
+        phoneGuidancePositionLabel: String = "Current phone route position",
     ) {
         val routeDetails =
             _selectedRouteDetails.value
@@ -150,6 +154,8 @@ class RouteLibraryViewModel(
             routeDetails.weatherLocationFor(
                 activeHikeSnapshot = activeHikeSnapshot,
                 plannedStartDistanceMeters = plannedStartDistanceMeters,
+                phoneGuidanceDistanceMeters = phoneGuidanceDistanceMeters,
+                phoneGuidancePositionLabel = phoneGuidancePositionLabel,
             )
                 ?: run {
                     CompanionJourneyDiagnostics.routeWeatherUnavailable()

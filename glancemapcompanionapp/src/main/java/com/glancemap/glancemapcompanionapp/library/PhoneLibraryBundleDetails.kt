@@ -21,14 +21,19 @@ internal fun libraryBundleDetails(
     var expanded by remember { mutableStateOf(false) }
     Text(
         stringResource(
-            when (item.health.status) {
-                PhoneOfflineBundleStatus.COMPLETE -> R.string.library_bundle_ready
-                PhoneOfflineBundleStatus.PARTIAL -> R.string.map_bundle_area_partial
-                PhoneOfflineBundleStatus.RECOVERY_NEEDED -> R.string.map_bundle_area_recovery
-                PhoneOfflineBundleStatus.NOT_INSTALLED -> R.string.library_bundle_missing
+            if (item.isOfflineReady()) {
+                R.string.library_bundle_ready
+            } else {
+                when (item.health.status) {
+                    PhoneOfflineBundleStatus.COMPLETE -> R.string.library_bundle_ready
+                    PhoneOfflineBundleStatus.PARTIAL -> R.string.map_bundle_area_partial
+                    PhoneOfflineBundleStatus.RECOVERY_NEEDED -> R.string.map_bundle_area_recovery
+                    PhoneOfflineBundleStatus.NOT_INSTALLED -> R.string.library_bundle_missing
+                }
             },
         ),
     )
+    libraryOfflineCapabilities(item)
     TextButton(onClick = { expanded = !expanded }) {
         Text(stringResource(if (expanded) R.string.library_hide_contents else R.string.library_bundle_contents))
     }
@@ -47,6 +52,20 @@ internal fun libraryBundleDetails(
         }
     }
     OutlinedButton(onClick = onManage, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.map_tools_settings_download_bundle))
+        Text(stringResource(R.string.library_offline_download))
+    }
+}
+
+@Composable
+internal fun libraryOfflineCapabilities(item: PhoneLibraryItem.Bundle) {
+    val capabilities = item.effectiveCapabilities()
+    capabilities.forEach { capability ->
+        Text(
+            stringResource(
+                R.string.library_offline_component,
+                stringResource(capability.label),
+                stringResource(capability.status),
+            ),
+        )
     }
 }

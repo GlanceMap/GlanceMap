@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,24 +70,30 @@ internal fun todayHikeGpxActions(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) onImport(uri)
         }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            onClick = { launcher.launch(arrayOf("*/*")) },
-            enabled = !state.isImporting,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.library_add_gpx))
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = !state.isImporting) {
+            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.today_hike_add_or_change_gpx))
         }
-        OutlinedButton(onClick = onChoose, enabled = !state.isImporting, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                stringResource(
-                    if (state.selectedRoute == null) R.string.library_choose_gpx else R.string.library_change_gpx,
-                ),
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_choose_gpx)) },
+                leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                enabled = !state.isImporting,
+                onClick = {
+                    expanded = false
+                    onChoose()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_import_from_storage)) },
+                leadingIcon = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
+                enabled = !state.isImporting,
+                onClick = {
+                    expanded = false
+                    launcher.launch(arrayOf("*/*"))
+                },
             )
         }
-        if (state.isImporting) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }

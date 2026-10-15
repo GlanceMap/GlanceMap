@@ -13,6 +13,7 @@ import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.glancemapcompanionapp.map.phoneGpxDisplayNameFromFileName
 import com.glancemap.glancemapcompanionapp.map.toTrailPacingConfig
 import com.glancemap.trailcore.geo.haversineDistanceMeters
+import com.glancemap.trailcore.profile.TrailPacingConfig
 import com.glancemap.trailcore.profile.TrailRouteProfile
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
 import com.glancemap.trailcore.profile.windowFromDistance
@@ -68,6 +69,7 @@ data class RouteLibraryRouteDetails(
     val route: RouteLibraryRoute,
     val profile: TrailRouteProfile,
     val waypoints: List<RouteLibraryWaypoint>,
+    val pacing: TrailPacingConfig = TrailPacingConfig(),
 )
 
 data class RouteLibraryWaypoint(
@@ -330,17 +332,16 @@ class RouteLibraryRepository(
             val file = File(routesDirectory, route.storedFileName)
             if (!file.isFile) return@withLock null
             val parsed = file.inputStream().use(CompanionGpxRouteParser::parse)
-            val profile =
-                buildTrailRouteProfile(
+            val pacing =
+                gpxSettingsPreferences.load().toTrailPacingConfig(
                     parsed.points,
-                    gpxSettingsPreferences.load().toTrailPacingConfig(
-                        parsed.points,
-                        generalSettingsPreferences.load(),
-                    ),
+                    generalSettingsPreferences.load(),
                 )
+            val profile = buildTrailRouteProfile(parsed.points, pacing)
             RouteLibraryRouteDetails(
                 route = route,
                 profile = profile,
+                pacing = pacing,
                 waypoints =
                     parsed.waypoints
                         .mapNotNull { waypoint ->

@@ -70,6 +70,7 @@ internal fun companionNavigationDrawer(
                     Column(
                         modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                     ) {
+                        companionWatchMenu(state, actions)
                         companionMenuAreas.forEach { area ->
                             companionMenuItem(area, state, actions)
                         }

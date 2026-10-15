@@ -2,6 +2,8 @@ package com.glancemap.glancemapcompanionapp.library
 
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,14 +20,26 @@ internal fun libraryItemDetails(
     actions: PhoneLibraryActions,
     onOpenOfflineMap: (PhoneOfflineMap) -> Unit,
     onDismiss: () -> Unit,
+    organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(item.title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(libraryItemSummary(item))
+                if (item.filter == PhoneLibraryFilter.GPX) {
+                    OutlinedButton(onClick = { actions.onGpxAppearance(item) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.gpx_appearance_customize))
+                    }
+                }
                 libraryDetailActions(item, actions, onOpenOfflineMap, onDismiss)
+                libraryActivitySetting(item, organization, actions.organization)
+                OutlinedButton(
+                    onClick = { actions.onMoveItem(item) },
+                    enabled = actions.organization.enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.library_move_to_folder)) }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) } },
@@ -40,7 +54,15 @@ private fun libraryDetailActions(
     onDismiss: () -> Unit,
 ) {
     when (item) {
+        is PhoneLibraryItem.OfflineData -> libraryOfflineDataDetails(item)
         is PhoneLibraryItem.Gpx -> libraryGpxActions(item, actions, onDismiss)
+        is PhoneLibraryItem.FolderGpx -> {
+            Text(stringResource(R.string.library_folder_gpx_description))
+            OutlinedButton(onClick = {
+                onDismiss()
+                actions.onOpenMapTools(MapTool.GPX)
+            }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.library_open_gpx_tools)) }
+        }
         is PhoneLibraryItem.ReceivedGpx -> {
             Text(stringResource(R.string.library_received_description))
             val importOptions =

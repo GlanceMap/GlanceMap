@@ -1,119 +1,216 @@
 package com.glancemap.glancemapcompanionapp.library
 
 import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.R
-import com.glancemap.glancemapcompanionapp.map.MapTool
-import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSource
+import com.glancemap.glancemapcompanionapp.map.MapToolsPanelActions
+import com.glancemap.glancemapcompanionapp.map.MapToolsPanelState
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
 internal fun phoneLibraryScreen(
     routes: RouteLibraryUiState,
-    poiSources: List<PhoneMapPoiSource>,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
     actions: PhoneLibraryActions,
     filter: PhoneLibraryFilter,
 ) {
     val model: PhoneLibraryViewModel = viewModel()
-    val scope = rememberCoroutineScope()
     val local by model.uiState.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
-    var selected by remember { mutableStateOf<PhoneLibraryItem?>(null) }
     val items =
-        remember(routes.routes, local.items, poiSources) {
-            phoneLibraryItems(routes.routes, local.items, poiSources)
-        }
-    val visible = remember(items, filter, query) { filterPhoneLibraryItems(items, filter, query) }
-    LaunchedEffect(Unit) { model.refresh() }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        libraryHeader(routes.isImporting, local.isLoading, actions) {
-            model.refresh()
-            actions.onRefresh()
-        }
-        librarySearch(query, { query = it })
-        libraryFilters(filter, actions.onFilterChanged)
-        libraryCategoryControls(filter, routes.isImporting, actions)
-        Text(
-            stringResource(R.string.library_local_count, visible.size),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        (routes.message ?: local.message)?.let { message ->
-            Text(message, color = MaterialTheme.colorScheme.error)
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            libraryContent(
-                items = visible,
-                loading = routes.isLoading || local.isLoading,
-                enabled = !routes.isImporting && !local.isLoading,
-                onSelect = { selected = it },
+        remember(routes.routes, local.items, mapState.gpx.items, mapState.poi.sources, mapState.maps.offlineMaps) {
+            val liveMaps = libraryOfflineMapItems(mapState.maps.offlineMaps, local.items)
+            phoneLibraryItems(
+                routes.routes,
+                local.items.filterNot { it is PhoneLibraryItem.OfflineMap } + liveMaps,
+                mapState.poi.sources,
+                mapState.gpx.items,
             )
         }
-        if (filter == PhoneLibraryFilter.POIS || filter == PhoneLibraryFilter.MAPS) {
-            OutlinedButton(
-                onClick = {
-                    actions.onOpenMapTools(if (filter == PhoneLibraryFilter.POIS) MapTool.POI else MapTool.MAPS)
+    LaunchedEffect(
+        mapState.maps.elevationFolderSync,
+        mapState.maps.routingFolderSync,
+        mapState.maps.offlineMapAvailability,
+        mapState.maps.offlineDataVersion,
+        mapState.maps.offlineMaps.map { it.rendererIdentity },
+        mapState.general.storageLocation,
+    ) { model.refresh() }
+    libraryPanelContent(
+        state =
+            PhoneLibraryListState(
+                items = items,
+                filter = filter,
+                isLoading = routes.isLoading || local.isLoading,
+                isImporting = routes.isImporting || local.isImporting,
+                message = routes.message ?: local.message,
+                organization = local.organization,
+            ),
+        mapState = mapState,
+        mapActions = mapActions,
+        actions =
+            actions.copy(
+                organization =
+                    PhoneLibraryOrganizationActions(
+                        enabled = local.organizationReady,
+                        onCreateFolder = model::createFolder,
+                        onMoveItem = model::moveItem,
+                        onActivity = model::setActivity,
+                    ),
+                onRefresh = {
+                    model.refresh()
+                    actions.onRefresh()
+                    if (mapState.gpx.hasSelectedFolder) mapActions.onRescanGpxFolder()
+                    if (mapState.maps.hasSelectedFolder) mapActions.maps.onRescanFolder()
                 },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.library_manage_on_map)) }
+                onImportOfflineFiles = { uris, section ->
+                    model.importOfflineFiles(uris, section, mapActions.maps.onOfflineDataChanged)
+                },
+            ),
+    )
+}
+
+@Composable
+internal fun libraryPanelContent(
+    state: PhoneLibraryListState,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
+    actions: PhoneLibraryActions,
+) {
+    var browse by rememberSaveable(stateSaver = phoneLibraryBrowseSaver) { mutableStateOf(PhoneLibraryBrowseState()) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var moveKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var appearanceTarget by remember { mutableStateOf<PhoneLibraryGpxAppearanceTarget?>(null) }
+    val appearanceActions =
+        actions.copy(
+            onGpxAppearance = { item ->
+                selectedKey = null
+                appearanceTarget = PhoneLibraryGpxAppearanceTarget(item.organizationKey(), item.title, false)
+            },
+            onFolderGpxAppearance = { folder ->
+                appearanceTarget = PhoneLibraryGpxAppearanceTarget(folder.id, folder.name, true)
+            },
+        )
+    val addingActions =
+        libraryAddingActions(appearanceActions) {
+            browse = PhoneLibraryBrowseState(offlineSection = browse.offlineSection)
         }
+    val visible =
+        remember(state.items, state.filter, browse, state.organization) {
+            browsePhoneLibraryItems(state.items, state.filter, browse, state.organization)
+        }
+    BackHandler(enabled = browse.folderId != null) { browse = state.organization.parentBrowse(browse) }
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        libraryFilters(state.filter, actions.onFilterChanged)
+        libraryBrowserList(
+            state.copy(items = visible),
+            mapState,
+            mapActions,
+            addingActions,
+            PhoneLibraryBrowserPresentation(
+                browse,
+                searchOpen,
+                PhoneLibraryBrowserActions({ browse = it }, { searchOpen = !searchOpen }, { selectedKey = it.key }),
+            ),
+        )
     }
-    selected?.let { item ->
+    state.items.firstOrNull { it.key == selectedKey }?.let { item ->
         libraryItemDetails(
             item = item,
-            actions = actions,
-            onOpenOfflineMap = { map ->
-                scope.launch { model.openOfflineMap(map) { actions.onOpenMapTools(MapTool.MAPS) } }
-            },
-            onDismiss = { selected = null },
+            actions =
+                appearanceActions.copy(onMoveItem = { selected ->
+                    selectedKey = null
+                    moveKey = selected.key
+                }),
+            onOpenOfflineMap = mapActions.maps.onSelectOffline,
+            onDismiss = { selectedKey = null },
+            organization = state.organization,
         )
+    }
+    state.items.firstOrNull { it.key == moveKey }?.let { item ->
+        libraryMoveDialog(item, state.organization, actions.organization) { moveKey = null }
+    }
+    appearanceTarget?.let { target ->
+        libraryGpxAppearanceDialog(target, state.organization, mapState.gpx, mapActions) { appearanceTarget = null }
     }
 }
 
-@Composable
-private fun libraryHeader(
-    importing: Boolean,
-    loading: Boolean,
+private fun libraryAddingActions(
     actions: PhoneLibraryActions,
-    onRefresh: () -> Unit,
+    onAdd: () -> Unit,
+): PhoneLibraryActions =
+    actions.copy(
+        onImportGpx = { uri, recorded, exportId ->
+            onAdd()
+            actions.onImportGpx(uri, recorded, exportId)
+        },
+        onMapAction = { action ->
+            onAdd()
+            actions.onMapAction(action)
+        },
+        onImportOfflineFiles = { uris, section ->
+            onAdd()
+            actions.onImportOfflineFiles(uris, section)
+        },
+    )
+
+internal fun LazyListScope.libraryEntries(
+    state: PhoneLibraryListState,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
+    actions: PhoneLibraryActions,
+    onDetails: (PhoneLibraryItem) -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = actions.onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back_to_home_content_description))
+    if (state.items.isEmpty()) {
+        item(key = "empty") {
+            if (state.isLoading || (state.filter == PhoneLibraryFilter.GPX && mapState.gpx.isLoading)) {
+                CircularProgressIndicator()
+            } else {
+                Text(stringResource(R.string.library_entries_empty), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.library_entries_empty_description))
+            }
         }
-        Text(
-            stringResource(R.string.library_title),
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        IconButton(onClick = onRefresh, enabled = !loading && !importing) {
-            Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh))
-        }
+    }
+    items(state.items, key = PhoneLibraryItem::key) { item ->
+        libraryItemRow(
+            PhoneLibraryRowState(
+                item = item,
+                enabled = !state.isImporting && !state.isLoading,
+                organization = state.organization,
+                guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
+                guidanceLoading = actions.guidanceStartingKey == item.key,
+                onStartGuidance = actions.onStartGuidance,
+            ),
+            mapState,
+            mapActions,
+        ) { onDetails(item) }
     }
 }
 
 @Composable
-private fun librarySearch(
+internal fun libraryCount(state: PhoneLibraryListState) {
+    Text(stringResource(R.string.library_local_count, state.items.size), style = MaterialTheme.typography.bodySmall)
+    state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+internal fun librarySearch(
     query: String,
     onQuery: (String) -> Unit,
 ) {
@@ -122,7 +219,6 @@ private fun librarySearch(
         onValueChange = onQuery,
         modifier = Modifier.fillMaxWidth(),
         placeholder = { Text(stringResource(R.string.library_search)) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQuery("") }) {
@@ -151,78 +247,6 @@ private fun libraryFilters(
 }
 
 @Composable
-private fun libraryContent(
-    items: List<PhoneLibraryItem>,
-    loading: Boolean,
-    enabled: Boolean,
-    onSelect: (PhoneLibraryItem) -> Unit,
-) {
-    if (items.isEmpty()) {
-        Column(
-            Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            if (loading) {
-                CircularProgressIndicator()
-            } else {
-                Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(40.dp))
-                Text(stringResource(R.string.library_empty_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.library_empty_description), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-    } else {
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(items, key = PhoneLibraryItem::key) { item ->
-                Card(onClick = { onSelect(item) }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(item.icon(), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                item.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                libraryItemSummary(item),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                stringResource(
-                                    if (item is PhoneLibraryItem.Bundle && !item.health.isComplete) {
-                                        R.string.library_bundle_attention
-                                    } else {
-                                        R.string.library_on_phone
-                                    },
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun PhoneLibraryItem.icon(): ImageVector =
-    when (this) {
-        is PhoneLibraryItem.Gpx -> if (route.isRecording) Icons.Filled.Hiking else Icons.Filled.Route
-        is PhoneLibraryItem.ReceivedGpx -> Icons.Filled.Description
-        is PhoneLibraryItem.Pois -> Icons.Filled.Place
-        is PhoneLibraryItem.OfflineMap -> Icons.Filled.Map
-        is PhoneLibraryItem.Bundle -> Icons.Filled.Inventory2
-    }
-
-@Composable
 internal fun libraryItemSummary(item: PhoneLibraryItem): String =
     when (item) {
         is PhoneLibraryItem.Gpx -> {
@@ -238,6 +262,8 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
                     .roundToInt(),
             )
         }
+        is PhoneLibraryItem.FolderGpx ->
+            stringResource(R.string.library_folder_gpx_summary, item.item.track.points.size)
         is PhoneLibraryItem.ReceivedGpx ->
             stringResource(
                 R.string.library_received_summary,
@@ -251,14 +277,18 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
                 stringResource(R.string.library_poi_unreadable)
             }
         is PhoneLibraryItem.OfflineMap ->
-            stringResource(
-                R.string.library_offline_summary,
-                Formatter.formatShortFileSize(LocalContext.current, item.sizeBytes),
-            )
+            item.sizeBytes?.let {
+                stringResource(
+                    R.string.library_offline_summary,
+                    Formatter.formatShortFileSize(LocalContext.current, it),
+                )
+            } ?: stringResource(R.string.map_source_offline_label)
         is PhoneLibraryItem.Bundle ->
+            stringResource(R.string.library_bundle_summary)
+        is PhoneLibraryItem.OfflineData ->
             stringResource(
-                R.string.library_bundle_summary,
-                item.health.availableFileNames.size,
-                item.health.expectedFileNames.size,
+                R.string.library_offline_component,
+                stringResource(item.section.label),
+                Formatter.formatShortFileSize(LocalContext.current, item.sizeBytes),
             )
     }

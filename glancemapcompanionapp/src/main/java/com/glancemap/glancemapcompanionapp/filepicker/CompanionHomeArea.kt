@@ -34,7 +34,6 @@ internal enum class CompanionHomeArea(
 
 internal val companionMenuAreas =
     listOf(
-        CompanionHomeArea.HOME,
         CompanionHomeArea.MISSION_PLAN,
         CompanionHomeArea.ROUTE_WEATHER,
         CompanionHomeArea.LIVE_TRACKING,
@@ -44,6 +43,7 @@ internal val companionMenuAreas =
 internal data class CompanionMenuState(
     val activeArea: CompanionHomeArea,
     val debugCaptureActive: Boolean,
+    val liveHikeSyncEnabled: Boolean = false,
 )
 
 internal data class CompanionMenuActions(
@@ -51,6 +51,7 @@ internal data class CompanionMenuActions(
     val onDebug: () -> Unit,
     val onQuickGuide: () -> Unit,
     val onCreditsLegal: () -> Unit,
+    val onLiveHikeSyncChanged: (Boolean) -> Unit = {},
 )
 
 internal fun initialCompanionHomeArea(

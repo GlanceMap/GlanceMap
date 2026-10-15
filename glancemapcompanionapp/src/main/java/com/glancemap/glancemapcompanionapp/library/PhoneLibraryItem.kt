@@ -6,10 +6,13 @@ import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
 import com.glancemap.glancemapcompanionapp.map.MapTool
 import com.glancemap.glancemapcompanionapp.map.PhoneInstalledBundle
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxItem
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSource
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleHealth
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
+import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorageLocation
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
+import org.mapsforge.core.model.BoundingBox
 import java.io.File
 
 internal enum class PhoneLibraryFilter(
@@ -35,6 +38,14 @@ internal sealed interface PhoneLibraryItem {
         override val filter = PhoneLibraryFilter.GPX
     }
 
+    data class FolderGpx(
+        val item: PhoneMapGpxItem,
+    ) : PhoneLibraryItem {
+        override val key = "gpx/${item.id}"
+        override val title = item.displayName
+        override val filter = PhoneLibraryFilter.GPX
+    }
+
     data class ReceivedGpx(
         val file: File,
         val sizeBytes: Long,
@@ -57,7 +68,8 @@ internal sealed interface PhoneLibraryItem {
 
     data class OfflineMap(
         val map: PhoneOfflineMap,
-        val sizeBytes: Long,
+        val sizeBytes: Long?,
+        val coverage: PhoneLibraryMapCoverage? = null,
     ) : PhoneLibraryItem {
         override val key = "offline/${map.selectionIdentity}"
         override val title = map.displayName
@@ -68,15 +80,49 @@ internal sealed interface PhoneLibraryItem {
         val bundle: PhoneInstalledBundle,
         val health: PhoneOfflineBundleHealth,
         val map: PhoneOfflineMap?,
+        val capabilities: List<PhoneLibraryOfflineCapability> = emptyList(),
     ) : PhoneLibraryItem {
         override val key = "bundle/${bundle.areaId}"
         override val title = bundle.areaLabel
         override val filter = PhoneLibraryFilter.BUNDLES
     }
+
+    data class OfflineData(
+        val file: File,
+        val relativePath: String,
+        val section: PhoneLibraryOfflineSection,
+        val sizeBytes: Long,
+        val modifiedMillis: Long,
+        val isUsable: Boolean,
+        val coverage: BoundingBox?,
+        val areaNames: List<String>,
+        val storageLocation: PhoneOfflineStorageLocation,
+    ) : PhoneLibraryItem {
+        override val key = "offline-data/${section.name}/$relativePath"
+        override val title = file.name
+        override val filter = PhoneLibraryFilter.BUNDLES
+    }
 }
 
+internal data class PhoneLibraryRowState(
+    val item: PhoneLibraryItem,
+    val enabled: Boolean,
+    val organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
+    val guidanceEnabled: Boolean = false,
+    val guidanceLoading: Boolean = false,
+    val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
+)
+
+internal data class PhoneLibraryListState(
+    val items: List<PhoneLibraryItem>,
+    val filter: PhoneLibraryFilter,
+    val isLoading: Boolean = false,
+    val isImporting: Boolean = false,
+    val message: String? = null,
+    val organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
+)
+
 internal data class PhoneLibraryActions(
-    val onBack: () -> Unit,
     val onRefresh: () -> Unit,
     val onImportGpx: (Uri, Boolean, String?) -> Unit,
     val onUseRoute: (String) -> Unit,
@@ -85,15 +131,26 @@ internal data class PhoneLibraryActions(
     val onMapAction: (MapLibraryAction) -> Unit,
     val onSendGpx: (String) -> Unit,
     val onFilterChanged: (PhoneLibraryFilter) -> Unit,
+    val organization: PhoneLibraryOrganizationActions = PhoneLibraryOrganizationActions(),
+    val onMoveItem: (PhoneLibraryItem) -> Unit = {},
+    val onGpxAppearance: (PhoneLibraryItem) -> Unit = {},
+    val onFolderGpxAppearance: (PhoneLibraryFolder) -> Unit = {},
+    val onImportOfflineFiles: (List<Uri>, PhoneLibraryOfflineSection) -> Unit = { _, _ -> },
+    val guidanceStartingKey: String? = null,
+    val guidanceActive: Boolean = false,
+    val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
 )
 
 internal fun phoneLibraryItems(
     routes: List<RouteLibraryRoute>,
     localFiles: List<PhoneLibraryItem>,
     pois: List<PhoneMapPoiSource>,
+    gpxItems: List<PhoneMapGpxItem> = emptyList(),
 ): List<PhoneLibraryItem> {
     val importedExports = routes.mapNotNull(RouteLibraryRoute::sourceExportId).toSet()
+    val managedIds = routes.map(RouteLibraryRoute::id).toSet()
     return routes.sortedByDescending(RouteLibraryRoute::importedAtMillis).map(PhoneLibraryItem::Gpx) +
+        gpxItems.filterNot { it.id in managedIds }.map(PhoneLibraryItem::FolderGpx) +
         localFiles.filterNot { it is PhoneLibraryItem.ReceivedGpx && it.exportId in importedExports } +
         pois.map(PhoneLibraryItem::Pois)
 }

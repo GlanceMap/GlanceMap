@@ -62,6 +62,7 @@ import com.glancemap.glancemapcompanionapp.companionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.diagnostics.CompanionJourneyDiagnostics
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryActions
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryFilter
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryItem
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryGpxPicker
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryScreen
 import com.glancemap.glancemapcompanionapp.library.todayHikeGpxActions
@@ -70,8 +71,21 @@ import com.glancemap.glancemapcompanionapp.map.CompanionMapScreen
 import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
 import com.glancemap.glancemapcompanionapp.map.MapNavigationActions
 import com.glancemap.glancemapcompanionapp.map.MapTool
+import com.glancemap.glancemapcompanionapp.map.PhoneGeneralSettingsPreferences
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceDraftStore
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceMessage
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidancePanel
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceRouteDraft
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceSessionStore
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceStartGate
+import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceUiState
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettingsPreferences
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSource
+import com.glancemap.glancemapcompanionapp.map.PhoneMapLocationContext
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
+import com.glancemap.glancemapcompanionapp.map.PhoneRecordingService
+import com.glancemap.glancemapcompanionapp.map.phoneGuidanceEtaConfig
+import com.glancemap.glancemapcompanionapp.routes.CompanionGpxRouteParser
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDayUi
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanScreen
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanUiState
@@ -86,7 +100,9 @@ import com.glancemap.glancemapcompanionapp.routes.TrailIntelligenceContext
 import com.glancemap.glancemapcompanionapp.routes.liveHikeWeatherContext
 import com.glancemap.glancemapcompanionapp.routes.matchesActiveHike
 import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
+import com.glancemap.glancemapcompanionapp.routes.reversedForGuidance
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
+import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceForProgress
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
@@ -95,6 +111,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
@@ -120,6 +137,7 @@ internal fun FilePickerScreen(
     val phoneMapPoiUiState by phoneMapPoiViewModel.uiState.collectAsState()
     val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
     val missionPlanUiState by missionPlanViewModel.uiState.collectAsState()
+    val phoneGuidanceState by PhoneGuidanceSessionStore.state.collectAsState()
     val lastTransferGpx =
         remember(uiState.selectedFileUris, uiState.selectedFileDisplayNames) {
             uiState.selectedFileUris
@@ -172,9 +190,19 @@ internal fun FilePickerScreen(
     var pendingSinglePhoneSave by remember { mutableStateOf<GeneratedPhoneFile?>(null) }
     var pendingFolderPhoneSave by remember { mutableStateOf<List<GeneratedPhoneFile>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
+    var guidanceStartingKey by remember { mutableStateOf<String?>(null) }
+    val guidanceStartGate = remember { PhoneGuidanceStartGate() }
+    DisposableEffect(guidanceStartGate) {
+        onDispose { guidanceStartGate.invalidate() }
+    }
+    LaunchedEffect(phoneGuidanceState.session, phoneGuidanceState.message) {
+        if (phoneGuidanceState.session != null || phoneGuidanceState.message == PhoneGuidanceMessage.FAILED) {
+            guidanceStartGate.completeCurrent()
+            guidanceStartingKey = null
+        }
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var libraryMapTool by rememberSaveable { mutableStateOf<MapTool?>(null) }
-    var libraryMapAction by rememberSaveable { mutableStateOf<MapLibraryAction?>(null) }
     var libraryFilter by rememberSaveable { mutableStateOf(PhoneLibraryFilter.GPX) }
     val librarySaveableState = rememberSaveableStateHolder()
     var contentSettingsTool by rememberSaveable { mutableStateOf(MapTool.SETTINGS) }
@@ -184,7 +212,6 @@ internal fun FilePickerScreen(
     var pickGpxForWeather by rememberSaveable { mutableStateOf(false) }
     val returnToMapMenu: () -> Unit = {
         libraryMapTool = null
-        libraryMapAction = null
         activeHomeArea = CompanionHomeArea.MAP
         coroutineScope.launch { drawerState.open() }
     }
@@ -198,9 +225,8 @@ internal fun FilePickerScreen(
             contentSettingsTool = MapTool.SETTINGS
             settingsReturnToGeneral = false
         } else if (settingsReturnArea == CompanionHomeArea.LIBRARY) {
-            libraryMapTool = null
-            libraryMapAction = null
-            activeHomeArea = CompanionHomeArea.LIBRARY
+            libraryMapTool = MapTool.LIBRARY
+            activeHomeArea = CompanionHomeArea.MAP
         } else {
             returnToMapMenu()
         }
@@ -700,12 +726,12 @@ internal fun FilePickerScreen(
                 CompanionMenuState(
                     activeArea = activeHomeArea,
                     debugCaptureActive = debugCaptureState.active,
+                    liveHikeSyncEnabled = liveHikeSyncEnabled,
                 ),
             actions =
                 CompanionMenuActions(
                     onNavigate = { area ->
                         libraryMapTool = null
-                        libraryMapAction = null
                         if (area == CompanionHomeArea.SETTINGS) {
                             contentSettingsTool = MapTool.SETTINGS
                             settingsReturnArea = CompanionHomeArea.MAP
@@ -730,6 +756,7 @@ internal fun FilePickerScreen(
                     onCreditsLegal = {
                         context.startActivity(PrivacyPolicyActivity.creditsAndLegalIntent(context))
                     },
+                    onLiveHikeSyncChanged = { enabled -> viewModel.setLiveHikeSyncEnabled(context, enabled) },
                 ),
         ) {
             Column(
@@ -737,7 +764,16 @@ internal fun FilePickerScreen(
                     Modifier
                         .fillMaxSize()
                         .then(
-                            if (activeHomeArea == CompanionHomeArea.MAP || activeHomeArea == CompanionHomeArea.SETTINGS) {
+                            if (
+                                activeHomeArea in
+                                setOf(
+                                    CompanionHomeArea.MAP,
+                                    CompanionHomeArea.LIBRARY,
+                                    CompanionHomeArea.SETTINGS,
+                                    CompanionHomeArea.HOME,
+                                    CompanionHomeArea.ROUTES,
+                                )
+                            ) {
                                 Modifier
                             } else {
                                 Modifier.padding(adaptive.pagePadding)
@@ -745,116 +781,6 @@ internal fun FilePickerScreen(
                         ),
             ) {
                 when (activeHomeArea) {
-                    CompanionHomeArea.HOME,
-                    CompanionHomeArea.ROUTES,
-                    -> {
-                        CompanionTodayHikeScreen(
-                            adaptive = adaptive,
-                            libraryState = routeLibraryUiState,
-                            selectedRouteDetails = selectedRouteDetails,
-                            activeHikeSnapshot = activeHikeSnapshot,
-                            routeWeatherUiState = routeWeatherUiState,
-                            missionPlanUiState = missionPlanUiState,
-                            onImportGpx = routeLibraryViewModel::importRoute,
-                            onChooseGpx = {
-                                pickGpxForWeather = false
-                                showGpxPicker = true
-                            },
-                            onLoadRouteWeather = { snapshot, forceRefresh, plannedStartDistanceMeters ->
-                                routeLibraryViewModel.loadRouteWeather(
-                                    activeHikeSnapshot = snapshot,
-                                    forceRefresh = forceRefresh,
-                                    plannedStartDistanceMeters = plannedStartDistanceMeters,
-                                )
-                            },
-                            onSendSelectedRouteToWatch = {
-                                val plannedDay = missionPlanUiState.selectedDay
-                                if (plannedDay?.route?.id == routeLibraryUiState.selectedRoute?.id) {
-                                    missionPlanViewModel.prepareSelectedDayForTransfer { routeUri ->
-                                        if (routeUri == null) {
-                                            Toast
-                                                .makeText(
-                                                    context,
-                                                    "The planned GPX is no longer available.",
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                        } else {
-                                            viewModel.selectFilesForTransfer(context, listOf(routeUri))
-                                            activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
-                                        }
-                                    }
-                                } else {
-                                    val routeUri = routeLibraryViewModel.selectedRouteContentUri()
-                                    if (routeUri == null) {
-                                        Toast
-                                            .makeText(
-                                                context,
-                                                "The selected GPX is no longer available.",
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                    } else {
-                                        viewModel.selectFilesForTransfer(context, listOf(routeUri))
-                                        activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
-                                    }
-                                }
-                            },
-                            onBack = returnToMapMenu,
-                        )
-                    }
-
-                    CompanionHomeArea.LIBRARY -> {
-                        LaunchedEffect(Unit) {
-                            routeLibraryViewModel.refresh()
-                            phoneMapPoiViewModel.refresh()
-                        }
-                        librarySaveableState.SaveableStateProvider("phone-library") {
-                            phoneLibraryScreen(
-                                routes = routeLibraryUiState,
-                                poiSources = phoneMapPoiUiState.sources,
-                                filter = libraryFilter,
-                                actions =
-                                    PhoneLibraryActions(
-                                        onBack = returnToMapMenu,
-                                        onRefresh = {
-                                            routeLibraryViewModel.refresh()
-                                            phoneMapPoiViewModel.refresh()
-                                        },
-                                        onImportGpx = routeLibraryViewModel::importLibraryGpx,
-                                        onUseRoute = { id ->
-                                            routeLibraryViewModel.selectRoute(id)
-                                            activeHomeArea = CompanionHomeArea.HOME
-                                        },
-                                        onOpenMapTools = { tool ->
-                                            libraryMapAction = null
-                                            libraryMapTool = tool
-                                            activeHomeArea = CompanionHomeArea.MAP
-                                        },
-                                        onOpenSettings = { tool ->
-                                            contentSettingsTool = tool
-                                            settingsReturnArea = CompanionHomeArea.LIBRARY
-                                            settingsReturnToGeneral = false
-                                            activeHomeArea = CompanionHomeArea.SETTINGS
-                                        },
-                                        onMapAction = { action ->
-                                            libraryMapTool = if (action == MapLibraryAction.ADD_POI) null else MapTool.MAPS
-                                            libraryMapAction = action
-                                            activeHomeArea = CompanionHomeArea.MAP
-                                        },
-                                        onSendGpx = { id ->
-                                            val uri = routeLibraryViewModel.contentUriFor(id)
-                                            if (uri == null) {
-                                                Toast.makeText(context, R.string.library_gpx_unavailable, Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                viewModel.selectFilesForTransfer(context, listOf(uri))
-                                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
-                                            }
-                                        },
-                                        onFilterChanged = { libraryFilter = it },
-                                    ),
-                            )
-                        }
-                    }
-
                     CompanionHomeArea.ROUTE_WEATHER -> {
                         val weatherRoute =
                             routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
@@ -897,7 +823,8 @@ internal fun FilePickerScreen(
                             onLoadDayWeather = missionPlanViewModel::loadDayWeather,
                             onOpenRoutes = {
                                 libraryFilter = PhoneLibraryFilter.GPX
-                                activeHomeArea = CompanionHomeArea.LIBRARY
+                                libraryMapTool = MapTool.LIBRARY
+                                activeHomeArea = CompanionHomeArea.MAP
                             },
                             onRetry = missionPlanViewModel::refresh,
                         )
@@ -948,7 +875,10 @@ internal fun FilePickerScreen(
                     }
 
                     CompanionHomeArea.MAP,
+                    CompanionHomeArea.LIBRARY,
                     CompanionHomeArea.SETTINGS,
+                    CompanionHomeArea.HOME,
+                    CompanionHomeArea.ROUTES,
                     -> {
                         CompanionMapScreen(
                             gpxSources =
@@ -957,6 +887,7 @@ internal fun FilePickerScreen(
                                         id = route.id,
                                         displayName = route.displayName,
                                         isRecording = route.isRecording,
+                                        libraryKey = route.sourceExportId?.let { "export/$it" } ?: "gpx/${route.id}",
                                     )
                                 },
                             initiallyEnabledGpxId = routeLibraryUiState.selectedRouteId,
@@ -979,24 +910,226 @@ internal fun FilePickerScreen(
                                     coroutineScope.launch { drawerState.open() }
                                 }
                             },
-                            initialTool = if (activeHomeArea == CompanionHomeArea.SETTINGS) contentSettingsTool else libraryMapTool,
+                            initialTool =
+                                when (activeHomeArea) {
+                                    CompanionHomeArea.SETTINGS -> contentSettingsTool
+                                    CompanionHomeArea.LIBRARY -> MapTool.LIBRARY
+                                    CompanionHomeArea.HOME, CompanionHomeArea.ROUTES -> MapTool.HIKE
+                                    else -> libraryMapTool
+                                },
                             initialToolSettings = activeHomeArea == CompanionHomeArea.SETTINGS && contentSettingsTool != MapTool.SETTINGS,
-                            initialLibraryAction = if (activeHomeArea == CompanionHomeArea.MAP) libraryMapAction else null,
-                            liveHikeSyncEnabled = liveHikeSyncEnabled,
+                            libraryContent = { mapState, mapActions ->
+                                librarySaveableState.SaveableStateProvider("phone-library") {
+                                    phoneLibraryScreen(
+                                        routes = routeLibraryUiState,
+                                        mapState = mapState,
+                                        mapActions = mapActions,
+                                        filter = libraryFilter,
+                                        actions =
+                                            PhoneLibraryActions(
+                                                onRefresh = {
+                                                    routeLibraryViewModel.refresh()
+                                                    phoneMapPoiViewModel.refresh()
+                                                },
+                                                onImportGpx = routeLibraryViewModel::importLibraryGpx,
+                                                guidanceStartingKey = guidanceStartingKey,
+                                                guidanceActive = phoneGuidanceState.session != null || phoneGuidanceState.message == PhoneGuidanceMessage.LOADING,
+                                                onStartGuidance = startGuidance@{ item ->
+                                                    if (guidanceStartingKey != null ||
+                                                        phoneGuidanceState.session != null ||
+                                                        phoneGuidanceState.message == PhoneGuidanceMessage.LOADING
+                                                    ) {
+                                                        return@startGuidance
+                                                    }
+                                                    val generation =
+                                                        guidanceStartGate.begin(
+                                                            alreadyActive =
+                                                                phoneGuidanceState.session != null ||
+                                                                    phoneGuidanceState.message == PhoneGuidanceMessage.LOADING,
+                                                        ) ?: return@startGuidance
+                                                    guidanceStartingKey = item.key
+                                                    if (item is PhoneLibraryItem.Gpx) routeLibraryViewModel.selectRoute(item.route.id)
+                                                    coroutineScope.launch {
+                                                        var serviceStarted = false
+                                                        try {
+                                                            check(PhoneMapLocationContext.hasPermission(context)) {
+                                                                context.getString(R.string.phone_guidance_location_permission_required)
+                                                            }
+                                                            val routeInputs =
+                                                                withContext(Dispatchers.IO) {
+                                                                    when (item) {
+                                                                        is PhoneLibraryItem.Gpx -> {
+                                                                            val missionDay =
+                                                                                missionPlanUiState.selectedDay
+                                                                                    ?.takeIf { it.route.id == item.route.id }
+                                                                            val uri =
+                                                                                missionDay?.let { selected ->
+                                                                                    routeLibraryViewModel.contentUriFor(selected.day)
+                                                                                } ?: routeLibraryViewModel.contentUriFor(item.route.id)
+                                                                            val parsed =
+                                                                                uri?.let { source ->
+                                                                                    context.contentResolver
+                                                                                        .openInputStream(source)
+                                                                                        ?.use(CompanionGpxRouteParser::parse)
+                                                                                } ?: error(context.getString(R.string.library_gpx_unavailable))
+                                                                            Triple(
+                                                                                item.route.displayName,
+                                                                                parsed.points,
+                                                                                missionDay?.day?.startDistanceMeters ?: 0.0,
+                                                                            )
+                                                                        }
+                                                                        is PhoneLibraryItem.FolderGpx ->
+                                                                            Triple(item.item.displayName, item.item.track.points, 0.0)
+                                                                        is PhoneLibraryItem.ReceivedGpx -> {
+                                                                            val parsed = item.file.inputStream().use(CompanionGpxRouteParser::parse)
+                                                                            Triple(item.title, parsed.points, 0.0)
+                                                                        }
+                                                                        else -> error(context.getString(R.string.phone_guidance_route_unavailable))
+                                                                    }
+                                                                }
+                                                            require(routeInputs.second.size >= 2) {
+                                                                context.getString(R.string.phone_guidance_route_unavailable)
+                                                            }
+                                                            val routeDraft =
+                                                                withContext(Dispatchers.IO) {
+                                                                    val general = PhoneGeneralSettingsPreferences(context).load()
+                                                                    val gpx = PhoneMapGpxSettingsPreferences(context).load()
+                                                                    PhoneGuidanceRouteDraft(
+                                                                        trackId = item.key,
+                                                                        trackTitle = routeInputs.first,
+                                                                        points = routeInputs.second,
+                                                                        routeOffsetMeters = routeInputs.third,
+                                                                        activityProfile = general.activityProfile.storageValue,
+                                                                        etaConfig = phoneGuidanceEtaConfig(gpx, general),
+                                                                    )
+                                                                }
+                                                            if (!guidanceStartGate.isCurrent(generation)) return@launch
+                                                            withContext(Dispatchers.IO) {
+                                                                PhoneGuidanceDraftStore(context).saveRoute(routeDraft)
+                                                            }
+                                                            if (!guidanceStartGate.isCurrent(generation)) return@launch
+                                                            PhoneGuidanceSessionStore.publish(
+                                                                PhoneGuidanceUiState(message = PhoneGuidanceMessage.LOADING),
+                                                            )
+                                                            PhoneRecordingService.request(context, PhoneRecordingService.ACTION_GUIDANCE_START)
+                                                            serviceStarted = true
+                                                            mapActions.onOpenTool(MapTool.HIKE)
+                                                        } catch (error: Exception) {
+                                                            if (guidanceStartGate.isCurrent(generation)) {
+                                                                PhoneGuidanceSessionStore.publish(
+                                                                    PhoneGuidanceUiState(message = PhoneGuidanceMessage.FAILED),
+                                                                )
+                                                                Toast
+                                                                    .makeText(
+                                                                        context,
+                                                                        error.message ?: context.getString(R.string.phone_guidance_start_failed),
+                                                                        Toast.LENGTH_LONG,
+                                                                    ).show()
+                                                            }
+                                                        } finally {
+                                                            if (!serviceStarted && guidanceStartGate.complete(generation)) guidanceStartingKey = null
+                                                        }
+                                                    }
+                                                },
+                                                onUseRoute = { id ->
+                                                    routeLibraryViewModel.selectRoute(id)
+                                                    mapActions.onOpenTool(MapTool.HIKE)
+                                                },
+                                                onOpenMapTools = mapActions.onOpenTool,
+                                                onOpenSettings = { tool ->
+                                                    contentSettingsTool = tool
+                                                    settingsReturnArea = CompanionHomeArea.LIBRARY
+                                                    settingsReturnToGeneral = false
+                                                    activeHomeArea = CompanionHomeArea.SETTINGS
+                                                },
+                                                onMapAction = { action ->
+                                                    when (action) {
+                                                        MapLibraryAction.ADD_POI -> mapActions.onAddPoi()
+                                                        MapLibraryAction.IMPORT_MAP -> mapActions.maps.onImportMap()
+                                                        MapLibraryAction.DOWNLOAD_BUNDLE -> mapActions.onOpenBundleDownload()
+                                                    }
+                                                },
+                                                onSendGpx = { id ->
+                                                    val uri = routeLibraryViewModel.contentUriFor(id)
+                                                    if (uri == null) {
+                                                        Toast.makeText(context, R.string.library_gpx_unavailable, Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        viewModel.selectFilesForTransfer(context, listOf(uri))
+                                                        activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                                    }
+                                                },
+                                                onFilterChanged = { libraryFilter = it },
+                                            ),
+                                    )
+                                }
+                            },
+                            hikeHeaderAction = {
+                                todayHikeGpxActions(
+                                    state = routeLibraryUiState,
+                                    onImport = routeLibraryViewModel::importRoute,
+                                    onChoose = {
+                                        pickGpxForWeather = false
+                                        showGpxPicker = true
+                                    },
+                                )
+                            },
+                            hikeContent = {
+                                CompanionTodayHikeContent(
+                                    adaptive = adaptive,
+                                    libraryState = routeLibraryUiState,
+                                    selectedRouteDetails = selectedRouteDetails,
+                                    activeHikeSnapshot = activeHikeSnapshot,
+                                    routeWeatherUiState = routeWeatherUiState,
+                                    missionPlanUiState = missionPlanUiState,
+                                    onLoadRouteWeather = { snapshot, phoneGuidanceDistanceMeters, forceRefresh, plannedStartDistanceMeters ->
+                                        routeLibraryViewModel.loadRouteWeather(
+                                            activeHikeSnapshot = snapshot,
+                                            forceRefresh = forceRefresh,
+                                            plannedStartDistanceMeters = plannedStartDistanceMeters,
+                                            phoneGuidanceDistanceMeters = phoneGuidanceDistanceMeters,
+                                            phoneGuidancePositionLabel = context.getString(R.string.phone_guidance_weather_position),
+                                        )
+                                    },
+                                    onSendSelectedRouteToWatch = {
+                                        val plannedDay = missionPlanUiState.selectedDay
+                                        if (plannedDay?.route?.id == routeLibraryUiState.selectedRoute?.id) {
+                                            missionPlanViewModel.prepareSelectedDayForTransfer { routeUri ->
+                                                if (routeUri == null) {
+                                                    Toast
+                                                        .makeText(
+                                                            context,
+                                                            "The planned GPX is no longer available.",
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                } else {
+                                                    viewModel.selectFilesForTransfer(context, listOf(routeUri))
+                                                    activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                                }
+                                            }
+                                        } else {
+                                            val routeUri = routeLibraryViewModel.selectedRouteContentUri()
+                                            if (routeUri == null) {
+                                                Toast
+                                                    .makeText(
+                                                        context,
+                                                        "The selected GPX is no longer available.",
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                            } else {
+                                                viewModel.selectFilesForTransfer(context, listOf(routeUri))
+                                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                            }
+                                        }
+                                    },
+                                )
+                            },
                             navigation =
                                 MapNavigationActions(
-                                    onOpenLibrary = { activeHomeArea = CompanionHomeArea.LIBRARY },
                                     onOpenSettings = { tool ->
                                         contentSettingsTool = tool
                                         settingsReturnToGeneral = true
                                     },
-                                    onSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
-                                    onLiveHike = {
-                                        CompanionJourneyDiagnostics.liveHikeDashboardOpened(activeHikeSnapshot?.snapshot)
-                                        activeHomeArea = CompanionHomeArea.LIVE_HIKE
-                                    },
                                     onMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
-                                    onLiveHikeSyncChanged = { enabled -> viewModel.setLiveHikeSyncEnabled(context, enabled) },
                                 ),
                         )
                     }
@@ -1472,49 +1605,35 @@ private fun SelectedFilesCompactSummary(
 }
 
 @Composable
-private fun CompanionTodayHikeScreen(
+private fun CompanionTodayHikeContent(
     adaptive: CompanionAdaptiveSpec,
     libraryState: RouteLibraryUiState,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
     routeWeatherUiState: RouteWeatherUiState,
     missionPlanUiState: MissionPlanUiState,
-    onImportGpx: (Uri) -> Unit,
-    onChooseGpx: () -> Unit,
-    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Double?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
-    onBack: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalIconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back_to_home_content_description),
-                )
-            }
-            Text(
-                text = stringResource(R.string.menu_today_hike),
-                modifier = Modifier.padding(start = 12.dp),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
-        ) {
-            todayHikeGpxActions(libraryState, onImportGpx, onChooseGpx)
-            TodayHikeCard(
-                selectedRoute = libraryState.selectedRoute,
-                selectedRouteDetails = selectedRouteDetails,
-                activeHikeSnapshot = activeHikeSnapshot,
-                routeWeatherUiState = routeWeatherUiState,
-                missionDay = missionPlanUiState.selectedDay?.takeIf { it.route.id == libraryState.selectedRoute?.id },
-                isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
-                onLoadRouteWeather = onLoadRouteWeather,
-                onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
-            )
-        }
+    val phoneGuidance by PhoneGuidanceSessionStore.state.collectAsState()
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(adaptive.pagePadding),
+        verticalArrangement = Arrangement.spacedBy(adaptive.sectionGap),
+    ) {
+        PhoneGuidancePanel()
+        if (libraryState.isImporting) LinearProgressIndicator(Modifier.fillMaxWidth())
+        libraryState.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        TodayHikeCard(
+            selectedRoute = libraryState.selectedRoute,
+            selectedRouteDetails = selectedRouteDetails,
+            activeHikeSnapshot = activeHikeSnapshot,
+            phoneGuidance = phoneGuidance,
+            routeWeatherUiState = routeWeatherUiState,
+            missionDay = missionPlanUiState.selectedDay?.takeIf { it.route.id == libraryState.selectedRoute?.id },
+            isPreparingMissionTransfer = missionPlanUiState.isPreparingTransfer,
+            onLoadRouteWeather = onLoadRouteWeather,
+            onSendSelectedRouteToWatch = onSendSelectedRouteToWatch,
+        )
     }
 }
 
@@ -1523,17 +1642,43 @@ private fun TodayHikeCard(
     selectedRoute: RouteLibraryRoute?,
     selectedRouteDetails: RouteLibraryRouteDetails?,
     activeHikeSnapshot: PhoneActiveHikeSnapshot?,
+    phoneGuidance: PhoneGuidanceUiState,
     routeWeatherUiState: RouteWeatherUiState,
     missionDay: MissionPlanDayUi?,
     isPreparingMissionTransfer: Boolean,
-    onLoadRouteWeather: (ActiveHikeSnapshot?, Boolean, Double) -> Unit,
+    onLoadRouteWeather: (ActiveHikeSnapshot?, Double?, Boolean, Double) -> Unit,
     onSendSelectedRouteToWatch: () -> Unit,
 ) {
     val textResources = LocalResources.current
     val liveHikeSnapshot =
         activeHikeSnapshot?.takeIf { update -> update.snapshot.phase != ActiveHikePhase.IDLE }
+    val matchingPhoneSession =
+        phoneGuidance.session?.takeIf { session ->
+            session.trackId == selectedRoute?.let { "gpx/${it.id}" } &&
+                phoneGuidance.message != PhoneGuidanceMessage.FAILED &&
+                (missionDay == null || abs(session.routeOffsetMeters - missionDay.day.startDistanceMeters) <= 1.0)
+        }
+    val phoneDistanceMeters =
+        matchingPhoneSession?.let { session ->
+            phoneGuidance.guidance?.originalRouteDistanceFromStartMeters
+                ?: session.routeOffsetMeters + if (session.reversed) session.totalDistanceMeters else 0.0
+        }
+    val reversedRouteDetails =
+        remember(selectedRouteDetails, matchingPhoneSession?.reversed) {
+            selectedRouteDetails?.takeIf { matchingPhoneSession?.reversed == true }?.reversedForGuidance()
+        }
+    val phoneTrailIntelligence =
+        phoneDistanceMeters?.let { distance ->
+            selectedRouteDetails?.trailIntelligenceForProgress(
+                originalDistanceFromStartMeters = distance,
+                reversed = matchingPhoneSession.reversed,
+                missionDay = missionDay?.day,
+                reversedDetails = reversedRouteDetails,
+            )
+        }
     val trailIntelligence =
-        liveHikeSnapshot?.snapshot?.let { snapshot -> selectedRouteDetails?.trailIntelligenceFor(snapshot) }
+        phoneTrailIntelligence
+            ?: liveHikeSnapshot?.snapshot?.let { snapshot -> selectedRouteDetails?.trailIntelligenceFor(snapshot) }
             ?: missionDay
                 ?.takeIf { dayUi -> dayUi.route.id == selectedRoute?.id }
                 ?.let { dayUi -> selectedRouteDetails?.trailIntelligenceFor(dayUi.day) }
@@ -1541,6 +1686,13 @@ private fun TodayHikeCard(
         title = textResources.getString(R.string.briefing_today_s_hike),
     ) {
         liveHikeSnapshot?.let { update -> ActiveHikeBriefing(update) }
+        if (phoneTrailIntelligence != null) {
+            Text(
+                text = textResources.getString(R.string.phone_guidance_live_progress),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
         trailIntelligence?.let { intelligence ->
             Spacer(modifier = Modifier.height(14.dp))
             TrailIntelligenceBriefing(
@@ -1596,6 +1748,7 @@ private fun TodayHikeCard(
                     onLoad = { forceRefresh ->
                         onLoadRouteWeather(
                             activeHikeSnapshot?.snapshot,
+                            phoneDistanceMeters,
                             forceRefresh,
                             missionDay?.day?.startDistanceMeters ?: 0.0,
                         )
