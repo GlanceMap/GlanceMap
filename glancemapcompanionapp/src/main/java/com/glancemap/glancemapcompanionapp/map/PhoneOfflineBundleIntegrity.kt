@@ -133,6 +133,7 @@ internal fun phoneOfflineBundleHealth(
     mapStore: PhoneOfflineMapStore,
     bundle: PhoneInstalledBundle,
     recovery: PhoneOfflineBundleRecovery? = null,
+    verifiedOfflineFiles: Map<String, Boolean> = emptyMap(),
 ): PhoneOfflineBundleHealth {
     val storage = PhoneOfflineStorage(context)
     val mapFile = File(storage.mapsDirectory(), File(bundle.mapFileName).name)
@@ -153,13 +154,15 @@ internal fun phoneOfflineBundleHealth(
     val downloadedRouting =
         bundle.downloadedRoutingFileNames.filter { name ->
             val file = File(storage.routingDirectory(), File(name).name)
-            if (file.isFile && !isUsablePhoneRoutingFile(file)) invalid += file.name
-            isUsablePhoneRoutingFile(file)
+            val valid = verifiedOfflineFiles[file.absolutePath] ?: isUsablePhoneRoutingFile(file)
+            if (file.isFile && !valid) invalid += file.name
+            valid
         }
     val downloadedDem =
         bundle.downloadedDemTileIds.filter { tileId ->
             val file = phoneOfflineDemFile(storage.elevationDirectory(), bundle.demSource, tileId)
-            val valid = isUsablePhoneDemFile(file)
+            // Library has already validated its inventory, including compressed DEM files.
+            val valid = verifiedOfflineFiles[file.absolutePath] ?: isUsablePhoneDemFile(file)
             if (file.isFile && !valid) invalid += bundle.demSource.remoteFileName(tileId)
             valid
         }

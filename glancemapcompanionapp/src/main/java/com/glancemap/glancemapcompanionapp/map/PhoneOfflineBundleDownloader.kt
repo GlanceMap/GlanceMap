@@ -12,6 +12,7 @@ import com.glancemap.trailcore.oam.OamDownloadArea
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -32,6 +33,7 @@ import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 
 private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
+private const val IO_RETRY_DELAY_MILLIS = 2_000L
 
 internal data class PhoneOfflineRemoteFileRequest(
     val url: String,
@@ -1142,7 +1144,6 @@ internal class PhoneOfflineBundleDownloader(
         installPhoneDemFile(temporary, target)
     }
 
-    @Suppress("CyclomaticComplexMethod") // Handles the small HTTP response matrix needed for safe resume.
     private suspend fun downloadToTemporary(
         url: String,
         temporary: File,
@@ -1153,6 +1154,36 @@ internal class PhoneOfflineBundleDownloader(
     ): Long {
         if (resetPartial) temporary.delete()
         temporary.parentFile?.mkdirs()
+        return retryPhoneOfflineBundleTransfer(
+            temporary = temporary,
+            onRetry = { retryCount, resumeOffset, error ->
+                PhoneDownloadDiagnostics.warn(
+                    "Bundle",
+                    "Reconnecting stage=$phase file=${temporary.name} retry=$retryCount " +
+                        "offset=$resumeOffset exception=${error.javaClass.simpleName}",
+                )
+                onProgress(
+                    PhoneOfflineBundleProgress(
+                        phase = phase,
+                        bytesDownloaded = resumeOffset,
+                        detail = applicationContext.getString(R.string.offline_bundle_reconnecting),
+                    ),
+                )
+                delay(IO_RETRY_DELAY_MILLIS * retryCount)
+            },
+        ) {
+            downloadToTemporaryAttempt(url, temporary, phase, onProgress, onResponseMetadata)
+        }
+    }
+
+    @Suppress("CyclomaticComplexMethod") // Handles the small HTTP response matrix needed for safe resume.
+    private suspend fun downloadToTemporaryAttempt(
+        url: String,
+        temporary: File,
+        phase: PhoneOfflineBundlePhase,
+        onProgress: (PhoneOfflineBundleProgress) -> Unit,
+        onResponseMetadata: ((HttpURLConnection, Long?) -> Unit)?,
+    ): Long {
         var rangeRestartCount = 0
         while (true) {
             currentCoroutineContext().ensureActive()
@@ -1339,7 +1370,7 @@ internal fun expectedPhoneBundleArchiveEntryName(
     }
 }
 
-private class PhoneOfflineBundleDownloadException(
+internal class PhoneOfflineBundleDownloadException(
     val reason: PhoneOfflineBundleFailure,
 ) : IOException()
 

@@ -10,13 +10,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.UUID
 
 private const val PHONE_OFFLINE_MIGRATION_TEMPORARY_OVERHEAD_BYTES = 1L shl 20
+private const val MIGRATION_TELEMETRY_INTERVAL_NANOS = 5_000_000_000L
 
 internal enum class PhoneOfflineStorageMigrationPhase {
     IDLE,
@@ -26,16 +26,23 @@ internal enum class PhoneOfflineStorageMigrationPhase {
     CLEANUP,
     COMPLETE,
     FAILED,
+    CANCELLED,
 }
 
 internal fun phoneOfflineStorageMigrationPercent(
     copiedFiles: Int,
     totalFiles: Int,
+    copiedBytes: Long = 0L,
+    totalBytes: Long = 0L,
 ): Int? =
-    totalFiles.takeIf { it > 0 }?.let {
-        (copiedFiles.toLong().coerceAtLeast(0L) * 100L / it.toLong())
-            .toInt()
-            .coerceIn(0, 100)
+    if (totalBytes > 0L) {
+        (copiedBytes.toDouble() * 100.0 / totalBytes.toDouble()).toInt().coerceIn(0, 100)
+    } else {
+        totalFiles.takeIf { it > 0 }?.let {
+            (copiedFiles.toLong().coerceAtLeast(0L) * 100L / it.toLong())
+                .toInt()
+                .coerceIn(0, 100)
+        }
     }
 
 internal data class PhoneOfflineStorageMigrationState(
@@ -48,10 +55,13 @@ internal data class PhoneOfflineStorageMigrationState(
     val replacedFiles: Int = 0,
     val requiredSpaceBytes: Long = 0L,
     val availableSpaceBytes: Long = 0L,
+    val copiedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val canCancel: Boolean = false,
     val message: String? = null,
 ) {
     val percent: Int?
-        get() = phoneOfflineStorageMigrationPercent(copiedFiles, totalFiles)
+        get() = phoneOfflineStorageMigrationPercent(copiedFiles, totalFiles, copiedBytes, totalBytes)
 }
 
 internal data class PhoneOfflineStorageMigrationProgress(
@@ -62,6 +72,8 @@ internal data class PhoneOfflineStorageMigrationProgress(
     val totalFiles: Int,
     val requiredSpaceBytes: Long,
     val availableSpaceBytes: Long,
+    val copiedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
 )
 
 internal data class PhoneOfflineStorageMigrationFileEntry(
@@ -205,7 +217,22 @@ internal class PhoneOfflineStorageMigration(
     ): PhoneOfflineStorageMigrationResult =
         mutex.withLock {
             withContext(Dispatchers.IO) {
-                moveLocked(target, onProgress)
+                var lastTelemetryAt = 0L
+                var lastPhase: PhoneOfflineStorageMigrationPhase? = null
+                moveLocked(target) { progress ->
+                    val now = System.nanoTime()
+                    if (progress.phase != lastPhase || now - lastTelemetryAt >= MIGRATION_TELEMETRY_INTERVAL_NANOS) {
+                        PhoneDownloadDiagnostics.log(
+                            "StorageMigration",
+                            "phase=${progress.phase.name.lowercase()} " +
+                                "files=${progress.copiedFiles}/${progress.totalFiles} " +
+                                "bytes=${progress.copiedBytes}/${progress.totalBytes}",
+                        )
+                        lastTelemetryAt = now
+                        lastPhase = progress.phase
+                    }
+                    onProgress(progress)
+                }
             }
         }
 
@@ -221,6 +248,8 @@ internal class PhoneOfflineStorageMigration(
         target: PhoneOfflineStorageLocation,
         onProgress: suspend (PhoneOfflineStorageMigrationProgress) -> Unit,
     ): PhoneOfflineStorageMigrationResult {
+        val migrationContext = currentCoroutineContext()
+        val checkActive = { migrationContext.ensureActive() }
         val targetRoot =
             (fixedTargetRoot ?: storage?.canonicalRoot(target))
                 ?: return PhoneOfflineStorageMigrationResult.Failure(
@@ -271,9 +300,13 @@ internal class PhoneOfflineStorageMigration(
             }
         }
         val hashCache = mutableMapOf<String, String>()
+        PhoneDownloadDiagnostics.log(
+            "StorageMigration",
+            "phase=checking source=${journal.source} target=${journal.target}",
+        )
         val validityCache = mutableMapOf<String, Boolean>()
-        val sourceFiles = managedFiles(sourceRoot, hashCache)
-        val targetFiles = allFiles(finalTargetRoot, hashCache)
+        val sourceFiles = managedFiles(sourceRoot, hashCache, checkActive)
+        val targetFiles = allFiles(finalTargetRoot, hashCache, checkActive)
         val reconciliation =
             reconcileFiles(
                 sourceFiles = sourceFiles.filterNot { file -> isPhoneOfflineStorageMutableDataPath(file.relativePath) },
@@ -357,7 +390,8 @@ internal class PhoneOfflineStorageMigration(
                 text(R.string.storage_migration_obsolete_migration_staging_files_could_not_be),
             )
         }
-        val stagedFiles = expectedFiles.filter { entry -> matches(File(stagingRoot, entry.relativePath), entry) }
+        val stagedFiles =
+            expectedFiles.filter { entry -> matches(File(stagingRoot, entry.relativePath), entry, checkActive) }
         val spaceRequirement =
             phoneOfflineStorageMigrationSpaceRequirement(
                 expectedFiles = expectedFiles,
@@ -385,7 +419,7 @@ internal class PhoneOfflineStorageMigration(
 
         return try {
             if (journal.phase == PhoneOfflineStorageMigrationPhase.VERIFYING &&
-                !matchesRoot(stagingRoot, expectedFiles)
+                !matchesRoot(stagingRoot, expectedFiles, checkActive)
             ) {
                 // A failed verification keeps its semantic phase in the journal, but a retry
                 // must recopy entries which did not pass the manifest check.
@@ -422,39 +456,59 @@ internal class PhoneOfflineStorageMigration(
                         totalFiles = expectedFiles.size,
                         requiredSpaceBytes = spaceRequirement.requiredSpaceBytes,
                         availableSpaceBytes = availableBytes,
+                        copiedBytes = spaceRequirement.stagedBytes,
+                        totalBytes = spaceRequirement.totalBytes,
                     ),
                 )
                 var copiedFiles = stagedFiles.size
+                var copiedBytes = spaceRequirement.stagedBytes
+                val verifiedStagedFiles = stagedFiles.associateBy(FileEntry::relativePath).toMutableMap()
                 reconciledFiles.forEach { reconciledFile ->
                     currentCoroutineContext().ensureActive()
                     val entry = reconciledFile.entry
                     val stagingFile = File(stagingRoot, entry.relativePath)
-                    val wasAlreadyStaged = matches(stagingFile, entry)
+                    val wasAlreadyStaged = entry.relativePath in verifiedStagedFiles
                     if (!wasAlreadyStaged) {
                         if (reconciledFile.bytes != null) {
                             writeBytes(reconciledFile.bytes, stagingFile)
                         } else {
-                            copyFile(checkNotNull(reconciledFile.source).file, stagingFile)
+                            copyPhoneOfflineStorageFile(
+                                checkNotNull(reconciledFile.source).file,
+                                stagingFile,
+                            ) { bytes ->
+                                onProgress(
+                                    PhoneOfflineStorageMigrationProgress(
+                                        phase = PhoneOfflineStorageMigrationPhase.COPYING,
+                                        source = journal.source,
+                                        target = journal.target,
+                                        copiedFiles = copiedFiles,
+                                        totalFiles = expectedFiles.size,
+                                        requiredSpaceBytes =
+                                            (spaceRequirement.totalBytes - copiedBytes - bytes).coerceAtLeast(0L),
+                                        availableSpaceBytes = availableBytes,
+                                        copiedBytes = copiedBytes + bytes,
+                                        totalBytes = spaceRequirement.totalBytes,
+                                    ),
+                                )
+                            }
                         }
-                    }
-                    if (!matches(stagingFile, entry)) {
-                        return failure(
-                            journal,
-                            PhoneOfflineStorageMigrationError.COPY_FAILED,
-                            text(
-                                R.string.storage_migration_the_copied_file_could_not_be_verified,
-                            ).format(entry.relativePath),
-                        )
-                    }
-                    if (!wasAlreadyStaged) copiedFiles += 1
-                    val currentStagedFiles =
-                        expectedFiles.filter { expected ->
-                            matches(File(stagingRoot, expected.relativePath), expected)
+                        if (!matches(stagingFile, entry, checkActive)) {
+                            return failure(
+                                journal,
+                                PhoneOfflineStorageMigrationError.COPY_FAILED,
+                                text(
+                                    R.string.storage_migration_the_copied_file_could_not_be_verified,
+                                ).format(entry.relativePath),
+                            )
                         }
+                        copiedFiles += 1
+                        copiedBytes += entry.sizeBytes
+                        verifiedStagedFiles[entry.relativePath] = entry
+                    }
                     val currentSpaceRequirement =
                         phoneOfflineStorageMigrationSpaceRequirement(
                             expectedFiles = expectedFiles,
-                            stagedFiles = currentStagedFiles,
+                            stagedFiles = verifiedStagedFiles.values.toList(),
                         )
                     onProgress(
                         PhoneOfflineStorageMigrationProgress(
@@ -465,6 +519,8 @@ internal class PhoneOfflineStorageMigration(
                             totalFiles = expectedFiles.size,
                             requiredSpaceBytes = currentSpaceRequirement.requiredSpaceBytes,
                             availableSpaceBytes = availableSpace(targetParent),
+                            copiedBytes = copiedBytes,
+                            totalBytes = spaceRequirement.totalBytes,
                         ),
                     )
                 }
@@ -472,7 +528,20 @@ internal class PhoneOfflineStorageMigration(
                 writeJournal(journalFile(), journal)
             }
 
-            val verified = allFiles(stagingRoot)
+            onProgress(
+                PhoneOfflineStorageMigrationProgress(
+                    phase = PhoneOfflineStorageMigrationPhase.VERIFYING,
+                    source = journal.source,
+                    target = journal.target,
+                    copiedFiles = expectedFiles.size,
+                    totalFiles = expectedFiles.size,
+                    requiredSpaceBytes = 0L,
+                    availableSpaceBytes = availableSpace(targetParent),
+                    copiedBytes = spaceRequirement.totalBytes,
+                    totalBytes = spaceRequirement.totalBytes,
+                ),
+            )
+            val verified = allFiles(stagingRoot, checkActive = checkActive)
             if (verified != expectedFiles) {
                 return failure(
                     journal,
@@ -480,17 +549,6 @@ internal class PhoneOfflineStorageMigration(
                     text(R.string.storage_migration_the_staged_glancemap_data_did_not_pass),
                 )
             }
-            onProgress(
-                PhoneOfflineStorageMigrationProgress(
-                    phase = PhoneOfflineStorageMigrationPhase.VERIFYING,
-                    source = journal.source,
-                    target = journal.target,
-                    copiedFiles = verified.size,
-                    totalFiles = expectedFiles.size,
-                    requiredSpaceBytes = 0L,
-                    availableSpaceBytes = availableSpace(targetParent),
-                ),
-            )
 
             if (journal.manifestPath == null) {
                 journal =
@@ -503,6 +561,21 @@ internal class PhoneOfflineStorageMigration(
                     )
             }
             writeManifest(File(checkNotNull(journal.manifestPath)), expectedFiles)
+            writeJournal(journalFile(), journal)
+            onProgress(
+                PhoneOfflineStorageMigrationProgress(
+                    phase = PhoneOfflineStorageMigrationPhase.SWITCHING,
+                    source = journal.source,
+                    target = journal.target,
+                    copiedFiles = expectedFiles.size,
+                    totalFiles = expectedFiles.size,
+                    requiredSpaceBytes = 0L,
+                    availableSpaceBytes = availableSpace(targetParent),
+                    copiedBytes = spaceRequirement.totalBytes,
+                    totalBytes = spaceRequirement.totalBytes,
+                ),
+            )
+            checkActive()
             val switchingJournal = journal.copy(phase = PhoneOfflineStorageMigrationPhase.SWITCHING)
             writeJournal(journalFile(), switchingJournal)
             journal = switchingJournal
@@ -882,6 +955,7 @@ internal class PhoneOfflineStorageMigration(
         fun managedFiles(
             root: File,
             hashCache: MutableMap<String, String> = mutableMapOf(),
+            checkActive: () -> Unit = {},
         ): List<PhoneOfflineStorageFile> =
             migrationDirectoryNames
                 .asSequence()
@@ -892,7 +966,8 @@ internal class PhoneOfflineStorageMigration(
                         relativePath = file.relativeTo(root).invariantSeparatorsPath,
                         file = file,
                         sizeBytes = file.length(),
-                        sha256 = hashCache.getOrPut(file.absolutePath) { sha256(file) },
+                        sha256 =
+                            hashCache.getOrPut(file.absolutePath) { hashPhoneOfflineStorageFile(file, checkActive) },
                     )
                 }.sortedBy(PhoneOfflineStorageFile::relativePath)
                 .toList()
@@ -900,6 +975,7 @@ internal class PhoneOfflineStorageMigration(
         fun allFiles(
             root: File,
             hashCache: MutableMap<String, String> = mutableMapOf(),
+            checkActive: () -> Unit = {},
         ): List<FileEntry> =
             if (!root.exists()) {
                 emptyList()
@@ -911,7 +987,10 @@ internal class PhoneOfflineStorageMigration(
                         FileEntry(
                             relativePath = file.relativeTo(root).invariantSeparatorsPath,
                             sizeBytes = file.length(),
-                            sha256 = hashCache.getOrPut(file.absolutePath) { sha256(file) },
+                            sha256 =
+                                hashCache.getOrPut(file.absolutePath) {
+                                    hashPhoneOfflineStorageFile(file, checkActive)
+                                },
                         )
                     }.sortedBy(FileEntry::relativePath)
                     .toList()
@@ -920,15 +999,19 @@ internal class PhoneOfflineStorageMigration(
         fun matches(
             file: File,
             expected: FileEntry,
+            checkActive: () -> Unit = {},
         ): Boolean =
             file.isFile &&
                 file.length() == expected.sizeBytes &&
-                runCatching { sha256(file) == expected.sha256 }.getOrDefault(false)
+                runCatching { hashPhoneOfflineStorageFile(file, checkActive) == expected.sha256 }
+                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                    .getOrDefault(false)
 
         fun matchesRoot(
             root: File,
             expected: List<FileEntry>,
-        ): Boolean = root.isDirectory && allFiles(root) == expected
+            checkActive: () -> Unit = {},
+        ): Boolean = root.isDirectory && allFiles(root, checkActive = checkActive) == expected
 
         fun pruneStaging(
             root: File,
@@ -944,19 +1027,6 @@ internal class PhoneOfflineStorageMigration(
                 .all(File::delete)
         }
 
-        fun copyFile(
-            source: File,
-            target: File,
-        ) {
-            target.parentFile?.mkdirs()
-            val temporary = File(target.parentFile, ".${target.name}.part")
-            FileInputStream(source).use { input ->
-                FileOutputStream(temporary).use { output -> input.copyTo(output) }
-            }
-            if (target.exists()) target.delete()
-            check(temporary.renameTo(target)) { "Could not promote ${source.name}." }
-        }
-
         fun writeBytes(
             bytes: ByteArray,
             target: File,
@@ -966,19 +1036,6 @@ internal class PhoneOfflineStorageMigration(
             FileOutputStream(temporary).use { output -> output.write(bytes) }
             if (target.exists()) target.delete()
             check(temporary.renameTo(target)) { "Could not promote ${target.name}." }
-        }
-
-        fun sha256(file: File): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            FileInputStream(file).use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    digest.update(buffer, 0, count)
-                }
-            }
-            return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
         }
 
         fun sha256(bytes: ByteArray): String =

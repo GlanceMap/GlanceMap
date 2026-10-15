@@ -1141,7 +1141,8 @@ internal class PhoneOfflineMapsforgeOverlayLayers(
             }
         }
         overlaysById.values.forEach { overlay ->
-            val segments = overlay.segments.toPhoneMapGpxRenderSegments(gpxSettings)
+            val settings = overlay.settings ?: gpxSettings
+            val segments = overlay.segments.toPhoneMapGpxRenderSegments(settings)
             val current = gpxLayersById.getOrPut(overlay.id) { mutableListOf() }
             val previousOverlay = appliedGpxOverlays.firstOrNull { previous -> previous.id == overlay.id }
             val canAppendLiveTail =
@@ -1150,7 +1151,7 @@ internal class PhoneOfflineMapsforgeOverlayLayers(
                     previousOverlay = previousOverlay,
                     currentLayerCount = current.size,
                     segmentCount = segments.size,
-                    currentSettings = gpxSettings,
+                    currentSettings = settings,
                 )
             while (current.size > segments.size) {
                 val layer = current.removeAt(current.lastIndex)
@@ -1158,13 +1159,13 @@ internal class PhoneOfflineMapsforgeOverlayLayers(
                 layer.latLongs.clear()
             }
             while (current.size < segments.size) {
-                current += Polyline(createTrackPaint(gpxSettings), AndroidGraphicFactory.INSTANCE)
+                current += Polyline(createTrackPaint(settings), AndroidGraphicFactory.INSTANCE)
             }
             var pointsBeforeSegment = 0
             current.forEachIndexed { index, layer ->
                 if (!layers.contains(layer)) layers.add(gpxLayerInsertionIndex(layers), layer)
                 val segment = segments[index]
-                layer.setPaintStroke(createTrackPaint(gpxSettings, segment.colorArgb))
+                layer.setPaintStroke(createTrackPaint(settings, segment.colorArgb))
                 val originalStartIndex =
                     overlay.segments.getOrNull(index)?.recordingStartIndex ?: pointsBeforeSegment
                 val firstChangedInSegment =
