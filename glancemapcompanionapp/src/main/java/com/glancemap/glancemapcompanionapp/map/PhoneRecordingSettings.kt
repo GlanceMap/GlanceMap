@@ -24,6 +24,9 @@ internal data class PhoneRecordingSettings(
     val progressTimeMinutes: Int = RecordingSettings.DEFAULT_RECORDING_PROGRESS_VIBRATION_TIME_MINUTES,
     val showSavedActivities: Boolean = true,
 ) {
+    val sampleIntervalSeconds: Int
+        get() = screenOnIntervalSeconds.takeIf { it > 0 } ?: RecordingSettings.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
+
     fun normalized(): PhoneRecordingSettings =
         copy(
             gpsUsageProfile = RecordingSettings.normalizeGpsUsageProfile(gpsUsageProfile),
@@ -65,9 +68,7 @@ internal data class PhoneRecordingSettings(
     ) = RecordingPointSmoothingOptions(
         mode = smoothingMode(profile),
         activityProfile = profile.storageValue,
-        sampleIntervalSeconds =
-            screenOnIntervalSeconds.takeIf { it > 0 }
-                ?: RecordingSettings.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS,
+        sampleIntervalSeconds = sampleIntervalSeconds,
         trajectoryContinuityIntervalSeconds =
             recordingTrajectoryContinuityIntervalSeconds(
                 effectiveIntervalMillis,
