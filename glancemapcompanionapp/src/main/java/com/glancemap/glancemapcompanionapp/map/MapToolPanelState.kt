@@ -7,12 +7,15 @@ internal enum class MapTool {
     POI,
     REC,
     GPX,
+    GPX_TOOLS,
     MAPS,
     LAYER,
+    LIBRARY,
+    HIKE,
     SETTINGS,
 }
 
-/** Existing map content panels grouped under the Library shortcut menu. */
+/** Content tools with dedicated settings and existing management pages. */
 internal val libraryMapTools = listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)
 
 internal enum class MapToolPanelMode {
@@ -57,12 +60,16 @@ internal data class MapToolPanelState(
         get() = contentMode == MapToolContentMode.FEATURE_SETTINGS
 
     fun select(tool: MapTool): MapToolPanelState =
-        when (mode) {
-            MapToolPanelMode.CLOSED ->
-                copy(activeTool = tool, mode = MapToolPanelMode.SPLIT)
-            MapToolPanelMode.SPLIT,
-            MapToolPanelMode.EXPANDED,
-            -> if (activeTool == tool) close() else copy(activeTool = tool, contentMode = MapToolContentMode.MAIN)
+        when {
+            activeTool == tool && mode != MapToolPanelMode.CLOSED -> close()
+            tool == MapTool.HIKE || tool == MapTool.LIBRARY ->
+                copy(
+                    activeTool = tool,
+                    mode = MapToolPanelMode.SPLIT,
+                    contentMode = MapToolContentMode.MAIN,
+                )
+            mode == MapToolPanelMode.CLOSED -> copy(activeTool = tool, mode = MapToolPanelMode.SPLIT)
+            else -> copy(activeTool = tool, contentMode = MapToolContentMode.MAIN)
         }
 
     fun showFeatureSettings(): MapToolPanelState =
@@ -128,7 +135,10 @@ internal data class MapToolPanelState(
             MapTool.GPX -> section in gpxFeatureSettingsSections
             MapTool.POI -> section in poiFeatureSettingsSections
             MapTool.LAYER,
+            MapTool.LIBRARY,
+            MapTool.HIKE,
             MapTool.REC,
+            MapTool.GPX_TOOLS,
             -> false
             MapTool.SETTINGS -> section in generalFeatureSettingsSections
         }

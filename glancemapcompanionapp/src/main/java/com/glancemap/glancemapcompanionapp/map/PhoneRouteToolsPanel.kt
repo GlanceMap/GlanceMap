@@ -1,121 +1,136 @@
 @file:Suppress(
     "TooManyFunctions",
-) // The dialog keeps the small creation and modification panels beside their chooser.
+) // The panel keeps the small creation and modification panels beside their chooser.
 
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
 @Composable
-@Suppress("FunctionNaming", "LongMethod") // Compose entry point keeps the tool dialog's state and actions together.
-internal fun BoxScope.PhoneRouteToolsDialog(
+@Suppress("FunctionNaming", "LongMethod") // Compose entry point keeps the GPX panel's state and actions together.
+internal fun PhoneRouteToolsPanel(
     state: PhoneRouteToolsUiState,
     currentLocationAvailable: Boolean,
     actions: PhoneRouteToolsActions,
+    mapSelectionContent: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!state.isOpen || state.usesMapRouteCreationControls()) return
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val popupBottomInset = 128.dp
-        val popupMaxHeight = (maxHeight - popupBottomInset - 16.dp).coerceAtLeast(0.dp)
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp)
-                    .widthIn(max = 420.dp),
-        ) {
-            PhoneMapPopupCard(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = popupMaxHeight),
-                title = stringResource(R.string.map_route_tools_title),
-                titleAction = {
-                    IconButton(onClick = actions.onOpenSettings) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = stringResource(R.string.map_tool_action_settings_content_description),
-                        )
-                    }
-                },
-                onDismiss = actions.onDismiss,
-            ) {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    phoneRouteToolKindSelector(
-                        selected = state.toolKind,
-                        canModify = state.editableRoutes.any(PhoneMapGpxItem::isEditable),
-                        onSelected = actions.onChooseToolKind,
+    if (!state.isOpen) return
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+    ) {
+        phoneRouteBackendSelector()
+        phoneRouteToolKindSelector(
+            selected = state.toolKind,
+            canModify = state.editableRoutes.any(PhoneMapGpxItem::isEditable),
+            onSelected = actions.onChooseToolKind,
+        )
+        if (state.usesMapRouteCreationControls()) {
+            mapSelectionContent()
+        } else {
+            when (state.mode) {
+                null -> routeToolsChooser(state, actions.onChooseMode)
+                PhoneRouteCreationMode.CURRENT_TO_DESTINATION ->
+                    routeToolsCurrentToDestination(
+                        state,
+                        currentLocationAvailable,
+                        actions.onResetMapPoints,
+                        actions.onCreate,
                     )
-                    when (state.mode) {
-                        null -> routeToolsChooser(state, actions.onChooseMode)
-                        PhoneRouteCreationMode.CURRENT_TO_DESTINATION ->
-                            routeToolsCurrentToDestination(
-                                state,
-                                currentLocationAvailable,
-                                actions.onResetMapPoints,
-                                actions.onCreate,
-                            )
 
-                        PhoneRouteCreationMode.POINT_A_TO_B ->
-                            routeToolsPointToPoint(state, actions.onResetMapPoints, actions.onCreate)
+                PhoneRouteCreationMode.POINT_A_TO_B ->
+                    routeToolsPointToPoint(state, actions.onResetMapPoints, actions.onCreate)
 
-                        PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
-                            routeToolsMultiPoint(state, actions.onResetMapPoints, actions.onCreate)
+                PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
+                    routeToolsMultiPoint(state, actions.onResetMapPoints, actions.onCreate)
 
-                        PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION ->
-                            routeToolsExtend(state, actions)
-
-                        PhoneRouteCreationMode.COORDINATES ->
-                            routeToolsCoordinates(state, currentLocationAvailable, actions)
-
-                        PhoneRouteCreationMode.MODIFY_ROUTE -> routeToolsModify(state, actions)
-                    }
-                    state.message?.let { message ->
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(message)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = actions.onDismiss, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.common_action_cancel))
-                    }
-                }
+                PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION -> routeToolsExtend(state, actions)
+                PhoneRouteCreationMode.COORDINATES -> routeToolsCoordinates(state, currentLocationAvailable, actions)
+                PhoneRouteCreationMode.MODIFY_ROUTE -> routeToolsModify(state, actions)
             }
-            Spacer(modifier = Modifier.height(popupBottomInset))
+        }
+        state.message?.let { message ->
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(message)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(onClick = actions.onDismiss, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.common_action_cancel))
         }
     }
+}
+
+@Composable
+private fun phoneRouteBackendSelector() {
+    val context = LocalContext.current.applicationContext
+    val preferences = remember(context) { PhoneGeneralSettingsPreferences(context) }
+    val onlineRouting = remember(preferences) { mutableStateOf(preferences.isOnlineRoutingEnabled()) }
+    val label = context.getString(R.string.phone_route_routing_mode)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(
+                    if (onlineRouting.value) {
+                        R.string.phone_route_online_title
+                    } else {
+                        R.string.phone_route_offline_title
+                    },
+                ),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                stringResource(
+                    if (onlineRouting.value) {
+                        R.string.phone_route_online_description
+                    } else {
+                        R.string.phone_route_offline_description
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            modifier = Modifier.semantics { contentDescription = label },
+            checked = onlineRouting.value,
+            onCheckedChange = { enabled ->
+                onlineRouting.value = enabled
+                preferences.setOnlineRoutingEnabled(enabled)
+            },
+        )
+    }
+    Spacer(modifier = Modifier.height(8.dp))
 }
 
 @Composable

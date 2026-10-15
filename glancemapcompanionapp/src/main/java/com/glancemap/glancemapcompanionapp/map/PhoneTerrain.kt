@@ -164,13 +164,20 @@ internal class PhoneElevationRepository(
     fun elevationAt(
         latitude: Double,
         longitude: Double,
-    ): Double? {
+    ): Double? = elevationSampleAt(latitude, longitude)?.elevationMeters
+
+    fun elevationSampleAt(
+        latitude: Double,
+        longitude: Double,
+    ): PhoneDemElevationSample? {
         val safeLatitude = latitude.coerceIn(-89.999999, 89.999999)
         val safeLongitude = longitude.coerceIn(-179.999999, 179.999999)
         val latTile = floor(safeLatitude).toInt()
         val lonTile = floor(safeLongitude).toInt()
         val tile = loadTile(latTile, lonTile) ?: return null
-        return interpolate(tile, latTile, lonTile, safeLatitude, safeLongitude)
+        return interpolate(tile, latTile, lonTile, safeLatitude, safeLongitude)?.let { elevation ->
+            PhoneDemElevationSample(elevation, tile.axisLength)
+        }
     }
 
     internal fun loadTile(
@@ -283,6 +290,11 @@ internal class PhoneElevationRepository(
         return value.takeIf { weight > 0.0 }?.let { value / weight }
     }
 }
+
+internal data class PhoneDemElevationSample(
+    val elevationMeters: Double,
+    val axisLen: Int,
+)
 
 internal data class PhoneDemTile(
     val axisLength: Int,

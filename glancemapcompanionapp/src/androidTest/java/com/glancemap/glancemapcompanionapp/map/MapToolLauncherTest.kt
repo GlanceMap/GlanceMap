@@ -5,12 +5,16 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.library.todayHikeGpxActions
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -23,80 +27,143 @@ class MapToolLauncherTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
     private val ui = mutableStateOf(PhoneMapUiState())
-    private val sync = mutableStateOf(false)
     private val opened = mutableListOf<String>()
 
     @Test
-    fun libraryShortcutsOpenExistingPanelsAndScreensAndToolsStaySeparate() {
+    fun libraryOpensItsOwnSplitPanelAndToolsStaySeparate() {
         setContent()
         click(R.string.library_title)
-        click(R.string.map_tool_poi_title)
+        composeRule.onNodeWithText("Library content").assertIsDisplayed()
         composeRule.runOnIdle {
-            assertEquals(MapTool.POI, ui.value.toolPanel.activeTool)
+            assertEquals(MapTool.LIBRARY, ui.value.toolPanel.activeTool)
+            assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
             assertFalse(ui.value.toolLauncherExpanded)
+            assertTrue(opened.isEmpty())
+        }
+        listOf(R.string.map_tool_poi_title, R.string.map_tool_gpx_title, R.string.map_tool_maps_title).forEach {
+            composeRule.onNodeWithTag("map-shortcut-$it").assertDoesNotExist()
         }
         click(R.string.library_title)
-        composeRule.onNodeWithTag("map-shortcut-${R.string.library_title}").performClick()
-        assertEquals(listOf("library"), opened)
-        click(R.string.library_title)
-        composeRule.onNodeWithText(label(R.string.menu_routes)).assertDoesNotExist()
-        click(R.string.map_tool_gpx_title)
-        composeRule.runOnIdle { assertEquals(MapTool.GPX, ui.value.toolPanel.activeTool) }
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.CLOSED, ui.value.toolPanel.mode) }
         click(R.string.map_tool_launcher_label)
-        composeRule.onNodeWithText(label(R.string.map_navigation_layers)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.map_tool_settings_title)).assertDoesNotExist()
         click(R.string.map_tool_shortcut_add_poi)
-        assertEquals(listOf("library", "add-poi"), opened)
+        assertEquals(listOf("add-poi"), opened)
         click(R.string.map_tool_launcher_label)
         click(R.string.map_tool_shortcut_rec)
-        assertEquals(listOf("library", "add-poi", "rec"), opened)
+        assertEquals(listOf("add-poi", "rec"), opened)
     }
 
     @Test
-    fun watchSyncToggleDoesNotOpenDashboardAndBackDismissesShortcutsFirst() {
+    fun hikeReplacesWatchOpensSplitAndKeepsTheMapWhenExpandedAndClosed() {
         setContent()
+        composeRule.onNodeWithText(label(R.string.map_navigation_watch)).assertDoesNotExist()
         click(R.string.map_navigation_layers)
-        click(R.string.map_navigation_watch)
-        val toggle = composeRule.onNodeWithContentDescription(label(R.string.menu_live_hike_sync))
-        toggle
-            .assertIsOff()
-            .performClick()
-            .assertIsOn()
-            .performClick()
-            .assertIsOff()
+        click(R.string.map_navigation_hike)
+        composeRule.onNodeWithText("Hike content").assertIsDisplayed()
         composeRule.runOnIdle {
+            assertEquals(MapTool.HIKE, ui.value.toolPanel.activeTool)
+            assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
+            assertEquals(DEFAULT_MAP_TOOL_PANEL_FRACTION, ui.value.toolPanel.splitFraction)
             assertTrue(opened.isEmpty())
-            assertTrue(ui.value.toolLauncherExpanded)
         }
-        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        val mapBounds = composeRule.onNodeWithTag("map").fetchSemanticsNode().boundsInRoot
+        val panelBounds = composeRule.onNodeWithTag("panel").fetchSemanticsNode().boundsInRoot
+        assertTrue(panelBounds.top >= mapBounds.bottom)
+        val expandDescription =
+            label(R.string.map_tool_action_expand_content_description) + ". " + label(R.string.map_tool_resize_hint)
+        composeRule.onNodeWithContentDescription(expandDescription).performClick()
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
+        pressBack()
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode) }
+        click(R.string.map_tool_launcher_label)
+        click(R.string.map_navigation_hike)
         composeRule.runOnIdle {
             assertFalse(ui.value.toolLauncherExpanded)
-            assertEquals(MapTool.LAYER, ui.value.toolPanel.activeTool)
+            assertEquals(MapToolPanelMode.CLOSED, ui.value.toolPanel.mode)
         }
-        click(R.string.map_navigation_watch)
-        click(R.string.menu_live_hike)
-        assertEquals(listOf("hike"), opened)
-        composeRule.runOnIdle { assertFalse(ui.value.toolLauncherExpanded) }
-        click(R.string.map_navigation_watch)
-        click(R.string.transfer_title_send_to_watch)
-        assertEquals(listOf("hike", "send"), opened)
+        click(R.string.map_navigation_hike)
+        pressBack()
+        composeRule.onNodeWithText("Hike content").assertDoesNotExist()
+        composeRule.onNodeWithTag("map").assertIsDisplayed()
     }
+
+    @Test
+    fun hikeHeaderOffersOneGpxMenuAndKeepsThePanelSizeWhenChoosingLibrary() {
+        setContent()
+        click(R.string.map_navigation_hike)
+        composeRule.onNodeWithContentDescription(label(R.string.today_hike_add_or_change_gpx)).performClick()
+        composeRule.onNodeWithText(label(R.string.library_import_from_storage)).assertIsDisplayed()
+        composeRule.onNodeWithText(label(R.string.library_choose_gpx)).performClick()
+        assertEquals(listOf("pick-hike-gpx"), opened)
+        composeRule.onNodeWithText(label(R.string.library_import_from_storage)).assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(MapTool.HIKE, ui.value.toolPanel.activeTool)
+            assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
+            assertEquals(DEFAULT_MAP_TOOL_PANEL_FRACTION, ui.value.toolPanel.splitFraction)
+        }
+        click(R.string.map_navigation_layers)
+        composeRule.onNodeWithContentDescription(label(R.string.today_hike_add_or_change_gpx)).assertDoesNotExist()
+    }
+
+    @Test
+    fun toolsGpxOpensTheResizablePanelAndBackReturnsToTheMap() {
+        setContent()
+        composeRule.runOnIdle {
+            ui.value = ui.value.copy(toolPanel = MapToolPanelState(splitFraction = 0.61f, customSplitFraction = 0.61f))
+        }
+        click(R.string.map_tool_launcher_label)
+        click(R.string.map_tool_shortcut_gpx)
+        composeRule.onNodeWithText("GPX tools content").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertFalse(ui.value.toolLauncherExpanded)
+            assertEquals(MapTool.GPX_TOOLS, ui.value.toolPanel.activeTool)
+            assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
+            assertEquals(0.61f, ui.value.toolPanel.splitFraction, 0f)
+        }
+        val mapBounds = composeRule.onNodeWithTag("map").fetchSemanticsNode().boundsInRoot
+        val panelBounds = composeRule.onNodeWithTag("panel").fetchSemanticsNode().boundsInRoot
+        assertTrue(panelBounds.top >= mapBounds.bottom)
+        pressBack()
+        composeRule.onNodeWithText("GPX tools content").assertDoesNotExist()
+        composeRule.onNodeWithTag("map").assertIsDisplayed()
+    }
+
+    private fun pressBack() = composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
 
     private fun label(resource: Int): String = composeRule.activity.getString(resource)
 
-    private fun click(resource: Int) = composeRule.onNodeWithText(label(resource)).performClick()
+    private fun click(resource: Int) {
+        if (resource == R.string.library_title) {
+            composeRule
+                .onNode(hasText(label(resource)) and hasAnyAncestor(hasTestTag("map-tool-toolbar")))
+                .performClick()
+        } else {
+            composeRule.onNodeWithText(label(resource)).performClick()
+        }
+    }
 
     private fun setContent() {
         composeRule.setContent {
-            BackHandler(enabled = ui.value.toolLauncherExpanded) { ui.value = ui.value.onMapBack() }
+            BackHandler(enabled = ui.value.toolLauncherExpanded || ui.value.toolPanel.mode != MapToolPanelMode.CLOSED) {
+                ui.value = ui.value.onMapBack()
+            }
             MaterialTheme {
                 Box(Modifier.fillMaxSize()) {
-                    mapToolLauncher(
+                    MapToolScaffold(
+                        headerContent = { tool ->
+                            if (tool == MapTool.HIKE) {
+                                todayHikeGpxActions(
+                                    RouteLibraryUiState(isLoading = false),
+                                    onImport = {},
+                                    onChoose = { opened += "pick-hike-gpx" },
+                                )
+                            }
+                        },
                         presentation =
                             MapToolScaffoldState(
                                 panel = ui.value.toolPanel,
                                 launcherExpanded = ui.value.toolLauncherExpanded,
-                                liveHikeSyncEnabled = sync.value,
                             ),
                         actions =
                             MapToolScaffoldActions(
@@ -104,21 +171,25 @@ class MapToolLauncherTest {
                                 onToggleLauncher = { ui.value = ui.value.toggleToolLauncher() },
                                 onAddPoi = { opened += "add-poi" },
                                 onOpenRecording = { opened += "rec" },
-                                onOpenGpxTools = { opened += "gpx" },
-                                onCycleSize = {},
+                                onOpenGpxTools = {
+                                    opened += "gpx"
+                                    ui.value = ui.value.openToolPage(MapTool.GPX_TOOLS, featureSettings = false)
+                                },
+                                onCycleSize = { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.cycleSize()) },
                                 onResize = {},
                                 onResizeFinished = {},
-                                onBack = {},
-                                onClose = {},
+                                onBack = { ui.value = ui.value.onMapBack() },
+                                onClose = { ui.value = ui.value.closeTool() },
                                 onFeatureSettings = {},
                             ),
-                        navigation =
-                            MapNavigationActions(
-                                onOpenLibrary = { opened += "library" },
-                                onSendToWatch = { opened += "send" },
-                                onLiveHike = { opened += "hike" },
-                                onLiveHikeSyncChanged = { sync.value = it },
-                            ),
+                        mapContent = { Box(Modifier.fillMaxSize().testTag("map")) },
+                        panelContent = { tool, _, _ ->
+                            Box(Modifier.fillMaxSize().testTag("panel")) {
+                                if (tool == MapTool.GPX_TOOLS) Text("GPX tools content")
+                                if (tool == MapTool.HIKE) Text("Hike content")
+                                if (tool == MapTool.LIBRARY) Text("Library content")
+                            }
+                        },
                     )
                 }
             }

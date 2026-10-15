@@ -8,11 +8,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.HorizontalDivider
@@ -46,7 +48,6 @@ private val mapToolLauncherHeight = 64.dp
 internal data class MapToolScaffoldState(
     val panel: MapToolPanelState,
     val launcherExpanded: Boolean = false,
-    val liveHikeSyncEnabled: Boolean = false,
     val fullScreenPage: Boolean = false,
 )
 
@@ -76,7 +77,7 @@ internal fun MapToolScaffold(
     actions: MapToolScaffoldActions,
     mapContent: @Composable () -> Unit,
     panelContent: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
-    navigation: MapNavigationActions = MapNavigationActions(),
+    headerContent: @Composable (MapTool) -> Unit = {},
 ) {
     val state = presentation.panel
     val isWide = LocalCompanionLayoutContext.current.widthClass != CompanionWidthClass.COMPACT
@@ -97,7 +98,6 @@ internal fun MapToolScaffold(
             mapToolMapSurface(
                 presentation = presentation,
                 actions = actions,
-                navigation = navigation,
                 modifier = Modifier,
                 mapContent = mapContent,
             )
@@ -109,6 +109,7 @@ internal fun MapToolScaffold(
                         actions = actions,
                         fullScreenPage = presentation.fullScreenPage,
                         content = panelContent,
+                        headerContent = headerContent,
                     )
                 }
             }
@@ -161,7 +162,6 @@ internal fun MapToolScaffold(
 private fun mapToolMapSurface(
     presentation: MapToolScaffoldState,
     actions: MapToolScaffoldActions,
-    navigation: MapNavigationActions,
     modifier: Modifier,
     mapContent: @Composable () -> Unit,
 ) {
@@ -171,7 +171,6 @@ private fun mapToolMapSurface(
             mapToolLauncher(
                 presentation = presentation,
                 actions = actions,
-                navigation = navigation,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
             )
         }
@@ -185,6 +184,7 @@ private fun mapToolPanelSurface(
     actions: MapToolScaffoldActions,
     fullScreenPage: Boolean,
     content: @Composable (MapTool, MapToolContentMode, MapToolFeatureSettingsSection) -> Unit,
+    headerContent: @Composable (MapTool) -> Unit,
 ) {
     val tool = state.activeTool ?: return
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -194,6 +194,7 @@ private fun mapToolPanelSurface(
                 resizeModifier = resizeModifier,
                 actions = actions,
                 fullScreenPage = fullScreenPage,
+                headerContent = headerContent,
             )
             HorizontalDivider()
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -209,6 +210,7 @@ private fun mapToolPanelHeader(
     resizeModifier: Modifier,
     actions: MapToolScaffoldActions,
     fullScreenPage: Boolean,
+    headerContent: @Composable (MapTool) -> Unit,
 ) {
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
@@ -232,11 +234,16 @@ private fun mapToolPanelHeader(
             state = state,
             tool = tool,
             onFeatureSettings = actions.onFeatureSettings,
+            headerContent = headerContent,
         )
         val nextSizeDescription =
             when (state.nextSizeTarget) {
                 MapToolPanelSizeTarget.FULL -> stringResource(R.string.map_tool_action_expand_content_description)
-                MapToolPanelSizeTarget.DEFAULT -> stringResource(R.string.map_tool_action_default_size, 32)
+                MapToolPanelSizeTarget.DEFAULT ->
+                    stringResource(
+                        R.string.map_tool_action_default_size,
+                        (DEFAULT_MAP_TOOL_PANEL_FRACTION * 100).roundToInt(),
+                    )
                 MapToolPanelSizeTarget.CUSTOM ->
                     stringResource(
                         R.string.map_tool_action_custom_size,
@@ -265,6 +272,7 @@ private fun RowScope.mapToolHeaderTitle(
     state: MapToolPanelState,
     tool: MapTool,
     onFeatureSettings: () -> Unit,
+    headerContent: @Composable (MapTool) -> Unit,
 ) {
     Row(
         modifier = Modifier.weight(1f),
@@ -283,6 +291,7 @@ private fun RowScope.mapToolHeaderTitle(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        headerContent(tool)
         if (!state.hasFeatureSettingsBack && tool in setOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)) {
             IconButton(onClick = onFeatureSettings) {
                 Icon(
@@ -298,9 +307,11 @@ internal fun MapTool.icon(): ImageVector =
     when (this) {
         MapTool.POI -> Icons.Filled.Place
         MapTool.REC -> Icons.Filled.FiberManualRecord
-        MapTool.GPX -> Icons.Filled.Route
+        MapTool.GPX, MapTool.GPX_TOOLS -> Icons.Filled.Route
         MapTool.MAPS -> Icons.Filled.Map
         MapTool.LAYER -> Icons.Filled.Layers
+        MapTool.LIBRARY -> Icons.Filled.FolderOpen
+        MapTool.HIKE -> Icons.Filled.Today
         MapTool.SETTINGS -> Icons.Filled.Settings
     }
 
@@ -310,8 +321,11 @@ internal fun MapTool.titleResource(): Int =
         MapTool.POI -> R.string.map_tool_poi_title
         MapTool.REC -> R.string.map_tool_rec_title
         MapTool.GPX -> R.string.map_tool_gpx_title
+        MapTool.GPX_TOOLS -> R.string.map_tool_gpx_tools_title
         MapTool.MAPS -> R.string.map_tool_maps_title
         MapTool.LAYER -> R.string.map_tool_layer_title
+        MapTool.LIBRARY -> R.string.library_title
+        MapTool.HIKE -> R.string.menu_today_hike
         MapTool.SETTINGS -> R.string.map_tool_settings_title
     }
 
@@ -323,7 +337,10 @@ internal fun MapTool.titleResource(contentMode: MapToolContentMode): Int =
             MapTool.REC -> titleResource()
             MapTool.GPX -> R.string.map_tool_gpx_settings_title
             MapTool.MAPS -> R.string.map_tool_maps_settings_title
+            MapTool.GPX_TOOLS,
             MapTool.LAYER,
+            MapTool.LIBRARY,
+            MapTool.HIKE,
             MapTool.SETTINGS,
             -> titleResource()
         }

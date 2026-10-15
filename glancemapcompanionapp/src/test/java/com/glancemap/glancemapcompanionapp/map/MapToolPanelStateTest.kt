@@ -10,6 +10,36 @@ import java.io.File
 
 class MapToolPanelStateTest {
     @Test
+    fun libraryAndHikeOpenAtRememberedSplitSizeAndBackCollapseThenCloseThem() {
+        val previousPanels =
+            listOf(
+                MapToolPanelState(),
+                MapToolPanelState().select(MapTool.GPX).expand(),
+                MapToolPanelState().select(MapTool.MAPS).resize(0.8f).showFeatureSettings(),
+                MapToolPanelState().select(MapTool.LAYER).resize(1f).close(),
+            )
+        listOf(MapTool.LIBRARY, MapTool.HIKE).forEach { tool ->
+            previousPanels.forEach { panel ->
+                val before = PhoneMapUiState(toolPanel = panel)
+                val opened = before.selectTool(tool)
+                assertEquals(tool, opened.toolPanel.activeTool)
+                assertEquals(MapToolPanelMode.SPLIT, opened.toolPanel.mode)
+                assertEquals(panel.splitFraction, opened.toolPanel.splitFraction)
+                assertEquals(panel.customSplitFraction, opened.toolPanel.customSplitFraction)
+                assertEquals(MapToolContentMode.MAIN, opened.toolPanel.contentMode)
+                assertEquals(before.source, opened.source)
+                assertEquals(before.comparison, opened.comparison)
+                assertEquals(before.contentVisibility, opened.contentVisibility)
+                assertEquals(opened, opened.showFeatureSettings())
+                assertEquals(MapToolPanelMode.EXPANDED, opened.expandTool().toolPanel.mode)
+                assertEquals(opened, opened.expandTool().onMapBack())
+                assertEquals(MapToolPanelMode.CLOSED, opened.onMapBack().toolPanel.mode)
+                assertEquals(MapToolPanelMode.CLOSED, opened.selectTool(tool).toolPanel.mode)
+            }
+        }
+    }
+
+    @Test
     fun contentSettingsOpenFullScreenWithoutChangingMapContentAndOpeningAgainDoesNotCloseThem() {
         val before = PhoneMapUiState().selectTool(MapTool.LAYER).toggleToolLauncher()
         listOf(MapTool.POI, MapTool.GPX, MapTool.MAPS).forEach { tool ->
@@ -27,6 +57,23 @@ class MapToolPanelStateTest {
         val general = before.openToolPage(MapTool.SETTINGS, featureSettings = false)
         assertEquals(MapToolPanelMode.EXPANDED, general.toolPanel.mode)
         assertEquals(MapToolContentMode.MAIN, general.toolPanel.contentMode)
+    }
+
+    @Test
+    fun gpxToolsOpenAsASharedPanelWithRememberedSizeAndNormalBackBehavior() {
+        val before =
+            PhoneMapUiState(
+                toolPanel = MapToolPanelState().select(MapTool.LAYER).resize(0.61f).expand(),
+            )
+        val opened = before.openToolPage(MapTool.GPX_TOOLS, featureSettings = false)
+        assertEquals(MapTool.GPX_TOOLS, opened.toolPanel.activeTool)
+        assertEquals(MapToolPanelMode.SPLIT, opened.toolPanel.mode)
+        assertEquals(0.61f, opened.toolPanel.splitFraction, 0f)
+        assertEquals(0.61f, opened.toolPanel.customSplitFraction)
+        assertEquals(before.source, opened.source)
+        assertEquals(before.contentVisibility, opened.contentVisibility)
+        assertEquals(opened, opened.expandTool().onMapBack())
+        assertEquals(MapToolPanelMode.CLOSED, opened.onMapBack().toolPanel.mode)
     }
 
     @Test

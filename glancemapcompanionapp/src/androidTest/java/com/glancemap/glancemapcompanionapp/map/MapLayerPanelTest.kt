@@ -14,12 +14,15 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
@@ -62,6 +65,23 @@ class MapLayerPanelTest {
         quickControl(R.string.map_tools_maps_night_mode).assertDoesNotExist()
         composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
         quickControl(R.string.map_tools_maps_night_mode).assertExists()
+    }
+
+    @Test
+    fun overallGpxAndPoiVisibilityUseTheSharedLayerState() {
+        setContent()
+        listOf(R.string.map_tools_gpx_global_visibility, R.string.map_tools_poi_global_visibility).forEach { label ->
+            composeRule
+                .onNodeWithContentDescription(composeRule.activity.getString(label))
+                .performScrollTo()
+                .assertIsOn()
+                .performClick()
+                .assertIsOff()
+        }
+        composeRule.runOnIdle {
+            assertEquals(false, state.value.gpxVisible)
+            assertEquals(false, state.value.poiVisible)
+        }
     }
 
     private fun quickControl(label: Int) = composeRule.onNodeWithText(composeRule.activity.getString(label))
@@ -201,6 +221,8 @@ class MapLayerPanelTest {
                                             )
                                     },
                                     onMapSettingsChanged = {},
+                                    onGpxVisibilityChanged = { state.value = state.value.copy(gpxVisible = it) },
+                                    onPoiVisibilityChanged = { state.value = state.value.copy(poiVisible = it) },
                                 )
                             }
                         },

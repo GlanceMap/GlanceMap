@@ -20,6 +20,16 @@ class PhoneMapSavedStateTest {
         }
 
     @Test
+    fun libraryAndHikePanelsSurviveRecreationInSplitAndFullScreen() {
+        listOf(MapTool.LIBRARY, MapTool.HIKE).forEach { tool ->
+            val split = PhoneMapUiState().selectTool(tool)
+            listOf(split, split.expandTool()).forEach { state ->
+                assertEquals(state, phoneMapUiStateSaver.restore(save(phoneMapUiStateSaver, state)))
+            }
+        }
+    }
+
+    @Test
     fun allComparisonCombinationsKeepPresentationAtEveryTransparency() {
         val combinations =
             listOf(
@@ -163,6 +173,15 @@ class PhoneMapSavedStateTest {
         assertEquals(DEFAULT_MAP_TOOL_PANEL_FRACTION, restored.toolPanel.splitFraction)
         assertNull(restored.toolPanel.customSplitFraction)
         assertEquals(MapTool.MAPS, restored.toolPanel.activeTool)
+    }
+
+    @Test
+    fun restoredDraggedSizeIsSharedAcrossHikeLayersAndLibrary() {
+        val custom = MapToolPanelState().select(MapTool.HIKE).resize(0.61f)
+        val state = PhoneMapUiState(toolPanel = custom)
+        val restored = requireNotNull(phoneMapUiStateSaver.restore(save(phoneMapUiStateSaver, state)))
+        val switched = restored.selectTool(MapTool.LAYER).selectTool(MapTool.LIBRARY).selectTool(MapTool.HIKE)
+        assertEquals(custom, switched.toolPanel)
     }
 
     private fun <T> save(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,12 +38,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -70,8 +72,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
@@ -81,7 +83,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -91,12 +92,14 @@ import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.ensureMapLibreConfigured
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryOrganization
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryOrganizationStore
 import com.glancemap.glancemapcompanionapp.map.maplibre.fitGpxTrackBounds
 import com.glancemap.glancemapcompanionapp.map.maplibre.mapLibreRasterStyleJson
 import com.glancemap.glancemapcompanionapp.map.maplibre.phoneMapGpxFitIsStillEligible
 import com.glancemap.glancemapcompanionapp.map.maplibre.phoneMapHillshadeOpacity
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderDistanceMeasurement
-import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxTrack
+import com.glancemap.glancemapcompanionapp.map.maplibre.renderGpxOverlays
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineHillshade
@@ -149,7 +152,7 @@ private fun storageChangeIsNoOp(
     current: PhoneOfflineStorageLocation,
     storage: PhoneOfflineStorage,
     pending: PhoneOfflineStorageMigrationJournal?,
-): Boolean = target == current && !storage.needsCanonicalMigration() && pending == null
+): Boolean = target == current && !storage.needsCanonicalMigration() && (pending == null || pending.target != target)
 
 private fun isPhoneMapRouteAnalysisAvailable(
     inspectionEnabled: Boolean,
@@ -419,9 +422,10 @@ internal fun CompanionMapScreen(
     onOpenMenu: () -> Unit,
     initialTool: MapTool? = null,
     initialToolSettings: Boolean = false,
-    initialLibraryAction: MapLibraryAction? = null,
     navigation: MapNavigationActions = MapNavigationActions(),
-    liveHikeSyncEnabled: Boolean = false,
+    hikeContent: @Composable () -> Unit = {},
+    hikeHeaderAction: @Composable () -> Unit = {},
+    libraryContent: @Composable (MapToolsPanelState, MapToolsPanelActions) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val migrationTextResources = LocalResources.current
@@ -441,6 +445,11 @@ internal fun CompanionMapScreen(
         }
     val gpxFolderSource = remember(context) { PhoneGpxFolderSource(context.applicationContext) }
     val gpxSettingsPreferences = remember(context) { PhoneMapGpxSettingsPreferences(context.applicationContext) }
+    val gpxCustomizationPreferences = remember(context) { PhoneGpxCustomizationPreferences(context.applicationContext) }
+    val initialGpxCustomization = remember(gpxCustomizationPreferences) { gpxCustomizationPreferences.load() }
+    val gpxCustomization by gpxCustomizationPreferences.changes.collectAsState(initialGpxCustomization)
+    val libraryOrganizationStore = remember(context) { PhoneLibraryOrganizationStore(context.applicationContext) }
+    val libraryOrganization by libraryOrganizationStore.changes.collectAsState(PhoneLibraryOrganization())
     val compassSensorSource = remember(context) { PhoneCompassSensorSource(context.applicationContext) }
     val sensorCapabilities = remember(context) { resolvePhoneSensorCapabilities(context.applicationContext) }
     val compassSettingsPreferences =
@@ -482,6 +491,10 @@ internal fun CompanionMapScreen(
     // Log counters change per entry; the map only needs capture lifecycle changes.
     val captureSessionId by remember { derivedStateOf { phoneDebugCaptureState.value.sessionId } }
     val captureActive by remember { derivedStateOf { phoneDebugCaptureState.value.active } }
+    LaunchedEffect(context) {
+        // Restore any service-owned REC or phone-guidance session; this never creates a new session.
+        PhoneRecordingService.request(context, PhoneRecordingService.ACTION_RESTORE)
+    }
     LaunchedEffect(recordingSettingsPreferences) {
         PhoneRecordingSettingsState.publish(recordingSettingsPreferences.load())
     }
@@ -530,6 +543,7 @@ internal fun CompanionMapScreen(
     var gpxSettings by remember(gpxSettingsPreferences) { mutableStateOf(gpxSettingsPreferences.load()) }
     var offlineMaps by remember { mutableStateOf(emptyList<PhoneOfflineMap>()) }
     var offlineMapsLoaded by remember { mutableStateOf(false) }
+    var offlineMapDiscoveryFinished by remember { mutableStateOf(false) }
     var offlineMapLoadingCount by remember { mutableIntStateOf(0) }
 
     suspend fun <T> withOfflineMapLoading(action: suspend () -> T): T {
@@ -557,6 +571,7 @@ internal fun CompanionMapScreen(
         mutableStateOf(routingFolderSource.hasSelectedFolder())
     }
     var routingFolderSync by remember { mutableStateOf(PhoneRoutingFolderSyncResult()) }
+    var routingDataVersion by remember { mutableStateOf(0L) }
     var offlineThemeConfig by remember(offlineThemePreferences) {
         mutableStateOf(offlineThemePreferences.load())
     }
@@ -575,7 +590,14 @@ internal fun CompanionMapScreen(
         mutableStateOf(
             storageMigration.pending()?.let { journal ->
                 PhoneOfflineStorageMigrationState(
-                    phase = journal.phase,
+                    phase =
+                        if (journal.phase == PhoneOfflineStorageMigrationPhase.COPYING ||
+                            journal.phase == PhoneOfflineStorageMigrationPhase.VERIFYING
+                        ) {
+                            PhoneOfflineStorageMigrationPhase.CANCELLED
+                        } else {
+                            journal.phase
+                        },
                     source = journal.source,
                     target = journal.target,
                     message =
@@ -587,6 +609,7 @@ internal fun CompanionMapScreen(
         )
     }
     var terrainDataVersion by remember { mutableStateOf(0L) }
+    var storageMigrationJob by remember(storageMigration) { mutableStateOf<Job?>(null) }
     var hasElevationData by remember { mutableStateOf(false) }
     var liveMapElevation by remember { mutableStateOf<Double?>(null) }
     var liveMapPosition by remember { mutableStateOf<PhoneMapLiveMetricsPosition?>(null) }
@@ -680,14 +703,22 @@ internal fun CompanionMapScreen(
             }
     }
     val recordingDisplayName = stringResource(R.string.phone_rec_activity_name)
-    val savedGpxOverlays =
-        remember(gpxUiState.items, mapUiState.contentVisibility.gpxTracks, recordingSettings.showSavedActivities) {
+    val savedGpxGeometry =
+        remember(
+            gpxUiState.items,
+            mapUiState.contentVisibility.gpxTracks,
+            recordingSettings.showSavedActivities,
+        ) {
             gpxUiState.items.enabledOverlays(
                 globalVisible = mapUiState.contentVisibility.gpxTracks,
                 showSavedActivities = recordingSettings.showSavedActivities,
             )
         }
-    val savedGpxFitSegments = remember(savedGpxOverlays) { savedGpxOverlays.flatMap { it.segments } }
+    val savedGpxOverlays =
+        remember(savedGpxGeometry, gpxCustomization, gpxSettings, libraryOrganization) {
+            savedGpxGeometry.withAppearance(gpxUiState.items, gpxCustomization, gpxSettings, libraryOrganization)
+        }
+    val savedGpxFitSegments = remember(savedGpxGeometry) { savedGpxGeometry.flatMap { it.segments } }
     val recordingOverlay =
         remember(recordingState.pointsRevision, recordingState.session.isActive, recordingDisplayName) {
             phoneRecordingOverlay(recordingState, recordingDisplayName)
@@ -1040,6 +1071,7 @@ internal fun CompanionMapScreen(
                     return@launch
                 }
                 routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                routingDataVersion += 1L
                 hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
             }
         }
@@ -1096,27 +1128,69 @@ internal fun CompanionMapScreen(
     LaunchedEffect(offlineMapStore, mapFolderSource) {
         val startupPreference = mapSourcePreference
         val startupSource = mapUiState.source
-        withOfflineMapLoading {
-            val syncResult = withContext(Dispatchers.IO) { mapFolderSource.syncSelectedFolder() }
-            val discoveredMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-            offlineMaps = discoveredMaps
-            offlineMapsLoaded = true
-            hasSelectedMapFolder = mapFolderSource.hasSelectedFolder()
-            offlineMapError = syncResult.error
-            if (
-                mapSourcePreference == startupPreference &&
+        var startupSelectionRequested = false
+        val startupSelectionIsCurrent = {
+            mapSourcePreference == startupPreference &&
                 mapUiState.source == startupSource &&
                 pendingOfflineMap == null
-            ) {
-                val selection = resolvePhoneMapOfflineStartupSelection(startupPreference, startupSource, discoveredMaps)
-                if (selection.map != null) switchToOfflineMap(selection.map)
-                if (selection.missingMap) {
-                    activateOnlineMap(selectedOnlineSource, false)
-                    missingStartupOfflineMap = true
-                    offlineMapError = PhoneOfflineMapError.MISSING
-                }
-            }
-            mapUiState = mapUiState.refreshOfflineMapSelections(offlineMaps)
+        }
+        try {
+            loadPhoneOfflineMapsOnStartup(
+                discover = {
+                    withOfflineMapLoading {
+                        withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                    }
+                },
+                synchronizeFolder = { withContext(Dispatchers.IO) { mapFolderSource.syncSelectedFolder() } },
+                onDiscovered = { installedMaps ->
+                    offlineMaps = installedMaps
+                    offlineMapDiscoveryFinished = true
+                    if (startupSelectionIsCurrent()) {
+                        val selection =
+                            resolvePhoneMapOfflineStartupSelection(startupPreference, startupSource, installedMaps)
+                        val comparison = mapUiState.comparison.layer as? PhoneMapComparisonLayer.Offline
+                        val comparisonAvailable =
+                            comparison == null ||
+                                installedMaps.any { it.selectionIdentity == comparison.map.selectionIdentity }
+                        if (selection.map != null && comparisonAvailable) {
+                            startupSelectionRequested = true
+                            switchToOfflineMap(selection.map)
+                        }
+                    }
+                },
+                onSynchronized = { syncResult, discoveredMaps ->
+                    offlineMaps = discoveredMaps
+                    hasSelectedMapFolder = mapFolderSource.hasSelectedFolder()
+                    offlineMapError = syncResult.error
+                    if (!startupSelectionRequested && startupSelectionIsCurrent()) {
+                        val selection =
+                            resolvePhoneMapOfflineStartupSelection(startupPreference, startupSource, discoveredMaps)
+                        if (selection.map != null) switchToOfflineMap(selection.map)
+                        if (selection.missingMap) {
+                            activateOnlineMap(selectedOnlineSource, false)
+                            missingStartupOfflineMap = true
+                            offlineMapError = PhoneOfflineMapError.MISSING
+                        }
+                    }
+                    mapUiState = mapUiState.refreshOfflineMapSelections(offlineMaps)
+                },
+                onFinished = {
+                    offlineMapDiscoveryFinished = true
+                    offlineMapsLoaded = true
+                },
+            )
+        } catch (error: java.io.IOException) {
+            PhoneDebugCapture.log(
+                "PhoneOfflineMapImport",
+                "event=offline_map_startup_failed exception=${error.javaClass.simpleName}",
+            )
+            offlineMapError = PhoneOfflineMapError.FILE_NOT_READABLE
+        } catch (error: SecurityException) {
+            PhoneDebugCapture.log(
+                "PhoneOfflineMapImport",
+                "event=offline_map_startup_failed exception=${error.javaClass.simpleName}",
+            )
+            offlineMapError = PhoneOfflineMapError.FOLDER_PERMISSION_LOST
         }
     }
     LaunchedEffect(offlineMaps, offlineMapsLoaded) {
@@ -1137,6 +1211,7 @@ internal fun CompanionMapScreen(
     }
     LaunchedEffect(routingFolderSource) {
         routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+        routingDataVersion += 1L
         hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
     }
     LaunchedEffect(mapUiState.contentVisibility.pois) {
@@ -1186,7 +1261,22 @@ internal fun CompanionMapScreen(
         }
     }
     LaunchedEffect(routeToolsState.savedRouteId) {
-        if (routeToolsState.savedRouteId != null) onRouteSaved()
+        if (routeToolsState.savedRouteId != null) {
+            onRouteSaved()
+            if (mapUiState.toolPanel.activeTool == MapTool.GPX_TOOLS) mapUiState = mapUiState.closeTool()
+        }
+    }
+    LaunchedEffect(mapUiState.toolPanel.activeTool) {
+        if (mapUiState.toolPanel.activeTool == MapTool.GPX_TOOLS) {
+            if (!routeToolsViewModel.uiState.value.isOpen) routeToolsViewModel.open(gpxUiState.items)
+        } else if (routeToolsViewModel.uiState.value.isOpen) {
+            routeToolsViewModel.cancel()
+        }
+    }
+    LaunchedEffect(routePointSelectionPhase) {
+        if (routePointSelectionPhase != null && mapUiState.toolPanel.activeTool == MapTool.GPX_TOOLS) {
+            mapUiState = mapUiState.collapseTool()
+        }
     }
     LaunchedEffect(mapSettings.distanceMeasurementEnabled) {
         if (!mapSettings.distanceMeasurementEnabled) distanceMeasurement = null
@@ -1218,103 +1308,129 @@ internal fun CompanionMapScreen(
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit = onStorageChangeRequested@{ target ->
         val current = offlineStorage.location()
         val pendingMigration = storageMigration.pending()
-        val migrationInProgress = storageMigrationState.phase.isPhoneStorageMigrationActive()
+        val migrationInProgress = storageMigrationJob?.isCompleted == false
         if (migrationInProgress || storageChangeIsNoOp(target, current, offlineStorage, pendingMigration)) {
             return@onStorageChangeRequested
         }
         val selectedOfflineMapName = (mapUiState.source as? PhoneMapSource.Offline)?.map?.displayName
-        coroutineScope.launch {
-            storageMigrationState =
-                PhoneOfflineStorageMigrationState(
-                    phase = PhoneOfflineStorageMigrationPhase.COPYING,
-                    source = current,
-                    target = target,
-                    message = null,
-                )
-            bundleViewModel.cancel()
-            fileTransferViewModel.cancelTransfer()
-            fileTransferViewModel.cancelPoiImport(context)
-            fileTransferViewModel.cancelRoutingDownload(context)
-            if (selectedOfflineMapName != null) {
-                mapUiState = mapUiState.changeBaseSource(PhoneMapSource.Online)
-                mapRuntime = mapRuntime.invalidate()
-            }
-            val operationsStopped =
-                withTimeoutOrNull(PHONE_STORAGE_OPERATION_STOP_TIMEOUT_MS) {
-                    while (phoneStorageOperationsActive(bundleViewModel, fileTransferViewModel)) {
-                        delay(PHONE_STORAGE_OPERATION_POLL_DELAY_MS)
-                    }
-                } != null
-            if (!operationsStopped) {
-                storageMigrationState =
-                    PhoneOfflineStorageMigrationState(
-                        phase = PhoneOfflineStorageMigrationPhase.FAILED,
-                        source = current,
-                        target = target,
-                        message =
-                            migrationTextResources.getString(
-                                R.string.storage_migration_active_data_operations_did_not_stop_in,
-                            ),
-                    )
-                return@launch
-            }
-            delay(PHONE_STORAGE_RENDER_STOP_DELAY_MS)
-            val result =
-                storageMigration.move(target) { progress ->
-                    withContext(Dispatchers.Main.immediate) {
-                        storageMigrationState =
-                            PhoneOfflineStorageMigrationState(
-                                phase = progress.phase,
-                                source = progress.source,
-                                target = progress.target,
-                                copiedFiles = progress.copiedFiles,
-                                totalFiles = progress.totalFiles,
-                                requiredSpaceBytes = progress.requiredSpaceBytes,
-                                availableSpaceBytes = progress.availableSpaceBytes,
-                            )
-                    }
-                }
-            when (result) {
-                is PhoneOfflineStorageMigrationResult.Success -> {
+        storageMigrationJob =
+            coroutineScope.launch {
+                try {
                     storageMigrationState =
                         PhoneOfflineStorageMigrationState(
-                            phase = PhoneOfflineStorageMigrationPhase.COMPLETE,
-                            source = result.source,
-                            target = result.target,
-                            copiedFiles = result.copiedFiles,
-                            totalFiles = result.movedFiles,
-                            reusedFiles = result.reusedFiles,
-                            replacedFiles = result.replacedFiles,
-                        )
-                    bundleViewModel.refreshInstalledBundles()
-                    elevationFolderSync = withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
-                    hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
-                    routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
-                    hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
-                    offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
-                    hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
-                    terrainDataVersion += 1L
-                    elevationRepository.invalidate()
-                    onPoiDataChanged()
-                    onRouteSaved()
-                    selectedOfflineMapName
-                        ?.let { name -> offlineMaps.firstOrNull { map -> map.displayName == name } }
-                        ?.let { migratedMap ->
-                            switchToOfflineMap(migratedMap)
-                        }
-                }
-
-                is PhoneOfflineStorageMigrationResult.Failure -> {
-                    storageMigrationState =
-                        PhoneOfflineStorageMigrationState(
-                            phase = PhoneOfflineStorageMigrationPhase.FAILED,
+                            phase = PhoneOfflineStorageMigrationPhase.COPYING,
                             source = current,
                             target = target,
-                            message = result.message,
+                            canCancel =
+                                pendingMigration == null ||
+                                    pendingMigration.phase == PhoneOfflineStorageMigrationPhase.COPYING ||
+                                    pendingMigration.phase == PhoneOfflineStorageMigrationPhase.VERIFYING,
+                            message = migrationTextResources.getString(R.string.map_tools_settings_storage_checking),
                         )
+                    bundleViewModel.cancel()
+                    fileTransferViewModel.cancelTransfer()
+                    fileTransferViewModel.cancelPoiImport(context)
+                    fileTransferViewModel.cancelRoutingDownload(context)
+                    if (selectedOfflineMapName != null) {
+                        mapUiState = mapUiState.changeBaseSource(PhoneMapSource.Online)
+                        mapRuntime = mapRuntime.invalidate()
+                    }
+                    val operationsStopped =
+                        withTimeoutOrNull(PHONE_STORAGE_OPERATION_STOP_TIMEOUT_MS) {
+                            while (phoneStorageOperationsActive(bundleViewModel, fileTransferViewModel)) {
+                                delay(PHONE_STORAGE_OPERATION_POLL_DELAY_MS)
+                            }
+                        } != null
+                    if (!operationsStopped) {
+                        storageMigrationState =
+                            PhoneOfflineStorageMigrationState(
+                                phase = PhoneOfflineStorageMigrationPhase.FAILED,
+                                source = current,
+                                target = target,
+                                message =
+                                    migrationTextResources.getString(
+                                        R.string.storage_migration_active_data_operations_did_not_stop_in,
+                                    ),
+                            )
+                        return@launch
+                    }
+                    delay(PHONE_STORAGE_RENDER_STOP_DELAY_MS)
+                    val result =
+                        storageMigration.move(target) { progress ->
+                            withContext(Dispatchers.Main.immediate) {
+                                storageMigrationState =
+                                    PhoneOfflineStorageMigrationState(
+                                        phase = progress.phase,
+                                        source = progress.source,
+                                        target = progress.target,
+                                        copiedFiles = progress.copiedFiles,
+                                        totalFiles = progress.totalFiles,
+                                        requiredSpaceBytes = progress.requiredSpaceBytes,
+                                        availableSpaceBytes = progress.availableSpaceBytes,
+                                        copiedBytes = progress.copiedBytes,
+                                        totalBytes = progress.totalBytes,
+                                        canCancel =
+                                            progress.phase == PhoneOfflineStorageMigrationPhase.COPYING ||
+                                                progress.phase == PhoneOfflineStorageMigrationPhase.VERIFYING,
+                                    )
+                            }
+                        }
+                    when (result) {
+                        is PhoneOfflineStorageMigrationResult.Success -> {
+                            storageMigrationState =
+                                PhoneOfflineStorageMigrationState(
+                                    phase = PhoneOfflineStorageMigrationPhase.COMPLETE,
+                                    source = result.source,
+                                    target = result.target,
+                                    copiedFiles = result.copiedFiles,
+                                    totalFiles = result.movedFiles,
+                                    reusedFiles = result.reusedFiles,
+                                    replacedFiles = result.replacedFiles,
+                                )
+                            bundleViewModel.refreshInstalledBundles()
+                            elevationFolderSync =
+                                withContext(Dispatchers.IO) { elevationFolderSource.syncSelectedFolder() }
+                            hasSelectedElevationFolder = elevationFolderSource.hasSelectedFolder()
+                            routingFolderSync = withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                            hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
+                            offlineMaps = withContext(Dispatchers.IO) { offlineMapStore.discover() }
+                            hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
+                            terrainDataVersion += 1L
+                            elevationRepository.invalidate()
+                            onPoiDataChanged()
+                            onRouteSaved()
+                            selectedOfflineMapName
+                                ?.let { name -> offlineMaps.firstOrNull { map -> map.displayName == name } }
+                                ?.let { migratedMap ->
+                                    switchToOfflineMap(migratedMap)
+                                }
+                        }
+
+                        is PhoneOfflineStorageMigrationResult.Failure -> {
+                            storageMigrationState =
+                                PhoneOfflineStorageMigrationState(
+                                    phase = PhoneOfflineStorageMigrationPhase.FAILED,
+                                    source = current,
+                                    target = target,
+                                    message = result.message,
+                                )
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    if (!coroutineScope.isActive) throw cancelled
+                    storageMigrationState =
+                        storageMigrationState.copy(
+                            phase = PhoneOfflineStorageMigrationPhase.CANCELLED,
+                            canCancel = false,
+                            message = migrationTextResources.getString(R.string.storage_migration_cancelled_resume),
+                        )
+                    selectedOfflineMapName
+                        ?.let { name -> offlineMaps.firstOrNull { map -> map.displayName == name } }
+                        ?.let { originalMap -> switchToOfflineMap(originalMap) }
+                } finally {
+                    storageMigrationJob = null
                 }
             }
-        }
     }
 
     val openContentRename: (PhoneMapManagedContent) -> Unit = { target ->
@@ -1416,7 +1532,7 @@ internal fun CompanionMapScreen(
                     onlineSources = PhoneMapRendererCatalog.availableOnlineSources(),
                     selectedOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
-                    isLoading = !offlineMapsLoaded || offlineMapLoadingCount > 0,
+                    isLoading = !offlineMapDiscoveryFinished || offlineMapLoadingCount > 0,
                     offlineMapAvailability =
                         offlineMaps.associate { map ->
                             map.displayName to
@@ -1434,6 +1550,7 @@ internal fun CompanionMapScreen(
                     elevationFolderSync = elevationFolderSync,
                     hasSelectedRoutingFolder = hasSelectedRoutingFolder,
                     routingFolderSync = routingFolderSync,
+                    offlineDataVersion = terrainDataVersion + routingDataVersion,
                     themeConfig = offlineThemeConfig,
                     settings = mapSettings,
                     compassSettings = compassSettings,
@@ -1449,6 +1566,7 @@ internal fun CompanionMapScreen(
                     hasSelectedFolder = hasSelectedGpxFolder,
                     selectedFolderName = gpxFolderScan.folderName,
                     folderError = gpxFolderScan.error,
+                    customization = gpxCustomization,
                 ),
             poi =
                 MapToolsPoiState(
@@ -1465,6 +1583,8 @@ internal fun CompanionMapScreen(
                     comparison = mapUiState.comparison,
                     hasElevationData = hasElevationData,
                     mapSettings = mapSettings,
+                    gpxVisible = mapUiState.contentVisibility.gpxTracks,
+                    poiVisible = mapUiState.contentVisibility.pois,
                 ),
             general =
                 MapToolsGeneralState(
@@ -1502,6 +1622,13 @@ internal fun CompanionMapScreen(
                     arrayOf("application/octet-stream", "application/gzip", "application/zip"),
                 )
             },
+            onOfflineDataChanged = {
+                coroutineScope.launch {
+                    hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
+                    terrainDataVersion += 1L
+                    elevationRepository.invalidate()
+                }
+            },
             onSelectElevationFolder = { selectElevationFolderLauncher.launch(null) },
             onRescanElevationFolder = {
                 coroutineScope.launch {
@@ -1523,6 +1650,7 @@ internal fun CompanionMapScreen(
                 coroutineScope.launch {
                     routingFolderSync =
                         withContext(Dispatchers.IO) { routingFolderSource.syncSelectedFolder() }
+                    routingDataVersion += 1L
                     hasSelectedRoutingFolder = routingFolderSource.hasSelectedFolder()
                 }
             },
@@ -1568,7 +1696,7 @@ internal fun CompanionMapScreen(
             onCalibrateCompass = compassSensorSource::recalibrate,
         )
 
-    val routePointSelectionCenter =
+    val mapPointerCoordinate =
         liveMapPosition?.target
             ?: PhoneMapCoordinate(
                 latitude = mapCamera.latitude,
@@ -1577,8 +1705,8 @@ internal fun CompanionMapScreen(
     val onSelectRoutePointAtCenter = {
         routeToolsViewModel.selectMapPoint(
             GeoPoint(
-                latitude = routePointSelectionCenter.latitude,
-                longitude = routePointSelectionCenter.longitude,
+                latitude = mapPointerCoordinate.latitude,
+                longitude = mapPointerCoordinate.longitude,
             ),
         )
     }
@@ -1601,15 +1729,18 @@ internal fun CompanionMapScreen(
             onResetMapPoints = routeToolsViewModel::resetMapPoints,
             onCreate = { routeToolsViewModel.create(mapLocation) },
             onOpenSettings = onOpenRouteToolsSettings,
-            onDismiss = routeToolsViewModel::cancel,
+            onDismiss = {
+                routeToolsViewModel.cancel()
+                if (mapUiState.toolPanel.activeTool == MapTool.GPX_TOOLS) mapUiState = mapUiState.closeTool()
+            },
         )
     val onOpenRouteTools = {
         clearRouteAnalysis()
         poiCreationActive = false
         poiCreationPoint = null
         poiCreationDialogVisible = false
-        mapUiState = mapUiState.closeTool().copy(toolLauncherExpanded = false)
         routeToolsViewModel.open(gpxUiState.items)
+        mapUiState = mapUiState.openToolPage(MapTool.GPX_TOOLS, featureSettings = false)
     }
     val onAddPoi = {
         clearRouteAnalysis()
@@ -1623,21 +1754,6 @@ internal fun CompanionMapScreen(
         poiCreationMessage = null
         mapUiState = mapUiState.closeTool().copy(toolLauncherExpanded = false)
     }
-    var handledLibraryAction by rememberSaveable { mutableStateOf<MapLibraryAction?>(null) }
-    LaunchedEffect(initialLibraryAction) {
-        if (initialLibraryAction != handledLibraryAction) {
-            handledLibraryAction = initialLibraryAction
-            when (initialLibraryAction) {
-                MapLibraryAction.ADD_POI -> onAddPoi()
-                MapLibraryAction.IMPORT_MAP -> selectLocalMapLauncher.launch(arrayOf("application/octet-stream"))
-                MapLibraryAction.DOWNLOAD_BUNDLE -> {
-                    elevationBundleAreaId = null
-                    showOfflineBundleDownload = true
-                }
-                null -> Unit
-            }
-        }
-    }
     val onDistanceMeasurementGesture: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit = { first, second ->
         if (mapSettings.distanceMeasurementEnabled) {
             distanceMeasurement = PhoneMapDistanceMeasurement(first, second)
@@ -1648,15 +1764,18 @@ internal fun CompanionMapScreen(
             distanceMeasurement = distanceMeasurement?.moveEndpoint(index, point)
         }
     }
+    val onSelectPoiPoint: (PhoneMapCoordinate) -> Unit = { point ->
+        poiCreationActive = false
+        poiCreationPoint = point
+        poiCreationDialogVisible = false
+        poiNameInput = ""
+        poiCreationError = false
+    }
     val onMapTap = { point: PhoneMapCoordinate ->
         if (distanceMeasurement != null) {
             distanceMeasurement = null
         } else if (poiCreationActive) {
-            poiCreationActive = false
-            poiCreationPoint = point
-            poiCreationDialogVisible = false
-            poiNameInput = ""
-            poiCreationError = false
+            onSelectPoiPoint(point)
         } else if (routeToolsState.isOpen) {
             routeToolsViewModel.selectMapPoint(
                 GeoPoint(latitude = point.latitude, longitude = point.longitude),
@@ -1893,11 +2012,12 @@ internal fun CompanionMapScreen(
         onMapBack()
     }
     val waitingForOfflineMaps =
-        !offlineMapsLoaded &&
-            (
-                mapUiState.source is PhoneMapSource.Offline ||
-                    mapUiState.comparison.layer is PhoneMapComparisonLayer.Offline
-            )
+        shouldWaitForPhoneOfflineMapStartup(
+            startupComplete = offlineMapsLoaded,
+            source = mapUiState.source,
+            comparison = mapUiState.comparison.layer,
+            installedMaps = offlineMaps,
+        )
     val comparisonOverlayAlpha = mapUiState.comparison.overlayAlpha()
     val selectedOfflineComparison = mapUiState.comparison.layer as? PhoneMapComparisonLayer.Offline
     val offlineComparison = selectedOfflineComparison
@@ -2112,10 +2232,14 @@ internal fun CompanionMapScreen(
             }
         onDispose { removeBeforeStopListener() }
     }
-    LaunchedEffect(captureSessionId, captureActive) {
+    LaunchedEffect(captureSessionId, captureActive, mapLocationSource) {
         if (captureActive) {
             PhoneMapLibreRenderDiagnostics.publishCaptureSnapshot()
             mapLocationSource.publishCaptureSnapshot()
+            while (isActive) {
+                delay(5_000L)
+                PhoneDebugCapture.checkpoint()
+            }
         }
     }
     val visibleGpxPointCount =
@@ -2170,14 +2294,27 @@ internal fun CompanionMapScreen(
     }
 
     MapToolScaffold(
+        headerContent = { tool ->
+            when (tool) {
+                MapTool.HIKE -> hikeHeaderAction()
+
+                MapTool.GPX_TOOLS ->
+                    IconButton(onClick = routeToolsActions.onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.map_tool_action_settings_content_description),
+                        )
+                    }
+
+                else -> Unit
+            }
+        },
         presentation =
             MapToolScaffoldState(
                 panel = mapUiState.toolPanel,
                 launcherExpanded = mapUiState.toolLauncherExpanded,
-                liveHikeSyncEnabled = liveHikeSyncEnabled,
                 fullScreenPage = settingsPage,
             ),
-        navigation = navigation,
         actions =
             MapToolScaffoldActions(
                 onToolSelected = { tool -> mapUiState = mapUiState.selectTool(tool) },
@@ -2302,9 +2439,13 @@ internal fun CompanionMapScreen(
                             observeOnlineLiveMapPosition(
                                 runtime = mapRuntime,
                                 enabled =
-                                    mapSettings.liveElevationEnabled ||
-                                        mapSettings.liveDistanceEnabled ||
-                                        routePointSelectionPhase != null,
+                                    !comparisonOwnsSemanticOverlays &&
+                                        (
+                                            mapSettings.liveElevationEnabled ||
+                                                mapSettings.liveDistanceEnabled ||
+                                                routePointSelectionPhase != null ||
+                                                poiCreationActive
+                                        ),
                                 location = mapLocation,
                                 markerAnchor = mapSettings.markerAnchor,
                                 onPositionChanged = { liveMapPosition = it },
@@ -2495,6 +2636,17 @@ internal fun CompanionMapScreen(
                                         runtime = comparisonMapRuntime,
                                         onCameraChanged = onComparisonCameraChanged,
                                         onUserCameraInput = onComparisonCameraInput,
+                                    )
+                                    observeOnlineLiveMapPosition(
+                                        runtime = comparisonMapRuntime,
+                                        enabled =
+                                            mapSettings.liveElevationEnabled ||
+                                                mapSettings.liveDistanceEnabled ||
+                                                routePointSelectionPhase != null ||
+                                                poiCreationActive,
+                                        location = mapLocation,
+                                        markerAnchor = mapSettings.markerAnchor,
+                                        onPositionChanged = { liveMapPosition = it },
                                     )
                                     synchronizePointSelectionOverlay(
                                         runtime = comparisonMapRuntime,
@@ -2691,7 +2843,9 @@ internal fun CompanionMapScreen(
                                             onUserCameraInput = {
                                                 if (offlineComparisonActive) onComparisonCameraInput()
                                             },
-                                            onLiveMapPositionChanged = {},
+                                            onLiveMapPositionChanged = { position ->
+                                                if (offlineComparisonActive) liveMapPosition = position
+                                            },
                                             onViewportChanged = { viewport ->
                                                 if (offlineComparisonActive) onPoiViewportChanged(viewport)
                                             },
@@ -2970,7 +3124,8 @@ internal fun CompanionMapScreen(
                                         enabled =
                                             mapSettings.liveElevationEnabled ||
                                                 mapSettings.liveDistanceEnabled ||
-                                                routePointSelectionPhase != null,
+                                                routePointSelectionPhase != null ||
+                                                poiCreationActive,
                                         location = mapLocation,
                                         markerAnchor = mapSettings.markerAnchor,
                                         onPositionChanged = { liveMapPosition = it },
@@ -3132,7 +3287,6 @@ internal fun CompanionMapScreen(
                     isMetric = generalSettings.isMetric,
                     onCycleMapMode = onMapModePressed,
                     northIndicatorVisible = northIndicatorVisible,
-                    compassPresentation = compassPresentation,
                     showModeControl = !routeCreationControlsVisible,
                 )
 
@@ -3198,32 +3352,13 @@ internal fun CompanionMapScreen(
                     }
                 }
 
-                if (routePointSelectionPhase != null) {
-                    phoneMapRouteSelectionCrosshair()
-                }
-
-                if (poiCreationActive) {
-                    PhoneMapPopupCard(
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopCenter)
-                                .statusBarsPadding()
-                                .padding(16.dp),
-                        onDismiss = { poiCreationActive = false },
-                    ) {
-                        Text(text = stringResource(R.string.map_poi_tap_to_add))
-                    }
-                }
-
-                if (routeCreationControlsVisible) {
-                    phoneMapRouteCreationCard(
-                        state = routeToolsState,
-                        preview = routeCreationPreview,
-                        isMetric = generalSettings.isMetric,
-                        currentLocationAvailable = currentLocationAvailable,
-                        actions = routeToolsActions,
-                    )
-                }
+                phoneMapPointerOverlay(
+                    showPointer = mapUiState.mapMode.isDetachedFromLocation || routePointSelectionPhase != null,
+                    poiCreationActive = poiCreationActive,
+                    pointerCoordinate = liveMapPosition?.target,
+                    onSelectPoiAtPointer = onSelectPoiPoint,
+                    onCancelPoi = { poiCreationActive = false },
+                )
 
                 selectedPoi?.let { poi ->
                     phoneMapPoiDetailsCard(
@@ -3435,11 +3570,6 @@ internal fun CompanionMapScreen(
                         },
                     )
                 }
-                PhoneRouteToolsDialog(
-                    state = routeToolsState,
-                    currentLocationAvailable = currentLocationAvailable,
-                    actions = routeToolsActions,
-                )
                 if (routeCreationControlsVisible) {
                     phoneMapRouteSelectionControls(
                         state = routeToolsState,
@@ -3457,9 +3587,29 @@ internal fun CompanionMapScreen(
                 featureSettingsSection = featureSettingsSection,
                 state = toolsState,
                 onOpenMapLegend = navigation.onMapLegend,
+                hikeContent = hikeContent,
+                routeToolsContent = {
+                    PhoneRouteToolsPanel(
+                        state = routeToolsState,
+                        currentLocationAvailable = currentLocationAvailable,
+                        actions = routeToolsActions,
+                        mapSelectionContent = {
+                            phoneMapRouteCreationSummary(
+                                state = routeToolsState,
+                                preview = routeCreationPreview,
+                                isMetric = generalSettings.isMetric,
+                                currentLocationAvailable = currentLocationAvailable,
+                                actions = routeToolsActions,
+                            )
+                        },
+                    )
+                },
+                libraryContent = libraryContent,
                 actions =
                     MapToolsPanelActions(
                         maps = mapActions,
+                        onAddPoi = onAddPoi,
+                        onOpenTool = { tool -> mapUiState = mapUiState.openToolPage(tool, featureSettings = false) },
                         onGpxVisibilityChanged = { visible ->
                             if (!visible) clearRouteAnalysis()
                             mapUiState =
@@ -3486,6 +3636,11 @@ internal fun CompanionMapScreen(
                         onGpxSettingsChanged = { settings ->
                             if (!settings.inspectionEnabled) clearRouteAnalysis() else invalidateRouteAnalysisRequest()
                             gpxSettings = gpxSettingsPreferences.save(settings)
+                        },
+                        onGpxCustomizationChanged = gpxCustomizationPreferences::save,
+                        onGpxAppearanceAppliedToAll = { settings ->
+                            val updated = gpxCustomization.applyGeneralToAll(gpxSettings, settings)
+                            gpxSettings = gpxSettingsPreferences.save(settings, updated)
                         },
                         onSelectGpxFolder = { selectGpxFolderLauncher.launch(null) },
                         onRescanGpxFolder = {
@@ -3564,6 +3719,19 @@ internal fun CompanionMapScreen(
                             showOfflineBundleDownload = true
                         },
                         onStorageChangeRequested = onStorageChangeRequested,
+                        onStorageMigrationCancelled = {
+                            if (storageMigrationState.canCancel) {
+                                storageMigrationState =
+                                    storageMigrationState.copy(
+                                        canCancel = false,
+                                        message =
+                                            migrationTextResources.getString(
+                                                R.string.map_tools_settings_storage_cancelling,
+                                            ),
+                                    )
+                                storageMigrationJob?.cancel()
+                            }
+                        },
                     ),
             )
         },
@@ -4320,8 +4488,8 @@ private fun synchronizeGpxOverlay(
     ) {
         runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { activeMap, activeMapView, style ->
             val latestOverlayState = currentOverlayState
-            style.renderGpxTrack(
-                segments = latestOverlayState.segments,
+            style.renderGpxOverlays(
+                overlays = latestOverlayState.overlays,
                 isVisible = latestOverlayState.isVisible,
                 settings = latestOverlayState.settings,
             )
@@ -4485,7 +4653,6 @@ private fun mapControls(
     isMetric: Boolean,
     onCycleMapMode: () -> Unit,
     northIndicatorVisible: Boolean,
-    compassPresentation: PhoneMapCompassPresentation,
     showModeControl: Boolean,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -4515,7 +4682,7 @@ private fun mapControls(
             horizontalAlignment = Alignment.End,
         ) {
             if (northIndicatorVisible) {
-                phoneMapNorthIndicator(compassPresentation)
+                phoneMapNorthIndicator(camera.bearingDegrees)
             }
             if (
                 mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_BOTH &&
@@ -4567,7 +4734,7 @@ private fun mapControls(
                         .padding(bottom = 72.dp),
             ) {
                 Icon(
-                    imageVector = mapMode.icon(),
+                    painter = mapMode.icon(),
                     contentDescription =
                         stringResource(
                             R.string.map_mode_content_description,
@@ -4580,108 +4747,57 @@ private fun mapControls(
 }
 
 @Composable
-private fun BoxScope.phoneMapRouteSelectionCrosshair() {
-    val density = LocalDensity.current
-    val radius = with(density) { 14.dp.toPx() }
-    val armLength = with(density) { 22.dp.toPx() }
-    val strokeWidth = with(density) { 2.5.dp.toPx() }
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        drawCircle(
-            color = Color.Black.copy(alpha = 0.45f),
-            radius = radius + with(density) { 6.dp.toPx() },
-            center = center,
-        )
-        drawCircle(
-            color = Color(0xFFF7C948),
-            radius = radius,
-            center = center,
-            style = Stroke(width = strokeWidth),
-        )
-        drawLine(
-            color = Color(0xFFF7C948),
-            start = Offset(center.x - armLength, center.y),
-            end = Offset(center.x + armLength, center.y),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Color(0xFFF7C948),
-            start = Offset(center.x, center.y - armLength),
-            end = Offset(center.x, center.y + armLength),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round,
-        )
-        drawCircle(
-            color = Color(0xFFF7C948),
-            radius = with(density) { 2.5.dp.toPx() },
-            center = center,
-        )
-    }
-}
-
-@Composable
-private fun BoxScope.phoneMapRouteCreationCard(
+private fun ColumnScope.phoneMapRouteCreationSummary(
     state: PhoneRouteToolsUiState,
     preview: PhoneRouteSelectionPreview?,
     isMetric: Boolean,
     currentLocationAvailable: Boolean,
     actions: PhoneRouteToolsActions,
 ) {
-    PhoneMapPopupCard(
-        modifier =
-            Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(16.dp),
-        title = stringResource(R.string.map_route_tools_title),
-        onDismiss = actions.onDismiss,
-    ) {
-        state.pointSelectionProgress()?.let { progress ->
-            Text(
-                text =
-                    progress.total?.let { total ->
-                        stringResource(
-                            R.string.map_route_tools_step_progress,
-                            progress.currentStep,
-                            total,
-                        )
-                    } ?: stringResource(
-                        R.string.map_route_tools_points_progress,
-                        progress.completed,
-                    ),
+    state.pointSelectionProgress()?.let { progress ->
+        Text(
+            text =
+                progress.total?.let { total ->
+                    stringResource(
+                        R.string.map_route_tools_step_progress,
+                        progress.currentStep,
+                        total,
+                    )
+                } ?: stringResource(
+                    R.string.map_route_tools_points_progress,
+                    progress.completed,
+                ),
+        )
+    }
+    state.pointSelectionPhase()?.let { selectionPhase ->
+        Text(text = stringResource(state.pointSelectionHintResource(selectionPhase)))
+    }
+    if (state.mode == PhoneRouteCreationMode.CURRENT_TO_DESTINATION && !currentLocationAvailable) {
+        Text(stringResource(R.string.map_route_tools_current_location_missing))
+    }
+    preview?.let { estimate ->
+        Text(stringResource(R.string.map_route_tools_direct_estimate))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            phoneMapRouteCreationMetric(
+                label = stringResource(R.string.map_gpx_analysis_distance),
+                value = formatPhoneMapMeasuredDistance(estimate.distanceMeters, isMetric),
+            )
+            phoneMapRouteCreationMetric(
+                label = stringResource(R.string.map_gpx_analysis_ascent),
+                value =
+                    estimate.elevationGainMeters?.let { elevation ->
+                        formatPhoneMapElevation(elevation, isMetric)
+                    } ?: "—",
+            )
+            phoneMapRouteCreationMetric(
+                label = stringResource(R.string.map_gpx_analysis_time),
+                value = formatPhoneMapDuration(estimate.estimatedDurationSeconds),
             )
         }
-        state.pointSelectionPhase()?.let { selectionPhase ->
-            Text(text = stringResource(state.pointSelectionHintResource(selectionPhase)))
-        }
-        if (state.mode == PhoneRouteCreationMode.CURRENT_TO_DESTINATION && !currentLocationAvailable) {
-            Text(stringResource(R.string.map_route_tools_current_location_missing))
-        }
-        preview?.let { estimate ->
-            Text(stringResource(R.string.map_route_tools_direct_estimate))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                phoneMapRouteCreationMetric(
-                    label = stringResource(R.string.map_gpx_analysis_distance),
-                    value = formatPhoneMapMeasuredDistance(estimate.distanceMeters, isMetric),
-                )
-                phoneMapRouteCreationMetric(
-                    label = stringResource(R.string.map_gpx_analysis_ascent),
-                    value =
-                        estimate.elevationGainMeters?.let { elevation ->
-                            formatPhoneMapElevation(elevation, isMetric)
-                        } ?: "—",
-                )
-                phoneMapRouteCreationMetric(
-                    label = stringResource(R.string.map_gpx_analysis_time),
-                    value = formatPhoneMapDuration(estimate.estimatedDurationSeconds),
-                )
-            }
-        }
-        if (state.canCreateFromMapControls(currentLocationAvailable)) {
-            TextButton(onClick = actions.onCreate, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.map_route_tools_create))
-            }
+    }
+    if (state.canCreateFromMapControls(currentLocationAvailable)) {
+        TextButton(onClick = actions.onCreate, modifier = Modifier.align(Alignment.End)) {
+            Text(stringResource(R.string.map_route_tools_create))
         }
     }
 }
@@ -4745,34 +4861,24 @@ private fun BoxScope.phoneMapRouteSelectionControls(
     }
 }
 
-private fun PhoneMapMode.icon(): ImageVector =
+@Composable
+private fun PhoneMapMode.icon(): Painter =
     when {
-        isDetachedFromLocation -> Icons.Filled.MyLocation
-        orientation == PhoneMapOrientation.HEADING_UP -> Icons.Filled.Explore
-        else -> Icons.Filled.Navigation
+        isDetachedFromLocation -> rememberVectorPainter(Icons.Filled.MyLocation)
+        orientation == PhoneMapOrientation.HEADING_UP -> rememberVectorPainter(Icons.Filled.Explore)
+        else -> painterResource(R.drawable.map_mode_north_up)
     }
 
 @Composable
-private fun phoneMapNorthIndicator(compassPresentation: PhoneMapCompassPresentation) {
-    Box(
+private fun phoneMapNorthIndicator(mapBearingDegrees: Float) {
+    Image(
+        painter = painterResource(R.drawable.map_north_indicator),
+        contentDescription = stringResource(R.string.map_north_indicator_content_description),
         modifier =
             Modifier
                 .size(48.dp)
-                .rotate(compassPresentation.northIndicatorScreenRotationDegrees),
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(
-            painter = painterResource(org.maplibre.android.R.drawable.maplibre_compass_icon),
-            contentDescription = stringResource(R.string.map_north_indicator_content_description),
-            modifier = Modifier.fillMaxSize(),
-        )
-        Text(
-            text = stringResource(R.string.map_north_indicator_label),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-            color = Color.Black,
-            fontSize = 8.sp,
-        )
-    }
+                .rotate(phoneMapNorthIndicatorRotationDegrees(mapBearingDegrees)),
+    )
 }
 
 @Composable
@@ -4799,10 +4905,7 @@ private fun BoxScope.phoneMapLiveMetrics(
     val liveDistanceEnabled = mapSettings.liveDistanceEnabled
     if (!liveElevationEnabled && !liveDistanceEnabled) return
 
-    phoneMapLiveMetricsGuide(
-        position = position,
-        showDistanceLine = liveDistanceEnabled,
-    )
+    if (liveDistanceEnabled) phoneMapLiveDistanceGuide(position)
     if (liveElevationEnabled) {
         phoneMapLiveElevationCard(elevationMeters, isMetric)
     }
@@ -4812,52 +4915,21 @@ private fun BoxScope.phoneMapLiveMetrics(
 }
 
 @Composable
-private fun BoxScope.phoneMapLiveMetricsGuide(
-    position: PhoneMapLiveMetricsPosition,
-    showDistanceLine: Boolean,
-) {
+private fun BoxScope.phoneMapLiveDistanceGuide(position: PhoneMapLiveMetricsPosition) {
     val density = LocalDensity.current
-    val reticleRadius = with(density) { 12.dp.toPx() }
     val reticleStroke = with(density) { 2.dp.toPx() }
     Canvas(modifier = Modifier.fillMaxSize()) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        if (showDistanceLine) {
-            position.userScreenPoint?.let { userPoint ->
-                drawLine(
-                    color = Color(0xFF8B5CF6).copy(alpha = 0.9f),
-                    start = Offset(userPoint.x, userPoint.y),
-                    end = center,
-                    strokeWidth = reticleStroke,
-                    cap = StrokeCap.Round,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f),
-                )
-            }
+        position.userScreenPoint?.let { userPoint ->
+            drawLine(
+                color = Color(0xFF8B5CF6).copy(alpha = 0.9f),
+                start = Offset(userPoint.x, userPoint.y),
+                end = center,
+                strokeWidth = reticleStroke,
+                cap = StrokeCap.Round,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f),
+            )
         }
-        drawCircle(
-            color = Color.Black.copy(alpha = 0.35f),
-            radius = reticleRadius,
-            center = center,
-        )
-        drawCircle(
-            color = Color(0xFF8B5CF6),
-            radius = reticleRadius,
-            center = center,
-            style = Stroke(width = reticleStroke),
-        )
-        drawLine(
-            color = Color(0xFF8B5CF6),
-            start = Offset(center.x - reticleRadius * 1.35f, center.y),
-            end = Offset(center.x + reticleRadius * 1.35f, center.y),
-            strokeWidth = reticleStroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Color(0xFF8B5CF6),
-            start = Offset(center.x, center.y - reticleRadius * 1.35f),
-            end = Offset(center.x, center.y + reticleRadius * 1.35f),
-            strokeWidth = reticleStroke,
-            cap = StrokeCap.Round,
-        )
     }
 }
 

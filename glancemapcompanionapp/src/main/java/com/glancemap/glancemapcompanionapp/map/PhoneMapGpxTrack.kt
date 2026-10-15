@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryOrganization
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.profile.TrailPoint
 import kotlin.collections.AbstractList
@@ -24,6 +25,7 @@ internal data class PhoneMapGpxItem(
     val enabled: Boolean,
     val isEditable: Boolean = true,
     val isRecording: Boolean = false,
+    val libraryKey: String = "gpx/$id",
 ) {
     init {
         require(id.isNotBlank())
@@ -41,11 +43,14 @@ internal data class PhoneMapGpxOverlay(
     val renderRevision: Long? = null,
     val renderBaseRevision: Long? = null,
     val renderStartIndex: Int = 0,
+    val settings: PhoneMapGpxSettings? = null,
 ) {
     override fun equals(other: Any?): Boolean =
         if (this === other) {
             true
         } else if (other !is PhoneMapGpxOverlay || id != other.id || displayName != other.displayName) {
+            false
+        } else if (settings != other.settings) {
             false
         } else if (renderRevision != null || other.renderRevision != null) {
             renderRevision == other.renderRevision
@@ -54,8 +59,10 @@ internal data class PhoneMapGpxOverlay(
         }
 
     override fun hashCode(): Int =
-        31 * (31 * id.hashCode() + displayName.hashCode()) +
-            (renderRevision?.hashCode() ?: segments.hashCode())
+        31 * (
+            31 * (31 * id.hashCode() + displayName.hashCode()) +
+                (renderRevision?.hashCode() ?: segments.hashCode())
+        ) + (settings?.hashCode() ?: 0)
 }
 
 /** Small route metadata passed into the phone map without coupling its panel UI to Route Library. */
@@ -63,6 +70,7 @@ internal data class PhoneMapGpxSource(
     val id: String,
     val displayName: String,
     val isRecording: Boolean = false,
+    val libraryKey: String = "gpx/$id",
 ) {
     init {
         require(id.isNotBlank())
@@ -89,18 +97,39 @@ internal fun List<PhoneMapGpxItem>.toggleEnabled(id: String): List<PhoneMapGpxIt
 internal fun List<PhoneMapGpxItem>.enabledOverlays(
     globalVisible: Boolean,
     showSavedActivities: Boolean = true,
+    customization: PhoneGpxCustomizationState = PhoneGpxCustomizationState(),
+    generalSettings: PhoneMapGpxSettings = PhoneMapGpxSettings(),
+    organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
 ): List<PhoneMapGpxOverlay> =
     if (!globalVisible) {
         emptyList()
     } else {
-        filter { item -> item.enabled && (showSavedActivities || !item.isRecording) }.map { item ->
-            PhoneMapGpxOverlay(
-                id = item.id,
-                displayName = item.displayName,
-                segments = item.track.toRouteSegments(),
-            )
-        }
+        filter { item -> item.enabled && (showSavedActivities || !item.isRecording) }
+            .map { item ->
+                PhoneMapGpxOverlay(
+                    id = item.id,
+                    displayName = item.displayName,
+                    segments = item.track.toRouteSegments(),
+                )
+            }.withAppearance(this, customization, generalSettings, organization)
     }
+
+internal fun List<PhoneMapGpxOverlay>.withAppearance(
+    items: List<PhoneMapGpxItem>,
+    customization: PhoneGpxCustomizationState,
+    generalSettings: PhoneMapGpxSettings,
+    organization: PhoneLibraryOrganization,
+): List<PhoneMapGpxOverlay> {
+    val keysById = items.associate { it.id to it.libraryKey }
+    return map { overlay ->
+        val key = keysById[overlay.id] ?: "gpx/${overlay.id}"
+        val settings =
+            customization
+                .settingsForFile(key, generalSettings, organization)
+                .takeIf { it != generalSettings }
+        if (overlay.settings == settings) overlay else overlay.copy(settings = settings)
+    }
+}
 
 /** A renderable contiguous GPX segment, deliberately independent from a map SDK. */
 internal data class PhoneMapRouteSegment(

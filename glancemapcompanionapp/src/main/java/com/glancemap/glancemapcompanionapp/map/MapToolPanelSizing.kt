@@ -1,6 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
-internal const val DEFAULT_MAP_TOOL_PANEL_FRACTION = 0.32f
+internal const val DEFAULT_MAP_TOOL_PANEL_FRACTION = 0.35f
 private const val MIN_MAP_TOOL_PANEL_FRACTION = 0.05f
 private const val MAX_MAP_TOOL_PANEL_FRACTION = 1f
 
@@ -42,7 +42,13 @@ internal fun MapToolPanelState.resize(fraction: Float): MapToolPanelState {
 
 internal fun MapToolPanelState.normalizedSizing(): MapToolPanelState =
     copy(
-        splitFraction = normalizedMapToolPanelFraction(splitFraction),
+        // Upgrade the old preset without replacing an explicitly dragged 32% custom size.
+        splitFraction =
+            if (splitFraction == 0.32f && customSplitFraction != 0.32f) {
+                DEFAULT_MAP_TOOL_PANEL_FRACTION
+            } else {
+                normalizedMapToolPanelFraction(splitFraction)
+            },
         customSplitFraction = customSplitFraction?.takeIf(Float::isFinite)?.let(::normalizedMapToolPanelFraction),
     )
 

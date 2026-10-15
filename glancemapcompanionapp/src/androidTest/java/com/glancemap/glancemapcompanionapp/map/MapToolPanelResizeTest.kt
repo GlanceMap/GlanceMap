@@ -61,7 +61,7 @@ class MapToolPanelResizeTest {
                 .onNodeWithTag("panel-content")
                 .fetchSemanticsNode()
                 .boundsInRoot.bottom
-        assertEquals((bottom - map.top) * 0.32f, bottom - toolbar.top, 1f)
+        assertEquals((bottom - map.top) * 0.35f, bottom - toolbar.top, 1f)
 
         composeRule.runOnIdle { ui.value = ui.value.copy(toolPanel = ui.value.toolPanel.resize(1f)) }
         val maximumToolbar = composeRule.onNodeWithTag("map-tool-toolbar").fetchSemanticsNode().boundsInRoot
@@ -82,7 +82,7 @@ class MapToolPanelResizeTest {
         button.performTouchInput { click() }
         composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
         button.performTouchInput { click() }
-        composeRule.runOnIdle { assertEquals(0.32f, ui.value.toolPanel.splitFraction, 0f) }
+        composeRule.runOnIdle { assertEquals(0.35f, ui.value.toolPanel.splitFraction, 0f) }
         button.performTouchInput { click() }
         composeRule.runOnIdle { assertEquals(0.487f, ui.value.toolPanel.splitFraction, 0f) }
     }
@@ -100,7 +100,7 @@ class MapToolPanelResizeTest {
         var custom = 0f
         composeRule.runOnIdle {
             custom = ui.value.toolPanel.splitFraction
-            assertTrue(custom > 0.32f)
+            assertTrue(custom > 0.35f)
             assertEquals(custom, ui.value.toolPanel.customSplitFraction)
             assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
             assertEquals(1, resizeCompletions)
@@ -108,7 +108,7 @@ class MapToolPanelResizeTest {
         button.performClick()
         composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
         button.performClick()
-        composeRule.runOnIdle { assertEquals(0.32f, ui.value.toolPanel.splitFraction, 0f) }
+        composeRule.runOnIdle { assertEquals(0.35f, ui.value.toolPanel.splitFraction, 0f) }
         button.performClick()
         composeRule.runOnIdle {
             assertEquals(custom, ui.value.toolPanel.splitFraction, 0f)
@@ -140,7 +140,7 @@ class MapToolPanelResizeTest {
         composeRule.onNodeWithTag("panel-content").performTouchInput { swipeUp() }
         composeRule.runOnIdle {
             assertEquals(MapToolPanelMode.SPLIT, ui.value.toolPanel.mode)
-            assertEquals(0.32f, ui.value.toolPanel.splitFraction, 0f)
+            assertEquals(0.35f, ui.value.toolPanel.splitFraction, 0f)
             assertEquals(null, ui.value.toolPanel.customSplitFraction)
         }
     }
@@ -157,7 +157,7 @@ class MapToolPanelResizeTest {
         }
         lateinit var expected: PhoneMapUiState
         composeRule.runOnIdle {
-            assertTrue(ui.value.toolPanel.splitFraction > 0.32f)
+            assertTrue(ui.value.toolPanel.splitFraction > 0.35f)
             expected = ui.value
         }
         restoration.emulateSavedInstanceStateRestore()
@@ -172,9 +172,15 @@ class MapToolPanelResizeTest {
         val previousSettings = preferences.load()
         try {
             val custom = MapToolPanelState().select(MapTool.MAPS).resize(0.48f)
+            preferences.saveToolPanelSizing(custom)
+            val restoredCustom = PhoneMapSettingsPreferences(context).loadToolPanelSizing()
+            listOf(MapTool.HIKE, MapTool.LAYER, MapTool.LIBRARY).forEach { tool ->
+                assertEquals(0.48f, restoredCustom.select(tool).splitFraction, 0f)
+                assertEquals(0.48f, restoredCustom.select(tool).customSplitFraction)
+            }
             preferences.saveToolPanelSizing(custom.expand().cycleSize())
             val reloaded = PhoneMapSettingsPreferences(context).loadToolPanelSizing()
-            assertEquals(0.32f, reloaded.splitFraction, 0f)
+            assertEquals(0.35f, reloaded.splitFraction, 0f)
             assertEquals(0.48f, reloaded.customSplitFraction)
             assertEquals(previousSettings, preferences.load())
             assertEquals(0.48f, reloaded.select(MapTool.MAPS).cycleSize().splitFraction, 0f)

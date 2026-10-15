@@ -2,10 +2,28 @@ package com.glancemap.glancemapcompanionapp.map
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.mapsforge.core.model.BoundingBox
+import java.io.DataOutputStream
 
 class PhoneTerrainTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
+    @Test
+    fun demSamplePreservesTheWatchGridResolutionAndSeaLevelElevation() {
+        val folder = temporaryFolder.newFolder()
+        DataOutputStream(folder.resolve("N00E000.hgt").outputStream()).use { output ->
+            repeat(9) { output.writeShort(0) }
+        }
+        val repository = PhoneElevationRepository(listOf(folder))
+
+        assertEquals(PhoneDemElevationSample(0.0, axisLen = 2), repository.elevationSampleAt(0.25, 0.25))
+        assertEquals(0.0, repository.elevationAt(0.25, 0.25)!!, 0.0)
+    }
+
     @Test
     fun demTileIdsUseHgtHemisphereNaming() {
         assertEquals("N46E006", phoneDemTileId(46, 6))

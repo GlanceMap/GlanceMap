@@ -7,14 +7,14 @@ import org.junit.Test
 
 class MapToolPanelSizingTest {
     @Test
-    fun freshPanelUses32PercentAndSkipsMissingOrDuplicateCustomSize() {
+    fun freshPanelUses35PercentAndSkipsMissingOrDuplicateCustomSize() {
         val panel = MapToolPanelState().select(MapTool.MAPS)
-        assertEquals(0.32f, panel.splitFraction, 0f)
+        assertEquals(0.35f, panel.splitFraction, 0f)
         assertNull(panel.customSplitFraction)
         assertEquals(MapToolPanelMode.EXPANDED, panel.cycleSize().mode)
         assertEquals(panel, panel.cycleSize().cycleSize())
-        assertEquals(MapToolPanelSizeTarget.FULL, panel.resize(0.32f).nextSizeTarget)
-        assertEquals(MapToolPanelSizeTarget.FULL, panel.resize(0.324f).nextSizeTarget)
+        assertEquals(MapToolPanelSizeTarget.FULL, panel.resize(0.35f).nextSizeTarget)
+        assertEquals(MapToolPanelSizeTarget.FULL, panel.resize(0.354f).nextSizeTarget)
     }
 
     @Test
@@ -27,7 +27,7 @@ class MapToolPanelSizingTest {
         assertEquals(MapToolPanelMode.EXPANDED, full.mode)
         assertEquals(0.48f, full.customSplitFraction)
         assertEquals(MapToolPanelMode.SPLIT, default.mode)
-        assertEquals(0.32f, default.splitFraction, 0f)
+        assertEquals(0.35f, default.splitFraction, 0f)
         assertEquals(0.48f, default.customSplitFraction)
         assertEquals(custom, restored)
         assertEquals(full, restored.cycleSize())
@@ -71,10 +71,38 @@ class MapToolPanelSizingTest {
 
     @Test
     fun everyDistinctCustomRatioCanBeRestoredIncludingNearDefaultAndNearFullscreen() {
-        for (fraction in listOf(0.324f, 0.987f, 1f)) {
+        for (fraction in listOf(0.354f, 0.987f, 1f)) {
             val custom = MapToolPanelState().select(MapTool.MAPS).resize(fraction)
             assertEquals(custom, custom.cycleSize().cycleSize().cycleSize())
         }
+    }
+
+    @Test
+    fun toolbarPanelsShareTheDraggedSizeThroughSwitchCloseAndReopen() {
+        val custom = MapToolPanelState().select(MapTool.HIKE).resize(0.61f)
+        val layers = custom.select(MapTool.LAYER)
+        val library = layers.select(MapTool.LIBRARY)
+        val hike = library.select(MapTool.HIKE)
+        assertEquals(custom, hike)
+        listOf(MapTool.HIKE, MapTool.LAYER, MapTool.LIBRARY).forEach { tool ->
+            assertEquals(custom.copy(activeTool = tool), custom.close().select(tool))
+        }
+        val default = hike.cycleSize().cycleSize()
+        assertEquals(0.35f, default.select(MapTool.LAYER).select(MapTool.LIBRARY).splitFraction, 0f)
+        assertEquals(0.61f, default.select(MapTool.LAYER).cycleSize().splitFraction, 0f)
+    }
+
+    @Test
+    fun oldDefaultUpgradesWhileExistingCustomSizesRemainAvailable() {
+        listOf(null, 0.61f).forEach { custom ->
+            val migrated =
+                MapToolPanelState(splitFraction = 0.32f, customSplitFraction = custom).normalizedSizing()
+            assertEquals(0.35f, migrated.splitFraction, 0f)
+            assertEquals(custom, migrated.customSplitFraction)
+        }
+        val custom = MapToolPanelState().select(MapTool.HIKE).resize(0.32f)
+        assertEquals(custom, custom.normalizedSizing())
+        assertEquals(custom, custom.cycleSize().cycleSize().cycleSize())
     }
 
     @Test
@@ -94,6 +122,6 @@ class MapToolPanelSizingTest {
         assertEquals(0.25f, wide.start, 0.0001f)
         assertEquals(0.7f, wide.endInclusive, 0.0001f)
         assertEquals(0.5f..0.5f, mapToolPanelFractionRange(100, 144, 160))
-        assertEquals(0.32f..0.32f, mapToolPanelFractionRange(0, 144, 160))
+        assertEquals(0.35f..0.35f, mapToolPanelFractionRange(0, 144, 160))
     }
 }

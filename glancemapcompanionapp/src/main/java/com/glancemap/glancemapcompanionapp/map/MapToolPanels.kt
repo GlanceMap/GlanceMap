@@ -68,6 +68,7 @@ internal data class MapToolsMapsState(
     val elevationFolderSync: PhoneElevationFolderSyncResult = PhoneElevationFolderSyncResult(),
     val hasSelectedRoutingFolder: Boolean = false,
     val routingFolderSync: PhoneRoutingFolderSyncResult = PhoneRoutingFolderSyncResult(),
+    val offlineDataVersion: Long = 0L,
     val themeConfig: PhoneOfflineThemeConfig,
     val settings: PhoneMapSettings = PhoneMapSettings(),
     val compassSettings: PhoneCompassSettings = PhoneCompassSettings(),
@@ -124,6 +125,7 @@ internal data class MapToolsGpxState(
     val hasSelectedFolder: Boolean,
     val selectedFolderName: String?,
     val folderError: PhoneGpxFolderError?,
+    val customization: PhoneGpxCustomizationState = PhoneGpxCustomizationState(),
 )
 
 internal data class MapToolsPoiState(
@@ -149,6 +151,8 @@ internal data class MapToolsLayerState(
     val comparison: PhoneMapComparisonState,
     val hasElevationData: Boolean,
     val mapSettings: PhoneMapSettings,
+    val gpxVisible: Boolean = true,
+    val poiVisible: Boolean = true,
 )
 
 internal data class MapToolsPanelState(
@@ -182,6 +186,7 @@ internal data class MapToolsMapsActions(
     val onSettingsChanged: (PhoneMapSettings) -> Unit,
     val onCompassSettingsChanged: (PhoneCompassSettings) -> Unit,
     val onCalibrateCompass: () -> Unit,
+    val onOfflineDataChanged: () -> Unit = {},
 )
 
 internal data class MapToolsPanelActions(
@@ -209,6 +214,11 @@ internal data class MapToolsPanelActions(
     val onGeneralSettingsChanged: (PhoneGeneralSettings) -> Unit,
     val onOpenBundleDownload: () -> Unit,
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+    val onStorageMigrationCancelled: () -> Unit,
+    val onAddPoi: () -> Unit = {},
+    val onOpenTool: (MapTool) -> Unit = {},
+    val onGpxCustomizationChanged: (PhoneGpxCustomizationState) -> Unit = {},
+    val onGpxAppearanceAppliedToAll: (PhoneMapGpxSettings) -> Unit = {},
 )
 
 @Composable
@@ -220,6 +230,9 @@ internal fun MapToolPanelContent(
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
     onOpenMapLegend: () -> Unit = {},
+    hikeContent: @Composable () -> Unit = {},
+    routeToolsContent: @Composable () -> Unit = {},
+    libraryContent: @Composable (MapToolsPanelState, MapToolsPanelActions) -> Unit = { _, _ -> },
 ) {
     if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
         MapToolFeatureSettingsContent(
@@ -230,6 +243,9 @@ internal fun MapToolPanelContent(
         )
     } else {
         when (tool) {
+            MapTool.HIKE -> hikeContent()
+            MapTool.GPX_TOOLS -> routeToolsContent()
+            MapTool.LIBRARY -> libraryContent(state, actions)
             MapTool.MAPS ->
                 mapToolsMapsPanel(
                     state = state.maps,
@@ -261,6 +277,8 @@ internal fun MapToolPanelContent(
                     onTransparencyChanged = actions.onComparisonTransparencyChanged,
                     onMapSettingsChanged = actions.onLayerMapSettingsChanged,
                     onOpenMapLegend = onOpenMapLegend,
+                    onGpxVisibilityChanged = actions.onGpxVisibilityChanged,
+                    onPoiVisibilityChanged = actions.onPoiVisibilityChanged,
                 )
             MapTool.SETTINGS ->
                 mapToolsSettingsPanel(
@@ -269,6 +287,7 @@ internal fun MapToolPanelContent(
                     onSettingsChanged = actions.onGeneralSettingsChanged,
                     onOpenBundleDownload = actions.onOpenBundleDownload,
                     onStorageChangeRequested = actions.onStorageChangeRequested,
+                    onStorageMigrationCancelled = actions.onStorageMigrationCancelled,
                     onOpenSettingsSection = actions.onFeatureSettingsSection,
                     onOpenContentSettings = actions.onFeatureSettings,
                 )
@@ -283,6 +302,8 @@ internal fun mapToolsLayerPanel(
     onTransparencyChanged: (Float) -> Unit,
     onMapSettingsChanged: (PhoneMapSettings) -> Unit,
     onOpenMapLegend: () -> Unit = {},
+    onGpxVisibilityChanged: (Boolean) -> Unit = {},
+    onPoiVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val layerOptions =
         comparisonLayerOptions(
@@ -401,6 +422,16 @@ internal fun mapToolsLayerPanel(
             onSettingsChanged = onMapSettingsChanged,
             showOfflineOnlyOptions = state.base is PhoneMapSource.Offline,
             showReliefOption = false,
+        )
+        mapToolsMapsToggle(
+            stringResource(R.string.map_tools_gpx_global_visibility),
+            state.gpxVisible,
+            onGpxVisibilityChanged,
+        )
+        mapToolsMapsToggle(
+            stringResource(R.string.map_tools_poi_global_visibility),
+            state.poiVisible,
+            onPoiVisibilityChanged,
         )
     }
 }
@@ -812,6 +843,7 @@ internal fun mapToolsSettingsPanel(
     onSettingsChanged: (PhoneGeneralSettings) -> Unit,
     onOpenBundleDownload: () -> Unit,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+    onStorageMigrationCancelled: () -> Unit,
     onOpenSettingsSection: (MapToolFeatureSettingsSection) -> Unit,
     onOpenContentSettings: (MapTool) -> Unit = {},
 ) {
@@ -882,6 +914,7 @@ internal fun mapToolsSettingsPanel(
                 state = state,
                 onOpenBundleDownload = onOpenBundleDownload,
                 onStorageChangeRequested = onStorageChangeRequested,
+                onStorageMigrationCancelled = onStorageMigrationCancelled,
             )
 
         MapToolFeatureSettingsSection.GENERAL_ACTIVITY ->
@@ -904,15 +937,14 @@ private fun mapToolsGeneralDataSettings(
     state: MapToolsGeneralState,
     onOpenBundleDownload: () -> Unit,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+    onStorageMigrationCancelled: () -> Unit,
 ) {
     mapToolPanelColumn(verticalSpacing = 8.dp) {
         Text(stringResource(R.string.map_tools_settings_storage_heading))
         mapToolsStorageSetting(
-            location = state.storageLocation,
-            externalStorageAvailable = state.externalStorageAvailable,
-            needsCanonicalMigration = state.storageNeedsCanonicalMigration,
-            migration = state.storageMigration,
+            state = state,
             onStorageChangeRequested = onStorageChangeRequested,
+            onStorageMigrationCancelled = onStorageMigrationCancelled,
         )
         Text(stringResource(R.string.map_tools_settings_download_heading))
         OutlinedButton(onClick = onOpenBundleDownload, modifier = Modifier.fillMaxWidth()) {

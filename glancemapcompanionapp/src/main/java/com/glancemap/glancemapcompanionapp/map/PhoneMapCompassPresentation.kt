@@ -28,7 +28,7 @@ internal fun phoneMapCompassPresentation(
     return PhoneMapCompassPresentation(
         mapBearingDegrees = bearing,
         markerScreenRotationDegrees = heading?.let { normalizePhoneHeadingDegrees(it - bearing) },
-        northIndicatorScreenRotationDegrees = normalizePhoneHeadingDegrees(-bearing),
+        northIndicatorScreenRotationDegrees = phoneMapNorthIndicatorRotationDegrees(bearing),
     )
 }
 
@@ -36,6 +36,9 @@ internal fun phoneMapCompassPresentation(
     orientation: PhoneMapOrientation,
     headingDegrees: Float?,
 ): PhoneMapCompassPresentation = phoneMapCompassPresentation(PhoneMapMode(orientation = orientation), headingDegrees)
+
+/** North is opposite the bearing of the map currently displayed, including during camera movement. */
+internal fun phoneMapNorthIndicatorRotationDegrees(mapBearingDegrees: Float): Float = normalizePhoneHeadingDegrees(-mapBearingDegrees)
 
 internal fun normalizePhoneHeadingDegrees(degrees: Float): Float = (degrees % 360f + 360f) % 360f
 

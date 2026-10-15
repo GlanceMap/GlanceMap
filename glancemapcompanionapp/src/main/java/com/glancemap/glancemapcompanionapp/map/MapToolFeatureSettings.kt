@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -93,7 +95,11 @@ internal fun MapToolFeatureSettingsContent(
             )
         MapTool.MAPS -> mapToolsMapsSettingsPanel(section, state.maps, actions.maps)
         MapTool.REC -> PhoneRecordingPanel(state.general, actions.onGeneralSettingsChanged)
-        MapTool.LAYER -> Unit
+        MapTool.GPX_TOOLS,
+        MapTool.LAYER,
+        MapTool.LIBRARY,
+        MapTool.HIKE,
+        -> Unit
         MapTool.SETTINGS ->
             mapToolsSettingsPanel(
                 section = section,
@@ -101,6 +107,7 @@ internal fun MapToolFeatureSettingsContent(
                 onSettingsChanged = actions.onGeneralSettingsChanged,
                 onOpenBundleDownload = actions.onOpenBundleDownload,
                 onStorageChangeRequested = actions.onStorageChangeRequested,
+                onStorageMigrationCancelled = actions.onStorageMigrationCancelled,
                 onOpenSettingsSection = actions.onFeatureSettingsSection,
                 onOpenContentSettings = actions.onFeatureSettings,
             )
@@ -273,9 +280,10 @@ private fun mapToolsMapsTerrainSettings(
 }
 
 @Composable
-private fun mapToolsElevationFolderSettings(
+internal fun mapToolsElevationFolderSettings(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
+    enabled: Boolean = true,
 ) {
     Text(stringResource(R.string.map_elevation_folder_heading))
     Text(stringResource(R.string.map_elevation_folder_managed_summary))
@@ -305,27 +313,20 @@ private fun mapToolsElevationFolderSettings(
                 ),
             )
         }
-        OutlinedButton(onClick = actions.onRescanElevationFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_elevation_folder_rescan))
-        }
-        OutlinedButton(onClick = actions.onSelectElevationFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_elevation_folder_change))
-        }
-        OutlinedButton(onClick = actions.onClearElevationFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_elevation_folder_clear))
-        }
+        mapToolsFolderAction(R.string.map_elevation_folder_rescan, enabled, actions.onRescanElevationFolder)
+        mapToolsFolderAction(R.string.map_elevation_folder_change, enabled, actions.onSelectElevationFolder)
+        mapToolsFolderAction(R.string.map_elevation_folder_clear, enabled, actions.onClearElevationFolder)
     } else {
         Text(stringResource(R.string.map_elevation_folder_none))
-        OutlinedButton(onClick = actions.onSelectElevationFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_elevation_folder_select))
-        }
+        mapToolsFolderAction(R.string.map_elevation_folder_select, enabled, actions.onSelectElevationFolder)
     }
 }
 
 @Composable
-private fun mapToolsRoutingFolderSettings(
+internal fun mapToolsRoutingFolderSettings(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
+    enabled: Boolean = true,
 ) {
     Text(stringResource(R.string.map_routing_folder_heading))
     Text(stringResource(R.string.map_routing_folder_managed_summary))
@@ -355,37 +356,39 @@ private fun mapToolsRoutingFolderSettings(
                 ),
             )
         }
-        OutlinedButton(onClick = actions.onRescanRoutingFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_routing_folder_rescan))
-        }
-        OutlinedButton(onClick = actions.onSelectRoutingFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_routing_folder_change))
-        }
-        OutlinedButton(onClick = actions.onClearRoutingFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_routing_folder_clear))
-        }
+        mapToolsFolderAction(R.string.map_routing_folder_rescan, enabled, actions.onRescanRoutingFolder)
+        mapToolsFolderAction(R.string.map_routing_folder_change, enabled, actions.onSelectRoutingFolder)
+        mapToolsFolderAction(R.string.map_routing_folder_clear, enabled, actions.onClearRoutingFolder)
     } else {
         Text(stringResource(R.string.map_routing_folder_none))
-        OutlinedButton(onClick = actions.onSelectRoutingFolder, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_routing_folder_select))
-        }
+        mapToolsFolderAction(R.string.map_routing_folder_select, enabled, actions.onSelectRoutingFolder)
+    }
+}
+
+@Composable
+private fun mapToolsFolderAction(
+    label: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(label))
     }
 }
 
 @Composable
 internal fun mapToolsStorageSetting(
-    location: PhoneOfflineStorageLocation,
-    externalStorageAvailable: Boolean,
-    needsCanonicalMigration: Boolean,
-    migration: PhoneOfflineStorageMigrationState,
+    state: MapToolsGeneralState,
     onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
+    onStorageMigrationCancelled: () -> Unit,
 ) {
+    val migration = state.storageMigration
     mapToolsMapSettingPicker(
         label = stringResource(R.string.map_tools_settings_storage_selector),
-        selectedLabel = stringResource(location.labelResource()),
+        selectedLabel = stringResource(state.storageLocation.labelResource()),
         options =
             PhoneOfflineStorageLocation.entries.mapNotNull { location ->
-                if (location == PhoneOfflineStorageLocation.EXTERNAL && !externalStorageAvailable) {
+                if (location == PhoneOfflineStorageLocation.EXTERNAL && !state.externalStorageAvailable) {
                     null
                 } else {
                     location to stringResource(location.labelResource())
@@ -393,19 +396,24 @@ internal fun mapToolsStorageSetting(
             },
         onSelect = onStorageChangeRequested,
     )
-    if (!externalStorageAvailable) {
+    if (!state.externalStorageAvailable) {
         Text(stringResource(R.string.map_tools_settings_storage_external_unavailable))
     }
-    if (needsCanonicalMigration) {
+    if (state.storageNeedsCanonicalMigration) {
         Text(stringResource(R.string.map_tools_settings_storage_legacy))
         OutlinedButton(
-            onClick = { onStorageChangeRequested(location) },
+            onClick = { onStorageChangeRequested(state.storageLocation) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.map_tools_settings_storage_move_to_glancemap))
         }
     }
     mapToolsStorageMigrationStatus(migration)
+    if (migration.canCancel) {
+        OutlinedButton(onClick = onStorageMigrationCancelled, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.map_tools_settings_storage_cancel))
+        }
+    }
 }
 
 @Composable
@@ -423,6 +431,15 @@ private fun mapToolsStorageMigrationStatus(migration: PhoneOfflineStorageMigrati
                 migration.copiedFiles,
                 migration.totalFiles,
                 migration.percent ?: 0,
+            ),
+        )
+    }
+    if (migration.totalBytes > 0L && migration.phase.showsProgress()) {
+        Text(
+            stringResource(
+                R.string.map_tools_settings_storage_bytes_progress,
+                Formatter.formatFileSize(context, migration.copiedBytes),
+                Formatter.formatFileSize(context, migration.totalBytes),
             ),
         )
     }
@@ -459,6 +476,7 @@ private fun PhoneOfflineStorageMigrationPhase.statusResource(): Int =
         PhoneOfflineStorageMigrationPhase.CLEANUP -> R.string.map_tools_settings_storage_cleanup
         PhoneOfflineStorageMigrationPhase.COMPLETE -> R.string.map_tools_settings_storage_complete
         PhoneOfflineStorageMigrationPhase.FAILED -> R.string.map_tools_settings_storage_failed
+        PhoneOfflineStorageMigrationPhase.CANCELLED -> R.string.map_tools_settings_storage_cancelled
         PhoneOfflineStorageMigrationPhase.IDLE -> R.string.map_tools_settings_storage_ready
     }
 
@@ -467,6 +485,7 @@ private fun PhoneOfflineStorageMigrationPhase.showsProgress(): Boolean =
         setOf(
             PhoneOfflineStorageMigrationPhase.COMPLETE,
             PhoneOfflineStorageMigrationPhase.FAILED,
+            PhoneOfflineStorageMigrationPhase.CANCELLED,
         )
 
 @Composable
@@ -781,7 +800,7 @@ internal fun <T> mapToolsMapSettingPicker(
 }
 
 @Composable
-private fun mapToolsMapsToggle(
+internal fun mapToolsMapsToggle(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -791,7 +810,11 @@ private fun mapToolsMapsToggle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics { contentDescription = label },
+        )
     }
 }
 
@@ -900,10 +923,7 @@ private fun mapToolsGpxSettingsPanel(
         MapToolFeatureSettingsSection.GPX_SOURCES -> mapToolsGpxSourceSettings(state, actions)
         MapToolFeatureSettingsSection.GPX_APPEARANCE ->
             mapToolPanelColumn {
-                mapToolsGpxAppearanceSettings(
-                    settings = state.settings,
-                    onSettingsChanged = actions.onGpxSettingsChanged,
-                )
+                phoneGpxGeneralAppearanceSettings(state, actions)
             }
         MapToolFeatureSettingsSection.GPX_ANALYSIS ->
             mapToolPanelColumn {
@@ -968,7 +988,7 @@ private fun mapToolsGpxSourceSettings(
 }
 
 @Composable
-private fun mapToolsGpxAppearanceSettings(
+internal fun mapToolsGpxAppearanceSettings(
     settings: PhoneMapGpxSettings,
     onSettingsChanged: (PhoneMapGpxSettings) -> Unit,
 ) {
@@ -1168,6 +1188,7 @@ private fun gpxTrackWidthSetting(
     settings: PhoneMapGpxSettings,
     onSettingsChanged: (PhoneMapGpxSettings) -> Unit,
 ) {
+    val description = stringResource(R.string.gpx_appearance_width)
     Text(
         stringResource(
             R.string.map_tools_gpx_track_width_value,
@@ -1183,7 +1204,7 @@ private fun gpxTrackWidthSetting(
         },
         valueRange = MIN_PHONE_GPX_TRACK_WIDTH..MAX_PHONE_GPX_TRACK_WIDTH,
         steps = 13,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
     )
 }
 
@@ -1192,6 +1213,7 @@ private fun gpxTrackOpacitySetting(
     settings: PhoneMapGpxSettings,
     onSettingsChanged: (PhoneMapGpxSettings) -> Unit,
 ) {
+    val description = stringResource(R.string.gpx_appearance_opacity)
     Text(stringResource(R.string.map_tools_gpx_track_opacity_value, settings.trackOpacityPercent))
     Slider(
         value = settings.trackOpacityPercent.toFloat(),
@@ -1203,7 +1225,7 @@ private fun gpxTrackOpacitySetting(
         valueRange =
             MIN_PHONE_GPX_TRACK_OPACITY_PERCENT.toFloat()..MAX_PHONE_GPX_TRACK_OPACITY_PERCENT.toFloat(),
         steps = MAX_PHONE_GPX_TRACK_OPACITY_PERCENT - MIN_PHONE_GPX_TRACK_OPACITY_PERCENT - 1,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
     )
 }
 

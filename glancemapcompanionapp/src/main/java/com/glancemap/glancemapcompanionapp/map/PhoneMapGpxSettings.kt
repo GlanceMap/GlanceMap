@@ -4,11 +4,16 @@ import android.content.Context
 import com.glancemap.trailcore.geo.haversineDistanceMeters
 import com.glancemap.trailcore.profile.TrailPacingConfig
 import com.glancemap.trailcore.profile.TrailPoint
+import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 
 internal enum class PhoneMapGpxColorMode(
     val storageValue: String,
 ) {
+    @SerializedName("SOLID")
     SOLID("SOLID"),
+
+    @SerializedName("ELEVATION")
     ELEVATION("ELEVATION"),
     ;
 
@@ -65,7 +70,7 @@ internal class PhoneMapGpxSettingsPreferences(
     context: Context,
 ) {
     private val preferences =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(PHONE_GPX_SETTINGS_PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun load(): PhoneMapGpxSettings {
         val settings =
@@ -122,27 +127,31 @@ internal class PhoneMapGpxSettingsPreferences(
         return settings
     }
 
-    fun save(settings: PhoneMapGpxSettings): PhoneMapGpxSettings {
+    fun save(
+        settings: PhoneMapGpxSettings,
+        customization: PhoneGpxCustomizationState? = null,
+    ): PhoneMapGpxSettings {
         val normalized = settings.normalized()
-        preferences
-            .edit()
-            .putInt(KEY_TRACK_COLOR_ARGB, normalized.trackColorArgb)
-            .putString(KEY_COLOR_MODE, normalized.colorMode.storageValue)
-            .putFloat(KEY_TRACK_WIDTH, normalized.trackWidth)
-            .putInt(KEY_TRACK_OPACITY_PERCENT, normalized.trackOpacityPercent)
-            .putBoolean(KEY_DIRECTION_ARROWS_ENABLED, normalized.directionArrowsEnabled)
-            .putBoolean(KEY_INSPECTION_ENABLED, normalized.inspectionEnabled)
-            .putFloat(KEY_FLAT_SPEED_METERS_PER_SECOND, normalized.flatSpeedMetersPerSecond)
-            .putBoolean(KEY_ADVANCED_ETA_ENABLED, normalized.advancedEtaEnabled)
-            .putBoolean(KEY_STAMINA_ADJUSTMENT_ENABLED, normalized.staminaAdjustmentEnabled)
-            .putFloat(KEY_UPHILL_VERTICAL_METERS_PER_HOUR, normalized.uphillVerticalMetersPerHour)
-            .putFloat(KEY_DOWNHILL_VERTICAL_METERS_PER_HOUR, normalized.downhillVerticalMetersPerHour)
-            .apply()
+        val editor =
+            preferences
+                .edit()
+                .putInt(KEY_TRACK_COLOR_ARGB, normalized.trackColorArgb)
+                .putString(KEY_COLOR_MODE, normalized.colorMode.storageValue)
+                .putFloat(KEY_TRACK_WIDTH, normalized.trackWidth)
+                .putInt(KEY_TRACK_OPACITY_PERCENT, normalized.trackOpacityPercent)
+                .putBoolean(KEY_DIRECTION_ARROWS_ENABLED, normalized.directionArrowsEnabled)
+                .putBoolean(KEY_INSPECTION_ENABLED, normalized.inspectionEnabled)
+                .putFloat(KEY_FLAT_SPEED_METERS_PER_SECOND, normalized.flatSpeedMetersPerSecond)
+                .putBoolean(KEY_ADVANCED_ETA_ENABLED, normalized.advancedEtaEnabled)
+                .putBoolean(KEY_STAMINA_ADJUSTMENT_ENABLED, normalized.staminaAdjustmentEnabled)
+                .putFloat(KEY_UPHILL_VERTICAL_METERS_PER_HOUR, normalized.uphillVerticalMetersPerHour)
+                .putFloat(KEY_DOWNHILL_VERTICAL_METERS_PER_HOUR, normalized.downhillVerticalMetersPerHour)
+        customization?.let { editor.putString(PHONE_GPX_CUSTOMIZATION_KEY, Gson().toJson(it)) }
+        editor.apply()
         return normalized
     }
 
     private companion object {
-        const val PREFERENCES_NAME = "phone_gpx_settings"
         const val KEY_TRACK_COLOR_ARGB = "track_color_argb"
         const val KEY_COLOR_MODE = "color_mode"
         const val KEY_TRACK_WIDTH = "track_width"
@@ -156,6 +165,9 @@ internal class PhoneMapGpxSettingsPreferences(
         const val KEY_DOWNHILL_VERTICAL_METERS_PER_HOUR = "downhill_vertical_meters_per_hour"
     }
 }
+
+internal const val PHONE_GPX_SETTINGS_PREFERENCES_NAME = "phone_gpx_settings"
+internal const val PHONE_GPX_CUSTOMIZATION_KEY = "appearance_customization"
 
 internal const val DEFAULT_PHONE_GPX_TRACK_COLOR_ARGB: Int = 0xFFFF00FF.toInt()
 internal const val DEFAULT_PHONE_GPX_TRACK_WIDTH = 8f

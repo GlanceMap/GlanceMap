@@ -56,6 +56,22 @@ class PhoneMapCompassPresentationTest {
     }
 
     @Test
+    fun northIndicatorFollowsTheRenderedMapRatherThanTheRequestedCompassHeading() {
+        val requested = phoneMapCompassPresentation(PhoneMapOrientation.HEADING_UP, 90f)
+        val displayed = PhoneMapCameraSnapshot(46.0, 7.0, 12.0, bearingDegrees = 30f)
+        assertEquals(270f, requested.northIndicatorScreenRotationDegrees, 0.001f)
+        assertEquals(330f, phoneMapNorthIndicatorRotationDegrees(displayed.bearingDegrees), 0.001f)
+    }
+
+    @Test
+    fun renderedNorthDirectionStaysCorrectAtCardinalBearingsAndAcrossZero() {
+        val bearings = mapOf(0f to 0f, 90f to 270f, 180f to 180f, 270f to 90f, 359f to 1f, 360f to 0f, -90f to 90f)
+        bearings.forEach { (bearing, rotation) ->
+            assertEquals(rotation, phoneMapNorthIndicatorRotationDegrees(bearing), 0.001f)
+        }
+    }
+
+    @Test
     fun bearingToleranceHandlesWrapAroundWithoutExactEquality() {
         assertFalse(phoneMapBearingNeedsSync(currentDegrees = 359.8f, targetDegrees = 0.2f))
         assertTrue(phoneMapBearingNeedsSync(currentDegrees = 359f, targetDegrees = 1f))

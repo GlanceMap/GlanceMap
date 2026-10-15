@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map.maplibre
 
+import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxOverlay
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxRenderSegment
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxSettings
 import com.glancemap.glancemapcompanionapp.map.PhoneMapRouteBounds
@@ -32,16 +33,20 @@ import java.util.WeakHashMap
 
 private val renderedPoints = Collections.synchronizedMap(WeakHashMap<GeoPoint, Point>())
 
-internal fun Style.renderGpxTrack(
-    segments: List<PhoneMapRouteSegment>,
+internal fun Style.renderGpxOverlays(
+    overlays: List<PhoneMapGpxOverlay>,
     isVisible: Boolean,
     settings: PhoneMapGpxSettings,
 ) {
-    val renderSegments = segments.toPhoneMapGpxRenderSegments(settings)
+    val features =
+        overlays.flatMap { overlay ->
+            val effective = overlay.settings ?: settings
+            overlay.segments.toPhoneMapGpxRenderSegments(effective).map { segment ->
+                segment.toGeoJsonFeature(effective)
+            }
+        }
     val featureCollection =
-        FeatureCollection.fromFeatures(
-            renderSegments.map { segment -> segment.toGeoJsonFeature() },
-        )
+        FeatureCollection.fromFeatures(features)
     val source = getSourceAs<GeoJsonSource>(GPX_TRACK_SOURCE_ID)
     if (source == null) {
         addSource(GeoJsonSource(GPX_TRACK_SOURCE_ID, featureCollection))
@@ -49,7 +54,7 @@ internal fun Style.renderGpxTrack(
         source.setGeoJson(featureCollection)
     }
 
-    val visibility = if (isVisible && renderSegments.isNotEmpty()) Property.VISIBLE else Property.NONE
+    val visibility = if (isVisible && features.isNotEmpty()) Property.VISIBLE else Property.NONE
     val layer = getLayerAs<LineLayer>(GPX_TRACK_LAYER_ID)
     if (layer == null) {
         addLayer(
@@ -57,16 +62,16 @@ internal fun Style.renderGpxTrack(
                 lineCap(Property.LINE_CAP_ROUND),
                 lineColor(Expression.get(GPX_TRACK_COLOR_PROPERTY)),
                 lineJoin(Property.LINE_JOIN_ROUND),
-                lineOpacity(settings.trackOpacityPercent / 100f),
-                lineWidth(settings.trackWidth),
+                lineOpacity(Expression.get(GPX_TRACK_OPACITY_PROPERTY)),
+                lineWidth(Expression.get(GPX_TRACK_WIDTH_PROPERTY)),
                 visibility(visibility),
             ),
         )
     } else {
         layer.setProperties(
             lineColor(Expression.get(GPX_TRACK_COLOR_PROPERTY)),
-            lineOpacity(settings.trackOpacityPercent / 100f),
-            lineWidth(settings.trackWidth),
+            lineOpacity(Expression.get(GPX_TRACK_OPACITY_PROPERTY)),
+            lineWidth(Expression.get(GPX_TRACK_WIDTH_PROPERTY)),
             visibility(visibility),
         )
     }
@@ -89,7 +94,7 @@ internal fun phoneMapGpxFitIsStillEligible(
     alreadyFitted: Boolean,
 ): Boolean = rendererIsCurrent && fitOwner && !alreadyFitted
 
-private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(): Feature =
+private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(settings: PhoneMapGpxSettings): Feature =
     Feature
         .fromGeometry(
             LineString.fromLngLats(
@@ -97,6 +102,8 @@ private fun PhoneMapGpxRenderSegment.toGeoJsonFeature(): Feature =
             ),
         ).also { feature ->
             feature.addStringProperty(GPX_TRACK_COLOR_PROPERTY, colorToMapLibre(colorArgb))
+            feature.addNumberProperty(GPX_TRACK_WIDTH_PROPERTY, settings.trackWidth)
+            feature.addNumberProperty(GPX_TRACK_OPACITY_PROPERTY, settings.trackOpacityPercent / 100f)
         }
 
 private fun GeoPoint.toMapLibrePoint(): Point = renderedPoints.getOrPut(this) { Point.fromLngLat(longitude, latitude) }
@@ -146,6 +153,8 @@ private fun MapView.fitBoundsWhenLaidOut(
 private const val GPX_TRACK_LAYER_ID = "companion-gpx-track-line"
 private const val GPX_TRACK_SOURCE_ID = "companion-gpx-track"
 private const val GPX_TRACK_COLOR_PROPERTY = "gpx_color"
+private const val GPX_TRACK_WIDTH_PROPERTY = "gpx_width"
+private const val GPX_TRACK_OPACITY_PROPERTY = "gpx_opacity"
 private const val MAP_LATITUDE_LIMIT_MAX = 85.0
 private const val MAP_LATITUDE_LIMIT_MIN = -85.0
 private const val MAP_LONGITUDE_LIMIT_MAX = 180.0
