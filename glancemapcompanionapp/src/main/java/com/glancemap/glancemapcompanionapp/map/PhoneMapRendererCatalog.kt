@@ -15,6 +15,13 @@ internal enum class PhoneOnlineMapSource {
     CYCLOSM,
     TRACESTRACK_TOPO,
     SATELLITE,
+    OPEN_FREE_MAP,
+    IGN_ORTHOPHOTO,
+    SWISS_TOPO,
+    SWISS_IMAGE,
+    USGS_TOPO,
+    USGS_IMAGERY,
+    ESRI_WORLD_IMAGERY,
 
     ;
 
@@ -24,12 +31,14 @@ internal enum class PhoneOnlineMapSource {
     }
 }
 
-/** Configuration for a raster-tile online provider; renderer adapters own how it is consumed. */
-internal data class RasterOnlineMapProvider(
+/** An online dataset supplied as raster tiles or a complete vector style. */
+internal data class OnlineMapProvider(
     val id: String,
     val displayName: String,
     val attribution: String,
-    val rasterTileUrlTemplate: String,
+    val rasterTileUrlTemplate: String = "",
+    val styleUrl: String? = null,
+    val bounds: List<Double>? = null,
     val minimumZoom: Int = 0,
     val maximumZoom: Int = 19,
 ) {
@@ -37,7 +46,18 @@ internal data class RasterOnlineMapProvider(
         require(id.isNotBlank())
         require(displayName.isNotBlank())
         require(attribution.isNotBlank())
-        require(rasterTileUrlTemplate.isNotBlank())
+        require(rasterTileUrlTemplate.isNotBlank() xor !styleUrl.isNullOrBlank()) {
+            "An online provider must define either raster tiles or a style URL."
+        }
+        require(bounds == null || (bounds.size == 4 && bounds.all(Double::isFinite)))
+        bounds?.let {
+            val west = it[0]
+            val south = it[1]
+            val east = it[2]
+            val north = it[3]
+            require(west in -180.0..180.0 && east in west..180.0)
+            require(south in -90.0..90.0 && north in south..90.0)
+        }
         require(minimumZoom >= 0 && maximumZoom >= minimumZoom)
     }
 }
@@ -47,7 +67,7 @@ internal data class PhoneMapRenderer(
     val mode: MapMode,
     val isAvailable: Boolean,
     val capabilities: MapRendererCapabilities,
-    val rasterOnlineProvider: RasterOnlineMapProvider? = null,
+    val rasterOnlineProvider: OnlineMapProvider? = null,
 ) {
     init {
         require((mode == MapMode.ONLINE) == (rasterOnlineProvider != null)) {
@@ -57,11 +77,11 @@ internal data class PhoneMapRenderer(
 }
 
 /** Pure provider factory used by both the catalog and tests without reading BuildConfig. */
-internal fun mapTilerSatelliteProvider(apiKey: String): RasterOnlineMapProvider? =
+internal fun mapTilerSatelliteProvider(apiKey: String): OnlineMapProvider? =
     apiKey
         .takeIf(String::isNotBlank)
         ?.let { configuredKey ->
-            RasterOnlineMapProvider(
+            OnlineMapProvider(
                 id = "maptiler_satellite",
                 displayName = "Satellite",
                 attribution =
@@ -73,11 +93,11 @@ internal fun mapTilerSatelliteProvider(apiKey: String): RasterOnlineMapProvider?
             )
         }
 
-internal fun tracestrackTopoProvider(apiKey: String): RasterOnlineMapProvider? =
+internal fun tracestrackTopoProvider(apiKey: String): OnlineMapProvider? =
     apiKey
         .takeIf(String::isNotBlank)
         ?.let { configuredKey ->
-            RasterOnlineMapProvider(
+            OnlineMapProvider(
                 id = "tracestrack_topo",
                 displayName = "Tracestrack Topo",
                 attribution =
@@ -103,18 +123,18 @@ internal fun effectiveOnlineMapSource(
  */
 internal object PhoneMapRendererCatalog {
     private val openStreetMapPickerProvider =
-        RasterOnlineMapProvider(
+        OnlineMapProvider(
             id = "open_street_map",
             displayName = "OpenStreetMap",
             attribution = OPEN_STREET_MAP_ATTRIBUTION,
             rasterTileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         )
 
-    val utilityPickerRasterProvider: RasterOnlineMapProvider
+    val utilityPickerRasterProvider: OnlineMapProvider
         get() = openStreetMapPickerProvider
 
     val mainOnlineRasterProvider =
-        RasterOnlineMapProvider(
+        OnlineMapProvider(
             id = "open_topo_map",
             displayName = "OpenTopoMap",
             attribution =
@@ -125,7 +145,7 @@ internal object PhoneMapRendererCatalog {
         )
 
     private val planIgnV2Provider =
-        RasterOnlineMapProvider(
+        OnlineMapProvider(
             id = "plan_ign_v2",
             displayName = "Plan IGN V2",
             attribution =
@@ -138,7 +158,7 @@ internal object PhoneMapRendererCatalog {
         )
 
     private val cyclOsmProvider =
-        RasterOnlineMapProvider(
+        OnlineMapProvider(
             id = "cyclosm",
             displayName = "CyclOSM",
             attribution =
@@ -147,6 +167,81 @@ internal object PhoneMapRendererCatalog {
             rasterTileUrlTemplate =
                 "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
             maximumZoom = 20,
+        )
+
+    private val openFreeMapProvider =
+        OnlineMapProvider(
+            id = "open_free_map",
+            displayName = "OpenFreeMap",
+            attribution =
+                "<a href=\"https://openfreemap.org/\">OpenFreeMap</a> | " +
+                    "<a href=\"https://openmaptiles.org/\">© OpenMapTiles</a> | " +
+                    OPEN_STREET_MAP_ATTRIBUTION,
+            styleUrl = "https://tiles.openfreemap.org/styles/liberty",
+        )
+
+    private val ignOrthophotoProvider =
+        OnlineMapProvider(
+            id = "ign_orthophoto",
+            displayName = "IGN aerial (France)",
+            attribution = planIgnV2Provider.attribution,
+            rasterTileUrlTemplate =
+                "https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&" +
+                    "LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM_0_19&" +
+                    "TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
+        )
+
+    private val swissTopoProvider =
+        OnlineMapProvider(
+            id = "swiss_topo",
+            displayName = "swisstopo (Switzerland)",
+            attribution = "<a href=\"https://www.swisstopo.admin.ch/\">© swisstopo</a>",
+            rasterTileUrlTemplate =
+                "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/" +
+                    "default/current/3857/{z}/{x}/{y}.jpeg",
+            bounds = listOf(5.140242, 45.398181, 11.47757, 48.230651),
+            maximumZoom = 18,
+        )
+
+    private val swissImageProvider =
+        swissTopoProvider.copy(
+            id = "swiss_image",
+            displayName = "SWISSIMAGE (Switzerland)",
+            rasterTileUrlTemplate =
+                "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/" +
+                    "default/current/3857/{z}/{x}/{y}.jpeg",
+            maximumZoom = 20,
+        )
+
+    private val usgsTopoProvider =
+        OnlineMapProvider(
+            id = "usgs_topo",
+            displayName = "USGS Topo (USA)",
+            attribution = "<a href=\"https://www.usgs.gov/the-national-map-data-delivery\">USGS The National Map</a>",
+            rasterTileUrlTemplate =
+                "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
+            maximumZoom = 16,
+        )
+
+    private val usgsImageryProvider =
+        usgsTopoProvider.copy(
+            id = "usgs_imagery",
+            displayName = "USGS imagery (USA)",
+            attribution =
+                "<a href=\"https://www.usgs.gov/the-national-map-data-delivery\">USDA / USGS The National Map</a>",
+            rasterTileUrlTemplate =
+                "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+        )
+
+    private val esriWorldImageryProvider =
+        OnlineMapProvider(
+            id = "esri_world_imagery",
+            displayName = "Esri World Imagery",
+            attribution =
+                "<a href=\"https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9\">" +
+                    "Esri, Vantor, Earthstar Geographics, and the GIS User Community</a>",
+            rasterTileUrlTemplate =
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         )
 
     private val tracestrackTopoProvider = tracestrackTopoProvider(BuildConfig.TRACESTRACK_API_KEY)
@@ -172,7 +267,7 @@ internal object PhoneMapRendererCatalog {
 
     fun isOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForOnlineSource(source) != null
 
-    fun providerForOnlineSource(source: PhoneOnlineMapSource): RasterOnlineMapProvider? =
+    fun providerForOnlineSource(source: PhoneOnlineMapSource): OnlineMapProvider? =
         when (source) {
             PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider
             PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider
@@ -180,6 +275,13 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider
             PhoneOnlineMapSource.TRACESTRACK_TOPO -> tracestrackTopoProvider
             PhoneOnlineMapSource.SATELLITE -> mapTilerSatelliteProvider
+            PhoneOnlineMapSource.OPEN_FREE_MAP -> openFreeMapProvider
+            PhoneOnlineMapSource.IGN_ORTHOPHOTO -> ignOrthophotoProvider
+            PhoneOnlineMapSource.SWISS_TOPO -> swissTopoProvider
+            PhoneOnlineMapSource.SWISS_IMAGE -> swissImageProvider
+            PhoneOnlineMapSource.USGS_TOPO -> usgsTopoProvider
+            PhoneOnlineMapSource.USGS_IMAGERY -> usgsImageryProvider
+            PhoneOnlineMapSource.ESRI_WORLD_IMAGERY -> esriWorldImageryProvider
         }
 
     fun onlineSourceLabel(source: PhoneOnlineMapSource): String =
@@ -190,6 +292,13 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider.displayName
             PhoneOnlineMapSource.TRACESTRACK_TOPO -> "Tracestrack Topo"
             PhoneOnlineMapSource.SATELLITE -> "Satellite"
+            PhoneOnlineMapSource.OPEN_FREE_MAP -> openFreeMapProvider.displayName
+            PhoneOnlineMapSource.IGN_ORTHOPHOTO -> ignOrthophotoProvider.displayName
+            PhoneOnlineMapSource.SWISS_TOPO -> swissTopoProvider.displayName
+            PhoneOnlineMapSource.SWISS_IMAGE -> swissImageProvider.displayName
+            PhoneOnlineMapSource.USGS_TOPO -> usgsTopoProvider.displayName
+            PhoneOnlineMapSource.USGS_IMAGERY -> usgsImageryProvider.displayName
+            PhoneOnlineMapSource.ESRI_WORLD_IMAGERY -> esriWorldImageryProvider.displayName
         }
 
     val offline =

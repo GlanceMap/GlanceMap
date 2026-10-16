@@ -13,6 +13,7 @@ internal data class PhoneMapSearchResult(
 
 internal data class PhoneMapSearchActions(
     val onQueryChanged: (String) -> Unit,
+    val onOnlineChanged: (Boolean) -> Unit,
     val onSearch: () -> Unit,
     val onResultSelected: (PhoneMapSearchResult) -> Unit,
     val onDismiss: () -> Unit,

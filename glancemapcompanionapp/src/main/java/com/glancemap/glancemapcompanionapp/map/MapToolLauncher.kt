@@ -43,7 +43,7 @@ internal fun mapToolLauncher(
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 72.dp)
+                        .padding(end = 12.dp, bottom = mapToolLauncherHeight + 8.dp)
                         .heightIn(max = 360.dp)
                         .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.End,
@@ -56,29 +56,33 @@ internal fun mapToolLauncher(
                 mapShortcut(R.string.map_tool_shortcut_gpx, Icons.Filled.Route) { openScreen(actions.onOpenGpxTools) }
             }
         }
-        NavigationBar(Modifier.align(Alignment.BottomCenter).height(64.dp).testTag("map-tool-toolbar")) {
+        NavigationBar(
+            Modifier.align(Alignment.BottomCenter).height(mapToolLauncherHeight).testTag("map-tool-toolbar"),
+        ) {
             NavigationBarItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.LIBRARY,
                 onClick = { selectTool(MapTool.LIBRARY) },
-                icon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                icon = {
+                    Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.offset(y = 2.dp))
+                },
                 label = { Text(stringResource(R.string.library_title)) },
             )
             NavigationBarItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.LAYER,
                 onClick = { selectTool(MapTool.LAYER) },
-                icon = { Icon(Icons.Filled.Layers, contentDescription = null) },
+                icon = { Icon(Icons.Filled.Layers, contentDescription = null, modifier = Modifier.offset(y = 2.dp)) },
                 label = { Text(stringResource(R.string.map_navigation_layers)) },
             )
             NavigationBarItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.HIKE,
                 onClick = { selectTool(MapTool.HIKE) },
-                icon = { Icon(Icons.Filled.Today, contentDescription = null) },
+                icon = { Icon(Icons.Filled.Today, contentDescription = null, modifier = Modifier.offset(y = 2.dp)) },
                 label = { Text(stringResource(R.string.map_navigation_hike)) },
             )
             NavigationBarItem(
                 selected = expanded || presentation.panel.activeTool == MapTool.GPX_TOOLS,
                 onClick = actions.onToggleLauncher,
-                icon = { Icon(Icons.Filled.Build, contentDescription = null) },
+                icon = { Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.offset(y = 2.dp)) },
                 label = { Text(stringResource(R.string.map_tool_launcher_label)) },
             )
         }

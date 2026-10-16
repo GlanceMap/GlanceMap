@@ -96,9 +96,25 @@ class PhoneOfflineMapRevisionTest {
         }
     }
 
-    private fun identity(
-        map: PhoneOfflineMap,
-    ) = PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, PhoneOfflineThemeCatalog.defaultConfig)
+    @Test
+    fun sameMapAndThemeUseSeparateBaseAndComparisonCaches() {
+        val identity = identity(PhoneOfflineMap(File("alps.map")))
+        assertNotEquals(
+            phoneMapsforgeTileCacheId(identity, PhoneOfflineMapRendererRole.BASE),
+            phoneMapsforgeTileCacheId(identity, PhoneOfflineMapRendererRole.COMPARISON),
+        )
+        assertNotEquals(
+            phoneMapsforgeTileCacheId(identity, PhoneOfflineMapRendererRole.COMPARISON),
+            phoneMapsforgeTileCacheId(
+                identity.copy(
+                    themeConfig = PhoneOfflineThemeCatalog.resolve(PhoneOfflineThemeCatalog.MAPSFORGE_THEME_ID, null),
+                ),
+                PhoneOfflineMapRendererRole.COMPARISON,
+            ),
+        )
+    }
+
+    private fun identity(map: PhoneOfflineMap) = PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, PhoneOfflineThemeCatalog.defaultConfig)
 
     private fun cacheId(map: PhoneOfflineMap) = phoneMapsforgeTileCacheId(identity(map))
 }

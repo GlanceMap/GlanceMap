@@ -326,6 +326,32 @@ class PhoneOfflineMapsforgeSurfaceTest {
     }
 
     @Test
+    fun slowRotationAccumulatesUntilItIsMeaningful() {
+        val tracker = PhoneMapsforgeRotationGestureTracker()
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+        assertNull(tracker.observeBearing(0f, reportUserRotation = true))
+        assertNull(tracker.observeBearing(0.25f, reportUserRotation = true))
+        assertNull(tracker.observeBearing(0.5f, reportUserRotation = true))
+        assertEquals(0.75f, requireNotNull(tracker.observeBearing(0.75f, reportUserRotation = true)), 0.001f)
+        assertNull(tracker.observeBearing(1f, reportUserRotation = true))
+        assertNull(tracker.observeBearing(1.25f, reportUserRotation = true))
+        assertEquals(1.5f, requireNotNull(tracker.observeBearing(1.5f, reportUserRotation = true)), 0.001f)
+    }
+
+    @Test
+    fun slowRotationCrossesNorthAndRebasesAfterProgrammaticChanges() {
+        val tracker = PhoneMapsforgeRotationGestureTracker()
+        tracker.onTouch(PhoneMapsforgeTouchAction.POINTER_DOWN, pointerCount = 2)
+        assertNull(tracker.observeBearing(359.75f, reportUserRotation = true))
+        assertNull(tracker.observeBearing(0f, reportUserRotation = true))
+        assertNull(tracker.observeBearing(0.25f, reportUserRotation = true))
+        assertEquals(0.5f, requireNotNull(tracker.observeBearing(0.5f, reportUserRotation = true)), 0.001f)
+        assertNull(tracker.observeBearing(180f, reportUserRotation = false))
+        assertNull(tracker.observeBearing(180.25f, reportUserRotation = true))
+        assertEquals(180.75f, requireNotNull(tracker.observeBearing(180.75f, reportUserRotation = true)), 0.001f)
+    }
+
+    @Test
     fun mapsforgeSegmentsKeepEachRouteSegmentSeparate() {
         val segments =
             listOf(

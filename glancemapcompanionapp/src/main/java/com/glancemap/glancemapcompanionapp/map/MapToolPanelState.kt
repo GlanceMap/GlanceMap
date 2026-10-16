@@ -208,7 +208,7 @@ internal data class PhoneMapComparisonState(
             is PhoneMapComparisonLayer.Online ->
                 base is PhoneMapSource.Online || base is PhoneMapSource.Offline
             is PhoneMapComparisonLayer.Offline ->
-                base == PhoneMapSource.Online && selectedLayer.map in offlineMaps
+                selectedLayer.map in offlineMaps
         }
 }
 

@@ -1,7 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map.maplibre
 
+import com.glancemap.glancemapcompanionapp.map.OnlineMapProvider
 import com.glancemap.glancemapcompanionapp.map.PhoneMapRendererCatalog
-import com.glancemap.glancemapcompanionapp.map.RasterOnlineMapProvider
 import com.glancemap.glancemapcompanionapp.map.mapTilerSatelliteProvider
 import com.glancemap.glancemapcompanionapp.map.tracestrackTopoProvider
 import org.junit.Assert.assertEquals
@@ -12,7 +12,7 @@ class MapLibreRasterStyleTest {
     @Test
     fun styleIsBuiltFromProviderConfigurationAndEscapesText() {
         val style =
-            RasterOnlineMapProvider(
+            OnlineMapProvider(
                 id = "test",
                 displayName = "Test",
                 attribution = "Test \"attribution\"",
@@ -22,6 +22,30 @@ class MapLibreRasterStyleTest {
         assertTrue(style.contains("https://example.test/{z}/{x}/{y}.png"))
         assertTrue(style.contains("Test \\\"attribution\\\""))
         assertTrue(style.contains("\"id\": \"$PHONE_MAPLIBRE_ONLINE_RASTER_LAYER_ID\""))
+    }
+
+    @Test
+    fun swissRasterStylesKeepTheirGeographicBoundsAndXyzOrder() {
+        val provider =
+            requireNotNull(
+                PhoneMapRendererCatalog.providerForOnlineSource(
+                    com.glancemap.glancemapcompanionapp.map.PhoneOnlineMapSource.SWISS_TOPO,
+                ),
+            )
+        val style = provider.mapLibreRasterStyleJson()
+        assertTrue(style.contains("\"bounds\": [5.140242, 45.398181, 11.47757, 48.230651]"))
+        assertTrue(style.contains("/3857/{z}/{x}/{y}.jpeg"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun providerRejectsAmbiguousRasterAndVectorConfiguration() {
+        OnlineMapProvider(
+            id = "invalid",
+            displayName = "Invalid",
+            attribution = "Example",
+            rasterTileUrlTemplate = "https://example.test/{z}/{x}/{y}.png",
+            styleUrl = "https://example.test/style.json",
+        )
     }
 
     @Test

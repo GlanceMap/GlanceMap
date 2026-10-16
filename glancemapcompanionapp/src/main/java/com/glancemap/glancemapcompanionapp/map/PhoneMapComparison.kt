@@ -11,9 +11,7 @@ internal enum class PhoneMapLibreSurfaceMode {
     COMPARISON,
 }
 
-internal fun phoneMapLibreSurfaceUsesTexture(
-    mode: PhoneMapLibreSurfaceMode,
-): Boolean = mode == PhoneMapLibreSurfaceMode.COMPARISON
+internal fun phoneMapLibreSurfaceUsesTexture(mode: PhoneMapLibreSurfaceMode): Boolean = mode == PhoneMapLibreSurfaceMode.COMPARISON
 
 internal fun phoneMapComparisonOwnsSemanticOverlays(
     offlineComparisonActive: Boolean,
@@ -28,12 +26,14 @@ internal fun phoneMapComparisonOwnsUserCamera(
 internal fun phoneMapComparisonOwnsFollowAndCommands(
     baseSource: PhoneMapSource,
     onlineComparisonActive: Boolean,
-): Boolean = baseSource is PhoneMapSource.Offline && onlineComparisonActive
+    offlineComparisonActive: Boolean = false,
+): Boolean = baseSource is PhoneMapSource.Offline && (onlineComparisonActive || offlineComparisonActive)
 
 internal fun phoneMapComparisonOwnsInitialGpxFit(
     baseSource: PhoneMapSource,
     onlineComparisonActive: Boolean,
-): Boolean = baseSource is PhoneMapSource.Offline && onlineComparisonActive
+    offlineComparisonActive: Boolean = false,
+): Boolean = baseSource is PhoneMapSource.Offline && (onlineComparisonActive || offlineComparisonActive)
 
 /** A comparison renderer owns GPX exactly once, including its initial fit-to-route behavior. */
 internal fun phoneMapComparisonBaseGpxSegments(
@@ -52,4 +52,23 @@ internal fun phoneMapComparisonCameraNeedsSync(
         phoneMapBearingNeedsSync(current.bearingDegrees, target.bearingDegrees)
 
 @Suppress("MaxLineLength") // The alpha conversion is intentionally a single pure expression.
-internal fun PhoneMapComparisonState.overlayAlpha(): Float = (1f - transparencyPercent.coerceIn(0f, 100f) / 100f).coerceIn(0f, 1f)
+internal fun PhoneMapComparisonState.overlayAlpha(): Float =
+    (
+        1f - transparencyPercent.coerceIn(
+            0f,
+            100f,
+        ) / 100f
+    ).coerceIn(0f, 1f)
+
+internal fun PhoneMapUiState.swapComparison(baseOnlineSource: PhoneOnlineMapSource): PhoneMapUiState {
+    val upper = comparison.layer ?: return this
+    val newBase =
+        when (upper) {
+            is PhoneMapComparisonLayer.Online -> PhoneMapSource.Online
+            is PhoneMapComparisonLayer.Offline -> PhoneMapSource.Offline(upper.map)
+        }
+    return nextComparisonSelectionRequest()
+        .changeBaseSource(newBase)
+        .selectComparisonLayer(source.asComparisonLayer(baseOnlineSource))
+        .setComparisonTransparency(100f - comparison.transparencyPercent)
+}

@@ -7,16 +7,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,11 +20,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapcompanionapp.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -39,7 +35,6 @@ import java.io.File
 class MapLayerPanelTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
-
     private val offlineMap = PhoneOfflineMap(File("Long offline map name for the comparison dropdown.map"))
     private val onlineLayer = PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP)
     private val state =
@@ -57,18 +52,7 @@ class MapLayerPanelTest {
     private val progress = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 
     @Test
-    fun quickDisplayIsAvailableInLayersAndOfflineControlsFollowTheBaseMap() {
-        setContent()
-        quickControl(R.string.map_tools_maps_quick_display_heading).assertExists()
-        quickControl(R.string.map_tools_maps_live_elevation).assertExists()
-        quickControl(R.string.map_tools_maps_live_distance).assertExists()
-        quickControl(R.string.map_tools_maps_night_mode).assertDoesNotExist()
-        composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
-        quickControl(R.string.map_tools_maps_night_mode).assertExists()
-    }
-
-    @Test
-    fun overallGpxAndPoiVisibilityUseTheSharedLayerState() {
+    fun quickDisplayVisibilityControlsUseTheSharedStateAndNightFollowsOfflineBase() {
         setContent()
         listOf(R.string.map_tools_gpx_global_visibility, R.string.map_tools_poi_global_visibility).forEach { label ->
             composeRule
@@ -82,116 +66,115 @@ class MapLayerPanelTest {
             assertEquals(false, state.value.gpxVisible)
             assertEquals(false, state.value.poiVisible)
         }
+        val night = composeRule.activity.getString(R.string.map_tools_maps_night_mode)
+        composeRule.onNodeWithContentDescription(night).assertDoesNotExist()
+        composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
+        composeRule.onNodeWithContentDescription(night).performScrollTo().assertExists()
     }
 
-    private fun quickControl(label: Int) = composeRule.onNodeWithText(composeRule.activity.getString(label))
-
     @Test
-    fun onlineBaseDropdownSelectsOnlineAndOfflineLayersAndClearKeepsTransparency() {
+    fun comparisonPickerSelectsOnlineAndOfflineAndOffRetainsTheMix() {
         setContent()
-        composeRule.onNode(progress).assertIsNotEnabled()
-        composeRule.onNodeWithText(offlineMap.displayName).assertDoesNotExist()
+        composeRule.onNode(progress).assertDoesNotExist()
         picker().performClick()
-        composeRule
-            .onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(state.value.baseOnlineSource))
-            .assertDoesNotExist()
         PhoneMapRendererCatalog
             .supportedOnlineSources()
-            .filterNot(PhoneMapRendererCatalog::isOnlineSourceAvailable)
-            .forEach { source ->
-                composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(source)).assertDoesNotExist()
+            .filterNot(
+                PhoneMapRendererCatalog::isOnlineSourceAvailable,
+            ).forEach {
+                composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(it)).assertDoesNotExist()
             }
-        composeRule.onNodeWithText(offlineMap.displayName).assertIsDisplayed().performClick()
-        picker().assertIsDisplayed()
-        composeRule.onNodeWithText(offlineMap.displayName).assertDoesNotExist()
-        composeRule.onNode(progress).performTouchInput { click(Offset(center.x * 1.5f, center.y)) }
-        composeRule.runOnIdle {
-            assertEquals(PhoneMapComparisonLayer.Offline(offlineMap), state.value.comparison.layer)
-            assertTrue(state.value.comparison.transparencyPercent in 65f..85f)
-        }
-        composeRule.onNode(progress).performSemanticsAction(SemanticsActions.SetProgress) { it(100f) }
-        clear().performClick()
+        composeRule.onNodeWithText(offlineMap.displayName).performClick()
+        composeRule.onNode(progress).performSemanticsAction(SemanticsActions.SetProgress) { it(25f) }
+        picker().performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_none)).performClick()
         composeRule.runOnIdle {
             assertEquals(null, state.value.comparison.layer)
-            assertEquals(100f, state.value.comparison.transparencyPercent, 0f)
+            assertEquals(75f, state.value.comparison.transparencyPercent, 0f)
         }
-        clear().assertDoesNotExist()
-        composeRule.onNode(progress).assertIsNotEnabled()
+        composeRule.onNode(progress).assertDoesNotExist()
         picker().performClick()
         composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(onlineLayer.source)).performClick()
         composeRule.runOnIdle { assertEquals(onlineLayer, state.value.comparison.layer) }
     }
 
     @Test
-    fun offlineBaseDropdownOnlyOffersOnlineLayers() {
+    fun sameOfflineMapOffersIndependentThemesAndBasePickerChangesTheBase() {
         state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap))
-        setContent()
+        setContent(expanded = true)
         picker().performClick()
-        composeRule.onNodeWithText(offlineMap.displayName).assertDoesNotExist()
-        composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(onlineLayer.source)).performClick()
-        picker().assertIsDisplayed()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_same_map_theme)).performClick()
         composeRule.runOnIdle {
-            assertEquals(onlineLayer, state.value.comparison.layer)
-            assertEquals(PhoneMapSource.Offline(offlineMap), state.value.base)
+            assertEquals(PhoneMapComparisonLayer.Offline(offlineMap), state.value.comparison.layer)
+            assertNotEquals(state.value.baseThemeConfig, state.value.comparisonThemeConfig)
+        }
+        val originalComparison = state.value.comparisonThemeConfig
+        composeRule.onNodeWithTag("layer-base-theme").performScrollTo().performClick()
+        composeRule.onNodeWithText("Mapsforge").performClick()
+        composeRule.runOnIdle {
+            assertEquals(PhoneOfflineThemeCatalog.MAPSFORGE_THEME_ID, state.value.baseThemeConfig.themeId)
+            assertEquals(originalComparison, state.value.comparisonThemeConfig)
+        }
+        composeRule.onNodeWithTag("layer-base-picker").performScrollTo().performClick()
+        composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(onlineLayer.source)).performClick()
+        composeRule.runOnIdle {
+            assertEquals(PhoneMapSource.Online, state.value.base)
+            assertEquals(onlineLayer.source, state.value.baseOnlineSource)
         }
     }
 
     @Test
-    fun allThreeCombinationsShowBaseLayerClearAndSliderAtDefaultSizeOnASmallPhone() {
+    fun mixStaysAboveTheScrollableSelectorsInEveryComparisonCombination() {
         setContent()
-        val combinations =
-            listOf(
-                PhoneMapSource.Online to onlineLayer,
-                PhoneMapSource.Online to PhoneMapComparisonLayer.Offline(offlineMap),
-                PhoneMapSource.Offline(offlineMap) to onlineLayer,
-            )
-        combinations.forEach { (base, layer) ->
+        listOf(
+            PhoneMapSource.Online to onlineLayer,
+            PhoneMapSource.Online to PhoneMapComparisonLayer.Offline(offlineMap),
+            PhoneMapSource.Offline(offlineMap) to onlineLayer,
+            PhoneMapSource.Offline(offlineMap) to PhoneMapComparisonLayer.Offline(offlineMap),
+        ).forEach { (base, layer) ->
             composeRule.runOnIdle {
-                state.value = state.value.copy(base = base, comparison = PhoneMapComparisonState(layer, 50f))
+                state.value =
+                    state.value.copy(base = base, comparison = PhoneMapComparisonState(layer))
             }
-            val panel = composeRule.onNodeWithTag("layer-test-panel").fetchSemanticsNode().boundsInRoot
-            val baseBounds = composeRule.onNodeWithText(baseLabel()).fetchSemanticsNode().boundsInRoot
-            val pickerBounds = picker().assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-            val clearBounds = clear().assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-            val sliderBounds =
+            val mix =
                 composeRule
-                    .onNode(progress)
+                    .onNodeWithTag("layer-comparison-mix")
                     .assertIsDisplayed()
                     .fetchSemanticsNode()
                     .boundsInRoot
-            assertTrue(baseBounds.top >= panel.top)
-            assertTrue(baseBounds.bottom <= pickerBounds.top)
-            assertEquals(pickerBounds.center.y, clearBounds.center.y, 1f)
-            assertTrue(sliderBounds.top >= pickerBounds.bottom)
-            assertTrue("Slider must fit without scrolling", sliderBounds.bottom <= panel.bottom + 1f)
+            val a =
+                composeRule
+                    .onNodeWithTag("layer-base-picker")
+                    .assertIsDisplayed()
+                    .fetchSemanticsNode()
+                    .boundsInRoot
+            val b = picker().assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue(mix.bottom <= a.top)
+            assertEquals(a.top, b.top, 1f)
+            composeRule
+                .onNodeWithContentDescription(
+                    composeRule.activity.getString(R.string.map_tools_poi_global_visibility),
+                ).performScrollTo()
+            val scrolledMix =
+                composeRule
+                    .onNodeWithTag("layer-comparison-mix")
+                    .assertIsDisplayed()
+                    .fetchSemanticsNode()
+                    .boundsInRoot
+            assertEquals(mix, scrolledMix)
+            composeRule.onNodeWithTag("layer-base-picker").performScrollTo()
         }
     }
 
-    private fun picker() =
-        composeRule.onNodeWithText(
-            composeRule.activity.getString(R.string.map_layer_select_source) + ": " +
-                when (val layer = state.value.comparison.layer) {
-                    is PhoneMapComparisonLayer.Online -> PhoneMapRendererCatalog.onlineSourceLabel(layer.source)
-                    is PhoneMapComparisonLayer.Offline -> layer.map.displayName
-                    null -> composeRule.activity.getString(R.string.map_layer_none)
-                },
-        )
+    private fun picker() = composeRule.onNodeWithTag("layer-comparison-picker")
 
-    private fun clear() = composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.map_layer_clear))
-
-    private fun baseLabel(): String =
-        composeRule.activity.getString(R.string.map_layer_base_source) + ": " +
-            when (val base = state.value.base) {
-                PhoneMapSource.Online -> PhoneMapRendererCatalog.onlineSourceLabel(state.value.baseOnlineSource)
-                is PhoneMapSource.Offline -> base.map.displayName
-            }
-
-    private fun setContent() {
+    private fun setContent(expanded: Boolean = false) {
         composeRule.setContent {
             MaterialTheme {
-                Box(Modifier.size(width = 360.dp, height = 660.dp)) {
+                Box(Modifier.size(360.dp, 660.dp)) {
+                    val panel = MapToolPanelState().select(MapTool.LAYER).let { if (expanded) it.expand() else it }
                     MapToolScaffold(
-                        presentation = MapToolScaffoldState(MapToolPanelState().select(MapTool.LAYER)),
+                        presentation = MapToolScaffoldState(panel),
                         actions =
                             MapToolScaffoldActions(
                                 onToolSelected = {},
@@ -208,27 +191,48 @@ class MapLayerPanelTest {
                             ),
                         mapContent = { Box(Modifier.fillMaxSize()) },
                         panelContent = { _, _, _ ->
-                            Box(Modifier.fillMaxSize().testTag("layer-test-panel")) {
-                                mapToolsLayerPanel(
-                                    state = state.value,
-                                    onLayerChanged = { layer ->
-                                        state.value = state.value.copy(comparison = state.value.comparison.copy(layer = layer))
-                                    },
-                                    onTransparencyChanged = { transparency ->
-                                        state.value =
-                                            state.value.copy(
-                                                comparison = state.value.comparison.copy(transparencyPercent = transparency),
-                                            )
-                                    },
-                                    onMapSettingsChanged = {},
-                                    onGpxVisibilityChanged = { state.value = state.value.copy(gpxVisible = it) },
-                                    onPoiVisibilityChanged = { state.value = state.value.copy(poiVisible = it) },
-                                )
-                            }
+                            mapToolsLayerPanel(
+                                state.value,
+                                layerActions(),
+                            )
                         },
                     )
                 }
             }
         }
     }
+
+    private fun layerActions() =
+        MapToolsLayerActions(
+            onLayerChanged = {
+                state.value =
+                    state.value.copy(comparison = state.value.comparison.copy(layer = it))
+            },
+            onTransparencyChanged = {
+                state.value =
+                    state.value.copy(comparison = state.value.comparison.withTransparency(it))
+            },
+            onMapSettingsChanged = { state.value = state.value.copy(mapSettings = it) },
+            onGpxVisibilityChanged = { state.value = state.value.copy(gpxVisible = it) },
+            onPoiVisibilityChanged = { state.value = state.value.copy(poiVisible = it) },
+            onBaseMapChanged = { layer ->
+                state.value =
+                    when (layer) {
+                        is PhoneMapComparisonLayer.Online ->
+                            state.value.copy(
+                                base = PhoneMapSource.Online,
+                                baseOnlineSource = layer.source,
+                            )
+                        is PhoneMapComparisonLayer.Offline ->
+                            state.value.copy(
+                                base = PhoneMapSource.Offline(layer.map),
+                            )
+                    }
+            },
+            onBaseThemeChanged = { state.value = state.value.copy(baseThemeConfig = it) },
+            onComparisonThemeChanged = {
+                state.value =
+                    state.value.copy(comparisonThemeConfig = it)
+            },
+        )
 }

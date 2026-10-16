@@ -182,6 +182,38 @@ class PhoneMapSearchTest {
             }
         }
 
+    @Test
+    fun onlineSearchCanBeEnabledWithoutChangingLocalSourcesOrLosingTheQuery() =
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val requests = mutableListOf<PhoneMapSearchRequest>()
+            val controller =
+                PhoneMapSearchController(scope) { request, _ ->
+                    requests += request
+                    PhoneMapSearchReply(listOf(result))
+                }
+            try {
+                controller.setContext(online = false, poiFiles = setOf("local.poi"))
+                controller.edit("Grenoble")
+                controller.submit(bias)
+                assertFalse(requests.single().online)
+
+                controller.setContext(online = true, poiFiles = setOf("local.poi"))
+                assertEquals("Grenoble", controller.state.value.query)
+                assertFalse(controller.state.value.searched)
+                assertTrue(
+                    controller.state.value.reply.results
+                        .isEmpty(),
+                )
+                controller.submit(bias)
+                assertTrue(requests.last().online)
+                assertEquals(requests.first().copy(online = true), requests.last())
+                assertEquals(listOf(result), controller.state.value.reply.results)
+            } finally {
+                scope.cancel()
+            }
+        }
+
     private fun response(
         code: Int,
         body: String,

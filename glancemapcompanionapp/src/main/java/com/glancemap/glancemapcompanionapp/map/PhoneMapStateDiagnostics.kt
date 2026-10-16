@@ -20,6 +20,13 @@ internal fun PhoneOnlineMapSource.diagnosticProviderId(): String =
         PhoneOnlineMapSource.CYCLOSM -> "cyclosm"
         PhoneOnlineMapSource.TRACESTRACK_TOPO -> "tracestrack_topo"
         PhoneOnlineMapSource.SATELLITE -> "maptiler_satellite"
+        PhoneOnlineMapSource.OPEN_FREE_MAP -> "open_free_map"
+        PhoneOnlineMapSource.IGN_ORTHOPHOTO -> "ign_orthophoto"
+        PhoneOnlineMapSource.SWISS_TOPO -> "swiss_topo"
+        PhoneOnlineMapSource.SWISS_IMAGE -> "swiss_image"
+        PhoneOnlineMapSource.USGS_TOPO -> "usgs_topo"
+        PhoneOnlineMapSource.USGS_IMAGERY -> "usgs_imagery"
+        PhoneOnlineMapSource.ESRI_WORLD_IMAGERY -> "esri_world_imagery"
     }
 
 internal data class PhoneMapDiagnosticRenderer(

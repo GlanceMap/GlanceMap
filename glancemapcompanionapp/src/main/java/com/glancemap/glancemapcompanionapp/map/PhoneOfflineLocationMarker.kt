@@ -1,9 +1,10 @@
 package com.glancemap.glancemapcompanionapp.map
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
+import android.content.Context
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.Point
@@ -29,13 +30,34 @@ internal fun phoneOfflineMarkerScreenRotationDegrees(
 internal class PhoneOfflineLocationMarker(
     location: LatLong,
     val markerStyle: PhoneMapMarkerStyle,
+    private val context: Context,
     private val onFirstDrawCall: (PhoneOfflineLocationMarker) -> Unit = {},
 ) : Marker(
         location,
-        phoneLocationMarkerBitmap(markerStyle),
-        -PHONE_LOCATION_MARKER_SIZE_PX / 2,
-        -PHONE_LOCATION_MARKER_SIZE_PX / 2,
+        phoneLocationMarkerBitmap(context, markerStyle, compassRenderable = false),
+        0,
+        0,
     ) {
+    private var hasCompassCone = false
+
+    init {
+        centerBitmap()
+    }
+
+    fun updateCompassAppearance(compassRenderable: Boolean) {
+        val showCone = compassRenderable && markerStyle == PhoneMapMarkerStyle.DOT
+        if (hasCompassCone == showCone) return
+        bitmap = phoneLocationMarkerBitmap(context, markerStyle, showCone)
+        hasCompassCone = showCone
+        centerBitmap()
+    }
+
+    private fun centerBitmap() {
+        val markerBitmap = requireNotNull(bitmap)
+        horizontalOffset = -markerBitmap.width / 2
+        verticalOffset = -markerBitmap.height / 2
+    }
+
     var heading: Float = 0f
         set(value) {
             field = normalizePhoneHeadingDegrees(value)
@@ -54,6 +76,15 @@ internal class PhoneOfflineLocationMarker(
     private val firstDrawCallObserved = AtomicBoolean(false)
 
     @Volatile private var lastDrawOutcome = "not_called"
+
+    @Volatile private var orientationObservation: Pair<Long, PhoneMapOrientationMarker>? = null
+
+    fun orientationDiagnosticSample(sessionId: Long): PhoneMapOrientationMarker? =
+        orientationObservation
+            ?.takeIf {
+                it.first ==
+                    sessionId
+            }?.second
 
     val drawCalls: Int
         get() = drawCallCount.get()
@@ -95,6 +126,21 @@ internal class PhoneOfflineLocationMarker(
                 canvas.restore()
                 bitmapDrawCount.incrementAndGet()
                 lastDrawOutcome = "bitmap_drawn"
+                if (PhoneDebugCapture.isActive()) {
+                    PhoneDebugCapture.activeSessionId()?.let { sessionId ->
+                        orientationObservation =
+                            sessionId to
+                            PhoneMapOrientationMarker(
+                                screenDegrees =
+                                    normalizePhoneHeadingDegrees(
+                                        effectiveRotation + mapViewRotation.degrees,
+                                    ),
+                                observedVia = "mapsforge_draw",
+                                animationEnabled = false,
+                                sampleElapsedMs = SystemClock.elapsedRealtime(),
+                            )
+                    }
+                }
             }
         }
         notifyFirstDrawCallIfNeeded()
@@ -117,74 +163,12 @@ internal class PhoneOfflineLocationMarker(
     }
 }
 
-private fun phoneLocationMarkerBitmap(style: PhoneMapMarkerStyle): AndroidBitmap {
-    val bitmap =
-        Bitmap.createBitmap(
-            PHONE_LOCATION_MARKER_SIZE_PX,
-            PHONE_LOCATION_MARKER_SIZE_PX,
-            Bitmap.Config.ARGB_8888,
-        )
-    val canvas = Canvas(bitmap)
-    val size = PHONE_LOCATION_MARKER_SIZE_PX.toFloat()
-    val center = size / 2f
-    if (style == PhoneMapMarkerStyle.TRIANGLE) {
-        val path =
-            Path().apply {
-                moveTo(center, size * 0.05f)
-                lineTo(size * 0.20f, size * 0.88f)
-                lineTo(center, size * 0.70f)
-                lineTo(size * 0.80f, size * 0.88f)
-                close()
-            }
-        canvas.drawPath(
-            path,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = PHONE_NAVIGATION_MARKER_BLUE_ARGB
-                this.style = Paint.Style.FILL
-            },
-        )
-        canvas.drawPath(
-            path,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xAA001A33.toInt()
-                this.style = Paint.Style.STROKE
-                strokeWidth = size * 0.04f
-            },
-        )
-    } else {
-        val radius = size * 0.23f
-        canvas.drawCircle(
-            center,
-            center,
-            radius + size * 0.01f,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xE6FFFFFF.toInt()
-                this.style = Paint.Style.STROKE
-                strokeWidth = size * 0.06f
-            },
-        )
-        canvas.drawCircle(
-            center,
-            center,
-            radius,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = PHONE_NAVIGATION_MARKER_BLUE_ARGB
-                this.style = Paint.Style.FILL
-            },
-        )
-        canvas.drawCircle(
-            center,
-            center,
-            radius,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xAA000000.toInt()
-                this.style = Paint.Style.STROKE
-                strokeWidth = size * 0.03f
-            },
-        )
-    }
-    return AndroidBitmap(bitmap)
+private fun phoneLocationMarkerBitmap(
+    context: Context,
+    style: PhoneMapMarkerStyle,
+    compassRenderable: Boolean,
+): AndroidBitmap {
+    val drawable =
+        requireNotNull(ContextCompat.getDrawable(context, phoneLocationMarkerDrawable(style, compassRenderable)))
+    return AndroidBitmap(drawable.toBitmap())
 }
-
-private const val PHONE_LOCATION_MARKER_SIZE_PX = 32
-private const val PHONE_NAVIGATION_MARKER_BLUE_ARGB = 0xFF007AFF.toInt()

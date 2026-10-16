@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
@@ -19,13 +20,16 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextButtonDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -466,29 +470,50 @@ private fun phoneOfflineBundleAreaSelector(
                 }
             }
             items(matchingAreas, key = { it.id }) { area ->
+                val isSelected = area.id == selectorState.selectedAreaId
                 TextButton(
                     onClick = { onAreaSelected(area.id) },
                     modifier = Modifier.fillMaxWidth(),
+                    colors =
+                        TextButtonDefaults.textButtonColors(
+                            containerColor =
+                                if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                            contentColor =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                        ),
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(area.region)
-                        Text(
-                            stringResource(
-                                R.string.map_bundle_area_sizes,
-                                area.mapSizeLabel,
-                                area.poiSizeLabel,
-                            ),
-                        )
-                        if (area.id in selectorState.installedAreaIds) {
-                            Text(stringResource(R.string.map_bundle_area_installed))
-                        } else if (
-                            selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.RECOVERY_NEEDED
-                        ) {
-                            Text(stringResource(R.string.map_bundle_area_recovery))
-                        } else if (selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.PARTIAL) {
-                            Text(stringResource(R.string.map_bundle_area_partial))
-                        } else if (area.id == selectorState.selectedAreaId) {
-                            Text(stringResource(R.string.map_bundle_area_selected))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(area.region)
+                            Text(
+                                stringResource(
+                                    R.string.map_bundle_area_sizes,
+                                    area.mapSizeLabel,
+                                    area.poiSizeLabel,
+                                ),
+                            )
+                            if (area.id in selectorState.installedAreaIds) {
+                                Text(stringResource(R.string.map_bundle_area_installed))
+                            } else if (
+                                selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.RECOVERY_NEEDED
+                            ) {
+                                Text(stringResource(R.string.map_bundle_area_recovery))
+                            } else if (selectorState.statusByAreaId[area.id]?.status == PhoneOfflineBundleStatus.PARTIAL) {
+                                Text(stringResource(R.string.map_bundle_area_partial))
+                            }
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = stringResource(R.string.map_bundle_area_selected),
+                            )
                         }
                     }
                 }

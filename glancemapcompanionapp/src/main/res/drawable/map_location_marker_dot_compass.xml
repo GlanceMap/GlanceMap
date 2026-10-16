@@ -1,0 +1,38 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="58dp"
+    android:height="58dp"
+    android:viewportWidth="58"
+    android:viewportHeight="58">
+    <!-- Same cone geometry and gradient as the watch's CompassConeLayer. -->
+    <path
+        android:pathData="M29,29L23.2,26.1L11.6,4.06L46.4,4.06L34.8,26.1Z"
+        android:strokeColor="#5734C759"
+        android:strokeWidth="0.58">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="29"
+                android:startY="29"
+                android:endX="29"
+                android:endY="4.06"
+                android:type="linear">
+                <item android:color="#0034C759" android:offset="0" />
+                <item android:color="#BD34C759" android:offset="0.14" />
+                <item android:color="#8034C759" android:offset="0.62" />
+                <item android:color="#2E34C759" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <group android:translateX="13" android:translateY="13">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#E6FFFFFF"
+            android:strokeWidth="1.92"
+            android:pathData="M16,8.32A7.68,7.68 0,1 0,16 23.68A7.68,7.68 0,1 0,16 8.32" />
+        <path
+            android:fillColor="#007AFF"
+            android:strokeColor="#AA000000"
+            android:strokeWidth="0.96"
+            android:pathData="M16,8.64A7.36,7.36 0,1 0,16 23.36A7.36,7.36 0,1 0,16 8.64" />
+    </group>
+</vector>

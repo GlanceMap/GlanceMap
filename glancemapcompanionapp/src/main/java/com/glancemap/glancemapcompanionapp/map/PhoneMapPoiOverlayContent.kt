@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +108,7 @@ internal fun phoneMapPoiDetailsCard(
     isMetric: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onUseAsCheckpoint: (() -> Unit)? = null,
 ) {
     val details = poi.details
     PhoneMapPopupCard(
@@ -143,6 +145,9 @@ internal fun phoneMapPoiDetailsCard(
             Text(text = stringResource(R.string.map_poi_state_value, state))
         }
         details?.shortDescription?.let { description -> Text(text = description) }
+        onUseAsCheckpoint?.let { onUse ->
+            TextButton(onClick = onUse) { Text(stringResource(R.string.hike_add_checkpoint)) }
+        }
     }
 }
 

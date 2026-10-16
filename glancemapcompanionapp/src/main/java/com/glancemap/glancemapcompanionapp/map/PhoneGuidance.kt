@@ -7,6 +7,8 @@ import com.glancemap.trailcore.guidance.TrailGuidanceSession
 import com.glancemap.trailcore.guidance.TrailGuidanceState
 import com.glancemap.trailcore.guidance.buildTrailGuidanceSession
 import com.glancemap.trailcore.guidance.reverseTrailPoints
+import com.glancemap.trailcore.guidance.shouldAlertForTurn
+import com.glancemap.trailcore.guidance.turnAlertDistanceMeters
 import com.glancemap.trailcore.profile.TrailPacingConfig
 import com.glancemap.trailcore.profile.TrailPoint
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
@@ -21,7 +23,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.UUID
 
-internal enum class PhoneGuidanceMessage { IDLE, LOADING, ACTIVE, PAUSED, FINISHED, FAILED }
+internal enum class PhoneGuidanceMessage {
+    IDLE,
+    LOADING,
+    ACTIVE,
+    PAUSED,
+    FINISHED,
+    GPS_UNAVAILABLE,
+    PERMISSION_REQUIRED,
+    FAILED,
+}
 
 internal enum class PhoneGuidanceDecision { START_HERE, REVERSE_ROUTE }
 
@@ -69,6 +80,27 @@ internal data class PhoneGuidanceUiState(
     val pendingDecision: PhoneGuidanceDecision? = null,
     val message: PhoneGuidanceMessage = PhoneGuidanceMessage.IDLE,
 )
+
+/** Keeps route progress while removing location-dependent guidance until a fresh fix arrives. */
+internal fun PhoneGuidanceUiState.withLocationUnavailable(message: PhoneGuidanceMessage): PhoneGuidanceUiState {
+    if (session == null || paused || guidance?.mode == TrailGuidanceMode.FINISHED) return this
+    val waitingGuidance =
+        guidance?.copy(
+            active = true,
+            mode = TrailGuidanceMode.WAITING_FOR_LOCATION,
+            nextInstruction = null,
+            distanceToInstructionMeters = null,
+            followingInstruction = null,
+            distanceToFollowingInstructionMeters = null,
+            distanceToStartMeters = null,
+            bearingToStartDegrees = null,
+            distanceToRouteMeters = null,
+            bearingToRouteDegrees = null,
+            offRoute = false,
+            currentAltitudeMeters = null,
+        )
+    return copy(guidance = waitingGuidance, pendingDecision = null, message = message)
+}
 
 /** Published by the service so navigation and activity recreation cannot own the guidance lifetime. */
 internal object PhoneGuidanceSessionStore {
@@ -143,6 +175,28 @@ internal data class PhoneGuidanceFeedbackSettings(
     val voiceEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
 )
+
+internal fun phoneGuidanceVoiceInstructionKey(
+    guidance: TrailGuidanceState,
+    paused: Boolean,
+    voiceEnabled: Boolean,
+    speedMps: Float?,
+    activityProfile: String,
+    turnAlertsMode: String,
+): String? {
+    if (!guidance.active || !voiceEnabled || paused || guidance.mode != TrailGuidanceMode.FOLLOW_ROUTE || guidance.offRoute) return null
+    val instruction = guidance.nextInstruction ?: return null
+    if (!shouldAlertForTurn(turnAlertsMode, instruction.command)) return null
+    val instructionDistance = guidance.distanceToInstructionMeters?.takeIf { it.isFinite() } ?: return null
+    val routeProgress = guidance.distanceFromStartMeters?.takeIf { it.isFinite() } ?: return null
+    if (routeProgress > instruction.distanceFromStartMeters ||
+        instructionDistance > turnAlertDistanceMeters(speedMps, activityProfile)
+    ) {
+        return null
+    }
+    val sessionKey = guidance.alertSessionKey ?: return null
+    return "$sessionKey:${instruction.trackPointIndex}:${instruction.command}"
+}
 
 internal class PhoneGuidanceFeedbackPreferences(
     context: Context,

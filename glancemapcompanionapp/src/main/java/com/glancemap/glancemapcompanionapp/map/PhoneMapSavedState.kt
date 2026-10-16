@@ -129,3 +129,15 @@ private fun Map<String, Any?>.offlineMap(prefix: String): PhoneOfflineMap? =
     (this["${prefix}Path"] as String?)?.let { path ->
         PhoneOfflineMap(File(path), contentRevision = this["${prefix}Revision"] as String)
     }
+
+internal val phoneMapLegendViewsSaver =
+    listSaver<List<PhoneMapLegendView>, String>(
+        save = { views -> views.flatMap { listOf(it.label, it.sourceLabel, it.themeId.orEmpty()) } },
+        restore = { values ->
+            values.chunked(3).mapNotNull { view ->
+                view.takeIf { it.size == 3 }?.let {
+                    PhoneMapLegendView(it[0], it[1], it[2].ifEmpty { null })
+                }
+            }
+        },
+    )

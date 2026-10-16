@@ -339,21 +339,21 @@ class MapToolPanelStateTest {
     }
 
     @Test
-    fun comparisonLayerOnlyAcceptsTheOtherRendererAndInstalledOfflineMap() {
+    fun comparisonAcceptsInstalledOfflineMapsAboveEitherBase() {
         val offlineMap = PhoneOfflineMap(File("alps.map"))
         val onlineWithOfflineLayer =
             PhoneMapUiState()
                 .selectComparisonLayer(PhoneMapComparisonLayer.Offline(offlineMap))
 
         assertTrue(onlineWithOfflineLayer.comparison.isAvailableFor(PhoneMapSource.Online, listOf(offlineMap)))
-        assertFalse(
+        assertTrue(
             onlineWithOfflineLayer.comparison.isAvailableFor(
                 PhoneMapSource.Offline(offlineMap),
                 listOf(offlineMap),
             ),
         )
         assertEquals(
-            null,
+            PhoneMapComparisonLayer.Offline(offlineMap),
             onlineWithOfflineLayer
                 .copy(source = PhoneMapSource.Offline(offlineMap))
                 .clearUnavailableComparison(listOf(offlineMap))

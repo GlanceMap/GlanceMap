@@ -47,6 +47,11 @@ internal fun PhoneRouteToolsPanel(
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
+        actions.onPlanAcrossDays?.let { onPlan ->
+            OutlinedButton(onClick = onPlan, enabled = !state.isRouting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.stage_plan_across_days))
+            }
+        }
         phoneRouteBackendSelector()
         phoneRouteToolKindSelector(
             selected = state.toolKind,

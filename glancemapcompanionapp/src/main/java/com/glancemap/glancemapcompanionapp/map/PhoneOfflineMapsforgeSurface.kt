@@ -23,8 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
+import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.trailcore.poi.PoiType
+import org.maplibre.android.gestures.AndroidGesturesManager
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.MapPosition
@@ -114,6 +118,7 @@ internal data class PhoneOfflineMapSurfaceState(
     val pois: List<PhoneMapPoi>,
     val poiSettings: PhoneMapPoiSettings = PhoneMapPoiSettings(),
     val mapMode: PhoneMapMode,
+    val gestureMapMode: PhoneMapMode = mapMode,
     val cameraCommand: PhoneMapCameraCommand?,
     val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode, null),
     val location: PhoneMapLocation? = null,
@@ -133,6 +138,12 @@ internal fun phoneOfflineBaseLayerOpacityUpdate(
     return clampedOpacity.takeIf { abs(currentAlpha - it) > 0.001f }
 }
 
+/** Mapsforge clears its destination canvas; contain that clear before blending over another map. */
+internal fun Modifier.phoneOfflineMapCompositing(transparentBackground: Boolean): Modifier {
+    if (!transparentBackground) return this
+    return graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+}
+
 @Composable
 internal fun offlineMapSurface(
     state: PhoneOfflineMapSurfaceState,
@@ -144,6 +155,7 @@ internal fun offlineMapSurface(
     key(rendererOwner.generation, rendererOwner.role) {
         val currentCallbacks by rememberUpdatedState(callbacks)
         var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
+        phoneMapOrientationTelemetry(holder) { holder?.orientationDiagnosticSample() }
 
         AndroidView(
             factory = { context ->
@@ -180,7 +192,7 @@ internal fun offlineMapSurface(
                 activeHolder.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
                 activeHolder.render(state)
             },
-            modifier = modifier,
+            modifier = modifier.phoneOfflineMapCompositing(state.transparentBackground),
         )
 
         DisposableEffect(Unit) {
@@ -194,7 +206,7 @@ internal fun offlineMapSurface(
 private class PhoneOfflineMapsforgeView(
     context: Context,
     transparentBackground: Boolean,
-    rendererRole: PhoneOfflineMapRendererRole,
+    private val rendererRole: PhoneOfflineMapRendererRole,
     private val callbacks: PhoneOfflineMapsforgeCallbacks,
 ) : FrameLayout(context) {
     private val usesTransparentFramebuffer = transparentBackground
@@ -211,6 +223,7 @@ private class PhoneOfflineMapsforgeView(
             mapScaleBar.isVisible = false
         }
     private val rotationGestureTracker = PhoneMapsforgeRotationGestureTracker()
+    private val centeredTouch = PhoneMapCenteredTouchSequence()
     private val longPressDetector =
         phoneMapLongPressDetector(context) { x, y ->
             if (disposed) return@phoneMapLongPressDetector
@@ -232,13 +245,33 @@ private class PhoneOfflineMapsforgeView(
             onMeasurementGestureStart = {
                 if (!disposed) {
                     mapView.cancelPhoneMapNativeGesture()
+                    rotationDetector.cancelPhoneMapRotation()
                     longPressDetector.cancelPhoneMapLongPress()
                     rotationGestureTracker.reset()
+                    centeredTouch.reset()
                     PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
                 }
             },
             onMeasurementPointDragEnd = { cancelled ->
                 if (!cancelled) suppressNextMapTap = true
+            },
+        )
+    private val rotationDetector: AndroidGesturesManager =
+        phoneMapRotationGestureDetector(
+            context = context,
+            onRotationStart = {
+                twoFingerTapDetector.cancelPendingMeasurement()
+                publishUserCameraInput { callbacks.onUserRotation(currentMapBearing()) }
+            },
+            onRotation = { delta ->
+                mapView.rotate(
+                    Rotation(
+                        mapsforgeRotationDegreesFor(currentMapBearing() + delta),
+                        mapView.width * 0.5f,
+                        mapView.height * 0.5f,
+                    ),
+                )
+                requestMapRedraw()
             },
         )
     private val workGate = PhoneMapsforgeRenderWorkGate()
@@ -273,10 +306,21 @@ private class PhoneOfflineMapsforgeView(
     private val inputListener =
         object : InputListener {
             override fun onMoveEvent() {
-                publishUserCameraInput { callbacks.onUserPan(currentMapBearing()) }
+                val reportPan =
+                    !centeredTouch.isLocked &&
+                        phoneMapsforgeShouldReportPan(
+                            latestState?.gestureMapMode?.follow,
+                            rotationGestureTracker.isTwoFingerActive,
+                        )
+                publishUserCameraInput {
+                    if (reportPan) callbacks.onUserPan(currentMapBearing())
+                }
             }
 
-            override fun onZoomEvent() = publishUserCameraInput()
+            override fun onZoomEvent() {
+                twoFingerTapDetector.cancelPendingMeasurement()
+                publishUserCameraInput()
+            }
         }
     private val mapViewLayoutListener =
         View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onMapViewLifecycleChanged() }
@@ -292,8 +336,10 @@ private class PhoneOfflineMapsforgeView(
 
             override fun onViewDetachedFromWindow(view: View) {
                 twoFingerTapDetector.reset()
+                rotationDetector.cancelPhoneMapRotation()
                 longPressDetector.cancelPhoneMapLongPress()
                 rotationGestureTracker.reset()
+                centeredTouch.reset()
                 PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
             }
         }
@@ -331,7 +377,8 @@ private class PhoneOfflineMapsforgeView(
         mapView.addOnLayoutChangeListener(mapViewLayoutListener)
         mapView.addOnAttachStateChangeListener(mapViewAttachListener)
         mapView.onFocusChangeListener = View.OnFocusChangeListener { _, _ -> onMapViewLifecycleChanged() }
-        mapView.touchGestureHandler.setRotationEnabled(true)
+        // Native rotation excludes pinch zoom; observe rotation alongside the native zoom handler.
+        mapView.touchGestureHandler.setRotationEnabled(false)
         mapView.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) suppressNextMapTap = false
             val measurementOwnsGesture = twoFingerTapDetector.onTouchEvent(event)
@@ -349,8 +396,25 @@ private class PhoneOfflineMapsforgeView(
                 MotionEvent.ACTION_CANCEL,
                 -> PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
             }
+            val wasCenteredTouch = centeredTouch.isLocked
+            centeredTouch.onTouch(event.actionMasked, event.pointerCount, latestState?.gestureMapMode ?: PhoneMapMode())
             event.toPhoneMapsforgeTouchAction()?.let { action ->
                 rotationGestureTracker.onTouch(action, event.pointerCount)
+                if (action == PhoneMapsforgeTouchAction.POINTER_DOWN) {
+                    rotationGestureTracker.observeBearing(currentMapBearing(), reportUserRotation = true)
+                }
+            }
+            if (latestState?.gestureMapMode?.allowsManualRotation != false) {
+                rotationDetector.onTouchEvent(event)
+            } else {
+                rotationDetector.cancelPhoneMapRotation()
+            }
+            // The final finger belongs to the pinch, rather than a new one-finger pan.
+            if (wasCenteredTouch && event.pointerCount == 1) {
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    mapView.cancelPhoneMapNativeGesture()
+                }
+                return@setOnTouchListener true
             }
             if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
                 longPressDetector.cancelPhoneMapLongPress(event)
@@ -378,6 +442,13 @@ private class PhoneOfflineMapsforgeView(
 
     fun render(state: PhoneOfflineMapSurfaceState) {
         if (disposed) return
+        if (!state.isInteractive && latestState?.isInteractive == true) {
+            mapView.cancelPhoneMapNativeGesture()
+            rotationDetector.cancelPhoneMapRotation()
+            rotationGestureTracker.reset()
+            centeredTouch.reset()
+            PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
+        }
         mapView.isEnabled = state.isInteractive
         mapView.isClickable = state.isInteractive
         mapView.isLongClickable = state.isInteractive
@@ -385,6 +456,20 @@ private class PhoneOfflineMapsforgeView(
         latestState = state
         workGate.requestWork()
         schedulePendingRendererWorkIfReady()
+    }
+
+    fun orientationDiagnosticSample(): PhoneMapOrientationRenderSample? {
+        if (disposed || !isShown) return null
+        val state = latestState ?: return null
+        val sessionId = PhoneDebugCapture.activeSessionId() ?: return null
+        return PhoneMapOrientationRenderSample(
+            renderer = "mapsforge_${rendererRole.name.lowercase()}_${System.identityHashCode(this)}",
+            mapMode = state.mapMode,
+            requestedMapDegrees = state.cameraOverride?.bearingDegrees ?: state.compassPresentation.mapBearingDegrees,
+            actualMapDegrees = currentMapBearing(),
+            marker = locationMarker?.orientationDiagnosticSample(sessionId) ?: PhoneMapOrientationMarker(),
+            cameraControl = if (state.isInteractive) "interactive" else "passive",
+        )
     }
 
     fun dispose() {
@@ -396,6 +481,7 @@ private class PhoneOfflineMapsforgeView(
         mapView.removeOnAttachStateChangeListener(mapViewAttachListener)
         mapView.onFocusChangeListener = null
         rotationGestureTracker.reset()
+        rotationDetector.cancelPhoneMapRotation()
         twoFingerTapDetector.reset()
         longPressDetector.cancelPhoneMapLongPress()
         overlayLayers.dispose()
@@ -538,6 +624,7 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyCameraOverride(camera: PhoneMapCameraSnapshot?) {
         val target = camera ?: return
+        if (centeredTouch.isLocked) return
         val model = mapView.model
         val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
         val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
@@ -605,7 +692,9 @@ private class PhoneOfflineMapsforgeView(
         }
         val latLong = LatLong(current.latitude, current.longitude)
         latestLocationMarkerPosition = latLong
-        val followDecision = phoneOfflineLocationFollowDecision(current, mapBounds, mapMode.follow)
+        val followMode =
+            if (centeredTouch.isLocked) latestState?.gestureMapMode?.follow ?: mapMode.follow else mapMode.follow
+        val followDecision = phoneOfflineLocationFollowDecision(current, mapBounds, followMode)
         PhoneMapLayerMutationCoordinator.mutateLayers(mapView, LOCATION_MUTATION_KEY) { layers ->
             pendingLocationMarkerRemoval?.let { previous ->
                 layers.remove(previous)
@@ -621,7 +710,7 @@ private class PhoneOfflineMapsforgeView(
                     null
                 } else {
                     locationMarker
-                } ?: PhoneOfflineLocationMarker(latLong, mapSettings.markerStyle) { observedMarker ->
+                } ?: PhoneOfflineLocationMarker(latLong, mapSettings.markerStyle, context) { observedMarker ->
                     post {
                         if (!disposed) {
                             PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
@@ -638,6 +727,7 @@ private class PhoneOfflineMapsforgeView(
                     locationMarker = created
                     layers.add(created)
                 }
+            marker.updateCompassAppearance(appliedCompassPresentation?.markerScreenRotationDegrees != null)
             if (marker.latLong != latLong) marker.latLong = latLong
             marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
         }
@@ -930,9 +1020,7 @@ private class PhoneOfflineMapsforgeView(
         val rotationDegrees = mapView.mapRotation.degrees.toDouble()
         val pivot = mapView.phoneMapRotationPivot()
 
-        fun screenPoint(
-            point: PhoneMapCoordinate,
-        ): PhoneMapScreenPoint? =
+        fun screenPoint(point: PhoneMapCoordinate): PhoneMapScreenPoint? =
             runCatching {
                 phoneMapsforgeScreenPointForMapPoint(
                     point = mapView.mapViewProjection.toPixels(LatLong(point.latitude, point.longitude)),
@@ -969,7 +1057,8 @@ private class PhoneOfflineMapsforgeView(
         val bearing =
             rotationGestureTracker.observeBearing(
                 bearingDegrees = currentMapBearing(),
-                reportUserRotation = !applyingProgrammaticRotation,
+                reportUserRotation =
+                    !applyingProgrammaticRotation && latestState?.gestureMapMode?.allowsManualRotation != false,
             ) ?: return
         publishUserCameraInput { callbacks.onUserRotation(bearing) }
     }

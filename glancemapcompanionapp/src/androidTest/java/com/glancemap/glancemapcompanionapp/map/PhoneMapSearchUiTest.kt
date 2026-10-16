@@ -1,5 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -12,6 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -24,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapcompanionapp.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -54,7 +59,13 @@ class PhoneMapSearchUiTest {
         val search = composeRule.activity.getString(R.string.map_search_hint)
         composeRule.onNodeWithText(search).assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, opened) }
-        val bar = composeRule.onNodeWithTag("map-search-scale-bar", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val bar =
+            composeRule
+                .onNodeWithTag(
+                    "map-search-scale-bar",
+                    useUnmergedTree = true,
+                ).fetchSemanticsNode()
+                .boundsInRoot
         // 2 metres per physical pixel: the rendered bar and its metre label must agree.
         val scaleNodes =
             composeRule.onAllNodes(
@@ -88,6 +99,7 @@ class PhoneMapSearchUiTest {
                     actions =
                         PhoneMapSearchActions(
                             onQueryChanged = { state.value = state.value.copy(query = it) },
+                            onOnlineChanged = { state.value = state.value.copy(online = it) },
                             onSearch = { submissions += 1 },
                             onResultSelected = { selected = it },
                             onDismiss = {},
@@ -95,16 +107,62 @@ class PhoneMapSearchUiTest {
                 )
             }
         }
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_search_offline_scope)).assertIsDisplayed()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_search_poi_hint)).performTextInput("Museum")
+        composeRule
+            .onNodeWithText(
+                composeRule.activity.getString(R.string.map_search_offline_scope),
+            ).assertIsDisplayed()
+        composeRule
+            .onNodeWithText(
+                composeRule.activity.getString(R.string.map_search_poi_hint),
+            ).performTextInput("Museum")
         composeRule.runOnIdle { assertEquals(0, submissions) }
-        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.map_search_action)).performClick()
+        composeRule
+            .onNodeWithContentDescription(
+                composeRule.activity.getString(R.string.map_search_action),
+            ).performClick()
         composeRule.runOnIdle {
             assertEquals(1, submissions)
             state.value = state.value.copy(searched = true, reply = PhoneMapSearchReply(listOf(result)))
         }
         composeRule.onNodeWithText("source.poi").performClick()
         composeRule.runOnIdle { assertEquals(result, selected) }
+        composeRule
+            .onNodeWithContentDescription(composeRule.activity.getString(R.string.map_search_online_enabled))
+            .assertIsOff()
+            .performClick()
+            .assertIsOn()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_search_attribution)).assertIsDisplayed()
+        composeRule
+            .onNodeWithText(
+                composeRule.activity.getString(R.string.map_search_offline_scope),
+            ).assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals("Museum", state.value.query) }
+    }
+
+    @Test
+    fun onlineSearchChoiceSurvivesPreferenceReloadAndOtherSettingsChanges() {
+        val context =
+            object : ContextWrapper(composeRule.activity.applicationContext) {
+                override fun getApplicationContext(): Context = this
+
+                override fun getSharedPreferences(
+                    name: String,
+                    mode: Int,
+                ) = super.getSharedPreferences("photon_search_test_$name", mode)
+            }
+        val storage = context.getSharedPreferences("phone_general_settings", Context.MODE_PRIVATE)
+        storage.edit().clear().commit()
+        try {
+            val preferences = PhoneGeneralSettingsPreferences(context)
+            assertTrue(preferences.isOnlineSearchEnabled())
+            preferences.setOnlineSearchEnabled(false)
+            preferences.save(preferences.load().copy(isMetric = false))
+            assertFalse(PhoneGeneralSettingsPreferences(context).isOnlineSearchEnabled())
+            preferences.setOnlineSearchEnabled(true)
+            assertTrue(PhoneGeneralSettingsPreferences(context).isOnlineSearchEnabled())
+        } finally {
+            storage.edit().clear().commit()
+        }
     }
 
     @Test

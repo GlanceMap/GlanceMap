@@ -1,7 +1,9 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.guidance.TrailGuidanceCommand
 import com.glancemap.trailcore.guidance.TrailGuidanceEtaConfig
+import com.glancemap.trailcore.guidance.TrailGuidanceInstruction
 import com.glancemap.trailcore.guidance.TrailGuidanceMode
 import com.glancemap.trailcore.guidance.TrailGuidanceState
 import com.glancemap.trailcore.profile.TrailGuidanceHint
@@ -20,6 +22,113 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhoneGuidanceTest {
+    @Test
+    fun locationFailureKeepsGuidanceProgressButDisablesTheStaleManeuver() {
+        val instruction =
+            TrailGuidanceInstruction(
+                command = TrailGuidanceCommand.RIGHT,
+                message = "Turn right",
+                location = GeoPoint(46.0, 11.001),
+                trackPointIndex = 1,
+                distanceFromStartMeters = 50.0,
+                turnAngleDegrees = 90f,
+            )
+        val route =
+            PhoneGuidanceRouteDraft(
+                trackId = "phone-route",
+                trackTitle = "Phone route",
+                points =
+                    listOf(
+                        TrailPoint(GeoPoint(46.0, 11.0), null),
+                        TrailPoint(GeoPoint(46.0, 11.001), null),
+                    ),
+                routeOffsetMeters = 250.0,
+                activityProfile = "HIKE",
+                etaConfig = TrailGuidanceEtaConfig(flatSpeedMps = 1.2),
+            )
+        val session = buildPhoneGuidanceSession(route)
+        val activeGuidance =
+            guidanceState(TrailGuidanceMode.FOLLOW_ROUTE, offRoute = true).copy(
+                nextInstruction = instruction,
+                followingInstruction = instruction,
+                distanceToInstructionMeters = 18.0,
+                distanceToFollowingInstructionMeters = 50.0,
+                distanceFromStartMeters = 42.0,
+                originalRouteDistanceFromStartMeters = 292.0,
+                distanceRemainingMeters = 108.0,
+                routeProgressFraction = 0.28f,
+                estimatedRemainingSeconds = 90L,
+                currentAltitudeMeters = 1_600.0,
+            )
+        val active =
+            PhoneGuidanceUiState(
+                session = session,
+                guidance = activeGuidance,
+                pendingDecision = PhoneGuidanceDecision.START_HERE,
+                message = PhoneGuidanceMessage.ACTIVE,
+            )
+
+        val unavailable = active.withLocationUnavailable(PhoneGuidanceMessage.GPS_UNAVAILABLE)
+        val waitingGuidance = requireNotNull(unavailable.guidance)
+
+        assertEquals(session, unavailable.session)
+        assertEquals(PhoneGuidanceMessage.GPS_UNAVAILABLE, unavailable.message)
+        assertNull(unavailable.pendingDecision)
+        assertEquals(TrailGuidanceMode.WAITING_FOR_LOCATION, waitingGuidance.mode)
+        assertNull(waitingGuidance.nextInstruction)
+        assertNull(waitingGuidance.followingInstruction)
+        assertNull(waitingGuidance.distanceToInstructionMeters)
+        assertFalse(waitingGuidance.offRoute)
+        assertNull(waitingGuidance.currentAltitudeMeters)
+        assertEquals(activeGuidance.distanceFromStartMeters, waitingGuidance.distanceFromStartMeters)
+        assertEquals(
+            activeGuidance.originalRouteDistanceFromStartMeters,
+            waitingGuidance.originalRouteDistanceFromStartMeters,
+        )
+        assertEquals(activeGuidance.distanceRemainingMeters, waitingGuidance.distanceRemainingMeters)
+        assertEquals(activeGuidance.estimatedRemainingSeconds, waitingGuidance.estimatedRemainingSeconds)
+    }
+
+    @Test
+    fun voiceTurnUsesSharedEarlyThresholdAndDoesNotRetryAfterPassingTurn() {
+        val instruction =
+            TrailGuidanceInstruction(
+                command = TrailGuidanceCommand.LEFT,
+                message = "Turn left",
+                location = GeoPoint(46.0, 11.0),
+                trackPointIndex = 3,
+                distanceFromStartMeters = 100.0,
+                turnAngleDegrees = 90f,
+            )
+        val due =
+            guidanceState(TrailGuidanceMode.FOLLOW_ROUTE, offRoute = false).copy(
+                nextInstruction = instruction,
+                distanceToInstructionMeters = 25.0,
+                distanceFromStartMeters = 75.0,
+                alertSessionKey = "route:false",
+            )
+
+        fun voiceKey(
+            guidance: TrailGuidanceState = due,
+            paused: Boolean = false,
+            voiceEnabled: Boolean = true,
+        ) = phoneGuidanceVoiceInstructionKey(
+            guidance = guidance,
+            paused = paused,
+            voiceEnabled = voiceEnabled,
+            speedMps = 2f,
+            activityProfile = "HIKE",
+            turnAlertsMode = "ALL",
+        )
+
+        assertEquals("route:false:3:LEFT", voiceKey())
+        assertNull(voiceKey(due.copy(distanceToInstructionMeters = 36.0)))
+        assertNull(voiceKey(due.copy(distanceFromStartMeters = 101.0, distanceToInstructionMeters = 0.0)))
+        assertNull(voiceKey(due.copy(offRoute = true)))
+        assertNull(voiceKey(paused = true))
+        assertNull(voiceKey(voiceEnabled = false))
+    }
+
     @Test
     fun startGateRejectsDuplicateStartsAndIgnoresAStaleCompletion() {
         val gate = PhoneGuidanceStartGate()

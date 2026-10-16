@@ -3,9 +3,11 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import com.glancemap.glancemapcompanionapp.routes.CompanionGpxRouteParser
+import com.glancemap.glancemapcompanionapp.routes.MissionAdventure
 import com.glancemap.glancemapcompanionapp.routes.MissionPlanDay
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import java.io.File
 import java.nio.charset.StandardCharsets
 
@@ -75,8 +77,14 @@ private data class RouteLibraryStorageIndex(
 )
 
 private data class MissionPlanStorageIndex(
+    @field:SerializedName(value = "days", alternate = ["a"])
     val days: List<MissionPlanDay> = emptyList(),
+    @field:SerializedName(value = "selectedDayId", alternate = ["b"])
     val selectedDayId: String? = null,
+    @field:SerializedName(value = "adventures", alternate = ["c"])
+    val adventures: List<MissionAdventure>? = null,
+    @field:SerializedName(value = "selectedAdventureId", alternate = ["d"])
+    val selectedAdventureId: String? = null,
 )
 
 private data class ParsedRouteLibraryIndex(
@@ -97,7 +105,7 @@ private data class ParsedMissionPlanIndex(
         get() = record != null
 
     val hasPlan: Boolean
-        get() = valid && index?.days?.isNotEmpty() == true
+        get() = valid && (index?.days?.isNotEmpty() == true || index?.adventures?.isNotEmpty() == true)
 }
 
 private data class RouteCandidate(
@@ -458,7 +466,18 @@ private fun parseMissionPlanIndex(record: PhoneOfflineStorageFile?): ParsedMissi
                     Gson().fromJson(reader, MissionPlanStorageIndex::class.java)
                 }
             requireNotNull(index)
-            require(index.days.all { day -> day.id.isNotBlank() && day.routeId.isNotBlank() })
+            require(
+                index.days.all { day ->
+                    day.copy()
+                    true
+                },
+            )
+            require(
+                index.adventures.orEmpty().all { adventure ->
+                    adventure.copy()
+                    true
+                },
+            )
             ParsedMissionPlanIndex(record, index, true)
         }.getOrDefault(ParsedMissionPlanIndex(record, null, false))
     }
@@ -519,7 +538,9 @@ private fun isRouteIndexFile(file: PhoneOfflineStorageFile): Boolean = file.rela
 
 private fun List<PhoneOfflineStorageFile>.routeIndexFile(): PhoneOfflineStorageFile? = firstOrNull(::isRouteIndexFile)
 
-private fun isMissionFile(file: PhoneOfflineStorageFile): Boolean = file.relativePath == "mission-plan/mission-plan.json"
+private fun isMissionFile(
+    file: PhoneOfflineStorageFile,
+): Boolean = file.relativePath == "mission-plan/mission-plan.json"
 
 private fun List<PhoneOfflineStorageFile>.missionPlanFile(): PhoneOfflineStorageFile? = firstOrNull(::isMissionFile)
 

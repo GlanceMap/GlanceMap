@@ -264,12 +264,16 @@ internal class PhoneRecordingService :
     private var guidanceOffRoute = TrailGuidanceOffRouteConfirmationState()
     private var guidanceAlertTracker = TrailGuidanceAlertTracker()
     private var guidanceLastFixElapsedRealtimeMillis: Long? = null
+    private var guidanceLocationExpiryJob: Job? = null
+    private var locationDeliveryIntervalMillis = 0L
     private var guidanceRequestedIntervalMillis = Long.MAX_VALUE
     private var guidanceCadenceJob: Job? = null
     private var guidanceOffRouteFeedbackJob: Job? = null
     private var guidanceEtaProjectionKey: GuidanceEtaProjectionKey? = null
     private var guidanceEtaProjection: TrailGuidanceEtaProjection? = null
     private var guidanceSpeech: TextToSpeech? = null
+    private var guidanceVoiceAlertedInstructionKey: String? = null
+    private var guidanceVoiceFailureLoggedInstructionKey: String? = null
 
     @Volatile private var guidanceSpeechReady = false
 
@@ -381,6 +385,19 @@ internal class PhoneRecordingService :
                     locationLock.withLock {
                         if (guidanceRoute == null) restoreGuidanceLocked(startForegroundIfActive = true)
                         resumeGuidanceLocked()
+                    }
+                }
+            ACTION_GUIDANCE_RETRY ->
+                serviceScope.launch {
+                    locationLock.withLock {
+                        val guidance = PhoneGuidanceSessionStore.state.value
+                        if (guidance.session != null &&
+                            !guidance.paused &&
+                            guidance.guidance?.mode != TrailGuidanceMode.FINISHED
+                        ) {
+                            logEvent("event=guidance_location_retry")
+                            startLocationUpdates()
+                        }
                     }
                 }
             ACTION_GUIDANCE_STOP -> serviceScope.launch { locationLock.withLock { stopGuidanceLocked() } }
@@ -804,9 +821,12 @@ internal class PhoneRecordingService :
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
         if (!PhoneMapLocationContext.hasPermission(this)) {
-            val current = PhoneRecordingSessionStore.state.value
-            publish(current.copy(message = PhoneRecordingMessage.PERMISSION_REQUIRED))
             logEvent("location_start_failed category=permission")
+            stopLocationUpdates("permission")
+            publishLocationFailure(
+                recordingMessage = PhoneRecordingMessage.PERMISSION_REQUIRED,
+                guidanceMessage = PhoneGuidanceMessage.PERMISSION_REQUIRED,
+            )
             return
         }
         configureLocationUpdates()
@@ -823,8 +843,16 @@ internal class PhoneRecordingService :
             guidanceState.session != null &&
                 !guidanceState.paused &&
                 guidanceState.guidance?.mode != TrailGuidanceMode.FINISHED
-        if ((!recordingNeedsLocation && !guidanceNeedsLocation) || !PhoneMapLocationContext.hasPermission(this)) {
+        if (!recordingNeedsLocation && !guidanceNeedsLocation) {
             stopLocationUpdates("inactive_or_permission")
+            return
+        }
+        if (!PhoneMapLocationContext.hasPermission(this)) {
+            stopLocationUpdates("permission")
+            publishLocationFailure(
+                recordingMessage = PhoneRecordingMessage.PERMISSION_REQUIRED,
+                guidanceMessage = PhoneGuidanceMessage.PERMISSION_REQUIRED,
+            )
             return
         }
         val recordingIntervalMillis =
@@ -879,6 +907,8 @@ internal class PhoneRecordingService :
                 }
             }
         locationCallback = callback
+        locationDeliveryIntervalMillis = intervalMillis
+        scheduleGuidanceLocationExpiry(oldGeneration, intervalMillis)
         publish(PhoneRecordingSessionStore.state.value)
         try {
             locationClient
@@ -895,10 +925,9 @@ internal class PhoneRecordingService :
                             if (activeLocationGeneration == oldGeneration) {
                                 logEvent("event=location_provider_failed category=request_updates")
                                 stopLocationUpdates("provider_failure")
-                                publish(
-                                    PhoneRecordingSessionStore.state.value.copy(
-                                        message = PhoneRecordingMessage.LOCATION_UNAVAILABLE,
-                                    ),
+                                publishLocationFailure(
+                                    recordingMessage = PhoneRecordingMessage.LOCATION_UNAVAILABLE,
+                                    guidanceMessage = PhoneGuidanceMessage.GPS_UNAVAILABLE,
                                 )
                             }
                         }
@@ -907,7 +936,10 @@ internal class PhoneRecordingService :
         } catch (_: SecurityException) {
             logEvent("event=location_provider_failed category=permission")
             stopLocationUpdates("permission")
-            publish(PhoneRecordingSessionStore.state.value.copy(message = PhoneRecordingMessage.PERMISSION_REQUIRED))
+            publishLocationFailure(
+                recordingMessage = PhoneRecordingMessage.PERMISSION_REQUIRED,
+                guidanceMessage = PhoneGuidanceMessage.PERMISSION_REQUIRED,
+            )
         }
         logEvent(
             "location_subscription_started generation=$oldGeneration interval_ms=$intervalMillis screen_on=$screenIsOn",
@@ -959,6 +991,8 @@ internal class PhoneRecordingService :
             )
         guidanceSession = buildPhoneGuidanceSession(route, guidanceProgress)
         guidanceAlertTracker = TrailGuidanceAlertTracker()
+        guidanceVoiceAlertedInstructionKey = null
+        guidanceVoiceFailureLoggedInstructionKey = null
         guidanceLastFixElapsedRealtimeMillis = null
         screenIsOn = getSystemService(PowerManager::class.java)?.isInteractive == true
         val state = computeTrailGuidanceState(guidanceSession, null, guidanceTuning)
@@ -1005,6 +1039,8 @@ internal class PhoneRecordingService :
             )
         guidanceSession = buildPhoneGuidanceSession(route, guidanceProgress)
         guidanceAlertTracker = TrailGuidanceAlertTracker()
+        guidanceVoiceAlertedInstructionKey = null
+        guidanceVoiceFailureLoggedInstructionKey = null
         guidanceLastFixElapsedRealtimeMillis = null
         val guidance = computeTrailGuidanceState(guidanceSession, null, guidanceTuning)
         screenIsOn = getSystemService(PowerManager::class.java)?.isInteractive == true
@@ -1065,6 +1101,8 @@ internal class PhoneRecordingService :
         guidanceLastFixElapsedRealtimeMillis = null
         guidanceRequestedIntervalMillis = Long.MAX_VALUE
         guidanceAlertTracker = TrailGuidanceAlertTracker()
+        guidanceVoiceAlertedInstructionKey = null
+        guidanceVoiceFailureLoggedInstructionKey = null
         guidanceEtaProjectionKey = null
         guidanceEtaProjection = null
         try {
@@ -1091,7 +1129,8 @@ internal class PhoneRecordingService :
                 TrailGuidanceStartDecision.START_HERE ->
                     guidanceProgress.copy(
                         startReached = true,
-                        distanceFromStartMeters = current.guidance?.distanceFromStartMeters ?: guidanceProgress.distanceFromStartMeters,
+                        distanceFromStartMeters =
+                            current.guidance?.distanceFromStartMeters ?: guidanceProgress.distanceFromStartMeters,
                         stableMidRouteSampleCount = 0,
                         dismissedDecisionKey = null,
                     )
@@ -1108,6 +1147,8 @@ internal class PhoneRecordingService :
         guidanceSession = buildPhoneGuidanceSession(route, guidanceProgress)
         guidanceOffRoute = TrailGuidanceOffRouteConfirmationState()
         guidanceAlertTracker = TrailGuidanceAlertTracker()
+        guidanceVoiceAlertedInstructionKey = null
+        guidanceVoiceFailureLoggedInstructionKey = null
         persistGuidanceProgress()
         val state = computeTrailGuidanceState(guidanceSession, null, guidanceTuning)
         publishGuidance(
@@ -1144,12 +1185,18 @@ internal class PhoneRecordingService :
         deliveryIntervalMillis: Long,
     ) {
         if (generation != activeLocationGeneration) return
+        val route = guidanceRoute ?: return
+        val current = PhoneGuidanceSessionStore.state.value
+        if (current.session == null || current.paused || current.guidance?.mode == TrailGuidanceMode.FINISHED) return
         val elapsedMillis = location.elapsedRealtimeNanos / NANOS_PER_MILLISECOND
         if (elapsedMillis <= 0L || location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0) return
+        if (!isPhoneGuidanceFixFresh(elapsedMillis, SystemClock.elapsedRealtime(), deliveryIntervalMillis)) return
         val previousFixElapsedMillis = guidanceLastFixElapsedRealtimeMillis
         if (previousFixElapsedMillis?.let { elapsedMillis <= it } == true) return
         guidanceLastFixElapsedRealtimeMillis = elapsedMillis
-        val measuredDeliveryIntervalMillis = previousFixElapsedMillis?.let { elapsedMillis - it } ?: deliveryIntervalMillis
+        scheduleGuidanceLocationExpiry(generation, deliveryIntervalMillis)
+        val measuredDeliveryIntervalMillis =
+            previousFixElapsedMillis?.let { elapsedMillis - it } ?: deliveryIntervalMillis
         val fix =
             PhoneMapLocation(
                 latitude = location.latitude,
@@ -1160,9 +1207,6 @@ internal class PhoneRecordingService :
             )
         publish(PhoneRecordingSessionStore.state.value.copy(latestLocation = fix))
 
-        val route = guidanceRoute ?: return
-        val current = PhoneGuidanceSessionStore.state.value
-        if (current.session == null || current.paused || current.guidance?.mode == TrailGuidanceMode.FINISHED) return
         var session = guidanceSession ?: buildPhoneGuidanceSession(route, guidanceProgress)
         val point = GeoPoint(location.latitude, location.longitude)
         if (!session.startReached && isGuidanceStartReached(session, point, guidanceTuning)) {
@@ -1188,7 +1232,10 @@ internal class PhoneRecordingService :
         val etaProjection = guidanceEtaProjection(route, session)
         val eta =
             if (computed.mode == TrailGuidanceMode.FOLLOW_ROUTE) {
-                etaProjection?.remainingSecondsAtDistance(session.cumulativeDistancesMeters, computed.distanceFromStartMeters)
+                etaProjection?.remainingSecondsAtDistance(
+                    session.cumulativeDistancesMeters,
+                    computed.distanceFromStartMeters,
+                )
             } else {
                 null
             }
@@ -1236,6 +1283,31 @@ internal class PhoneRecordingService :
         }
         val sampleInterval = measuredDeliveryIntervalMillis.takeIf { it > 0L } ?: deliveryIntervalMillis
         val feedbackSettings = guidanceFeedbackPreferences.load()
+        val voiceInstruction = guidance.nextInstruction
+        val voiceInstructionKey =
+            phoneGuidanceVoiceInstructionKey(
+                guidance = guidance,
+                paused = current.paused,
+                voiceEnabled = feedbackSettings.voiceEnabled,
+                speedMps = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it > 0f },
+                activityProfile = route.activityProfile,
+                turnAlertsMode = PHONE_GUIDANCE_TURN_ALERTS_MODE,
+            )
+        if (voiceInstruction != null &&
+            voiceInstructionKey != null &&
+            voiceInstructionKey != guidanceVoiceAlertedInstructionKey
+        ) {
+            val speakResult = speakGuidanceTurn(voiceInstruction.command)
+            if (speakResult == TextToSpeech.SUCCESS) {
+                guidanceVoiceAlertedInstructionKey = voiceInstructionKey
+                guidanceVoiceFailureLoggedInstructionKey = null
+                logEvent("event=guidance_alert outcome=delivered reason=turn_distance channel=voice")
+            } else if (guidanceVoiceFailureLoggedInstructionKey != voiceInstructionKey) {
+                guidanceVoiceFailureLoggedInstructionKey = voiceInstructionKey
+                val reason = if (speakResult == null) "tts_unavailable" else "tts_rejected"
+                logEvent("event=guidance_alert outcome=suppressed reason=$reason channel=voice retry=eligible")
+            }
+        }
         val alertEvents =
             guidanceAlertTracker.update(
                 TrailGuidanceAlertSample(
@@ -1249,7 +1321,7 @@ internal class PhoneRecordingService :
                     speedMps = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it > 0f },
                     activityProfile = route.activityProfile,
                     gpsDeliveryIntervalMs = sampleInterval.coerceAtLeast(1L),
-                    hapticsEnabled = feedbackSettings.hapticsEnabled || feedbackSettings.voiceEnabled,
+                    hapticsEnabled = feedbackSettings.hapticsEnabled,
                     turnAlertsMode = PHONE_GUIDANCE_TURN_ALERTS_MODE,
                     fixTimestampMs = elapsedMillis,
                 ),
@@ -1258,21 +1330,20 @@ internal class PhoneRecordingService :
             val reason = event.reason ?: event.trigger?.telemetryValue ?: event.outcome.telemetryValue
             when {
                 event.outcome != TrailGuidanceAlertOutcome.FIRED ->
-                    logEvent("event=guidance_alert outcome=suppressed reason=$reason")
+                    logEvent("event=guidance_alert outcome=suppressed channel=haptics reason=$reason")
                 !shouldAlertForTurn(PHONE_GUIDANCE_TURN_ALERTS_MODE, event.instruction.command) ->
-                    logEvent("event=guidance_alert outcome=suppressed reason=turn_mode")
+                    logEvent("event=guidance_alert outcome=suppressed channel=haptics reason=turn_mode")
                 event.instructionKey == guidanceProgress.lastAlertInstructionKey ->
-                    logEvent("event=guidance_alert outcome=suppressed reason=already_delivered")
+                    logEvent("event=guidance_alert outcome=suppressed channel=haptics reason=already_delivered")
                 else -> {
-                    val channels = guidanceFeedbackChannels(feedbackSettings)
                     if (feedbackSettings.hapticsEnabled) vibrateForGuidanceTurn()
-                    if (feedbackSettings.voiceEnabled) speakGuidanceTurn(event.instruction.command)
                     guidanceProgress = guidanceProgress.copy(lastAlertInstructionKey = event.instructionKey)
-                    val outcome = if (channels.isEmpty()) "suppressed" else "delivered"
-                    val deliveryReason = if (channels.isEmpty()) "feedback_unavailable" else reason
+                    val hapticsAvailable = vibrator?.hasVibrator() == true
+                    val outcome = if (hapticsAvailable) "delivered" else "suppressed"
+                    val deliveryReason = if (hapticsAvailable) reason else "haptics_unavailable"
                     logEvent(
                         "event=guidance_alert outcome=$outcome reason=$deliveryReason " +
-                            "channels=${channels.ifEmpty { listOf("none") }.joinToString(",")}",
+                            "channel=haptics",
                     )
                 }
             }
@@ -1316,6 +1387,55 @@ internal class PhoneRecordingService :
     private fun publishGuidance(state: PhoneGuidanceUiState) {
         PhoneGuidanceSessionStore.publish(state)
         updateNotificationIfActive()
+    }
+
+    private fun publishLocationFailure(
+        recordingMessage: PhoneRecordingMessage,
+        guidanceMessage: PhoneGuidanceMessage,
+    ) {
+        publishGuidanceLocationUnavailable(guidanceMessage)
+        publish(PhoneRecordingSessionStore.state.value.copy(message = recordingMessage))
+    }
+
+    private fun scheduleGuidanceLocationExpiry(
+        generation: Long,
+        deliveryIntervalMillis: Long,
+    ) {
+        guidanceLocationExpiryJob?.cancel()
+        val current = PhoneGuidanceSessionStore.state.value
+        if (current.session == null || current.paused || current.guidance?.mode == TrailGuidanceMode.FINISHED) return
+        val referenceMillis = guidanceLastFixElapsedRealtimeMillis ?: SystemClock.elapsedRealtime()
+        guidanceLocationExpiryJob =
+            schedulePhoneGuidanceLocationExpiry(
+                scope = serviceScope,
+                referenceElapsedRealtimeMillis = referenceMillis,
+                deliveryIntervalMillis = deliveryIntervalMillis,
+                nowElapsedRealtimeMillis = SystemClock::elapsedRealtime,
+            ) {
+                locationLock.withLock {
+                    if (generation == activeLocationGeneration &&
+                        !isPhoneGuidanceFixFresh(
+                            guidanceLastFixElapsedRealtimeMillis ?: referenceMillis,
+                            SystemClock.elapsedRealtime(),
+                            deliveryIntervalMillis,
+                        )
+                    ) {
+                        publishGuidanceLocationUnavailable(PhoneGuidanceMessage.GPS_UNAVAILABLE)
+                    }
+                }
+            }
+    }
+
+    private fun publishGuidanceLocationUnavailable(message: PhoneGuidanceMessage) {
+        val currentGuidance = PhoneGuidanceSessionStore.state.value
+        val waitingGuidance = currentGuidance.withLocationUnavailable(message)
+        if (waitingGuidance != currentGuidance) {
+            guidanceOffRouteFeedbackJob?.cancel()
+            guidanceOffRouteFeedbackJob = null
+            guidanceSpeech?.stop()
+            publishGuidance(waitingGuidance)
+            logEvent("event=guidance_location_unavailable reason=${message.name.lowercase()}")
+        }
     }
 
     private fun publishGuidanceFailure(message: PhoneGuidanceMessage) {
@@ -1396,12 +1516,28 @@ internal class PhoneRecordingService :
         guidanceOffRouteFeedbackJob =
             serviceScope.launch {
                 while (true) {
-                    val current = PhoneGuidanceSessionStore.state.value
-                    if (current.session == null || current.paused || current.guidance?.offRoute != true) return@launch
-                    val settings = guidanceFeedbackPreferences.load()
-                    if (settings.hapticsEnabled) vibrateForGuidanceOffRoute()
-                    if (settings.voiceEnabled) speakGuidanceFeedback(R.string.phone_guidance_speech_off_route)
-                    logGuidanceFeedbackDelivery("off_route_repeat", settings)
+                    locationLock.withLock {
+                        val current = PhoneGuidanceSessionStore.state.value
+                        if (current.session == null ||
+                            current.paused ||
+                            current.guidance?.offRoute != true
+                        ) {
+                            return@launch
+                        }
+                        if (!isPhoneGuidanceFixFresh(
+                                guidanceLastFixElapsedRealtimeMillis,
+                                SystemClock.elapsedRealtime(),
+                                locationDeliveryIntervalMillis,
+                            )
+                        ) {
+                            publishGuidanceLocationUnavailable(PhoneGuidanceMessage.GPS_UNAVAILABLE)
+                            return@launch
+                        }
+                        val settings = guidanceFeedbackPreferences.load()
+                        if (settings.hapticsEnabled) vibrateForGuidanceOffRoute()
+                        if (settings.voiceEnabled) speakGuidanceFeedback(R.string.phone_guidance_speech_off_route)
+                        logGuidanceFeedbackDelivery("off_route_repeat", settings)
+                    }
                     delay(GUIDANCE_OFF_ROUTE_REPEAT_SECONDS * 1_000L)
                 }
             }
@@ -1452,7 +1588,9 @@ internal class PhoneRecordingService :
     }
 
     private fun vibrateForGuidanceOffRoute() {
-        vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0L, 100L, 70L, 100L, 70L, 100L, 70L, 100L, 70L, 220L), -1))
+        vibrator?.vibrate(
+            VibrationEffect.createWaveform(longArrayOf(0L, 100L, 70L, 100L, 70L, 100L, 70L, 100L, 70L, 220L), -1),
+        )
     }
 
     private fun vibrateForGuidanceArrival() {
@@ -1474,8 +1612,9 @@ internal class PhoneRecordingService :
         }
     }
 
-    private fun speakGuidanceTurn(command: TrailGuidanceCommand) {
-        if (!guidanceSpeechReady || !guidanceFeedbackPreferences.load().voiceEnabled) return
+    private fun speakGuidanceTurn(command: TrailGuidanceCommand): Int? {
+        if (!guidanceSpeechReady) return null
+        val speech = guidanceSpeech ?: return null
         val resource =
             when (command) {
                 TrailGuidanceCommand.SLIGHT_LEFT -> R.string.phone_guidance_speech_slight_left
@@ -1486,7 +1625,7 @@ internal class PhoneRecordingService :
                 TrailGuidanceCommand.SHARP_RIGHT -> R.string.phone_guidance_speech_sharp_right
                 else -> R.string.phone_guidance_speech_continue
             }
-        guidanceSpeech?.speak(getString(resource), TextToSpeech.QUEUE_FLUSH, null, "phone-guidance-turn")
+        return speech.speak(getString(resource), TextToSpeech.QUEUE_FLUSH, null, "phone-guidance-turn")
     }
 
     // Keep the established acceptance order intact; these early exits correspond to distinct fix gates.
@@ -2103,6 +2242,8 @@ internal class PhoneRecordingService :
     }
 
     private fun stopLocationUpdates(reason: String) {
+        guidanceLocationExpiryJob?.cancel()
+        guidanceLocationExpiryJob = null
         val generation = callbackGeneration.incrementAndGet()
         activeLocationGeneration = generation
         locationCallback?.let { callback -> runCatching { locationClient.removeLocationUpdates(callback) } }
@@ -2245,9 +2386,7 @@ internal class PhoneRecordingService :
             requestedIntervalMillis - SAMPLE_INTERVAL_TOLERANCE_MILLIS,
         )
 
-    private fun continuityGapThreshold(
-        requestedIntervalMillis: Long,
-    ): Long = max(MIN_CONTINUITY_GAP_MILLIS, requestedIntervalMillis * 2L)
+    private fun continuityGapThreshold(requestedIntervalMillis: Long): Long = max(MIN_CONTINUITY_GAP_MILLIS, requestedIntervalMillis * 2L)
 
     private fun startForegroundNotification(): Boolean {
         val type =
@@ -2302,11 +2441,19 @@ internal class PhoneRecordingService :
             val guidanceText =
                 when {
                     guidanceUi.message == PhoneGuidanceMessage.LOADING -> getString(R.string.phone_guidance_loading)
+                    guidanceUi.message == PhoneGuidanceMessage.GPS_UNAVAILABLE ->
+                        getString(R.string.phone_guidance_notification_gps_unavailable)
+                    guidanceUi.message == PhoneGuidanceMessage.PERMISSION_REQUIRED ->
+                        getString(R.string.phone_guidance_notification_permission_required)
                     guidancePaused -> getString(R.string.phone_guidance_notification_paused)
                     guidanceUi.guidance?.mode == TrailGuidanceMode.FINISHED ->
                         getString(R.string.phone_guidance_notification_finished)
                     command != null -> getString(guidanceCommandResource(command))
-                    else -> getString(R.string.phone_guidance_notification_active, guidanceUi.session?.trackTitle.orEmpty())
+                    else ->
+                        getString(
+                            R.string.phone_guidance_notification_active,
+                            guidanceUi.session?.trackTitle.orEmpty(),
+                        )
                 }
             val builder =
                 NotificationCompat
@@ -2323,7 +2470,9 @@ internal class PhoneRecordingService :
                 builder
                     .addAction(
                         0,
-                        getString(if (guidancePaused) R.string.phone_guidance_notification_resume else R.string.phone_guidance_notification_pause),
+                        getString(
+                            if (guidancePaused) R.string.phone_guidance_notification_resume else R.string.phone_guidance_notification_pause,
+                        ),
                         servicePendingIntent(
                             if (guidancePaused) ACTION_GUIDANCE_RESUME else ACTION_GUIDANCE_PAUSE,
                             if (guidancePaused) REQUEST_GUIDANCE_RESUME else REQUEST_GUIDANCE_PAUSE,
@@ -2441,6 +2590,7 @@ internal class PhoneRecordingService :
         const val ACTION_GUIDANCE_START = "com.glancemap.glancemapcompanionapp.map.guidance.START"
         const val ACTION_GUIDANCE_PAUSE = "com.glancemap.glancemapcompanionapp.map.guidance.PAUSE"
         const val ACTION_GUIDANCE_RESUME = "com.glancemap.glancemapcompanionapp.map.guidance.RESUME"
+        const val ACTION_GUIDANCE_RETRY = "com.glancemap.glancemapcompanionapp.map.guidance.RETRY"
         const val ACTION_GUIDANCE_STOP = "com.glancemap.glancemapcompanionapp.map.guidance.STOP"
         const val ACTION_GUIDANCE_ACCEPT_START_HERE = "com.glancemap.glancemapcompanionapp.map.guidance.START_HERE"
         const val ACTION_GUIDANCE_ACCEPT_REVERSE = "com.glancemap.glancemapcompanionapp.map.guidance.REVERSE"

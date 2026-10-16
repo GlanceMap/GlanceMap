@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.hypot
 
 /** Recognizes a short two-finger press and keeps reporting its points while they move. */
@@ -86,6 +88,8 @@ internal class PhoneTwoFingerTapDetector(
             latestPoints[pointerId] = point
             firstPointerId = event.getPointerId(0)
             secondPointerId = pointerId
+            initialPoints[event.getPointerId(0)] = event.screenPoint(0)
+            updateLatestPoints(event)
             handler.postDelayed(activateRunnable, TWO_FINGER_RECOGNITION_DELAY_MS)
         } else {
             cancelCandidate()
@@ -109,15 +113,35 @@ internal class PhoneTwoFingerTapDetector(
             }
             return
         }
-        if (
-            candidate &&
+        val movedBeyondSlop =
             initialPoints.any { (pointerId, initialPoint) ->
                 val currentPoint = latestPoints[pointerId]
                 currentPoint != null && initialPoint.distanceTo(currentPoint) > touchSlop
             }
-        ) {
+        if (candidate && (hasTwoFingerTransform() || movedBeyondSlop)) {
             cancelCandidate()
         }
+    }
+
+    private fun hasTwoFingerTransform(): Boolean {
+        val initial = currentTwoFingerPoints(initialPoints)
+        val latest = currentTwoFingerPoints()
+        return if (initial == null || latest == null) {
+            false
+        } else {
+            val spanChange = abs(initial.first.distanceTo(initial.second) - latest.first.distanceTo(latest.second))
+            val rotation =
+                shortestPhoneHeadingDelta(
+                    latest.first.angleTo(latest.second),
+                    initial.first.angleTo(initial.second),
+                )
+            spanChange > touchSlop || abs(rotation) >= PHONE_MAP_ROTATION_ACTIVATION_DEGREES
+        }
+    }
+
+    /** Native zoom/rotation has started; measurement must wait for a fresh gesture. */
+    fun cancelPendingMeasurement() {
+        if (!measurementGestureOwned) cancelCandidate()
     }
 
     private fun handlePointerUp(event: MotionEvent) {
@@ -167,10 +191,10 @@ internal class PhoneTwoFingerTapDetector(
         }
     }
 
-    private fun currentTwoFingerPoints(): Pair<ScreenPoint, ScreenPoint>? =
+    private fun currentTwoFingerPoints(points: Map<Int, ScreenPoint> = latestPoints): Pair<ScreenPoint, ScreenPoint>? =
         firstPointerId
-            ?.let(latestPoints::get)
-            ?.let { first -> secondPointerId?.let(latestPoints::get)?.let { second -> first to second } }
+            ?.let(points::get)
+            ?.let { first -> secondPointerId?.let(points::get)?.let { second -> first to second } }
 
     private fun updateLatestPoints(event: MotionEvent) {
         repeat(event.pointerCount) { index ->
@@ -220,6 +244,11 @@ private data class ScreenPoint(
     val y: Float,
 ) {
     fun distanceTo(other: ScreenPoint): Float = hypot(x - other.x, y - other.y)
+
+    fun angleTo(other: ScreenPoint): Float {
+        val radians = atan2((other.y - y).toDouble(), (other.x - x).toDouble())
+        return Math.toDegrees(radians).toFloat()
+    }
 }
 
 private fun MotionEvent.screenPoint(index: Int): ScreenPoint = ScreenPoint(x = getX(index), y = getY(index))

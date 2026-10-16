@@ -32,6 +32,9 @@ internal data class PhoneMapMode(
     val isDetachedFromLocation: Boolean
         get() = follow == PhoneMapFollowMode.FREE
 
+    val allowsManualRotation: Boolean
+        get() = follow == PhoneMapFollowMode.FREE || orientation != PhoneMapOrientation.HEADING_UP
+
     fun toggleOrientation(): PhoneMapMode =
         copy(
             orientation =
@@ -39,6 +42,7 @@ internal data class PhoneMapMode(
                     PhoneMapOrientation.NORTH_UP -> PhoneMapOrientation.HEADING_UP
                     PhoneMapOrientation.HEADING_UP -> PhoneMapOrientation.NORTH_UP
                 },
+            manualBearingDegrees = null,
         )
 
     fun detachFromLocation(currentBearingDegrees: Float? = null): PhoneMapMode =
@@ -46,6 +50,8 @@ internal data class PhoneMapMode(
             follow = PhoneMapFollowMode.FREE,
             manualBearingDegrees = currentBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: manualBearingDegrees,
         )
+
+    fun withManualBearing(bearingDegrees: Float): PhoneMapMode = if (allowsManualRotation) copy(manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees)) else this
 
     fun detachAfterManualRotation(bearingDegrees: Float): PhoneMapMode =
         copy(

@@ -12,11 +12,10 @@ import java.io.File
 
 class PhoneMapSavedStateTest {
     private val offline = PhoneOfflineMap(File("/map-rotation-test/alps.map"), contentRevision = "revision-a")
+    private val otherOffline = PhoneOfflineMap(File("/map-rotation-test/other.map"))
     private val scope =
         object : SaverScope {
-            override fun canBeSaved(
-                value: Any,
-            ): Boolean = value is String || value is Boolean || value is Double || value is Float
+            override fun canBeSaved(value: Any): Boolean = value is String || value is Boolean || value is Double || value is Float
         }
 
     @Test
@@ -35,6 +34,8 @@ class PhoneMapSavedStateTest {
             listOf(
                 PhoneMapSource.Online to PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP),
                 PhoneMapSource.Online to PhoneMapComparisonLayer.Offline(offline),
+                PhoneMapSource.Offline(offline) to PhoneMapComparisonLayer.Offline(offline),
+                PhoneMapSource.Offline(offline) to PhoneMapComparisonLayer.Offline(otherOffline),
                 PhoneMapSource.Offline(offline) to PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP),
             )
         combinations.forEach { (source, layer) ->
@@ -182,6 +183,16 @@ class PhoneMapSavedStateTest {
         val restored = requireNotNull(phoneMapUiStateSaver.restore(save(phoneMapUiStateSaver, state)))
         val switched = restored.selectTool(MapTool.LAYER).selectTool(MapTool.LIBRARY).selectTool(MapTool.HIKE)
         assertEquals(custom, switched.toolPanel)
+    }
+
+    @Test
+    fun contextualLegendsKeepBothViewsAndOnlineSourcesAcrossRecreation() {
+        val views =
+            listOf(
+                PhoneMapLegendView("Base", "Elevate · Hiking", "elevate"),
+                PhoneMapLegendView("Comparison", "OpenStreetMap", null),
+            )
+        assertEquals(views, phoneMapLegendViewsSaver.restore(save(phoneMapLegendViewsSaver, views)))
     }
 
     private fun <T> save(

@@ -19,6 +19,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,6 +77,7 @@ internal fun PhoneMapSearchPanel(
                 Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.map_search_action))
             }
         }
+        phoneMapOnlineSearchToggle(state.online, actions.onOnlineChanged)
         if (!state.online) {
             Text(
                 stringResource(R.string.map_search_offline_scope),
@@ -91,6 +95,25 @@ internal fun PhoneMapSearchPanel(
                 Text(stringResource(R.string.map_search_attribution), style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+}
+
+@Composable
+private fun phoneMapOnlineSearchToggle(
+    online: Boolean,
+    onOnlineChanged: (Boolean) -> Unit,
+) {
+    val onlineLabel = stringResource(R.string.map_search_online_enabled)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(onlineLabel, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(
+            checked = online,
+            onCheckedChange = onOnlineChanged,
+            modifier = Modifier.semantics { contentDescription = onlineLabel },
+        )
     }
 }
 

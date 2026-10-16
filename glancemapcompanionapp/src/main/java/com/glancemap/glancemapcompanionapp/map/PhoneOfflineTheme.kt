@@ -424,6 +424,24 @@ internal class PhoneOfflineThemePreferences(
         return resolved
     }
 
+    fun loadComparison(): PhoneOfflineThemeConfig {
+        val base = load()
+        return PhoneOfflineThemeCatalog.resolve(
+            preferences.getString("comparison_theme_id", base.themeId),
+            preferences.getString("comparison_style_id", base.styleId),
+        )
+    }
+
+    fun saveComparison(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig {
+        val resolved = PhoneOfflineThemeCatalog.resolve(config.themeId, config.styleId)
+        preferences
+            .edit()
+            .putString("comparison_theme_id", resolved.themeId)
+            .putString("comparison_style_id", resolved.styleId)
+            .apply()
+        return resolved
+    }
+
     private companion object {
         const val PREFERENCES_NAME = "phone_offline_theme"
         const val KEY_THEME_ID = "theme_id"

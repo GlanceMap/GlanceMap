@@ -19,12 +19,7 @@ internal fun phoneMapCompassPresentation(
             PhoneMapOrientation.NORTH_UP -> 0f
             PhoneMapOrientation.HEADING_UP -> heading ?: 0f
         }
-    val bearing =
-        if (mapMode.follow == PhoneMapFollowMode.FREE) {
-            mapMode.manualBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: automaticBearing
-        } else {
-            automaticBearing
-        }
+    val bearing = mapMode.manualBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: automaticBearing
     return PhoneMapCompassPresentation(
         mapBearingDegrees = bearing,
         markerScreenRotationDegrees = heading?.let { normalizePhoneHeadingDegrees(it - bearing) },

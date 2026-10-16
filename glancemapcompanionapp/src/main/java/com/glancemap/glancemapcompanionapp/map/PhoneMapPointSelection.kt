@@ -20,6 +20,8 @@ internal enum class PhoneMapPointSelectionMarkerKind(
 ) {
     POI(label = "POI", colorArgb = 0xFF2563EB.toInt()),
     SEARCH(label = "•", colorArgb = 0xFF7C3AED.toInt()),
+    HIKE_INSPECTION(label = "◆", colorArgb = 0xFF9333EA.toInt()),
+    CHECKPOINT(label = "⚑", colorArgb = 0xFF15803D.toInt()),
     POINT_A(label = "A", colorArgb = 0xFF16A34A.toInt()),
     POINT_B(label = "B", colorArgb = 0xFFEA580C.toInt()),
     DESTINATION(label = "D", colorArgb = 0xFF7C3AED.toInt()),

@@ -16,13 +16,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -34,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -153,6 +150,8 @@ internal data class MapToolsLayerState(
     val mapSettings: PhoneMapSettings,
     val gpxVisible: Boolean = true,
     val poiVisible: Boolean = true,
+    val baseThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
+    val comparisonThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
 )
 
 internal data class MapToolsPanelState(
@@ -189,6 +188,18 @@ internal data class MapToolsMapsActions(
     val onOfflineDataChanged: () -> Unit = {},
 )
 
+internal data class MapToolsLayerActions(
+    val onLayerChanged: (PhoneMapComparisonLayer?) -> Unit,
+    val onTransparencyChanged: (Float) -> Unit,
+    val onMapSettingsChanged: (PhoneMapSettings) -> Unit,
+    val onGpxVisibilityChanged: (Boolean) -> Unit = {},
+    val onPoiVisibilityChanged: (Boolean) -> Unit = {},
+    val onBaseMapChanged: (PhoneMapComparisonLayer) -> Unit = {},
+    val onSwap: () -> Unit = {},
+    val onBaseThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
+    val onComparisonThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
+)
+
 internal data class MapToolsPanelActions(
     val maps: MapToolsMapsActions,
     val onGpxVisibilityChanged: (Boolean) -> Unit,
@@ -213,6 +224,10 @@ internal data class MapToolsPanelActions(
     val onFeatureSettingsSection: (MapToolFeatureSettingsSection) -> Unit,
     val onGeneralSettingsChanged: (PhoneGeneralSettings) -> Unit,
     val onOpenBundleDownload: () -> Unit,
+    val onLayerBaseMapChanged: (PhoneMapComparisonLayer) -> Unit = {},
+    val onSwapComparison: () -> Unit = {},
+    val onBaseThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
+    val onComparisonThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
     val onStorageMigrationCancelled: () -> Unit,
     val onAddPoi: () -> Unit = {},
@@ -229,10 +244,12 @@ internal fun MapToolPanelContent(
     featureSettingsSection: MapToolFeatureSettingsSection,
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
-    onOpenMapLegend: () -> Unit = {},
     hikeContent: @Composable () -> Unit = {},
     routeToolsContent: @Composable () -> Unit = {},
     libraryContent: @Composable (MapToolsPanelState, MapToolsPanelActions) -> Unit = { _, _ -> },
+    discoveryOpen: Boolean = false,
+    onOpenDiscovery: () -> Unit = {},
+    discoveryContent: @Composable () -> Unit = {},
 ) {
     if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
         MapToolFeatureSettingsContent(
@@ -252,15 +269,20 @@ internal fun MapToolPanelContent(
                     actions = actions.maps,
                 )
             MapTool.GPX ->
-                mapToolsGpxPanel(
-                    state = state.gpx,
-                    onGlobalVisibilityChanged = actions.onGpxVisibilityChanged,
-                    onItemToggled = actions.onGpxItemToggled,
-                    onOpenAnalysis = actions.onOpenGpxAnalysis,
-                    onRenameItem = actions.onRenameGpxItem,
-                    onDeleteItem = actions.onDeleteGpxItem,
-                    onOpenRouteTools = actions.onOpenRouteTools,
-                )
+                if (discoveryOpen) {
+                    discoveryContent()
+                } else {
+                    mapToolsGpxPanel(
+                        state = state.gpx,
+                        onGlobalVisibilityChanged = actions.onGpxVisibilityChanged,
+                        onItemToggled = actions.onGpxItemToggled,
+                        onOpenAnalysis = actions.onOpenGpxAnalysis,
+                        onRenameItem = actions.onRenameGpxItem,
+                        onDeleteItem = actions.onDeleteGpxItem,
+                        onOpenRouteTools = actions.onOpenRouteTools,
+                        onOpenDiscovery = onOpenDiscovery,
+                    )
+                }
             MapTool.POI ->
                 mapToolsPoiPanel(
                     state = state.poi,
@@ -273,12 +295,18 @@ internal fun MapToolPanelContent(
             MapTool.LAYER ->
                 mapToolsLayerPanel(
                     state = state.layer,
-                    onLayerChanged = actions.onComparisonLayerChanged,
-                    onTransparencyChanged = actions.onComparisonTransparencyChanged,
-                    onMapSettingsChanged = actions.onLayerMapSettingsChanged,
-                    onOpenMapLegend = onOpenMapLegend,
-                    onGpxVisibilityChanged = actions.onGpxVisibilityChanged,
-                    onPoiVisibilityChanged = actions.onPoiVisibilityChanged,
+                    actions =
+                        MapToolsLayerActions(
+                            onLayerChanged = actions.onComparisonLayerChanged,
+                            onTransparencyChanged = actions.onComparisonTransparencyChanged,
+                            onMapSettingsChanged = actions.onLayerMapSettingsChanged,
+                            onGpxVisibilityChanged = actions.onGpxVisibilityChanged,
+                            onPoiVisibilityChanged = actions.onPoiVisibilityChanged,
+                            onBaseMapChanged = actions.onLayerBaseMapChanged,
+                            onSwap = actions.onSwapComparison,
+                            onBaseThemeChanged = actions.onBaseThemeChanged,
+                            onComparisonThemeChanged = actions.onComparisonThemeChanged,
+                        ),
                 )
             MapTool.SETTINGS ->
                 mapToolsSettingsPanel(
@@ -294,178 +322,6 @@ internal fun MapToolPanelContent(
         }
     }
 }
-
-@Composable
-internal fun mapToolsLayerPanel(
-    state: MapToolsLayerState,
-    onLayerChanged: (PhoneMapComparisonLayer?) -> Unit,
-    onTransparencyChanged: (Float) -> Unit,
-    onMapSettingsChanged: (PhoneMapSettings) -> Unit,
-    onOpenMapLegend: () -> Unit = {},
-    onGpxVisibilityChanged: (Boolean) -> Unit = {},
-    onPoiVisibilityChanged: (Boolean) -> Unit = {},
-) {
-    val layerOptions =
-        comparisonLayerOptions(
-            base = state.base,
-            baseOnlineSource = state.baseOnlineSource,
-            offlineMaps = state.offlineMaps,
-            onlineSources = state.onlineSources,
-        )
-    var reliefOpacityPercent by
-        remember(state.mapSettings.reliefOverlayOpacityPercent) {
-            mutableStateOf(state.mapSettings.reliefOverlayOpacityPercent.toFloat())
-        }
-    mapToolPanelColumn(verticalSpacing = 0.dp, verticalPadding = 0.dp) {
-        OutlinedButton(onClick = onOpenMapLegend, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.map_legend_title))
-        }
-        val baseLabel = comparisonLayerLabel(state.base.asComparisonLayer(state.baseOnlineSource))
-        Text(
-            text = "${stringResource(R.string.map_layer_base_source)}: $baseLabel",
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.weight(1f)) {
-                if (layerOptions.isEmpty()) {
-                    Text(stringResource(R.string.map_layer_no_offline_maps))
-                } else {
-                    mapToolsMapSettingPicker(
-                        label = stringResource(R.string.map_layer_select_source),
-                        selectedLabel =
-                            state.comparison.layer?.let { comparisonLayerLabel(it) }
-                                ?: stringResource(R.string.map_layer_none),
-                        options = layerOptions.map { layer -> layer to comparisonLayerLabel(layer) },
-                        onSelect = onLayerChanged,
-                    )
-                }
-            }
-            if (state.comparison.layer != null) {
-                IconButton(onClick = { onLayerChanged(null) }) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_layer_clear))
-                }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text =
-                    stringResource(
-                        R.string.map_layer_transparency,
-                        state.comparison.transparencyPercent.toInt(),
-                    ),
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 140.dp),
-            )
-            Slider(
-                value = state.comparison.transparencyPercent,
-                onValueChange = onTransparencyChanged,
-                enabled = state.comparison.layer != null,
-                valueRange = 0f..100f,
-                steps = 99,
-                modifier = Modifier.weight(1f).height(32.dp),
-            )
-        }
-        val reliefAvailable = state.base is PhoneMapSource.Offline && state.hasElevationData
-        ListItem(
-            headlineContent = { Text(stringResource(R.string.map_layer_slope_title)) },
-            supportingContent = {
-                Text(
-                    stringResource(
-                        if (reliefAvailable) {
-                            R.string.map_layer_slope_available
-                        } else {
-                            R.string.map_layer_slope_unavailable
-                        },
-                    ),
-                )
-            },
-            trailingContent = {
-                Switch(
-                    checked = reliefAvailable && state.mapSettings.reliefOverlayEnabled,
-                    onCheckedChange = { enabled ->
-                        onMapSettingsChanged(state.mapSettings.copy(reliefOverlayEnabled = enabled))
-                    },
-                    enabled = reliefAvailable,
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (reliefAvailable && state.mapSettings.reliefOverlayEnabled) {
-            Text(
-                stringResource(
-                    R.string.map_layer_slope_transparency,
-                    100 - reliefOpacityPercent.toInt(),
-                ),
-            )
-            Slider(
-                value = reliefOpacityPercent,
-                onValueChange = { opacity -> reliefOpacityPercent = opacity },
-                onValueChangeFinished = {
-                    onMapSettingsChanged(
-                        state.mapSettings.copy(
-                            reliefOverlayOpacityPercent = reliefOpacityPercent.toInt(),
-                        ),
-                    )
-                },
-                valueRange = 0f..100f,
-                steps = 99,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        mapToolsMapsQuickDisplaySettings(
-            settings = state.mapSettings,
-            onSettingsChanged = onMapSettingsChanged,
-            showOfflineOnlyOptions = state.base is PhoneMapSource.Offline,
-            showReliefOption = false,
-        )
-        mapToolsMapsToggle(
-            stringResource(R.string.map_tools_gpx_global_visibility),
-            state.gpxVisible,
-            onGpxVisibilityChanged,
-        )
-        mapToolsMapsToggle(
-            stringResource(R.string.map_tools_poi_global_visibility),
-            state.poiVisible,
-            onPoiVisibilityChanged,
-        )
-    }
-}
-
-internal fun comparisonLayerOptions(
-    base: PhoneMapSource,
-    baseOnlineSource: PhoneOnlineMapSource,
-    offlineMaps: List<PhoneOfflineMap>,
-    onlineSources: List<PhoneOnlineMapSource>,
-): List<PhoneMapComparisonLayer> =
-    when (base) {
-        PhoneMapSource.Online ->
-            onlineSources
-                .filterNot { source -> source == baseOnlineSource }
-                .map(PhoneMapComparisonLayer::Online) +
-                offlineMaps.map(PhoneMapComparisonLayer::Offline)
-        is PhoneMapSource.Offline -> onlineSources.map(PhoneMapComparisonLayer::Online)
-    }
-
-@Composable
-private fun comparisonLayerLabel(layer: PhoneMapComparisonLayer): String =
-    when (layer) {
-        is PhoneMapComparisonLayer.Online ->
-            PhoneMapRendererCatalog.onlineSourceLabel(layer.source)
-        is PhoneMapComparisonLayer.Offline -> layer.map.displayName
-    }
-
-private fun PhoneMapSource.asComparisonLayer(
-    onlineSource: PhoneOnlineMapSource,
-): PhoneMapComparisonLayer =
-    when (this) {
-        PhoneMapSource.Online -> PhoneMapComparisonLayer.Online(onlineSource)
-        is PhoneMapSource.Offline -> PhoneMapComparisonLayer.Offline(map)
-    }
 
 @Composable
 internal fun mapToolsOfflineMapLoadingIndicator() {
@@ -665,8 +521,12 @@ private fun mapToolsGpxPanel(
     onRenameItem: (PhoneMapGpxItem) -> Unit,
     onDeleteItem: (PhoneMapGpxItem) -> Unit,
     onOpenRouteTools: () -> Unit,
+    onOpenDiscovery: () -> Unit,
 ) {
     mapToolPanelColumn {
+        OutlinedButton(onClick = onOpenDiscovery, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.discovery_title))
+        }
         ListItem(
             headlineContent = { Text(stringResource(R.string.map_tools_gpx_global_visibility)) },
             supportingContent = {

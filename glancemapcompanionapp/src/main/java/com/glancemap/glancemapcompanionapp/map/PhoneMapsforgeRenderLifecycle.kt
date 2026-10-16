@@ -73,11 +73,13 @@ internal enum class PhoneMapsforgeTouchAction {
     CANCEL,
 }
 
-/** Identifies rotation changes produced by Mapsforge's native two-finger handler. */
+/** Identifies two-finger bearing changes without losing small, accumulated rotations. */
 internal class PhoneMapsforgeRotationGestureTracker {
     private var twoFingerActive = false
-    private var lastObservedBearing: Float? = null
-    private var lastReportedBearing: Float? = null
+    private var referenceBearing: Float? = null
+
+    val isTwoFingerActive: Boolean
+        get() = twoFingerActive
 
     fun onTouch(
         action: PhoneMapsforgeTouchAction,
@@ -109,11 +111,17 @@ internal class PhoneMapsforgeRotationGestureTracker {
         reportUserRotation: Boolean,
     ): Float? {
         val bearing = normalizePhoneHeadingDegrees(bearingDegrees)
-        val previous = lastObservedBearing
-        lastObservedBearing = bearing
-        if (!shouldReportBearing(previous, bearing, reportUserRotation)) return null
-        lastReportedBearing = bearing
-        return bearing
+        val previous = referenceBearing
+        if (!reportUserRotation || !twoFingerActive || previous == null) {
+            referenceBearing = bearing
+            return null
+        }
+        return if (phoneMapBearingNeedsSync(previous, bearing)) {
+            referenceBearing = bearing
+            bearing
+        } else {
+            null
+        }
     }
 
     fun reset() {
@@ -122,24 +130,14 @@ internal class PhoneMapsforgeRotationGestureTracker {
     }
 
     private fun clearBearingHistory() {
-        lastObservedBearing = null
-        lastReportedBearing = null
+        referenceBearing = null
     }
-
-    private fun shouldReportBearing(
-        previousBearing: Float?,
-        bearing: Float,
-        reportUserRotation: Boolean,
-    ): Boolean =
-        when {
-            !reportUserRotation -> false
-            !twoFingerActive -> false
-            previousBearing == null -> false
-            !phoneMapBearingNeedsSync(previousBearing, bearing) -> false
-            lastReportedBearing == null -> true
-            else -> phoneMapBearingNeedsSync(lastReportedBearing!!, bearing)
-        }
 }
+
+internal fun phoneMapsforgeShouldReportPan(
+    follow: PhoneMapFollowMode?,
+    isTwoFingerActive: Boolean,
+): Boolean = follow != PhoneMapFollowMode.FOLLOW_LOCATION || !isTwoFingerActive
 
 internal enum class PhoneMapsforgeBaseLayerChange {
     NONE,

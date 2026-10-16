@@ -85,6 +85,13 @@ class PhoneMapRendererCatalogTest {
                 PhoneOnlineMapSource.CYCLOSM,
                 PhoneOnlineMapSource.TRACESTRACK_TOPO,
                 PhoneOnlineMapSource.SATELLITE,
+                PhoneOnlineMapSource.OPEN_FREE_MAP,
+                PhoneOnlineMapSource.IGN_ORTHOPHOTO,
+                PhoneOnlineMapSource.SWISS_TOPO,
+                PhoneOnlineMapSource.SWISS_IMAGE,
+                PhoneOnlineMapSource.USGS_TOPO,
+                PhoneOnlineMapSource.USGS_IMAGERY,
+                PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
             ),
             PhoneMapRendererCatalog.supportedOnlineSources(),
         )
@@ -129,6 +136,33 @@ class PhoneMapRendererCatalogTest {
             provider.rasterTileUrlTemplate,
         )
         assertTrue(PhoneMapRendererCatalog.isOnlineSourceAvailable(PhoneOnlineMapSource.CYCLOSM))
+    }
+
+    @Test
+    fun newProvidersAreAvailableWithoutKeysAndRoundTripTheirSavedSelection() {
+        val sources =
+            listOf(
+                PhoneOnlineMapSource.OPEN_FREE_MAP,
+                PhoneOnlineMapSource.IGN_ORTHOPHOTO,
+                PhoneOnlineMapSource.SWISS_TOPO,
+                PhoneOnlineMapSource.SWISS_IMAGE,
+                PhoneOnlineMapSource.USGS_TOPO,
+                PhoneOnlineMapSource.USGS_IMAGERY,
+                PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+            )
+        sources.forEach { source ->
+            val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(source))
+            assertTrue(PhoneMapRendererCatalog.availableComparisonOnlineSources().contains(source))
+            assertEquals(source, PhoneOnlineMapSource.fromStorageValue(source.name))
+            assertEquals(provider.id, source.diagnosticProviderId())
+            assertTrue(provider.attribution.contains("https://"))
+            assertTrue(!provider.rasterTileUrlTemplate.contains("key="))
+        }
+        val vector = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.OPEN_FREE_MAP))
+        assertEquals("https://tiles.openfreemap.org/styles/liberty", vector.styleUrl)
+        val esri =
+            requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.ESRI_WORLD_IMAGERY))
+        assertTrue(esri.rasterTileUrlTemplate.endsWith("/tile/{z}/{y}/{x}"))
     }
 
     @Test

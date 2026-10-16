@@ -413,5 +413,72 @@ class PhoneMapComparisonTest {
         )
     }
 
+    @Test
+    fun sameOfflineMapCanBeSelectedForIndependentThemeComparison() {
+        val map = offlineMap()
+        val layer = PhoneMapComparisonLayer.Offline(map)
+        val pending = PhoneMapUiState(source = PhoneMapSource.Offline(map)).nextComparisonSelectionRequest()
+        val completion =
+            pending.completeOfflineComparisonSelection(
+                pending.comparison.validationRequestGeneration,
+                layer,
+                null,
+                listOf(map),
+            )
+        assertEquals(layer, completion.state.comparison.layer)
+        assertTrue(
+            comparisonLayerOptions(
+                pending.source,
+                PhoneOnlineMapSource.OPEN_TOPO,
+                listOf(map),
+                emptyList(),
+            ).contains(layer),
+        )
+        assertEquals(
+            null,
+            completion.state
+                .clearUnavailableComparison(emptyList())
+                .comparison.layer,
+        )
+    }
+
+    @Test
+    fun offlineComparisonOwnsFollowAndCommandsAboveOfflineBaseOnlyWhileVisible() {
+        val base = PhoneMapSource.Offline(offlineMap())
+        assertTrue(phoneMapComparisonOwnsFollowAndCommands(base, false, true))
+        assertFalse(phoneMapComparisonOwnsFollowAndCommands(base, false, false))
+        assertFalse(phoneMapComparisonOwnsFollowAndCommands(PhoneMapSource.Online, false, true))
+    }
+
+    @Test
+    fun swapPreservesBlendingAndInvalidatesOutstandingComparisonRequests() {
+        val base = PhoneMapSource.Offline(offlineMap("base.map"))
+        val layer = PhoneMapComparisonLayer.Offline(offlineMap("upper.map"))
+        val original = PhoneMapUiState(source = base).selectComparisonLayer(layer).setComparisonTransparency(25f)
+        val swapped = original.swapComparison(PhoneOnlineMapSource.OPEN_TOPO)
+        assertEquals(PhoneMapSource.Offline(layer.map), swapped.source)
+        assertEquals(PhoneMapComparisonLayer.Offline(base.map), swapped.comparison.layer)
+        assertEquals(75f, swapped.comparison.transparencyPercent, 0f)
+        assertEquals(original.toolPanel, swapped.toolPanel)
+        assertTrue(swapped.comparison.validationRequestGeneration > original.comparison.validationRequestGeneration)
+        val restored = swapped.swapComparison(PhoneOnlineMapSource.OPEN_TOPO)
+        assertEquals(original.source, restored.source)
+        assertEquals(original.comparison.layer, restored.comparison.layer)
+        assertEquals(original.comparison.transparencyPercent, restored.comparison.transparencyPercent, 0f)
+    }
+
+    @Test
+    fun swapRetainsTheSelectedOnlineProviderInEitherDirectionAndNoComparisonIsANoOp() {
+        val provider = PhoneOnlineMapSource.CYCLOSM
+        val layer = PhoneMapComparisonLayer.Offline(offlineMap())
+        val original = PhoneMapUiState().selectComparisonLayer(layer)
+        val swapped = original.swapComparison(provider)
+        assertEquals(PhoneMapSource.Offline(layer.map), swapped.source)
+        assertEquals(PhoneMapComparisonLayer.Online(provider), swapped.comparison.layer)
+        assertEquals(layer, swapped.swapComparison(provider).comparison.layer)
+        val empty = PhoneMapUiState()
+        assertEquals(empty, empty.swapComparison(provider))
+    }
+
     private fun offlineMap(name: String = "alps.map"): PhoneOfflineMap = PhoneOfflineMap(java.io.File(name))
 }

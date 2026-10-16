@@ -180,6 +180,7 @@ internal class PhoneCompassSensorSource(
     private var accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
     private var smoothedHeading: Float? = null
     private var rawHeading: Float? = null
+    private var lastSampleElapsedMs: Long? = null
     private var northReferenceMode = PhoneMapNorthReferenceMode.TRUE
     private var declinationDegrees: Float? = null
 
@@ -236,6 +237,8 @@ internal class PhoneCompassSensorSource(
         accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         smoothedHeading = null
         rawHeading = null
+        lastSampleElapsedMs = null
+        orientationAngles.fill(Float.NaN)
         fusedFirstSampleReceived = false
         fusedSampleReceived = false
         sensorRegistrationSucceeded = null
@@ -265,6 +268,8 @@ internal class PhoneCompassSensorSource(
         accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         smoothedHeading = null
         rawHeading = null
+        lastSampleElapsedMs = null
+        orientationAngles.fill(Float.NaN)
         hasSample = false
         calibrationRecommended = false
         magneticInterference = false
@@ -286,11 +291,14 @@ internal class PhoneCompassSensorSource(
                                 orientationAngles = orientationAngles,
                                 displayRotation = phoneDisplayRotation(windowManager),
                             ),
+                            sensorElapsedMs = event.timestamp / 1_000_000L,
                         )
                     }
                 }
                 PhoneCompassPipeline.HEADING_SENSOR -> {
-                    if (event.sensor.type == PHONE_HEADING_SENSOR_TYPE) publish(event.values.firstOrNull())
+                    if (event.sensor.type == PHONE_HEADING_SENSOR_TYPE) {
+                        publish(event.values.firstOrNull(), sensorElapsedMs = event.timestamp / 1_000_000L)
+                    }
                 }
                 PhoneCompassPipeline.MAG_ACCEL_FALLBACK -> {
                     when (event.sensor.type) {
@@ -324,6 +332,7 @@ internal class PhoneCompassSensorSource(
                                 orientationAngles = orientationAngles,
                                 displayRotation = phoneDisplayRotation(windowManager),
                             ),
+                            sensorElapsedMs = event.timestamp / 1_000_000L,
                         )
                     }
                 }
@@ -355,7 +364,11 @@ internal class PhoneCompassSensorSource(
 
     override fun getLastAccuracySensorStatus(): Int = _state.value.accuracy
 
-    private fun publish(headingDegrees: Float?) {
+    private fun publish(
+        headingDegrees: Float?,
+        sensorElapsedMs: Long? = null,
+    ) {
+        if (sensorElapsedMs != null) lastSampleElapsedMs = sensorElapsedMs
         rawHeading = headingDegrees?.takeIf(Float::isFinite)?.let(::normalizePhoneHeadingDegrees)
         if (rawHeading != null) hasSample = true
         val effectiveAccuracy =
@@ -388,6 +401,7 @@ internal class PhoneCompassSensorSource(
                 calibrationRecommended = calibrationRecommended,
                 magneticInterference = magneticInterference,
             )
+        recordOrientation(next, normalized)
         if (next == _state.value) {
             recordDiagnostics(next)
             return
@@ -435,6 +449,8 @@ internal class PhoneCompassSensorSource(
             )
         hasGravity = false
         hasGeomagnetic = false
+        lastSampleElapsedMs = null
+        orientationAngles.fill(Float.NaN)
         val registered =
             when (activePipeline) {
                 PhoneCompassPipeline.ROTATION_VECTOR ->
@@ -470,6 +486,8 @@ internal class PhoneCompassSensorSource(
         cancelFusedReadyTimeout()
         sensorManager.unregisterListener(this)
         activePipeline = PhoneCompassPipeline.GOOGLE_FUSED
+        lastSampleElapsedMs = null
+        orientationAngles.fill(Float.NaN)
         val generation = ++fusedRequestGeneration
         fusedFirstSampleReceived = false
         fusedSampleReceived = false
@@ -521,7 +539,19 @@ internal class PhoneCompassSensorSource(
             )
         }
         hasSample = true
-        publish(heading)
+        if (PhoneDebugCapture.isActive()) {
+            orientationAngles.fill(Float.NaN)
+            runCatching {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, orientation.attitude)
+                headingFromPhoneRotationMatrix(
+                    rotationMatrix,
+                    remappedRotationMatrix,
+                    orientationAngles,
+                    phoneDisplayRotation(windowManager),
+                )
+            }
+        }
+        publish(heading, sensorElapsedMs = orientation.elapsedRealtimeNs / 1_000_000L)
     }
 
     private fun scheduleFusedReadyTimeout(generation: Long) {
@@ -550,6 +580,28 @@ internal class PhoneCompassSensorSource(
             activePipeline == PhoneCompassPipeline.GOOGLE_FUSED &&
             generation == fusedRequestGeneration &&
             !fusedFirstSampleReceived
+
+    private fun recordOrientation(
+        state: PhoneCompassState,
+        northAdjustedHeading: Float?,
+    ) {
+        if (!PhoneDebugCapture.isActive()) return
+        PhoneCompassDiagnostics.recordOrientation(
+            PhoneCompassOrientationSample(
+                sampleElapsedMs = lastSampleElapsedMs,
+                rawHeadingDegrees = rawHeading,
+                northAdjustedHeadingDegrees = northAdjustedHeading,
+                state = state,
+                attitude =
+                    PhoneCompassAttitude(
+                        displayRotationDegrees = phoneDisplayRotation(windowManager) * 90,
+                        pitchDegrees = Math.toDegrees(orientationAngles[1].toDouble()).toFloat().takeIf(Float::isFinite),
+                        rollDegrees = Math.toDegrees(orientationAngles[2].toDouble()).toFloat().takeIf(Float::isFinite),
+                    ),
+                northReference = northReferenceMode,
+            ),
+        )
+    }
 
     private fun recordDiagnostics(state: PhoneCompassState = _state.value) {
         PhoneCompassDiagnostics.record(

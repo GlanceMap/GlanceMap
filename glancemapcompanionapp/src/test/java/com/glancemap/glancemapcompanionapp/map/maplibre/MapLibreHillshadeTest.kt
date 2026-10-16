@@ -5,6 +5,13 @@ import org.junit.Test
 
 class MapLibreHillshadeTest {
     @Test
+    fun mapterhornUsesItsPublishedTileSizeAndGlobalCoverageZoom() {
+        assertEquals("https://tiles.mapterhorn.com/{z}/{x}/{y}.webp", PHONE_MAPTERHORN_TILE_URL)
+        assertEquals(512, PHONE_MAPTERHORN_TILE_SIZE)
+        assertEquals(12f, PHONE_MAPTERHORN_MAX_ZOOM, 0f)
+    }
+
+    @Test
     fun disabledHillshadeKeepsOneUpdateKeyWhileComparisonOpacityChanges() {
         val opacities = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
         assertEquals(listOf(0f), opacities.map { phoneMapHillshadeOpacity(false, it) }.distinct())

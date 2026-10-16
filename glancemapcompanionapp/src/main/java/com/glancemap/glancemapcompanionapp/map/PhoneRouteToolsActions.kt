@@ -10,4 +10,5 @@ internal data class PhoneRouteToolsActions(
     val onCreate: () -> Unit,
     val onOpenSettings: () -> Unit,
     val onDismiss: () -> Unit,
+    val onPlanAcrossDays: (() -> Unit)? = null,
 )

@@ -45,9 +45,22 @@ internal data class PhoneCompassDiagnosticsSnapshot(
         }
 }
 
-/** Retains only structural compass state; live heading values are intentionally not captured. */
+/** Structural state is always available; sampled angles belong only to the active explicit capture. */
 internal object PhoneCompassDiagnostics {
     private val latest = AtomicReference<PhoneCompassDiagnosticsSnapshot?>(null)
+    private val orientation = AtomicReference<Pair<Long, PhoneCompassOrientationSample>?>(null)
+
+    fun recordOrientation(sample: PhoneCompassOrientationSample) {
+        val sessionId = PhoneDebugCapture.activeSessionId() ?: return
+        orientation.set(sessionId to sample)
+    }
+
+    fun orientationSample(sessionId: Long): PhoneCompassOrientationSample? =
+        orientation
+            .get()
+            ?.takeIf {
+                it.first == sessionId && PhoneDebugCapture.activeSessionId() == sessionId
+            }?.second
 
     fun record(snapshot: PhoneCompassDiagnosticsSnapshot) {
         if (latest.getAndSet(snapshot) != snapshot) {
@@ -59,5 +72,6 @@ internal object PhoneCompassDiagnostics {
 
     internal fun clear() {
         latest.set(null)
+        orientation.set(null)
     }
 }

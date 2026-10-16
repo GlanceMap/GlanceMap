@@ -43,7 +43,7 @@ import com.glancemap.glancemapcompanionapp.layout.CompanionWidthClass
 import com.glancemap.glancemapcompanionapp.layout.LocalCompanionLayoutContext
 import kotlin.math.roundToInt
 
-private val mapToolLauncherHeight = 64.dp
+internal val mapToolLauncherHeight = 50.dp
 
 internal data class MapToolScaffoldState(
     val panel: MapToolPanelState,
@@ -165,9 +165,35 @@ private fun mapToolMapSurface(
     modifier: Modifier,
     mapContent: @Composable () -> Unit,
 ) {
+    var guidanceQuickControlExpanded by remember { mutableStateOf(false) }
+    var recordingQuickControlExpanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
         mapContent()
         if (!presentation.fullScreenPage) {
+            Column(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .widthIn(max = 360.dp)
+                        .padding(bottom = mapToolLauncherHeight + 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PhoneGuidanceQuickControl(
+                    expanded = guidanceQuickControlExpanded,
+                    onExpandedChange = { expanded ->
+                        guidanceQuickControlExpanded = expanded
+                        if (expanded) recordingQuickControlExpanded = false
+                    },
+                )
+                PhoneRecordingQuickControl(
+                    expanded = recordingQuickControlExpanded,
+                    onExpandedChange = { expanded ->
+                        recordingQuickControlExpanded = expanded
+                        if (expanded) guidanceQuickControlExpanded = false
+                    },
+                )
+            }
             mapToolLauncher(
                 presentation = presentation,
                 actions = actions,

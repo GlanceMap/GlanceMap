@@ -5,16 +5,32 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,9 +41,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapcompanionapp.R
@@ -35,6 +55,10 @@ import com.glancemap.trailcore.recording.RecordingSessionPhase
 import com.glancemap.trailcore.recording.RecordingSettings
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+
+private val phoneRecordingActiveColor = Color(0xFFD32F2F)
+private val phoneRecordingPausedColor = Color(0xFFFFD54F)
+private val phoneRecordingPausedContentColor = Color(0xFF202020)
 
 @Composable
 // The controls share permission and session state; splitting those decisions risks inconsistent actions.
@@ -82,63 +106,80 @@ internal fun PhoneRecordingPanel(
     val profileLabel = profileLabel(context, profile)
     val unitDistance = formatRecordingDistance(context, recording.distanceMeters, general.settings.isMetric)
     val elapsed = formatRecordingDuration(context, recording.session.elapsedMillis(nowMillis))
+    val startOrPause = {
+        if (!active) {
+            if (PhoneMapLocationContext.hasPermission(context) &&
+                !needsNotificationPermission(context) &&
+                !needsActivityPermission(context)
+            ) {
+                PhoneRecordingService.request(context, PhoneRecordingService.ACTION_START)
+            } else {
+                permissionLauncher.launch(recordingPermissions())
+            }
+        } else {
+            PhoneRecordingService.request(
+                context,
+                if (paused) PhoneRecordingService.ACTION_RESUME else PhoneRecordingService.ACTION_PAUSE,
+            )
+        }
+    }
+    val statusResource =
+        if (paused && recording.session.autoPaused) {
+            R.string.phone_rec_status_auto_paused
+        } else {
+            when (recording.message) {
+                PhoneRecordingMessage.IDLE -> R.string.phone_rec_status_idle
+                PhoneRecordingMessage.RECORDING -> R.string.phone_rec_status_recording
+                PhoneRecordingMessage.PAUSED -> R.string.phone_rec_status_paused
+                PhoneRecordingMessage.SAVING -> R.string.phone_rec_status_saving
+                PhoneRecordingMessage.SAVE_FAILED -> R.string.phone_rec_status_save_failed
+                PhoneRecordingMessage.SAVED -> R.string.phone_rec_status_saved
+                PhoneRecordingMessage.PERMISSION_REQUIRED -> R.string.phone_rec_status_permission
+                PhoneRecordingMessage.LOCATION_UNAVAILABLE -> R.string.phone_rec_status_location_unavailable
+            }
+        }
+    val activeStatusColor =
+        when {
+            active && paused -> phoneRecordingPausedContentColor
+            active -> phoneRecordingActiveColor
+            else -> Color.Unspecified
+        }
 
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(stringResource(R.string.phone_rec_title))
-        Text(
-            stringResource(
-                when (recording.message) {
-                    PhoneRecordingMessage.IDLE -> R.string.phone_rec_status_idle
-                    PhoneRecordingMessage.RECORDING -> R.string.phone_rec_status_recording
-                    PhoneRecordingMessage.PAUSED -> R.string.phone_rec_status_paused
-                    PhoneRecordingMessage.SAVING -> R.string.phone_rec_status_saving
-                    PhoneRecordingMessage.SAVE_FAILED -> R.string.phone_rec_status_save_failed
-                    PhoneRecordingMessage.SAVED -> R.string.phone_rec_status_saved
-                    PhoneRecordingMessage.PERMISSION_REQUIRED -> R.string.phone_rec_status_permission
-                    PhoneRecordingMessage.LOCATION_UNAVAILABLE -> R.string.phone_rec_status_location_unavailable
-                },
-            ),
-        )
+        Text(stringResource(statusResource), color = activeStatusColor)
         Text(stringResource(R.string.phone_rec_profile, profileLabel))
         Text(stringResource(R.string.phone_rec_points, recording.points.size))
         Text(stringResource(R.string.phone_rec_distance, unitDistance))
         Text(stringResource(R.string.phone_rec_duration, elapsed))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!active) {
-                OutlinedButton(onClick = {
-                    if (PhoneMapLocationContext.hasPermission(context) &&
-                        !needsNotificationPermission(context) &&
-                        !needsActivityPermission(context)
-                    ) {
-                        PhoneRecordingService.request(context, PhoneRecordingService.ACTION_START)
-                    } else {
-                        permissionLauncher.launch(recordingPermissions())
-                    }
-                }) {
-                    Text(stringResource(R.string.phone_rec_start))
-                }
-            } else {
-                OutlinedButton(
-                    enabled = !busy,
-                    onClick = {
-                        PhoneRecordingService.request(
-                            context,
-                            if (paused) PhoneRecordingService.ACTION_RESUME else PhoneRecordingService.ACTION_PAUSE,
-                        )
-                    },
-                ) {
-                    Text(stringResource(if (paused) R.string.phone_rec_resume else R.string.phone_rec_pause))
-                }
-                OutlinedButton(
+            IconButton(enabled = !busy, onClick = startOrPause) {
+                Icon(
+                    imageVector = if (active && !paused) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription =
+                        stringResource(
+                            when {
+                                !active -> R.string.phone_rec_start
+                                paused -> R.string.phone_rec_resume
+                                else -> R.string.phone_rec_pause
+                            },
+                        ),
+                )
+            }
+            if (active) {
+                IconButton(
                     enabled = !busy && recording.points.size >= 2,
                     onClick = { PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE) },
                 ) {
-                    Text(stringResource(R.string.phone_rec_save))
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = stringResource(R.string.phone_rec_stop_and_save),
+                    )
                 }
-                OutlinedButton(enabled = !busy, onClick = { confirmDiscard = true }) {
+                TextButton(enabled = !busy, onClick = { confirmDiscard = true }) {
                     Text(stringResource(R.string.phone_rec_discard))
                 }
             }
@@ -361,6 +402,108 @@ internal fun PhoneRecordingPanel(
                 TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.phone_rec_cancel)) }
             },
         )
+    }
+}
+
+/** Compact control remains available above the map Tools bar while the recording panel is closed. */
+@Composable
+internal fun PhoneRecordingQuickControl(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val recording by PhoneRecordingSessionStore.state.collectAsState()
+    val active =
+        recording.session.phase == RecordingSessionPhase.RECORDING ||
+            recording.session.phase == RecordingSessionPhase.PAUSED
+    val paused = recording.session.phase == RecordingSessionPhase.PAUSED
+    val busy = recording.session.phase == RecordingSessionPhase.SAVING
+
+    LaunchedEffect(active) {
+        if (!active) onExpandedChange(false)
+    }
+    if (!active) return
+
+    val statusResource =
+        if (paused && recording.session.autoPaused) {
+            R.string.phone_rec_status_auto_paused
+        } else if (paused) {
+            R.string.phone_rec_status_paused
+        } else {
+            R.string.phone_rec_status_recording
+        }
+    val containerColor = if (paused) phoneRecordingPausedColor else phoneRecordingActiveColor
+    val contentColor = if (paused) phoneRecordingPausedContentColor else Color.White
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        shadowElevation = 6.dp,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+            Row(
+                modifier =
+                    Modifier
+                        .clickable(
+                            role = Role.Button,
+                        ) { onExpandedChange(!expanded) }
+                        .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = if (paused) Icons.Filled.Pause else Icons.Filled.FiberManualRecord,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(stringResource(statusResource), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription =
+                        stringResource(
+                            if (expanded) R.string.phone_rec_collapse_controls else R.string.phone_rec_expand_controls,
+                        ),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            if (expanded) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        enabled = !busy,
+                        onClick = {
+                            PhoneRecordingService.request(
+                                context,
+                                if (paused) PhoneRecordingService.ACTION_RESUME else PhoneRecordingService.ACTION_PAUSE,
+                            )
+                            onExpandedChange(false)
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
+                    ) {
+                        Icon(
+                            imageVector = if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(if (paused) R.string.phone_rec_resume else R.string.phone_rec_pause))
+                    }
+                    TextButton(
+                        enabled = !busy && recording.points.size >= 2,
+                        onClick = {
+                            PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE)
+                            onExpandedChange(false)
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
+                    ) {
+                        Icon(Icons.Filled.Stop, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.phone_rec_stop))
+                    }
+                }
+            }
+        }
     }
 }
 

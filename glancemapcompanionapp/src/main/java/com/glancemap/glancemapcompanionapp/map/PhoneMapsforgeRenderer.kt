@@ -131,9 +131,15 @@ internal class PhoneMapsforgeTileCache(
     override fun getImmediately(key: Job): TileBitmap? = get(key)
 }
 
-internal fun phoneMapsforgeTileCacheId(identity: PhoneMapsforgeBaseLayerIdentity): String =
-    "$PHONE_MAP_CACHE_PREFIX-${phoneMapsforgeIdentityHash(identity.mapIdentity)}-" +
-        phoneMapsforgeIdentityHash("${identity.themeConfig.themeId}:${identity.themeConfig.styleId}")
+internal fun phoneMapsforgeTileCacheId(
+    identity: PhoneMapsforgeBaseLayerIdentity,
+    role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
+): String {
+    val id =
+        "$PHONE_MAP_CACHE_PREFIX-${phoneMapsforgeIdentityHash(identity.mapIdentity)}-" +
+            phoneMapsforgeIdentityHash("${identity.themeConfig.themeId}:${identity.themeConfig.styleId}")
+    return if (role == PhoneOfflineMapRendererRole.COMPARISON) "$id-comparison" else id
+}
 
 private fun phoneMapsforgeIdentityHash(value: String): String = value.hashCode().toUInt().toString(16)
 
@@ -447,7 +453,7 @@ internal class PhoneMapsforgeRenderer(
         var layer: PhoneFirstVisibleTileRendererLayer? = null
         try {
             val camera = configureMapFile(mapFile, initialCamera, change, trace)
-            val cacheId = phoneMapsforgeTileCacheId(identity)
+            val cacheId = phoneMapsforgeTileCacheId(identity, rendererIdentity.role)
             cache = createTileCache(cacheId)
             trace.tileCacheCreated()
             trace.complete(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)

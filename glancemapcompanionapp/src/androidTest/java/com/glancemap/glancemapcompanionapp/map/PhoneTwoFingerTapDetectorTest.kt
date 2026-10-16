@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -168,6 +169,50 @@ class PhoneTwoFingerTapDetectorTest {
         SystemClock.sleep(220L)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
+        assertEquals(0, starts)
+    }
+
+    @Test
+    fun smallTwistBelowIndividualFingerSlopDoesNotBecomeMeasurement() {
+        assertTransformRemainsWithMap { slop ->
+            multiEvent(MotionEvent.ACTION_MOVE, 100f, 100f, 100f + slop * 4, 100f + slop * 0.25f)
+        }
+    }
+
+    @Test
+    fun pinchBelowIndividualFingerSlopDoesNotBecomeMeasurement() {
+        assertTransformRemainsWithMap { slop ->
+            multiEvent(MotionEvent.ACTION_MOVE, 100f - slop * 0.6f, 100f, 100f + slop * 4.6f, 100f)
+        }
+    }
+
+    @Test
+    fun nativeGestureStartCancelsPendingMeasurementUntilTheNextTouch() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        var starts = 0
+        val detector = PhoneTwoFingerTapDetector(context, { _, _, _, _ -> starts += 1 })
+        singleEvent(MotionEvent.ACTION_DOWN, 10f, 10f).consume(detector::onTouchEvent)
+        multiEvent(MotionEvent.ACTION_POINTER_DOWN, 10f, 10f, 100f, 10f, pointerActionIndex = 1)
+            .consume(detector::onTouchEvent)
+        detector.cancelPendingMeasurement()
+        SystemClock.sleep(220L)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        assertEquals(0, starts)
+        multiEvent(MotionEvent.ACTION_POINTER_UP, 10f, 10f, 100f, 10f, pointerActionIndex = 1)
+            .consume { assertFalse(detector.onTouchEvent(it)) }
+    }
+
+    private fun assertTransformRemainsWithMap(move: (Float) -> MotionEvent) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        var starts = 0
+        val detector = PhoneTwoFingerTapDetector(context, { _, _, _, _ -> starts += 1 })
+        singleEvent(MotionEvent.ACTION_DOWN, 100f, 100f).consume(detector::onTouchEvent)
+        multiEvent(MotionEvent.ACTION_POINTER_DOWN, 100f, 100f, 100f + slop * 4, 100f, pointerActionIndex = 1)
+            .consume(detector::onTouchEvent)
+        move(slop).consume { assertFalse(detector.onTouchEvent(it)) }
+        SystemClock.sleep(220L)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         assertEquals(0, starts)
     }
 
