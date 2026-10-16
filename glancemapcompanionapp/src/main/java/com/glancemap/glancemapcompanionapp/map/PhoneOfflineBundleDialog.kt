@@ -12,15 +12,16 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextButtonDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -475,7 +476,7 @@ private fun phoneOfflineBundleAreaSelector(
                     onClick = { onAreaSelected(area.id) },
                     modifier = Modifier.fillMaxWidth(),
                     colors =
-                        TextButtonDefaults.textButtonColors(
+                        ButtonDefaults.textButtonColors(
                             containerColor =
                                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                             contentColor =
