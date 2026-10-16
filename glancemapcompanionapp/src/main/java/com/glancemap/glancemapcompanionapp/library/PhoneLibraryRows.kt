@@ -35,7 +35,7 @@ internal fun libraryItemRow(
         )
     val visibility = phoneLibraryVisibility(item, state.gpx.items, state.gpx.globalVisible, state.poi.globalVisible)
     Card(
-        onClick = onDetails,
+        onClick = { if (item.isNavigableGpx() && row.onPreviewGpx != null) row.onPreviewGpx.invoke(item) else onDetails() },
         enabled = row.enabled,
         modifier = Modifier.fillMaxWidth().testTag("library-item-${item.key}"),
     ) {
@@ -56,7 +56,7 @@ internal fun libraryItemRow(
                 if (item is PhoneLibraryItem.Bundle) libraryOfflineCapabilities(item)
                 if (item is PhoneLibraryItem.OfflineMap) libraryMapCoverageLabels(item.coverage)
                 if (item.filter == PhoneLibraryFilter.GPX) {
-                    val activity = row.organization.entry(item).activity ?: PhoneLibraryActivity.UNSPECIFIED
+                    val activity = row.organization.entry(item).activity ?: PhoneLibraryActivity.HIKE
                     Text(stringResource(activity.label), style = MaterialTheme.typography.labelSmall)
                 }
                 val status =
@@ -73,6 +73,9 @@ internal fun libraryItemRow(
             }
             libraryMapControl(row, visibility, state, actions)
             if (item.isNavigableGpx()) {
+                IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
+                }
                 IconButton(
                     onClick = { row.onStartGuidance(item) },
                     enabled = row.enabled && row.guidanceEnabled && !row.guidanceLoading,

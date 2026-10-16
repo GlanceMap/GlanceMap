@@ -73,6 +73,8 @@ class PhoneLibraryFoldersUiTest {
         setContent()
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasText("Forest loop"))
         composeRule.onNodeWithText("Forest loop").performClick()
+        composeRule.onNodeWithTag("library-classify-HIKE").performScrollTo().assertIsSelected()
+        composeRule.onNodeWithTag("library-classify-UNSPECIFIED").assertDoesNotExist()
         composeRule.onNodeWithTag("library-classify-BIKE").performScrollTo().performClick()
         composeRule.onNodeWithText(label(R.string.common_action_close)).performClick()
         assertEquals(

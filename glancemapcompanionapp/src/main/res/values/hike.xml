@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hike_profile_description">Route elevation profile. Adjust to explore the route.</string>
+    <string name="hike_back_pois">Back to POIs</string>
+    <string name="hike_checkpoint_near_route">Choose a point closer to the GPX. Slide the profile first where the route overlaps.</string>
+    <string name="hike_weather_partial">Some route forecasts are unavailable. Loaded forecasts remain available.</string>
+</resources>

@@ -111,6 +111,7 @@ internal data class PhoneLibraryRowState(
     val guidanceEnabled: Boolean = false,
     val guidanceLoading: Boolean = false,
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
+    val onPreviewGpx: ((PhoneLibraryItem) -> Unit)? = null,
 )
 
 internal data class PhoneLibraryListState(
@@ -139,6 +140,7 @@ internal data class PhoneLibraryActions(
     val guidanceStartingKey: String? = null,
     val guidanceActive: Boolean = false,
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
+    val onPreviewGpx: ((PhoneLibraryItem) -> Unit)? = null,
 )
 
 internal fun phoneLibraryItems(

@@ -14,14 +14,11 @@ internal enum class PhoneLibraryGpxKind(
 internal enum class PhoneLibraryActivity(
     @StringRes val label: Int,
 ) {
-    @SerializedName(value = "hike", alternate = ["HIKE"])
+    @SerializedName(value = "hike", alternate = ["HIKE", "unspecified", "UNSPECIFIED"])
     HIKE(R.string.library_activity_hike),
 
     @SerializedName(value = "bike", alternate = ["BIKE"])
     BIKE(R.string.library_activity_bike),
-
-    @SerializedName(value = "unspecified", alternate = ["UNSPECIFIED"])
-    UNSPECIFIED(R.string.library_activity_unspecified),
 }
 
 internal data class PhoneLibraryFolder(
@@ -37,7 +34,7 @@ internal data class PhoneLibraryEntryOrganization(
     @field:SerializedName("folderId")
     val folderId: String? = null,
     @field:SerializedName("activity")
-    val activity: PhoneLibraryActivity? = null,
+    val activity: PhoneLibraryActivity? = PhoneLibraryActivity.HIKE,
 )
 
 internal data class PhoneLibraryOrganization(
@@ -50,7 +47,8 @@ internal data class PhoneLibraryOrganization(
 
     fun entry(item: PhoneLibraryItem): PhoneLibraryEntryOrganization {
         val key = item.organizationKey()
-        return entries[key] ?: PhoneLibraryEntryOrganization()
+        val entry = entries[key] ?: PhoneLibraryEntryOrganization()
+        return if (entry.activity == null) entry.copy(activity = PhoneLibraryActivity.HIKE) else entry
     }
 
     fun folderPath(id: String?): String {
@@ -158,7 +156,7 @@ internal fun browsePhoneLibraryItems(
             (
                 category != PhoneLibraryFilter.GPX ||
                     browse.activity == null ||
-                    (entry.activity ?: PhoneLibraryActivity.UNSPECIFIED) == browse.activity
+                    (entry.activity ?: PhoneLibraryActivity.HIKE) == browse.activity
             )
     }
 

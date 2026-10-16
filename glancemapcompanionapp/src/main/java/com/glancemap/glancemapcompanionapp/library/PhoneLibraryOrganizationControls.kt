@@ -138,7 +138,7 @@ internal fun libraryActivitySetting(
 ) {
     if (item.filter != PhoneLibraryFilter.GPX) return
     Text(stringResource(R.string.library_activity_title), style = MaterialTheme.typography.titleSmall)
-    val current = organization.entry(item).activity ?: PhoneLibraryActivity.UNSPECIFIED
+    val current = organization.entry(item).activity ?: PhoneLibraryActivity.HIKE
     PhoneLibraryActivity.entries.forEach { activity ->
         Row(
             modifier =

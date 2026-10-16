@@ -11,6 +11,7 @@ import com.glancemap.glancemapcompanionapp.diagnostics.MissionDayWeatherDiagnost
 import com.glancemap.glancemapcompanionapp.diagnostics.MissionPlanMutationOperation
 import com.glancemap.glancemapcompanionapp.weather.FileWeatherForecastStore
 import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
+import com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastRepository
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastSource
 import kotlinx.coroutines.CancellationException
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Suppress("LongMethod", "TooManyFunctions")
@@ -32,6 +35,8 @@ class MissionPlanViewModel(
             provider = OpenMeteoWeatherForecastProvider(),
             store = FileWeatherForecastStore(application),
         )
+    private val mutationMutex = Mutex()
+    private val routeDetailsCache = mutableMapOf<RouteLibraryRoute, RouteLibraryRouteDetails>()
     private val _uiState = MutableStateFlow(MissionPlanUiState())
     val uiState: StateFlow<MissionPlanUiState> = _uiState.asStateFlow()
 
@@ -42,7 +47,10 @@ class MissionPlanViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, message = null)
-            updateFromRepository()
+            mutationMutex.withLock {
+                routeDetailsCache.clear()
+                updateFromRepository()
+            }
         }
     }
 
@@ -50,6 +58,108 @@ class MissionPlanViewModel(
         CompanionJourneyDiagnostics.missionPlanMutationStarted(MissionPlanMutationOperation.ADD_DAY)
         viewModelScope.launch {
             mutate(MissionPlanMutationOperation.ADD_DAY) { missionPlanRepository.addDay(routeId) }
+        }
+    }
+
+    fun saveAdventure(
+        id: String?,
+        update: MissionAdventureUpdate,
+    ) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.UPDATE_ADVENTURE) { missionPlanRepository.saveAdventure(id, update) }
+        }
+    }
+
+    fun selectAdventure(id: String) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.SELECT_ADVENTURE) { missionPlanRepository.selectAdventure(id) }
+        }
+    }
+
+    fun addBlankDay(isRestDay: Boolean) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.ADD_DAY) { missionPlanRepository.addDay(isRestDay = isRestDay) }
+        }
+    }
+
+    fun assignRoute(
+        dayId: String,
+        routeId: String,
+    ) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.ASSIGN_ROUTE) { missionPlanRepository.assignRoute(dayId, routeId) }
+        }
+    }
+
+    fun importDayRoute(
+        dayId: String,
+        uri: Uri,
+        onImported: () -> Unit,
+    ) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.ASSIGN_ROUTE) {
+                val imported = routeLibraryRepository.importRoute(uri)
+                missionPlanRepository.assignRoute(dayId, requireNotNull(imported.selectedRouteId))
+            }
+            onImported()
+        }
+    }
+
+    suspend fun loadStageSource(
+        adventureId: String,
+        routeId: String,
+    ): MissionRouteStageSource =
+        withContext(Dispatchers.IO) {
+            val index = missionPlanRepository.load()
+            require(
+                index.adventures.any { it.id == adventureId },
+            ) { "This adventure no longer exists. Reopen Adventures and try again." }
+            MissionRouteStageSource(
+                requireNotNull(
+                    routeLibraryRepository.routeDetails(routeId),
+                ) { "This GPX is no longer in your library. Import it again or choose another route." },
+                index.days.filter { it.adventureId == adventureId }.sortedBy { it.dayNumber },
+            )
+        }
+
+    suspend fun importStageRoute(uri: Uri): String =
+        withContext(Dispatchers.IO) {
+            requireNotNull(routeLibraryRepository.importRoute(uri).selectedRouteId)
+        }
+
+    suspend fun saveStages(
+        adventureId: String,
+        routeId: String,
+        dayIds: List<String>,
+        stops: List<Double>,
+    ) {
+        mutationMutex.withLock {
+            val index =
+                withContext(Dispatchers.IO) {
+                    val details =
+                        requireNotNull(
+                            routeLibraryRepository.routeDetails(routeId),
+                        ) { "This GPX is no longer in your library. Import it again or choose another route." }
+                    val distances = details.profile.cumulativeDistanceMeters.toSet()
+                    require(stops.all { it in distances }) { "Choose stops on this GPX." }
+                    missionPlanRepository.planStages(
+                        adventureId,
+                        routeId,
+                        dayIds,
+                        stops,
+                        details.profile.totalDistanceMeters,
+                    )
+                }
+            publish(index)
+        }
+    }
+
+    fun changeDay(
+        dayId: String,
+        edit: (MissionPlanDay) -> MissionPlanDayUpdate,
+    ) {
+        viewModelScope.launch {
+            mutate(MissionPlanMutationOperation.UPDATE_DAY) { missionPlanRepository.editDay(dayId, edit) }
         }
     }
 
@@ -114,8 +224,11 @@ class MissionPlanViewModel(
         dayId: String,
         forceRefresh: Boolean,
     ) {
-        val dayUi = _uiState.value.days.firstOrNull { day -> day.day.id == dayId } ?: return
-        val plannedDate = dayUi.day.plannedDate
+        val day =
+            _uiState.value
+                .weatherPlanDay(dayId)
+                ?.takeUnless { _uiState.value.weatherFor(it)?.isLoading == true } ?: return
+        val plannedDate = day.plannedDate
         if (plannedDate == null) {
             CompanionJourneyDiagnostics.missionDayWeatherBlockedWithoutDate()
             updateDayWeather(
@@ -133,7 +246,7 @@ class MissionPlanViewModel(
 
         CompanionJourneyDiagnostics.missionDayWeatherRequested(
             forceRefresh = forceRefresh,
-            hasStartTime = dayUi.day.plannedStartTime != null,
+            hasStartTime = day.plannedStartTime != null,
         )
         viewModelScope.launch {
             updateDayWeather(
@@ -141,21 +254,33 @@ class MissionPlanViewModel(
                 weather =
                     MissionDayWeatherUiState(
                         plannedDate = plannedDate,
-                        plannedStartTime = dayUi.day.plannedStartTime,
+                        planKey = day.weatherKey(),
+                        plannedStartTime = day.plannedStartTime,
                         isLoading = true,
                     ),
             )
             val samples =
                 runCatching {
                     withContext(Dispatchers.IO) {
-                        val details =
-                            routeLibraryRepository.routeDetails(dayUi.route.id)
-                                ?: error(
-                                    getApplication<android.app.Application>().getString(
-                                        R.string.mission_plan_this_day_s_gpx_is_no_longer,
-                                    ),
-                                )
-                        val targets = details.missionDayWeatherTargets(dayUi.day)
+                        val targets =
+                            if (day.isRestDay) {
+                                day.weatherLocation
+                                    ?.let { location ->
+                                        listOf(
+                                            MissionDayWeatherSampleTarget(
+                                                MissionDayWeatherSamplePosition.STAY,
+                                                0.0,
+                                                0L,
+                                                location,
+                                            ),
+                                        )
+                                    }.orEmpty()
+                            } else {
+                                day.routeId
+                                    ?.let { routeLibraryRepository.routeDetails(it) }
+                                    ?.missionDayWeatherTargets(day)
+                                    .orEmpty()
+                            }
                         if (targets.isEmpty()) {
                             error(
                                 getApplication<android.app.Application>().getString(
@@ -163,7 +288,7 @@ class MissionPlanViewModel(
                                 ),
                             )
                         }
-                        targets.map { target -> loadDayWeatherSample(target, dayUi.day, forceRefresh) }
+                        targets.map { target -> loadDayWeatherSample(target, day, forceRefresh) }
                     }
                 }.getOrElse { error ->
                     if (error is CancellationException) throw error
@@ -173,7 +298,8 @@ class MissionPlanViewModel(
                         weather =
                             MissionDayWeatherUiState(
                                 plannedDate = plannedDate,
-                                plannedStartTime = dayUi.day.plannedStartTime,
+                                planKey = day.weatherKey(),
+                                plannedStartTime = day.plannedStartTime,
                                 message =
                                     getApplication<android.app.Application>().getString(
                                         R.string.mission_plan_day_weather_is_unavailable_check_your_connection,
@@ -198,7 +324,8 @@ class MissionPlanViewModel(
                 weather =
                     MissionDayWeatherUiState(
                         plannedDate = plannedDate,
-                        plannedStartTime = dayUi.day.plannedStartTime,
+                        planKey = day.weatherKey(),
+                        plannedStartTime = day.plannedStartTime,
                         samples = samples,
                         message =
                             when {
@@ -255,8 +382,8 @@ class MissionPlanViewModel(
     private suspend fun mutate(
         diagnosticOperation: MissionPlanMutationOperation,
         operation: suspend () -> MissionPlanRepository.MissionPlanIndex,
-    ) {
-        _uiState.value = _uiState.value.copy(isLoading = true, message = null)
+    ) = mutationMutex.withLock {
+        _uiState.value = _uiState.value.copy(message = null)
         val index =
             runCatching {
                 withContext(Dispatchers.IO) { operation() }
@@ -272,7 +399,7 @@ class MissionPlanViewModel(
                                     R.string.mission_plan_could_not_update_the_mission_plan,
                                 ),
                     )
-                return
+                return@withLock
             }
         publish(index)
         CompanionJourneyDiagnostics.missionPlanMutationSucceeded(diagnosticOperation, index.days.size)
@@ -315,45 +442,76 @@ class MissionPlanViewModel(
                     )
                 return
             }
+        routeDetailsCache.keys.retainAll(routeState.routes.toSet())
         val routesById = routeState.routes.associateBy(RouteLibraryRoute::id)
-        val dayUi =
-            index.days.mapNotNull { day ->
-                val route = routesById[day.routeId] ?: return@mapNotNull null
-                val details =
-                    try {
-                        withContext(Dispatchers.IO) { routeLibraryRepository.routeDetails(route.id) }
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (_: Throwable) {
-                        null
-                    } ?: return@mapNotNull null
-                MissionPlanDayUi(
-                    day = day,
-                    route = route,
-                    briefing = details.missionPlanBriefing(day),
-                    timeline = details.missionDayTimeline(day),
-                    profile = details.missionDayPlanProfile(day),
-                )
+        val planDays =
+            index.days.filter { it.adventureId == index.selectedAdventureId }.sortedBy(
+                MissionPlanDay::dayNumber,
+            )
+        val dayUi = mutableListOf<MissionPlanDayUi>()
+        val restLocations = mutableMapOf<String, WeatherForecastLocation>()
+        var previousFinish: WeatherForecastLocation? = null
+        for (day in planDays) {
+            if (day.isRestDay) {
+                previousFinish = day.weatherLocation ?: previousFinish
+                previousFinish?.let { restLocations[day.id] = it }
+                continue
             }
-        _uiState.value =
+            val route = routesById[day.routeId]
+            val details = route?.let { routeDetailsOrNull(it) }
+            previousFinish =
+                details?.weatherLocationAt(
+                    day.endDistanceFor(details.profile.totalDistanceMeters),
+                    day.overnight ?: details.route.displayName,
+                )
+            if (details != null) {
+                dayUi +=
+                    MissionPlanDayUi(
+                        day,
+                        route,
+                        details.missionPlanBriefing(day),
+                        details.missionDayTimeline(day),
+                        details.missionDayPlanProfile(day),
+                    )
+            }
+        }
+        val nextState =
             MissionPlanUiState(
                 days = dayUi,
-                selectedDayId =
-                    index.selectedDayId?.takeIf { selected -> dayUi.any { it.day.id == selected } }
-                        ?: dayUi.firstOrNull()?.day?.id,
-                weatherByDayId =
-                    _uiState.value.weatherByDayId.filter { (dayId, weather) ->
-                        val currentDay =
-                            dayUi
-                                .firstOrNull { day -> day.day.id == dayId }
-                                ?.day
-                        currentDay?.plannedDate == weather.plannedDate &&
-                            currentDay?.plannedStartTime == weather.plannedStartTime
-                    },
-                unavailableDayCount = index.days.size - dayUi.size,
+                selectedDayId = index.selectedDayId?.takeIf { selected -> dayUi.any { it.day.id == selected } },
+                adventures = index.adventures,
+                selectedAdventureId = index.selectedAdventureId,
+                planDays = planDays,
+                restLocations = restLocations,
+                unavailableDayCount = planDays.count { !it.isRestDay } - dayUi.size,
                 isLoading = false,
             )
+        _uiState.value =
+            nextState.copy(
+                weatherByDayId =
+                    _uiState.value.weatherByDayId.filter { (id, weather) ->
+                        nextState.weatherPlanDay(id)?.let { day ->
+                            day.plannedDate == weather.plannedDate &&
+                                day.plannedStartTime == weather.plannedStartTime &&
+                                day.weatherKey() == weather.planKey
+                        } == true
+                    },
+            )
     }
+
+    @Suppress(
+        "TooGenericExceptionCaught",
+        "SwallowedException",
+    ) // Keep the planning visible when a GPX is missing or malformed.
+    private suspend fun routeDetailsOrNull(route: RouteLibraryRoute): RouteLibraryRouteDetails? =
+        try {
+            routeDetailsCache[route] ?: withContext(Dispatchers.IO) { routeLibraryRepository.routeDetails(route.id) }
+                ?.also { routeDetailsCache[route] = it }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
 
     private suspend fun loadDayWeatherSample(
         target: MissionDayWeatherSampleTarget,
@@ -394,10 +552,11 @@ class MissionPlanViewModel(
         dayId: String,
         weather: MissionDayWeatherUiState,
     ) {
-        val day = _uiState.value.days.firstOrNull { dayUi -> dayUi.day.id == dayId } ?: return
+        val day = _uiState.value.weatherPlanDay(dayId) ?: return
         if (
-            day.day.plannedDate != weather.plannedDate ||
-            day.day.plannedStartTime != weather.plannedStartTime
+            day.plannedDate != weather.plannedDate ||
+            day.plannedStartTime != weather.plannedStartTime ||
+            day.weatherKey() != weather.planKey
         ) {
             return
         }

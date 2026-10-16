@@ -30,6 +30,7 @@ internal fun phoneLibraryScreen(
     mapActions: MapToolsPanelActions,
     actions: PhoneLibraryActions,
     filter: PhoneLibraryFilter,
+    checkpointsContent: @Composable () -> Unit = {},
 ) {
     val model: PhoneLibraryViewModel = viewModel()
     val local by model.uiState.collectAsState()
@@ -52,6 +53,7 @@ internal fun phoneLibraryScreen(
         mapState.general.storageLocation,
     ) { model.refresh() }
     libraryPanelContent(
+        checkpointsContent = checkpointsContent,
         state =
             PhoneLibraryListState(
                 items = items,
@@ -91,8 +93,10 @@ internal fun libraryPanelContent(
     mapState: MapToolsPanelState,
     mapActions: MapToolsPanelActions,
     actions: PhoneLibraryActions,
+    checkpointsContent: @Composable () -> Unit = {},
 ) {
     var browse by rememberSaveable(stateSaver = phoneLibraryBrowseSaver) { mutableStateOf(PhoneLibraryBrowseState()) }
+    var checkpointsOpen by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var moveKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -116,19 +120,29 @@ internal fun libraryPanelContent(
             browsePhoneLibraryItems(state.items, state.filter, browse, state.organization)
         }
     BackHandler(enabled = browse.folderId != null) { browse = state.organization.parentBrowse(browse) }
+    BackHandler(enabled = checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) { checkpointsOpen = false }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         libraryFilters(state.filter, actions.onFilterChanged)
-        libraryBrowserList(
-            state.copy(items = visible),
-            mapState,
-            mapActions,
-            addingActions,
-            PhoneLibraryBrowserPresentation(
-                browse,
-                searchOpen,
-                PhoneLibraryBrowserActions({ browse = it }, { searchOpen = !searchOpen }, { selectedKey = it.key }),
-            ),
-        )
+        if (state.filter == PhoneLibraryFilter.POIS) {
+            TextButton(onClick = { checkpointsOpen = !checkpointsOpen }) {
+                Text(stringResource(if (checkpointsOpen) R.string.hike_back_pois else R.string.hike_checkpoints))
+            }
+        }
+        if (checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) {
+            Box(Modifier.weight(1f)) { checkpointsContent() }
+        } else {
+            libraryBrowserList(
+                state.copy(items = visible),
+                mapState,
+                mapActions,
+                addingActions,
+                PhoneLibraryBrowserPresentation(
+                    browse,
+                    searchOpen,
+                    PhoneLibraryBrowserActions({ browse = it }, { searchOpen = !searchOpen }, { selectedKey = it.key }),
+                ),
+            )
+        }
     }
     state.items.firstOrNull { it.key == selectedKey }?.let { item ->
         libraryItemDetails(
@@ -196,6 +210,7 @@ internal fun LazyListScope.libraryEntries(
                 guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
                 guidanceLoading = actions.guidanceStartingKey == item.key,
                 onStartGuidance = actions.onStartGuidance,
+                onPreviewGpx = actions.onPreviewGpx,
             ),
             mapState,
             mapActions,

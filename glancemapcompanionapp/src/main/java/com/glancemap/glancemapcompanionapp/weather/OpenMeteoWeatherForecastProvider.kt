@@ -61,7 +61,7 @@ internal class OpenMeteoWeatherForecastProvider(
                 }
             }.build()
 
-    private companion object {
+    internal companion object {
         const val FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
         const val FORECAST_DAYS = 10
         const val CURRENT_VARIABLES =
@@ -97,6 +97,7 @@ internal object OpenMeteoWeatherForecastParser {
             nextHour = root.childObjectOrNull("hourly").toHourlyOutlook(),
             hourly = root.childObjectOrNull("hourly").toHourlyOutlooks(),
             daily = root.childObjectOrNull("daily").toDailyOutlook(),
+            timeZoneId = root.get("timezone")?.takeIf { it.isJsonPrimitive }?.asString,
         )
     }
 

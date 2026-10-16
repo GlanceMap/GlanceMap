@@ -34,7 +34,12 @@ internal val phoneLibraryBrowseSaver =
                 folderId = it[0].ifEmpty { null },
                 query = it[1],
                 kind = PhoneLibraryGpxKind.entries.firstOrNull { kind -> kind.name == it[2] },
-                activity = PhoneLibraryActivity.entries.firstOrNull { activity -> activity.name == it[3] },
+                activity =
+                    if (it[3] == "UNSPECIFIED") {
+                        PhoneLibraryActivity.HIKE
+                    } else {
+                        PhoneLibraryActivity.entries.firstOrNull { activity -> activity.name == it[3] }
+                    },
                 offlineSection =
                     PhoneLibraryOfflineSection.entries.firstOrNull { section -> section.name == it.getOrNull(4) }
                         ?: PhoneLibraryOfflineSection.AREAS,

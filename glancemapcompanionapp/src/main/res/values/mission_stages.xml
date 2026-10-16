@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stage_plan_across_days">Plan across days</string>
+    <string name="stage_explanation">Keep one GPX and link daily stages. Moving an arrival also moves the next hiking day’s departure, including across days off.</string>
+    <string name="stage_create_adventure_first">Create an adventure with dates first, then choose Plan across days.</string>
+    <string name="stage_load_error">Could not load this GPX. Choose another route or try again.</string>
+    <string name="stage_save_error">Could not apply these stages. Your draft is still here; check the itinerary and try again.</string>
+    <string name="stage_selected_days">Hiking days selected: %1$d · Change</string>
+    <string name="stage_day_date">Day %1$d · %2$s</string>
+    <string name="stage_days_invalid">Choose consecutive hiking days. Days off can stay between them. The GPX needs at least one track section per hiking day.</string>
+    <string name="stage_arrival_day">Arrival · Day %1$d</string>
+    <string name="stage_move_hint">Select an arrival, then tap the route or elevation profile, or move the slider. Stops snap to this GPX. Use route editing for destinations away from the track.</string>
+    <string name="stage_route_overview">Route overview · colours show each hiking stage</string>
+    <string name="stage_elevation">Elevation · distance along the GPX</string>
+    <string name="stage_no_elevation">This GPX has no elevation data. You can still select stops along the distance axis or route overview.</string>
+    <string name="stage_stop_distance">Arrival at %1$s from the GPX start</string>
+    <string name="stage_undo">Undo last move</string>
+    <string name="stage_day_metrics">Day %1$d · %2$s · ↑ %3$d m · %4$s</string>
+    <string name="stage_review_stay">Arrival changed · review the place and booking for this night.</string>
+    <string name="stage_reviewed_stay">I have reviewed this place and booking</string>
+    <string name="stage_apply_hint">Selected days will use these GPX sections. Meals, dates and notes stay with their days. Review lodging when a stop moves. Separate GPXs are generated when sending a day to the watch.</string>
+    <string name="stage_apply">Apply linked stages</string>
+    <string name="stage_change_arrival">Change arrival / stages</string>
+    <string name="stage_linked_hint">Linked stages · changing the day type, replacing the GPX or removing a day unlinks this set. Reordering only unlinks disrupted stages. GPX sections are kept.</string>
+</resources>

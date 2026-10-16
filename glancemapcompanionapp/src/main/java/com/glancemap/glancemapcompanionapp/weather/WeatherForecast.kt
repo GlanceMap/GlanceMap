@@ -1,12 +1,17 @@
 package com.glancemap.glancemapcompanionapp.weather
 
 import com.glancemap.glancemapcompanionapp.R
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.CancellationException
 
 data class WeatherForecastLocation(
+    @field:SerializedName(value = "latitude", alternate = ["a"])
     val latitude: Double,
+    @field:SerializedName(value = "longitude", alternate = ["b"])
     val longitude: Double,
+    @field:SerializedName(value = "elevationMeters", alternate = ["c"])
     val elevationMeters: Double?,
+    @field:SerializedName(value = "label", alternate = ["d"])
     val label: String,
 ) {
     init {
@@ -24,6 +29,8 @@ data class WeatherForecast(
     val nextHour: WeatherHourlyOutlook?,
     val hourly: List<WeatherHourlyOutlook> = emptyList(),
     val daily: List<WeatherDailyOutlook> = emptyList(),
+    @field:com.google.gson.annotations.SerializedName("timeZoneId")
+    val timeZoneId: String? = null,
 ) {
     init {
         require(fetchedAtEpochMillis >= 0L)

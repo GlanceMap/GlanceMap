@@ -117,6 +117,9 @@ class PhoneLibraryOrganizationTest {
         val browse = PhoneLibraryBrowseState("day", "ridge", PhoneLibraryGpxKind.RECORDING, PhoneLibraryActivity.BIKE)
         val saved = with(phoneLibraryBrowseSaver) { scope.save(browse) }
         assertEquals(browse, phoneLibraryBrowseSaver.restore(requireNotNull(saved)))
+        val old = listOf("", "", "", "UNSPECIFIED", PhoneLibraryOfflineSection.AREAS.name)
+        assertEquals(PhoneLibraryActivity.HIKE, phoneLibraryBrowseSaver.restore(old)?.activity)
+        assertEquals(null, phoneLibraryBrowseSaver.restore(old.toMutableList().also { it[3] = "" })?.activity)
     }
 
     @Test
@@ -130,6 +133,56 @@ class PhoneLibraryOrganizationTest {
             val decoded = gson.fromJson(json, PhoneLibraryOrganization::class.java)
             assertThrows(IllegalArgumentException::class.java) { validatePhoneLibraryOrganization(decoded) }
         }
+    }
+
+    @Test
+    fun unclassifiedGpxDefaultsToHikeAndAppearsInTheHikeFilter() {
+        val item = route("default", "Default route")
+        val organization = PhoneLibraryOrganization()
+        assertEquals(listOf(PhoneLibraryActivity.HIKE, PhoneLibraryActivity.BIKE), PhoneLibraryActivity.entries)
+        assertEquals(PhoneLibraryActivity.HIKE, PhoneLibraryEntryOrganization().activity)
+        assertEquals(PhoneLibraryActivity.HIKE, organization.entry(item).activity)
+        assertEquals(
+            listOf(item),
+            browsePhoneLibraryItems(
+                listOf(item),
+                PhoneLibraryFilter.GPX,
+                PhoneLibraryBrowseState(activity = PhoneLibraryActivity.HIKE),
+                organization,
+            ),
+        )
+        assertTrue(
+            browsePhoneLibraryItems(
+                listOf(item),
+                PhoneLibraryFilter.GPX,
+                PhoneLibraryBrowseState(activity = PhoneLibraryActivity.BIKE),
+                organization,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun legacyUnspecifiedMissingAndNullActivitiesUseHikeWithoutLosingFoldersOrBikeChoices() {
+        val item = route("one", "Route")
+        val gson = Gson()
+        listOf("", " , \"activity\":null", " , \"activity\":\"unspecified\"", " , \"activity\":\"UNSPECIFIED\"")
+            .forEach { activity ->
+                val json = """{"folders":[{"id":"trip","name":"Trip"}],"entries":{
+                    "gpx/one":{"folderId":"trip"$activity},"gpx/bike":{"activity":"bike"}}}"""
+                val organization =
+                    validatePhoneLibraryOrganization(gson.fromJson(json, PhoneLibraryOrganization::class.java))
+                assertEquals(PhoneLibraryActivity.HIKE, organization.entry(item).activity)
+                assertEquals("trip", organization.entry(item).folderId)
+                assertEquals(PhoneLibraryActivity.BIKE, organization.entry(route("bike", "Bike")).activity)
+                val restored =
+                    validatePhoneLibraryOrganization(
+                        gson.fromJson(
+                            gson.toJson(organization),
+                            PhoneLibraryOrganization::class.java,
+                        ),
+                    )
+                assertEquals(organization.entry(item), restored.entry(item))
+            }
     }
 
     private fun route(

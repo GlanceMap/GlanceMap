@@ -247,6 +247,9 @@ internal object CompanionJourneyDiagnostics {
 internal enum class MissionPlanMutationOperation(
     val label: String,
 ) {
+    UPDATE_ADVENTURE("update_adventure"),
+    SELECT_ADVENTURE("select_adventure"),
+    ASSIGN_ROUTE("assign_route"),
     ADD_DAY("add_day"),
     SELECT_DAY("select_day"),
     UPDATE_DAY("update_day"),

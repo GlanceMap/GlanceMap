@@ -50,3 +50,20 @@
 -keep class com.glancemap.glancemapcompanionapp.library.PhoneLibraryFolder { *; }
 -keep class com.glancemap.glancemapcompanionapp.library.PhoneLibraryEntryOrganization { *; }
 -keep enum com.glancemap.glancemapcompanionapp.library.PhoneLibraryActivity { *; }
+
+# Hike planning metadata and exact route snapshots use Gson across minified releases.
+-keep class com.glancemap.glancemapcompanionapp.hike.PhoneHikeRoute { *; }
+-keep class com.glancemap.glancemapcompanionapp.hike.PhoneHikeCheckpoint { *; }
+-keep class com.glancemap.glancemapcompanionapp.hike.PhoneHikePlan { *; }
+-keep class com.glancemap.glancemapcompanionapp.hike.PhoneHikeWorkspaceData { *; }
+
+# Adventure plans use Gson reflection; preserve both storage readers and nested metadata.
+-keep class com.glancemap.glancemapcompanionapp.routes.MissionPlanRepository$MissionPlanIndex { *; }
+-keep class com.glancemap.glancemapcompanionapp.routes.SavedMissionPlanIndex { *; }
+-keep class com.glancemap.glancemapcompanionapp.map.MissionPlanStorageIndex { *; }
+-keep class com.glancemap.glancemapcompanionapp.routes.MissionPlanDay { *; }
+-keep class com.glancemap.glancemapcompanionapp.routes.MissionAdventure { *; }
+-keep enum com.glancemap.glancemapcompanionapp.routes.MissionMeal { *; }
+-keep enum com.glancemap.glancemapcompanionapp.routes.MissionOvernight { *; }
+-keep enum com.glancemap.glancemapcompanionapp.routes.MissionBooking { *; }
+-keep class com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation { *; }

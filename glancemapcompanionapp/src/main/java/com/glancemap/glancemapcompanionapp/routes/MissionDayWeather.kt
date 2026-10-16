@@ -3,6 +3,7 @@
 package com.glancemap.glancemapcompanionapp.routes
 
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.weather.OpenMeteoWeatherForecastProvider
 import com.glancemap.glancemapcompanionapp.weather.WeatherDailyOutlook
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecast
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation
@@ -19,6 +20,7 @@ import kotlin.math.roundToLong
 enum class MissionDayWeatherSamplePosition(
     val label: String,
 ) {
+    STAY("Stay"),
     START("Start"),
     MIDPOINT("Midpoint"),
     FINISH("Finish"),
@@ -46,6 +48,7 @@ data class MissionDayWeatherSampleUi(
 data class MissionDayWeatherUiState(
     val plannedDate: String? = null,
     val plannedStartTime: String? = null,
+    val planKey: String? = null,
     val isLoading: Boolean = false,
     val samples: List<MissionDayWeatherSampleUi> = emptyList(),
     val message: String? = null,
@@ -90,9 +93,7 @@ fun MissionPlanDayUi.liveHikeWeatherContext(weather: MissionDayWeatherUiState?):
  * is selected separately by the view model using the user's planned date. A planned start time,
  * when set, aligns each sample with its expected point in the hiking day.
  */
-fun RouteLibraryRouteDetails.missionDayWeatherTargets(
-    day: MissionPlanDay,
-): List<MissionDayWeatherSampleTarget> {
+fun RouteLibraryRouteDetails.missionDayWeatherTargets(day: MissionPlanDay): List<MissionDayWeatherSampleTarget> {
     val window = missionPlanBriefing(day)
     if (window.distanceMeters <= 0.0) return emptyList()
 
@@ -140,7 +141,16 @@ private const val MAX_HOURLY_MATCH_DIFFERENCE_SECONDS = 90L * 60L
 
 internal fun MissionDayWeatherSamplePosition.labelResource(): Int =
     when (this) {
+        MissionDayWeatherSamplePosition.STAY -> R.string.adventure_weather_stay
         MissionDayWeatherSamplePosition.START -> R.string.mission_weather_start
         MissionDayWeatherSamplePosition.MIDPOINT -> R.string.mission_weather_midpoint
         MissionDayWeatherSamplePosition.FINISH -> R.string.mission_weather_finish
     }
+
+internal fun MissionPlanDay.forecastTooFarAhead(today: LocalDate = LocalDate.now()): Boolean =
+    plannedDate?.let { date ->
+        val lastDay = today.plusDays((OpenMeteoWeatherForecastProvider.FORECAST_DAYS - 1).toLong())
+        runCatching { LocalDate.parse(date).isAfter(lastDay) }.getOrDefault(false)
+    } == true
+
+internal fun MissionPlanDay.hasForecastDate(): Boolean = plannedDate != null && !forecastTooFarAhead()
