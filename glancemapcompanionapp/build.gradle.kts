@@ -9,6 +9,27 @@ apply(from = rootProject.file("gradle/android-app-testing.gradle.kts"))
 
 val glanceMapVersionName = providers.gradleProperty("glanceMapVersionName").get()
 val glanceMapPhoneVersionCode = providers.gradleProperty("glanceMapPhoneVersionCode").get().toInt()
+// Credentials come from private Gradle properties or CI, never repository configuration.
+val datatourismeProperty = "DATATOURISME_API_KEY"
+val projectDefinesDatatourismeKey =
+    rootProject.file("gradle.properties").useLines { lines ->
+        lines.any { line ->
+            val value = line.trimStart()
+            !value.startsWith("#") && '=' in value && value.substringBefore('=').trim() == datatourismeProperty
+        }
+    }
+if (projectDefinesDatatourismeKey) {
+    throw GradleException("DATATOURISME_API_KEY must use private Gradle properties or CI environment variables.")
+}
+val datatourismeKey =
+    providers
+        .gradleProperty(datatourismeProperty)
+        .orElse(providers.environmentVariable(datatourismeProperty))
+        .orNull
+        .orEmpty()
+require(datatourismeKey.none(Char::isISOControl)) { "Invalid DATATOURISME_API_KEY format" }
+val datatourismeKeyLiteral = "\"" + datatourismeKey.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 val arkluzSmsApiKeyProperty = "ARKLUZ_SMS_API_KEY"
 val mapTilerApiKeyProperty = "MAPTILER_API_KEY"
 val tracestrackApiKeyProperty = "TRACESTRACK_API_KEY"
@@ -151,6 +172,7 @@ android {
             useSupportLibrary = true
         }
         manifestPlaceholders["channelBufferSize"] = "8388608" // 8MB buffer
+        buildConfigField("String", "DATATOURISME_API_KEY", datatourismeKeyLiteral)
         buildConfigField("String", "ARKLUZ_TRACKING_URL", "\"https://arkluz.com/trk\"")
         buildConfigField("String", "ARKLUZ_SMS_API_KEY", "\"$arkluzSmsApiKey\"")
         buildConfigField("String", "MAPTILER_API_KEY", "\"$mapTilerApiKey\"")

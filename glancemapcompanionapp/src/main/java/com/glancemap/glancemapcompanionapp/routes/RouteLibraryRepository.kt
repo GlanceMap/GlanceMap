@@ -46,6 +46,8 @@ data class RouteLibraryRoute(
     val isRecording: Boolean = false,
     @field:SerializedName("sourceExportId")
     val sourceExportId: String? = null,
+    @field:SerializedName("publishedTrailId")
+    val publishedTrailId: String? = null,
 )
 
 data class RouteLibrarySummary(
@@ -153,12 +155,30 @@ class RouteLibraryRepository(
             )
         }
 
-    suspend fun saveGeneratedRoute(output: BRouterRouteOutput): RouteLibraryUiState =
+    suspend fun saveGeneratedRoute(output: BRouterRouteOutput): RouteLibraryUiState = saveGpxRoute(output.title, output.gpxBytes)
+
+    /** Shared GPX import/index flow for generated and discovered routes. */
+    internal suspend fun saveGpxRoute(
+        displayName: String,
+        gpxBytes: ByteArray,
+        publishedTrailId: String? = null,
+    ): RouteLibraryUiState =
         mutex.withLock {
+            val index = readIndex()
+            val existing =
+                index.routes.firstOrNull {
+                    publishedTrailId != null &&
+                        it.publishedTrailId == publishedTrailId &&
+                        File(routesDirectory, it.storedFileName).isFile
+                }
+            if (existing != null) {
+                writeIndex(index.copy(selectedRouteId = existing.id))
+                return@withLock RouteLibraryUiState(index.routes, existing.id, isLoading = false)
+            }
             routesDirectory.mkdirs()
             val id = UUID.randomUUID().toString()
             val destination = File(routesDirectory, "$id.gpx")
-            destination.writeBytes(output.gpxBytes)
+            destination.writeBytes(gpxBytes)
             val parsed =
                 runCatching {
                     destination.inputStream().use(CompanionGpxRouteParser::parse)
@@ -173,7 +193,8 @@ class RouteLibraryRepository(
             saveParsedRouteLocked(
                 destination = destination,
                 parsed = parsed,
-                displayName = output.title,
+                displayName = displayName,
+                publishedTrailId = publishedTrailId,
             )
         }
 
@@ -297,6 +318,7 @@ class RouteLibraryRepository(
     /** Returns the source GPX for a full day, or a disposable GPX export for a route segment. */
     suspend fun contentUriFor(day: MissionPlanDay): Uri? =
         mutex.withLock {
+            if (day.isRestDay || day.routeId == null) return@withLock null
             val route = readIndex().routes.firstOrNull { it.id == day.routeId } ?: return@withLock null
             val sourceFile = File(routesDirectory, route.storedFileName)
             if (!sourceFile.isFile) return@withLock null
@@ -382,12 +404,14 @@ class RouteLibraryRepository(
         }
     }
 
+    @Suppress("LongParameterList") // Optional origin fields preserve existing import and recording callers.
     private fun saveParsedRouteLocked(
         destination: File,
         parsed: ParsedCompanionRoute,
         displayName: String,
         isRecording: Boolean = false,
         sourceExportId: String? = null,
+        publishedTrailId: String? = null,
     ): RouteLibraryUiState {
         val id = destination.nameWithoutExtension
         val profile =
@@ -422,6 +446,7 @@ class RouteLibraryRepository(
                 metadataTitle = parsed.title,
                 isRecording = isRecording,
                 sourceExportId = sourceExportId,
+                publishedTrailId = publishedTrailId,
             )
         val previous = readIndex()
         val next =

@@ -1,0 +1,1 @@
+{"elements":[{"type":"relation","id":123,"tags":{"type":"route","route":"hiking","name":"Ridge & Lake","operator":"Hiking Club","sac_scale":"hiking"},"members":[{"type":"way","role":"","geometry":[{"lat":46.0,"lon":7.0},{"lat":46.001,"lon":7.001}]},{"type":"way","role":"backward","geometry":[{"lat":46.002,"lon":7.002},{"lat":46.001,"lon":7.001}]}]}]}

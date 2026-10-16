@@ -23,6 +23,7 @@ internal enum class CompanionHomeArea(
     HOME(R.string.menu_today_hike, Icons.Filled.Today),
     LIBRARY(R.string.library_title, Icons.Filled.FolderOpen),
     ROUTES(R.string.menu_routes, Icons.Filled.Route),
+    DISCOVER_ROUTES(R.string.discovery_title, Icons.Filled.Route),
     SEND_TO_WATCH(R.string.transfer_title_send_to_watch, Icons.AutoMirrored.Filled.SendToMobile),
     LIVE_HIKE(R.string.menu_live_hike, Icons.Filled.SpatialTracking),
     MISSION_PLAN(R.string.menu_mission_plan, Icons.Filled.CalendarMonth),
@@ -34,6 +35,7 @@ internal enum class CompanionHomeArea(
 
 internal val companionMenuAreas =
     listOf(
+        CompanionHomeArea.DISCOVER_ROUTES,
         CompanionHomeArea.MISSION_PLAN,
         CompanionHomeArea.ROUTE_WEATHER,
         CompanionHomeArea.LIVE_TRACKING,
