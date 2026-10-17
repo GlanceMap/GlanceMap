@@ -148,8 +148,6 @@ internal data class MapToolsLayerState(
     val comparison: PhoneMapComparisonState,
     val hasElevationData: Boolean,
     val mapSettings: PhoneMapSettings,
-    val gpxVisible: Boolean = true,
-    val poiVisible: Boolean = true,
     val baseThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
     val comparisonThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
 )
@@ -192,8 +190,6 @@ internal data class MapToolsLayerActions(
     val onLayerChanged: (PhoneMapComparisonLayer?) -> Unit,
     val onTransparencyChanged: (Float) -> Unit,
     val onMapSettingsChanged: (PhoneMapSettings) -> Unit,
-    val onGpxVisibilityChanged: (Boolean) -> Unit = {},
-    val onPoiVisibilityChanged: (Boolean) -> Unit = {},
     val onBaseMapChanged: (PhoneMapComparisonLayer) -> Unit = {},
     val onSwap: () -> Unit = {},
     val onBaseThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
@@ -300,8 +296,6 @@ internal fun MapToolPanelContent(
                             onLayerChanged = actions.onComparisonLayerChanged,
                             onTransparencyChanged = actions.onComparisonTransparencyChanged,
                             onMapSettingsChanged = actions.onLayerMapSettingsChanged,
-                            onGpxVisibilityChanged = actions.onGpxVisibilityChanged,
-                            onPoiVisibilityChanged = actions.onPoiVisibilityChanged,
                             onBaseMapChanged = actions.onLayerBaseMapChanged,
                             onSwap = actions.onSwapComparison,
                             onBaseThemeChanged = actions.onBaseThemeChanged,
@@ -417,7 +411,11 @@ internal fun mapToolsOnlineSourcePicker(
     var expanded by remember { mutableStateOf(false) }
     val selectedLabel = PhoneMapRendererCatalog.onlineSourceLabel(selected)
     Box {
-        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = sources.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text(
                 text = "${stringResource(R.string.map_source_online)}: $selectedLabel",
                 modifier = Modifier.weight(1f),

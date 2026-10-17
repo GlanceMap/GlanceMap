@@ -16,7 +16,7 @@ internal class PhoneMapSearchRepository(
 ) {
     private val storage = PhoneOfflineStorage(context.applicationContext)
     private val localIndex = PhoneMapPoiNameIndex(File(context.cacheDir, "map-poi-search"))
-    private val photon = PhonePhotonSearch()
+    private val onlinePlaces = PhoneOnlinePlaceSearch()
 
     suspend fun search(
         request: PhoneMapSearchRequest,
@@ -68,7 +68,7 @@ internal class PhoneMapSearchRepository(
 
     private suspend fun searchOnline(request: PhoneMapSearchRequest): PhoneMapSearchReply =
         try {
-            withContext(Dispatchers.IO) { PhoneMapSearchReply(results = photon.search(request)) }
+            withContext(Dispatchers.IO) { PhoneMapSearchReply(results = onlinePlaces.search(request)) }
         } catch (failure: CancellationException) {
             throw failure
         } catch (_: IOException) {

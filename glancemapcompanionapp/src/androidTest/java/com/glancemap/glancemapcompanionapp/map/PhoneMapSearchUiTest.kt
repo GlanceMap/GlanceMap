@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -13,15 +14,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -40,33 +46,27 @@ class PhoneMapSearchUiTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun narrowSearchControlRemainsClickableAndScaleUsesPhysicalPixelsAtLargeFontSize() {
-        var opened = 0
-        composeRule.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.7f)) {
-                MaterialTheme {
-                    Box(modifier = Modifier.width(320.dp).padding(horizontal = 72.dp)) {
-                        phoneMapSearchControl(
-                            camera = PhoneMapCameraSnapshot(48.85, 2.35, 14.0, groundResolutionMetersPerPixel = 2.0),
-                            isMetric = true,
-                            onClick = { opened += 1 },
-                        )
-                    }
-                }
-            }
+    fun compactSearchInputTakesFocusImmediatelyAndScaleKeepsPhysicalWidthAtLargeFontSize() {
+        val state = mutableStateOf(PhoneMapSearchUiState())
+        val expanded = mutableStateOf(false)
+        var submissions = 0
+        setNarrowSearchContent(state, expanded) { submissions += 1 }
+        composeRule
+            .onNodeWithTag("map-search-input")
+            .performClick()
+            .assertIsFocused()
+            .performTextInput("Grenoble")
+        composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(1)
+        composeRule.runOnIdle {
+            assertTrue(expanded.value)
+            assertEquals("Grenoble", state.value.query)
+            assertEquals(0, submissions)
         }
-        val search = composeRule.activity.getString(R.string.map_search_hint)
-        composeRule.onNodeWithText(search).assertIsDisplayed().performClick()
-        composeRule.runOnIdle { assertEquals(1, opened) }
         val bar =
             composeRule
-                .onNodeWithTag(
-                    "map-search-scale-bar",
-                    useUnmergedTree = true,
-                ).fetchSemanticsNode()
+                .onNodeWithTag("map-search-scale-bar", useUnmergedTree = true)
+                .fetchSemanticsNode()
                 .boundsInRoot
-        // 2 metres per physical pixel: the rendered bar and its metre label must agree.
         val scaleNodes =
             composeRule.onAllNodes(
                 androidx.compose.ui.test
@@ -87,47 +87,37 @@ class PhoneMapSearchUiTest {
     }
 
     @Test
-    fun typingDoesNotSearchUntilSubmissionAndOfflineScopeIsVisible() {
+    fun typingUsesOneInlineFieldAndOnlySubmissionSearches() {
         val state = mutableStateOf(PhoneMapSearchUiState(online = false))
+        val expanded = mutableStateOf(false)
         var submissions = 0
         val result = PhoneMapSearchResult("fixture", "Museum", "source.poi", PhoneMapCoordinate(48.85, 2.35))
         var selected: PhoneMapSearchResult? = null
-        composeRule.setContent {
-            MaterialTheme {
-                PhoneMapSearchPanel(
-                    state = state.value,
-                    actions =
-                        PhoneMapSearchActions(
-                            onQueryChanged = { state.value = state.value.copy(query = it) },
-                            onOnlineChanged = { state.value = state.value.copy(online = it) },
-                            onSearch = { submissions += 1 },
-                            onResultSelected = { selected = it },
-                            onDismiss = {},
-                        ),
-                )
-            }
-        }
+        val onlineLabel = composeRule.activity.getString(R.string.map_search_online_enabled)
+        val closeLabel = composeRule.activity.getString(R.string.common_action_close)
+        setSearchContent(
+            state,
+            expanded,
+            onSearch = { submissions += 1 },
+            onResultSelected = { selected = it },
+        )
+        composeRule
+            .onNodeWithText(
+                composeRule.activity.getString(R.string.map_search_offline_scope),
+            ).assertDoesNotExist()
+        composeRule
+            .onNodeWithTag("map-search-input")
+            .performClick()
+            .assertIsFocused()
+            .performTextInput("Museum")
+        composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(1)
         composeRule
             .onNodeWithText(
                 composeRule.activity.getString(R.string.map_search_offline_scope),
             ).assertIsDisplayed()
-        composeRule
-            .onNodeWithText(
-                composeRule.activity.getString(R.string.map_search_poi_hint),
-            ).performTextInput("Museum")
         composeRule.runOnIdle { assertEquals(0, submissions) }
         composeRule
-            .onNodeWithContentDescription(
-                composeRule.activity.getString(R.string.map_search_action),
-            ).performClick()
-        composeRule.runOnIdle {
-            assertEquals(1, submissions)
-            state.value = state.value.copy(searched = true, reply = PhoneMapSearchReply(listOf(result)))
-        }
-        composeRule.onNodeWithText("source.poi").performClick()
-        composeRule.runOnIdle { assertEquals(result, selected) }
-        composeRule
-            .onNodeWithContentDescription(composeRule.activity.getString(R.string.map_search_online_enabled))
+            .onNodeWithContentDescription(onlineLabel)
             .assertIsOff()
             .performClick()
             .assertIsOn()
@@ -136,7 +126,97 @@ class PhoneMapSearchUiTest {
             .onNodeWithText(
                 composeRule.activity.getString(R.string.map_search_offline_scope),
             ).assertDoesNotExist()
+        composeRule.onNodeWithTag("map-search-input").performClick().performImeAction()
+        composeRule.runOnIdle {
+            assertEquals("Museum", state.value.query)
+            assertEquals(1, submissions)
+            state.value = state.value.copy(searched = true, reply = PhoneMapSearchReply(listOf(result)))
+        }
+        composeRule.onNodeWithText("source.poi").performClick()
+        composeRule.runOnIdle { assertEquals(result, selected) }
+        composeRule.onNodeWithTag("map-search-input").assertIsNotFocused()
+        composeRule.onNodeWithContentDescription(closeLabel).assertDoesNotExist()
+        composeRule.onNodeWithTag("map-search-input").performClick()
+        composeRule.onNodeWithContentDescription(closeLabel).performClick()
+        composeRule.onNodeWithTag("map-search-input").assertIsNotFocused()
         composeRule.runOnIdle { assertEquals("Museum", state.value.query) }
+        composeRule
+            .onNodeWithContentDescription(
+                composeRule.activity.getString(R.string.map_search_action),
+            ).performClick()
+        composeRule.onNodeWithTag("map-search-input").assertIsFocused()
+        composeRule.runOnIdle { assertEquals(1, submissions) }
+    }
+
+    private fun setNarrowSearchContent(
+        state: MutableState<PhoneMapSearchUiState>,
+        expanded: MutableState<Boolean>,
+        onSearch: () -> Unit,
+    ) {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.7f)) {
+                MaterialTheme {
+                    Box(modifier = Modifier.width(320.dp).padding(horizontal = 72.dp)) {
+                        phoneMapSearchControl(
+                            presentation =
+                                PhoneMapSearchControlState(
+                                    state.value,
+                                    expanded.value,
+                                    PhoneMapCameraSnapshot(48.85, 2.35, 14.0, groundResolutionMetersPerPixel = 2.0),
+                                    isMetric = true,
+                                ),
+                            actions =
+                                PhoneMapSearchActions(
+                                    onFocus = { expanded.value = true },
+                                    onQueryChanged = { state.value = state.value.copy(query = it) },
+                                    onOnlineChanged = {},
+                                    onSearch = onSearch,
+                                    onResultSelected = {},
+                                    onDismiss = { expanded.value = false },
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setSearchContent(
+        state: MutableState<PhoneMapSearchUiState>,
+        expanded: MutableState<Boolean>,
+        onSearch: () -> Unit,
+        onResultSelected: (PhoneMapSearchResult) -> Unit,
+    ) {
+        composeRule.setContent {
+            val actions =
+                PhoneMapSearchActions(
+                    onFocus = { expanded.value = true },
+                    onQueryChanged = { state.value = state.value.copy(query = it) },
+                    onOnlineChanged = { state.value = state.value.copy(online = it) },
+                    onSearch = onSearch,
+                    onResultSelected = {
+                        onResultSelected(it)
+                        expanded.value = false
+                    },
+                    onDismiss = { expanded.value = false },
+                )
+            MaterialTheme {
+                Column(Modifier.width(320.dp)) {
+                    phoneMapSearchControl(
+                        presentation =
+                            PhoneMapSearchControlState(
+                                state.value,
+                                expanded.value,
+                                defaultPhoneMapCamera,
+                                true,
+                            ),
+                        actions = actions,
+                    )
+                    if (expanded.value) PhoneMapSearchPanel(state.value, actions)
+                }
+            }
+        }
     }
 
     @Test

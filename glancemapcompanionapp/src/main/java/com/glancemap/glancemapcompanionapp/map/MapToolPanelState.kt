@@ -32,6 +32,7 @@ internal enum class MapToolContentMode {
 internal enum class MapToolFeatureSettingsSection {
     ROOT,
     MAP_DATA,
+    MAP_ONLINE,
     MAP_THEME,
     MAP_DISPLAY,
     MAP_TERRAIN,
@@ -149,6 +150,7 @@ internal data class MapToolPanelState(
             setOf(
                 MapToolFeatureSettingsSection.ROOT,
                 MapToolFeatureSettingsSection.MAP_DATA,
+                MapToolFeatureSettingsSection.MAP_ONLINE,
                 MapToolFeatureSettingsSection.MAP_THEME,
                 MapToolFeatureSettingsSection.MAP_DISPLAY,
                 MapToolFeatureSettingsSection.MAP_TERRAIN,

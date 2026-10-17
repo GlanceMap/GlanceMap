@@ -20,23 +20,23 @@ internal class PhoneMapsforgeRenderWorkGate {
     private var pending = false
     private var scheduledGeneration: Long? = null
 
-    fun requestWork(): Long {
+    fun requestWork() {
         pending = true
-        generation += 1L
-        return generation
     }
 
     fun scheduleIfReady(readiness: PhoneMapViewRenderReadiness): Long? {
-        val nextGeneration = generation.takeIf { pending && readiness.isReady && scheduledGeneration != generation }
-        if (nextGeneration != null) scheduledGeneration = nextGeneration
-        return nextGeneration
+        if (!pending || !readiness.isReady || scheduledGeneration != null) return null
+        // New state shares the queued callback's deadline; only a new callback gets a new ticket.
+        generation += 1L
+        scheduledGeneration = generation
+        return generation
     }
 
     fun consumeIfCurrent(
         scheduled: Long,
         readiness: PhoneMapViewRenderReadiness,
     ): Boolean {
-        val isCurrent = pending && scheduled == generation
+        val isCurrent = pending && scheduledGeneration == scheduled
         val isReady = readiness.isReady
         if (isCurrent && !isReady && scheduledGeneration == scheduled) {
             scheduledGeneration = null

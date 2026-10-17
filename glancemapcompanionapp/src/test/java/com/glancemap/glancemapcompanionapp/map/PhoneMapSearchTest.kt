@@ -39,6 +39,36 @@ class PhoneMapSearchTest {
     }
 
     @Test
+    fun namedStreetAddressesIncludeTheProviderHouseNumberInTheTitle() {
+        val root = JsonParser.parseString(PHOTON_FIXTURE).asJsonObject
+        root
+            .getAsJsonArray("features")[1]
+            .asJsonObject
+            .getAsJsonObject("properties")
+            .addProperty("name", "MAIN STREET")
+        val result = parsePhonePhotonSearch(root.toString())[1]
+        assertEquals("12 Main Street", result.label)
+        assertEquals("Paris, France", result.detail)
+    }
+
+    @Test
+    fun placeNamesKeepTheirAddressDetailsAndStreetOnlyMatchesDoNotInventNumbers() {
+        val root = JsonParser.parseString(PHOTON_FIXTURE).asJsonObject
+        val features = root.getAsJsonArray("features")
+        val place = features[0].asJsonObject.getAsJsonObject("properties")
+        place.addProperty("housenumber", "12")
+        place.addProperty("street", "Main Street")
+        val street = features[1].asJsonObject.getAsJsonObject("properties")
+        street.addProperty("name", "Main Street")
+        street.remove("housenumber")
+        val results = parsePhonePhotonSearch(root.toString())
+        assertEquals("Museum", results[0].label)
+        assertEquals("12 Main Street, Paris, France", results[0].detail)
+        assertEquals("Main Street", results[1].label)
+        assertEquals("Paris, France", results[1].detail)
+    }
+
+    @Test
     fun invalidEntriesAreIgnoredAndValidDuplicatesAreRemoved() {
         val root = JsonParser.parseString(PHOTON_FIXTURE).asJsonObject
         val features = root.getAsJsonArray("features")

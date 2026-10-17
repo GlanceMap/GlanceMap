@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_tools_maps_settings_online_title">Online maps</string>
+    <string name="map_tools_maps_settings_online_summary">Choose which maps appear in the map and layer dropdowns. All maps are enabled by default.</string>
+</resources>

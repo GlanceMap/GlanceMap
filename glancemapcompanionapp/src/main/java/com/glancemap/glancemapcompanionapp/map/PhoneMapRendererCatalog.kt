@@ -258,12 +258,17 @@ internal object PhoneMapRendererCatalog {
     /** All online datasets GlanceMap supports, including providers missing local configuration. */
     fun supportedOnlineSources(): List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries
 
-    /** Configured providers that can currently render tiles in this build. */
-    @Suppress("MaxLineLength") // The availability query remains a single pure catalog operation.
-    fun availableOnlineSources(): List<PhoneOnlineMapSource> = supportedOnlineSources().filter(::isOnlineSourceAvailable)
+    /** Configured providers, excluding any the user has hidden from the dropdowns. */
+    fun availableOnlineSources(
+        hiddenSources: Set<PhoneOnlineMapSource> = emptySet(),
+    ): List<PhoneOnlineMapSource> =
+        supportedOnlineSources()
+            .filter { it !in hiddenSources && isOnlineSourceAvailable(it) }
 
-    /** Layer uses the same configured provider catalog as the normal online map. */
-    fun availableComparisonOnlineSources(): List<PhoneOnlineMapSource> = availableOnlineSources()
+    /** Layer uses the same configured provider catalog and visibility as the normal online map. */
+    fun availableComparisonOnlineSources(
+        hiddenSources: Set<PhoneOnlineMapSource> = emptySet(),
+    ): List<PhoneOnlineMapSource> = availableOnlineSources(hiddenSources)
 
     fun isOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForOnlineSource(source) != null
 

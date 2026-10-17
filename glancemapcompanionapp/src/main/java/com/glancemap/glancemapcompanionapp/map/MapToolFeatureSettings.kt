@@ -56,9 +56,11 @@ private const val MPS_TO_KMPH = 3.6f
 private const val MPS_TO_MPH = 2.2369363f
 private const val MPH_TO_MPS = 1f / MPS_TO_MPH
 
+@Suppress("CyclomaticComplexMethod") // Exhaustive title mapping keeps one branch per settings destination.
 internal fun MapToolFeatureSettingsSection.titleResource(tool: MapTool): Int =
     when (this) {
         MapToolFeatureSettingsSection.MAP_DATA -> R.string.map_tools_maps_settings_data_title
+        MapToolFeatureSettingsSection.MAP_ONLINE -> R.string.map_tools_maps_settings_online_title
         MapToolFeatureSettingsSection.MAP_THEME -> R.string.map_tools_maps_settings_theme_heading
         MapToolFeatureSettingsSection.MAP_DISPLAY -> R.string.map_tools_maps_settings_display_title
         MapToolFeatureSettingsSection.MAP_TERRAIN -> R.string.map_tools_maps_settings_terrain_title
@@ -126,6 +128,13 @@ private fun mapToolsMapsSettingsPanel(
             mapToolPanelColumn {
                 Text(stringResource(R.string.map_tools_maps_settings_sections_heading))
                 mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_online_title),
+                    summary = stringResource(R.string.map_tools_maps_settings_online_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_ONLINE)
+                    },
+                )
+                mapToolsSettingsSection(
                     title = stringResource(R.string.map_tools_maps_settings_data_title),
                     summary = stringResource(R.string.map_tools_maps_settings_data_summary),
                     onClick = {
@@ -169,6 +178,8 @@ private fun mapToolsMapsSettingsPanel(
                 )
             }
 
+        MapToolFeatureSettingsSection.MAP_ONLINE ->
+            mapToolsOnlineMapSettings(state.settings, actions.onSettingsChanged)
         MapToolFeatureSettingsSection.MAP_DATA -> mapToolsMapsDataSettings(state, actions)
         MapToolFeatureSettingsSection.MAP_THEME -> mapToolsMapsThemeSettings(state, actions)
         MapToolFeatureSettingsSection.MAP_DISPLAY ->

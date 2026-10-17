@@ -82,6 +82,7 @@ private fun savePhoneMapUiState(state: PhoneMapUiState): Map<String, Any?> {
         "orientation" to state.mapMode.orientation.name,
         "follow" to state.mapMode.follow.name,
         "manualBearing" to state.mapMode.manualBearingDegrees,
+        "offlineMode" to state.mapMode.isOffline,
     )
 }
 
@@ -121,7 +122,7 @@ private fun restorePhoneMapUiState(values: Map<String, Any?>): PhoneMapUiState? 
                     orientation = PhoneMapOrientation.valueOf(values["orientation"] as String),
                     follow = PhoneMapFollowMode.valueOf(values["follow"] as String),
                     manualBearingDegrees = values["manualBearing"] as Float?,
-                ),
+                ).let { mode -> if (values["offlineMode"] == true) mode.toggleOfflineMode() else mode },
         )
     }.getOrNull()
 

@@ -185,6 +185,15 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun onlineMapSettingsOpenFromMapsAndReturnToTheSettingsRoot() {
+        val root = MapToolPanelState().select(MapTool.MAPS).showFeatureSettings()
+        val online = root.showFeatureSettingsSection(MapToolFeatureSettingsSection.MAP_ONLINE)
+
+        assertEquals(MapToolFeatureSettingsSection.MAP_ONLINE, online.featureSettingsSection)
+        assertEquals(root, online.back())
+    }
+
+    @Test
     fun featureSettingsRejectSectionsBelongingToAnotherTool() {
         val poiSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
 

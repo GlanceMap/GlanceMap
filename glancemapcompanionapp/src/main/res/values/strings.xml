@@ -566,6 +566,9 @@
     <string name="map_tools_settings_sensor_available">Available</string>
     <string name="map_tools_settings_sensor_unavailable">Unavailable</string>
     <string name="map_mode_north_up">North up</string>
+    <string name="map_mode_offline">Offline mode (north up)</string>
+    <string name="map_mode_offline_enter">Enable offline map browsing</string>
+    <string name="map_mode_offline_exit">Return to GPS follow</string>
     <string name="map_mode_heading_up">Heading up</string>
     <string name="map_mode_follow">Follow / recenter</string>
     <string name="map_mode_recenter">Recenter</string>
@@ -1709,9 +1712,7 @@
     <string name="diagnostics_no_saved_phone_recording_available">"No saved phone recording available"</string>
     <string name="diagnostics_no_email_app_available">"No email app available"</string>
     <string name="phone_files_no_file_available_to_save">"No file available to save."</string>
-    <string name="map_search_hint">POI, addresses…</string>
-    <string name="map_search_poi_hint">POI name…</string>
-    <string name="map_search_title">Search the map</string>
+    <string name="map_search_hint">Search…</string>
     <string name="map_search_action">Search</string>
     <string name="map_search_offline_scope">Offline: downloaded POIs only</string>
     <string name="map_search_loading">Searching… First-time POI indexing can take longer.</string>
@@ -1796,8 +1797,6 @@
     <string name="map_layer_same_map_theme">Same map, different theme</string>
     <string name="map_layer_themes">Theme &amp; style</string>
     <string name="map_layer_terrain">Terrain &amp; slope</string>
-    <string name="map_layer_quick_gpx">GPX</string>
-    <string name="map_layer_quick_pois">POIs</string>
     <string name="map_layer_quick_elevation">Elevation</string>
     <string name="map_layer_quick_distance">Distance</string>
     <string name="map_layer_quick_measure">Measure</string>

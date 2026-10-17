@@ -62,6 +62,29 @@ class PhoneMapSavedStateTest {
     }
 
     @Test
+    fun offlineBrowsingSurvivesRecreationWithItsRemoteCameraAndComparison() {
+        val state =
+            PhoneMapUiState(
+                source = PhoneMapSource.Offline(offline),
+                comparison = PhoneMapComparisonState(PhoneMapComparisonLayer.Online(PhoneOnlineMapSource.OPEN_STREET_MAP), 25f),
+                mapMode = PhoneMapMode().toggleOfflineMode(),
+            )
+        assertEquals(state, phoneMapUiStateSaver.restore(save(phoneMapUiStateSaver, state)))
+        val remote = PhoneMapCameraState(PhoneMapCameraSnapshot(62.5, 25.5, 12.75))
+        assertEquals(remote, phoneMapCameraStateSaver.restore(save(phoneMapCameraStateSaver, remote)))
+    }
+
+    @Test
+    fun savedModesFromBeforeOfflineBrowsingRemainCompatible() {
+        val state = PhoneMapUiState(mapMode = PhoneMapMode(PhoneMapOrientation.HEADING_UP, PhoneMapFollowMode.FREE, 142f))
+        val saved = (save(phoneMapUiStateSaver, state) as List<*>).toMutableList()
+        val key = saved.indexOf("offlineMode")
+        saved.removeAt(key + 1)
+        saved.removeAt(key)
+        assertEquals(state, phoneMapUiStateSaver.restore(saved))
+    }
+
+    @Test
     fun pendingCommandsAndValidationRequestsAreNotReplayed() {
         val state =
             PhoneMapUiState()

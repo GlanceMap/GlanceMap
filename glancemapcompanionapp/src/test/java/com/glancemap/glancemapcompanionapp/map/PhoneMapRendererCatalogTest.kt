@@ -120,6 +120,26 @@ class PhoneMapRendererCatalogTest {
     }
 
     @Test
+    fun hiddenProvidersAreExcludedFromBothDropdownsWithoutChangingAvailability() {
+        val hidden = setOf(PhoneOnlineMapSource.OPEN_TOPO, PhoneOnlineMapSource.ESRI_WORLD_IMAGERY)
+        val expected = PhoneMapRendererCatalog.availableOnlineSources().filterNot { it in hidden }
+
+        assertEquals(expected, PhoneMapRendererCatalog.availableOnlineSources(hidden))
+        assertEquals(expected, PhoneMapRendererCatalog.availableComparisonOnlineSources(hidden))
+        hidden.forEach { assertTrue(PhoneMapRendererCatalog.isOnlineSourceAvailable(it)) }
+    }
+
+    @Test
+    fun everyProviderCanBeHiddenAndEnabledAgain() {
+        val all = PhoneMapRendererCatalog.supportedOnlineSources().toSet()
+
+        assertTrue(PhoneMapRendererCatalog.availableOnlineSources(all).isEmpty())
+        assertTrue(PhoneMapRendererCatalog.availableComparisonOnlineSources(all).isEmpty())
+        val restored = PhoneMapRendererCatalog.availableOnlineSources(all - PhoneOnlineMapSource.CYCLOSM)
+        assertEquals(listOf(PhoneOnlineMapSource.CYCLOSM), restored)
+    }
+
+    @Test
     fun cyclOsmUsesTheOfficialKeylessRasterProvider() {
         val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.CYCLOSM))
 

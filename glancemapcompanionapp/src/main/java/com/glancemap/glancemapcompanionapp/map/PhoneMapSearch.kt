@@ -11,7 +11,15 @@ internal data class PhoneMapSearchResult(
     val point: PhoneMapCoordinate,
 )
 
+internal data class PhoneMapSearchControlState(
+    val search: PhoneMapSearchUiState,
+    val expanded: Boolean,
+    val camera: PhoneMapCameraSnapshot,
+    val isMetric: Boolean,
+)
+
 internal data class PhoneMapSearchActions(
+    val onFocus: () -> Unit,
     val onQueryChanged: (String) -> Unit,
     val onOnlineChanged: (Boolean) -> Unit,
     val onSearch: () -> Unit,

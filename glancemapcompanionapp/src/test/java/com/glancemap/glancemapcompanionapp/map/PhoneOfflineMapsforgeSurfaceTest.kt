@@ -52,7 +52,8 @@ class PhoneOfflineMapsforgeSurfaceTest {
         assertTrue(gate.hasPendingWork())
 
         val rescheduled = requireNotNull(gate.scheduleIfReady(ready()))
-        assertEquals(scheduled, rescheduled)
+        assertNotEquals(scheduled, rescheduled)
+        assertFalse(gate.consumeIfCurrent(scheduled, ready()))
         assertTrue(gate.consumeIfCurrent(rescheduled, ready()))
         assertFalse(gate.hasPendingWork())
     }
@@ -62,12 +63,43 @@ class PhoneOfflineMapsforgeSurfaceTest {
         val gate = PhoneMapsforgeRenderWorkGate()
         gate.requestWork()
         val stale = requireNotNull(gate.scheduleIfReady(ready()))
+        assertTrue(gate.consumeIfCurrent(stale, ready()))
         gate.requestWork()
         val current = requireNotNull(gate.scheduleIfReady(ready()))
 
         assertFalse(gate.consumeIfCurrent(stale, ready().copy(hasWindowFocus = false)))
         assertNull(gate.scheduleIfReady(ready()))
         assertTrue(gate.consumeIfCurrent(current, ready()))
+    }
+
+    @Test
+    fun continuousInputAppliesLatestStateAtTheOriginalDeadlines() {
+        val gate = PhoneMapsforgeRenderWorkGate()
+        val callbacks = mutableListOf<Pair<Int, Long>>()
+        val applied = mutableListOf<Pair<Int, Int>>()
+        var latestState = 0
+        var maxQueuedCallbacks = 0
+
+        // Input arrives twice as often as the renderer delay, including at each deadline.
+        for (timeMs in 0..96 step 8) {
+            latestState = timeMs
+            gate.requestWork()
+            gate.scheduleIfReady(ready())?.let { callbacks += timeMs + 16 to it }
+            maxQueuedCallbacks = maxOf(maxQueuedCallbacks, callbacks.size)
+            val due = callbacks.filter { it.first <= timeMs }
+            callbacks.removeAll(due.toSet())
+            due.forEach { (_, ticket) ->
+                if (gate.consumeIfCurrent(ticket, ready())) applied += timeMs to latestState
+            }
+        }
+
+        assertEquals(1, maxQueuedCallbacks)
+        assertEquals(listOf(16 to 16, 40 to 40, 64 to 64, 88 to 88), applied)
+        assertTrue(gate.hasPendingWork())
+        assertEquals(1, callbacks.size)
+        assertTrue(gate.consumeIfCurrent(callbacks.single().second, ready()))
+        assertEquals(96, latestState)
+        assertFalse(gate.hasPendingWork())
     }
 
     @Test

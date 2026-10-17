@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -47,8 +49,6 @@ internal fun mapToolsLayerPanel(
             layerQuickDisplay(
                 state,
                 actions.onMapSettingsChanged,
-                actions.onGpxVisibilityChanged,
-                actions.onPoiVisibilityChanged,
             )
             if (state.base is PhoneMapSource.Offline || state.comparison.layer is PhoneMapComparisonLayer.Offline) {
                 layerSection(
@@ -154,20 +154,22 @@ private fun layerComparisonPicker(
     onSameMapSelected: () -> Unit,
 ) {
     val base = state.base.asComparisonLayer(state.baseOnlineSource)
-    val options = comparisonLayerOptions(state.base, state.baseOnlineSource, state.offlineMaps, state.onlineSources)
+    val sameMapThemeOption = base as? PhoneMapComparisonLayer.Offline
+    val options =
+        comparisonLayerOptions(state.base, state.baseOnlineSource, state.offlineMaps, state.onlineSources)
+            .filterNot { it == sameMapThemeOption }
+    val clearLabel = stringResource(R.string.map_layer_clear)
+    val sameMapThemeLabel = stringResource(R.string.map_layer_same_map_theme)
+    val comparisonOptions =
+        buildList<Pair<PhoneMapComparisonLayer?, String>> {
+            sameMapThemeOption?.let { add(it to sameMapThemeLabel) }
+            add(null to clearLabel)
+            addAll(options.map { it to comparisonLayerLabel(it) })
+        }
     layerPicker<PhoneMapComparisonLayer?>(
         label = stringResource(R.string.map_layer_comparison),
         selected = state.comparison.layer?.let { comparisonLayerLabel(it) } ?: stringResource(R.string.map_layer_none),
-        options =
-            listOf(null to stringResource(R.string.map_layer_none)) +
-                options.map { layer ->
-                    layer to
-                        if (layer is PhoneMapComparisonLayer.Offline && layer == base) {
-                            stringResource(R.string.map_layer_same_map_theme)
-                        } else {
-                            comparisonLayerLabel(layer)
-                        }
-                },
+        options = comparisonOptions,
         onSelect = { layer ->
             if (layer is PhoneMapComparisonLayer.Offline && layer == base) {
                 onSameMapSelected()
@@ -179,6 +181,7 @@ private fun layerComparisonPicker(
             actions.onLayerChanged(layer)
         },
         tag = "layer-comparison-picker",
+        optionIcon = { if (it == null) Icons.Filled.Close else null },
     )
 }
 
@@ -208,6 +211,7 @@ private fun <T> layerPicker(
     options: List<Pair<T, String>>,
     onSelect: (T) -> Unit,
     tag: String,
+    optionIcon: ((T) -> ImageVector?)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
@@ -222,10 +226,20 @@ private fun <T> layerPicker(
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (value, title) ->
-                DropdownMenuItem(text = { Text(title) }, onClick = {
-                    expanded = false
-                    onSelect(value)
-                })
+                val icon = optionIcon?.invoke(value)
+                DropdownMenuItem(
+                    text = { Text(title) },
+                    leadingIcon =
+                        if (icon != null) {
+                            { Icon(icon, contentDescription = null) }
+                        } else {
+                            null
+                        },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    },
+                )
             }
         }
     }

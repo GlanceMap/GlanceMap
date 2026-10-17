@@ -1,6 +1,8 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -8,41 +10,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
 @Composable
 internal fun layerQuickDisplay(
     state: MapToolsLayerState,
     onSettings: (PhoneMapSettings) -> Unit,
-    onGpx: (Boolean) -> Unit,
-    onPoi: (Boolean) -> Unit,
 ) {
     val settings = state.mapSettings
-    Row(Modifier.fillMaxWidth()) {
-        layerToggle(
-            R.string.map_layer_quick_gpx,
-            R.string.map_tools_gpx_global_visibility,
-            state.gpxVisible,
-            onGpx,
-            Modifier.weight(1f),
-        )
-        layerToggle(
-            R.string.map_layer_quick_pois,
-            R.string.map_tools_poi_global_visibility,
-            state.poiVisible,
-            onPoi,
-            Modifier.weight(1f),
-        )
-    }
-    Row(Modifier.fillMaxWidth()) {
-        layerToggle(
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        layerChip(
             R.string.map_layer_quick_elevation,
             R.string.map_tools_maps_live_elevation,
             settings.liveElevationEnabled,
             { onSettings(settings.copy(liveElevationEnabled = it)) },
             Modifier.weight(1f),
         )
-        layerToggle(
+        layerChip(
             R.string.map_layer_quick_distance,
             R.string.map_tools_maps_live_distance,
             settings.liveDistanceEnabled,
@@ -50,15 +35,15 @@ internal fun layerQuickDisplay(
             Modifier.weight(1f),
         )
     }
-    Row(Modifier.fillMaxWidth()) {
-        layerToggle(
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        layerChip(
             R.string.map_layer_quick_measure,
             R.string.map_tools_maps_distance_measurement,
             settings.distanceMeasurementEnabled,
             { onSettings(settings.copy(distanceMeasurementEnabled = it)) },
             Modifier.weight(1f),
         )
-        layerToggle(
+        layerChip(
             R.string.map_layer_quick_shading,
             R.string.map_tools_maps_hill_shading,
             settings.hillShadingEnabled,
@@ -67,17 +52,21 @@ internal fun layerQuickDisplay(
         )
     }
     if (state.base is PhoneMapSource.Offline) {
-        layerToggle(
-            R.string.map_layer_quick_night,
-            R.string.map_tools_maps_night_mode,
-            settings.nightModeEnabled,
-            { onSettings(settings.copy(nightModeEnabled = it)) },
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            layerChip(
+                R.string.map_layer_quick_night,
+                R.string.map_tools_maps_night_mode,
+                settings.nightModeEnabled,
+                { onSettings(settings.copy(nightModeEnabled = it)) },
+                Modifier.weight(1f),
+            )
+            Spacer(Modifier.weight(1f))
+        }
     }
 }
 
 @Composable
-private fun layerToggle(
+private fun layerChip(
     label: Int,
     description: Int,
     checked: Boolean,
@@ -85,10 +74,24 @@ private fun layerToggle(
     modifier: Modifier = Modifier,
 ) {
     val accessibilityLabel = stringResource(description)
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-        Switch(checked, onChange, Modifier.semantics { contentDescription = accessibilityLabel })
-    }
+    FilterChip(
+        selected = checked,
+        onClick = { onChange(!checked) },
+        label = { Text(stringResource(label), maxLines = 1) },
+        leadingIcon =
+            if (checked) {
+                {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(FilterChipDefaults.IconSize),
+                    )
+                }
+            } else {
+                null
+            },
+        modifier = modifier.semantics { contentDescription = accessibilityLabel },
+    )
 }
 
 @Composable

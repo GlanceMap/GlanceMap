@@ -30,6 +30,7 @@ class PhoneMapSettingsTest {
         assertFalse(settings.nightModeEnabled)
         assertEquals(PhoneMapNorthReferenceMode.TRUE, settings.northReferenceMode)
         assertEquals(PhoneOfflineDemSource.STANDARD, settings.demSource)
+        assertTrue(settings.hiddenOnlineSources.isEmpty())
     }
 
     @Test

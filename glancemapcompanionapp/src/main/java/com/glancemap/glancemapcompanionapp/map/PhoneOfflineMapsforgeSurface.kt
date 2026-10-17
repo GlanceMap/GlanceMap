@@ -26,6 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.trailcore.poi.PoiType
 import org.maplibre.android.gestures.AndroidGesturesManager
@@ -125,6 +128,10 @@ internal data class PhoneOfflineMapSurfaceState(
     val hasLocationPermission: Boolean = false,
 )
 
+internal fun PhoneOfflineMapSurfaceState.isOpacityOnlyChangeFrom(
+    previous: PhoneOfflineMapSurfaceState?,
+): Boolean = previous != null && baseLayerOpacity != previous.baseLayerOpacity && copy(baseLayerOpacity = previous.baseLayerOpacity) == previous
+
 internal data class PhoneOfflineMapsforgeRendererOwner(
     val role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
     val generation: Long = 0L,
@@ -152,6 +159,8 @@ internal fun offlineMapSurface(
     isVisible: Boolean = true,
     rendererOwner: PhoneOfflineMapsforgeRendererOwner = PhoneOfflineMapsforgeRendererOwner(),
 ) {
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val renderActive = isVisible && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     key(rendererOwner.generation, rendererOwner.role) {
         val currentCallbacks by rememberUpdatedState(callbacks)
         var holder by remember { mutableStateOf<PhoneOfflineMapsforgeView?>(null) }
@@ -185,11 +194,13 @@ internal fun offlineMapSurface(
                 ).also { created ->
                     holder = created
                     created.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
+                    created.setRenderActive(renderActive)
                     created.render(state)
                 }
             },
             update = { activeHolder ->
                 activeHolder.visibility = if (isVisible) View.VISIBLE else View.INVISIBLE
+                activeHolder.setRenderActive(renderActive)
                 activeHolder.render(state)
             },
             modifier = modifier.phoneOfflineMapCompositing(state.transparentBackground),
@@ -282,12 +293,12 @@ private class PhoneOfflineMapsforgeView(
             role = rendererRole,
             onMapBoundsChanged = { bounds ->
                 mapBounds = bounds
-                post { if (!disposed) applyLocationFromLatestState() }
+                post { if (!disposed && renderActive) applyLocationFromLatestState() }
             },
             onRendererFailure = { error -> post { if (!disposed) callbacks.onMapError(error) } },
             onRuntimeChanged = {
                 mapView.post {
-                    if (!disposed) latestState?.baseLayerOpacity?.let(::applyBaseLayerOpacity)
+                    if (!disposed && renderActive) latestState?.baseLayerOpacity?.let(::applyBaseLayerOpacity)
                 }
                 publishRuntimeDiagnostics()
             },
@@ -345,6 +356,7 @@ private class PhoneOfflineMapsforgeView(
         }
 
     private var latestState: PhoneOfflineMapSurfaceState? = null
+    private var lastAppliedState: PhoneOfflineMapSurfaceState? = null
     private var mapBounds: BoundingBox? = null
     private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
     private var appliedMapBearingDegrees: Float? = null
@@ -363,6 +375,7 @@ private class PhoneOfflineMapsforgeView(
     private var renderReadyReported = false
     private var applyingProgrammaticRotation = false
     private var disposed = false
+    private var renderActive = true
     private var tapCandidate = false
     private var tapDownX = 0f
     private var tapDownY = 0f
@@ -440,19 +453,29 @@ private class PhoneOfflineMapsforgeView(
         if (hasWindowFocus) onMapViewLifecycleChanged()
     }
 
+    fun setRenderActive(active: Boolean) {
+        if (renderActive == active) return
+        renderActive = active
+        if (!active) cancelActiveGestures() else onMapViewLifecycleChanged()
+    }
+
+    private fun cancelActiveGestures() {
+        mapView.cancelPhoneMapNativeGesture()
+        rotationDetector.cancelPhoneMapRotation()
+        rotationGestureTracker.reset()
+        centeredTouch.reset()
+        PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
+    }
+
     fun render(state: PhoneOfflineMapSurfaceState) {
         if (disposed) return
         if (!state.isInteractive && latestState?.isInteractive == true) {
-            mapView.cancelPhoneMapNativeGesture()
-            rotationDetector.cancelPhoneMapRotation()
-            rotationGestureTracker.reset()
-            centeredTouch.reset()
-            PhoneMapLayerMutationCoordinator.setGestureActive(mapView, false)
+            cancelActiveGestures()
         }
-        mapView.isEnabled = state.isInteractive
-        mapView.isClickable = state.isInteractive
-        mapView.isLongClickable = state.isInteractive
-        mapView.isFocusable = state.isInteractive
+        mapView.isEnabled = renderActive && state.isInteractive
+        mapView.isClickable = renderActive && state.isInteractive
+        mapView.isLongClickable = renderActive && state.isInteractive
+        mapView.isFocusable = renderActive && state.isInteractive
         latestState = state
         workGate.requestWork()
         schedulePendingRendererWorkIfReady()
@@ -493,7 +516,7 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun onMapViewLifecycleChanged() {
-        if (disposed) return
+        if (disposed || !renderActive) return
         val readiness = currentReadiness()
         if (readiness.isReady && !renderReadyReported) {
             renderReadyReported = true
@@ -522,6 +545,11 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun applyRendererState(state: PhoneOfflineMapSurfaceState) {
+        if (state.isOpacityOnlyChangeFrom(lastAppliedState) && renderer.isBaseLayerReady) {
+            applyBaseLayerOpacity(state.baseLayerOpacity)
+            lastAppliedState = state
+            return
+        }
         renderer.updateBaseLayer(state.map, state.themeConfig, state.initialCamera)
         applyBaseLayerOpacity(state.baseLayerOpacity)
         renderer.updateTerrain(state.mapSettings, state.terrainDataVersion, state.hasTerrainData)
@@ -533,6 +561,7 @@ private class PhoneOfflineMapsforgeView(
         applyCameraOverride(state.cameraOverride)
         publishCamera()
         publishRuntimeDiagnostics()
+        lastAppliedState = state
     }
 
     private fun applyBaseLayerOpacity(opacity: Float) {
@@ -623,7 +652,7 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun applyCameraOverride(camera: PhoneMapCameraSnapshot?) {
-        val target = camera ?: return
+        val target = camera?.forMapMode(latestState?.gestureMapMode ?: currentMapMode) ?: return
         if (centeredTouch.isLocked) return
         val model = mapView.model
         val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
@@ -649,11 +678,11 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun requestMapRedraw() {
-        if (disposed || redrawPosted) return
+        if (disposed || !renderActive || redrawPosted) return
         redrawPosted = true
         mapView.postOnAnimation {
             redrawPosted = false
-            if (!disposed) PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
+            if (!disposed && renderActive) PhoneMapLayerMutationCoordinator.redrawLayersSafely(mapView)
         }
     }
 
@@ -855,6 +884,7 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun publishCamera(): Boolean {
+        if (disposed || !renderActive) return false
         val model = mapView.model
         val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
         val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
@@ -873,12 +903,13 @@ private class PhoneOfflineMapsforgeView(
             val liveMapPosition = liveMapPositionOrNull()
             post {
                 if (!disposed) {
+                    if (!renderActive) return@post
                     callbacks.onCameraChanged(camera)
                     liveMapPosition?.let(callbacks.onLiveMapPositionChanged)
                 }
             }
             mapView.phoneMapViewportOrNull()?.let { viewport ->
-                post { if (!disposed) callbacks.onViewportChanged(viewport) }
+                post { if (!disposed && renderActive) callbacks.onViewportChanged(viewport) }
             }
         }
         return snapshot != null
@@ -891,7 +922,7 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun publishRuntimeDiagnostics() {
-        if (disposed) return
+        if (disposed || !renderActive) return
         val rendererSnapshot = renderer.runtimeSnapshot()
         val frameBuffer = runCatching { mapView.frameBuffer }.getOrNull()
         val dimensions = runCatching { frameBuffer?.dimension }.getOrNull()
@@ -1078,7 +1109,7 @@ private class PhoneOfflineMapsforgeView(
             attachedToWindow = mapView.isAttachedToWindow,
             width = mapView.width,
             height = mapView.height,
-            hasWindowFocus = mapView.hasWindowFocus(),
+            hasWindowFocus = renderActive && mapView.hasWindowFocus(),
         )
 
     private companion object {

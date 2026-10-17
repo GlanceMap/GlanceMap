@@ -29,7 +29,7 @@ internal fun BoxScope.phoneMapPointerOverlay(
     onCancelPoi: () -> Unit,
 ) {
     if (showPointer || poiCreationActive) {
-        phoneMapDiamondPointer()
+        phoneMapCrosshairPointer()
     }
     if (poiCreationActive) {
         PhoneMapPopupCard(
@@ -50,29 +50,32 @@ internal fun BoxScope.phoneMapPointerOverlay(
 }
 
 @Composable
-private fun BoxScope.phoneMapDiamondPointer() {
+private fun BoxScope.phoneMapCrosshairPointer() {
     val description = stringResource(R.string.map_pointer_content_description)
     Canvas(
         modifier =
             Modifier
                 .align(Alignment.Center)
-                .size(35.dp)
+                .size(24.dp)
                 .semantics { contentDescription = description },
     ) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = 14.dp.toPx()
-        val color = Color(0xFFF7C948)
-        val diamond =
+        val outer = 10.dp.toPx()
+        val inner = 4.dp.toPx()
+        val crosshair =
             Path().apply {
-                moveTo(center.x, center.y - radius)
-                lineTo(center.x + radius, center.y)
-                lineTo(center.x, center.y + radius)
-                lineTo(center.x - radius, center.y)
-                close()
+                moveTo(center.x, center.y - outer)
+                lineTo(center.x, center.y - inner)
+                moveTo(center.x + inner, center.y)
+                lineTo(center.x + outer, center.y)
+                moveTo(center.x, center.y + inner)
+                lineTo(center.x, center.y + outer)
+                moveTo(center.x - outer, center.y)
+                lineTo(center.x - inner, center.y)
             }
-        drawPath(diamond, color = Color.Black.copy(alpha = 0.55f), style = Stroke(width = 5.dp.toPx()))
-        drawPath(diamond, color = color, style = Stroke(width = 2.dp.toPx()))
-        drawCircle(color = Color.Black.copy(alpha = 0.55f), radius = 3.5.dp.toPx(), center = center)
-        drawCircle(color = color, radius = 2.dp.toPx(), center = center)
+        drawPath(crosshair, color = Color.White, style = Stroke(width = 4.dp.toPx()))
+        drawPath(crosshair, color = Color(0xFF263238), style = Stroke(width = 2.dp.toPx()))
+        drawCircle(color = Color.White, radius = 2.5.dp.toPx(), center = center)
+        drawCircle(color = Color(0xFFF7C948), radius = 1.5.dp.toPx(), center = center)
     }
 }

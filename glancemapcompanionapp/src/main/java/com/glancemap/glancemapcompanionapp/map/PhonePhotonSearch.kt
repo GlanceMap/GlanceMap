@@ -131,7 +131,12 @@ private fun JsonObject.toSearchResult(): PhoneMapSearchResult {
     val properties = getAsJsonObject("properties")
     val street = properties.searchText("street")
     val address = listOf(properties.searchText("housenumber"), street).filter(String::isNotBlank).joinToString(" ")
-    val label = properties.searchText("name").ifBlank { address }.ifBlank { properties.searchText("city") }
+    val name = properties.searchText("name")
+    val label =
+        when {
+            name.isBlank() || normalizePhoneMapSearch(name) == normalizePhoneMapSearch(street) -> address
+            else -> name
+        }.ifBlank { properties.searchText("city") }
     require(label.isNotBlank())
     val detail =
         listOf(

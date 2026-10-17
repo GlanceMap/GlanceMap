@@ -303,6 +303,9 @@ internal class PhoneMapsforgeRenderer(
     val currentBaseLayer: TileRendererLayer?
         get() = currentBase?.layer
 
+    val isBaseLayerReady: Boolean
+        get() = currentBase != null && currentIdentity == requestedIdentity
+
     val mapZoomLevelMin: Byte?
         get() = currentBase?.mapFile?.mapFileInfo?.zoomLevelMin
 

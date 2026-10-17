@@ -18,7 +18,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -26,21 +25,15 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalIconButton
@@ -48,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,23 +65,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.R
@@ -441,6 +431,7 @@ internal fun CompanionMapScreen(
     onPlannedRouteFinished: ((String?) -> Unit)? = null,
     onPlanAcrossDays: ((String?) -> Unit)? = null,
     onOpenMenu: () -> Unit,
+    isVisible: Boolean = true,
     initialTool: MapTool? = null,
     initialToolSettings: Boolean = false,
     initialDiscoveryRequest: Long? = null,
@@ -452,8 +443,10 @@ internal fun CompanionMapScreen(
 ) {
     val context = LocalContext.current
     val migrationTextResources = LocalResources.current
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val mapActive = isVisible && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val coroutineScope = rememberCoroutineScope()
-    val hikeUi = hikeController?.state?.collectAsState()?.value ?: remember { PhoneHikeUiState() }
+    val hikeUi = hikeController?.state?.collectAsStateWithLifecycle()?.value ?: remember { PhoneHikeUiState() }
     var hikeMapViewport by remember { mutableStateOf(IntSize.Zero) }
     val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
     val bundleStore = remember(context) { PhoneOfflineBundleStore(context.applicationContext) }
@@ -472,9 +465,9 @@ internal fun CompanionMapScreen(
     val gpxSettingsPreferences = remember(context) { PhoneMapGpxSettingsPreferences(context.applicationContext) }
     val gpxCustomizationPreferences = remember(context) { PhoneGpxCustomizationPreferences(context.applicationContext) }
     val initialGpxCustomization = remember(gpxCustomizationPreferences) { gpxCustomizationPreferences.load() }
-    val gpxCustomization by gpxCustomizationPreferences.changes.collectAsState(initialGpxCustomization)
+    val gpxCustomization by gpxCustomizationPreferences.changes.collectAsStateWithLifecycle(initialGpxCustomization)
     val libraryOrganizationStore = remember(context) { PhoneLibraryOrganizationStore(context.applicationContext) }
-    val libraryOrganization by libraryOrganizationStore.changes.collectAsState(PhoneLibraryOrganization())
+    val libraryOrganization by libraryOrganizationStore.changes.collectAsStateWithLifecycle(PhoneLibraryOrganization())
     val compassSensorSource = remember(context) { PhoneCompassSensorSource(context.applicationContext) }
     val sensorCapabilities = remember(context) { resolvePhoneSensorCapabilities(context.applicationContext) }
     val compassSettingsPreferences =
@@ -489,14 +482,14 @@ internal fun CompanionMapScreen(
     val mapSourcePreferences = remember(context) { PhoneMapSourcePreferences(context.applicationContext) }
     val poiSettingsPreferences = remember(context) { PhoneMapPoiSettingsPreferences(context.applicationContext) }
     val bundleViewModel: PhoneOfflineBundleViewModel = viewModel()
-    val bundleUiState by bundleViewModel.uiState.collectAsState()
+    val bundleUiState by bundleViewModel.uiState.collectAsStateWithLifecycle()
     val fileTransferViewModel: FileTransferViewModel = viewModel()
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val routeToolsViewModel: PhoneRouteToolsViewModel = viewModel()
-    val recordingState by PhoneRecordingSessionStore.state.collectAsState()
-    val recordingSettings by PhoneRecordingSettingsState.state.collectAsState()
+    val recordingState by PhoneRecordingSessionStore.state.collectAsStateWithLifecycle()
+    val recordingSettings by PhoneRecordingSettingsState.state.collectAsStateWithLifecycle()
     val discoveryViewModel: TrailDiscoveryViewModel = viewModel()
-    val discoverySaveState by discoveryViewModel.saveState.collectAsState()
+    val discoverySaveState by discoveryViewModel.saveState.collectAsStateWithLifecycle()
     var discoveryOpen by rememberSaveable { mutableStateOf(initialDiscoveryRequest != null) }
     var discoveryPickingPoint by rememberSaveable { mutableStateOf(false) }
     var discoveryNearMePending by rememberSaveable { mutableStateOf(false) }
@@ -506,7 +499,7 @@ internal fun CompanionMapScreen(
         if (discoverySaveState.revision > 0) onRouteSaved()
     }
     val searchViewModel: PhoneMapSearchViewModel = viewModel()
-    val searchState by searchViewModel.controller.state.collectAsState()
+    val searchState by searchViewModel.controller.state.collectAsStateWithLifecycle()
     var onlinePlaceSearchEnabled by remember(generalSettingsPreferences) {
         mutableStateOf(generalSettingsPreferences.isOnlineSearchEnabled())
     }
@@ -517,20 +510,21 @@ internal fun CompanionMapScreen(
     DisposableEffect(searchViewModel) {
         onDispose { searchViewModel.controller.cancel() }
     }
-    val gpxUiState by gpxViewModel.uiState.collectAsState()
+    val gpxUiState by gpxViewModel.uiState.collectAsStateWithLifecycle()
     val hikeTrackId =
         hikeUi.model
             ?.route
             ?.trackId
             ?.removePrefix("gpx/")
     val hikeTrackEnabled = gpxUiState.items.firstOrNull { it.id == hikeTrackId }?.enabled != false
-    val routeToolsState by routeToolsViewModel.uiState.collectAsState()
-    val compassState by compassSensorSource.state.collectAsState()
-    val mapSourceLocation by mapLocationSource.location.collectAsState()
-    val mapLocation = recordingState.latestLocation.takeIf { recordingState.locationUpdatesActive } ?: mapSourceLocation
+    val routeToolsState by routeToolsViewModel.uiState.collectAsStateWithLifecycle()
+    val compassState by compassSensorSource.state.collectAsStateWithLifecycle()
+    val mapSourceLocation by mapLocationSource.location.collectAsStateWithLifecycle()
     var mapRuntime by remember { mutableStateOf(MapRuntime()) }
     var comparisonMapRuntime by remember { mutableStateOf(MapRuntime()) }
-    val offlineRendererRefs by PhoneOfflineMapRendererDiagnostics.rendererRefs.collectAsState()
+    val activeMapRuntime = if (mapActive) mapRuntime else MapRuntime()
+    val activeComparisonMapRuntime = if (mapActive) comparisonMapRuntime else MapRuntime()
+    val offlineRendererRefs by PhoneOfflineMapRendererDiagnostics.rendererRefs.collectAsStateWithLifecycle()
     val phoneDebugCaptureState = PhoneDebugCapture.state.collectAsState()
     // Log counters change per entry; the map only needs capture lifecycle changes.
     val captureSessionId by remember { derivedStateOf { phoneDebugCaptureState.value.sessionId } }
@@ -549,6 +543,9 @@ internal fun CompanionMapScreen(
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
         mutableStateOf(initialTool?.let { initialState.openToolPage(it, initialToolSettings) } ?: initialState)
     }
+    val mapLocation =
+        (recordingState.latestLocation.takeIf { recordingState.locationUpdatesActive } ?: mapSourceLocation)
+            .takeUnless { mapUiState.mapMode.isOffline }
     val settingsPage = initialToolSettings || initialTool == MapTool.SETTINGS
     var handledInitialTool by rememberSaveable { mutableStateOf(initialTool) }
     var handledToolSettings by rememberSaveable { mutableStateOf(initialToolSettings) }
@@ -920,9 +917,10 @@ internal fun CompanionMapScreen(
         mapSourcePreference = mapSourcePreferences.restoreOnline()
         activateOnlineMap(selectedOnlineSource, false)
     }
-    phoneMapCompassLifecycle(compassSensorSource)
+    phoneMapCompassLifecycle(compassSensorSource, enabled = !mapUiState.mapMode.isOffline)
     phoneMapLocationLifecycle(
         source = mapLocationSource,
+        enabled = !mapUiState.mapMode.isOffline,
         hasLocationPermission = hasLocationPermission,
         recordingActive = recordingState.locationUpdatesActive,
         onPermissionChanged = { hasLocationPermission = it },
@@ -1051,11 +1049,13 @@ internal fun CompanionMapScreen(
         }
     }
     LaunchedEffect(
+        mapActive,
         mapSettings.liveElevationEnabled,
         mapSettings.onlineElevationEnabled,
         mapUiState.mapMode.isDetachedFromLocation,
         terrainDataVersion,
     ) {
+        if (!mapActive) return@LaunchedEffect
         if (!mapSettings.liveElevationEnabled || !mapUiState.mapMode.isDetachedFromLocation) {
             liveMapElevation = null
             return@LaunchedEffect
@@ -1129,7 +1129,7 @@ internal fun CompanionMapScreen(
         }
     val locationState =
         MapLocationState(
-            hasPermission = hasLocationPermission,
+            hasPermission = hasLocationPermission && !mapUiState.mapMode.isOffline,
             location = mapLocation,
         )
     val gpxOverlayState =
@@ -1401,8 +1401,8 @@ internal fun CompanionMapScreen(
             onPoiDataChanged()
         }
     }
-    LaunchedEffect(gpxSources, gpxFolderScan.files, initiallyEnabledGpxId, gpxSourcesLoading, gpxFolderScanLoaded) {
-        if (!gpxSourcesLoading && gpxFolderScanLoaded) {
+    LaunchedEffect(mapActive, gpxSources, gpxFolderScan.files, initiallyEnabledGpxId, gpxSourcesLoading, gpxFolderScanLoaded) {
+        if (mapActive && !gpxSourcesLoading && gpxFolderScanLoaded) {
             gpxViewModel.synchronize(gpxSources, gpxFolderScan.files, initiallyEnabledGpxId)
         }
     }
@@ -1434,16 +1434,18 @@ internal fun CompanionMapScreen(
     LaunchedEffect(mapSettings.distanceMeasurementEnabled) {
         if (!mapSettings.distanceMeasurementEnabled) distanceMeasurement = null
     }
-    LaunchedEffect(mapUiState.mapMode, mapSettings.autoRecenterEnabled, mapSettings.autoRecenterDelaySeconds) {
-        if (!mapSettings.autoRecenterEnabled || !mapUiState.mapMode.isDetachedFromLocation) return@LaunchedEffect
+    LaunchedEffect(mapActive, mapUiState.mapMode, mapSettings.autoRecenterEnabled, mapSettings.autoRecenterDelaySeconds) {
+        if (!mapActive) return@LaunchedEffect
+        if (!mapSettings.autoRecenterEnabled || !mapUiState.mapMode.canAutoRecenter) return@LaunchedEffect
         delay(mapSettings.autoRecenterDelaySeconds * 1_000L)
-        if (mapUiState.mapMode.isDetachedFromLocation && mapLocation != null) {
+        if (mapUiState.mapMode.canAutoRecenter && mapLocation != null) {
             mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
             mapLocationMessage = null
         }
     }
 
-    val onMapModePressed = {
+    val onMapModePressed = onMapModePressed@{
+        if (mapUiState.mapMode.isOffline) return@onMapModePressed
         if (mapUiState.mapMode.isDetachedFromLocation) {
             if (!hasLocationPermission) {
                 locationPermissionLauncher.launch(phoneMapLocationPermissions)
@@ -1456,6 +1458,15 @@ internal fun CompanionMapScreen(
         } else {
             mapUiState = mapUiState.toggleMapOrientation()
         }
+    }
+
+    val onToggleOfflineMode = {
+        val mode = mapUiState.mapMode.toggleOfflineMode()
+        shouldCenterOnInitialLocation = false
+        mapUiState = mapUiState.copy(mapMode = mode)
+        cameraState = cameraState.copy(camera = cameraState.camera.forMapMode(mode))
+        mapLocationMessage = null
+        if (!mode.isOffline && !hasLocationPermission) locationPermissionLauncher.launch(phoneMapLocationPermissions)
     }
 
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit = onStorageChangeRequested@{ target ->
@@ -1682,7 +1693,7 @@ internal fun CompanionMapScreen(
             maps =
                 MapToolsMapsState(
                     source = mapUiState.source,
-                    onlineSources = PhoneMapRendererCatalog.availableOnlineSources(),
+                    onlineSources = PhoneMapRendererCatalog.availableOnlineSources(mapSettings.hiddenOnlineSources),
                     selectedOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
                     isLoading = !offlineMapDiscoveryFinished || offlineMapLoadingCount > 0,
@@ -1732,14 +1743,13 @@ internal fun CompanionMapScreen(
                     base = mapUiState.source,
                     baseOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
-                    onlineSources = PhoneMapRendererCatalog.availableComparisonOnlineSources(),
+                    onlineSources =
+                        PhoneMapRendererCatalog.availableComparisonOnlineSources(mapSettings.hiddenOnlineSources),
                     comparison = mapUiState.comparison,
                     baseThemeConfig = effectiveBaseThemeConfig,
                     comparisonThemeConfig = comparisonThemeConfig,
                     hasElevationData = hasElevationData,
                     mapSettings = mapSettings,
-                    gpxVisible = mapUiState.contentVisibility.gpxTracks,
-                    poiVisible = mapUiState.contentVisibility.pois,
                 ),
             general =
                 MapToolsGeneralState(
@@ -2287,10 +2297,10 @@ internal fun CompanionMapScreen(
         if (currentComparisonActive()) cameraState = cameraState.beginInput(PhoneMapCameraRenderer.COMPARISON)
     }
     val onBaseCameraChanged: (PhoneMapCameraSnapshot) -> Unit = { camera ->
-        cameraState = cameraState.update(PhoneMapCameraRenderer.BASE, camera, currentComparisonActive())
+        cameraState = cameraState.update(PhoneMapCameraRenderer.BASE, camera.forMapMode(mapUiState.mapMode), currentComparisonActive())
     }
     val onComparisonCameraChanged: (PhoneMapCameraSnapshot) -> Unit = { camera ->
-        cameraState = cameraState.update(PhoneMapCameraRenderer.COMPARISON, camera, currentComparisonActive())
+        cameraState = cameraState.update(PhoneMapCameraRenderer.COMPARISON, camera.forMapMode(mapUiState.mapMode), currentComparisonActive())
     }
     val comparisonOwnsFollowAndCommands =
         phoneMapComparisonOwnsFollowAndCommands(
@@ -2421,8 +2431,12 @@ internal fun CompanionMapScreen(
             locationOwner = phoneMapDiagnosticLocationOwner(offlineComparisonActive, onlineComparisonActive),
             locationFollowOwner = if (comparisonOwnsFollowAndCommands) "comparison" else "base",
             followMode =
-                mapUiState.mapMode.follow.name
-                    .lowercase(),
+                if (mapUiState.mapMode.isOffline) {
+                    "offline"
+                } else {
+                    mapUiState.mapMode.follow.name
+                        .lowercase()
+                },
             orientation =
                 mapUiState.mapMode.orientation.name
                     .lowercase(),
@@ -2539,7 +2553,8 @@ internal fun CompanionMapScreen(
     }
 
     MapToolScaffold(
-        headerContent = { tool ->
+        headerContent = header@{ tool ->
+            if (!isVisible) return@header
             when (tool) {
                 MapTool.HIKE -> hikeHeaderAction()
 
@@ -2649,7 +2664,7 @@ internal fun CompanionMapScreen(
                                 },
                             )
                             synchronizeOnlineMapPresentation(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 locationState = locationState,
                                 mapMode = mapUiState.mapMode,
                                 mapSettings = mapSettings,
@@ -2661,7 +2676,7 @@ internal fun CompanionMapScreen(
                                 onCameraInput = onBaseCameraInput,
                             )
                             synchronizeGpxOverlay(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 overlayState =
                                     if (comparisonOwnsSemanticOverlays) {
                                         gpxOverlayState.copy(
@@ -2689,49 +2704,49 @@ internal fun CompanionMapScreen(
                                     ),
                             )
                             synchronizeRouteAnalysisOverlay(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 analysis = routeAnalysis.takeUnless { comparisonOwnsSemanticOverlays },
                             )
                             synchronizePoiOverlay(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 pois = pois,
                                 isVisible =
                                     mapUiState.contentVisibility.pois && !comparisonOwnsSemanticOverlays,
                                 settings = poiSettings,
                             )
                             synchronizePointSelectionOverlay(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 markers =
                                     pointSelectionMarkers
                                         .takeUnless { comparisonOwnsSemanticOverlays }
                                         .orEmpty(),
                             )
                             synchronizeDistanceMeasurementOverlay(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 measurement =
                                     distanceMeasurement.takeUnless { comparisonOwnsSemanticOverlays },
                             )
                             if (!comparisonOwnsSemanticOverlays) {
                                 observePoiViewport(
-                                    runtime = mapRuntime,
+                                    runtime = activeMapRuntime,
                                     isVisible = mapUiState.contentVisibility.pois,
                                     onViewportChanged = onPoiViewportChanged,
                                 )
                                 observePoiSelection(
-                                    runtime = mapRuntime,
+                                    runtime = activeMapRuntime,
                                     pois = pois,
                                     isVisible = mapUiState.contentVisibility.pois,
                                     onPoiSelected = onHikeAwarePoiSelected,
                                 )
                             }
                             observeOnlineCamera(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 onCameraChanged = onBaseCameraChanged,
                                 onUserCameraInput = onBaseCameraInput,
                                 userInputEnabled = !comparisonOwnsUserCamera,
                             )
                             observeOnlineLiveMapPosition(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 enabled =
                                     !comparisonOwnsSemanticOverlays &&
                                         (
@@ -2745,7 +2760,7 @@ internal fun CompanionMapScreen(
                                 onPositionChanged = { liveMapPosition = it },
                             )
                             observeOnlineUserPan(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 enabled = !comparisonOwnsUserCamera,
                                 shouldSuppressPan = {
                                     onlineGestureState.shouldSuppressPan(mapUiState.mapMode.follow)
@@ -2762,7 +2777,7 @@ internal fun CompanionMapScreen(
                                 },
                             )
                             observeOnlineUserRotation(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 enabled = !comparisonOwnsUserCamera,
                                 onGestureActiveChanged = { active ->
                                     onlineGestureState =
@@ -2776,7 +2791,7 @@ internal fun CompanionMapScreen(
                                 },
                             )
                             observeOnlineUserScale(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 enabled = !comparisonOwnsUserCamera,
                                 onGestureActiveChanged = { active ->
                                     onlineGestureState =
@@ -2784,7 +2799,7 @@ internal fun CompanionMapScreen(
                                 },
                             )
                             synchronizeOnlineMapControls(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 command = mapUiState.cameraCommand,
                                 mapSettings = mapSettings,
                                 onCameraCommandHandled = { commandId ->
@@ -2793,7 +2808,7 @@ internal fun CompanionMapScreen(
                                 onCameraInput = onBaseCameraInput,
                             )
                             synchronizeComparisonOnlineCamera(
-                                runtime = mapRuntime,
+                                runtime = activeMapRuntime,
                                 camera = cameraState.cameraForSynchronization(PhoneMapCameraRenderer.BASE),
                             )
                             mapSurface(
@@ -2802,6 +2817,7 @@ internal fun CompanionMapScreen(
                                 onlineSource = selectedOnlineSource,
                                 onlineProvider = selectedOnlineProvider,
                                 surfaceMode = PhoneMapLibreSurfaceMode.PRIMARY,
+                                isVisible = isVisible,
                                 onMapTap = onMapTap,
                                 onMapLongPress = onMapLongPress,
                                 onTwoFingerTap = onDistanceMeasurementGesture,
@@ -2885,11 +2901,11 @@ internal fun CompanionMapScreen(
                                     },
                                 )
                                 synchronizeComparisonOnlineCamera(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     camera = cameraState.cameraForSynchronization(PhoneMapCameraRenderer.COMPARISON),
                                 )
                                 synchronizeOnlineMapPresentation(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     locationState = locationState,
                                     mapMode = mapUiState.mapMode,
                                     mapSettings =
@@ -2906,7 +2922,7 @@ internal fun CompanionMapScreen(
                                     onCameraInput = onComparisonCameraInput,
                                 )
                                 synchronizeGpxOverlay(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     overlayState =
                                         gpxOverlayState.copy(
                                             isVisible = gpxOverlayState.isVisible && onlineComparisonActive,
@@ -2926,26 +2942,26 @@ internal fun CompanionMapScreen(
                                 )
                                 if (onlineComparisonActive) {
                                     synchronizeOnlineRasterOpacity(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         opacity = comparisonOverlayAlpha,
                                     )
                                     synchronizeRouteAnalysisOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         analysis = routeAnalysis,
                                     )
                                     synchronizePoiOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         pois = pois,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         settings = poiSettings,
                                     )
                                     observeOnlineCamera(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onCameraChanged = onComparisonCameraChanged,
                                         onUserCameraInput = onComparisonCameraInput,
                                     )
                                     observeOnlineLiveMapPosition(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         enabled =
                                             mapSettings.liveElevationEnabled ||
                                                 mapSettings.liveDistanceEnabled ||
@@ -2956,26 +2972,26 @@ internal fun CompanionMapScreen(
                                         onPositionChanged = { liveMapPosition = it },
                                     )
                                     synchronizePointSelectionOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         markers = pointSelectionMarkers,
                                     )
                                     synchronizeDistanceMeasurementOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         measurement = distanceMeasurement,
                                     )
                                     observePoiViewport(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         onViewportChanged = onPoiViewportChanged,
                                     )
                                     observePoiSelection(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         pois = pois,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         onPoiSelected = onHikeAwarePoiSelected,
                                     )
                                     observeOnlineUserPan(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         shouldSuppressPan = {
                                             onlineGestureState.shouldSuppressPan(mapUiState.mapMode.follow)
                                         },
@@ -2991,7 +3007,7 @@ internal fun CompanionMapScreen(
                                         },
                                     )
                                     observeOnlineUserRotation(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onGestureActiveChanged = { active ->
                                             onlineGestureState =
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.ROTATE, active)
@@ -3005,7 +3021,7 @@ internal fun CompanionMapScreen(
                                         },
                                     )
                                     observeOnlineUserScale(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onGestureActiveChanged = { active ->
                                             onlineGestureState =
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.SCALE, active)
@@ -3100,16 +3116,18 @@ internal fun CompanionMapScreen(
                                             )?.let { nextErrors -> mapLibreRenderErrors = nextErrors }
                                     },
                                     modifier = Modifier.fillMaxSize(),
-                                    isVisible = onlineComparisonActive,
+                                    isVisible = isVisible && onlineComparisonActive,
                                 )
                             }
                         }
 
                         is PhoneMapSource.Offline -> {
                             offlineMapSurface(
+                                isVisible = isVisible,
                                 state =
                                     PhoneOfflineMapSurfaceState(
                                         map = source.map,
+                                        gestureMapMode = mapUiState.mapMode,
                                         themeConfig = effectiveBaseThemeConfig,
                                         isInteractive = !comparisonOwnsUserCamera,
                                         initialCamera = mapCamera,
@@ -3247,11 +3265,11 @@ internal fun CompanionMapScreen(
                                     },
                                 )
                                 synchronizeComparisonOnlineCamera(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     camera = cameraState.cameraForSynchronization(PhoneMapCameraRenderer.COMPARISON),
                                 )
                                 synchronizeOnlineMapPresentation(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     locationState = locationState,
                                     mapMode = mapUiState.mapMode,
                                     mapSettings =
@@ -3268,7 +3286,7 @@ internal fun CompanionMapScreen(
                                     onCameraInput = onComparisonCameraInput,
                                 )
                                 synchronizeGpxOverlay(
-                                    runtime = comparisonMapRuntime,
+                                    runtime = activeComparisonMapRuntime,
                                     overlayState =
                                         gpxOverlayState.copy(
                                             isVisible = gpxOverlayState.isVisible && onlineComparisonActive,
@@ -3288,45 +3306,45 @@ internal fun CompanionMapScreen(
                                 )
                                 if (onlineComparisonActive) {
                                     synchronizeOnlineRasterOpacity(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         opacity = comparisonOverlayAlpha,
                                     )
                                     synchronizeRouteAnalysisOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         analysis = routeAnalysis,
                                     )
                                     synchronizePoiOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         pois = pois,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         settings = poiSettings,
                                     )
                                     synchronizePointSelectionOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         markers = pointSelectionMarkers,
                                     )
                                     synchronizeDistanceMeasurementOverlay(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         measurement = distanceMeasurement,
                                     )
                                     observePoiViewport(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         onViewportChanged = onPoiViewportChanged,
                                     )
                                     observePoiSelection(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         pois = pois,
                                         isVisible = mapUiState.contentVisibility.pois,
                                         onPoiSelected = onHikeAwarePoiSelected,
                                     )
                                     observeOnlineCamera(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onCameraChanged = onComparisonCameraChanged,
                                         onUserCameraInput = onComparisonCameraInput,
                                     )
                                     observeOnlineLiveMapPosition(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         enabled =
                                             mapSettings.liveElevationEnabled ||
                                                 mapSettings.liveDistanceEnabled ||
@@ -3337,7 +3355,7 @@ internal fun CompanionMapScreen(
                                         onPositionChanged = { liveMapPosition = it },
                                     )
                                     observeOnlineUserPan(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         shouldSuppressPan = {
                                             onlineGestureState.shouldSuppressPan(mapUiState.mapMode.follow)
                                         },
@@ -3353,7 +3371,7 @@ internal fun CompanionMapScreen(
                                         },
                                     )
                                     observeOnlineUserRotation(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onGestureActiveChanged = { active ->
                                             onlineGestureState =
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.ROTATE, active)
@@ -3367,14 +3385,14 @@ internal fun CompanionMapScreen(
                                         },
                                     )
                                     observeOnlineUserScale(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         onGestureActiveChanged = { active ->
                                             onlineGestureState =
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.SCALE, active)
                                         },
                                     )
                                     synchronizeOnlineMapControls(
-                                        runtime = comparisonMapRuntime,
+                                        runtime = activeComparisonMapRuntime,
                                         command = mapUiState.cameraCommand,
                                         mapSettings = mapSettings,
                                         onCameraCommandHandled = { commandId ->
@@ -3470,7 +3488,7 @@ internal fun CompanionMapScreen(
                                             )?.let { nextErrors -> mapLibreRenderErrors = nextErrors }
                                     },
                                     modifier = Modifier.fillMaxSize(),
-                                    isVisible = onlineComparisonActive,
+                                    isVisible = isVisible && onlineComparisonActive,
                                 )
                             }
                         }
@@ -3590,7 +3608,7 @@ internal fun CompanionMapScreen(
                                     },
                                 ),
                             modifier = Modifier.fillMaxSize(),
-                            isVisible = offlineComparisonActive,
+                            isVisible = isVisible && offlineComparisonActive,
                             rendererOwner =
                                 PhoneOfflineMapsforgeRendererOwner(
                                     role = PhoneOfflineMapRendererRole.COMPARISON,
@@ -3613,81 +3631,91 @@ internal fun CompanionMapScreen(
                         mapUiState.mapMode,
                         compassState.isRenderable,
                     )
+                val mapSearchActions =
+                    PhoneMapSearchActions(
+                        onFocus = { searchOpen = true },
+                        onQueryChanged = searchViewModel.controller::edit,
+                        onOnlineChanged = { enabled ->
+                            generalSettingsPreferences.setOnlineSearchEnabled(enabled)
+                            onlinePlaceSearchEnabled = enabled
+                            searchViewModel.controller.setContext(enabled, poiSources.enabledFileNames())
+                        },
+                        onSearch = {
+                            searchViewModel.controller.submit(
+                                PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
+                            )
+                        },
+                        onResultSelected = { result ->
+                            if (searchViewModel.controller.state.value.reply.results
+                                    .any { it.id == result.id }
+                            ) {
+                                searchViewModel.controller.cancel()
+                                searchOpen = false
+                                selectedPoi = null
+                                searchSelection = result
+                                if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
+                                    discoveryPickingPoint = false
+                                    discoveryNearMePending = false
+                                    discoverySearchPoint = result.point
+                                    discoveryViewModel.controller.submit(
+                                        TrailDiscoveryQuery(
+                                            GeoPoint(result.point.latitude, result.point.longitude),
+                                        ),
+                                        discoveryViewModel.settings.value.enabled,
+                                    )
+                                }
+                                shouldCenterOnInitialLocation = false
+                                hasFittedGpxOverlay = true
+                                if (comparisonOwnsFollowAndCommands) {
+                                    onComparisonCameraInput()
+                                } else {
+                                    onBaseCameraInput()
+                                }
+                                mapUiState =
+                                    mapUiState.requestSearchTarget(result.point, mapCamera.bearingDegrees)
+                            }
+                        },
+                        onDismiss = {
+                            searchOpen = false
+                            searchViewModel.controller.cancel()
+                        },
+                    )
                 mapControls(
                     onOpenMenu = onOpenMenu,
-                    onOpenSearch = {
-                        searchOpen = !searchOpen
-                        if (!searchOpen) searchViewModel.controller.cancel()
-                    },
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
                     onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
                     camera = mapCamera,
-                    compassHeadingDegrees = compassState.headingDegrees.takeIf { compassState.isRenderable },
+                    compassHeadingDegrees = compassState.headingDegrees.takeIf { compassState.isRenderable && !mapUiState.mapMode.isOffline },
                     mapMode = mapUiState.mapMode,
                     mapSettings = mapSettings,
-                    isMetric = generalSettings.isMetric,
                     onCycleMapMode = onMapModePressed,
+                    onToggleOfflineMode = onToggleOfflineMode,
                     northIndicatorVisible = northIndicatorVisible,
                     showModeControl = !routeCreationControlsVisible,
                 )
 
-                if (searchOpen) {
-                    PhoneMapSearchPanel(
-                        state = searchState,
-                        actions =
-                            PhoneMapSearchActions(
-                                onQueryChanged = searchViewModel.controller::edit,
-                                onOnlineChanged = { enabled ->
-                                    generalSettingsPreferences.setOnlineSearchEnabled(enabled)
-                                    onlinePlaceSearchEnabled = enabled
-                                    searchViewModel.controller.setContext(enabled, poiSources.enabledFileNames())
-                                },
-                                onSearch = {
-                                    searchViewModel.controller.submit(
-                                        PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
-                                    )
-                                },
-                                onResultSelected = { result ->
-                                    if (searchViewModel.controller.state.value.reply.results
-                                            .any { it.id == result.id }
-                                    ) {
-                                        searchViewModel.controller.cancel()
-                                        searchOpen = false
-                                        selectedPoi = null
-                                        searchSelection = result
-                                        if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
-                                            discoveryPickingPoint = false
-                                            discoveryNearMePending = false
-                                            discoverySearchPoint = result.point
-                                            discoveryViewModel.controller.submit(
-                                                TrailDiscoveryQuery(
-                                                    GeoPoint(result.point.latitude, result.point.longitude),
-                                                ),
-                                                discoveryViewModel.settings.value.enabled,
-                                            )
-                                        }
-                                        shouldCenterOnInitialLocation = false
-                                        hasFittedGpxOverlay = true
-                                        if (comparisonOwnsFollowAndCommands) {
-                                            onComparisonCameraInput()
-                                        } else {
-                                            onBaseCameraInput()
-                                        }
-                                        mapUiState =
-                                            mapUiState.requestSearchTarget(result.point, mapCamera.bearingDegrees)
-                                    }
-                                },
-                                onDismiss = {
-                                    searchOpen = false
-                                    searchViewModel.controller.cancel()
-                                },
+                Column(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    phoneMapSearchControl(
+                        presentation =
+                            PhoneMapSearchControlState(
+                                search = searchState,
+                                expanded = searchOpen,
+                                camera = mapCamera,
+                                isMetric = generalSettings.isMetric,
                             ),
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopCenter)
-                                .statusBarsPadding()
-                                .padding(start = 16.dp, end = 16.dp, top = 72.dp),
+                        actions = mapSearchActions,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp),
                     )
+                    if (isVisible && searchOpen) {
+                        PhoneMapSearchPanel(state = searchState, actions = mapSearchActions)
+                    }
                 }
 
                 searchSelection?.takeUnless { searchOpen }?.let { result ->
@@ -3863,7 +3891,7 @@ internal fun CompanionMapScreen(
                         }
                     }
                 }
-                poiCreationPoint?.takeIf { poiCreationDialogVisible }?.let { selectedPoint ->
+                poiCreationPoint?.takeIf { isVisible && poiCreationDialogVisible }?.let { selectedPoint ->
                     PhoneMapPopupDialog(
                         title = stringResource(R.string.map_poi_add_title),
                         onDismiss = {
@@ -3950,7 +3978,8 @@ internal fun CompanionMapScreen(
                 }
             }
         },
-        panelContent = { tool, contentMode, featureSettingsSection ->
+        panelContent = panel@{ tool, contentMode, featureSettingsSection ->
+            if (!isVisible) return@panel
             MapToolPanelContent(
                 tool = tool,
                 contentMode = contentMode,
@@ -4216,7 +4245,7 @@ internal fun CompanionMapScreen(
         },
     )
 
-    selectedGpxAnalysis?.let { item ->
+    selectedGpxAnalysis?.takeIf { isVisible }?.let { item ->
         PhoneMapGpxAnalysisDialog(
             item = item,
             settings = gpxSettings,
@@ -4228,7 +4257,7 @@ internal fun CompanionMapScreen(
     val renameFailedMessage = stringResource(R.string.map_content_rename_failed)
     val deleteFailedMessage = stringResource(R.string.map_content_delete_failed)
 
-    contentRenameTarget?.let { target ->
+    contentRenameTarget?.takeIf { isVisible }?.let { target ->
         PhoneMapPopupDialog(
             title = stringResource(R.string.map_content_rename_title),
             onDismiss = {
@@ -4291,7 +4320,7 @@ internal fun CompanionMapScreen(
         )
     }
 
-    contentDeleteTarget?.let { target ->
+    contentDeleteTarget?.takeIf { isVisible }?.let { target ->
         PhoneMapPopupDialog(
             title = stringResource(R.string.map_content_delete_title),
             onDismiss = {
@@ -4344,7 +4373,7 @@ internal fun CompanionMapScreen(
         )
     }
 
-    if (showOfflineThemeSelector) {
+    if (isVisible && showOfflineThemeSelector) {
         offlineThemeSelector(
             config = offlineThemeConfig,
             onDismiss = { showOfflineThemeSelector = false },
@@ -4366,7 +4395,7 @@ internal fun CompanionMapScreen(
         )
     }
 
-    if (showOfflineBundleDownload) {
+    if (isVisible && showOfflineBundleDownload) {
         PhoneOfflineBundleDialog(
             uiState = bundleUiState,
             onDismiss = {
@@ -4430,9 +4459,13 @@ private fun offlineThemeSelector(
 }
 
 @Composable
-private fun phoneMapCompassLifecycle(source: PhoneCompassSensorSource) {
+private fun phoneMapCompassLifecycle(
+    source: PhoneCompassSensorSource,
+    enabled: Boolean,
+) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(source, lifecycleOwner) {
+    DisposableEffect(source, lifecycleOwner, enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
         val observer =
             LifecycleEventObserver { _, event ->
                 when (event) {
@@ -4455,6 +4488,7 @@ private fun phoneMapCompassLifecycle(source: PhoneCompassSensorSource) {
 @Composable
 private fun phoneMapLocationLifecycle(
     source: PhoneMapLocationSource,
+    enabled: Boolean,
     hasLocationPermission: Boolean,
     recordingActive: Boolean,
     onPermissionChanged: (Boolean) -> Unit,
@@ -4462,13 +4496,14 @@ private fun phoneMapLocationLifecycle(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnPermissionChanged by rememberUpdatedState(onPermissionChanged)
-    DisposableEffect(source, lifecycleOwner, hasLocationPermission, recordingActive) {
+    DisposableEffect(source, lifecycleOwner, enabled, hasLocationPermission, recordingActive) {
         fun updateRegistration() {
             val permissionGranted = context.hasPhoneMapLocationPermission()
             if (permissionGranted != hasLocationPermission) {
                 currentOnPermissionChanged(permissionGranted)
             }
             if (
+                enabled &&
                 permissionGranted &&
                 !recordingActive &&
                 lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
@@ -4847,6 +4882,16 @@ private fun synchronizeOnlineMapPresentation(
         runtime.map?.let { activeMap ->
             activeMap.applyPhoneMapMarkerAnchor(mapSettings.markerAnchor)
             activeMap.applyPhoneMapGestureSettings(mapMode)
+            if (mapMode.isOffline && phoneMapBearingNeedsSync(activeMap.cameraPosition.bearing.toFloat(), 0f)) {
+                activeMap.moveCamera(
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition
+                            .Builder(activeMap.cameraPosition)
+                            .bearing(0.0)
+                            .build(),
+                    ),
+                )
+            }
         }
     }
     phoneMapOrientationTelemetry(runtime.map) {
@@ -4857,6 +4902,7 @@ private fun synchronizeOnlineMapPresentation(
             markerExpected = showLocationMarker && locationState.hasPermission,
             cameraControl =
                 when {
+                    mapMode.isOffline -> "offline"
                     !ownsLocationFollow -> "passive"
                     !locationState.hasPermission -> "no_permission"
                     userGestureActive -> "user_gesture"
@@ -5190,15 +5236,14 @@ private fun mapSurface(
 @Suppress("LongMethod", "LongParameterList") // Controls are one compact UI cluster; wrappers add no state boundary.
 private fun mapControls(
     onOpenMenu: () -> Unit,
-    onOpenSearch: () -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
     camera: PhoneMapCameraSnapshot,
     compassHeadingDegrees: Float?,
     mapMode: PhoneMapMode,
     mapSettings: PhoneMapSettings,
-    isMetric: Boolean,
     onCycleMapMode: () -> Unit,
+    onToggleOfflineMode: () -> Unit,
     northIndicatorVisible: Boolean,
     showModeControl: Boolean,
 ) {
@@ -5264,35 +5309,16 @@ private fun mapControls(
             }
         }
 
-        phoneMapSearchControl(
-            camera = camera,
-            isMetric = isMetric,
-            onClick = onOpenSearch,
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(start = 72.dp, end = 72.dp, top = 16.dp)
-                    .fillMaxWidth(),
-        )
-
         if (showModeControl) {
-            FilledTonalIconButton(
+            PhoneMapModeButton(
+                mode = mapMode,
                 onClick = onCycleMapMode,
+                onToggleOffline = onToggleOfflineMode,
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = mapToolLauncherHeight + 8.dp),
-            ) {
-                Icon(
-                    painter = mapMode.icon(),
-                    contentDescription =
-                        stringResource(
-                            R.string.map_mode_content_description,
-                            stringResource(mapMode.labelResource()),
-                        ),
-                )
-            }
+            )
         }
     }
 }
@@ -5413,14 +5439,6 @@ private fun BoxScope.phoneMapRouteSelectionControls(
 }
 
 @Composable
-private fun PhoneMapMode.icon(): Painter =
-    when {
-        isDetachedFromLocation -> rememberVectorPainter(Icons.Filled.MyLocation)
-        orientation == PhoneMapOrientation.HEADING_UP -> rememberVectorPainter(Icons.Filled.Explore)
-        else -> painterResource(R.drawable.map_mode_north_up)
-    }
-
-@Composable
 private fun phoneMapNorthIndicator(
     mapBearingDegrees: Float,
     compassHeadingDegrees: Float?,
@@ -5534,111 +5552,6 @@ private fun BoxScope.phoneMapLiveDistanceCard(
             ),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
-    }
-}
-
-@Composable
-internal fun phoneMapSearchControl(
-    camera: PhoneMapCameraSnapshot,
-    isMetric: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    BoxWithConstraints(modifier = modifier) {
-        val scaleBudget = (maxWidth * 0.34f).coerceAtMost(80.dp)
-        // The scale's physical pixel width stays accurate inside the smaller search control.
-        val scaleViewport = scaleBudget / PHONE_MAP_SCALE_TARGET_RATIO.toFloat()
-        val scaleViewportPx = with(LocalDensity.current) { scaleViewport.toPx().toDouble() }
-        val indicator =
-            remember(camera.groundResolutionMetersPerPixel, scaleViewportPx, isMetric) {
-                camera.groundResolutionMetersPerPixel?.let {
-                    calculatePhoneMapScaleIndicator(it, scaleViewportPx, isMetric)
-                }
-            }
-        Surface(
-            onClick = onClick,
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(
-                    stringResource(R.string.map_search_hint),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                indicator?.let {
-                    Box(modifier = Modifier.width(scaleBudget), contentAlignment = Alignment.CenterEnd) {
-                        phoneMapScaleBar(it, scaleViewport * it.widthRatio)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun phoneMapScaleBar(
-    indicator: PhoneMapScaleIndicator,
-    width: Dp,
-) {
-    Column(horizontalAlignment = Alignment.End) {
-        Text(
-            text = indicator.label,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = Color.White,
-            modifier =
-                Modifier
-                    .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
-        )
-        Box(
-            modifier =
-                Modifier
-                    .padding(top = 2.dp)
-                    .width(width)
-                    .height(10.dp)
-                    .testTag("map-search-scale-bar"),
-        ) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val centerY = size.height / 2f
-                val barWidth = 4.dp.toPx()
-                val tickWidth = 3.dp.toPx()
-                drawLine(
-                    color = Color.White.copy(alpha = 0.75f),
-                    start = Offset(0f, centerY),
-                    end = Offset(size.width, centerY),
-                    strokeWidth = barWidth,
-                )
-                drawLine(
-                    color = Color.Black.copy(alpha = 0.95f),
-                    start = Offset(0f, centerY),
-                    end = Offset(size.width, centerY),
-                    strokeWidth = 2.dp.toPx(),
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.75f),
-                    start = Offset(tickWidth / 2f, 0f),
-                    end = Offset(tickWidth / 2f, size.height),
-                    strokeWidth = tickWidth,
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.75f),
-                    start = Offset(size.width - tickWidth / 2f, 0f),
-                    end = Offset(size.width - tickWidth / 2f, size.height),
-                    strokeWidth = tickWidth,
-                )
-            }
-        }
     }
 }
 
@@ -5930,7 +5843,7 @@ private fun createMapView(
 /** Keeps MapLibre's ordered lifecycle callbacks together rather than splitting the state machine. */
 @Suppress("CyclomaticComplexMethod", "DEPRECATION", "OVERRIDE_DEPRECATION")
 @Composable
-private fun mapViewLifecycle(
+internal fun mapViewLifecycle(
     mapView: MapView?,
     onMapViewDestroyed: (MapView) -> Unit,
 ) {

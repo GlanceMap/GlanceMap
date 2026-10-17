@@ -11,8 +11,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -52,19 +50,12 @@ class MapLayerPanelTest {
     private val progress = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 
     @Test
-    fun quickDisplayVisibilityControlsUseTheSharedStateAndNightFollowsOfflineBase() {
+    fun layerQuickDisplayOmitsGpxAndPoiVisibilityAndNightFollowsOfflineBase() {
         setContent()
         listOf(R.string.map_tools_gpx_global_visibility, R.string.map_tools_poi_global_visibility).forEach { label ->
             composeRule
                 .onNodeWithContentDescription(composeRule.activity.getString(label))
-                .performScrollTo()
-                .assertIsOn()
-                .performClick()
-                .assertIsOff()
-        }
-        composeRule.runOnIdle {
-            assertEquals(false, state.value.gpxVisible)
-            assertEquals(false, state.value.poiVisible)
+                .assertDoesNotExist()
         }
         val night = composeRule.activity.getString(R.string.map_tools_maps_night_mode)
         composeRule.onNodeWithContentDescription(night).assertDoesNotExist()
@@ -87,7 +78,7 @@ class MapLayerPanelTest {
         composeRule.onNodeWithText(offlineMap.displayName).performClick()
         composeRule.onNode(progress).performSemanticsAction(SemanticsActions.SetProgress) { it(25f) }
         picker().performClick()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_none)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_clear)).performClick()
         composeRule.runOnIdle {
             assertEquals(null, state.value.comparison.layer)
             assertEquals(75f, state.value.comparison.transparencyPercent, 0f)
@@ -103,6 +94,17 @@ class MapLayerPanelTest {
         state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap))
         setContent(expanded = true)
         picker().performClick()
+        val sameMapOption =
+            composeRule
+                .onNodeWithText(composeRule.activity.getString(R.string.map_layer_same_map_theme))
+                .fetchSemanticsNode()
+                .boundsInRoot
+        val clearOption =
+            composeRule
+                .onNodeWithText(composeRule.activity.getString(R.string.map_layer_clear))
+                .fetchSemanticsNode()
+                .boundsInRoot
+        assertTrue(sameMapOption.top < clearOption.top)
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_same_map_theme)).performClick()
         composeRule.runOnIdle {
             assertEquals(PhoneMapComparisonLayer.Offline(offlineMap), state.value.comparison.layer)
@@ -213,8 +215,6 @@ class MapLayerPanelTest {
                     state.value.copy(comparison = state.value.comparison.withTransparency(it))
             },
             onMapSettingsChanged = { state.value = state.value.copy(mapSettings = it) },
-            onGpxVisibilityChanged = { state.value = state.value.copy(gpxVisible = it) },
-            onPoiVisibilityChanged = { state.value = state.value.copy(poiVisible = it) },
             onBaseMapChanged = { layer ->
                 state.value =
                     when (layer) {

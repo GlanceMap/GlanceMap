@@ -28,42 +28,65 @@ internal data class PhoneMapMode(
     val orientation: PhoneMapOrientation = PhoneMapOrientation.NORTH_UP,
     val follow: PhoneMapFollowMode = PhoneMapFollowMode.FOLLOW_LOCATION,
     val manualBearingDegrees: Float? = null,
+    val isOffline: Boolean = false,
 ) {
     val isDetachedFromLocation: Boolean
-        get() = follow == PhoneMapFollowMode.FREE
+        get() = isOffline || follow == PhoneMapFollowMode.FREE
+
+    val canAutoRecenter: Boolean
+        get() = isDetachedFromLocation && !isOffline
 
     val allowsManualRotation: Boolean
-        get() = follow == PhoneMapFollowMode.FREE || orientation != PhoneMapOrientation.HEADING_UP
+        get() = !isOffline && (follow == PhoneMapFollowMode.FREE || orientation != PhoneMapOrientation.HEADING_UP)
+
+    fun toggleOfflineMode(): PhoneMapMode = if (isOffline) PhoneMapMode() else PhoneMapMode(follow = PhoneMapFollowMode.FREE, isOffline = true)
 
     fun toggleOrientation(): PhoneMapMode =
-        copy(
-            orientation =
-                when (orientation) {
-                    PhoneMapOrientation.NORTH_UP -> PhoneMapOrientation.HEADING_UP
-                    PhoneMapOrientation.HEADING_UP -> PhoneMapOrientation.NORTH_UP
-                },
-            manualBearingDegrees = null,
-        )
+        if (isOffline) {
+            this
+        } else {
+            copy(
+                orientation =
+                    when (orientation) {
+                        PhoneMapOrientation.NORTH_UP -> PhoneMapOrientation.HEADING_UP
+                        PhoneMapOrientation.HEADING_UP -> PhoneMapOrientation.NORTH_UP
+                    },
+                manualBearingDegrees = null,
+            )
+        }
 
     fun detachFromLocation(currentBearingDegrees: Float? = null): PhoneMapMode =
-        copy(
-            follow = PhoneMapFollowMode.FREE,
-            manualBearingDegrees = currentBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: manualBearingDegrees,
-        )
+        if (isOffline) {
+            this
+        } else {
+            copy(
+                follow = PhoneMapFollowMode.FREE,
+                manualBearingDegrees =
+                    currentBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: manualBearingDegrees,
+            )
+        }
 
     fun withManualBearing(bearingDegrees: Float): PhoneMapMode = if (allowsManualRotation) copy(manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees)) else this
 
     fun detachAfterManualRotation(bearingDegrees: Float): PhoneMapMode =
-        copy(
-            follow = PhoneMapFollowMode.FREE,
-            manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees),
-        )
+        if (isOffline) {
+            this
+        } else {
+            copy(
+                follow = PhoneMapFollowMode.FREE,
+                manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees),
+            )
+        }
 
     fun recenterOnLocation(): PhoneMapMode =
-        copy(
-            follow = PhoneMapFollowMode.FOLLOW_LOCATION,
-            manualBearingDegrees = null,
-        )
+        if (isOffline) {
+            this
+        } else {
+            copy(
+                follow = PhoneMapFollowMode.FOLLOW_LOCATION,
+                manualBearingDegrees = null,
+            )
+        }
 }
 
 /** One renderer-neutral request from the map controls; the active renderer consumes it once. */

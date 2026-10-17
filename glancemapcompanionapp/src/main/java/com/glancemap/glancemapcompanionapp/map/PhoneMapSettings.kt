@@ -111,6 +111,7 @@ internal data class PhoneMapSettings(
     val nightModeEnabled: Boolean = false,
     val northReferenceMode: PhoneMapNorthReferenceMode = PhoneMapNorthReferenceMode.TRUE,
     val demSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
+    val hiddenOnlineSources: Set<PhoneOnlineMapSource> = emptySet(),
 ) {
     fun normalized(): PhoneMapSettings {
         val farthestOut = nearestPhoneMapScaleStep(zoomMinScaleMeters)
@@ -141,6 +142,7 @@ internal class PhoneMapSettingsPreferences(
 
     @Suppress("LongMethod") // Preference keys are kept in one migration-safe read/write boundary.
     fun load(): PhoneMapSettings {
+        val hiddenOnlineSourceNames = preferences.getStringSet(KEY_HIDDEN_ONLINE_SOURCES, emptySet()).orEmpty()
         val settings =
             PhoneMapSettings(
                 markerAnchor =
@@ -207,6 +209,10 @@ internal class PhoneMapSettingsPreferences(
                     PhoneOfflineDemSource.fromId(
                         preferences.getString(KEY_DEM_SOURCE, PhoneOfflineDemSource.DEFAULT.id),
                     ),
+                hiddenOnlineSources =
+                    PhoneOnlineMapSource.entries.filterTo(mutableSetOf()) { source ->
+                        source.name in hiddenOnlineSourceNames
+                    },
             ).normalized()
         save(settings)
         return settings
@@ -236,6 +242,7 @@ internal class PhoneMapSettingsPreferences(
             .putBoolean(KEY_NIGHT_MODE_ENABLED, normalized.nightModeEnabled)
             .putString(KEY_NORTH_REFERENCE_MODE, normalized.northReferenceMode.storageValue)
             .putString(KEY_DEM_SOURCE, normalized.demSource.id)
+            .putStringSet(KEY_HIDDEN_ONLINE_SOURCES, normalized.hiddenOnlineSources.map { it.name }.toSet())
             .apply()
         return normalized
     }
@@ -283,6 +290,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_NIGHT_MODE_ENABLED = "night_mode_enabled"
         const val KEY_NORTH_REFERENCE_MODE = "north_reference_mode"
         const val KEY_DEM_SOURCE = "dem_source"
+        const val KEY_HIDDEN_ONLINE_SOURCES = "hidden_online_sources"
     }
 }
 
