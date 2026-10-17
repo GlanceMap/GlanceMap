@@ -109,6 +109,7 @@ import com.glancemap.glancemapcompanionapp.map.maplibre.renderPointSelectionMark
 import com.glancemap.glancemapcompanionapp.map.maplibre.renderRouteAnalysisMarkers
 import com.glancemap.glancemapcompanionapp.map.maplibre.setOnlineHillshade
 import com.glancemap.trailcore.geo.GeoPoint
+import com.glancemap.trailcore.guidance.TrailGuidanceMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -487,6 +488,7 @@ internal fun CompanionMapScreen(
     val gpxViewModel: PhoneMapGpxViewModel = viewModel()
     val routeToolsViewModel: PhoneRouteToolsViewModel = viewModel()
     val recordingState by PhoneRecordingSessionStore.state.collectAsStateWithLifecycle()
+    val guidanceState by PhoneGuidanceSessionStore.state.collectAsStateWithLifecycle()
     val recordingSettings by PhoneRecordingSettingsState.state.collectAsStateWithLifecycle()
     val discoveryViewModel: TrailDiscoveryViewModel = viewModel()
     val discoverySaveState by discoveryViewModel.saveState.collectAsStateWithLifecycle()
@@ -917,12 +919,24 @@ internal fun CompanionMapScreen(
         mapSourcePreference = mapSourcePreferences.restoreOnline()
         activateOnlineMap(selectedOnlineSource, false)
     }
-    phoneMapCompassLifecycle(compassSensorSource, enabled = !mapUiState.mapMode.isOffline)
+    phoneMapCompassLifecycle(compassSensorSource, enabled = mapActive && !mapUiState.mapMode.isOffline)
+    val guidanceNeedsLocation =
+        guidanceState.session != null &&
+            !guidanceState.paused &&
+            guidanceState.guidance?.mode != TrailGuidanceMode.FINISHED
+    val mapLocationProfile =
+        selectPhoneMapLocationRequestProfile(
+            mapActive = mapActive,
+            onlineMap = !mapUiState.mapMode.isOffline,
+            hasLocationPermission = hasLocationPermission,
+            recordingServiceOwnsLocation =
+                recordingState.session.acceptsFixes || recordingState.locationUpdatesActive || guidanceNeedsLocation,
+            followMode = mapUiState.mapMode.follow,
+        )
     phoneMapLocationLifecycle(
         source = mapLocationSource,
-        enabled = !mapUiState.mapMode.isOffline,
+        profile = mapLocationProfile,
         hasLocationPermission = hasLocationPermission,
-        recordingActive = recordingState.locationUpdatesActive,
         onPermissionChanged = { hasLocationPermission = it },
     )
     LaunchedEffect(pendingOfflineMap) {
@@ -4488,27 +4502,25 @@ private fun phoneMapCompassLifecycle(
 @Composable
 private fun phoneMapLocationLifecycle(
     source: PhoneMapLocationSource,
-    enabled: Boolean,
+    profile: PhoneMapLocationRequestProfile?,
     hasLocationPermission: Boolean,
-    recordingActive: Boolean,
     onPermissionChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnPermissionChanged by rememberUpdatedState(onPermissionChanged)
-    DisposableEffect(source, lifecycleOwner, enabled, hasLocationPermission, recordingActive) {
+    DisposableEffect(source, lifecycleOwner, profile, hasLocationPermission) {
         fun updateRegistration() {
             val permissionGranted = context.hasPhoneMapLocationPermission()
             if (permissionGranted != hasLocationPermission) {
                 currentOnPermissionChanged(permissionGranted)
             }
             if (
-                enabled &&
+                profile != null &&
                 permissionGranted &&
-                !recordingActive &&
                 lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             ) {
-                source.start()
+                source.start(requireNotNull(profile))
             } else {
                 source.stop()
             }
