@@ -4,21 +4,40 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal const val LIVE_TRACKING_POSITION_QUEUE_MAX_SIZE = 500
+
+internal data class LiveTrackingPositionQueueAppendResult(
+    val updates: List<ArkluzLocationUpdate>,
+    val droppedOldestCount: Int,
+) {
+    val queueSize: Int get() = updates.size
+}
+
+internal fun appendLiveTrackingPosition(
+    queuedUpdates: List<ArkluzLocationUpdate>,
+    update: ArkluzLocationUpdate,
+): LiveTrackingPositionQueueAppendResult {
+    val combined = queuedUpdates + update.asStoredGpsPoint()
+    val droppedOldestCount = (combined.size - LIVE_TRACKING_POSITION_QUEUE_MAX_SIZE).coerceAtLeast(0)
+    return LiveTrackingPositionQueueAppendResult(
+        updates = combined.takeLast(LIVE_TRACKING_POSITION_QUEUE_MAX_SIZE),
+        droppedOldestCount = droppedOldestCount,
+    )
+}
+
 internal object LiveTrackingPositionQueue {
     private const val PREFS_NAME = "arkluz_live_tracking_position_queue"
     private const val KEY_QUEUE = "queue"
-    private const val MAX_QUEUE_SIZE = 500
     private val lock = Any()
 
     fun enqueue(
         context: Context,
         update: ArkluzLocationUpdate,
-    ): Int =
+    ): LiveTrackingPositionQueueAppendResult =
         synchronized(lock) {
-            val updates = loadLocked(context) + update.asStoredGpsPoint()
-            val cappedUpdates = updates.takeLast(MAX_QUEUE_SIZE)
-            saveLocked(context, cappedUpdates)
-            cappedUpdates.size
+            appendLiveTrackingPosition(loadLocked(context), update).also { result ->
+                saveLocked(context, result.updates)
+            }
         }
 
     fun load(context: Context): List<ArkluzLocationUpdate> =
@@ -31,7 +50,13 @@ internal object LiveTrackingPositionQueue {
         updates: List<ArkluzLocationUpdate>,
     ) {
         synchronized(lock) {
-            saveLocked(context, updates.sortedBy { it.epochMilliseconds }.takeLast(MAX_QUEUE_SIZE))
+            val boundedUpdates =
+                if (updates.size <= LIVE_TRACKING_POSITION_QUEUE_MAX_SIZE) {
+                    updates
+                } else {
+                    updates.takeLast(LIVE_TRACKING_POSITION_QUEUE_MAX_SIZE)
+                }
+            saveLocked(context, boundedUpdates)
         }
     }
 

@@ -25,6 +25,7 @@ import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.glancemapcompanionapp.filepicker.FilePickerScreen
 import com.glancemap.glancemapcompanionapp.layout.companionLayoutProvider
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingOpenIntentContract
+import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingStopReconciliationWork
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiViewModel
 import com.glancemap.glancemapcompanionapp.map.hasPhoneMapLocationPermission
 import com.glancemap.glancemapcompanionapp.map.phoneMapLocationPermissions
@@ -45,6 +46,7 @@ class MainActivityMobile : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(application)
         PhoneDebugCapture.initialize(applicationContext)
+        runCatching { LiveTrackingStopReconciliationWork.enqueuePending(applicationContext) }
 
         handleLaunchIntent(intent)
 

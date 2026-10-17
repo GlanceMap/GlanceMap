@@ -1417,6 +1417,10 @@
     <string name="tracking_notification_gps_stored_for_retry_value_waiting_value">"GPS stored for retry (%1$d waiting): %2$s"</string>
     <string name="tracking_notification_unable_to_send_position">"Unable to send position"</string>
     <string name="tracking_notification_stored_gps_point_could_not_be_replayed">"Stored GPS point could not be replayed"</string>
+    <plurals name="tracking_notification_offline_positions_dropped">
+        <item quantity="one">"Queue full; %1$d oldest saved GPS position was replaced."</item>
+        <item quantity="other">"Queue full; %1$d oldest saved GPS positions were replaced."</item>
+    </plurals>
     <string name="tracking_notification_wait_for_the_first_gps_position_before">"Wait for the first GPS position before pausing"</string>
     <string name="tracking_notification_pause_pending_a_no_movement_alert_may">"Pause pending; a no-movement alert may still be sent"</string>
     <string name="tracking_notification_tracking_resumed_notifying_arkluz">"Tracking resumed; notifying Arkluz"</string>
