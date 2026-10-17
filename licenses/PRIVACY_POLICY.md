@@ -1,6 +1,6 @@
 # Privacy Policy for GlanceMap
 
-Last updated: 2026-08-05
+Last updated: 2026-10-17
 
 This Privacy Policy applies to GlanceMap, including the Wear OS watch app and its Android companion app, distributed under the GlanceMap name and package `com.glancemap.glancemapwearos`.
 
@@ -56,8 +56,12 @@ When you choose **Load route weather** in the companion app, the app sends a coo
 
 As with normal internet requests, those providers may also receive standard request metadata such as your IP address, request time, and user-agent or similar connection information.
 
+With online place/address search enabled, submitted place searches use Photon. French postal addresses are first tried with IGN Géoplateforme (Base Adresse Nationale), with Photon as a fallback. Photon receives the submitted text and map-centre coordinates to bias results; IGN receives the submitted address and postcode. Turn off online search to search downloaded POI files only. Search text and addresses are excluded from GlanceMap search diagnostic logs.
+
 Providers used by the current app configuration include:
 
+- `photon.komoot.io` (online place search)
+- `data.geopf.fr` (French postal-address search)
 - `refuges.info`
 - `overpass-api.de`
 - `tile.openstreetmap.org`
