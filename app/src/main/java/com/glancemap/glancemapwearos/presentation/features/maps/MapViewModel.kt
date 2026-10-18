@@ -1583,9 +1583,9 @@ class MapViewModel(
                             "request=${initialViewportReady.requestId} " +
                             "tiles=${initialViewportReady.viewportKey.tiles.size}" +
                             if (initialViewportChanged) {
-                                " armedLayer=${initialViewportReadiness?.layerId} " +
-                                    "armedRequest=${initialViewportReadiness?.requestId} " +
-                                    "armedTiles=${initialViewportReadiness?.viewportKey?.tiles?.size}"
+                                " armedLayer=${initialViewportReadiness.layerId} " +
+                                    "armedRequest=${initialViewportReadiness.requestId} " +
+                                    "armedTiles=${initialViewportReadiness.viewportKey.tiles.size}"
                             } else {
                                 ""
                             }
