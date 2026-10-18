@@ -2,10 +2,11 @@ package com.glancemap.glancemapcompanionapp.livetracking
 
 import android.content.Context
 import android.net.Uri
+import com.google.gson.JsonParser
 
 /**
  * Makes an explicitly started live-tracking session recoverable if Android recreates its
- * foreground-service process. The record is removed as soon as the user stops tracking.
+ * foreground-service process. The record survives until stopping has completed.
  */
 internal object LiveTrackingActiveSessionStore {
     private const val PREFS_NAME = "arkluz_live_tracking_active_session"
@@ -25,41 +26,56 @@ internal object LiveTrackingActiveSessionStore {
     private const val KEY_PAUSED = "paused"
     private const val KEY_SENT_START = "sent_start"
     private const val KEY_DATE_ID = "date_id"
+    private const val KEY_STOPPING = "stopping"
+    private const val KEY_RESUME_PENDING = "resume_pending"
+    private const val KEY_PAUSE_PENDING = "pause_pending"
+    private const val KEY_LAST_POSITION = "last_position"
+    private const val KEY_SAVED_AT = "saved_at"
 
     internal data class Session(
         val settings: LiveTrackingSettings,
         val isPaused: Boolean,
         val sentStart: Boolean,
         val dateId: String?,
+        val isStopping: Boolean,
+        val resumePending: Boolean,
+        val pausePending: Boolean,
+        val lastPosition: ArkluzLocationUpdate?,
+        val savedAtEpochMilliseconds: Long,
     )
 
     fun save(
         context: Context,
-        settings: LiveTrackingSettings,
-        isPaused: Boolean,
-        sentStart: Boolean,
-        dateId: String?,
+        session: Session,
     ) {
-        context
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_ACTIVE, true)
-            .putString(KEY_TRACKING_URL, settings.trackingUrl)
-            .putInt(KEY_UPDATE_INTERVAL_SECONDS, settings.updateIntervalSeconds)
-            .putString(KEY_GROUP, settings.group)
-            .putString(KEY_PARTICIPANT_PASSWORD, settings.participantPassword)
-            .putString(KEY_FOLLOWER_PASSWORD, settings.followerPassword)
-            .putString(KEY_USER_NAME, settings.userName)
-            .putString(KEY_NOTIFICATION_EMAILS, settings.notificationEmails)
-            .putString(KEY_ALERT_EMAILS, settings.alertEmails)
-            .putString(KEY_STUCK_ALARM_MINUTES, settings.stuckAlarmMinutes)
-            .putString(KEY_COMMENTS, settings.comments)
-            .putString(KEY_GPX_URI, settings.gpxUri?.toString())
-            .putString(KEY_GPX_NAME, settings.gpxName)
-            .putBoolean(KEY_PAUSED, isPaused)
-            .putBoolean(KEY_SENT_START, sentStart)
-            .putString(KEY_DATE_ID, dateId)
-            .apply()
+        val settings = session.settings
+        val saved =
+            context
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_ACTIVE, true)
+                .putString(KEY_TRACKING_URL, settings.trackingUrl)
+                .putInt(KEY_UPDATE_INTERVAL_SECONDS, settings.updateIntervalSeconds)
+                .putString(KEY_GROUP, settings.group)
+                .putString(KEY_PARTICIPANT_PASSWORD, settings.participantPassword)
+                .putString(KEY_FOLLOWER_PASSWORD, settings.followerPassword)
+                .putString(KEY_USER_NAME, settings.userName)
+                .putString(KEY_NOTIFICATION_EMAILS, settings.notificationEmails)
+                .putString(KEY_ALERT_EMAILS, settings.alertEmails)
+                .putString(KEY_STUCK_ALARM_MINUTES, settings.stuckAlarmMinutes)
+                .putString(KEY_COMMENTS, settings.comments)
+                .putString(KEY_GPX_URI, settings.gpxUri?.toString())
+                .putString(KEY_GPX_NAME, settings.gpxName)
+                .putBoolean(KEY_PAUSED, session.isPaused)
+                .putBoolean(KEY_SENT_START, session.sentStart)
+                .putString(KEY_DATE_ID, session.dateId)
+                .putBoolean(KEY_STOPPING, session.isStopping)
+                .putBoolean(KEY_RESUME_PENDING, session.resumePending)
+                .putBoolean(KEY_PAUSE_PENDING, session.pausePending)
+                .putString(KEY_LAST_POSITION, session.lastPosition?.toStoredJson()?.toString())
+                .putLong(KEY_SAVED_AT, session.savedAtEpochMilliseconds)
+                .commit()
+        if (!saved) throw LiveTrackingQueueException("Unable to save tracking recovery state")
     }
 
     fun load(context: Context): Session? {
@@ -101,15 +117,25 @@ internal object LiveTrackingActiveSessionStore {
                 isPaused = prefs.getBoolean(KEY_PAUSED, false),
                 sentStart = prefs.getBoolean(KEY_SENT_START, false),
                 dateId = prefs.getString(KEY_DATE_ID, null),
+                isStopping = prefs.getBoolean(KEY_STOPPING, false),
+                resumePending = prefs.getBoolean(KEY_RESUME_PENDING, false),
+                pausePending = prefs.getBoolean(KEY_PAUSE_PENDING, false),
+                lastPosition =
+                    prefs.getString(KEY_LAST_POSITION, null)?.let { raw ->
+                        runCatching { JsonParser.parseString(raw).asJsonObject.toStoredLocationUpdate() }.getOrNull()
+                    },
+                savedAtEpochMilliseconds = prefs.getLong(KEY_SAVED_AT, 0L),
             )
         }
     }
 
     fun clear(context: Context) {
-        context
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .apply()
+        val cleared =
+            context
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+        if (!cleared) throw LiveTrackingQueueException("Unable to clear tracking recovery state")
     }
 }

@@ -36,6 +36,16 @@ Source constants files:
 | `AUTO_FUSED_RECOVERY_PROBE_MIN_FALLBACK_MS` | `30000 ms` | Minimum fallback time before periodic probe back to auto-fused | Ensures fallback has meaningful runtime before probing | Limits probe overhead |
 | `AUTO_FUSED_RECOVERY_PROBE_COOLDOWN_MS` | `45000 ms` | Cooldown between periodic recovery probes | Avoids rapid repeated source probes | Reduces battery waste from churn |
 
+## Companion Live Tracking Refinement
+
+Source: `glancemapcompanionapp/src/main/java/com/glancemap/glancemapcompanionapp/livetracking/LiveTrackingAcquisitionPolicy.kt`.
+
+- `ACCURACY_BURST_TRIGGER_METERS = 50 m`: request refinement for otherwise accepted periodic fixes with reported accuracy of 50 m or worse, when the selected interval is at least 60 seconds and fine location permission is available.
+- `ACCURACY_BURST_TARGET_METERS = 25 m`: stop refinement early when an accepted additional fix reaches this target.
+- Refinement remains limited to two additional fixes within eight seconds; the selected normal cadence is unchanged.
+- Context: Jérôme reported many 95–99 m fixes during a build 2035 walk at a one-minute interval. The former 100 m trigger skipped refinement for these fixes.
+- Expected effect: more opportunities to improve uncertain positions, with more frequent temporary GPS acquisition. Accuracy gains and battery cost at the 50 m trigger still need device measurements.
+
 ## Change Template
 
 When adjusting a threshold, add this block to PR description:

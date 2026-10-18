@@ -59,6 +59,25 @@ class LiveTrackingDiagnosticsTest {
     }
 
     @Test
+    fun serverAndResponseErrorsIncludeHttpStatusWithoutResponseBodies() {
+        listOf(
+            LiveTrackingDiagnosticResult.SERVER_REJECTED to "Server rejected (HTTP 200)",
+            LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE to "Unexpected response (HTTP 200)",
+        ).forEach { (result, expected) ->
+            val event =
+                LiveTrackingDiagnosticEvent(
+                    timestampEpochMs = 0L,
+                    request =
+                        LiveTrackingDiagnosticRequest(operation = LiveTrackingDiagnosticOperation.LOCATION_UPDATE),
+                    result = result,
+                    httpCode = 200,
+                    durationMs = 10L,
+                )
+            assertTrue(event.toDisplayText().contains(expected))
+        }
+    }
+
+    @Test
     fun keepsOnlyTheMostRecentOneHundredEvents() {
         repeat(105) { index ->
             LiveTrackingDiagnostics.record(
@@ -119,6 +138,7 @@ class LiveTrackingDiagnosticsTest {
                 resultAgeMillis = 120L,
                 accuracyMeters = 350f,
                 speedMetersPerSecond = 4f,
+                context = LiveTrackingDiagnosticContext(100L, 2L, 8L),
             ),
         )
         recordLiveTrackingRescue(
@@ -126,6 +146,8 @@ class LiveTrackingDiagnosticsTest {
                 requested = false,
                 trigger = "repeated_suspect_area",
                 skippedBecauseCooldown = true,
+                context = LiveTrackingDiagnosticContext(100L, 2L, 9L),
+                cooldownRemainingMillis = 115_000L,
             ),
         )
 
@@ -136,6 +158,136 @@ class LiveTrackingDiagnosticsTest {
         assertTrue(capture.contains("rescue requested=false trigger=repeated_suspect_area skippedCooldown=true"))
         assertFalse(capture.contains("latitude"))
         assertFalse(capture.contains("longitude"))
+        assertTrue(capture.contains("serviceId=100 generationId=2 cycleId=8"))
+        assertTrue(capture.contains("cooldownRemainingMs=115000 serviceId=100 generationId=2 cycleId=9"))
+    }
+
+    @Test
+    fun recordsAcquisitionDetailsWithoutCoordinatesOrCredentials() {
+        PhoneDebugCapture.start()
+
+        recordLiveTrackingAcquisition(
+            LiveTrackingAcquisitionDiagnostic(
+                cycleId = 8L,
+                intervalMillis = 60_000L,
+                reason = LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT,
+                initialAccuracyMeters = 180f,
+                initialQualityResult = LiveTrackingLocationQualityResult.ACCEPT,
+                extraFixesDelivered = 2,
+                extraFixesAccepted = 2,
+                extraFixesRejected = 0,
+                extraFixesSuspect = 0,
+                durationMillis = 6_100L,
+                selectedCandidateAccuracyMeters = 12f,
+                selectedCandidateAgeMillis = 220L,
+                selectionReason = "newest_target_accuracy",
+                usedScheduledFallback = false,
+                earlyTargetReached = true,
+                timedOut = false,
+                registrationFailed = false,
+                duplicateFixesIgnored = 1,
+                outcome = "early_target_sent",
+                context = LiveTrackingDiagnosticContext(100L, 2L, 8L, 0L),
+            ),
+        )
+
+        val capture = PhoneDebugCapture.snapshot().single()
+
+        assertTrue(capture.contains("acquisition id=8 intervalMs=60000 reason=accuracy_refinement"))
+        assertTrue(capture.contains("initialAccM=180.0 initialQuality=ACCEPT"))
+        assertTrue(capture.contains("extraDelivered=2 extraAccepted=2 extraRejected=0 extraSuspect=0"))
+        assertTrue(capture.contains("selectedAccM=12.0 selectedAgeMs=220 selection=newest_target_accuracy"))
+        assertTrue(capture.contains("fallback=false earlyTarget=true timeout=false registrationFailure=false"))
+        assertTrue(capture.contains("duplicateIgnored=1 cleanupTimeout=false cleanupFailure=false"))
+        assertTrue(capture.contains("outcome=early_target_sent"))
+        assertTrue(capture.contains("selectedAgeMeasuredAt=summary"))
+        assertTrue(capture.contains("serviceId=100 generationId=2 cycleId=8 cadenceWindow=0"))
+        assertFalse(capture.contains("latitude"))
+        assertFalse(capture.contains("longitude"))
+        assertFalse(capture.contains("https://"))
+        assertFalse(capture.contains("password"))
+    }
+
+    @Test
+    fun correlatesObservedFixWithAttemptAndQueuedPositionAcrossGenerationChanges() {
+        PhoneDebugCapture.start()
+        val oldContext = LiveTrackingDiagnosticContext(100L, 2L, 8L, 0L)
+        val currentContext = oldContext.copy(generationId = 3L)
+        recordLiveTrackingEvent(oldContext, "generation_invalidated_pause")
+        recordLiveTrackingEvent(oldContext, "registration_ack_cleanup_only")
+        recordLiveTrackingEvent(currentContext, "cadence_admission_reserved")
+        LiveTrackingDiagnostics.recordLiveTrackingFix(
+            source = LiveTrackingFixSource.CALLBACK,
+            decision =
+                LiveTrackingLocationQualityDecision(
+                    result = LiveTrackingLocationQualityResult.ACCEPT,
+                    reason = "first_fix",
+                    accuracyMeters = 20f,
+                    fixAgeMillis = 100L,
+                    distanceFromPreviousMeters = null,
+                    impliedSpeedMetersPerSecond = null,
+                ),
+            androidSpeedMetersPerSecond = null,
+            isMockLocation = false,
+            gsmSignalPercent = 75,
+            queueSize = 0,
+            context = currentContext,
+            fixTimestampEpochMillis = 1_000L,
+        )
+        listOf("attempt", "queued").forEach { outcome ->
+            LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                isCatchUp = false,
+                fixTimestampEpochMillis = 1_000L,
+                fixAgeMillis = 100L,
+                gsmSignalPercent = 75,
+                queueSizeBefore = 0,
+                queueSizeAfter = if (outcome == "queued") 1 else 0,
+                outcome = outcome,
+                context = currentContext,
+            )
+        }
+
+        val lines = PhoneDebugCapture.snapshot()
+        assertEquals(2, lines.count { it.contains("serviceId=100 generationId=2 cycleId=8 cadenceWindow=0") })
+        assertEquals(4, lines.count { it.contains("serviceId=100 generationId=3 cycleId=8 cadenceWindow=0") })
+        assertEquals(3, lines.count { it.contains("fixTsMs=1000") })
+        assertEquals(1, lines.count { it.contains("outcome=attempt") })
+        assertEquals(1, lines.count { it.contains("outcome=queued") })
+        assertFalse(lines.any { it.contains("latitude") || it.contains("longitude") })
+    }
+
+    @Test
+    fun recordsRegistrationFailureAndRetainedScheduledFallback() {
+        PhoneDebugCapture.start()
+
+        recordLiveTrackingAcquisition(
+            LiveTrackingAcquisitionDiagnostic(
+                cycleId = 9L,
+                intervalMillis = 120_000L,
+                reason = LiveTrackingAcquisitionReason.ACCURACY_REFINEMENT,
+                initialAccuracyMeters = 350f,
+                initialQualityResult = LiveTrackingLocationQualityResult.ACCEPT,
+                extraFixesDelivered = 0,
+                extraFixesAccepted = 0,
+                extraFixesRejected = 0,
+                extraFixesSuspect = 0,
+                durationMillis = 40L,
+                selectedCandidateAccuracyMeters = 350f,
+                selectedCandidateAgeMillis = 2_000L,
+                selectionReason = "newest_in_recency_band",
+                usedScheduledFallback = true,
+                earlyTargetReached = false,
+                timedOut = false,
+                registrationFailed = true,
+                outcome = "registration_failure_fallback",
+            ),
+        )
+
+        val capture = PhoneDebugCapture.snapshot().single()
+
+        assertTrue(capture.contains("registrationFailure=true cancellation=none"))
+        assertTrue(capture.contains("fallback=true earlyTarget=false timeout=false"))
+        assertTrue(capture.contains("outcome=registration_failure_fallback"))
     }
 
     @Test
@@ -151,6 +303,7 @@ class LiveTrackingDiagnosticsTest {
             cachedLocationExists = true,
             cachedLocationAgeMillis = 220L,
             cachedLocationAccepted = true,
+            fineLocationGranted = false,
         )
         LiveTrackingDiagnostics.recordLiveTrackingFix(
             source = LiveTrackingFixSource.CALLBACK,
@@ -257,6 +410,7 @@ class LiveTrackingDiagnosticsTest {
         val capture = PhoneDebugCapture.snapshot().joinToString("\n")
 
         assertTrue(capture.contains("session_start endpoint=development intervalSec=30"))
+        assertTrue(capture.contains("fineLocationGranted=false"))
         assertTrue(capture.contains("fix=1 source=callback"))
         assertTrue(capture.contains("source=callback ageMs=31000"))
         assertTrue(capture.contains("reason=stale_startup_callback"))
