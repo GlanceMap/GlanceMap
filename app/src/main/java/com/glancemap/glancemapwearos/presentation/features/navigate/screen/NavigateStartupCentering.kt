@@ -19,12 +19,18 @@ import kotlinx.coroutines.delay
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.view.MapView
 
+internal data class NavigateStartupCenteringState(
+    val recenterTarget: LatLong?,
+    val locationWaitMessage: StartupLocationWaitUiState,
+)
+
 @Composable
 @Suppress("FunctionNaming", "LongParameterList")
 internal fun NavigateStartupCenteringEffects(
     offlineMode: Boolean,
     shouldTrackLocation: Boolean,
     shouldFollowPosition: Boolean,
+    isScreenInteractive: Boolean,
     startupLocation: Location?,
     gpsSignalSnapshot: GpsSignalSnapshot,
     locationMarkerLatLong: LatLong?,
@@ -38,7 +44,7 @@ internal fun NavigateStartupCenteringEffects(
     mapViewModel: MapViewModel,
     selectedMapPath: String?,
     activeGpxDetails: List<GpxTrackDetails>,
-): LatLong? {
+): NavigateStartupCenteringState {
     val startupInput =
         OnlineStartupMapFallbackInput(
             offlineMode = offlineMode,
@@ -61,21 +67,9 @@ internal fun NavigateStartupCenteringEffects(
             mapViewModel.recordStartupMapPreview()
         },
     )
-    val gpsStartupMapCenteringPending =
-        shouldWaitForOnlineStartupMapFallback(startupInput)
-    LaunchedEffect(gpsStartupMapCenteringPending) {
-        if (!gpsStartupMapCenteringPending) return@LaunchedEffect
-        delay(NORMAL_STARTUP_MAP_FALLBACK_GRACE_MS)
-        onStartupMapFallbackEvent(StartupMapFallbackEvent.TIMER_EXPIRED)
-    }
+    navigateStartupMapFallbackTimer(startupInput, onStartupMapFallbackEvent)
     val gpsStartupMapCenteringActive =
         shouldStartOnlineStartupMapCentering(startupInput)
-
-    LaunchedEffect(navigateTarget, pendingPoiFocusTarget) {
-        if (navigateTarget != null || pendingPoiFocusTarget != null) {
-            onStartupMapFallbackEvent(StartupMapFallbackEvent.CANCELLED)
-        }
-    }
 
     OfflineStartCenteringEffect(
         isOfflineMode = offlineMode,
@@ -94,10 +88,36 @@ internal fun NavigateStartupCenteringEffects(
         deferWhenNoCenter = !offlineMode && gpsStartupMapCenteringActive,
     )
 
-    return if (offlineMode) {
-        null
-    } else {
-        locationMarkerLatLong ?: retainedLocationAnchor?.latLong ?: lastKnownLocation
+    val locationWaitMessage =
+        rememberStartupLocationWaitingMessage(
+            input = startupInput,
+            isScreenInteractive = isScreenInteractive,
+            hasRestoredViewport = mapViewModel.restoreOfflineViewport(selectedMapPath, activeGpxDetails) != null,
+            environmentWarning = gpsSignalSnapshot.environmentWarning,
+            message = mapViewModel.startupLocationWaitMessage,
+        )
+    return NavigateStartupCenteringState(
+        recenterTarget =
+            if (offlineMode) null else locationMarkerLatLong ?: retainedLocationAnchor?.latLong ?: lastKnownLocation,
+        locationWaitMessage = locationWaitMessage,
+    )
+}
+
+@Composable
+private fun navigateStartupMapFallbackTimer(
+    input: OnlineStartupMapFallbackInput,
+    onEvent: (StartupMapFallbackEvent) -> Unit,
+) {
+    val pending = shouldWaitForOnlineStartupMapFallback(input)
+    LaunchedEffect(pending) {
+        if (!pending) return@LaunchedEffect
+        delay(NORMAL_STARTUP_MAP_FALLBACK_GRACE_MS)
+        onEvent(StartupMapFallbackEvent.TIMER_EXPIRED)
+    }
+    LaunchedEffect(input.navigateTarget, input.pendingPoiFocusTarget) {
+        if (input.navigateTarget != null || input.pendingPoiFocusTarget != null) {
+            onEvent(StartupMapFallbackEvent.CANCELLED)
+        }
     }
 }
 

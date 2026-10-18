@@ -98,6 +98,8 @@ internal fun NavigateContent(
     showNavigateTime: Boolean,
     navigateTimeFormat: String,
     mapAppearanceApplyInProgress: Boolean,
+    hasActiveMap: Boolean,
+    startupLocationWaitMessage: StartupLocationWaitUiState,
     slopeOverlayToggleEnabled: Boolean,
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
@@ -608,6 +610,7 @@ internal fun NavigateContent(
         turnByTurnFullScreenExpanded ||
             recordingDashboardFullScreenExpanded ||
             combinedGuidanceRecordingFullScreenExpanded
+    val showNoActiveMapNotice = rememberNoActiveMapNotice(hasActiveMap, mapAppearanceApplyInProgress)
     val shouldSuppressNavigateTime =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -1024,7 +1027,7 @@ internal fun NavigateContent(
                 NavigateOverlaysLayer(
                     mapView = mapView,
                     traceRecordingViewModel = traceRecordingViewModel,
-                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
+                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
                     slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
                     slopeOverlayEnabled = slopeOverlayEnabled,
                     slopeOverlayProcessing = slopeOverlayProcessing,
@@ -1179,6 +1182,19 @@ internal fun NavigateContent(
                 screenSize = screenSize,
                 recordingStatusChipVisible = traceRecordingState.active || traceRecordingState.saving,
                 onCompassIssueNow = onCompassIssueNow,
+            )
+
+            NavigationStartupNotices(
+                locationWaitMessage = startupLocationWaitMessage,
+                noActiveMapNotice = showNoActiveMapNotice,
+                hasActiveMap = hasActiveMap,
+                updatingMap = mapAppearanceApplyInProgress,
+                blockingPopupReason =
+                    when {
+                        fullScreenPopupExpanded -> "fullscreen_popup"
+                        recordingStatusMessage != null -> "recording_status"
+                        else -> null
+                    },
             )
 
             GpsEnvironmentWarningOverlay(

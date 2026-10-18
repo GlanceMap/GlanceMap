@@ -1,15 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.home
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
@@ -20,6 +24,7 @@ import com.glancemap.glancemapwearos.test.SmallRoundWatchLargeText
 import com.glancemap.glancemapwearos.test.SmallRoundWatchMaxText
 import com.glancemap.glancemapwearos.test.WearDeviceTestConfig
 import com.glancemap.glancemapwearos.test.withWearDeviceConfig
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,6 +33,8 @@ import org.junit.runner.RunWith
 class MainScreenResponsiveTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    private lateinit var navController: NavHostController
 
     @Test
     fun smallRoundLargeText_keepsCoreActionsVisible() {
@@ -90,11 +97,36 @@ class MainScreenResponsiveTest {
         composeRule.onNodeWithText("Navigate destination").assertIsDisplayed()
     }
 
-    private fun launchMainScreen(config: WearDeviceTestConfig) {
+    @Test
+    fun menuNavigateButton_returnsToExistingNavigateEntry() {
+        launchMainScreen(
+            config = LargeRoundWatch,
+            startDestination = WatchRoutes.NAVIGATE,
+        )
+        val originalNavigateEntryId =
+            composeRule.runOnUiThread {
+                requireNotNull(navController.currentBackStackEntry).id
+            }
+
+        composeRule.onNodeWithText("Open menu").performClick()
+        composeRule.onNodeWithContentDescription("Navigate").performClick()
+        composeRule.waitForIdle()
+
+        val returnedNavigateEntryId =
+            composeRule.runOnUiThread {
+                requireNotNull(navController.currentBackStackEntry).id
+            }
+        assertEquals(originalNavigateEntryId, returnedNavigateEntryId)
+    }
+
+    private fun launchMainScreen(
+        config: WearDeviceTestConfig,
+        startDestination: String = WatchRoutes.MAIN_MENU,
+    ) {
         composeRule.setContent {
             withWearDeviceConfig(config = config) {
                 GlanceMapTheme {
-                    mainScreenTestHost()
+                    mainScreenTestHost(startDestination = startDestination) { navController = it }
                 }
             }
         }
@@ -103,19 +135,43 @@ class MainScreenResponsiveTest {
 }
 
 @Composable
-private fun mainScreenTestHost() {
+private fun mainScreenTestHost(
+    startDestination: String,
+    onNavControllerReady: (NavHostController) -> Unit,
+) {
     val navController = rememberNavController()
+    SideEffect { onNavControllerReady(navController) }
+    val navigateViaSwipeLeft: () -> Unit = {
+        val popped = navController.popBackStack(WatchRoutes.NAVIGATE, inclusive = false)
+        if (!popped) {
+            navController.navigate(WatchRoutes.NAVIGATE) {
+                popUpTo(WatchRoutes.NAVIGATE) {
+                    inclusive = false
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
     NavHost(
         navController = navController,
-        startDestination = WatchRoutes.MAIN_MENU,
+        startDestination = startDestination,
     ) {
+        composable(WatchRoutes.NAVIGATE) {
+            Column {
+                Text("Navigate destination")
+                Button(onClick = { navController.navigate(WatchRoutes.MAIN_MENU) }) {
+                    Text("Open menu")
+                }
+            }
+        }
         composable(WatchRoutes.MAIN_MENU) {
-            MainScreen(navController = navController)
+            MainScreen(navController = navController, onNavigateClick = navigateViaSwipeLeft)
         }
         composableDestination(route = WatchRoutes.POI, label = "POI destination")
         composableDestination(route = WatchRoutes.GPX, label = "GPX destination")
         composableDestination(route = WatchRoutes.MAPS, label = "Maps destination")
-        composableDestination(route = WatchRoutes.NAVIGATE, label = "Navigate destination")
         composableDestination(route = WatchRoutes.SETTINGS, label = "Settings destination")
     }
 }

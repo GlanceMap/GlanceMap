@@ -13,6 +13,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Debug
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.domain.sensors.HEADING_SENSOR_STRING_TYPE
 import com.glancemap.glancemapwearos.domain.sensors.HEADING_SENSOR_TYPE
@@ -371,6 +372,7 @@ private data class HistoricalExitTraceSnapshot(
     val insightLines: List<String> = emptyList(),
 )
 
+@RequiresApi(Build.VERSION_CODES.R)
 private fun readHistoricalExitTraceSnapshot(info: ApplicationExitInfo): HistoricalExitTraceSnapshot =
     runCatching {
         val traceLines =

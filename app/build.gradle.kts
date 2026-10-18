@@ -77,7 +77,7 @@ android {
 
     defaultConfig {
         applicationId = "com.glancemap.glancemapwearos"
-        minSdk = 30
+        minSdk = 28
         targetSdk = 36
         versionCode = glanceMapWearVersionCode
         versionName = glanceMapVersionName

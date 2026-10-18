@@ -12,15 +12,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import kotlinx.coroutines.delay
@@ -44,6 +47,107 @@ internal fun RecordingStatusMessageChip(
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
         maxLines = 1,
+    )
+}
+
+@Composable
+internal fun rememberNoActiveMapNotice(
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+): Boolean {
+    var shown by rememberSaveable(hasActiveMap) { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(hasActiveMap, updatingMap) {
+        if (!hasActiveMap && updatingMap && !shown) {
+            shown = true
+            showBriefNoActiveMapNotice { visible = it }
+        }
+    }
+    return !hasActiveMap && visible
+}
+
+internal suspend fun showBriefNoActiveMapNotice(onVisibilityChanged: (Boolean) -> Unit) {
+    try {
+        onVisibilityChanged(true)
+        delay(2_000L)
+    } finally {
+        onVisibilityChanged(false)
+    }
+}
+
+@Suppress("FunctionName")
+@Composable
+internal fun BoxScope.NavigationStartupNotices(
+    locationWaitMessage: StartupLocationWaitUiState,
+    noActiveMapNotice: Boolean,
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+    blockingPopupReason: String?,
+) {
+    val canShow = blockingPopupReason == null
+    val locationWaitVisible = locationWaitMessage.visible && !noActiveMapNotice && canShow
+    val noMapVisible = noActiveMapNotice && canShow
+    navigationPopupTelemetryEffect(
+        popup = "waiting_for_location",
+        visible = locationWaitVisible,
+        reason =
+            when {
+                !locationWaitMessage.visible -> locationWaitMessage.reason
+                noActiveMapNotice -> "no_active_map_notice"
+                blockingPopupReason != null -> blockingPopupReason
+                else -> locationWaitMessage.reason
+            },
+    )
+    navigationPopupTelemetryEffect(
+        popup = "no_map_active",
+        visible = noMapVisible,
+        reason =
+            noActiveMapNoticeReason(
+                hasActiveMap,
+                updatingMap,
+                noActiveMapNotice,
+                blockingPopupReason,
+            ),
+    )
+    StartupLocationWaitingOverlay(visible = locationWaitVisible)
+    RecordingStatusMessageChip(
+        message = if (noMapVisible) stringResource(R.string.navigation_no_map_active) else null,
+        modifier = Modifier.align(Alignment.Center),
+    )
+}
+
+internal fun noActiveMapNoticeReason(
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+    noticeVisible: Boolean,
+    blockingPopupReason: String?,
+): String =
+    when {
+        hasActiveMap -> "map_activated"
+        !updatingMap -> "map_update_finished"
+        !noticeVisible -> "timeout"
+        blockingPopupReason != null -> blockingPopupReason
+        else -> "map_update_without_active_map"
+    }
+
+@Suppress("FunctionName")
+@Composable
+internal fun BoxScope.StartupLocationWaitingOverlay(visible: Boolean) {
+    if (!visible) return
+
+    Text(
+        text = stringResource(R.string.navigation_waiting_for_location),
+        modifier =
+            Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 32.dp)
+                .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        color = Color.White,
+        fontSize = 12.sp,
+        lineHeight = 14.sp,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
     )
 }
 

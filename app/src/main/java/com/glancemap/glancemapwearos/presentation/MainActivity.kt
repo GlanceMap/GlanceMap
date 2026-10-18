@@ -441,6 +441,7 @@ class MainActivity : ComponentActivity() {
                                 MainScreen(
                                     navController = navController,
                                     settingsViewModel = appContainer.settingsViewModel,
+                                    onNavigateClick = navigateViaSwipeLeft,
                                 )
                             }
                         }
