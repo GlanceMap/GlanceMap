@@ -3,7 +3,7 @@
 package com.glancemap.glancemapcompanionapp.livetracking
 
 internal const val ACCURACY_BURST_MIN_INTERVAL_MS = 60_000L
-internal const val ACCURACY_BURST_TRIGGER_METERS = 100f
+internal const val ACCURACY_BURST_TRIGGER_METERS = 50f
 internal const val ACCURACY_BURST_TARGET_METERS = 25f
 internal const val ACQUISITION_WINDOW_MS = 8_000L
 internal const val BURST_UPDATE_INTERVAL_MS = 3_000L
