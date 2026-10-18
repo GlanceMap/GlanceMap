@@ -49,6 +49,14 @@ at the watch rather than trying to behave like a full-time tracking recorder.
 - `:glancemapcompanionapp` - Android companion app
 - `:transfercontract` - Shared phone/watch transfer protocol module
 
+## Older Wear OS Watches
+
+The watch APK's minimum Android version is Android 9 (API 28), with compatibility
+paths for GPS requests and tracing on older devices. This support adapts the changes from
+[VicioNovicio's Suunto 7 fork](https://github.com/VicioNovicio/GlanceMap-Suunto7/tree/suunto7-api28).
+Suunto 7 GPS, recording, map rendering, and phone transfers still require
+validation on the watch.
+
 ## License And Third-Party Assets
 
 The root `LICENSE` covers GlanceMap project code unless another file says
