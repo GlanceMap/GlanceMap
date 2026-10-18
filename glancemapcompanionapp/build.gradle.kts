@@ -9,6 +9,30 @@ apply(from = rootProject.file("gradle/android-app-testing.gradle.kts"))
 
 val glanceMapVersionName = providers.gradleProperty("glanceMapVersionName").get()
 val glanceMapPhoneVersionCode = providers.gradleProperty("glanceMapPhoneVersionCode").get().toInt()
+val gitSha =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short=12", "HEAD")
+        }.standardOutput
+        .asText
+        .map { it.trim().ifBlank { "unknown" } }
+        .orElse("unknown")
+val gitBranch =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--abbrev-ref", "HEAD")
+        }.standardOutput
+        .asText
+        .map { it.trim().ifBlank { "unknown" } }
+        .orElse("unknown")
+val gitDirty =
+    providers
+        .exec {
+            commandLine("git", "status", "--porcelain")
+        }.standardOutput
+        .asText
+        .map { it.isNotBlank() }
+        .orElse(false)
 val arkluzSmsApiKeyProperty = "ARKLUZ_SMS_API_KEY"
 val projectGradlePropertiesDefinesArkluzSmsApiKey =
     rootProject.file("gradle.properties").useLines { lines ->
@@ -107,6 +131,9 @@ android {
             useSupportLibrary = true
         }
         manifestPlaceholders["channelBufferSize"] = "8388608" // 8MB buffer
+        buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
+        buildConfigField("String", "GIT_BRANCH", "\"${gitBranch.get()}\"")
+        buildConfigField("boolean", "GIT_DIRTY", gitDirty.get().toString())
         buildConfigField("String", "ARKLUZ_TRACKING_URL", "\"https://arkluz.com/trk\"")
         buildConfigField("String", "ARKLUZ_SMS_API_KEY", "\"$arkluzSmsApiKey\"")
     }

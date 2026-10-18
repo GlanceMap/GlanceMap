@@ -9,6 +9,8 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+internal const val MAX_LIVE_TRACKING_FIX_AGE_MILLIS = 2 * 60 * 1000L
+
 internal data class LiveTrackingLocationFix(
     val latitude: Double,
     val longitude: Double,
@@ -91,12 +93,13 @@ internal class LiveTrackingLocationQualityGate {
         get() = freshInitialFixEstablished
 
     // The explicit order keeps stale, invalid, confirmed, and quarantined fixes easy to audit.
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
     fun evaluate(
         fix: LiveTrackingLocationFix,
         nowElapsedRealtimeNanos: Long,
         nowEpochMilliseconds: Long,
         startupStaleReason: String = "stale_startup_callback",
+        allowPendingAreaConfirmation: Boolean = true,
     ): LiveTrackingLocationQualityDecision {
         val ageMillis = liveTrackingLocationAgeMillis(fix, nowElapsedRealtimeNanos, nowEpochMilliseconds)
         if (ageMillis == null) {
@@ -144,8 +147,8 @@ internal class LiveTrackingLocationQualityGate {
                 )
             }
             if (isNear(pending.fix, fix, CONFIRMATION_RADIUS_METERS)) {
-                val candidateConfirmations = pending.confirmations + 1
-                val movementConfirmed = confirmsMovement(pending.fix, fix)
+                val candidateConfirmations = pending.confirmations + if (allowPendingAreaConfirmation) 1 else 0
+                val movementConfirmed = allowPendingAreaConfirmation && confirmsMovement(pending.fix, fix)
                 if (movementConfirmed || candidateConfirmations >= MIN_PENDING_AREA_CONFIRMATIONS) {
                     pendingFix = null
                     return accept(
@@ -338,8 +341,6 @@ internal class LiveTrackingLocationQualityGate {
 
     private companion object {
         // Two minutes keeps delayed cached fixes out of the live stream while allowing normal callback jitter.
-        const val MAX_LIVE_TRACKING_FIX_AGE_MILLIS = 2 * 60 * 1000L
-
         // Accuracy never raises this floor; large jumps need timestamp/speed evidence.
         const val MIN_SUSPICIOUS_JUMP_METERS = 400.0
         const val MIN_SUSPICIOUS_SPEED_METERS_PER_SECOND = 8.0
