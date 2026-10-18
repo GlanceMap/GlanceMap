@@ -337,7 +337,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     if (!suppressMapControlsForGuidance && showZoomPlusButton) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 318f,
+            anchor = 316f,
             anchorType = AnchorType.Center,
         ) {
             curvedComposable(
@@ -361,7 +361,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
                         modifier =
                             Modifier
                                 .size(zoomIconSize)
-                                .rotate(42f),
+                                .rotate(44f),
                     )
                 }
             }
