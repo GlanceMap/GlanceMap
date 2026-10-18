@@ -27,6 +27,7 @@ internal data class TrailSourceStatus(
     val label: String,
     val outcome: TrailSourceOutcome,
     val reason: String? = null,
+    val failure: TrailDiscoveryFailure? = null,
 )
 
 internal data class TrailDiscoveryReply(
@@ -77,7 +78,7 @@ internal class TrailDiscoveryRepository(
             val cached = synchronized(cache) { cache[key] }?.takeIf { nowMillis() - it.first < 300000L }
             val trails =
                 cached?.second ?: withTimeoutOrNull(25000) { source.discover(query) }
-                    ?: error("Source timed out")
+                    ?: throw TrailDiscoveryException(TrailDiscoveryFailure.TIMED_OUT)
             coroutineContext.ensureActive()
             synchronized(cache) {
                 if (cache.size >= 24) cache.remove(cache.keys.first())
@@ -86,9 +87,14 @@ internal class TrailDiscoveryRepository(
             trails to TrailSourceStatus(source.provider, source.instanceLabel, TrailSourceOutcome.SUCCESS)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             emptyList<PublishedTrail>() to
-                TrailSourceStatus(source.provider, source.instanceLabel, TrailSourceOutcome.FAILED)
+                TrailSourceStatus(
+                    source.provider,
+                    source.instanceLabel,
+                    TrailSourceOutcome.FAILED,
+                    failure = (failure as? TrailDiscoveryException)?.failure,
+                )
         }
     }
 }

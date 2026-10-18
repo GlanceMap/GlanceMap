@@ -150,7 +150,7 @@ internal fun TrailDiscoveryPanel(state: TrailDiscoveryUiState, actions: TrailDis
         }
         items(state.reply.statuses.filter { it.outcome != TrailSourceOutcome.SUCCESS }) { status ->
             Text(
-                "${status.label}: ${status.reason ?: stringResource(R.string.discovery_source_failed)}",
+                "${status.label}: ${status.reason ?: trailDiscoveryFailureMessage(status.failure)}",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -267,12 +267,31 @@ private fun TrailDiscoveryStatus(state: TrailDiscoveryUiState) {
         }
         state.enabled.isEmpty() -> Text(stringResource(R.string.discovery_no_sources))
         state.reply.statuses.any { it.outcome != TrailSourceOutcome.SUCCESS } -> {
-            Text(stringResource(R.string.discovery_partial))
+            val message =
+                when {
+                    state.reply.trails.isNotEmpty() -> R.string.discovery_partial
+                    state.reply.statuses.any { it.outcome == TrailSourceOutcome.SUCCESS } ->
+                        R.string.discovery_partial_empty
+                    else -> R.string.discovery_unavailable
+                }
+            Text(stringResource(message))
         }
         state.searched && state.reply.trails.isEmpty() -> Text(stringResource(R.string.discovery_empty))
         !state.searched -> Text(stringResource(R.string.discovery_intro))
     }
 }
+
+@Composable
+private fun trailDiscoveryFailureMessage(failure: TrailDiscoveryFailure?): String =
+    stringResource(
+        when (failure) {
+            TrailDiscoveryFailure.TIMED_OUT -> R.string.discovery_source_timeout
+            TrailDiscoveryFailure.RATE_LIMITED -> R.string.discovery_source_rate_limited
+            TrailDiscoveryFailure.SERVICE_UNAVAILABLE -> R.string.discovery_source_unavailable
+            TrailDiscoveryFailure.RESPONSE_TOO_LARGE -> R.string.discovery_source_too_large
+            null -> R.string.discovery_source_failed
+        },
+    )
 
 @Composable
 @Suppress("FunctionNaming") // Compose details entry point.

@@ -9,6 +9,12 @@
     <string name="discovery_empty">No published routes found here. Try another area or source.</string>
     <string name="discovery_no_sources">Enable a route source to discover routes.</string>
     <string name="discovery_partial">Some sources are unavailable. Available results are shown below.</string>
+    <string name="discovery_unavailable">No enabled route source could be searched. Try again later or configure route sources.</string>
+    <string name="discovery_partial_empty">Some sources are unavailable. No routes were found in the sources that responded.</string>
+    <string name="discovery_source_timeout">This source took too long to respond. Try again later.</string>
+    <string name="discovery_source_rate_limited">Too many requests. Wait before searching again.</string>
+    <string name="discovery_source_unavailable">This source is temporarily unavailable or overloaded. Try again later.</string>
+    <string name="discovery_source_too_large">This area returned too much route data. Try another search point or source.</string>
     <string name="discovery_source_failed">Could not load this source. Try searching again.</string>
     <string name="discovery_intro">Discover published hikes from the sources you choose.</string>
     <string name="discovery_back_results">Back to results</string>

@@ -34,6 +34,15 @@ elevation, point counts, and line geometry are validated. Invalid points invalid
 line rather than connecting across a missing point. Overpass timeout/partial-response remarks
 are failures rather than apparently complete routes.
 
+Source errors distinguish HTTP 429 (wait before another search), HTTP 5xx (temporarily
+unavailable or overloaded), timeouts and the response-size limit. These are fixed localised
+messages, never remote error bodies or exception messages. Unknown failures retain the generic
+message. The overall status distinguishes no usable source, a successful but empty source
+alongside failures, and partial results; it never promises results below an empty failed search.
+No automatic retry or fallback endpoint is added. On 2026-10-17, a live check around Auvers-sur-Oise
+returned HTTP 502 reporting all public Overpass workers busy and its queue full; a POST attempt
+timed out. That service failure cannot be repaired by enabling the unconfigured catalogues.
+
 ## Providers and verification (2026-10-16)
 
 Only official documentation, APIs and official implementation sources were consulted. No

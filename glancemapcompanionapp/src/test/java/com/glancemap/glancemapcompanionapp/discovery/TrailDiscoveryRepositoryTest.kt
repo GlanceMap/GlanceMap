@@ -40,6 +40,26 @@ class TrailDiscoveryRepositoryTest {
         }
 
     @Test
+    fun knownFailuresReachTheUiButUnexpectedExceptionDetailsStayPrivate() =
+        runTest {
+            val busy =
+                fixtureProvider(TrailProvider.OPEN_STREET_MAP, "OSM") {
+                    throw TrailDiscoveryException(TrailDiscoveryFailure.SERVICE_UNAVAILABLE)
+                }
+            val unknown =
+                fixtureProvider(TrailProvider.GEOTREK, "Park") {
+                    throw IOException("Private transport diagnostics")
+                }
+            val reply = TrailDiscoveryRepository(listOf(busy, unknown)).discover(query, TrailProvider.entries.toSet())
+            assertEquals(
+                listOf(TrailSourceOutcome.FAILED, TrailSourceOutcome.FAILED),
+                reply.statuses.map { it.outcome },
+            )
+            assertEquals(listOf(TrailDiscoveryFailure.SERVICE_UNAVAILABLE, null), reply.statuses.map { it.failure })
+            assertTrue(reply.statuses.all { it.reason == null })
+        }
+
+    @Test
     fun missingDatatourismeCredentialsAreReportedAsUnavailable() =
         runTest {
             val repository =

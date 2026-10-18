@@ -8,12 +8,13 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal class TrailDiscoveryHttp {
-    private val client =
+internal class TrailDiscoveryHttp(
+    private val client: OkHttpClient =
         OkHttpClient
             .Builder()
             .callTimeout(22, TimeUnit.SECONDS)
@@ -21,8 +22,8 @@ internal class TrailDiscoveryHttp {
             .readTimeout(15, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
-            .build()
-
+            .build(),
+) {
     suspend fun read(request: Request): String {
         require(request.url.isHttps && request.url.username.isEmpty() && request.url.password.isEmpty())
         return suspendCancellableCoroutine { continuation ->
@@ -35,7 +36,7 @@ internal class TrailDiscoveryHttp {
                         e: IOException,
                     ) {
                         // Do not expose URLs, response bodies, or credential headers in diagnostics/UI.
-                        continuation.resumeWithException(IOException("Route source unavailable"))
+                        continuation.resumeWithException(e.safeTrailHttpFailure())
                     }
 
                     override fun onResponse(
@@ -43,7 +44,9 @@ internal class TrailDiscoveryHttp {
                         response: Response,
                     ) {
                         val result = response.use { runCatching { it.boundedTrailResponse() } }
-                        result.fold(continuation::resume, continuation::resumeWithException)
+                        result.fold(continuation::resume) {
+                            continuation.resumeWithException(it.safeTrailHttpFailure())
+                        }
                     }
                 },
             )
@@ -51,14 +54,32 @@ internal class TrailDiscoveryHttp {
     }
 }
 
+private fun Throwable.safeTrailHttpFailure(): IOException =
+    when (this) {
+        is TrailDiscoveryException -> this
+        is InterruptedIOException -> TrailDiscoveryException(TrailDiscoveryFailure.TIMED_OUT)
+        else -> IOException("Route source unavailable")
+    }
+
 internal fun Response.boundedTrailResponse(): String {
-    if (!isSuccessful || body.contentLength() > TRAIL_RESPONSE_LIMIT) throw IOException("Route source unavailable")
+    val failure =
+        when {
+            code == 429 -> TrailDiscoveryException(TrailDiscoveryFailure.RATE_LIMITED)
+            code in 500..599 -> TrailDiscoveryException(TrailDiscoveryFailure.SERVICE_UNAVAILABLE)
+            !isSuccessful -> IOException("Route source unavailable")
+            body.contentLength() > TRAIL_RESPONSE_LIMIT ->
+                TrailDiscoveryException(TrailDiscoveryFailure.RESPONSE_TOO_LARGE)
+            else -> null
+        }
+    if (failure != null) throw failure
     val output = ByteArrayOutputStream()
     body.byteStream().use { input ->
         val buffer = ByteArray(8192)
         var count = input.read(buffer)
         while (count != -1) {
-            if (output.size() + count > TRAIL_RESPONSE_LIMIT) throw IOException("Route response too large")
+            if (output.size() + count > TRAIL_RESPONSE_LIMIT) {
+                throw TrailDiscoveryException(TrailDiscoveryFailure.RESPONSE_TOO_LARGE)
+            }
             output.write(buffer, 0, count)
             count = input.read(buffer)
         }

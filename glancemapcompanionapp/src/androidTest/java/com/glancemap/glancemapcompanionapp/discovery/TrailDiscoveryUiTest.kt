@@ -92,6 +92,47 @@ class TrailDiscoveryUiTest {
     }
 
     @Test
+    fun failedAndPartiallyEmptySearchesDoNotPromiseResults() {
+        val busy =
+            TrailSourceStatus(
+                TrailProvider.OPEN_STREET_MAP,
+                "OpenStreetMap",
+                TrailSourceOutcome.FAILED,
+                failure = TrailDiscoveryFailure.SERVICE_UNAVAILABLE,
+            )
+        val state =
+            mutableStateOf(
+                TrailDiscoveryUiState(
+                    searched = true,
+                    enabled = setOf(TrailProvider.OPEN_STREET_MAP, TrailProvider.GEOTREK),
+                    reply = TrailDiscoveryReply(statuses = listOf(busy)),
+                ),
+            )
+        compose.setContent { MaterialTheme { TrailDiscoveryPanel(state.value, actions()) } }
+        compose
+            .onNodeWithText("No enabled route source could be searched. Try again later or configure route sources.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose
+            .onNodeWithText("OpenStreetMap: This source is temporarily unavailable or overloaded. Try again later.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Some sources are unavailable. Available results are shown below.").assertDoesNotExist()
+        compose.runOnIdle {
+            state.value = state.value.copy(reply = TrailDiscoveryReply(statuses = listOf(busy, TrailSourceStatus(TrailProvider.GEOTREK, "Park", TrailSourceOutcome.SUCCESS))))
+        }
+        compose
+            .onNodeWithText("Some sources are unavailable. No routes were found in the sources that responded.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(reply = state.value.reply.copy(trails = listOf(trail))) }
+        compose
+            .onNodeWithText("Some sources are unavailable. Available results are shown below.")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun providerLabelOpensDetailsAndDownloadsGeometry() {
         var saved = 0
         compose.setContent {
