@@ -33,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContactMail
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Gavel
@@ -108,7 +109,17 @@ internal fun DebugCaptureDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.home_debug_capture_title)) },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.home_debug_capture_title), modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_action_close))
+                }
+            }
+        },
         text = {
             Text(
                 if (debugCaptureState.active) {
@@ -128,62 +139,50 @@ internal fun DebugCaptureDialog(
                     Text(stringResource(R.string.home_debug_capture_stop_save_action))
                 }
             } else {
-                Column(
-                    modifier =
-                        Modifier
-                            .heightIn(max = 240.dp)
-                            .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
+                if (hasLatestCapture) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                onDismiss()
+                                viewModel.shareLatestPhoneDebugCapture(context)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                stringResource(R.string.home_debug_capture_share_latest_action),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                onDismiss()
+                                viewModel.startPhoneDebugCapture(context)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                stringResource(R.string.home_debug_capture_start_new_action),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                } else {
                     Button(
                         onClick = {
                             onDismiss()
-                            if (hasLatestCapture) {
-                                viewModel.shareLatestPhoneDebugCapture(context)
-                            } else {
-                                viewModel.startPhoneDebugCapture(context)
-                            }
+                            viewModel.startPhoneDebugCapture(context)
                         },
                     ) {
-                        Text(
-                            stringResource(
-                                if (hasLatestCapture) {
-                                    R.string.home_debug_capture_share_latest_action
-                                } else {
-                                    R.string.home_debug_capture_start_action
-                                },
-                            ),
-                        )
-                    }
-                    if (hasLatestCapture) {
-                        TextButton(
-                            onClick = {
-                                onDismiss()
-                                viewModel.startPhoneDebugCapture(context)
-                            },
-                        ) {
-                            Text(stringResource(R.string.home_debug_capture_start_new_action))
-                        }
-                    }
-                    if (debugCaptureState.hasPreviousCapture) {
-                        TextButton(
-                            onClick = {
-                                onDismiss()
-                                viewModel.sharePreviousPhoneDebugCapture(context)
-                            },
-                        ) {
-                            Text(stringResource(R.string.home_debug_capture_share_previous_action))
-                        }
+                        Text(stringResource(R.string.home_debug_capture_start_action))
                     }
                 }
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_action_close))
-            }
-        },
+        dismissButton = null,
     )
 }
 
