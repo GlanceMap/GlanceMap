@@ -714,11 +714,12 @@ fun NavigateScreen(
                     else -> "Inspect the edit, then save."
                 }
             } ?: "Inspect the edit, then save."
-        val recenterTarget: LatLong? =
+        val startupCentering =
             NavigateStartupCenteringEffects(
                 offlineMode = offlineMode,
                 shouldTrackLocation = shouldTrackLocation,
                 shouldFollowPosition = shouldFollowPosition,
+                isScreenInteractive = isScreenResumed && screenState.isInteractive,
                 startupLocation = rawCurrentLocation,
                 gpsSignalSnapshot = gpsSignalSnapshot,
                 locationMarkerLatLong = locationMarker?.latLong,
@@ -733,6 +734,7 @@ fun NavigateScreen(
                 selectedMapPath = selectedMapPath,
                 activeGpxDetails = activeGpxDetails,
             )
+        val recenterTarget = startupCentering.recenterTarget
         val guidanceRuntime =
             rememberNavigateGuidanceRuntime(
                 context = context,
@@ -1036,6 +1038,7 @@ fun NavigateScreen(
             showNavigateTime = showNavigateTime,
             navigateTimeFormat = navigateTimeFormat,
             mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
+            showStartupLocationWaitMessage = startupCentering.showWaitingForLocation,
             slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
             slopeOverlayEnabled = slopeOverlayState.enabled,
             slopeOverlayProcessing = slopeOverlayState.processing,

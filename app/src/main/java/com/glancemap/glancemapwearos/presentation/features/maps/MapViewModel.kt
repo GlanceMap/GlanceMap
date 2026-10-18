@@ -30,6 +30,7 @@ import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.bundled.BundledAssetThemeComposer
 import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateMagneticMotionFallback
+import com.glancemap.glancemapwearos.presentation.features.navigate.StartupLocationWaitMessage
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -289,6 +290,7 @@ class MapViewModel(
 
     // Navigate and its MapView can be recreated during the same compass interference episode.
     internal var navigateMagneticMotionFallback: NavigateMagneticMotionFallback? = null
+    internal val startupLocationWaitMessage = StartupLocationWaitMessage()
     private var latestZoomMin: Int? = null
     private var latestZoomMax: Int? = null
     private var initialMapLoadIndicatorPending: Boolean = true

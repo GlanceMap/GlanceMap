@@ -24,6 +24,7 @@
     <string name="map_dem_download_progress">Elevation %1$d%% · %2$d/%3$d</string>
 
     <string name="navigation_updating_map">Updating map</string>
+    <string name="navigation_waiting_for_location">Waiting for location…</string>
     <string name="navigation_zoom_in">Zoom in</string>
     <string name="navigation_zoom_out">Zoom out</string>
 

@@ -98,6 +98,7 @@ internal fun NavigateContent(
     showNavigateTime: Boolean,
     navigateTimeFormat: String,
     mapAppearanceApplyInProgress: Boolean,
+    showStartupLocationWaitMessage: Boolean,
     slopeOverlayToggleEnabled: Boolean,
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
@@ -1179,6 +1180,10 @@ internal fun NavigateContent(
                 screenSize = screenSize,
                 recordingStatusChipVisible = traceRecordingState.active || traceRecordingState.saving,
                 onCompassIssueNow = onCompassIssueNow,
+            )
+
+            StartupLocationWaitingOverlay(
+                visible = showStartupLocationWaitMessage && !fullScreenPopupExpanded && recordingStatusMessage == null,
             )
 
             GpsEnvironmentWarningOverlay(
