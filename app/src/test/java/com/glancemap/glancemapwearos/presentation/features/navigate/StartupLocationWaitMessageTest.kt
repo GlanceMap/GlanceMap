@@ -111,6 +111,39 @@ class StartupLocationWaitMessageTest {
         assertTrue(eligible(warning = GpsEnvironmentWarning.AUTO_PHONE_DISCONNECTED_USING_WATCH_GPS))
     }
 
+    @Test
+    fun telemetryDistinguishesAReceivedLocationFromFallbackCentering() {
+        assertEquals("initial_location_search", reason())
+        assertEquals("location_received", reason(startup.copy(lastKnownLocation = LatLong(45.0, 6.0))))
+        assertEquals(
+            "fallback_centered",
+            reason(startup.copy(startupMapFallbackState = StartupMapFallbackState.COMPLETED)),
+        )
+        assertEquals(
+            "startup_cancelled",
+            reason(startup.copy(startupMapFallbackState = StartupMapFallbackState.CANCELLED)),
+        )
+    }
+
+    @Test
+    fun telemetryExplainsChangesInStartupEligibility() {
+        assertEquals("gps_deactivated", reason(startup.copy(offlineMode = true)))
+        assertEquals("tracking_stopped", reason(startup.copy(shouldTrackLocation = false)))
+        assertEquals("panning", reason(startup.copy(shouldFollowPosition = false)))
+        assertEquals("screen_inactive", reason(isScreenInteractive = false))
+        assertEquals("viewport_restored", reason(hasRestoredViewport = true))
+        assertEquals("gps_unavailable", reason(warning = GpsEnvironmentWarning.LOCATION_SETTINGS_UNSATISFIED))
+        val target = PoiNavigateTarget(lat = 45.0, lon = 6.0, label = "test", type = PoiType.GENERIC)
+        assertEquals("poi_focus", reason(startup.copy(navigateTarget = target)))
+    }
+
+    private fun reason(
+        input: OnlineStartupMapFallbackInput = startup,
+        isScreenInteractive: Boolean = true,
+        hasRestoredViewport: Boolean = false,
+        warning: GpsEnvironmentWarning = GpsEnvironmentWarning.NONE,
+    ): String = startupLocationWaitReason(input, isScreenInteractive, hasRestoredViewport, warning)
+
     private fun eligible(
         input: OnlineStartupMapFallbackInput = startup,
         isScreenInteractive: Boolean = true,

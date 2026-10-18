@@ -43,7 +43,6 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,7 +50,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
-import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
@@ -101,7 +99,7 @@ internal fun NavigateContent(
     navigateTimeFormat: String,
     mapAppearanceApplyInProgress: Boolean,
     hasActiveMap: Boolean,
-    showStartupLocationWaitMessage: Boolean,
+    startupLocationWaitMessage: StartupLocationWaitUiState,
     slopeOverlayToggleEnabled: Boolean,
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
@@ -1186,22 +1184,17 @@ internal fun NavigateContent(
                 onCompassIssueNow = onCompassIssueNow,
             )
 
-            StartupLocationWaitingOverlay(
-                visible =
-                    showStartupLocationWaitMessage &&
-                        !showNoActiveMapNotice &&
-                        !fullScreenPopupExpanded &&
-                        recordingStatusMessage == null,
-            )
-
-            RecordingStatusMessageChip(
-                message =
-                    if (showNoActiveMapNotice && !fullScreenPopupExpanded && recordingStatusMessage == null) {
-                        stringResource(R.string.navigation_no_map_active)
-                    } else {
-                        null
+            NavigationStartupNotices(
+                locationWaitMessage = startupLocationWaitMessage,
+                noActiveMapNotice = showNoActiveMapNotice,
+                hasActiveMap = hasActiveMap,
+                updatingMap = mapAppearanceApplyInProgress,
+                blockingPopupReason =
+                    when {
+                        fullScreenPopupExpanded -> "fullscreen_popup"
+                        recordingStatusMessage != null -> "recording_status"
+                        else -> null
                     },
-                modifier = Modifier.align(Alignment.Center),
             )
 
             GpsEnvironmentWarningOverlay(

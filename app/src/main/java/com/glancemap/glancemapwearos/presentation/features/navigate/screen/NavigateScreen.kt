@@ -1039,7 +1039,7 @@ fun NavigateScreen(
             navigateTimeFormat = navigateTimeFormat,
             mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
             hasActiveMap = !selectedMapPath.isNullOrBlank(),
-            showStartupLocationWaitMessage = startupCentering.showWaitingForLocation,
+            startupLocationWaitMessage = startupCentering.locationWaitMessage,
             slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
             slopeOverlayEnabled = slopeOverlayState.enabled,
             slopeOverlayProcessing = slopeOverlayState.processing,

@@ -21,7 +21,7 @@ import org.mapsforge.map.android.view.MapView
 
 internal data class NavigateStartupCenteringState(
     val recenterTarget: LatLong?,
-    val showWaitingForLocation: Boolean,
+    val locationWaitMessage: StartupLocationWaitUiState,
 )
 
 @Composable
@@ -88,7 +88,7 @@ internal fun NavigateStartupCenteringEffects(
         deferWhenNoCenter = !offlineMode && gpsStartupMapCenteringActive,
     )
 
-    val showWaitingForLocation =
+    val locationWaitMessage =
         rememberStartupLocationWaitingMessage(
             input = startupInput,
             isScreenInteractive = isScreenInteractive,
@@ -99,7 +99,7 @@ internal fun NavigateStartupCenteringEffects(
     return NavigateStartupCenteringState(
         recenterTarget =
             if (offlineMode) null else locationMarkerLatLong ?: retainedLocationAnchor?.latLong ?: lastKnownLocation,
-        showWaitingForLocation = showWaitingForLocation,
+        locationWaitMessage = locationWaitMessage,
     )
 }
 

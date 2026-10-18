@@ -11,6 +11,11 @@ import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentW
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 
+internal data class StartupLocationWaitUiState(
+    val visible: Boolean,
+    val reason: String,
+)
+
 internal class StartupLocationWaitMessage {
     private var consumed = false
 
@@ -38,7 +43,7 @@ internal fun rememberStartupLocationWaitingMessage(
     hasRestoredViewport: Boolean,
     environmentWarning: GpsEnvironmentWarning,
     message: StartupLocationWaitMessage,
-): Boolean {
+): StartupLocationWaitUiState {
     val eligible =
         shouldWaitForStartupLocation(input, isScreenInteractive, hasRestoredViewport, environmentWarning)
     var visible by remember(message) { mutableStateOf(false) }
@@ -49,7 +54,10 @@ internal fun rememberStartupLocationWaitingMessage(
     LaunchedEffect(eligible, message) {
         if (eligible) message.showOnce { visible = it }
     }
-    return eligible && visible
+    return StartupLocationWaitUiState(
+        visible = eligible && visible,
+        reason = startupLocationWaitReason(input, isScreenInteractive, hasRestoredViewport, environmentWarning),
+    )
 }
 
 internal fun shouldWaitForStartupLocation(
@@ -58,12 +66,41 @@ internal fun shouldWaitForStartupLocation(
     hasRestoredViewport: Boolean,
     environmentWarning: GpsEnvironmentWarning,
 ): Boolean {
-    val canSearch =
-        environmentWarning == GpsEnvironmentWarning.NONE ||
-            environmentWarning == GpsEnvironmentWarning.AUTO_PHONE_DISCONNECTED_USING_WATCH_GPS
+    val canSearch = canSearchForStartupLocation(environmentWarning)
     return isScreenInteractive &&
         !hasRestoredViewport &&
         input.shouldFollowPosition &&
         canSearch &&
         (shouldWaitForOnlineStartupMapFallback(input) || shouldStartOnlineStartupMapCentering(input))
 }
+
+internal fun startupLocationWaitReason(
+    input: OnlineStartupMapFallbackInput,
+    isScreenInteractive: Boolean,
+    hasRestoredViewport: Boolean,
+    environmentWarning: GpsEnvironmentWarning,
+): String =
+    when {
+        input.locationMarkerLatLong != null ||
+            input.retainedLocationAnchor != null ||
+            input.lastKnownLocation != null -> "location_received"
+        input.offlineMode -> "gps_deactivated"
+        !input.shouldTrackLocation -> "tracking_stopped"
+        !isScreenInteractive -> "screen_inactive"
+        hasRestoredViewport -> "viewport_restored"
+        !input.shouldFollowPosition -> "panning"
+        input.navigateTarget != null || input.pendingPoiFocusTarget != null -> "poi_focus"
+        !canSearchForStartupLocation(environmentWarning) -> "gps_unavailable"
+        else -> startupFallbackWaitReason(input.startupMapFallbackState)
+    }
+
+private fun canSearchForStartupLocation(warning: GpsEnvironmentWarning): Boolean =
+    warning == GpsEnvironmentWarning.NONE ||
+        warning == GpsEnvironmentWarning.AUTO_PHONE_DISCONNECTED_USING_WATCH_GPS
+
+private fun startupFallbackWaitReason(state: StartupMapFallbackState): String =
+    when (state) {
+        StartupMapFallbackState.COMPLETED -> "fallback_centered"
+        StartupMapFallbackState.CANCELLED -> "startup_cancelled"
+        else -> "initial_location_search"
+    }

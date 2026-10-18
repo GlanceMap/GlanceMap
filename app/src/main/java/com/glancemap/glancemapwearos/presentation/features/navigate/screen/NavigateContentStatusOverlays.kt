@@ -77,6 +77,61 @@ internal suspend fun showBriefNoActiveMapNotice(onVisibilityChanged: (Boolean) -
 
 @Suppress("FunctionName")
 @Composable
+internal fun BoxScope.NavigationStartupNotices(
+    locationWaitMessage: StartupLocationWaitUiState,
+    noActiveMapNotice: Boolean,
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+    blockingPopupReason: String?,
+) {
+    val canShow = blockingPopupReason == null
+    val locationWaitVisible = locationWaitMessage.visible && !noActiveMapNotice && canShow
+    val noMapVisible = noActiveMapNotice && canShow
+    navigationPopupTelemetryEffect(
+        popup = "waiting_for_location",
+        visible = locationWaitVisible,
+        reason =
+            when {
+                !locationWaitMessage.visible -> locationWaitMessage.reason
+                noActiveMapNotice -> "no_active_map_notice"
+                blockingPopupReason != null -> blockingPopupReason
+                else -> locationWaitMessage.reason
+            },
+    )
+    navigationPopupTelemetryEffect(
+        popup = "no_map_active",
+        visible = noMapVisible,
+        reason =
+            noActiveMapNoticeReason(
+                hasActiveMap,
+                updatingMap,
+                noActiveMapNotice,
+                blockingPopupReason,
+            ),
+    )
+    StartupLocationWaitingOverlay(visible = locationWaitVisible)
+    RecordingStatusMessageChip(
+        message = if (noMapVisible) stringResource(R.string.navigation_no_map_active) else null,
+        modifier = Modifier.align(Alignment.Center),
+    )
+}
+
+internal fun noActiveMapNoticeReason(
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+    noticeVisible: Boolean,
+    blockingPopupReason: String?,
+): String =
+    when {
+        hasActiveMap -> "map_activated"
+        !updatingMap -> "map_update_finished"
+        !noticeVisible -> "timeout"
+        blockingPopupReason != null -> blockingPopupReason
+        else -> "map_update_without_active_map"
+    }
+
+@Suppress("FunctionName")
+@Composable
 internal fun BoxScope.StartupLocationWaitingOverlay(visible: Boolean) {
     if (!visible) return
 
