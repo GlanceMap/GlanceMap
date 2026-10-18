@@ -43,6 +43,7 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +51,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
@@ -98,6 +100,7 @@ internal fun NavigateContent(
     showNavigateTime: Boolean,
     navigateTimeFormat: String,
     mapAppearanceApplyInProgress: Boolean,
+    hasActiveMap: Boolean,
     showStartupLocationWaitMessage: Boolean,
     slopeOverlayToggleEnabled: Boolean,
     slopeOverlayEnabled: Boolean,
@@ -609,6 +612,7 @@ internal fun NavigateContent(
         turnByTurnFullScreenExpanded ||
             recordingDashboardFullScreenExpanded ||
             combinedGuidanceRecordingFullScreenExpanded
+    val showNoActiveMapNotice = rememberNoActiveMapNotice(hasActiveMap, mapAppearanceApplyInProgress)
     val shouldSuppressNavigateTime =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -1025,7 +1029,7 @@ internal fun NavigateContent(
                 NavigateOverlaysLayer(
                     mapView = mapView,
                     traceRecordingViewModel = traceRecordingViewModel,
-                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
+                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
                     slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
                     slopeOverlayEnabled = slopeOverlayEnabled,
                     slopeOverlayProcessing = slopeOverlayProcessing,
@@ -1183,7 +1187,21 @@ internal fun NavigateContent(
             )
 
             StartupLocationWaitingOverlay(
-                visible = showStartupLocationWaitMessage && !fullScreenPopupExpanded && recordingStatusMessage == null,
+                visible =
+                    showStartupLocationWaitMessage &&
+                        !showNoActiveMapNotice &&
+                        !fullScreenPopupExpanded &&
+                        recordingStatusMessage == null,
+            )
+
+            RecordingStatusMessageChip(
+                message =
+                    if (showNoActiveMapNotice && !fullScreenPopupExpanded && recordingStatusMessage == null) {
+                        stringResource(R.string.navigation_no_map_active)
+                    } else {
+                        null
+                    },
+                modifier = Modifier.align(Alignment.Center),
             )
 
             GpsEnvironmentWarningOverlay(

@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,31 @@ internal fun RecordingStatusMessageChip(
         textAlign = TextAlign.Center,
         maxLines = 1,
     )
+}
+
+@Composable
+internal fun rememberNoActiveMapNotice(
+    hasActiveMap: Boolean,
+    updatingMap: Boolean,
+): Boolean {
+    var shown by rememberSaveable(hasActiveMap) { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(hasActiveMap, updatingMap) {
+        if (!hasActiveMap && updatingMap && !shown) {
+            shown = true
+            showBriefNoActiveMapNotice { visible = it }
+        }
+    }
+    return !hasActiveMap && visible
+}
+
+internal suspend fun showBriefNoActiveMapNotice(onVisibilityChanged: (Boolean) -> Unit) {
+    try {
+        onVisibilityChanged(true)
+        delay(2_000L)
+    } finally {
+        onVisibilityChanged(false)
+    }
 }
 
 @Suppress("FunctionName")
