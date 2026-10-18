@@ -42,7 +42,9 @@ internal fun libraryItemRow(
                 .combinedClickable(
                     enabled = row.enabled,
                     onClick = {
-                        if (item.isNavigableGpx() && row.onPreviewGpx != null) {
+                        if (item.gpxKind() == PhoneLibraryGpxKind.RECORDING) {
+                            onDetails()
+                        } else if (item.isNavigableGpx() && row.onPreviewGpx != null) {
                             row.onPreviewGpx.invoke(item)
                         } else {
                             onDetails()

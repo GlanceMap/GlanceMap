@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_tap_to_toggle_toolbar">Tap map to hide toolbar</string>
+    <string name="map_tap_to_toggle_toolbar_summary">Tap the map to hide Library, Layers, Hike and Tools. Tap again to show them.</string>
+</resources>

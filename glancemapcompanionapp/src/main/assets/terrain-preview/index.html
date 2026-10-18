@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.maptoolkit.org https://tiles.mapterhorn.com https://server.arcgisonline.com; connect-src 'self' https://*.maptoolkit.org https://tiles.mapterhorn.com https://server.arcgisonline.com; base-uri 'none'; form-action 'none'">
+  <title>GlanceMap terrain loading</title>
+  <link rel="stylesheet" href="maplibre-gl.css">
+  <link rel="stylesheet" href="terrain-preview.css">
+  <script src="terrain-preview-bootstrap.js"></script>
+  <script defer src="maplibre-gl-csp.js"></script>
+  <script defer src="terrain-preview.js"></script>
+</head>
+<body><div id="map" aria-label="3D terrain map"></div></body>
+</html>

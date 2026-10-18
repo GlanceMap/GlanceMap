@@ -579,6 +579,12 @@ private fun mapToolsMapDisplaySettings(
 ) {
     mapToolsMapLocationSettings(settings, onSettingsChanged)
     mapToolsMapDisplayOptions(settings, onSettingsChanged)
+    mapToolsMapsToggle(
+        label = stringResource(R.string.map_tap_to_toggle_toolbar),
+        checked = settings.tapToToggleToolbarEnabled,
+        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(tapToToggleToolbarEnabled = enabled)) },
+    )
+    Text(stringResource(R.string.map_tap_to_toggle_toolbar_summary))
 }
 
 @Composable

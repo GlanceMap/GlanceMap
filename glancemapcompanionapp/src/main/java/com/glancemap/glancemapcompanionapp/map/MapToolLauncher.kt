@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
@@ -29,6 +31,7 @@ internal fun mapToolLauncher(
     modifier: Modifier = Modifier,
 ) {
     val expanded = presentation.launcherExpanded
+    val activeLayersDescription = stringResource(R.string.map_layers_active)
     val selectTool: (MapTool) -> Unit = { tool ->
         if (expanded) actions.onToggleLauncher()
         actions.onToolSelected(tool)
@@ -70,7 +73,23 @@ internal fun mapToolLauncher(
             NavigationBarItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.LAYER,
                 onClick = { selectTool(MapTool.LAYER) },
-                icon = { Icon(Icons.Filled.Layers, contentDescription = null, modifier = Modifier.offset(y = 2.dp)) },
+                modifier =
+                    Modifier.semantics {
+                        if (presentation.layersActive) stateDescription = activeLayersDescription
+                    },
+                icon = {
+                    Icon(
+                        Icons.Filled.Layers,
+                        contentDescription = null,
+                        modifier = Modifier.offset(y = 2.dp),
+                        tint =
+                            if (presentation.layersActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                LocalContentColor.current
+                            },
+                    )
+                },
                 label = { Text(stringResource(R.string.map_navigation_layers)) },
             )
             NavigationBarItem(

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="activity_details_title">Activity details</string>
+    <string name="activity_preview_map">Preview on map</string>
+    <string name="activity_short_recording">Short recording</string>
+    <string name="activity_recording_saved">Recording saved</string>
+    <string name="activity_saved_to_library">Saved to Library</string>
+    <string name="activity_details_loading">Loading activity details…</string>
+    <string name="activity_details_failed">Could not read the recorded statistics. Check that the GPX file is still available.</string>
+    <string name="activity_distance">Distance</string>
+    <string name="activity_steps">Steps</string>
+    <string name="activity_total_time">Total time</string>
+    <string name="activity_active_time">Active time</string>
+    <string name="activity_ascent">Ascent</string>
+    <string name="activity_descent">Descent</string>
+    <string name="activity_average_speed">Average speed</string>
+    <string name="activity_max_speed">Max speed</string>
+    <string name="activity_average_pace">Average pace</string>
+    <string name="activity_best_pace">Best pace</string>
+    <string name="activity_average_hr">Average heart rate</string>
+    <string name="activity_max_hr">Max heart rate</string>
+    <string name="activity_average_power">Average power</string>
+    <string name="activity_max_power">Max power</string>
+    <string name="activity_average_cadence">Average cadence</string>
+    <string name="activity_max_cadence">Max cadence</string>
+    <string name="activity_total_calories">Total calories</string>
+    <string name="activity_active_calories">Active calories</string>
+    <string name="activity_resting_calories">Resting calories</string>
+    <string name="activity_unit_kcal">%1$.0f kcal</string>
+    <string name="activity_unit_bpm">%1$d bpm</string>
+    <string name="activity_unit_watts">%1$d W</string>
+    <string name="activity_unit_spm">%1$d spm</string>
+    <string name="activity_unit_kmh">%1$.1f km/h</string>
+    <string name="activity_unit_mph">%1$.1f mph</string>
+    <string name="activity_unit_pace_km">%1$s min/km</string>
+    <string name="activity_unit_pace_mile">%1$s min/mi</string>
+</resources>

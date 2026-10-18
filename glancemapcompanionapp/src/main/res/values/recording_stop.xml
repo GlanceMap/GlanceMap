@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_rec_short_stop_title">Stop this recording?</string>
+    <string name="phone_rec_short_stop_message">This recording is short or has very little movement. Save it to your Library or discard it?</string>
+    <string name="phone_rec_no_track_stop_message">Fewer than two GPS points have been recorded. Keep recording to collect a track, or discard this recording.</string>
+    <string name="phone_rec_keep_recording">Keep recording</string>
+</resources>

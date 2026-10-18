@@ -58,6 +58,8 @@ As with normal internet requests, those providers may also receive standard requ
 
 With online place/address search enabled, submitted place searches use Photon. French postal addresses are first tried with IGN Géoplateforme (Base Adresse Nationale), with Photon as a fallback. Photon receives the submitted text and map-centre coordinates to bias results; IGN receives the submitted address and postcode. Turn off online search to search downloaded POI files only. Search text and addresses are excluded from GlanceMap search diagnostic logs.
 
+The optional 3D terrain preview displays a snapshot of visible tracks, loaded POIs and the last location fix locally. It requests map and terrain tiles for the viewed area; it does not upload those tracks or POIs to a rendering service. The preview is unavailable while offline mode is enabled.
+
 Providers used by the current app configuration include:
 
 - `photon.komoot.io` (online place search)
@@ -65,6 +67,7 @@ Providers used by the current app configuration include:
 - `refuges.info`
 - `overpass-api.de`
 - `tile.openstreetmap.org`
+- `tiles.mapterhorn.com` (hillshade and optional online 3D terrain preview)
 - `styles.maptoolkit.org`, `tiles.maptoolkit.org`, `fonts.maptoolkit.org`,
   `icons.maptoolkit.org` (when a Maptoolkit online map is selected)
 - `brouter.de`

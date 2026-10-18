@@ -657,6 +657,8 @@ internal fun CompanionMapScreen(
     var mapSettings by remember(mapSettingsPreferences) {
         mutableStateOf(mapSettingsPreferences.load())
     }
+    var mapToolbarHidden by rememberSaveable(mapSettings.tapToToggleToolbarEnabled) { mutableStateOf(false) }
+    val mapToolbarVisible = !mapSettings.tapToToggleToolbarEnabled || !mapToolbarHidden
     var comparisonThemeConfig by remember(offlineThemePreferences) {
         mutableStateOf(offlineThemePreferences.loadComparison())
     }
@@ -684,6 +686,7 @@ internal fun CompanionMapScreen(
         mutableStateOf(PhoneMapCameraState(defaultPhoneMapCamera))
     }
     val mapCamera = cameraState.camera
+    var terrainPreview by remember { mutableStateOf<PhoneTerrainPreviewData?>(null) }
     val storageMigration = remember(context) { PhoneOfflineStorageMigration(context.applicationContext) }
     var storageMigrationState by remember(storageMigration) {
         mutableStateOf(
@@ -731,7 +734,6 @@ internal fun CompanionMapScreen(
     var poiNameInput by remember { mutableStateOf("") }
     var poiCreationBusy by remember { mutableStateOf(false) }
     var poiCreationError by remember { mutableStateOf(false) }
-    var poiCreationMessage by remember { mutableStateOf<String?>(null) }
     var contentRenameTarget by remember { mutableStateOf<PhoneMapManagedContent?>(null) }
     var contentDeleteTarget by remember { mutableStateOf<PhoneMapManagedContent?>(null) }
     var contentNameInput by remember { mutableStateOf("") }
@@ -2010,7 +2012,6 @@ internal fun CompanionMapScreen(
         poiCreationDialogVisible = true
         poiNameInput = ""
         poiCreationError = false
-        poiCreationMessage = null
         mapUiState = mapUiState.closeTool().copy(toolLauncherExpanded = false)
     }
     val onDistanceMeasurementGesture: (PhoneMapCoordinate, PhoneMapCoordinate) -> Unit = { first, second ->
@@ -2065,6 +2066,9 @@ internal fun CompanionMapScreen(
             routeToolsViewModel.selectMapPoint(
                 GeoPoint(latitude = point.latitude, longitude = point.longitude),
             )
+        } else if (mapSettings.tapToToggleToolbarEnabled && !searchOpen) {
+            mapToolbarHidden = !mapToolbarHidden
+            if (mapToolbarHidden) mapUiState = mapUiState.copy(toolLauncherExpanded = false)
         }
     }
     val onHikeAwarePoiSelected: (PhoneMapPoi) -> Unit = { poi ->
@@ -2260,12 +2264,11 @@ internal fun CompanionMapScreen(
                     }
                 poiCreationBusy = false
                 result
-                    .onSuccess { savedName ->
+                    .onSuccess {
                         poiCreationPoint = null
                         poiCreationDialogVisible = false
                         poiNameInput = ""
                         poiCreationError = false
-                        poiCreationMessage = savedName
                         onPoiDataChanged()
                     }.onFailure {
                         poiCreationError = true
@@ -2720,6 +2723,21 @@ internal fun CompanionMapScreen(
                 panel = mapUiState.toolPanel,
                 launcherExpanded = mapUiState.toolLauncherExpanded,
                 fullScreenPage = settingsPage,
+                toolbarVisible = mapToolbarVisible,
+                layersActive =
+                    offlineComparisonActive ||
+                        onlineComparisonActive ||
+                        (
+                            mapUiState.source is PhoneMapSource.Offline &&
+                                hasElevationData &&
+                                (
+                                    mapSettings.hillShadingEnabled ||
+                                        (
+                                            mapSettings.reliefOverlayEnabled &&
+                                                mapSettings.reliefOverlayOpacityPercent > 0
+                                        )
+                                )
+                        ),
                 maptoolkitAttributionVisible =
                     maptoolkitAttributionRequired(activeOnlineBaseSource, activeOnlineComparisonSource),
             ),
@@ -3794,6 +3812,7 @@ internal fun CompanionMapScreen(
                     onToggleOfflineMode = onToggleOfflineMode,
                     northIndicatorVisible = northIndicatorVisible,
                     showModeControl = !routeCreationControlsVisible,
+                    toolbarVisible = mapToolbarVisible,
                 )
 
                 Column(
@@ -3974,25 +3993,6 @@ internal fun CompanionMapScreen(
                         },
                     )
                 }
-                poiCreationMessage?.let { savedName ->
-                    PhoneMapPopupCard(
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 72.dp, start = 16.dp, end = 16.dp),
-                        onDismiss = { poiCreationMessage = null },
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = stringResource(R.string.map_poi_added, savedName),
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = { poiCreationMessage = null }) {
-                                Text(stringResource(R.string.common_action_dismiss))
-                            }
-                        }
-                    }
-                }
                 if (isVisible && poiCreationDialogVisible) {
                     phonePoiCreationSheet(
                         state =
@@ -4048,6 +4048,7 @@ internal fun CompanionMapScreen(
                         onUndo = routeToolsViewModel::undoLastMapPoint,
                         onClear = routeToolsViewModel::resetMapPoints,
                         onSelectCenter = onSelectRoutePointAtCenter,
+                        toolbarVisible = mapToolbarVisible,
                     )
                 }
             }
@@ -4277,6 +4278,27 @@ internal fun CompanionMapScreen(
                         onComparisonTransparencyChanged = { percent ->
                             mapUiState = mapUiState.setComparisonTransparency(percent)
                         },
+                        onOpenTerrainPreview =
+                            if (mapUiState.mapMode.isOffline) {
+                                null
+                            } else {
+                                {
+                                    terrainPreview =
+                                        PhoneTerrainPreviewData(
+                                            camera = mapCamera,
+                                            source = selectedOnlineSource,
+                                            tracks =
+                                                gpxOverlayState.segments
+                                                    .takeIf { gpxOverlayState.isVisible }
+                                                    .orEmpty(),
+                                            pois = pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty(),
+                                            location =
+                                                locationState.location
+                                                    .takeIf { locationState.hasPermission }
+                                                    ?.let { GeoPoint(it.latitude, it.longitude) },
+                                        )
+                                }
+                            },
                         onLayerMapSettingsChanged = { settings ->
                             mapSettings = mapSettingsPreferences.save(settings)
                         },
@@ -4318,6 +4340,18 @@ internal fun CompanionMapScreen(
             )
         },
     )
+
+    terrainPreview?.takeIf { isVisible && !mapUiState.mapMode.isOffline }?.let { preview ->
+        phoneTerrainPreviewDialog(preview, onDismiss = { terrainPreview = null })
+    }
+
+    recordingState.completedRecording?.takeIf { mapActive }?.let { completed ->
+        phoneRecordingCompletedDialog(
+            recording = completed,
+            isMetric = generalSettings.isMetric,
+            onDismiss = { PhoneRecordingSessionStore.dismissCompletedRecording(completed.id) },
+        )
+    }
 
     selectedGpxAnalysis?.takeIf { isVisible }?.let { item ->
         PhoneMapGpxAnalysisDialog(
@@ -5314,7 +5348,9 @@ private fun mapControls(
     onToggleOfflineMode: () -> Unit,
     northIndicatorVisible: Boolean,
     showModeControl: Boolean,
+    toolbarVisible: Boolean,
 ) {
+    val toolbarHeight = if (toolbarVisible) mapToolLauncherHeight else 0.dp
     Box(modifier = Modifier.fillMaxSize()) {
         FilledTonalIconButton(
             onClick = onOpenMenu,
@@ -5385,7 +5421,7 @@ private fun mapControls(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = mapToolLauncherHeight + 8.dp),
+                        .padding(bottom = toolbarHeight + 8.dp),
             )
         }
     }
@@ -5485,12 +5521,14 @@ private fun BoxScope.phoneMapRouteSelectionControls(
     onUndo: () -> Unit,
     onClear: () -> Unit,
     onSelectCenter: () -> Unit,
+    toolbarVisible: Boolean,
 ) {
+    val toolbarHeight = if (toolbarVisible) mapToolLauncherHeight else 0.dp
     Row(
         modifier =
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = mapToolLauncherHeight + 8.dp),
+                .padding(bottom = toolbarHeight + 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

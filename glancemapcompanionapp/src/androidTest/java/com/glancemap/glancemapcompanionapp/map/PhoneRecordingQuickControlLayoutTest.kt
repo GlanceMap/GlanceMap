@@ -19,6 +19,7 @@ import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.guidance.buildTrailGuidanceSession
 import com.glancemap.trailcore.guidance.computeTrailGuidanceState
 import com.glancemap.trailcore.profile.TrailPoint
+import com.glancemap.trailcore.recording.RecordingPoint
 import com.glancemap.trailcore.recording.RecordingSessionLifecycleState
 import com.glancemap.trailcore.recording.RecordingSessionPhase
 import org.junit.After
@@ -49,6 +50,7 @@ class PhoneRecordingQuickControlLayoutTest {
         )
         var recenterTaps = 0
         showMap { recenterTaps++ }
+        assertCollapsedRecordingAlignedWithRecenter()
         assertClearOfRecenter()
         compose.onNodeWithTag("recenter").performClick()
         compose.runOnIdle { assertEquals(1, recenterTaps) }
@@ -56,7 +58,8 @@ class PhoneRecordingQuickControlLayoutTest {
         assertClearOfRecenter()
         val recording = compose.onNodeWithTag("phone-recording-quick-control").fetchSemanticsNode().boundsInRoot
         listOf(R.string.phone_rec_pause, R.string.phone_rec_stop).forEach { text ->
-            val button = compose.onNode(hasText(label(text)) and hasClickAction()).fetchSemanticsNode().boundsInRoot
+            val node = compose.onNode(hasText(label(text)) and hasClickAction()).assertIsEnabled()
+            val button = node.fetchSemanticsNode().boundsInRoot
             assertTrue(button.left >= recording.left && button.right <= recording.right)
         }
         compose.onNodeWithContentDescription(label(R.string.phone_rec_collapse_controls)).performClick()
@@ -73,6 +76,7 @@ class PhoneRecordingQuickControlLayoutTest {
         }
         assertClearOfRecenter()
         compose.onNodeWithContentDescription(label(R.string.phone_rec_expand_controls)).assertIsDisplayed()
+        assertCollapsedRecordingAlignedWithRecenter()
     }
 
     @Test
@@ -99,6 +103,43 @@ class PhoneRecordingQuickControlLayoutTest {
         assertOppositeSides()
         assertGuidanceButtonsFit(R.string.common_action_resume)
         compose.onNodeWithContentDescription(label(R.string.phone_rec_expand_controls)).assertIsDisplayed()
+        assertCollapsedRecordingAlignedWithRecenter()
+    }
+
+    @Test
+    fun stopIsAvailableBeforeGpsAndCancelLeavesTheRecordingActive() {
+        PhoneGuidanceSessionStore.publish(PhoneGuidanceUiState())
+        PhoneRecordingSessionStore.publish(
+            PhoneRecordingUiState(session = RecordingSessionLifecycleState(phase = RecordingSessionPhase.RECORDING)),
+        )
+        showMap {}
+        compose.onNodeWithContentDescription(label(R.string.phone_rec_expand_controls)).performClick()
+        compose.onNode(hasText(label(R.string.phone_rec_stop)) and hasClickAction()).assertIsEnabled().performClick()
+        compose.onNodeWithText(label(R.string.phone_rec_short_stop_title)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_no_track_stop_message)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsNotEnabled()
+        compose.onNodeWithText(label(R.string.phone_rec_discard)).assertIsEnabled()
+        compose.runOnIdle {
+            val points =
+                List(2) { index ->
+                    RecordingPoint(GeoPoint(46.0, 11.0 + index * 0.0001), null, 1_000L + index * 1_000L, 5f, null)
+                }
+            PhoneRecordingSessionStore.publish(PhoneRecordingSessionStore.state.value.copy(points = points))
+        }
+        compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsEnabled()
+        compose.onNodeWithText(label(R.string.phone_rec_short_stop_message)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_keep_recording)).performClick()
+        compose.onNodeWithText(label(R.string.phone_rec_short_stop_title)).assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(RecordingSessionPhase.RECORDING, PhoneRecordingSessionStore.state.value.session.phase)
+        }
+        assertCollapsedRecordingAlignedWithRecenter()
+    }
+
+    private fun assertCollapsedRecordingAlignedWithRecenter() {
+        val recording = compose.onNodeWithTag("phone-recording-quick-control").fetchSemanticsNode().boundsInRoot
+        val recenter = compose.onNodeWithTag("recenter").fetchSemanticsNode().boundsInRoot
+        assertEquals(recenter.center.y, recording.center.y, 1f)
     }
 
     private fun assertOppositeSides() {

@@ -27,8 +27,20 @@ internal fun libraryItemDetails(
         title = { Text(item.title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(libraryItemSummary(item))
                 if (item.filter == PhoneLibraryFilter.GPX) {
+                    libraryActivityDetails(item)
+                } else {
+                    Text(libraryItemSummary(item))
+                }
+                if (item.filter == PhoneLibraryFilter.GPX) {
+                    actions.onPreviewGpx?.takeIf { item.gpxKind() == PhoneLibraryGpxKind.RECORDING }?.let { preview ->
+                        OutlinedButton(onClick = {
+                            onDismiss()
+                            preview(item)
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.activity_preview_map))
+                        }
+                    }
                     OutlinedButton(onClick = { actions.onGpxAppearance(item) }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.gpx_appearance_customize))
                     }

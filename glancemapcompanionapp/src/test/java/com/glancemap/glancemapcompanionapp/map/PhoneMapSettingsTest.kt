@@ -16,6 +16,7 @@ class PhoneMapSettingsTest {
         assertEquals(PhoneMapNorthIndicatorMode.ALWAYS, settings.northIndicatorMode)
         assertEquals(PhoneMapMarkerStyle.DOT, settings.markerStyle)
         assertEquals(PhoneMapZoomButtonsMode.BOTH, settings.zoomButtonsMode)
+        assertFalse(settings.tapToToggleToolbarEnabled)
         assertFalse(settings.gpsAccuracyCircleEnabled)
         assertEquals(250, settings.zoomDefaultScaleMeters)
         assertEquals(5_000_000, settings.zoomMinScaleMeters)

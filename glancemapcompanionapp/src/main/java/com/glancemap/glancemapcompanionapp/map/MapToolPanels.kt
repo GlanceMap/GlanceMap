@@ -194,6 +194,7 @@ internal data class MapToolsLayerActions(
     val onSwap: () -> Unit = {},
     val onBaseThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
     val onComparisonThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
+    val onOpenTerrainPreview: (() -> Unit)? = null,
 )
 
 internal data class MapToolsPanelActions(
@@ -224,6 +225,7 @@ internal data class MapToolsPanelActions(
     val onSwapComparison: () -> Unit = {},
     val onBaseThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
     val onComparisonThemeChanged: (PhoneOfflineThemeConfig) -> Unit = {},
+    val onOpenTerrainPreview: (() -> Unit)? = null,
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit,
     val onStorageMigrationCancelled: () -> Unit,
     val onAddPoi: () -> Unit = {},
@@ -300,6 +302,7 @@ internal fun MapToolPanelContent(
                             onSwap = actions.onSwapComparison,
                             onBaseThemeChanged = actions.onBaseThemeChanged,
                             onComparisonThemeChanged = actions.onComparisonThemeChanged,
+                            onOpenTerrainPreview = actions.onOpenTerrainPreview,
                         ),
                 )
             MapTool.SETTINGS ->

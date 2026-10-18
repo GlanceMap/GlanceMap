@@ -31,7 +31,9 @@ import androidx.core.content.ContextCompat
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
+import com.glancemap.glancemapcompanionapp.routes.RecordedActivityStatistics
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRepository
+import com.glancemap.glancemapcompanionapp.routes.activityStatistics
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.guidance.TrailGuidanceAlertOutcome
 import com.glancemap.trailcore.guidance.TrailGuidanceAlertSample
@@ -116,6 +118,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -142,9 +145,16 @@ internal data class PhoneRecordingUiState(
     val settings: PhoneRecordingSettings = PhoneRecordingSettings(),
     val message: PhoneRecordingMessage = PhoneRecordingMessage.IDLE,
     val rejectedFixCount: Int = 0,
+    val completedRecording: PhoneCompletedRecording? = null,
 ) {
     val isActive: Boolean get() = session.isActive
 }
+
+internal data class PhoneCompletedRecording(
+    val id: String,
+    val title: String,
+    val statistics: RecordedActivityStatistics,
+)
 
 internal enum class PhoneRecordingMessage {
     IDLE,
@@ -157,13 +167,19 @@ internal enum class PhoneRecordingMessage {
     LOCATION_UNAVAILABLE,
 }
 
-/** Process-local state is fed only by the foreground recording service. */
+/** The service owns recording state; the UI only acknowledges completed recaps. */
 internal object PhoneRecordingSessionStore {
     private val mutableState = MutableStateFlow(PhoneRecordingUiState())
     val state: StateFlow<PhoneRecordingUiState> = mutableState.asStateFlow()
 
     fun publish(value: PhoneRecordingUiState) {
         mutableState.value = value
+    }
+
+    fun dismissCompletedRecording(id: String) {
+        mutableState.update { current ->
+            if (current.completedRecording?.id == id) current.copy(completedRecording = null) else current
+        }
     }
 }
 
@@ -745,14 +761,16 @@ internal class PhoneRecordingService :
         configureLocationUpdates()
         updateNotification()
         logEvent("save_started generation=$generation points=${immutablePoints.size}")
-        val bytes =
+        val (summary, bytes) =
             try {
                 withContext(Dispatchers.Default) {
-                    encodeRecordedTraceAsGpx(
-                        title = getString(R.string.phone_rec_activity_name),
-                        points = immutablePoints,
-                        summary = buildRecordedTraceSummary(finalizedState, immutablePoints),
-                    )
+                    val summary = buildRecordedTraceSummary(finalizedState, immutablePoints)
+                    summary to
+                        encodeRecordedTraceAsGpx(
+                            title = getString(R.string.phone_rec_activity_name),
+                            points = immutablePoints,
+                            summary = summary,
+                        )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -778,6 +796,12 @@ internal class PhoneRecordingService :
                     session = sessionLifecycle.state,
                     settings = settings,
                     message = PhoneRecordingMessage.SAVED,
+                    completedRecording =
+                        PhoneCompletedRecording(
+                            id = recordingId,
+                            title = getString(R.string.phone_rec_activity_name),
+                            statistics = summary.activityStatistics(),
+                        ),
                 ),
             )
             unregisterRecordingSensors()

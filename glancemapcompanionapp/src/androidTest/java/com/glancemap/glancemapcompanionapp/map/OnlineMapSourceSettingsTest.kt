@@ -158,6 +158,16 @@ class OnlineMapSourceSettingsTest {
     }
 
     @Test
+    fun tapToToggleToolbarIsOptInAndPersistsAcrossPreferenceReloads() {
+        val preferences = PhoneMapSettingsPreferences(context)
+        assertTrue(!preferences.load().tapToToggleToolbarEnabled)
+        preferences.save(preferences.load().copy(tapToToggleToolbarEnabled = true))
+        assertTrue(PhoneMapSettingsPreferences(context).load().tapToToggleToolbarEnabled)
+        preferences.save(preferences.load().copy(tapToToggleToolbarEnabled = false))
+        assertTrue(!PhoneMapSettingsPreferences(context).load().tapToToggleToolbarEnabled)
+    }
+
+    @Test
     fun emptyProviderListDisablesThePickerWithoutChangingTheCurrentMap() {
         composeRule.setContent {
             MaterialTheme {

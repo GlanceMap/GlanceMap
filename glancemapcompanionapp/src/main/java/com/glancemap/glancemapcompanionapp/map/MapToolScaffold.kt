@@ -51,6 +51,8 @@ internal data class MapToolScaffoldState(
     val launcherExpanded: Boolean = false,
     val fullScreenPage: Boolean = false,
     val maptoolkitAttributionVisible: Boolean = false,
+    val layersActive: Boolean = false,
+    val toolbarVisible: Boolean = true,
 )
 
 /** Hosts the map and every tool panel without letting a panel own map renderer state. */
@@ -169,6 +171,7 @@ private fun mapToolMapSurface(
 ) {
     var guidanceQuickControlExpanded by remember { mutableStateOf(false) }
     var recordingQuickControlExpanded by remember { mutableStateOf(false) }
+    val toolbarHeight = if (presentation.toolbarVisible) mapToolLauncherHeight else 0.dp
     Column(modifier = modifier) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             mapContent()
@@ -179,7 +182,7 @@ private fun mapToolMapSurface(
                             .align(Alignment.BottomCenter)
                             .widthIn(max = 360.dp)
                             .fillMaxWidth()
-                            .padding(bottom = mapToolLauncherHeight + 8.dp),
+                            .padding(bottom = toolbarHeight + 8.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
@@ -208,11 +211,13 @@ private fun mapToolMapSurface(
                         )
                     }
                 }
-                mapToolLauncher(
-                    presentation = presentation,
-                    actions = actions,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                )
+                if (presentation.toolbarVisible) {
+                    mapToolLauncher(
+                        presentation = presentation,
+                        actions = actions,
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    )
+                }
             }
         }
         if (presentation.maptoolkitAttributionVisible) {

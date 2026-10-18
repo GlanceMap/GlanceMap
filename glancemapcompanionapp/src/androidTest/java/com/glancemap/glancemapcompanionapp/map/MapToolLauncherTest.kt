@@ -32,6 +32,7 @@ class MapToolLauncherTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
     private val ui = mutableStateOf(PhoneMapUiState())
     private val opened = mutableListOf<String>()
+    private val toolbarVisible = mutableStateOf(true)
     private val libraryFilter = mutableStateOf(PhoneLibraryFilter.GPX)
 
     @Test
@@ -164,6 +165,25 @@ class MapToolLauncherTest {
         composeRule.onNodeWithTag("library-tab-BUNDLES").assertIsSelected()
     }
 
+    @Test
+    fun hidingAndRestoringToolbarPreservesTheMapAndOpenPanel() {
+        setContent()
+        click(R.string.map_navigation_layers)
+        val mapBounds = composeRule.onNodeWithTag("map").fetchSemanticsNode().boundsInRoot
+        val panelBounds = composeRule.onNodeWithTag("panel").fetchSemanticsNode().boundsInRoot
+        composeRule.runOnIdle { toolbarVisible.value = false }
+        composeRule.onNodeWithTag("map-tool-toolbar").assertDoesNotExist()
+        composeRule.onNodeWithTag("map").assertIsDisplayed()
+        assertEquals(mapBounds, composeRule.onNodeWithTag("map").fetchSemanticsNode().boundsInRoot)
+        assertEquals(panelBounds, composeRule.onNodeWithTag("panel").fetchSemanticsNode().boundsInRoot)
+        composeRule.runOnIdle {
+            assertEquals(MapTool.LAYER, ui.value.toolPanel.activeTool)
+            toolbarVisible.value = true
+        }
+        composeRule.onNodeWithTag("map-tool-toolbar").assertIsDisplayed()
+        assertEquals(panelBounds, composeRule.onNodeWithTag("panel").fetchSemanticsNode().boundsInRoot)
+    }
+
     private fun pressBack() = composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
 
     private fun label(resource: Int): String = composeRule.activity.getString(resource)
@@ -202,6 +222,7 @@ class MapToolLauncherTest {
                             MapToolScaffoldState(
                                 panel = ui.value.toolPanel,
                                 launcherExpanded = ui.value.toolLauncherExpanded,
+                                toolbarVisible = toolbarVisible.value,
                             ),
                         actions =
                             MapToolScaffoldActions(

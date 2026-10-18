@@ -15,6 +15,7 @@ data class ParsedCompanionRoute(
     val title: String?,
     val points: List<TrailPoint>,
     val waypoints: List<RouteWaypoint>,
+    val activityStatistics: RecordedActivityStatistics? = null,
 )
 
 data class RouteWaypoint(
@@ -49,6 +50,7 @@ object CompanionGpxRouteParser {
             title = root.routeTitle(),
             points = points,
             waypoints = root.descendantsNamed(WAYPOINT_TAG).mapNotNull { waypoint -> waypoint.toRouteWaypoint() },
+            activityStatistics = recordedActivityStatistics(root, points),
         )
     }
 

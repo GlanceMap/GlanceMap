@@ -97,6 +97,7 @@ internal data class PhoneMapSettings(
     val northIndicatorMode: PhoneMapNorthIndicatorMode = PhoneMapNorthIndicatorMode.ALWAYS,
     val markerStyle: PhoneMapMarkerStyle = PhoneMapMarkerStyle.DOT,
     val zoomButtonsMode: PhoneMapZoomButtonsMode = PhoneMapZoomButtonsMode.BOTH,
+    val tapToToggleToolbarEnabled: Boolean = false,
     val gpsAccuracyCircleEnabled: Boolean = false,
     val zoomDefaultScaleMeters: Int = DEFAULT_PHONE_MAP_ZOOM_DEFAULT_SCALE_METERS,
     val zoomMinScaleMeters: Int = DEFAULT_PHONE_MAP_ZOOM_MIN_SCALE_METERS,
@@ -196,6 +197,7 @@ internal class PhoneMapSettingsPreferences(
                     PhoneMapZoomButtonsMode.fromStorageValue(
                         preferences.getString(KEY_ZOOM_BUTTONS_MODE, PhoneMapZoomButtonsMode.BOTH.storageValue),
                     ),
+                tapToToggleToolbarEnabled = preferences.getBoolean(KEY_TAP_TO_TOGGLE_TOOLBAR_ENABLED, false),
                 gpsAccuracyCircleEnabled = preferences.getBoolean(KEY_GPS_ACCURACY_CIRCLE_ENABLED, false),
                 zoomDefaultScaleMeters =
                     preferences.getInt(
@@ -246,8 +248,7 @@ internal class PhoneMapSettingsPreferences(
                         ?.split(',')
                         ?.mapNotNull { sourceName ->
                             PhoneOnlineMapSource.entries.firstOrNull { it.name == sourceName }
-                        }
-                        .orEmpty(),
+                        }.orEmpty(),
             ).normalized()
         save(settings)
         return settings
@@ -263,6 +264,7 @@ internal class PhoneMapSettingsPreferences(
             .putString(KEY_NORTH_INDICATOR_MODE, normalized.northIndicatorMode.storageValue)
             .putString(KEY_MARKER_STYLE, normalized.markerStyle.storageValue)
             .putString(KEY_ZOOM_BUTTONS_MODE, normalized.zoomButtonsMode.storageValue)
+            .putBoolean(KEY_TAP_TO_TOGGLE_TOOLBAR_ENABLED, normalized.tapToToggleToolbarEnabled)
             .putBoolean(KEY_GPS_ACCURACY_CIRCLE_ENABLED, normalized.gpsAccuracyCircleEnabled)
             .putInt(KEY_ZOOM_DEFAULT_SCALE_METERS, normalized.zoomDefaultScaleMeters)
             .putInt(KEY_ZOOM_MIN_SCALE_METERS, normalized.zoomMinScaleMeters)
@@ -313,6 +315,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_NORTH_INDICATOR_MODE = "north_indicator_mode"
         const val KEY_MARKER_STYLE = "marker_style"
         const val KEY_ZOOM_BUTTONS_MODE = "zoom_buttons_mode"
+        const val KEY_TAP_TO_TOGGLE_TOOLBAR_ENABLED = "tap_to_toggle_toolbar_enabled"
         const val KEY_GPS_ACCURACY_CIRCLE_ENABLED = "gps_accuracy_circle_enabled"
         const val KEY_ZOOM_DEFAULT_SCALE_METERS = "zoom_default_scale_meters"
         const val KEY_ZOOM_MIN_SCALE_METERS = "zoom_min_scale_meters"

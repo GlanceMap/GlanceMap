@@ -15,6 +15,7 @@ import com.glancemap.glancemapcompanionapp.R
 @Composable
 internal fun layerQuickDisplay(
     state: MapToolsLayerState,
+    onTerrainPreview: (() -> Unit)? = null,
     onSettings: (PhoneMapSettings) -> Unit,
 ) {
     val settings = state.mapSettings
@@ -52,6 +53,7 @@ internal fun layerQuickDisplay(
             enabled = tiltAvailable,
         )
     }
+    terrainPreviewLaunchButton(onTerrainPreview)
     if (state.base is PhoneMapSource.Offline) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val slopeReliefAvailable = state.hasElevationData

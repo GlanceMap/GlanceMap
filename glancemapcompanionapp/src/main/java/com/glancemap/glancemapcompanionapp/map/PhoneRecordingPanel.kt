@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,6 +72,7 @@ internal fun PhoneRecordingPanel(
 ) {
     val context = LocalContext.current
     val recording by PhoneRecordingSessionStore.state.collectAsState()
+    val stopRecording = phoneRecordingStopAction(recording)
     val settings by PhoneRecordingSettingsState.state.collectAsState()
     val preferences = remember(context) { PhoneRecordingSettingsPreferences(context) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -173,12 +175,12 @@ internal fun PhoneRecordingPanel(
             }
             if (active) {
                 IconButton(
-                    enabled = !busy && recording.points.size >= 2,
-                    onClick = { PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE) },
+                    enabled = !busy,
+                    onClick = stopRecording,
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Stop,
-                        contentDescription = stringResource(R.string.phone_rec_stop_and_save),
+                        contentDescription = stringResource(R.string.phone_rec_stop),
                     )
                 }
                 TextButton(enabled = !busy, onClick = { confirmDiscard = true }) {
@@ -416,6 +418,7 @@ internal fun PhoneRecordingQuickControl(
 ) {
     val context = LocalContext.current
     val recording by PhoneRecordingSessionStore.state.collectAsState()
+    val stopRecording = phoneRecordingStopAction(recording)
     val active =
         recording.session.phase == RecordingSessionPhase.RECORDING ||
             recording.session.phase == RecordingSessionPhase.PAUSED
@@ -445,10 +448,11 @@ internal fun PhoneRecordingQuickControl(
         contentColor = contentColor,
         shadowElevation = 6.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp)) {
             Row(
                 modifier =
                     Modifier
+                        .heightIn(min = 48.dp)
                         .clickable(
                             role = Role.Button,
                         ) { onExpandedChange(!expanded) }
@@ -477,7 +481,7 @@ internal fun PhoneRecordingQuickControl(
                 )
             }
             if (expanded) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
                         enabled = !busy,
                         onClick = {
@@ -497,9 +501,9 @@ internal fun PhoneRecordingQuickControl(
                         Text(stringResource(if (paused) R.string.phone_rec_resume else R.string.phone_rec_pause))
                     }
                     TextButton(
-                        enabled = !busy && recording.points.size >= 2,
+                        enabled = !busy,
                         onClick = {
-                            PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE)
+                            stopRecording()
                             onExpandedChange(false)
                         },
                         colors = ButtonDefaults.textButtonColors(contentColor = contentColor),

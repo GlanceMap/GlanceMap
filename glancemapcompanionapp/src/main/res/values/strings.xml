@@ -244,7 +244,6 @@
     <string name="map_poi_saving">Saving…</string>
     <string name="map_poi_cancel">Cancel</string>
     <string name="map_poi_save_failed">Could not save this POI.</string>
-    <string name="map_poi_added">Added POI: %1$s</string>
     <string name="map_tool_action_expand_content_description">Expand map tool panel</string>
     <string name="map_tool_action_collapse_content_description">Collapse map tool panel</string>
     <string name="map_tool_action_default_size">Set map tool panel to default size (%1$d%%)</string>

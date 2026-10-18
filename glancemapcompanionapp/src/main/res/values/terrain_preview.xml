@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terrain_preview_open">3D terrain preview</string>
+    <string name="terrain_preview_title">3D terrain preview</string>
+    <string name="terrain_preview_summary">Online preview of visible tracks and points. Use two fingers to tilt and rotate. Your location is a snapshot.</string>
+    <string name="terrain_preview_hiking">Hiking</string>
+    <string name="terrain_preview_cycling">Cycling</string>
+    <string name="terrain_preview_satellite">Esri satellite</string>
+    <string name="terrain_preview_fit_tracks">Show full tracks</string>
+    <string name="terrain_preview_reset">Return to starting view</string>
+    <string name="terrain_preview_error">Terrain could not load. Check your connection or update Android System WebView.</string>
+    <string name="terrain_preview_unsupported">3D terrain could not start with this browser or graphics driver. Update Android System WebView and Chrome, then restart GlanceMap.</string>
+    <string name="terrain_preview_webview_version">Android WebView: %1$s</string>
+    <string name="terrain_preview_retry">Retry</string>
+    <string name="terrain_preview_offline">Turn off offline mode to open the online terrain preview.</string>
+</resources>

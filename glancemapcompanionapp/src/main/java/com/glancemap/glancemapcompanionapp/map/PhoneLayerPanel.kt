@@ -53,8 +53,9 @@ internal fun mapToolsLayerPanel(
                 style = MaterialTheme.typography.titleSmall,
             )
             layerQuickDisplay(
-                state,
-                actions.onMapSettingsChanged,
+                state = state,
+                onTerrainPreview = actions.onOpenTerrainPreview,
+                onSettings = actions.onMapSettingsChanged,
             )
         }
     }
