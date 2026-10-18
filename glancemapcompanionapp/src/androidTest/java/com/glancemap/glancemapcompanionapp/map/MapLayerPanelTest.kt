@@ -50,17 +50,43 @@ class MapLayerPanelTest {
     private val progress = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 
     @Test
-    fun layerQuickDisplayOmitsGpxAndPoiVisibilityAndNightFollowsOfflineBase() {
+    fun layerQuickDisplayOmitsGpxAndPoiAndAddsSlopeReliefForOfflineBase() {
         setContent()
         listOf(R.string.map_tools_gpx_global_visibility, R.string.map_tools_poi_global_visibility).forEach { label ->
             composeRule
                 .onNodeWithContentDescription(composeRule.activity.getString(label))
                 .assertDoesNotExist()
         }
+        composeRule
+            .onNodeWithContentDescription(composeRule.activity.getString(R.string.map_tools_maps_hill_shading))
+            .assertDoesNotExist()
         val night = composeRule.activity.getString(R.string.map_tools_maps_night_mode)
         composeRule.onNodeWithContentDescription(night).assertDoesNotExist()
+        val slopeRelief = composeRule.activity.getString(R.string.map_layer_slope_title)
+        composeRule.onNodeWithContentDescription(slopeRelief).assertDoesNotExist()
         composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
         composeRule.onNodeWithContentDescription(night).performScrollTo().assertExists()
+        composeRule.onNodeWithContentDescription(slopeRelief).performScrollTo().assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertTrue(state.value.mapSettings.reliefOverlayEnabled) }
+    }
+
+    @Test
+    fun offlineThemesAndStyleAppearsAboveQuickDisplay() {
+        state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap))
+        setContent()
+
+        val themesTop =
+            composeRule
+                .onNodeWithText(composeRule.activity.getString(R.string.map_layer_themes))
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+        val quickDisplayTop =
+            composeRule
+                .onNodeWithText(composeRule.activity.getString(R.string.map_tools_maps_quick_display_heading))
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+
+        assertTrue(themesTop < quickDisplayTop)
     }
 
     @Test
@@ -68,6 +94,12 @@ class MapLayerPanelTest {
         setContent()
         composeRule.onNode(progress).assertDoesNotExist()
         picker().performClick()
+        val onlineGroup = composeRule.activity.getString(R.string.map_layer_group_online)
+        val offlineGroup = composeRule.activity.getString(R.string.map_layer_group_offline)
+        composeRule.onNodeWithText(onlineGroup).assertExists()
+        composeRule.onNodeWithText(offlineGroup).assertExists()
+        composeRule.onNodeWithText(offlineMap.displayName).assertDoesNotExist()
+        composeRule.onNodeWithText(onlineGroup).performClick()
         PhoneMapRendererCatalog
             .supportedOnlineSources()
             .filterNot(
@@ -75,10 +107,16 @@ class MapLayerPanelTest {
             ).forEach {
                 composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(it)).assertDoesNotExist()
             }
+        val clearComparison = composeRule.activity.getString(R.string.map_layer_clear)
+        composeRule.onNodeWithText(clearComparison).assertDoesNotExist()
+        composeRule.onNodeWithText(offlineGroup).performClick()
+        composeRule.onNodeWithText(offlineMap.displayName).assertExists()
+        composeRule.onNodeWithText(offlineGroup).performClick()
+        composeRule.onNodeWithText(offlineMap.displayName).assertDoesNotExist()
+        composeRule.onNodeWithText(offlineGroup).performClick()
         composeRule.onNodeWithText(offlineMap.displayName).performClick()
         composeRule.onNode(progress).performSemanticsAction(SemanticsActions.SetProgress) { it(25f) }
-        picker().performClick()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_clear)).performClick()
+        composeRule.onNodeWithContentDescription(clearComparison).performClick()
         composeRule.runOnIdle {
             assertEquals(null, state.value.comparison.layer)
             assertEquals(75f, state.value.comparison.transparencyPercent, 0f)
@@ -94,17 +132,18 @@ class MapLayerPanelTest {
         state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap))
         setContent(expanded = true)
         picker().performClick()
+        val onlineGroup = composeRule.activity.getString(R.string.map_layer_group_online)
         val sameMapOption =
             composeRule
                 .onNodeWithText(composeRule.activity.getString(R.string.map_layer_same_map_theme))
                 .fetchSemanticsNode()
                 .boundsInRoot
-        val clearOption =
+        val onlineGroupOption =
             composeRule
-                .onNodeWithText(composeRule.activity.getString(R.string.map_layer_clear))
+                .onNodeWithText(onlineGroup)
                 .fetchSemanticsNode()
                 .boundsInRoot
-        assertTrue(sameMapOption.top < clearOption.top)
+        assertTrue(sameMapOption.top < onlineGroupOption.top)
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_layer_same_map_theme)).performClick()
         composeRule.runOnIdle {
             assertEquals(PhoneMapComparisonLayer.Offline(offlineMap), state.value.comparison.layer)
@@ -118,6 +157,7 @@ class MapLayerPanelTest {
             assertEquals(originalComparison, state.value.comparisonThemeConfig)
         }
         composeRule.onNodeWithTag("layer-base-picker").performScrollTo().performClick()
+        composeRule.onNodeWithText(onlineGroup).performClick()
         composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(onlineLayer.source)).performClick()
         composeRule.runOnIdle {
             assertEquals(PhoneMapSource.Online, state.value.base)

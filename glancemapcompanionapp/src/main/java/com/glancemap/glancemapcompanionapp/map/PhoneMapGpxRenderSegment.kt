@@ -17,15 +17,16 @@ internal data class PhoneMapGpxRenderSegment(
 internal fun List<PhoneMapRouteSegment>.toPhoneMapGpxRenderSegments(
     settings: PhoneMapGpxSettings,
 ): List<PhoneMapGpxRenderSegment> {
-    val trackSegments =
-        if (settings.colorMode == PhoneMapGpxColorMode.ELEVATION) {
-            flatMap(PhoneMapRouteSegment::toElevationRenderSegments)
-        } else {
-            map { segment -> PhoneMapGpxRenderSegment(segment.points, settings.trackColorArgb) }
+    val trackSegments = flatMap { segment ->
+        when {
+            segment.isGap -> listOf(PhoneMapGpxRenderSegment(segment.points, PHONE_MAP_GPX_GAP_COLOR_ARGB))
+            settings.colorMode == PhoneMapGpxColorMode.ELEVATION -> segment.toElevationRenderSegments()
+            else -> listOf(PhoneMapGpxRenderSegment(segment.points, settings.trackColorArgb))
         }
+    }
     if (!settings.directionArrowsEnabled) return trackSegments
 
-    return trackSegments + flatMap { segment -> segment.toDirectionArrowSegments() }
+    return trackSegments + filterNot(PhoneMapRouteSegment::isGap).flatMap { segment -> segment.toDirectionArrowSegments() }
 }
 
 private fun PhoneMapRouteSegment.toElevationRenderSegments(): List<PhoneMapGpxRenderSegment> {
@@ -202,3 +203,4 @@ private const val DIRECTION_ARROW_TIP_LENGTH_METERS = 22.0
 private const val DIRECTION_ARROW_ARM_ANGLE_DEGREES = 35.0
 private const val MAX_DIRECTION_ARROWS_PER_SEGMENT = 36
 private const val DIRECTION_ARROW_COLOR_ARGB = 0xFF000000.toInt()
+internal const val PHONE_MAP_GPX_GAP_COLOR_ARGB = 0xFF9E9E9E.toInt()

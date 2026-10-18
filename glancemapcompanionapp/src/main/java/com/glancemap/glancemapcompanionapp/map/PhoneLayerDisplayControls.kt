@@ -5,7 +5,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -35,6 +34,7 @@ internal fun layerQuickDisplay(
             Modifier.weight(1f),
         )
     }
+    val tiltAvailable = phoneMapSupportsTilt(state.base, state.comparison.layer)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         layerChip(
             R.string.map_layer_quick_measure,
@@ -44,15 +44,25 @@ internal fun layerQuickDisplay(
             Modifier.weight(1f),
         )
         layerChip(
-            R.string.map_layer_quick_shading,
-            R.string.map_tools_maps_hill_shading,
-            settings.hillShadingEnabled,
-            { onSettings(settings.copy(hillShadingEnabled = it)) },
+            R.string.map_layer_quick_tilt,
+            R.string.map_tools_maps_tilted_view,
+            tiltAvailable && settings.tiltedViewEnabled,
+            { onSettings(settings.copy(tiltedViewEnabled = it)) },
             Modifier.weight(1f),
+            enabled = tiltAvailable,
         )
     }
     if (state.base is PhoneMapSource.Offline) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val slopeReliefAvailable = state.hasElevationData
+            layerChip(
+                R.string.map_layer_slope_title,
+                R.string.map_layer_slope_title,
+                slopeReliefAvailable && settings.reliefOverlayEnabled,
+                { onSettings(settings.copy(reliefOverlayEnabled = it)) },
+                Modifier.weight(1f),
+                enabled = slopeReliefAvailable,
+            )
             layerChip(
                 R.string.map_layer_quick_night,
                 R.string.map_tools_maps_night_mode,
@@ -60,7 +70,6 @@ internal fun layerQuickDisplay(
                 { onSettings(settings.copy(nightModeEnabled = it)) },
                 Modifier.weight(1f),
             )
-            Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -72,11 +81,13 @@ private fun layerChip(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val accessibilityLabel = stringResource(description)
     FilterChip(
         selected = checked,
         onClick = { onChange(!checked) },
+        enabled = enabled,
         label = { Text(stringResource(label), maxLines = 1) },
         leadingIcon =
             if (checked) {
@@ -92,40 +103,6 @@ private fun layerChip(
             },
         modifier = modifier.semantics { contentDescription = accessibilityLabel },
     )
-}
-
-@Composable
-internal fun layerTerrain(
-    state: MapToolsLayerState,
-    onSettings: (PhoneMapSettings) -> Unit,
-) {
-    val available = state.base is PhoneMapSource.Offline && state.hasElevationData
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.map_layer_slope_title)) },
-        supportingContent = {
-            Text(
-                stringResource(
-                    if (available) R.string.map_layer_slope_available else R.string.map_layer_slope_unavailable,
-                ),
-            )
-        },
-        trailingContent = {
-            Switch(
-                available && state.mapSettings.reliefOverlayEnabled,
-                { onSettings(state.mapSettings.copy(reliefOverlayEnabled = it)) },
-                enabled = available,
-            )
-        },
-    )
-    if (available && state.mapSettings.reliefOverlayEnabled) {
-        Text(stringResource(R.string.map_layer_slope_transparency, 100 - state.mapSettings.reliefOverlayOpacityPercent))
-        var opacity by remember(state.mapSettings.reliefOverlayOpacityPercent) {
-            mutableStateOf(state.mapSettings.reliefOverlayOpacityPercent.toFloat())
-        }
-        Slider(opacity, { opacity = it }, onValueChangeFinished = {
-            onSettings(state.mapSettings.copy(reliefOverlayOpacityPercent = opacity.toInt()))
-        }, valueRange = 0f..100f, steps = 99)
-    }
 }
 
 internal fun comparisonLayerOptions(

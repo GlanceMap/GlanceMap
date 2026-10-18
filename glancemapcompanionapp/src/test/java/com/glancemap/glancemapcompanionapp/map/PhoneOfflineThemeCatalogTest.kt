@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.mapsforge.map.rendertheme.XmlRenderThemeStyleMenu
 import org.junit.Test
 
 class PhoneOfflineThemeCatalogTest {
@@ -110,5 +111,40 @@ class PhoneOfflineThemeCatalogTest {
             null,
             resolvePhoneOfflineThemeAssetPath("theme/elevate/", "jar:ele-res/s_peak.svg"),
         )
+    }
+
+    @Test
+    fun overlayPresetsUseDefaultsMinimalRulesAndAllAvailableLayers() {
+        val overlays =
+            listOf(
+                PhoneOfflineThemeOverlay("elv-h_routes", "Routes", true),
+                PhoneOfflineThemeOverlay("elv-winter_reference", "Winter reference", false),
+                PhoneOfflineThemeOverlay("elv-shops", "Shops", false),
+            )
+
+        assertEquals(
+            setOf("elv-h_routes"),
+            PhoneOfflineThemeOverlayCatalog.idsForPreset(overlays, PhoneOfflineThemeOverlayPreset.DEFAULT),
+        )
+        assertEquals(
+            setOf("elv-h_routes", "elv-winter_reference"),
+            PhoneOfflineThemeOverlayCatalog.idsForPreset(overlays, PhoneOfflineThemeOverlayPreset.MINIMAL),
+        )
+        assertEquals(
+            overlays.mapTo(linkedSetOf(), PhoneOfflineThemeOverlay::id),
+            PhoneOfflineThemeOverlayCatalog.idsForPreset(overlays, PhoneOfflineThemeOverlayPreset.ALL_ON),
+        )
+    }
+
+    @Test
+    fun mapsforgeMenuCallbackUsesExplicitOverlayIdsAndKeepsXmlDefaultsWhenUnchanged() {
+        val menu = XmlRenderThemeStyleMenu("test", "style", "en")
+        val style = menu.createLayer("style", true, true).apply { addCategory("base") }
+        style.addOverlay(menu.createLayer("routes", false, true).apply { addCategory("route-lines") })
+        style.addOverlay(menu.createLayer("contours", false, false).apply { addCategory("contour-lines") })
+
+        assertEquals(setOf("base", "route-lines"), enabledPhoneOfflineThemeCategories(style, null))
+        assertEquals(setOf("base"), enabledPhoneOfflineThemeCategories(style, emptySet()))
+        assertEquals(setOf("base", "contour-lines"), enabledPhoneOfflineThemeCategories(style, setOf("contours")))
     }
 }

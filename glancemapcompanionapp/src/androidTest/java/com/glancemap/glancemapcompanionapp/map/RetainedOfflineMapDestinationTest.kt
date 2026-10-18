@@ -49,7 +49,9 @@ class RetainedOfflineMapDestinationTest {
             MaterialTheme {
                 RetainedMapDestination(
                     area = area.value,
-                    mapContent = { visible -> offlineMapSurface(state.value, callbacks(attempts), isVisible = visible) },
+                    mapContent = { visible ->
+                        offlineMapSurface(state.value, callbacks(attempts), isVisible = visible)
+                    },
                 ) {
                     if (area.value != CompanionHomeArea.MAP) Text(area.value.name)
                 }
@@ -76,7 +78,9 @@ class RetainedOfflineMapDestinationTest {
             assertEquals(attemptsBeforeHiddenUpdate, attempts.get())
             area.value = CompanionHomeArea.MAP
         }
-        composeRule.waitUntil(timeoutMillis = 5_000) { initial.model.mapViewPosition.center.latitude == latest.latitude }
+        composeRule.waitUntil(
+            timeoutMillis = 5_000,
+        ) { initial.model.mapViewPosition.center.latitude == latest.latitude }
         composeRule.runOnIdle {
             assertSame(initial, findMap(composeRule.activity.window.decorView))
             assertEquals(latest.longitude, initial.model.mapViewPosition.center.longitude, 0.0)

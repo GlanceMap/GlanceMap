@@ -136,6 +136,7 @@ internal data class PhoneMapRouteSegment(
     val points: List<GeoPoint>,
     val elevationMeters: List<Double?> = emptyList(),
     val recordingStartIndex: Int? = null,
+    val isGap: Boolean = false,
 ) {
     init {
         require(elevationMeters.isEmpty() || elevationMeters.size == points.size)
@@ -148,21 +149,33 @@ internal fun phoneRecordingOverlay(
     displayName: String,
 ): PhoneMapGpxOverlay? {
     if (!state.session.isActive || state.points.size < 2) return null
-    val starts = (state.segmentStartIndices + 0).distinct().sorted()
-    val segments =
-        starts.mapIndexedNotNull { segmentIndex, startIndex ->
+    val starts = (state.segmentStartIndices + 0).distinct().sorted().filter { it in state.points.indices }
+    val segments = buildList {
+        starts.forEachIndexed { segmentIndex, startIndex ->
             val endIndex = starts.getOrNull(segmentIndex + 1) ?: state.points.size
+            if (segmentIndex > 0) {
+                val previousPoint = state.points[startIndex - 1]
+                val nextPoint = state.points[startIndex]
+                add(
+                    PhoneMapRouteSegment(
+                        points = listOf(previousPoint.location, nextPoint.location),
+                        recordingStartIndex = startIndex - 1,
+                        isGap = true,
+                    ),
+                )
+            }
             val segmentSize = endIndex - startIndex
             if (segmentSize >= 2) {
-                PhoneMapRouteSegment(
-                    points = RecordingGeoPointView(state.points, startIndex, segmentSize),
-                    elevationMeters = RecordingElevationView(state.points, startIndex, segmentSize),
-                    recordingStartIndex = startIndex,
+                add(
+                    PhoneMapRouteSegment(
+                        points = RecordingGeoPointView(state.points, startIndex, segmentSize),
+                        elevationMeters = RecordingElevationView(state.points, startIndex, segmentSize),
+                        recordingStartIndex = startIndex,
+                    ),
                 )
-            } else {
-                null
             }
         }
+    }
     return segments.takeIf { it.isNotEmpty() }?.let { renderSegments ->
         PhoneMapGpxOverlay(
             id = PHONE_RECORDING_OVERLAY_ID,
@@ -204,14 +217,30 @@ internal fun PhoneMapGpxTrack.toRouteSegments(): List<PhoneMapRouteSegment> {
     if (currentSegment.isNotEmpty()) {
         segments += currentSegment
     }
-    return segments
-        .filter { segment -> segment.size >= MINIMUM_RENDERABLE_SEGMENT_POINTS }
-        .map { segment ->
-            PhoneMapRouteSegment(
-                points = segment.map(TrailPoint::location),
-                elevationMeters = segment.map(TrailPoint::elevationMeters),
-            )
+    return buildList {
+        segments.forEachIndexed { index, segment ->
+            if (index > 0) {
+                val previousPoint = segments[index - 1].lastOrNull()
+                val nextPoint = segment.firstOrNull()
+                if (previousPoint != null && nextPoint != null) {
+                    add(
+                        PhoneMapRouteSegment(
+                            points = listOf(previousPoint.location, nextPoint.location),
+                            isGap = true,
+                        ),
+                    )
+                }
+            }
+            if (segment.size >= MINIMUM_RENDERABLE_SEGMENT_POINTS) {
+                add(
+                    PhoneMapRouteSegment(
+                        points = segment.map(TrailPoint::location),
+                        elevationMeters = segment.map(TrailPoint::elevationMeters),
+                    ),
+                )
+            }
         }
+    }
 }
 
 internal data class PhoneMapRouteBounds(

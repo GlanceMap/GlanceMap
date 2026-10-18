@@ -13,7 +13,10 @@ internal fun phoneMapCompassPresentation(
     mapMode: PhoneMapMode,
     headingDegrees: Float?,
 ): PhoneMapCompassPresentation {
-    if (mapMode.isOffline) return PhoneMapCompassPresentation(0f, null, 0f)
+    if (mapMode.isOffline) {
+        val bearing = mapMode.manualBearingDegrees?.let(::normalizePhoneHeadingDegrees) ?: 0f
+        return PhoneMapCompassPresentation(bearing, null, phoneMapNorthIndicatorRotationDegrees(bearing))
+    }
     val heading = headingDegrees?.takeIf(Float::isFinite)?.let(::normalizePhoneHeadingDegrees)
     val automaticBearing =
         when (mapMode.orientation) {

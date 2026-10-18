@@ -24,6 +24,7 @@ class PhoneMapSettingsTest {
         assertFalse(settings.liveDistanceEnabled)
         assertFalse(settings.distanceMeasurementEnabled)
         assertFalse(settings.hillShadingEnabled)
+        assertFalse(settings.tiltedViewEnabled)
         assertTrue(settings.onlineElevationEnabled)
         assertFalse(settings.reliefOverlayEnabled)
         assertEquals(100, settings.reliefOverlayOpacityPercent)
@@ -31,6 +32,36 @@ class PhoneMapSettingsTest {
         assertEquals(PhoneMapNorthReferenceMode.TRUE, settings.northReferenceMode)
         assertEquals(PhoneOfflineDemSource.STANDARD, settings.demSource)
         assertTrue(settings.hiddenOnlineSources.isEmpty())
+        assertEquals(PhoneOnlineMapSource.entries, settings.onlineSourceOrder)
+    }
+
+    @Test
+    fun onlineSourceOrderRepairsMissingEntriesAndMovesVisibleMapsWithoutReorderingUnavailableMaps() {
+        val allSources = PhoneOnlineMapSource.entries
+        val normalized =
+            normalizePhoneOnlineSourceOrder(
+                listOf(PhoneOnlineMapSource.CYCLOSM, PhoneOnlineMapSource.CYCLOSM),
+            )
+        assertEquals(
+            listOf(PhoneOnlineMapSource.CYCLOSM) + allSources.filterNot { it == PhoneOnlineMapSource.CYCLOSM },
+            normalized,
+        )
+
+        val visible =
+            listOf(PhoneOnlineMapSource.OPEN_TOPO, PhoneOnlineMapSource.CYCLOSM, PhoneOnlineMapSource.OPEN_STREET_MAP)
+        val reordered =
+            reorderPhoneOnlineSourceOrder(
+                allSources,
+                visible,
+                PhoneOnlineMapSource.OPEN_TOPO,
+                targetIndex = 1,
+            )
+
+        assertEquals(
+            listOf(PhoneOnlineMapSource.OPEN_STREET_MAP, PhoneOnlineMapSource.OPEN_TOPO, PhoneOnlineMapSource.CYCLOSM),
+            reordered.filter { it in visible },
+        )
+        assertEquals(allSources.filterNot { it in visible }, reordered.filterNot { it in visible })
     }
 
     @Test

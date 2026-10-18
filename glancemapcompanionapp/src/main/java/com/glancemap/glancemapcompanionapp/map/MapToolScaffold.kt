@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -49,6 +50,7 @@ internal data class MapToolScaffoldState(
     val panel: MapToolPanelState,
     val launcherExpanded: Boolean = false,
     val fullScreenPage: Boolean = false,
+    val maptoolkitAttributionVisible: Boolean = false,
 )
 
 /** Hosts the map and every tool panel without letting a panel own map renderer state. */
@@ -167,38 +169,54 @@ private fun mapToolMapSurface(
 ) {
     var guidanceQuickControlExpanded by remember { mutableStateOf(false) }
     var recordingQuickControlExpanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        mapContent()
-        if (!presentation.fullScreenPage) {
-            Column(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .widthIn(max = 360.dp)
-                        .padding(bottom = mapToolLauncherHeight + 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PhoneGuidanceQuickControl(
-                    expanded = guidanceQuickControlExpanded,
-                    onExpandedChange = { expanded ->
-                        guidanceQuickControlExpanded = expanded
-                        if (expanded) recordingQuickControlExpanded = false
-                    },
-                )
-                PhoneRecordingQuickControl(
-                    expanded = recordingQuickControlExpanded,
-                    onExpandedChange = { expanded ->
-                        recordingQuickControlExpanded = expanded
-                        if (expanded) guidanceQuickControlExpanded = false
-                    },
+    Column(modifier = modifier) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            mapContent()
+            if (!presentation.fullScreenPage) {
+                Row(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .widthIn(max = 360.dp)
+                            .fillMaxWidth()
+                            .padding(bottom = mapToolLauncherHeight + 8.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                        PhoneGuidanceQuickControl(
+                            expanded = guidanceQuickControlExpanded,
+                            onExpandedChange = { expanded ->
+                                guidanceQuickControlExpanded = expanded
+                                if (expanded) recordingQuickControlExpanded = false
+                            },
+                        )
+                    }
+                    // Keep the recenter button's 48dp touch target and an 8dp gap on each side clear.
+                    Spacer(Modifier.width(64.dp))
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                    ) {
+                        PhoneRecordingQuickControl(
+                            expanded = recordingQuickControlExpanded,
+                            onExpandedChange = { expanded ->
+                                recordingQuickControlExpanded = expanded
+                                if (expanded) guidanceQuickControlExpanded = false
+                            },
+                        )
+                    }
+                }
+                mapToolLauncher(
+                    presentation = presentation,
+                    actions = actions,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 )
             }
-            mapToolLauncher(
-                presentation = presentation,
-                actions = actions,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            )
+        }
+        if (presentation.maptoolkitAttributionVisible) {
+            phoneMaptoolkitAttribution()
         }
     }
 }
@@ -240,12 +258,14 @@ private fun mapToolPanelHeader(
 ) {
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
+    val libraryTabs = tool == MapTool.LIBRARY && state.contentMode == MapToolContentMode.MAIN
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 44.dp)
-                .padding(start = 16.dp),
+                .padding(start = if (libraryTabs) 4.dp else 16.dp)
+                .testTag("map-tool-panel-header"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (fullScreenPage || state.hasFeatureSettingsBack) {
@@ -304,19 +324,21 @@ private fun RowScope.mapToolHeaderTitle(
         modifier = Modifier.weight(1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text =
-                stringResource(
-                    if (state.contentMode == MapToolContentMode.FEATURE_SETTINGS) {
-                        state.featureSettingsSection.titleResource(tool)
-                    } else {
-                        tool.titleResource(state.contentMode)
-                    },
-                ),
-            modifier = Modifier.weight(1f, fill = false),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (tool != MapTool.LIBRARY || state.contentMode != MapToolContentMode.MAIN) {
+            Text(
+                text =
+                    stringResource(
+                        if (state.contentMode == MapToolContentMode.FEATURE_SETTINGS) {
+                            state.featureSettingsSection.titleResource(tool)
+                        } else {
+                            tool.titleResource(state.contentMode)
+                        },
+                    ),
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         headerContent(tool)
         if (!state.hasFeatureSettingsBack && tool in setOf(MapTool.POI, MapTool.GPX, MapTool.MAPS)) {
             IconButton(onClick = onFeatureSettings) {

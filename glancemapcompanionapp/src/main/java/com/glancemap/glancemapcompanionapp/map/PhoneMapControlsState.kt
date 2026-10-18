@@ -37,13 +37,14 @@ internal data class PhoneMapMode(
         get() = isDetachedFromLocation && !isOffline
 
     val allowsManualRotation: Boolean
-        get() = !isOffline && (follow == PhoneMapFollowMode.FREE || orientation != PhoneMapOrientation.HEADING_UP)
+        get() = isOffline || follow == PhoneMapFollowMode.FREE || orientation != PhoneMapOrientation.HEADING_UP
 
-    fun toggleOfflineMode(): PhoneMapMode = if (isOffline) PhoneMapMode() else PhoneMapMode(follow = PhoneMapFollowMode.FREE, isOffline = true)
+    fun toggleOfflineMode(): PhoneMapMode =
+        if (isOffline) PhoneMapMode() else PhoneMapMode(follow = PhoneMapFollowMode.FREE, isOffline = true)
 
     fun toggleOrientation(): PhoneMapMode =
         if (isOffline) {
-            this
+            copy(orientation = PhoneMapOrientation.NORTH_UP, manualBearingDegrees = null)
         } else {
             copy(
                 orientation =
@@ -66,11 +67,12 @@ internal data class PhoneMapMode(
             )
         }
 
-    fun withManualBearing(bearingDegrees: Float): PhoneMapMode = if (allowsManualRotation) copy(manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees)) else this
+    fun withManualBearing(bearingDegrees: Float): PhoneMapMode =
+        if (allowsManualRotation) copy(manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees)) else this
 
     fun detachAfterManualRotation(bearingDegrees: Float): PhoneMapMode =
         if (isOffline) {
-            this
+            withManualBearing(bearingDegrees)
         } else {
             copy(
                 follow = PhoneMapFollowMode.FREE,

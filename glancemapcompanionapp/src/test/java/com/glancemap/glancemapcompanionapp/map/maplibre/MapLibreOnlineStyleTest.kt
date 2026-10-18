@@ -36,6 +36,17 @@ class MapLibreOnlineStyleTest {
     }
 
     @Test
+    fun comparisonFadesUnsetHillshadeFromItsDefaultStrength() {
+        val original = PropertyValue<Float>("hillshade-exaggeration", null)
+        listOf(0f, 0.5f, 1f).forEach { alpha ->
+            assertEquals(
+                Expression.product(Expression.literal(alpha), Expression.literal(0.5f)),
+                scaledBasemapOpacity(original, alpha),
+            )
+        }
+    }
+
+    @Test
     fun comparisonOpacityKeepsInterpolationAtTheTopLevel() {
         val expression =
             Expression.interpolate(

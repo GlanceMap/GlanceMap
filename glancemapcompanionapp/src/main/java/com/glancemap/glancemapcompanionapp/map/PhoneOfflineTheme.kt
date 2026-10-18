@@ -6,7 +6,6 @@ import android.util.Log
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderThemeMenuCallback
-import org.mapsforge.map.rendertheme.XmlRenderThemeStyleLayer
 import org.mapsforge.map.rendertheme.XmlThemeResourceProvider
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
 import java.io.InputStream
@@ -20,6 +19,7 @@ private const val FILE_RESOURCE_PREFIX = "file:"
 internal data class PhoneOfflineThemeConfig(
     val themeId: String,
     val styleId: String,
+    val enabledOverlayLayerIds: Set<String>? = null,
 )
 
 internal data class PhoneOfflineThemeStyle(
@@ -208,6 +208,9 @@ internal object PhoneOfflineThemeCatalog {
         return PhoneOfflineThemeConfig(theme.id, style)
     }
 
+    fun resolve(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig =
+        resolve(config.themeId, config.styleId).copy(enabledOverlayLayerIds = config.enabledOverlayLayerIds)
+
     fun themeFor(themeId: String): PhoneOfflineTheme = themes.firstOrNull { it.id == themeId } ?: elevate
 
     fun renderTheme(
@@ -215,7 +218,7 @@ internal object PhoneOfflineThemeCatalog {
         context: Context,
         onResourceProviderFailure: () -> Unit = {},
     ): PhoneOfflineRenderTheme {
-        val resolved = resolve(config.themeId, config.styleId)
+        val resolved = resolve(config)
         return runCatching {
             PhoneOfflineRenderTheme(
                 theme = buildTheme(resolved, context, onResourceProviderFailure),
@@ -241,7 +244,7 @@ internal object PhoneOfflineThemeCatalog {
                     context = context,
                     assetRoot = ELEVATE_THEME_ASSET_ROOT,
                     xmlFileName = "Elevate.xml",
-                    styleId = config.styleId,
+                    themeConfig = config,
                     onResourceProviderFailure = onResourceProviderFailure,
                 )
             ELEVATE_WINTER_THEME_ID ->
@@ -254,7 +257,7 @@ internal object PhoneOfflineThemeCatalog {
                             "elevate-winter/"
                         },
                     xmlFileName = "Elevate.xml",
-                    styleId = ELEVATE_WINTER_STYLE_ID,
+                    themeConfig = config.copy(styleId = ELEVATE_WINTER_STYLE_ID),
                     onResourceProviderFailure = onResourceProviderFailure,
                 )
             HIKE_RIDE_SIGHT_THEME_ID,
@@ -268,7 +271,7 @@ internal object PhoneOfflineThemeCatalog {
                     context = context,
                     assetRoot = checkNotNull(theme.assetRoot),
                     xmlFileName = checkNotNull(theme.xmlFileName),
-                    styleId = config.styleId,
+                    themeConfig = config,
                     onResourceProviderFailure = onResourceProviderFailure,
                 )
             }
@@ -283,7 +286,7 @@ internal object PhoneOfflineThemeCatalog {
                         } else {
                             "OS Map V4 Day.xml"
                         },
-                    styleId = selection?.realStyleId ?: "os-landranger",
+                    themeConfig = config.copy(styleId = selection?.realStyleId ?: "os-landranger"),
                     onResourceProviderFailure = onResourceProviderFailure,
                 )
             }
@@ -295,14 +298,14 @@ internal object PhoneOfflineThemeCatalog {
         context: Context,
         assetRoot: String,
         xmlFileName: String,
-        styleId: String,
+        themeConfig: PhoneOfflineThemeConfig,
         onResourceProviderFailure: () -> Unit,
     ): AssetsRenderTheme =
         AssetsRenderTheme(
             context.assets,
             assetRoot,
             xmlFileName,
-            styleMenuCallback(styleId),
+            styleMenuCallback(themeConfig.styleId, themeConfig.enabledOverlayLayerIds),
         ).apply {
             setResourceProvider(
                 PhoneOfflineThemeAssetResourceProvider(
@@ -337,27 +340,19 @@ internal object PhoneOfflineThemeCatalog {
             else -> null
         }?.takeIf { it.realStyleId.isNotBlank() }
 
-    private fun styleMenuCallback(styleId: String): XmlRenderThemeMenuCallback =
+    private fun styleMenuCallback(
+        styleId: String,
+        enabledOverlayLayerIds: Set<String>?,
+    ): XmlRenderThemeMenuCallback =
         XmlRenderThemeMenuCallback { menu ->
             val style =
                 menu.getLayer(styleId)
                     ?: menu.getLayer(menu.defaultValue)
                     ?: menu.layers.values.firstOrNull { it.isVisible }
                     ?: return@XmlRenderThemeMenuCallback emptySet()
-            buildSet {
-                addEnabledCategories(style, this)
-            }
+            enabledPhoneOfflineThemeCategories(style, enabledOverlayLayerIds)
         }
 
-    private fun addEnabledCategories(
-        layer: XmlRenderThemeStyleLayer,
-        categories: MutableSet<String>,
-    ) {
-        categories.addAll(layer.categories)
-        layer.overlays.filter { it.isEnabled }.forEach { overlay ->
-            addEnabledCategories(overlay, categories)
-        }
-    }
 }
 
 /** Mapsforge resolves `file:` resources from disk unless this provider opens bundled assets. */
@@ -400,8 +395,8 @@ internal fun resolvePhoneOfflineThemeAssetPath(
 internal class PhoneOfflineThemePreferences(
     context: Context,
 ) {
-    private val preferences =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun load(): PhoneOfflineThemeConfig {
         val requested =
@@ -410,41 +405,61 @@ internal class PhoneOfflineThemePreferences(
                 styleId = preferences.getString(KEY_STYLE_ID, null).orEmpty(),
             )
         val resolved = PhoneOfflineThemeCatalog.resolve(requested.themeId, requested.styleId)
-        if (resolved != requested) save(resolved)
-        return resolved
+        if (resolved != requested) return save(resolved)
+        return resolved.withSavedOverlays(BASE_ROLE)
     }
 
-    fun save(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig {
-        val resolved = PhoneOfflineThemeCatalog.resolve(config.themeId, config.styleId)
-        preferences
-            .edit()
-            .putString(KEY_THEME_ID, resolved.themeId)
-            .putString(KEY_STYLE_ID, resolved.styleId)
-            .apply()
-        return resolved
-    }
+    fun save(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig = save(config, BASE_ROLE)
 
     fun loadComparison(): PhoneOfflineThemeConfig {
         val base = load()
-        return PhoneOfflineThemeCatalog.resolve(
-            preferences.getString("comparison_theme_id", base.themeId),
-            preferences.getString("comparison_style_id", base.styleId),
-        )
+        return PhoneOfflineThemeCatalog
+            .resolve(
+                preferences.getString(KEY_COMPARISON_THEME_ID, base.themeId),
+                preferences.getString(KEY_COMPARISON_STYLE_ID, base.styleId),
+            ).withSavedOverlays(COMPARISON_ROLE)
     }
 
-    fun saveComparison(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig {
-        val resolved = PhoneOfflineThemeCatalog.resolve(config.themeId, config.styleId)
-        preferences
-            .edit()
-            .putString("comparison_theme_id", resolved.themeId)
-            .putString("comparison_style_id", resolved.styleId)
-            .apply()
-        return resolved
+    fun saveComparison(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig = save(config, COMPARISON_ROLE)
+
+    private fun save(
+        config: PhoneOfflineThemeConfig,
+        role: String,
+    ): PhoneOfflineThemeConfig {
+        val resolved = PhoneOfflineThemeCatalog.resolve(config)
+        val overlayKey = overlayPreferenceKey(role, resolved)
+        val editor = preferences.edit()
+        if (role == BASE_ROLE) {
+            editor.putString(KEY_THEME_ID, resolved.themeId).putString(KEY_STYLE_ID, resolved.styleId)
+        } else {
+            editor
+                .putString(KEY_COMPARISON_THEME_ID, resolved.themeId)
+                .putString(KEY_COMPARISON_STYLE_ID, resolved.styleId)
+        }
+        config.enabledOverlayLayerIds?.let { selected ->
+            val availableIds =
+                PhoneOfflineThemeOverlayCatalog.overlaysFor(resolved, appContext).mapTo(hashSetOf()) { it.id }
+            editor.putStringSet(overlayKey, selected.intersect(availableIds))
+        }
+        editor.apply()
+        return resolved.withSavedOverlays(role)
     }
+
+    private fun PhoneOfflineThemeConfig.withSavedOverlays(role: String): PhoneOfflineThemeConfig =
+        copy(enabledOverlayLayerIds = preferences.getStringSet(overlayPreferenceKey(role, this), null)?.toSet())
+
+    private fun overlayPreferenceKey(
+        role: String,
+        config: PhoneOfflineThemeConfig,
+    ): String = "overlay_ids:$role:${config.themeId}:${config.styleId}"
 
     private companion object {
         const val PREFERENCES_NAME = "phone_offline_theme"
         const val KEY_THEME_ID = "theme_id"
         const val KEY_STYLE_ID = "style_id"
+        const val KEY_COMPARISON_THEME_ID = "comparison_theme_id"
+        const val KEY_COMPARISON_STYLE_ID = "comparison_style_id"
+        const val BASE_ROLE = "base"
+        const val COMPARISON_ROLE = "comparison"
     }
 }

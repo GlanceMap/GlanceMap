@@ -6,9 +6,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.glancemap.glancemapcompanionapp.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -37,6 +43,10 @@ class PhoneMapCombinedGesturesTest {
 
     @Test fun offlineCompassPinchKeepsCenterAndDisablesFingerRotation() = exerciseGesture(false, PhoneMapMode(orientation = PhoneMapOrientation.HEADING_UP))
 
+    @Test fun offlineBrowsingCanRotateDuringPinchAndResetNorthUpInPlace() = exerciseGesture(false, PhoneMapMode().toggleOfflineMode())
+
+    @Test fun offlineBrowsingCanPinchAfterRotationAndResetNorthUpInPlace() = exerciseGesture(true, PhoneMapMode().toggleOfflineMode())
+
     private fun exerciseGesture(
         rotateFirst: Boolean,
         mode: PhoneMapMode = PhoneMapMode(follow = PhoneMapFollowMode.FREE),
@@ -50,25 +60,43 @@ class PhoneMapCombinedGesturesTest {
         val measurements = AtomicInteger()
         val pans = AtomicInteger()
         val visible = mutableStateOf(true)
-        val callbacks = callbacks(rotations, measurements).copy(onUserPan = { pans.incrementAndGet() })
+        val currentMode = mutableStateOf(mode)
+        val callbacks =
+            callbacks(rotations, measurements).copy(
+                onUserPan = { pans.incrementAndGet() },
+                onUserRotation = { bearing ->
+                    rotations += bearing
+                    currentMode.value = currentMode.value.withManualBearing(bearing)
+                },
+            )
         try {
             composeRule.runOnUiThread { AndroidGraphicFactory.createInstance(activity.application) }
             composeRule.setContent {
                 if (visible.value) {
-                    offlineMapSurface(
-                        PhoneOfflineMapSurfaceState(
-                            map = PhoneOfflineMap(fixture),
-                            themeConfig = PhoneOfflineThemeCatalog.defaultConfig,
-                            initialCamera = defaultPhoneMapCamera,
-                            measurementEnabled = true,
-                            gpxOverlays = emptyList(),
-                            pois = emptyList(),
-                            mapMode = mode,
-                            mapSettings = PhoneMapSettings(markerAnchor = anchor),
-                            cameraCommand = null,
-                        ),
-                        callbacks,
-                    )
+                    Box {
+                        offlineMapSurface(
+                            PhoneOfflineMapSurfaceState(
+                                map = PhoneOfflineMap(fixture),
+                                themeConfig = PhoneOfflineThemeCatalog.defaultConfig,
+                                initialCamera = defaultPhoneMapCamera,
+                                measurementEnabled = true,
+                                gpxOverlays = emptyList(),
+                                pois = emptyList(),
+                                mapMode = currentMode.value,
+                                mapSettings = PhoneMapSettings(markerAnchor = anchor),
+                                cameraCommand = null,
+                            ),
+                            callbacks,
+                        )
+                        if (mode.isOffline) {
+                            PhoneMapModeButton(
+                                mode = currentMode.value,
+                                onClick = { currentMode.value = currentMode.value.toggleOrientation() },
+                                onToggleOffline = { currentMode.value = currentMode.value.toggleOfflineMode() },
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
+                        }
+                    }
                 }
             }
             composeRule.waitUntil(5_000) { findMap(activity.window.decorView)?.width?.let { it > 0 } == true }
@@ -128,6 +156,19 @@ class PhoneMapCombinedGesturesTest {
                     assertEquals("A pinch must not detach follow mode", 0, pans.get())
                 }
                 assertEquals("Measurement must not steal a pinch or twist", 0, measurements.get())
+            }
+            if (mode.isOffline) {
+                val position = composeRule.runOnIdle { requireNotNull(findMap(activity.window.decorView)).model.mapViewPosition.mapPosition }
+                val description = activity.getString(R.string.map_mode_content_description, activity.getString(R.string.map_mode_offline))
+                composeRule.onNodeWithContentDescription(description).performClick()
+                composeRule.waitUntil(5_000) { findMap(activity.window.decorView)?.mapRotation?.degrees == 0f }
+                composeRule.runOnIdle {
+                    val map = requireNotNull(findMap(activity.window.decorView))
+                    assertEquals("Center button must restore north up", 0f, map.mapRotation.degrees, 0.01f)
+                    assertEquals("Reset must preserve the viewport", position.latLong, map.model.mapViewPosition.center)
+                    assertEquals("Reset must preserve zoom", position.zoom, map.model.mapViewPosition.zoom, 0.001)
+                    assertEquals(PhoneMapMode().toggleOfflineMode(), currentMode.value)
+                }
             }
         } finally {
             composeRule.runOnIdle { visible.value = false }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="poi_creation_choose_location">Where would you like to add your POI?</string>
+    <string name="poi_creation_pick_map">Pick on map</string>
+    <string name="poi_creation_pick_map_hint">Tap a point or position the center pointer.</string>
+    <string name="poi_creation_type_coordinates">Type coordinates</string>
+    <string name="poi_creation_coordinates_hint">Enter latitude and longitude in decimal degrees. Minus signs and decimal commas are supported.</string>
+    <string name="poi_creation_use_location">Use this location</string>
+    <string name="poi_creation_back">Back to location choices</string>
+    <string name="poi_creation_latitude_range">Between −90 and 90</string>
+    <string name="poi_creation_longitude_range">Between −180 and 180</string>
+    <string name="poi_creation_name_hint">Optional. Leave empty to use Point.</string>
+    <string name="poi_creation_saved_in_library">Saved in your POI library.</string>
+</resources>

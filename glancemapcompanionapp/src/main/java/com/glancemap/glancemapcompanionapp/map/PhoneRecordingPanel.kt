@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -405,7 +407,7 @@ internal fun PhoneRecordingPanel(
     }
 }
 
-/** Compact control remains available above the map Tools bar while the recording panel is closed. */
+/** Compact control stays beside recenter while the recording panel is closed. */
 @Composable
 internal fun PhoneRecordingQuickControl(
     expanded: Boolean,
@@ -437,7 +439,7 @@ internal fun PhoneRecordingQuickControl(
     val contentColor = if (paused) phoneRecordingPausedContentColor else Color.White
 
     Surface(
-        modifier = modifier,
+        modifier = modifier.testTag("phone-recording-quick-control"),
         shape = RoundedCornerShape(24.dp),
         color = containerColor,
         contentColor = contentColor,
@@ -459,7 +461,12 @@ internal fun PhoneRecordingQuickControl(
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
-                Text(stringResource(statusResource), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    stringResource(statusResource),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Icon(
                     imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                     contentDescription =
@@ -470,7 +477,7 @@ internal fun PhoneRecordingQuickControl(
                 )
             }
             if (expanded) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
                         enabled = !busy,
                         onClick = {

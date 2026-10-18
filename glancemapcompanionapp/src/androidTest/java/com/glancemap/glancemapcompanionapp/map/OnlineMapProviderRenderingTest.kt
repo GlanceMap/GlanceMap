@@ -21,8 +21,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.ColorReliefLayer
+import org.maplibre.android.style.layers.HillshadeLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
+import org.maplibre.android.style.layers.PropertyValue
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
@@ -50,6 +54,8 @@ class OnlineMapProviderRenderingTest {
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
                 PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+                PhoneOnlineMapSource.MAPTOOLKIT_HIKING,
+                PhoneOnlineMapSource.MAPTOOLKIT_CYCLING,
             )
         sources.forEach { source ->
             val currentLabel = PhoneMapRendererCatalog.onlineSourceLabel(selected.value)
@@ -96,7 +102,10 @@ class OnlineMapProviderRenderingTest {
                 val opacity = MapLibreBasemapOpacity(style)
                 val overlay = LineLayer("app-overlay", "fixture").withProperties(lineOpacity(0.9f))
                 style.addLayer(overlay)
+                opacity.apply(0f)
+                assertTerrainOpacity(style, 0f)
                 opacity.apply(0.5f)
+                assertTerrainOpacity(style, 0.5f)
                 assertEquals(0.9f, requireNotNull(overlay.lineOpacity.value), 0f)
                 val zoomLayer = requireNotNull(style.getLayerAs<LineLayer>("zoom-line"))
                 val zoomExpression = requireNotNull(zoomLayer.lineOpacity.expression)
@@ -120,13 +129,43 @@ class OnlineMapProviderRenderingTest {
         }
     }
 
+    private fun assertTerrainOpacity(
+        style: Style,
+        alpha: Float,
+    ) {
+        val relief = requireNotNull(style.getLayerAs<ColorReliefLayer>("color-relief"))
+        val hillshade = requireNotNull(style.getLayerAs<HillshadeLayer>("hillshade"))
+        assertScaledProperty(relief.colorReliefOpacity, 0.8f, alpha)
+        assertScaledProperty(hillshade.hillshadeExaggeration, 0.5f, alpha)
+    }
+
+    private fun assertScaledProperty(
+        property: PropertyValue<Float>,
+        original: Float,
+        alpha: Float,
+    ) {
+        if (property.isExpression) {
+            assertEquals(
+                Expression.product(Expression.literal(alpha), Expression.literal(original)).toString(),
+                requireNotNull(property.expression).toString(),
+            )
+        } else {
+            assertEquals(original * alpha, requireNotNull(property.value), 0.001f)
+        }
+    }
+
     private companion object {
         val FIXTURE_STYLE =
             """
             {"version":8,
-             "sources":{"fixture":{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}},
+             "sources":{"fixture":{"type":"geojson","data":{"type":"FeatureCollection","features":[]}},
+               "dem":{"type":"raster-dem","tiles":[],"encoding":"terrarium"}},
              "layers":[
                {"id":"background","type":"background","paint":{"background-color":"#ffffff"}},
+               {"id":"color-relief","type":"color-relief","source":"dem",
+                "paint":{"color-relief-opacity":0.8}},
+               {"id":"hillshade","type":"hillshade","source":"dem",
+                "paint":{"hillshade-exaggeration":0.5}},
                {"id":"zoom-line","type":"line","source":"fixture",
                 "paint":{"line-opacity":["interpolate",["linear"],["zoom"],0,0.2,12,1]}},
                {"id":"labels","type":"symbol","source":"fixture"}

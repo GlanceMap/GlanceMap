@@ -1,0 +1,8 @@
+<resources>
+    <string name="map_route_tools_route_preview">Route preview</string>
+    <string name="map_route_tools_routed_preview">Routed preview</string>
+    <string name="map_route_tools_preview_updating">Updating route preview…</string>
+    <string name="map_route_tools_preview_failed">Could not update route preview.</string>
+    <string name="map_route_tools_preview_empty">BRouter returned no route geometry.</string>
+    <string name="map_route_tools_elevation_gain_loss">Ascent / descent</string>
+</resources>

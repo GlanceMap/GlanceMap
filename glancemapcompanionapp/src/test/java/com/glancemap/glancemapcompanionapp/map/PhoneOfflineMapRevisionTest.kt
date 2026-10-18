@@ -114,7 +114,22 @@ class PhoneOfflineMapRevisionTest {
         )
     }
 
-    private fun identity(map: PhoneOfflineMap) = PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, PhoneOfflineThemeCatalog.defaultConfig)
+    @Test
+    fun customOverlaySelectionUsesAThemeSpecificTileCache() {
+        val identity = identity(PhoneOfflineMap(File("alps.map")))
+        val customized =
+            identity.copy(
+                themeConfig = identity.themeConfig.copy(enabledOverlayLayerIds = setOf("elv-h_routes")),
+            )
+
+        assertNotEquals(
+            phoneMapsforgeTileCacheId(identity),
+            phoneMapsforgeTileCacheId(customized),
+        )
+    }
+
+    private fun identity(map: PhoneOfflineMap) =
+        PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, PhoneOfflineThemeCatalog.defaultConfig)
 
     private fun cacheId(map: PhoneOfflineMap) = phoneMapsforgeTileCacheId(identity(map))
 }

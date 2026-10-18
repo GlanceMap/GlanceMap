@@ -39,8 +39,7 @@ class PhoneMapModeButtonTest {
             }
         }
 
-        fun description(label: Int) =
-            composeRule.activity.getString(R.string.map_mode_content_description, composeRule.activity.getString(label))
+        fun description(label: Int) = composeRule.activity.getString(R.string.map_mode_content_description, composeRule.activity.getString(label))
 
         composeRule
             .onNodeWithContentDescription(
@@ -49,13 +48,17 @@ class PhoneMapModeButtonTest {
         composeRule.runOnIdle {
             assertTrue(mode.value.isOffline)
             assertEquals(0, taps)
+            mode.value = mode.value.withManualBearing(125f)
         }
         composeRule
             .onNodeWithContentDescription(
                 description(R.string.map_mode_offline),
             ).assertHasClickAction()
             .performClick()
-        composeRule.runOnIdle { assertTrue(mode.value.isOffline) }
+        composeRule.runOnIdle {
+            assertEquals(PhoneMapMode().toggleOfflineMode(), mode.value)
+            assertEquals(1, taps)
+        }
         composeRule
             .onNodeWithContentDescription(
                 description(R.string.map_mode_offline),

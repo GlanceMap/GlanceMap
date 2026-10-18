@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -28,7 +27,6 @@ internal fun mapToolsLayerPanel(
     actions: MapToolsLayerActions,
 ) {
     var themesExpanded by rememberSaveable { mutableStateOf(false) }
-    var terrainExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         if (state.comparison.layer != null) {
             layerComparisonMix(state.comparison, actions.onTransparencyChanged)
@@ -42,14 +40,6 @@ internal fun mapToolsLayerPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             layerMapSelectors(state, actions, onSameMapSelected = { themesExpanded = true })
-            Text(
-                stringResource(R.string.map_tools_maps_quick_display_heading),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            layerQuickDisplay(
-                state,
-                actions.onMapSettingsChanged,
-            )
             if (state.base is PhoneMapSource.Offline || state.comparison.layer is PhoneMapComparisonLayer.Offline) {
                 layerSection(
                     label = stringResource(R.string.map_layer_themes),
@@ -58,12 +48,14 @@ internal fun mapToolsLayerPanel(
                 )
                 if (themesExpanded) layerThemeControls(state, actions)
             }
-            layerSection(
-                label = stringResource(R.string.map_layer_terrain),
-                expanded = terrainExpanded,
-                onClick = { terrainExpanded = !terrainExpanded },
+            Text(
+                stringResource(R.string.map_tools_maps_quick_display_heading),
+                style = MaterialTheme.typography.titleSmall,
             )
-            if (terrainExpanded) layerTerrain(state, actions.onMapSettingsChanged)
+            layerQuickDisplay(
+                state,
+                actions.onMapSettingsChanged,
+            )
         }
     }
 }
@@ -109,17 +101,22 @@ private fun layerMapSelectors(
     onSameMapSelected: () -> Unit,
 ) {
     val base = state.base.asComparisonLayer(state.baseOnlineSource)
-    val allMaps =
-        state.onlineSources.map(PhoneMapComparisonLayer::Online) +
-            state.offlineMaps.map(PhoneMapComparisonLayer::Offline)
+    val sourceGroups =
+        mapPickerGroups(
+            onlineOptions = state.onlineSources.map(PhoneMapComparisonLayer::Online),
+            offlineOptions = state.offlineMaps.map(PhoneMapComparisonLayer::Offline),
+            onlineLabel = stringResource(R.string.map_layer_group_online),
+            offlineLabel = stringResource(R.string.map_layer_group_offline),
+        )
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             layerPicker(
                 label = stringResource(R.string.map_layer_base_source),
                 selected = comparisonLayerLabel(base),
-                options = allMaps.map { it to comparisonLayerLabel(it) },
+                options = emptyList(),
                 onSelect = actions.onBaseMapChanged,
                 tag = "layer-base-picker",
+                groups = sourceGroups,
             )
             if (base is PhoneMapComparisonLayer.Offline) {
                 Text(
@@ -130,8 +127,18 @@ private fun layerMapSelectors(
                 )
             }
         }
-        IconButton(onClick = actions.onSwap, enabled = state.comparison.layer != null) {
-            Icon(Icons.Filled.SwapHoriz, contentDescription = stringResource(R.string.map_layer_swap))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(onClick = actions.onSwap, enabled = state.comparison.layer != null) {
+                Icon(Icons.Filled.SwapHoriz, contentDescription = stringResource(R.string.map_layer_swap))
+            }
+            if (state.comparison.layer != null) {
+                IconButton(
+                    onClick = { actions.onLayerChanged(null) },
+                    modifier = Modifier.testTag("layer-clear-comparison"),
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_layer_clear))
+                }
+            }
         }
         Column(Modifier.weight(1f)) {
             layerComparisonPicker(state, actions, onSameMapSelected)
@@ -148,6 +155,22 @@ private fun layerMapSelectors(
 }
 
 @Composable
+private fun mapPickerGroups(
+    onlineOptions: List<PhoneMapComparisonLayer>,
+    offlineOptions: List<PhoneMapComparisonLayer>,
+    onlineLabel: String,
+    offlineLabel: String,
+): List<Pair<String, List<Pair<PhoneMapComparisonLayer, String>>>> =
+    buildList {
+        if (onlineOptions.isNotEmpty()) {
+            add(onlineLabel to onlineOptions.map { it to comparisonLayerLabel(it) })
+        }
+        if (offlineOptions.isNotEmpty()) {
+            add(offlineLabel to offlineOptions.map { it to comparisonLayerLabel(it) })
+        }
+    }
+
+@Composable
 private fun layerComparisonPicker(
     state: MapToolsLayerState,
     actions: MapToolsLayerActions,
@@ -158,15 +181,11 @@ private fun layerComparisonPicker(
     val options =
         comparisonLayerOptions(state.base, state.baseOnlineSource, state.offlineMaps, state.onlineSources)
             .filterNot { it == sameMapThemeOption }
-    val clearLabel = stringResource(R.string.map_layer_clear)
+    val onlineOptions = options.filterIsInstance<PhoneMapComparisonLayer.Online>()
+    val offlineOptions = options.filterIsInstance<PhoneMapComparisonLayer.Offline>()
     val sameMapThemeLabel = stringResource(R.string.map_layer_same_map_theme)
-    val comparisonOptions =
-        buildList<Pair<PhoneMapComparisonLayer?, String>> {
-            sameMapThemeOption?.let { add(it to sameMapThemeLabel) }
-            add(null to clearLabel)
-            addAll(options.map { it to comparisonLayerLabel(it) })
-        }
-    layerPicker<PhoneMapComparisonLayer?>(
+    val comparisonOptions = sameMapThemeOption?.let { listOf(it to sameMapThemeLabel) }.orEmpty()
+    layerPicker<PhoneMapComparisonLayer>(
         label = stringResource(R.string.map_layer_comparison),
         selected = state.comparison.layer?.let { comparisonLayerLabel(it) } ?: stringResource(R.string.map_layer_none),
         options = comparisonOptions,
@@ -181,7 +200,13 @@ private fun layerComparisonPicker(
             actions.onLayerChanged(layer)
         },
         tag = "layer-comparison-picker",
-        optionIcon = { if (it == null) Icons.Filled.Close else null },
+        groups =
+            mapPickerGroups(
+                onlineOptions = onlineOptions,
+                offlineOptions = offlineOptions,
+                onlineLabel = stringResource(R.string.map_layer_group_online),
+                offlineLabel = stringResource(R.string.map_layer_group_offline),
+            ),
     )
 }
 
@@ -211,9 +236,10 @@ private fun <T> layerPicker(
     options: List<Pair<T, String>>,
     onSelect: (T) -> Unit,
     tag: String,
-    optionIcon: ((T) -> ImageVector?)? = null,
+    groups: List<Pair<String, List<Pair<T, String>>>> = emptyList(),
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var expandedGroup by remember { mutableStateOf<String?>(null) }
     Box(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = {
             expanded = true
@@ -226,20 +252,42 @@ private fun <T> layerPicker(
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (value, title) ->
-                val icon = optionIcon?.invoke(value)
                 DropdownMenuItem(
                     text = { Text(title) },
-                    leadingIcon =
-                        if (icon != null) {
-                            { Icon(icon, contentDescription = null) }
-                        } else {
-                            null
-                        },
+                    trailingIcon = {
+                        if (value is PhoneMapComparisonLayer.Online) phoneMap3dCapabilityIcon()
+                    },
                     onClick = {
                         expanded = false
                         onSelect(value)
                     },
                 )
+            }
+            groups.forEach { (groupLabel, groupOptions) ->
+                DropdownMenuItem(
+                    text = { Text(groupLabel) },
+                    trailingIcon = {
+                        Icon(
+                            if (expandedGroup == groupLabel) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = {
+                        expandedGroup = if (expandedGroup == groupLabel) null else groupLabel
+                    },
+                )
+                if (expandedGroup == groupLabel) {
+                    groupOptions.forEach { (value, title) ->
+                        DropdownMenuItem(
+                            modifier = Modifier.padding(start = 12.dp),
+                            text = { Text(title) },
+                            onClick = {
+                                expanded = false
+                                onSelect(value)
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -270,6 +318,7 @@ private fun layerThemePicker(
         { onChange(PhoneOfflineThemeCatalog.resolve(theme.id, it)) },
         "layer-$side-style",
     )
+    phoneOfflineThemeOverlayControls(config, side, onChange)
 }
 
 @Composable

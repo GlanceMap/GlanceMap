@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_layer_quick_tilt">3D view</string>
+    <string name="map_tools_maps_tilted_view">Tilted map view</string>
+    <string name="map_tools_maps_3d_supported">3D view available</string>
+</resources>

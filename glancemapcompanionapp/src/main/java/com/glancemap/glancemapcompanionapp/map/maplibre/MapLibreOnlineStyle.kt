@@ -7,8 +7,10 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.BackgroundLayer
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.ColorReliefLayer
 import org.maplibre.android.style.layers.FillExtrusionLayer
 import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.HillshadeLayer
 import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PaintPropertyValue
@@ -55,6 +57,8 @@ private fun Layer.opacityProperties(): List<PropertyValue<Float>> =
     when (this) {
         is BackgroundLayer -> listOf(backgroundOpacity)
         is RasterLayer -> listOf(rasterOpacity)
+        is ColorReliefLayer -> listOf(colorReliefOpacity)
+        is HillshadeLayer -> listOf(hillshadeExaggeration)
         is FillLayer -> listOf(fillOpacity)
         is LineLayer -> listOf(lineOpacity)
         is SymbolLayer -> listOf(textOpacity, iconOpacity)
@@ -68,8 +72,13 @@ internal fun scaledBasemapOpacity(
     opacity: Float,
 ): Expression {
     val alpha = phoneMapLibreRasterOpacity(opacity)
+    val defaultValue = if (original.name == "hillshade-exaggeration") 0.5f else 1f
     val expression =
-        if (original.isExpression) requireNotNull(original.expression) else Expression.literal(original.value ?: 1f)
+        if (original.isExpression) {
+            requireNotNull(original.expression)
+        } else {
+            Expression.literal(original.value ?: defaultValue)
+        }
     val json = if (original.isExpression) JsonParser.parseString(expression.toString()).asJsonArray else null
     val firstOutput =
         when (json?.get(0)?.asString) {

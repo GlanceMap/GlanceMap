@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -234,6 +236,7 @@ internal fun PhoneGuidanceQuickControl(
     val arrow = guidance?.let(::guidanceArrow) ?: "↑"
 
     Surface(
+        modifier = Modifier.testTag("phone-guidance-quick-control"),
         shape = RoundedCornerShape(20.dp),
         color = background,
         contentColor = foreground,
@@ -277,6 +280,7 @@ internal fun PhoneGuidanceQuickControl(
                 )
             }
             if (expanded) {
+                Text(instructionLabel, style = MaterialTheme.typography.bodyMedium)
                 guidance?.let { state ->
                     Text(
                         state.trackTitle ?: ui.session?.trackTitle.orEmpty(),
@@ -291,7 +295,11 @@ internal fun PhoneGuidanceQuickControl(
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    FlowRow(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Text(
                             stringResource(
                                 R.string.phone_guidance_remaining,
@@ -307,9 +315,8 @@ internal fun PhoneGuidanceQuickControl(
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
-                        modifier = Modifier.weight(1f),
                         onClick = {
                             PhoneRecordingService.request(
                                 context,
@@ -327,7 +334,6 @@ internal fun PhoneGuidanceQuickControl(
                         Text(stringResource(if (paused) R.string.common_action_resume else R.string.common_action_pause))
                     }
                     TextButton(
-                        modifier = Modifier.weight(1f),
                         onClick = {
                             PhoneRecordingService.request(context, PhoneRecordingService.ACTION_GUIDANCE_STOP)
                             onExpandedChange(false)

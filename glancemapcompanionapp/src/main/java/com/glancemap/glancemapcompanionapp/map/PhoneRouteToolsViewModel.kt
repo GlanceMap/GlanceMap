@@ -15,6 +15,7 @@ import com.glancemap.trailcore.routing.BRouterRoutePreset
 import com.glancemap.trailcore.routing.BRouterRouteRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,6 +59,9 @@ internal data class PhoneRouteToolsUiState(
     val editableRoutes: List<PhoneMapGpxItem> = emptyList(),
     val selectedRouteId: String? = null,
     val isRouting: Boolean = false,
+    val multiPointRoutePreview: PhoneMultiPointRoutePreview? = null,
+    val isMultiPointPreviewLoading: Boolean = false,
+    val multiPointPreviewMessage: String? = null,
     val message: String? = null,
     val savedRouteId: String? = null,
 )
@@ -72,12 +76,16 @@ internal class PhoneRouteToolsViewModel(
     private val generalSettings = PhoneGeneralSettingsPreferences(application)
     private val _uiState = MutableStateFlow(PhoneRouteToolsUiState())
     val uiState: StateFlow<PhoneRouteToolsUiState> = _uiState.asStateFlow()
+    private var multiPointPreviewJob: Job? = null
+    private var multiPointPreviewGeneration = 0L
 
     fun open(editableRoutes: List<PhoneMapGpxItem> = emptyList()) {
+        invalidateMultiPointPreview()
         _uiState.value = PhoneRouteToolsUiState(isOpen = true, editableRoutes = editableRoutes)
     }
 
     fun chooseMode(mode: PhoneRouteCreationMode) {
+        invalidateMultiPointPreview()
         val toolKind =
             if (mode == PhoneRouteCreationMode.MODIFY_ROUTE) {
                 PhoneRouteToolKind.MODIFY
@@ -94,6 +102,7 @@ internal class PhoneRouteToolsViewModel(
     }
 
     fun chooseToolKind(kind: PhoneRouteToolKind) {
+        invalidateMultiPointPreview()
         val state = _uiState.value
         if (!state.isOpen || state.isRouting) return
         _uiState.value =
@@ -112,11 +121,15 @@ internal class PhoneRouteToolsViewModel(
                 coordinateLatitude = "",
                 coordinateLongitude = "",
                 selectedRouteId = null,
+                multiPointRoutePreview = null,
+                isMultiPointPreviewLoading = false,
+                multiPointPreviewMessage = null,
                 message = null,
             )
     }
 
     fun chooseModificationMode(mode: PhoneRouteModificationMode) {
+        invalidateMultiPointPreview()
         val state = _uiState.value
         if (!state.isOpen || state.mode != PhoneRouteCreationMode.MODIFY_ROUTE || state.isRouting) return
         _uiState.value =
@@ -144,6 +157,7 @@ internal class PhoneRouteToolsViewModel(
     }
 
     fun selectRoute(routeId: String) {
+        invalidateMultiPointPreview()
         val state = _uiState.value
         if (state.editableRoutes.any { route -> route.id == routeId && route.isEditable }) {
             _uiState.value =
@@ -155,6 +169,9 @@ internal class PhoneRouteToolsViewModel(
                         pointA = null,
                         pointB = null,
                         destination = null,
+                        multiPointRoutePreview = null,
+                        isMultiPointPreviewLoading = false,
+                        multiPointPreviewMessage = null,
                         message = null,
                     )
                 }
@@ -168,7 +185,8 @@ internal class PhoneRouteToolsViewModel(
     ) // Point selection is a finite mode/state transition and is kept atomic.
     fun selectMapPoint(point: GeoPoint) {
         val state = _uiState.value
-        if (!state.isOpen || state.isRouting) return
+        if (!state.isOpen || state.isRouting || state.isMultiPointPreviewLoading) return
+        invalidateMultiPointPreview()
         _uiState.value =
             when (state.mode) {
                 PhoneRouteCreationMode.CURRENT_TO_DESTINATION -> state.copy(destination = point, message = null)
@@ -239,7 +257,8 @@ internal class PhoneRouteToolsViewModel(
 
     fun resetMapPoints() {
         val state = _uiState.value
-        if (!state.isOpen || state.isRouting) return
+        if (!state.isOpen || state.isRouting || state.isMultiPointPreviewLoading) return
+        invalidateMultiPointPreview()
         _uiState.value =
             state.copy(
                 pointA = null,
@@ -254,20 +273,117 @@ internal class PhoneRouteToolsViewModel(
 
     fun undoLastMapPoint() {
         val state = _uiState.value
-        if (!state.isOpen || state.isRouting) return
+        if (!state.isOpen || state.isRouting || state.isMultiPointPreviewLoading) return
+        invalidateMultiPointPreview()
         _uiState.value = state.undoLastMapPoint()
+    }
+
+    fun previewMultiPointRoute(
+        settings: PhoneMapGpxSettings,
+        pacingSettings: PhoneGeneralSettings,
+    ) {
+        invalidateMultiPointPreview()
+        val state = _uiState.value
+        if (
+            !state.isOpen ||
+            state.isRouting ||
+            state.mode != PhoneRouteCreationMode.MULTI_POINT_CHAIN ||
+            state.chainPoints.size < MIN_CHAIN_POINTS
+        ) {
+            _uiState.value =
+                state.copy(
+                    multiPointRoutePreview = null,
+                    isMultiPointPreviewLoading = false,
+                    multiPointPreviewMessage = null,
+                )
+            return
+        }
+
+        val generation = multiPointPreviewGeneration
+        val requestState = state
+        val previousPreview =
+            state.multiPointRoutePreview?.takeIf {
+                it.chainPointCount == state.chainPoints.size - 1
+            }
+        _uiState.value =
+            state.copy(
+                multiPointRoutePreview = previousPreview,
+                isMultiPointPreviewLoading = true,
+                multiPointPreviewMessage = null,
+            )
+
+        multiPointPreviewJob =
+            viewModelScope.launch {
+                try {
+                    val output =
+                        withContext(Dispatchers.IO) {
+                            planner.createRoute(buildRequest(requestState, null))
+                        }
+                    val summary =
+                        withContext(Dispatchers.Default) {
+                            buildPhoneRoutedRouteSelectionPreview(
+                                points = output.points,
+                                settings = settings,
+                                generalSettings = pacingSettings,
+                            )
+                        } ?: error(
+                            getApplication<Application>().getString(R.string.map_route_tools_preview_empty),
+                        )
+                    if (generation != multiPointPreviewGeneration) return@launch
+                    val current = _uiState.value
+                    if (
+                        current.mode != PhoneRouteCreationMode.MULTI_POINT_CHAIN ||
+                        current.chainPoints != requestState.chainPoints ||
+                        current.isRouting
+                    ) {
+                        return@launch
+                    }
+                    _uiState.value =
+                        current.copy(
+                            multiPointRoutePreview =
+                                PhoneMultiPointRoutePreview(
+                                    chainPointCount = requestState.chainPoints.size,
+                                    points = output.points,
+                                    summary = summary,
+                                ),
+                            isMultiPointPreviewLoading = false,
+                            multiPointPreviewMessage = null,
+                        )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (generation != multiPointPreviewGeneration) return@launch
+                    _uiState.value =
+                        _uiState.value.copy(
+                            isMultiPointPreviewLoading = false,
+                            multiPointPreviewMessage =
+                                error.message?.takeIf(String::isNotBlank)
+                                    ?: getApplication<Application>().getString(
+                                        R.string.map_route_tools_preview_failed,
+                                    ),
+                        )
+                }
+            }
     }
 
     fun create(currentLocation: PhoneMapLocation?) {
         val state = _uiState.value
-        if (!state.isOpen || state.isRouting) return
+        if (!state.isOpen || state.isRouting || state.isMultiPointPreviewLoading) return
         val validationError = validate(state, currentLocation)
         if (validationError != null) {
             _uiState.value = state.copy(message = validationError)
             return
         }
 
-        _uiState.value = state.copy(isRouting = true, message = null, savedRouteId = null)
+        invalidateMultiPointPreview()
+        _uiState.value =
+            state.copy(
+                isRouting = true,
+                isMultiPointPreviewLoading = false,
+                multiPointPreviewMessage = null,
+                message = null,
+                savedRouteId = null,
+            )
         viewModelScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { createAndSave(state, currentLocation) } }
             result
@@ -682,7 +798,14 @@ internal class PhoneRouteToolsViewModel(
     }
 
     fun cancel() {
+        invalidateMultiPointPreview()
         _uiState.value = PhoneRouteToolsUiState()
+    }
+
+    private fun invalidateMultiPointPreview() {
+        multiPointPreviewGeneration += 1
+        multiPointPreviewJob?.cancel()
+        multiPointPreviewJob = null
     }
 
     fun dismissMessage() {

@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -41,6 +42,13 @@ class MapSourceDropdownTest {
             .forEach { source ->
                 composeRule.onNodeWithText(PhoneMapRendererCatalog.onlineSourceLabel(source)).assertDoesNotExist()
             }
+        assertEquals(
+            sources.size,
+            composeRule
+                .onAllNodesWithContentDescription(composeRule.activity.getString(R.string.map_tools_maps_3d_supported))
+                .fetchSemanticsNodes()
+                .size,
+        )
         composeRule.onNodeWithText(nextLabel).assertIsDisplayed().performClick()
         composeRule.onNodeWithText("$online: $nextLabel").assertIsDisplayed()
         composeRule.onNodeWithText(nextLabel).assertDoesNotExist()

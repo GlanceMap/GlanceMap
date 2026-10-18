@@ -22,6 +22,8 @@ internal enum class PhoneOnlineMapSource {
     USGS_TOPO,
     USGS_IMAGERY,
     ESRI_WORLD_IMAGERY,
+    MAPTOOLKIT_HIKING,
+    MAPTOOLKIT_CYCLING,
 
     ;
 
@@ -180,6 +182,23 @@ internal object PhoneMapRendererCatalog {
             styleUrl = "https://tiles.openfreemap.org/styles/liberty",
         )
 
+    private val maptoolkitHikingProvider =
+        OnlineMapProvider(
+            id = "maptoolkit_hiking",
+            displayName = "Maptoolkit Hiking",
+            attribution =
+                "<a href=\"https://www.maptoolkit.com/copyright/\">© Maptoolkit</a> " +
+                    "<a href=\"https://www.openstreetmap.org/copyright\">© Openstreetmap</a>",
+            styleUrl = "https://styles.maptoolkit.org/hiking.json",
+        )
+
+    private val maptoolkitCyclingProvider =
+        maptoolkitHikingProvider.copy(
+            id = "maptoolkit_cycling",
+            displayName = "Maptoolkit Cycling",
+            styleUrl = "https://styles.maptoolkit.org/cycling.json",
+        )
+
     private val ignOrthophotoProvider =
         OnlineMapProvider(
             id = "ign_orthophoto",
@@ -261,49 +280,45 @@ internal object PhoneMapRendererCatalog {
     /** Configured providers, excluding any the user has hidden from the dropdowns. */
     fun availableOnlineSources(
         hiddenSources: Set<PhoneOnlineMapSource> = emptySet(),
+        sourceOrder: List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries,
     ): List<PhoneOnlineMapSource> =
-        supportedOnlineSources()
+        normalizePhoneOnlineSourceOrder(sourceOrder)
             .filter { it !in hiddenSources && isOnlineSourceAvailable(it) }
 
     /** Layer uses the same configured provider catalog and visibility as the normal online map. */
     fun availableComparisonOnlineSources(
         hiddenSources: Set<PhoneOnlineMapSource> = emptySet(),
-    ): List<PhoneOnlineMapSource> = availableOnlineSources(hiddenSources)
+        sourceOrder: List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries,
+    ): List<PhoneOnlineMapSource> = availableOnlineSources(hiddenSources, sourceOrder)
 
     fun isOnlineSourceAvailable(source: PhoneOnlineMapSource): Boolean = providerForOnlineSource(source) != null
 
-    fun providerForOnlineSource(source: PhoneOnlineMapSource): OnlineMapProvider? =
-        when (source) {
-            PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider
-            PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider
-            PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider
-            PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider
-            PhoneOnlineMapSource.TRACESTRACK_TOPO -> tracestrackTopoProvider
-            PhoneOnlineMapSource.SATELLITE -> mapTilerSatelliteProvider
-            PhoneOnlineMapSource.OPEN_FREE_MAP -> openFreeMapProvider
-            PhoneOnlineMapSource.IGN_ORTHOPHOTO -> ignOrthophotoProvider
-            PhoneOnlineMapSource.SWISS_TOPO -> swissTopoProvider
-            PhoneOnlineMapSource.SWISS_IMAGE -> swissImageProvider
-            PhoneOnlineMapSource.USGS_TOPO -> usgsTopoProvider
-            PhoneOnlineMapSource.USGS_IMAGERY -> usgsImageryProvider
-            PhoneOnlineMapSource.ESRI_WORLD_IMAGERY -> esriWorldImageryProvider
-        }
+    private val onlineProviders =
+        mapOf(
+            PhoneOnlineMapSource.PLAN_IGN_V2 to planIgnV2Provider,
+            PhoneOnlineMapSource.OPEN_TOPO to mainOnlineRasterProvider,
+            PhoneOnlineMapSource.OPEN_STREET_MAP to openStreetMapPickerProvider,
+            PhoneOnlineMapSource.CYCLOSM to cyclOsmProvider,
+            PhoneOnlineMapSource.TRACESTRACK_TOPO to tracestrackTopoProvider,
+            PhoneOnlineMapSource.SATELLITE to mapTilerSatelliteProvider,
+            PhoneOnlineMapSource.OPEN_FREE_MAP to openFreeMapProvider,
+            PhoneOnlineMapSource.IGN_ORTHOPHOTO to ignOrthophotoProvider,
+            PhoneOnlineMapSource.SWISS_TOPO to swissTopoProvider,
+            PhoneOnlineMapSource.SWISS_IMAGE to swissImageProvider,
+            PhoneOnlineMapSource.USGS_TOPO to usgsTopoProvider,
+            PhoneOnlineMapSource.USGS_IMAGERY to usgsImageryProvider,
+            PhoneOnlineMapSource.ESRI_WORLD_IMAGERY to esriWorldImageryProvider,
+            PhoneOnlineMapSource.MAPTOOLKIT_HIKING to maptoolkitHikingProvider,
+            PhoneOnlineMapSource.MAPTOOLKIT_CYCLING to maptoolkitCyclingProvider,
+        )
+
+    fun providerForOnlineSource(source: PhoneOnlineMapSource): OnlineMapProvider? = onlineProviders[source]
 
     fun onlineSourceLabel(source: PhoneOnlineMapSource): String =
         when (source) {
-            PhoneOnlineMapSource.PLAN_IGN_V2 -> planIgnV2Provider.displayName
-            PhoneOnlineMapSource.OPEN_TOPO -> mainOnlineRasterProvider.displayName
-            PhoneOnlineMapSource.OPEN_STREET_MAP -> openStreetMapPickerProvider.displayName
-            PhoneOnlineMapSource.CYCLOSM -> cyclOsmProvider.displayName
             PhoneOnlineMapSource.TRACESTRACK_TOPO -> "Tracestrack Topo"
             PhoneOnlineMapSource.SATELLITE -> "Satellite"
-            PhoneOnlineMapSource.OPEN_FREE_MAP -> openFreeMapProvider.displayName
-            PhoneOnlineMapSource.IGN_ORTHOPHOTO -> ignOrthophotoProvider.displayName
-            PhoneOnlineMapSource.SWISS_TOPO -> swissTopoProvider.displayName
-            PhoneOnlineMapSource.SWISS_IMAGE -> swissImageProvider.displayName
-            PhoneOnlineMapSource.USGS_TOPO -> usgsTopoProvider.displayName
-            PhoneOnlineMapSource.USGS_IMAGERY -> usgsImageryProvider.displayName
-            PhoneOnlineMapSource.ESRI_WORLD_IMAGERY -> esriWorldImageryProvider.displayName
+            else -> requireNotNull(providerForOnlineSource(source)).displayName
         }
 
     val offline =

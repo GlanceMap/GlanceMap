@@ -105,6 +105,7 @@ internal data class PhoneMapSettings(
     val liveDistanceEnabled: Boolean = false,
     val distanceMeasurementEnabled: Boolean = false,
     val hillShadingEnabled: Boolean = false,
+    val tiltedViewEnabled: Boolean = false,
     val onlineElevationEnabled: Boolean = true,
     val reliefOverlayEnabled: Boolean = false,
     val reliefOverlayOpacityPercent: Int = DEFAULT_PHONE_RELIEF_OVERLAY_OPACITY_PERCENT,
@@ -112,6 +113,7 @@ internal data class PhoneMapSettings(
     val northReferenceMode: PhoneMapNorthReferenceMode = PhoneMapNorthReferenceMode.TRUE,
     val demSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
     val hiddenOnlineSources: Set<PhoneOnlineMapSource> = emptySet(),
+    val onlineSourceOrder: List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries,
 ) {
     fun normalized(): PhoneMapSettings {
         val farthestOut = nearestPhoneMapScaleStep(zoomMinScaleMeters)
@@ -130,7 +132,31 @@ internal data class PhoneMapSettings(
             zoomMinScaleMeters = orderedFarthestOut,
             zoomMaxScaleMeters = orderedClosestIn,
             reliefOverlayOpacityPercent = reliefOverlayOpacityPercent.coerceIn(0, 100),
+            onlineSourceOrder = normalizePhoneOnlineSourceOrder(onlineSourceOrder),
         )
+    }
+}
+
+internal fun normalizePhoneOnlineSourceOrder(order: List<PhoneOnlineMapSource>): List<PhoneOnlineMapSource> =
+    (order + PhoneOnlineMapSource.entries).distinct()
+
+internal fun reorderPhoneOnlineSourceOrder(
+    order: List<PhoneOnlineMapSource>,
+    visibleSources: List<PhoneOnlineMapSource>,
+    source: PhoneOnlineMapSource,
+    targetIndex: Int,
+): List<PhoneOnlineMapSource> {
+    val normalizedOrder = normalizePhoneOnlineSourceOrder(order)
+    val visible = visibleSources.toSet()
+    val visibleOrder = normalizedOrder.filter { it in visible }
+    val currentIndex = visibleOrder.indexOf(source)
+    if (currentIndex < 0) return normalizedOrder
+
+    val reorderedVisible = visibleOrder.toMutableList()
+    reorderedVisible.add(targetIndex.coerceIn(visibleOrder.indices), reorderedVisible.removeAt(currentIndex))
+    var nextVisibleIndex = 0
+    return normalizedOrder.map { item ->
+        if (item in visible) reorderedVisible[nextVisibleIndex++] else item
     }
 }
 
@@ -190,6 +216,7 @@ internal class PhoneMapSettingsPreferences(
                 liveDistanceEnabled = preferences.getBoolean(KEY_LIVE_DISTANCE_ENABLED, false),
                 distanceMeasurementEnabled = preferences.getBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, false),
                 hillShadingEnabled = preferences.getBoolean(KEY_HILL_SHADING_ENABLED, false),
+                tiltedViewEnabled = preferences.getBoolean(KEY_TILTED_VIEW_ENABLED, false),
                 onlineElevationEnabled = preferences.getBoolean(KEY_ONLINE_ELEVATION_ENABLED, true),
                 reliefOverlayEnabled = preferences.getBoolean(KEY_RELIEF_OVERLAY_ENABLED, false),
                 reliefOverlayOpacityPercent =
@@ -213,6 +240,14 @@ internal class PhoneMapSettingsPreferences(
                     PhoneOnlineMapSource.entries.filterTo(mutableSetOf()) { source ->
                         source.name in hiddenOnlineSourceNames
                     },
+                onlineSourceOrder =
+                    preferences
+                        .getString(KEY_ONLINE_SOURCE_ORDER, null)
+                        ?.split(',')
+                        ?.mapNotNull { sourceName ->
+                            PhoneOnlineMapSource.entries.firstOrNull { it.name == sourceName }
+                        }
+                        .orEmpty(),
             ).normalized()
         save(settings)
         return settings
@@ -236,6 +271,7 @@ internal class PhoneMapSettingsPreferences(
             .putBoolean(KEY_LIVE_DISTANCE_ENABLED, normalized.liveDistanceEnabled)
             .putBoolean(KEY_DISTANCE_MEASUREMENT_ENABLED, normalized.distanceMeasurementEnabled)
             .putBoolean(KEY_HILL_SHADING_ENABLED, normalized.hillShadingEnabled)
+            .putBoolean(KEY_TILTED_VIEW_ENABLED, normalized.tiltedViewEnabled)
             .putBoolean(KEY_ONLINE_ELEVATION_ENABLED, normalized.onlineElevationEnabled)
             .putBoolean(KEY_RELIEF_OVERLAY_ENABLED, normalized.reliefOverlayEnabled)
             .putInt(KEY_RELIEF_OVERLAY_OPACITY_PERCENT, normalized.reliefOverlayOpacityPercent)
@@ -243,6 +279,7 @@ internal class PhoneMapSettingsPreferences(
             .putString(KEY_NORTH_REFERENCE_MODE, normalized.northReferenceMode.storageValue)
             .putString(KEY_DEM_SOURCE, normalized.demSource.id)
             .putStringSet(KEY_HIDDEN_ONLINE_SOURCES, normalized.hiddenOnlineSources.map { it.name }.toSet())
+            .putString(KEY_ONLINE_SOURCE_ORDER, normalized.onlineSourceOrder.joinToString(",") { it.name })
             .apply()
         return normalized
     }
@@ -284,6 +321,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_LIVE_DISTANCE_ENABLED = "live_distance_enabled"
         const val KEY_DISTANCE_MEASUREMENT_ENABLED = "distance_measurement_enabled"
         const val KEY_HILL_SHADING_ENABLED = "hill_shading_enabled"
+        const val KEY_TILTED_VIEW_ENABLED = "tilted_view_enabled"
         const val KEY_ONLINE_ELEVATION_ENABLED = "online_elevation_enabled"
         const val KEY_RELIEF_OVERLAY_ENABLED = "relief_overlay_enabled"
         const val KEY_RELIEF_OVERLAY_OPACITY_PERCENT = "relief_overlay_opacity_percent"
@@ -291,6 +329,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_NORTH_REFERENCE_MODE = "north_reference_mode"
         const val KEY_DEM_SOURCE = "dem_source"
         const val KEY_HIDDEN_ONLINE_SOURCES = "hidden_online_sources"
+        const val KEY_ONLINE_SOURCE_ORDER = "online_source_order"
     }
 }
 

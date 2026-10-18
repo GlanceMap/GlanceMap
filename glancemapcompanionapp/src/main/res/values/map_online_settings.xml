@@ -2,4 +2,5 @@
 <resources>
     <string name="map_tools_maps_settings_online_title">Online maps</string>
     <string name="map_tools_maps_settings_online_summary">Choose which maps appear in the map and layer dropdowns. All maps are enabled by default.</string>
+    <string name="map_tools_maps_reorder_source">Reorder %1$s</string>
 </resources>

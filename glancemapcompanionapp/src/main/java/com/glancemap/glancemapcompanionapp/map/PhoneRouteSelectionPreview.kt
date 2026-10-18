@@ -4,12 +4,41 @@ import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.profile.TrailPoint
 import com.glancemap.trailcore.profile.buildTrailRouteProfile
 
-/** A direct-line estimate while route points are being placed, before BRouter creates the final route. */
+/** Distance, elevation, and time summary shared by direct estimates and routed previews. */
 internal data class PhoneRouteSelectionPreview(
     val distanceMeters: Double,
     val elevationGainMeters: Double?,
+    val elevationLossMeters: Double?,
     val estimatedDurationSeconds: Double,
 )
+
+internal data class PhoneMultiPointRoutePreview(
+    val chainPointCount: Int,
+    val points: List<TrailPoint>,
+    val summary: PhoneRouteSelectionPreview,
+)
+
+internal fun PhoneRouteToolsUiState.visibleMultiPointRoutePreview(): PhoneMultiPointRoutePreview? {
+    if (mode != PhoneRouteCreationMode.MULTI_POINT_CHAIN || isRouting) return null
+    val preview = multiPointRoutePreview ?: return null
+    return when {
+        preview.chainPointCount == chainPoints.size -> preview
+        isMultiPointPreviewLoading && preview.chainPointCount == chainPoints.size - 1 -> preview
+        else -> null
+    }
+}
+
+internal fun PhoneRouteToolsUiState.multiPointDraftConnectorPoints(): List<GeoPoint> {
+    if (mode != PhoneRouteCreationMode.MULTI_POINT_CHAIN || isRouting || chainPoints.size < 2) return emptyList()
+    val preview = visibleMultiPointRoutePreview()
+    if (preview?.chainPointCount == chainPoints.size) return emptyList()
+    val previewPointCount = preview?.chainPointCount
+    return if (isMultiPointPreviewLoading || previewPointCount == null || previewPointCount < chainPoints.size) {
+        chainPoints.takeLast(2)
+    } else {
+        emptyList()
+    }
+}
 
 /** True while the route-creation flow can stay on the map instead of opening the full dialog. */
 internal fun PhoneRouteToolsUiState.usesMapRouteCreationControls(): Boolean =
@@ -37,7 +66,7 @@ internal fun PhoneRouteToolsUiState.canCreateFromMapControls(
                 currentLocationAvailable && destination != null
 
             PhoneRouteCreationMode.POINT_A_TO_B -> pointA != null && pointB != null
-            PhoneRouteCreationMode.MULTI_POINT_CHAIN -> chainPoints.size >= 2
+            PhoneRouteCreationMode.MULTI_POINT_CHAIN -> chainPoints.size >= 2 && !isMultiPointPreviewLoading
             PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION ->
                 selectedRouteId != null && destination != null
 
@@ -86,6 +115,32 @@ internal fun buildPhoneRouteSelectionPreview(
                 elevationMeters = elevationsMeters[index].takeIf { elevationAvailableForEveryPoint },
             )
         }
+    return buildPhoneTrackSelectionPreview(trailPoints, settings, generalSettings)
+}
+
+internal fun buildPhoneRoutedRouteSelectionPreview(
+    points: List<TrailPoint>,
+    settings: PhoneMapGpxSettings,
+    generalSettings: PhoneGeneralSettings,
+): PhoneRouteSelectionPreview? =
+    buildPhoneTrackSelectionPreview(
+        trailPoints =
+            if (points.all { it.elevationMeters != null }) {
+                points
+            } else {
+                points.map { it.copy(elevationMeters = null) }
+            },
+        settings = settings,
+        generalSettings = generalSettings,
+    )
+
+private fun buildPhoneTrackSelectionPreview(
+    trailPoints: List<TrailPoint>,
+    settings: PhoneMapGpxSettings,
+    generalSettings: PhoneGeneralSettings,
+): PhoneRouteSelectionPreview? {
+    if (trailPoints.size < 2) return null
+    val elevationAvailableForEveryPoint = trailPoints.all { it.elevationMeters != null }
     val profile =
         buildTrailRouteProfile(
             trailPoints,
@@ -94,6 +149,7 @@ internal fun buildPhoneRouteSelectionPreview(
     return PhoneRouteSelectionPreview(
         distanceMeters = profile.totalDistanceMeters,
         elevationGainMeters = profile.totalAscentMeters.takeIf { elevationAvailableForEveryPoint },
+        elevationLossMeters = profile.totalDescentMeters.takeIf { elevationAvailableForEveryPoint },
         estimatedDurationSeconds = profile.estimatedDurationSeconds,
     )
 }

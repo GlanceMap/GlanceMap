@@ -30,15 +30,24 @@ class PhoneOnlineCenteredGesturesTest {
 
     @Test fun compassComparisonAllowsZoomAndRejectsFingerRotationAtTheLowerAnchor() = exercise(compass = true, texture = true)
 
+    @Test fun offlineBrowsingAllowsPinchAndRotationWithMapLibre() = exercise(compass = false, texture = false, offline = true)
+
     private fun exercise(
         compass: Boolean,
         texture: Boolean,
+        offline: Boolean = false,
     ) {
         val activity = composeRule.activity
-        val mode = PhoneMapMode(orientation = if (compass) PhoneMapOrientation.HEADING_UP else PhoneMapOrientation.NORTH_UP)
+        val mode =
+            if (offline) {
+                PhoneMapMode().toggleOfflineMode()
+            } else {
+                PhoneMapMode(orientation = if (compass) PhoneMapOrientation.HEADING_UP else PhoneMapOrientation.NORTH_UP)
+            }
         val visible = mutableStateOf(true)
         val readyMap = AtomicReference<MapLibreMap>()
         val viewRef = AtomicReference<MapView>()
+        lateinit var gesture: MapGestureSequence
         composeRule.runOnUiThread { MapLibre.getInstance(activity) }
         try {
             composeRule.setContent {
@@ -79,20 +88,31 @@ class PhoneOnlineCenteredGesturesTest {
                             .build(),
                     ),
                 )
-                val gesture =
+                gesture =
                     MapGestureSequence(view, centerX = 0.3f, centerY = 0.3f) {
-                        val point = map.projection.toScreenLocation(gps)
-                        assertEquals("GPS X stays fixed throughout the gesture", view.width / 2f, point.x, 1f)
-                        assertEquals("GPS Y stays fixed throughout the gesture", (view.height + top) / 2f, point.y, 1f)
+                        if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
+                            val point = map.projection.toScreenLocation(gps)
+                            assertEquals("GPS X stays fixed throughout the gesture", view.width / 2f, point.x, 1f)
+                            assertEquals("GPS Y stays fixed throughout the gesture", (view.height + top) / 2f, point.y, 1f)
+                        }
                     }
                 gesture.start()
                 gesture.pinch(1.4f)
-                assertTrue("Centered pinch must change zoom", map.cameraPosition.zoom > 12.0)
-                gesture.rotate()
+            }
+            composeRule.waitUntil(10_000) { readyMap.get().cameraPosition.zoom > 12.0 }
+            composeRule.runOnIdle { gesture.rotate() }
+            if (!compass) {
+                composeRule.waitUntil(10_000) {
+                    abs(shortestPhoneHeadingDelta(readyMap.get().cameraPosition.bearing.toFloat(), 0f)) > 5f
+                }
+            }
+            composeRule.runOnIdle {
+                val map = readyMap.get()
+                assertTrue("Pinch must change zoom", map.cameraPosition.zoom > 12.0)
                 if (compass) {
                     assertEquals("Compass must keep ownership of bearing", 0.0, map.cameraPosition.bearing, 0.01)
                 } else {
-                    assertTrue("Centered manual rotation must work", abs(shortestPhoneHeadingDelta(map.cameraPosition.bearing.toFloat(), 0f)) > 5f)
+                    assertTrue("Manual rotation must work", abs(shortestPhoneHeadingDelta(map.cameraPosition.bearing.toFloat(), 0f)) > 5f)
                 }
                 gesture.end()
             }

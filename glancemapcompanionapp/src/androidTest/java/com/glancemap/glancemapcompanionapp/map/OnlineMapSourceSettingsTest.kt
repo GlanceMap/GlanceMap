@@ -5,13 +5,16 @@ import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapcompanionapp.R
@@ -62,7 +65,10 @@ class OnlineMapSourceSettingsTest {
                     mapToolsOnlineMapSettings(settings.value) { settings.value = preferences.save(it) }
                 } else {
                     mapToolsOnlineSourcePicker(
-                        PhoneMapRendererCatalog.availableOnlineSources(settings.value.hiddenOnlineSources),
+                        PhoneMapRendererCatalog.availableOnlineSources(
+                            settings.value.hiddenOnlineSources,
+                            settings.value.onlineSourceOrder,
+                        ),
                         selected.value,
                     ) { selected.value = it }
                 }
@@ -101,6 +107,38 @@ class OnlineMapSourceSettingsTest {
         composeRule.onNodeWithText("$online: CyclOSM").performClick()
         composeRule.onNodeWithText(esriLabel).performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(esri, selected.value) }
+    }
+
+    @Test
+    fun longPressingTheLeftHandleReordersAndPersistsOnlineMaps() {
+        val preferences = PhoneMapSettingsPreferences(context)
+        val settings = mutableStateOf(preferences.load())
+        val initiallyVisible =
+            PhoneMapRendererCatalog.availableOnlineSources(sourceOrder = settings.value.onlineSourceOrder)
+        assertTrue(initiallyVisible.size > 1)
+        val first = initiallyVisible.first()
+
+        composeRule.setContent {
+            MaterialTheme {
+                mapToolsOnlineMapSettings(settings.value) { settings.value = preferences.save(it) }
+            }
+        }
+
+        val handle = composeRule.onNodeWithTag("online-map-reorder-${first.name}")
+        val dragDistancePx = handle.fetchSemanticsNode().boundsInRoot.height * 1.6f
+        handle.performTouchInput {
+            down(center)
+            advanceEventTime(1_000L)
+            moveBy(Offset(0f, dragDistancePx))
+            up()
+        }
+
+        composeRule.runOnIdle {
+            val restoredOrder = PhoneMapSettingsPreferences(context).load().onlineSourceOrder
+            val restoredVisible = PhoneMapRendererCatalog.availableOnlineSources(sourceOrder = restoredOrder)
+            assertEquals(initiallyVisible[1], restoredVisible.first())
+            assertEquals(restoredOrder, settings.value.onlineSourceOrder)
+        }
     }
 
     @Test

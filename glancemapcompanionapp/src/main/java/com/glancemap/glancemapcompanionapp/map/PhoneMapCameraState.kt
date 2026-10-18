@@ -1,7 +1,9 @@
 package com.glancemap.glancemapcompanionapp.map
 
-/** Offline browsing always keeps north up, including delayed comparison camera updates. */
-internal fun PhoneMapCameraSnapshot.forMapMode(mode: PhoneMapMode): PhoneMapCameraSnapshot = if (mode.isOffline) copy(bearingDegrees = 0f) else this
+/** Offline browsing keeps its chosen bearing, including delayed comparison camera updates. */
+internal fun PhoneMapCameraSnapshot.forMapMode(mode: PhoneMapMode): PhoneMapCameraSnapshot {
+    return if (mode.isOffline) copy(bearingDegrees = mode.manualBearingDegrees ?: 0f) else this
+}
 
 internal enum class PhoneMapCameraRenderer {
     BASE,

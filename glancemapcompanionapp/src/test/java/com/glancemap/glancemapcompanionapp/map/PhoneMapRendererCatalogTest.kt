@@ -92,6 +92,8 @@ class PhoneMapRendererCatalogTest {
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
                 PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+                PhoneOnlineMapSource.MAPTOOLKIT_HIKING,
+                PhoneOnlineMapSource.MAPTOOLKIT_CYCLING,
             ),
             PhoneMapRendererCatalog.supportedOnlineSources(),
         )
@@ -117,6 +119,15 @@ class PhoneMapRendererCatalogTest {
                 PhoneMapRendererCatalog.isOnlineSourceAvailable(source),
             )
         }
+    }
+
+    @Test
+    fun availableMapPickersFollowTheSavedProviderOrder() {
+        val reordered = PhoneOnlineMapSource.entries.reversed()
+        val expected = PhoneMapRendererCatalog.availableOnlineSources().reversed()
+
+        assertEquals(expected, PhoneMapRendererCatalog.availableOnlineSources(sourceOrder = reordered))
+        assertEquals(expected, PhoneMapRendererCatalog.availableComparisonOnlineSources(sourceOrder = reordered))
     }
 
     @Test
@@ -169,6 +180,8 @@ class PhoneMapRendererCatalogTest {
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
                 PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+                PhoneOnlineMapSource.MAPTOOLKIT_HIKING,
+                PhoneOnlineMapSource.MAPTOOLKIT_CYCLING,
             )
         sources.forEach { source ->
             val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(source))
@@ -183,6 +196,40 @@ class PhoneMapRendererCatalogTest {
         val esri =
             requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.ESRI_WORLD_IMAGERY))
         assertTrue(esri.rasterTileUrlTemplate.endsWith("/tile/{z}/{y}/{x}"))
+    }
+
+    @Test
+    fun maptoolkitStylesAreEnabledByDefaultAndCanBeHiddenFromBothPickers() {
+        val styles =
+            mapOf(
+                PhoneOnlineMapSource.MAPTOOLKIT_HIKING to "hiking",
+                PhoneOnlineMapSource.MAPTOOLKIT_CYCLING to "cycling",
+            )
+        val legacyOrder = PhoneOnlineMapSource.entries.filterNot { it in styles }
+        styles.forEach { (source, style) ->
+            val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(source))
+            assertEquals("https://styles.maptoolkit.org/$style.json", provider.styleUrl)
+            assertTrue(provider.rasterTileUrlTemplate.isEmpty())
+            assertTrue(provider.attribution.contains("https://www.maptoolkit.com/copyright/"))
+            assertTrue(source in PhoneMapRendererCatalog.availableOnlineSources(sourceOrder = legacyOrder))
+            assertTrue(source in PhoneMapRendererCatalog.availableComparisonOnlineSources())
+            assertTrue(source !in PhoneMapRendererCatalog.availableOnlineSources(styles.keys))
+            assertTrue(source !in PhoneMapRendererCatalog.availableComparisonOnlineSources(styles.keys))
+        }
+    }
+
+    @Test
+    fun maptoolkitCreditsFollowEitherDisplayedMapAndDisappearForOtherProviders() {
+        assertTrue(maptoolkitAttributionRequired(PhoneOnlineMapSource.MAPTOOLKIT_HIKING, null))
+        assertTrue(maptoolkitAttributionRequired(null, PhoneOnlineMapSource.MAPTOOLKIT_CYCLING))
+        assertTrue(
+            maptoolkitAttributionRequired(
+                PhoneOnlineMapSource.OPEN_TOPO,
+                PhoneOnlineMapSource.MAPTOOLKIT_HIKING,
+            ),
+        )
+        assertTrue(!maptoolkitAttributionRequired(null, null))
+        assertTrue(!maptoolkitAttributionRequired(PhoneOnlineMapSource.ESRI_WORLD_IMAGERY, null))
     }
 
     @Test

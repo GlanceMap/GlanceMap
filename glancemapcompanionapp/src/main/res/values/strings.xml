@@ -260,6 +260,8 @@
     <string name="map_layer_none">None</string>
     <string name="map_layer_no_offline_maps">Import an offline map to compare it with the online map.</string>
     <string name="map_layer_online">Online map</string>
+    <string name="map_layer_group_online">Online</string>
+    <string name="map_layer_group_offline">Offline</string>
     <string name="map_layer_transparency">Transparency: %1$d%%</string>
     <string name="map_layer_clear">Clear comparison</string>
     <string name="map_online_base_render_failed">The online base map could not be displayed.</string>
@@ -270,9 +272,6 @@
     <string name="map_online_source_satellite_unavailable">Unavailable: MapTiler access is not configured in this build.</string>
     <string name="map_online_source_tracestrack_unavailable">Unavailable: Tracestrack access is not configured in this build.</string>
     <string name="map_layer_slope_title">Slope / relief</string>
-    <string name="map_layer_slope_available">Uses the downloaded elevation data.</string>
-    <string name="map_layer_slope_unavailable">Available on offline maps when elevation data is installed.</string>
-    <string name="map_layer_slope_transparency">Slope transparency: %1$d%%</string>
     <string name="map_tools_maps_active_heading">Active map</string>
     <string name="map_source_capability">Elevation: %1$s · Routing: %2$s</string>
     <string name="map_source_capability_available">available</string>
@@ -566,7 +565,7 @@
     <string name="map_tools_settings_sensor_available">Available</string>
     <string name="map_tools_settings_sensor_unavailable">Unavailable</string>
     <string name="map_mode_north_up">North up</string>
-    <string name="map_mode_offline">Offline mode (north up)</string>
+    <string name="map_mode_offline">Offline mode (tap for north up)</string>
     <string name="map_mode_offline_enter">Enable offline map browsing</string>
     <string name="map_mode_offline_exit">Return to GPS follow</string>
     <string name="map_mode_heading_up">Heading up</string>
@@ -604,6 +603,15 @@
     <string name="map_theme_selector_title">Map theme</string>
     <string name="map_theme_selector_theme_label">Theme</string>
     <string name="map_theme_selector_style_label">Style</string>
+    <string name="map_theme_overlays_heading">Map overlays</string>
+    <string name="map_theme_overlay_default">Default</string>
+    <string name="map_theme_overlay_minimal">Minimal</string>
+    <string name="map_theme_overlay_all">All</string>
+    <string name="map_theme_overlay_group_winter">Winter activities</string>
+    <string name="map_theme_overlay_group_routes">Routes &amp; labels</string>
+    <string name="map_theme_overlay_group_poi">POI &amp; services</string>
+    <string name="map_theme_overlay_group_map">Map details</string>
+    <string name="map_theme_overlay_count">%1$d/%2$d</string>
     <string name="map_theme_elevate">Elevate</string>
     <string name="map_theme_mapsforge">Mapsforge</string>
     <string name="map_theme_style_hiking">Hiking</string>
@@ -1796,7 +1804,6 @@
     <string name="map_layer_swap">Swap base and comparison maps</string>
     <string name="map_layer_same_map_theme">Same map, different theme</string>
     <string name="map_layer_themes">Theme &amp; style</string>
-    <string name="map_layer_terrain">Terrain &amp; slope</string>
     <string name="map_layer_quick_elevation">Elevation</string>
     <string name="map_layer_quick_distance">Distance</string>
     <string name="map_layer_quick_measure">Measure</string>

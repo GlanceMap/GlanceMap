@@ -10,6 +10,25 @@ import org.junit.Test
 
 class PhoneMapGpxSettingsTest {
     @Test
+    fun gapSegmentsStayGrayInSolidAndElevationModesWithoutDirectionArrows() {
+        val gap =
+            PhoneMapRouteSegment(
+                points = listOf(GeoPoint(46.0, 11.0), GeoPoint(46.0, 12.0)),
+                isGap = true,
+            )
+
+        listOf(PhoneMapGpxColorMode.SOLID, PhoneMapGpxColorMode.ELEVATION).forEach { colorMode ->
+            val rendered =
+                listOf(gap).toPhoneMapGpxRenderSegments(
+                    PhoneMapGpxSettings(colorMode = colorMode, directionArrowsEnabled = true),
+                )
+
+            assertEquals(1, rendered.size)
+            assertEquals(PHONE_MAP_GPX_GAP_COLOR_ARGB, rendered.single().colorArgb)
+        }
+    }
+
+    @Test
     fun defaultsMirrorWatchGpxAppearanceDefaults() {
         val settings = PhoneMapGpxSettings()
 

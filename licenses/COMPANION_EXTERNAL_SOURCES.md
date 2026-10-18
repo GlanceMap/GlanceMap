@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-20
 
-This file lists third-party websites and APIs referenced by the companion app for user-driven downloads/imports.
+This file lists third-party websites and APIs used by the companion app for downloads, imports, search and online maps.
 
 ## 1) Map download websites (opened in browser)
 
@@ -66,7 +66,25 @@ This file lists third-party websites and APIs referenced by the companion app fo
    - Eligible French addresses use IGN first; unmatched requests fall back to Photon.
    - Both services are disabled by the companion's Online search switch.
 
-## 7) Transparency note
+## 7) Maptoolkit Community online vector maps (reviewed 2026-10-17)
+
+- Hiking: https://styles.maptoolkit.org/hiking.json
+- Cycling: https://styles.maptoolkit.org/cycling.json
+- Styles, tiles, glyphs and sprites: `styles.maptoolkit.org`, `tiles.maptoolkit.org`,
+  `fonts.maptoolkit.org`, `icons.maptoolkit.org`; upstream terrain may use `tiles.mapterhorn.com`.
+- Community service: no API key; eligibility and fair-use limits apply.
+  Terms: https://www.maptoolkit.org/tos
+- Interactive online display only; no bulk download or offline archives are offered by this integration.
+- Required credits and logo: https://docs.maptoolkit.org/attribution/
+  The app keeps a clickable 24dp logo and linked copyright text visible for a Maptoolkit
+  base or comparison map, and leaves MapLibre's native attribution control enabled.
+- Unmodified official logo asset (227 × 72 pixels):
+  https://www.maptoolkit.org/assets/maptoolkit-attribution.png
+  Included in `glancemapcompanionapp/src/main/res/drawable-nodpi/maptoolkit_attribution.png`.
+- Map/data copyright: https://www.maptoolkit.com/copyright/ and
+  https://www.openstreetmap.org/copyright
+
+## 8) Transparency note
 
 - These sources are external to GlanceMap.
 - File availability, file quality, service uptime, and legal terms are controlled by each provider.

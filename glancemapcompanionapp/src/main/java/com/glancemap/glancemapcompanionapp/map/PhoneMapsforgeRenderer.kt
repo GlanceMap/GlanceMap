@@ -135,9 +135,19 @@ internal fun phoneMapsforgeTileCacheId(
     identity: PhoneMapsforgeBaseLayerIdentity,
     role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
 ): String {
+    val themeIdentity =
+        buildString {
+            append(identity.themeConfig.themeId)
+            append(':')
+            append(identity.themeConfig.styleId)
+            identity.themeConfig.enabledOverlayLayerIds?.let { overlayIds ->
+                append(':')
+                append(overlayIds.sorted().joinToString(","))
+            }
+        }
     val id =
         "$PHONE_MAP_CACHE_PREFIX-${phoneMapsforgeIdentityHash(identity.mapIdentity)}-" +
-            phoneMapsforgeIdentityHash("${identity.themeConfig.themeId}:${identity.themeConfig.styleId}")
+            phoneMapsforgeIdentityHash(themeIdentity)
     return if (role == PhoneOfflineMapRendererRole.COMPARISON) "$id-comparison" else id
 }
 
@@ -318,7 +328,7 @@ internal class PhoneMapsforgeRenderer(
         initialCamera: PhoneMapCameraSnapshot,
     ) {
         if (destroyed) return
-        val resolvedTheme = PhoneOfflineThemeCatalog.resolve(themeConfig.themeId, themeConfig.styleId)
+        val resolvedTheme = PhoneOfflineThemeCatalog.resolve(themeConfig)
         val desired = PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, resolvedTheme)
         val change = phoneMapsforgeBaseLayerChange(currentIdentity, desired)
         if (change == PhoneMapsforgeBaseLayerChange.NONE && requestedIdentity == desired) {

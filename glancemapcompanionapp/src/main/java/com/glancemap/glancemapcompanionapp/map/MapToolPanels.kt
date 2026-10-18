@@ -431,6 +431,7 @@ internal fun mapToolsOnlineSourcePicker(
                     leadingIcon = {
                         if (source == selected) Icon(Icons.Filled.Check, contentDescription = null)
                     },
+                    trailingIcon = { phoneMap3dCapabilityIcon() },
                     onClick = {
                         expanded = false
                         onSelect(source)

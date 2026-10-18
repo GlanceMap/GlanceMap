@@ -65,7 +65,7 @@ internal fun PhoneRouteToolsUiState.pointSelectionPhase(): PhoneMapPointSelectio
 
         PhoneRouteCreationMode.MULTI_POINT_CHAIN ->
             PhoneMapPointSelectionPhase.CHAIN_POINT.takeIf {
-                !isRouting && chainPoints.size < PHONE_ROUTE_TOOLS_MAX_CHAIN_POINTS
+                !isRouting && !isMultiPointPreviewLoading && chainPoints.size < PHONE_ROUTE_TOOLS_MAX_CHAIN_POINTS
             }
 
         PhoneRouteCreationMode.EXTEND_ROUTE_TO_DESTINATION ->
@@ -169,7 +169,7 @@ internal fun PhoneRouteToolsUiState.canUndoLastMapPoint(): Boolean =
         -> destination != null
 
         PhoneRouteCreationMode.POINT_A_TO_B -> pointB != null || pointA != null
-        PhoneRouteCreationMode.MULTI_POINT_CHAIN -> chainPoints.isNotEmpty()
+        PhoneRouteCreationMode.MULTI_POINT_CHAIN -> chainPoints.isNotEmpty() && !isMultiPointPreviewLoading
         PhoneRouteCreationMode.COORDINATES -> coordinateLatitude.isNotBlank() || coordinateLongitude.isNotBlank()
         PhoneRouteCreationMode.MODIFY_ROUTE ->
             when (modificationMode) {

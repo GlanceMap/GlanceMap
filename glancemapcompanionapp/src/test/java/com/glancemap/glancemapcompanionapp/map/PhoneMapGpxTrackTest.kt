@@ -20,7 +20,7 @@ class PhoneMapGpxTrackTest {
     }
 
     @Test
-    fun segmentBoundaryCreatesSeparateRenderedSegmentsWithoutABridge() {
+    fun segmentBoundaryCreatesASeparateGrayBridgeSegment() {
         val segments =
             track(
                 point(11.0),
@@ -30,16 +30,19 @@ class PhoneMapGpxTrackTest {
             ).toRouteSegments()
 
         assertEquals(
-            listOf(listOf(11.0, 11.1), listOf(12.0, 12.1)),
+            listOf(listOf(11.0, 11.1), listOf(11.1, 12.0), listOf(12.0, 12.1)),
             segments.map { segment -> segment.points.map(GeoPoint::longitude) },
         )
+        assertTrue(segments[1].isGap)
     }
 
     @Test
     fun emptyAndInsufficientGeometryProduceNoOverlay() {
         assertTrue(track().toRouteSegments().isEmpty())
         assertTrue(track(point(11.0)).toRouteSegments().isEmpty())
-        assertTrue(track(point(11.0), point(12.0, startsNewSegment = true)).toRouteSegments().isEmpty())
+        val gap = track(point(11.0), point(12.0, startsNewSegment = true)).toRouteSegments()
+        assertEquals(1, gap.size)
+        assertTrue(gap.single().isGap)
     }
 
     @Test
@@ -94,8 +97,8 @@ class PhoneMapGpxTrackTest {
         val overlays = listOf(first, second).enabledOverlays(globalVisible = true)
 
         assertEquals(listOf("first", "second"), overlays.map(PhoneMapGpxOverlay::id))
-        assertEquals(listOf(2, 2), overlays.first().segments.map { it.points.size })
-        assertEquals(3, overlays.flatMap(PhoneMapGpxOverlay::segments).size)
+        assertEquals(listOf(2, 2, 2), overlays.first().segments.map { it.points.size })
+        assertEquals(4, overlays.flatMap(PhoneMapGpxOverlay::segments).size)
         assertTrue(listOf(first, second).enabledOverlays(globalVisible = false).isEmpty())
     }
 
@@ -118,9 +121,10 @@ class PhoneMapGpxTrackTest {
 
         val overlay = requireNotNull(phoneRecordingOverlay(state, "Live recording"))
 
-        assertEquals(2, overlay.segments.size)
+        assertEquals(3, overlay.segments.size)
         assertSame(recordingPoints[1].location, overlay.segments[0].points[1])
-        assertSame(recordingPoints[2].location, overlay.segments[1].points[0])
+        assertTrue(overlay.segments[1].isGap)
+        assertSame(recordingPoints[2].location, overlay.segments[2].points[0])
         assertEquals(4L, overlay.renderRevision)
         assertNotEquals(overlay, phoneRecordingOverlay(state.copy(pointsRevision = 5L), "Live recording"))
     }
@@ -150,12 +154,12 @@ class PhoneMapGpxTrackTest {
                 pointsChangedFromIndex = 3,
             )
         val overlay = requireNotNull(phoneRecordingOverlay(state, "REC"))
-        assertEquals(1, overlay.segments.size)
-        assertEquals(2, overlay.segments.single().recordingStartIndex)
+        assertEquals(3, overlay.segments.size)
+        assertEquals(2, overlay.segments.last().recordingStartIndex)
         assertEquals(
             listOf(12.0, 12.1),
             overlay.segments
-                .single()
+                .last()
                 .points
                 .map(GeoPoint::longitude),
         )

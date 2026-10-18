@@ -142,6 +142,7 @@ private const val PHONE_STORAGE_OPERATION_POLL_DELAY_MS = 50L
 private const val PHONE_STORAGE_RENDER_STOP_DELAY_MS = 100L
 private const val PHONE_MAP_FEATURE_DIAGNOSTICS_TAG = "PhoneMapFeature"
 private const val PHONE_MAP_NANOS_PER_MILLISECOND = 1_000_000L
+private const val PHONE_ROUTE_TOOLS_PREVIEW_OVERLAY_ID = "route-tools-preview"
 
 private fun PhoneOfflineStorageMigrationPhase.isPhoneStorageMigrationActive(): Boolean =
     this in
@@ -440,6 +441,7 @@ internal fun CompanionMapScreen(
     hikeContent: @Composable () -> Unit = {},
     hikeHeaderAction: @Composable () -> Unit = {},
     libraryContent: @Composable (MapToolsPanelState, MapToolsPanelActions) -> Unit = { _, _ -> },
+    libraryHeaderContent: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val migrationTextResources = LocalResources.current
@@ -792,9 +794,21 @@ internal fun CompanionMapScreen(
                 },
         )
     var routeCreationPreview by remember { mutableStateOf<PhoneRouteSelectionPreview?>(null) }
-    LaunchedEffect(routeCreationPreviewPoints, gpxSettings, generalSettings, terrainDataVersion) {
+    LaunchedEffect(routeToolsState.mode, routeToolsState.chainPoints, gpxSettings, generalSettings) {
+        routeToolsViewModel.previewMultiPointRoute(gpxSettings, generalSettings)
+    }
+    LaunchedEffect(
+        routeCreationPreviewPoints,
+        routeToolsState.mode,
+        gpxSettings,
+        generalSettings,
+        terrainDataVersion,
+    ) {
         routeCreationPreview =
-            if (routeCreationPreviewPoints.size < 2) {
+            if (
+                routeToolsState.mode == PhoneRouteCreationMode.MULTI_POINT_CHAIN ||
+                routeCreationPreviewPoints.size < 2
+            ) {
                 null
             } else {
                 withContext(Dispatchers.IO) {
@@ -865,6 +879,45 @@ internal fun CompanionMapScreen(
                 savedGpxOverlays.filterNot { hikeOverlay != null && it.id == hikeTrackId } +
                     listOfNotNull(recordingOverlay, hikeOverlay, discoveryOverlay)
             }
+        }
+    val visibleMultiPointRoutePreview = routeToolsState.visibleMultiPointRoutePreview()
+    val multiPointDraftConnectorPoints = routeToolsState.multiPointDraftConnectorPoints()
+    val routePreviewName = stringResource(R.string.map_route_tools_route_preview)
+    val routePreviewOverlay =
+        remember(
+            visibleMultiPointRoutePreview,
+            multiPointDraftConnectorPoints,
+            routePreviewName,
+            gpxSettings,
+        ) {
+            val routeSegments =
+                visibleMultiPointRoutePreview
+                    ?.let { preview ->
+                        PhoneMapGpxTrack(
+                            id = PHONE_ROUTE_TOOLS_PREVIEW_OVERLAY_ID,
+                            points = preview.points,
+                        ).toRouteSegments()
+                    }.orEmpty()
+            val connectorSegment =
+                multiPointDraftConnectorPoints
+                    .takeIf { it.size >= 2 }
+                    ?.let { points -> PhoneMapRouteSegment(points) }
+            val segments = routeSegments + listOfNotNull(connectorSegment)
+            if (segments.isNotEmpty()) {
+                PhoneMapGpxOverlay(
+                    id = PHONE_ROUTE_TOOLS_PREVIEW_OVERLAY_ID,
+                    displayName = routePreviewName,
+                    segments = segments,
+                    settings = gpxSettings,
+                )
+            } else {
+                null
+            }
+        }
+    val mapGpxOverlays =
+        remember(gpxOverlays, routePreviewOverlay) {
+            gpxOverlays.filterNot { overlay -> overlay.id == PHONE_ROUTE_TOOLS_PREVIEW_OVERLAY_ID } +
+                listOfNotNull(routePreviewOverlay)
         }
     val switchToOfflineMap: (PhoneOfflineMap) -> Unit = { selectedMap ->
         mapUiState = mapUiState.nextComparisonSelectionRequest()
@@ -1134,9 +1187,10 @@ internal fun CompanionMapScreen(
         )
     val gpxOverlayState =
         GpxOverlayState(
-            overlays = gpxOverlays,
-            segments = gpxOverlays.flatMap(PhoneMapGpxOverlay::segments),
-            isVisible = mapUiState.contentVisibility.gpxTracks || discoveryOverlay != null,
+            overlays = mapGpxOverlays,
+            segments = mapGpxOverlays.flatMap(PhoneMapGpxOverlay::segments),
+            isVisible =
+                mapUiState.contentVisibility.gpxTracks || discoveryOverlay != null || routePreviewOverlay != null,
             settings = gpxSettings,
         )
     val selectLocalMapLauncher =
@@ -1385,11 +1439,10 @@ internal fun CompanionMapScreen(
         selectedPoi = null
     }
     LaunchedEffect(poiCreationPoint) {
-        poiCreationDialogVisible = false
         val selectedPoint = poiCreationPoint ?: return@LaunchedEffect
-        delay(PHONE_POI_SELECTION_PREVIEW_DELAY_MS)
-        if (poiCreationPoint == selectedPoint) {
-            poiCreationDialogVisible = true
+        if (!poiCreationDialogVisible) {
+            delay(PHONE_POI_SELECTION_PREVIEW_DELAY_MS)
+            if (poiCreationPoint == selectedPoint) poiCreationDialogVisible = true
         }
     }
     LaunchedEffect(completedBundle) {
@@ -1444,9 +1497,11 @@ internal fun CompanionMapScreen(
         }
     }
 
-    val onMapModePressed = onMapModePressed@{
-        if (mapUiState.mapMode.isOffline) return@onMapModePressed
-        if (mapUiState.mapMode.isDetachedFromLocation) {
+    val onMapModePressed = {
+        if (mapUiState.mapMode.isOffline) {
+            mapUiState = mapUiState.toggleMapOrientation()
+            cameraState = cameraState.copy(camera = cameraState.camera.forMapMode(mapUiState.mapMode))
+        } else if (mapUiState.mapMode.isDetachedFromLocation) {
             if (!hasLocationPermission) {
                 locationPermissionLauncher.launch(phoneMapLocationPermissions)
             } else if (mapLocation == null) {
@@ -1688,12 +1743,18 @@ internal fun CompanionMapScreen(
         }
     }
 
+    val onlineMapTiltDegrees =
+        phoneMapTiltDegrees(mapSettings.tiltedViewEnabled, mapUiState.source, mapUiState.comparison.layer)
     val toolsState =
         MapToolsPanelState(
             maps =
                 MapToolsMapsState(
                     source = mapUiState.source,
-                    onlineSources = PhoneMapRendererCatalog.availableOnlineSources(mapSettings.hiddenOnlineSources),
+                    onlineSources =
+                        PhoneMapRendererCatalog.availableOnlineSources(
+                            mapSettings.hiddenOnlineSources,
+                            mapSettings.onlineSourceOrder,
+                        ),
                     selectedOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
                     isLoading = !offlineMapDiscoveryFinished || offlineMapLoadingCount > 0,
@@ -1744,7 +1805,10 @@ internal fun CompanionMapScreen(
                     baseOnlineSource = selectedOnlineSource,
                     offlineMaps = offlineMaps,
                     onlineSources =
-                        PhoneMapRendererCatalog.availableComparisonOnlineSources(mapSettings.hiddenOnlineSources),
+                        PhoneMapRendererCatalog.availableComparisonOnlineSources(
+                            mapSettings.hiddenOnlineSources,
+                            mapSettings.onlineSourceOrder,
+                        ),
                     comparison = mapUiState.comparison,
                     baseThemeConfig = effectiveBaseThemeConfig,
                     comparisonThemeConfig = comparisonThemeConfig,
@@ -1920,9 +1984,16 @@ internal fun CompanionMapScreen(
         clearRouteAnalysis()
         routeToolsViewModel.cancel()
         selectedPoi = null
-        poiCreationActive = true
+        searchOpen = false
+        searchViewModel.controller.cancel()
+        searchSelection = null
+        distanceMeasurement = null
+        discoveryPickingPoint = false
+        discoveryNearMePending = false
+        hikeController?.cancelCheckpoint()
+        poiCreationActive = false
         poiCreationPoint = null
-        poiCreationDialogVisible = false
+        poiCreationDialogVisible = true
         poiNameInput = ""
         poiCreationError = false
         poiCreationMessage = null
@@ -1942,7 +2013,6 @@ internal fun CompanionMapScreen(
         poiCreationActive = false
         poiCreationPoint = point
         poiCreationDialogVisible = false
-        poiNameInput = ""
         poiCreationError = false
     }
     val onSelectDiscoveryPoint: (PhoneMapCoordinate) -> Unit = { point ->
@@ -1993,6 +2063,8 @@ internal fun CompanionMapScreen(
             )
         } else if (discoveryPickingPoint) {
             onSelectDiscoveryPoint(PhoneMapCoordinate(poi.location.latitude, poi.location.longitude))
+        } else if (poiCreationActive) {
+            onSelectPoiPoint(PhoneMapCoordinate(poi.location.latitude, poi.location.longitude))
         } else {
             selectedPoi = poi
         }
@@ -2160,8 +2232,8 @@ internal fun CompanionMapScreen(
     val savePoi = {
         val point = poiCreationPoint
         if (point != null && !poiCreationBusy) {
+            poiCreationBusy = true
             coroutineScope.launch {
-                poiCreationBusy = true
                 val result =
                     runCatching {
                         withContext(Dispatchers.IO) {
@@ -2213,6 +2285,13 @@ internal fun CompanionMapScreen(
                 savedRouteAnalysisSelection != null ||
                 routeAnalysisJob != null ||
                 routeAnalysisSelectingPointB -> clearRouteAnalysis()
+            poiCreationDialogVisible -> {
+                if (!poiCreationBusy) {
+                    poiCreationDialogVisible = false
+                    poiCreationPoint = null
+                    poiCreationError = false
+                }
+            }
             poiCreationPoint != null -> {
                 poiCreationPoint = null
                 poiCreationDialogVisible = false
@@ -2231,6 +2310,7 @@ internal fun CompanionMapScreen(
                 mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
                 mapUiState.toolLauncherExpanded ||
                 poiCreationActive ||
+                poiCreationDialogVisible ||
                 poiCreationPoint != null ||
                 selectedGpxAnalysisId != null ||
                 routeAnalysis != null ||
@@ -2557,6 +2637,9 @@ internal fun CompanionMapScreen(
             if (!isVisible) return@header
             when (tool) {
                 MapTool.HIKE -> hikeHeaderAction()
+                MapTool.LIBRARY -> {
+                    if (mapUiState.toolPanel.contentMode == MapToolContentMode.MAIN) libraryHeaderContent()
+                }
 
                 MapTool.LAYER -> {
                     val baseLabel = stringResource(R.string.map_layer_base_source)
@@ -2623,6 +2706,8 @@ internal fun CompanionMapScreen(
                 panel = mapUiState.toolPanel,
                 launcherExpanded = mapUiState.toolLauncherExpanded,
                 fullScreenPage = settingsPage,
+                maptoolkitAttributionVisible =
+                    maptoolkitAttributionRequired(activeOnlineBaseSource, activeOnlineComparisonSource),
             ),
         actions =
             MapToolScaffoldActions(
@@ -2668,6 +2753,7 @@ internal fun CompanionMapScreen(
                                 locationState = locationState,
                                 mapMode = mapUiState.mapMode,
                                 mapSettings = mapSettings,
+                                tiltDegrees = onlineMapTiltDegrees,
                                 userGestureActive = onlineGestureState.isActive,
                                 compassSource = compassSensorSource,
                                 compassPresentation = compassPresentation,
@@ -2912,6 +2998,7 @@ internal fun CompanionMapScreen(
                                         mapSettings.copy(
                                             northIndicatorMode = PhoneMapNorthIndicatorMode.NEVER,
                                         ),
+                                    tiltDegrees = onlineMapTiltDegrees,
                                     userGestureActive = onlineGestureState.isActive,
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
@@ -3276,6 +3363,7 @@ internal fun CompanionMapScreen(
                                         mapSettings.copy(
                                             northIndicatorMode = PhoneMapNorthIndicatorMode.NEVER,
                                         ),
+                                    tiltDegrees = onlineMapTiltDegrees,
                                     userGestureActive = onlineGestureState.isActive,
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
@@ -3740,7 +3828,7 @@ internal fun CompanionMapScreen(
                 phoneMapPointerOverlay(
                     showPointer = mapUiState.mapMode.isDetachedFromLocation || routePointSelectionPhase != null,
                     poiCreationActive = poiCreationActive,
-                    pointerCoordinate = liveMapPosition?.target,
+                    pointerCoordinate = mapPointerCoordinate,
                     onSelectPoiAtPointer = onSelectPoiPoint,
                     onCancelPoi = { poiCreationActive = false },
                 )
@@ -3891,81 +3979,53 @@ internal fun CompanionMapScreen(
                         }
                     }
                 }
-                poiCreationPoint?.takeIf { isVisible && poiCreationDialogVisible }?.let { selectedPoint ->
-                    PhoneMapPopupDialog(
-                        title = stringResource(R.string.map_poi_add_title),
-                        onDismiss = {
-                            if (!poiCreationBusy) {
-                                poiCreationPoint = null
-                                poiCreationDialogVisible = false
-                                poiCreationError = false
-                            }
-                        },
-                        dismissEnabled = !poiCreationBusy,
-                        text = {
-                            Column {
-                                Text(
-                                    stringResource(
-                                        R.string.map_poi_selected_location,
-                                        selectedPoint.latitude,
-                                        selectedPoint.longitude,
-                                    ),
-                                )
-                                TextButton(
-                                    onClick = {
+                if (isVisible && poiCreationDialogVisible) {
+                    phonePoiCreationSheet(
+                        state =
+                            PhonePoiCreationState(
+                                point = poiCreationPoint,
+                                name = poiNameInput,
+                                saving = poiCreationBusy,
+                                saveFailed = poiCreationError,
+                            ),
+                        coordinateSeed = mapPointerCoordinate,
+                        actions =
+                            PhonePoiCreationActions(
+                                onPickMap = {
+                                    if (!poiCreationBusy) {
                                         poiCreationPoint = null
                                         poiCreationDialogVisible = false
                                         poiCreationActive = true
                                         poiCreationError = false
-                                    },
-                                    enabled = !poiCreationBusy,
-                                ) {
-                                    Text(stringResource(R.string.map_poi_change_location))
-                                }
-                                Text(stringResource(R.string.map_poi_name_hint))
-                                OutlinedTextField(
-                                    value = poiNameInput,
-                                    onValueChange = {
-                                        poiNameInput = it
-                                        poiCreationError = false
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    enabled = !poiCreationBusy,
-                                    isError = poiCreationError,
-                                )
-                                if (poiCreationError) {
-                                    Text(stringResource(R.string.map_poi_save_failed))
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = savePoi, enabled = !poiCreationBusy) {
-                                Text(
-                                    stringResource(
-                                        if (poiCreationBusy) {
-                                            R.string.map_poi_saving
-                                        } else {
-                                            R.string.map_poi_save
-                                        },
-                                    ),
-                                )
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
+                                    }
+                                },
+                                onCoordinatesSelected = { point ->
+                                    poiCreationActive = false
+                                    poiCreationPoint = point
+                                    poiCreationDialogVisible = true
+                                    poiCreationError = false
+                                    shouldCenterOnInitialLocation = false
+                                    hasFittedGpxOverlay = true
+                                    if (comparisonOwnsFollowAndCommands) {
+                                        onComparisonCameraInput()
+                                    } else {
+                                        onBaseCameraInput()
+                                    }
+                                    mapUiState = mapUiState.requestSearchTarget(point, mapCamera.bearingDegrees)
+                                },
+                                onNameChanged = { name ->
+                                    poiNameInput = name
+                                    poiCreationError = false
+                                },
+                                onSave = savePoi,
+                                onDismiss = {
                                     if (!poiCreationBusy) {
                                         poiCreationPoint = null
                                         poiCreationDialogVisible = false
                                         poiCreationError = false
                                     }
                                 },
-                                enabled = !poiCreationBusy,
-                            ) {
-                                Text(stringResource(R.string.map_poi_cancel))
-                            }
-                        },
+                            ),
                     )
                 }
                 if (routeCreationControlsVisible) {
@@ -4377,21 +4437,7 @@ internal fun CompanionMapScreen(
         offlineThemeSelector(
             config = offlineThemeConfig,
             onDismiss = { showOfflineThemeSelector = false },
-            onSelectTheme = { themeId ->
-                offlineThemeConfig =
-                    offlineThemePreferences.save(
-                        PhoneOfflineThemeCatalog.resolve(themeId, styleId = null),
-                    )
-            },
-            onSelectStyle = { styleId ->
-                offlineThemeConfig =
-                    offlineThemePreferences.save(
-                        PhoneOfflineThemeConfig(
-                            themeId = offlineThemeConfig.themeId,
-                            styleId = styleId,
-                        ),
-                    )
-            },
+            onChange = { config -> offlineThemeConfig = offlineThemePreferences.save(config) },
         )
     }
 
@@ -4425,8 +4471,7 @@ internal fun CompanionMapScreen(
 private fun offlineThemeSelector(
     config: PhoneOfflineThemeConfig,
     onDismiss: () -> Unit,
-    onSelectTheme: (String) -> Unit,
-    onSelectStyle: (String) -> Unit,
+    onChange: (PhoneOfflineThemeConfig) -> Unit,
 ) {
     val selectedTheme = PhoneOfflineThemeCatalog.themeFor(config.themeId)
     PhoneMapPopupDialog(
@@ -4438,7 +4483,7 @@ private fun offlineThemeSelector(
                     label = stringResource(R.string.map_theme_selector_theme_label),
                     selectedLabel = selectedTheme.label,
                     options = PhoneOfflineThemeCatalog.themes.map { theme -> theme.id to theme.label },
-                    onSelect = onSelectTheme,
+                    onSelect = { themeId -> onChange(PhoneOfflineThemeCatalog.resolve(themeId, styleId = null)) },
                 )
                 mapToolsMapSettingPicker(
                     label = stringResource(R.string.map_theme_selector_style_label),
@@ -4448,8 +4493,9 @@ private fun offlineThemeSelector(
                             ?.label
                             ?: "Default",
                     options = selectedTheme.styles.map { style -> style.id to style.label },
-                    onSelect = onSelectStyle,
+                    onSelect = { styleId -> onChange(PhoneOfflineThemeCatalog.resolve(config.themeId, styleId)) },
                 )
+                phoneOfflineThemeOverlayControls(config, "base") { onChange(it) }
             }
         },
         confirmButton = {
@@ -4861,6 +4907,7 @@ private fun synchronizeOnlineMapPresentation(
     locationState: MapLocationState,
     mapMode: PhoneMapMode,
     mapSettings: PhoneMapSettings,
+    tiltDegrees: Double,
     userGestureActive: Boolean,
     compassSource: PhoneCompassSensorSource,
     compassPresentation: PhoneMapCompassPresentation,
@@ -4877,17 +4924,26 @@ private fun synchronizeOnlineMapPresentation(
     val currentOnCameraInput by rememberUpdatedState(onCameraInput)
     val currentUserGestureActive by rememberUpdatedState(userGestureActive)
     var lastCameraSyncSkip by remember { mutableStateOf<PhoneOnlineCameraSyncSkipKey?>(null) }
+    LaunchedEffect(runtime.map, tiltDegrees) {
+        runtime.map?.applyPhoneMapTilt(tiltDegrees)
+    }
     synchronizeOnlineHillshade(runtime, mapSettings.hillShadingEnabled, terrainOpacity)
     LaunchedEffect(runtime.map, mapMode, mapSettings.markerAnchor) {
         runtime.map?.let { activeMap ->
             activeMap.applyPhoneMapMarkerAnchor(mapSettings.markerAnchor)
             activeMap.applyPhoneMapGestureSettings(mapMode)
-            if (mapMode.isOffline && phoneMapBearingNeedsSync(activeMap.cameraPosition.bearing.toFloat(), 0f)) {
+            if (
+                mapMode.isOffline &&
+                phoneMapBearingNeedsSync(
+                    activeMap.cameraPosition.bearing.toFloat(),
+                    compassPresentation.mapBearingDegrees,
+                )
+            ) {
                 activeMap.moveCamera(
                     CameraUpdateFactory.newCameraPosition(
                         CameraPosition
                             .Builder(activeMap.cameraPosition)
-                            .bearing(0.0)
+                            .bearing(compassPresentation.mapBearingDegrees.toDouble())
                             .build(),
                     ),
                 )
@@ -5331,6 +5387,7 @@ private fun ColumnScope.phoneMapRouteCreationSummary(
     currentLocationAvailable: Boolean,
     actions: PhoneRouteToolsActions,
 ) {
+    val routedPreview = state.visibleMultiPointRoutePreview()
     state.pointSelectionProgress()?.let { progress ->
         Text(
             text =
@@ -5352,23 +5409,34 @@ private fun ColumnScope.phoneMapRouteCreationSummary(
     if (state.mode == PhoneRouteCreationMode.CURRENT_TO_DESTINATION && !currentLocationAvailable) {
         Text(stringResource(R.string.map_route_tools_current_location_missing))
     }
-    preview?.let { estimate ->
+    val estimate =
+        if (state.mode == PhoneRouteCreationMode.MULTI_POINT_CHAIN) {
+            routedPreview?.summary
+        } else {
+            preview
+        }
+    if (state.mode == PhoneRouteCreationMode.MULTI_POINT_CHAIN) {
+        when {
+            state.isMultiPointPreviewLoading -> Text(stringResource(R.string.map_route_tools_preview_updating))
+            estimate != null -> Text(stringResource(R.string.map_route_tools_routed_preview))
+            state.multiPointPreviewMessage != null -> Text(state.multiPointPreviewMessage)
+        }
+    } else if (estimate != null) {
         Text(stringResource(R.string.map_route_tools_direct_estimate))
+    }
+    estimate?.let {
         Row(modifier = Modifier.fillMaxWidth()) {
             phoneMapRouteCreationMetric(
                 label = stringResource(R.string.map_gpx_analysis_distance),
-                value = formatPhoneMapMeasuredDistance(estimate.distanceMeters, isMetric),
+                value = formatPhoneMapMeasuredDistance(it.distanceMeters, isMetric),
             )
             phoneMapRouteCreationMetric(
-                label = stringResource(R.string.map_gpx_analysis_ascent),
-                value =
-                    estimate.elevationGainMeters?.let { elevation ->
-                        formatPhoneMapElevation(elevation, isMetric)
-                    } ?: "—",
+                label = stringResource(R.string.map_route_tools_elevation_gain_loss),
+                value = formatPhoneMapElevationGainLoss(it, isMetric),
             )
             phoneMapRouteCreationMetric(
                 label = stringResource(R.string.map_gpx_analysis_time),
-                value = formatPhoneMapDuration(estimate.estimatedDurationSeconds),
+                value = formatPhoneMapDuration(it.estimatedDurationSeconds),
             )
         }
     }
@@ -5377,6 +5445,15 @@ private fun ColumnScope.phoneMapRouteCreationSummary(
             Text(stringResource(R.string.map_route_tools_create))
         }
     }
+}
+
+private fun formatPhoneMapElevationGainLoss(
+    preview: PhoneRouteSelectionPreview,
+    isMetric: Boolean,
+): String {
+    val ascent = preview.elevationGainMeters ?: return "—"
+    val descent = preview.elevationLossMeters ?: return "—"
+    return "↑${formatPhoneMapElevation(ascent, isMetric)} / ↓${formatPhoneMapElevation(descent, isMetric)}"
 }
 
 @Composable
@@ -6070,7 +6147,7 @@ internal fun PhoneMapLocation.toAndroidLocation(): android.location.Location =
         metadata.elapsedRealtimeNanos?.let { elapsedRealtimeNanos = it }
     }
 
-private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate(
+internal fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate(
     activeMap: MapLibreMap? = null,
     pixelRatio: Double = 1.0,
 ): CameraUpdate {
@@ -6088,6 +6165,7 @@ private fun PhoneMapCameraSnapshot.toMapLibreCameraUpdate(
             .target(LatLng(latitude, longitude))
             .zoom(targetZoom)
             .bearing(bearingDegrees.toDouble())
+            .tilt(activeMap?.cameraPosition?.tilt ?: 0.0)
             .build()
     return CameraUpdateFactory.newCameraPosition(cameraPosition)
 }

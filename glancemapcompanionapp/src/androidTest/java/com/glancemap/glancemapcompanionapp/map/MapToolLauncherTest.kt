@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -11,8 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryFilter
+import com.glancemap.glancemapcompanionapp.library.phoneLibraryHeader
 import com.glancemap.glancemapcompanionapp.library.todayHikeGpxActions
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
 import org.junit.Assert.assertEquals
@@ -28,6 +32,7 @@ class MapToolLauncherTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
     private val ui = mutableStateOf(PhoneMapUiState())
     private val opened = mutableListOf<String>()
+    private val libraryFilter = mutableStateOf(PhoneLibraryFilter.GPX)
 
     @Test
     fun libraryOpensItsOwnSplitPanelAndToolsStaySeparate() {
@@ -129,6 +134,36 @@ class MapToolLauncherTest {
         composeRule.onNodeWithTag("map").assertIsDisplayed()
     }
 
+    @Test
+    fun libraryCategoriesReplaceTheTitleAndKeepResizeAndCloseOnTheSameRow() {
+        setContent(Modifier.width(320.dp))
+        click(R.string.library_title)
+        val header = composeRule.onNodeWithTag("map-tool-panel-header").fetchSemanticsNode().boundsInRoot
+        composeRule
+            .onNode(
+                hasText(label(R.string.library_title)) and hasAnyAncestor(hasTestTag("map-tool-panel-header")),
+            ).assertDoesNotExist()
+        PhoneLibraryFilter.entries.forEach { category ->
+            val tab = composeRule.onNodeWithTag("library-tab-${category.name}")
+            tab.assertIsDisplayed().performClick().assertIsSelected()
+            composeRule.runOnIdle { assertEquals(category, libraryFilter.value) }
+            val bounds = tab.fetchSemanticsNode().boundsInRoot
+            assertTrue(bounds.left >= header.left && bounds.right <= header.right)
+            assertEquals(header.center.y, bounds.center.y, 1f)
+        }
+        composeRule.onNodeWithText(label(R.string.library_filter_bundles)).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(label(R.string.library_filter_bundles)).assertIsSelected()
+        val expand =
+            label(R.string.map_tool_action_expand_content_description) + ". " + label(R.string.map_tool_resize_hint)
+        composeRule.onNodeWithContentDescription(expand).performClick()
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
+        composeRule.onNodeWithTag("library-tab-BUNDLES").assertIsSelected()
+        composeRule.onNodeWithContentDescription(label(R.string.common_action_close)).performClick()
+        composeRule.runOnIdle { assertEquals(MapToolPanelMode.CLOSED, ui.value.toolPanel.mode) }
+        click(R.string.library_title)
+        composeRule.onNodeWithTag("library-tab-BUNDLES").assertIsSelected()
+    }
+
     private fun pressBack() = composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
 
     private fun label(resource: Int): String = composeRule.activity.getString(resource)
@@ -143,15 +178,18 @@ class MapToolLauncherTest {
         }
     }
 
-    private fun setContent() {
+    private fun setContent(modifier: Modifier = Modifier) {
         composeRule.setContent {
             BackHandler(enabled = ui.value.toolLauncherExpanded || ui.value.toolPanel.mode != MapToolPanelMode.CLOSED) {
                 ui.value = ui.value.onMapBack()
             }
             MaterialTheme {
-                Box(Modifier.fillMaxSize()) {
+                Box(modifier.fillMaxSize()) {
                     MapToolScaffold(
                         headerContent = { tool ->
+                            if (tool == MapTool.LIBRARY) {
+                                phoneLibraryHeader(libraryFilter.value) { libraryFilter.value = it }
+                            }
                             if (tool == MapTool.HIKE) {
                                 todayHikeGpxActions(
                                     RouteLibraryUiState(isLoading = false),
