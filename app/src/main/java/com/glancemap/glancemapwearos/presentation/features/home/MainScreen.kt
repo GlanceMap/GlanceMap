@@ -70,6 +70,7 @@ import kotlinx.coroutines.flow.flowOf
 fun MainScreen(
     navController: NavHostController,
     settingsViewModel: SettingsViewModel? = null,
+    onNavigateClick: () -> Unit = { navController.navigate(WatchRoutes.NAVIGATE) },
 ) {
     val offlineModeFlow = settingsViewModel?.offlineMode ?: flowOf(false)
     val offlineMode by offlineModeFlow.collectAsState(initial = false)
@@ -275,7 +276,7 @@ fun MainScreen(
             )
 
             IconButton(
-                onClick = { navController.navigate(WatchRoutes.NAVIGATE) },
+                onClick = onNavigateClick,
                 modifier =
                     Modifier
                         .align(Alignment.CenterEnd)
