@@ -125,14 +125,17 @@ internal class PhoneMapLocationSource(
     val location: StateFlow<PhoneMapLocation?> = _location.asStateFlow()
     private var subscription = PhoneMapLocationSubscription()
     private var activeCallback: LocationCallback? = null
+    private var activeRequestProfile: PhoneMapLocationRequestProfile? = null
     private var callbackCounts = PhoneMapLocationCallbackCounts()
     private var callbackWindowStartedAtMs: Long? = null
 
     @SuppressLint("MissingPermission")
-    fun start() {
-        if (subscription.isActive) return
+    fun start(profile: PhoneMapLocationRequestProfile) {
+        if (subscription.isActive && activeRequestProfile == profile) return
+        if (subscription.isActive) stop()
         flushCallbackSummary()
         subscription = subscription.start()
+        activeRequestProfile = profile
         val generation = subscription.generation
         val callback =
             object : LocationCallback() {
@@ -145,23 +148,28 @@ internal class PhoneMapLocationSource(
             location?.let { publish(it, generation) }
         }
         locationClient.requestLocationUpdates(
-            LocationRequest
-                .Builder(Priority.PRIORITY_HIGH_ACCURACY, PHONE_MAP_LOCATION_INTERVAL_MS)
-                .setMinUpdateIntervalMillis(PHONE_MAP_LOCATION_MIN_INTERVAL_MS)
-                .build(),
+            profile.locationRequest(),
             callback,
             Looper.getMainLooper(),
         )
-        PhoneDebugCapture.log(TAG, "event=location_subscription_started generation=$generation")
+        PhoneDebugCapture.log(
+            TAG,
+            "event=location_subscription_started generation=$generation profile=${profile.name.lowercase()}",
+        )
     }
 
     fun stop() {
         if (!subscription.isActive) return
         flushCallbackSummary()
-        PhoneDebugCapture.log(TAG, "event=location_subscription_stopped generation=${subscription.generation}")
+        PhoneDebugCapture.log(
+            TAG,
+            "event=location_subscription_stopped generation=${subscription.generation} " +
+                "profile=${activeRequestProfile?.name?.lowercase()}",
+        )
         subscription = subscription.stop()
         activeCallback?.let(locationClient::removeLocationUpdates)
         activeCallback = null
+        activeRequestProfile = null
     }
 
     private fun publish(
@@ -222,6 +230,22 @@ internal class PhoneMapLocationSource(
 
     private fun monotonicMillis(): Long = System.nanoTime() / NANOS_PER_MILLISECOND
 
+    private fun PhoneMapLocationRequestProfile.locationRequest(): LocationRequest =
+        when (this) {
+            PhoneMapLocationRequestProfile.BROWSE ->
+                LocationRequest
+                    .Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, PHONE_MAP_BROWSE_LOCATION_INTERVAL_MS)
+                    .setMinUpdateIntervalMillis(PHONE_MAP_BROWSE_LOCATION_MIN_INTERVAL_MS)
+                    // A puck need not move for sensor jitter; 25 m is a useful browse-scale displacement.
+                    .setMinUpdateDistanceMeters(PHONE_MAP_BROWSE_MIN_DISTANCE_METERS)
+                    .build()
+            PhoneMapLocationRequestProfile.FOLLOW ->
+                LocationRequest
+                    .Builder(Priority.PRIORITY_HIGH_ACCURACY, PHONE_MAP_FOLLOW_LOCATION_INTERVAL_MS)
+                    .setMinUpdateIntervalMillis(PHONE_MAP_FOLLOW_LOCATION_MIN_INTERVAL_MS)
+                    .build()
+        }
+
     private companion object {
         const val TAG = "PhoneMapLocation"
         const val CALLBACK_SUMMARY_INTERVAL_MILLIS = 30_000L
@@ -229,6 +253,10 @@ internal class PhoneMapLocationSource(
     }
 }
 
-private const val PHONE_MAP_LOCATION_INTERVAL_MS = 2_000L
-private const val PHONE_MAP_LOCATION_MIN_INTERVAL_MS = 1_000L
+// Browsing updates are five times slower and balanced-power; the distance gate avoids waking on small drift.
+private const val PHONE_MAP_BROWSE_LOCATION_INTERVAL_MS = 10_000L
+private const val PHONE_MAP_BROWSE_LOCATION_MIN_INTERVAL_MS = 5_000L
+private const val PHONE_MAP_BROWSE_MIN_DISTANCE_METERS = 25f
+private const val PHONE_MAP_FOLLOW_LOCATION_INTERVAL_MS = 2_000L
+private const val PHONE_MAP_FOLLOW_LOCATION_MIN_INTERVAL_MS = 1_000L
 private const val NANOSECONDS_PER_MILLISECOND = 1_000_000L

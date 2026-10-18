@@ -73,11 +73,25 @@ class LiveTrackingService : Service() {
     private var isStopping = false
     private var lastRescueRequestElapsedRealtimeNanos: Long? = null
     private val sendMutex = Mutex()
+    private val locationUpdates =
+        LiveTrackingLocationUpdates(
+            requestLocationUpdates = ::requestLocationUpdates,
+            removeLocationUpdates = ::removeLocationUpdates,
+        )
 
     private val locationCallback =
         object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
+                locationUpdates.onLocation(
+                    sample =
+                        LiveTrackingLocationSample(
+                            latitude = location.latitude,
+                            longitude = location.longitude,
+                            elapsedRealtimeMillis = location.elapsedRealtimeNanos / NANOS_PER_MILLISECOND,
+                        ),
+                    updateIntervalSeconds = updateIntervalSeconds(),
+                )
                 serviceScope.launch {
                     sendLocation(
                         location = location,
@@ -134,7 +148,7 @@ class LiveTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
+        locationUpdates.stop()
         cellularSignalMonitor.stop()
         LiveTrackingDiagnostics.finishLiveTrackingSession()
         serviceScope.cancel()
@@ -486,9 +500,23 @@ class LiveTrackingService : Service() {
                 }
                 val controlsPending = LiveTrackingControlQueue.load(this@LiveTrackingService).isNotEmpty()
                 if (!stop && error.isRetryableArkluzFailure()) {
-                    val queueSize = LiveTrackingPositionQueue.enqueue(this@LiveTrackingService, failedUpdate)
+                    val enqueueResult = LiveTrackingPositionQueue.enqueue(this@LiveTrackingService, failedUpdate)
+                    val queueSize = enqueueResult.queueSize
                     LiveTrackingDiagnostics.recordLiveTrackingPositionQueued(queueSize)
-                    if (!sentStart && controlsPending) {
+                    if (enqueueResult.droppedOldestCount > 0) {
+                        val warning =
+                            resources.getQuantityString(
+                                R.plurals.tracking_notification_offline_positions_dropped,
+                                enqueueResult.droppedOldestCount,
+                                enqueueResult.droppedOldestCount,
+                            )
+                        if (!sentStart && controlsPending) {
+                            LiveTrackingSessionStore.setStartPending(warning)
+                        } else {
+                            LiveTrackingSessionStore.setActive(status = warning, serverSyncPending = true)
+                        }
+                        updateNotification(warning)
+                    } else if (!sentStart && controlsPending) {
                         val message =
                             getString(
                                 R.string.tracking_notification_waiting_for_network_to_start_tracking_gps,
@@ -544,11 +572,14 @@ class LiveTrackingService : Service() {
     }
 
     private suspend fun retryPendingStartUntilConfirmed() {
-        while (!isStopping && !sentStart && LiveTrackingControlQueue.load(this).any { it.start }) {
-            delay(CONTROL_RETRY_DELAY_MS)
+        var delayMillis = CONTROL_RETRY_INITIAL_DELAY_MS
+        repeat(CONTROL_RETRY_MAX_ATTEMPTS) {
+            if (isStopping || sentStart || LiveTrackingControlQueue.load(this).none { it.start }) return
+            delay(delayMillis)
             if (isStopping || sentStart) return
             runCatching { flushPendingSessionControls() }
             updateControlSyncStatus()
+            delayMillis = (delayMillis * 2).coerceAtMost(CONTROL_RETRY_MAX_DELAY_MS)
         }
     }
 
@@ -684,77 +715,74 @@ class LiveTrackingService : Service() {
     }
 
     private suspend fun replayStoredGpsPointsLocked(): Int {
-        var remaining = LiveTrackingPositionQueue.load(this)
-        var replayedCount = 0
-        for (update in remaining) {
-            val updateToSend = update.asCatchUpPoint().withCurrentAlertSettings()
-            val queueSizeBefore = remaining.size
-            val result =
-                runCatching {
-                    arkluzClient.sendLocationUpdate(updateToSend)
-                }
-            result
-                .onSuccess {
-                    replayedCount += 1
-                    remaining = remaining.drop(1)
-                    LiveTrackingPositionQueue.replaceAll(this, remaining)
-                    LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                        isCatchUp = true,
-                        fixTimestampEpochMillis = updateToSend.epochMilliseconds,
-                        fixAgeMillis = diagnosticFixAgeMillis(updateToSend.epochMilliseconds),
-                        gsmSignalPercent = updateToSend.gsmSignalPercent,
-                        queueSizeBefore = queueSizeBefore,
-                        queueSizeAfter = remaining.size,
-                        outcome = "success",
-                    )
-                    LiveTrackingDiagnostics.recordLiveTrackingCatchUpReplay(remaining.size)
-                }.onFailure { error ->
-                    if (error.isRetryableArkluzFailure()) {
-                        LiveTrackingPositionQueue.replaceAll(this, remaining)
-                        LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                            isCatchUp = true,
-                            fixTimestampEpochMillis = updateToSend.epochMilliseconds,
-                            fixAgeMillis = diagnosticFixAgeMillis(updateToSend.epochMilliseconds),
-                            gsmSignalPercent = updateToSend.gsmSignalPercent,
-                            queueSizeBefore = queueSizeBefore,
-                            queueSizeAfter = remaining.size,
-                            outcome = "network_retry",
-                        )
-                        throw error
+        val updates = LiveTrackingPositionQueue.load(this)
+        return replayLiveTrackingPositionBatch(
+            updates = updates,
+            send = { update ->
+                arkluzClient.sendLocationUpdate(update.asCatchUpPoint().withCurrentAlertSettings())
+            },
+            isRetryable = Throwable::isRetryableArkluzFailure,
+            persistRemaining = { remaining -> LiveTrackingPositionQueue.replaceAll(this, remaining) },
+            onProgress = { progress ->
+                val updateToSend = progress.update.asCatchUpPoint().withCurrentAlertSettings()
+                val outcome =
+                    when (progress.outcome) {
+                        LiveTrackingPositionReplayOutcome.SUCCESS -> "success"
+                        LiveTrackingPositionReplayOutcome.FAILED -> "failed"
+                        LiveTrackingPositionReplayOutcome.NETWORK_RETRY -> "network_retry"
                     }
-                    remaining = remaining.drop(1)
-                    LiveTrackingPositionQueue.replaceAll(this, remaining)
-                    LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                        isCatchUp = true,
-                        fixTimestampEpochMillis = updateToSend.epochMilliseconds,
-                        fixAgeMillis = diagnosticFixAgeMillis(updateToSend.epochMilliseconds),
-                        gsmSignalPercent = updateToSend.gsmSignalPercent,
-                        queueSizeBefore = queueSizeBefore,
-                        queueSizeAfter = remaining.size,
-                        outcome = "failed",
-                    )
-                    LiveTrackingSessionStore.setError(
-                        error.message
-                            ?: getString(R.string.tracking_notification_stored_gps_point_could_not_be_replayed),
-                    )
+                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
+                    isCatchUp = true,
+                    fixTimestampEpochMillis = updateToSend.epochMilliseconds,
+                    fixAgeMillis = diagnosticFixAgeMillis(updateToSend.epochMilliseconds),
+                    gsmSignalPercent = updateToSend.gsmSignalPercent,
+                    queueSizeBefore = progress.queueSizeBefore,
+                    queueSizeAfter = progress.queueSizeAfter,
+                    outcome = outcome,
+                )
+                if (progress.outcome == LiveTrackingPositionReplayOutcome.SUCCESS) {
+                    LiveTrackingDiagnostics.recordLiveTrackingCatchUpReplay(progress.queueSizeAfter)
                 }
-        }
-        return replayedCount
+            },
+        )
     }
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
         if (!hasLocationPermission()) return
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
         isPaused = false
+        locationUpdates.start(updateIntervalSeconds())
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestLocationUpdates(profile: LiveTrackingLocationRequest) {
+        if (!hasLocationPermission()) return
+        removeLocationUpdates()
+        val priority =
+            when (profile.priority) {
+                LiveTrackingLocationPriority.HIGH_ACCURACY -> Priority.PRIORITY_HIGH_ACCURACY
+                LiveTrackingLocationPriority.BALANCED_POWER -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            }
         val request =
             LocationRequest
-                .Builder(Priority.PRIORITY_HIGH_ACCURACY, updateIntervalMs())
-                .setMinUpdateIntervalMillis(updateIntervalMs())
-                .setMaxUpdateDelayMillis(updateIntervalMs())
+                .Builder(priority, profile.intervalMillis)
+                .setMinUpdateIntervalMillis(profile.intervalMillis)
+                .setMaxUpdateDelayMillis(profile.intervalMillis)
+                .setMinUpdateDistanceMeters(profile.minUpdateDistanceMeters)
                 .build()
         locationClient.requestLocationUpdates(request, locationCallback, mainLooper)
     }
+
+    private fun removeLocationUpdates() {
+        runCatching { locationClient.removeLocationUpdates(locationCallback) }
+    }
+
+    private fun updateIntervalSeconds(): Int =
+        (settings?.updateIntervalSeconds ?: DEFAULT_UPDATE_INTERVAL_SECONDS)
+            .coerceIn(
+                LiveTrackingLocationPolicySettings.MIN_INTERVAL_SECONDS,
+                LiveTrackingLocationPolicySettings.MAX_INTERVAL_SECONDS,
+            )
 
     private fun pauseTracking() {
         if (isPaused || isStopping || !sentStart) return
@@ -770,7 +798,7 @@ class LiveTrackingService : Service() {
                         )
                         return@withLock
                     }
-                runCatching { locationClient.removeLocationUpdates(locationCallback) }
+                locationUpdates.stop()
                 isPaused = true
                 persistActiveSession()
                 LiveTrackingControlQueue.enqueue(
@@ -897,11 +925,14 @@ class LiveTrackingService : Service() {
     }
 
     private suspend fun retryPendingControlsWhilePaused() {
-        while (isPaused && !isStopping && LiveTrackingControlQueue.load(this).isNotEmpty()) {
-            delay(CONTROL_RETRY_DELAY_MS)
+        var delayMillis = CONTROL_RETRY_INITIAL_DELAY_MS
+        repeat(CONTROL_RETRY_MAX_ATTEMPTS) {
+            if (!isPaused || isStopping || LiveTrackingControlQueue.load(this).isEmpty()) return
+            delay(delayMillis)
             if (!isPaused || isStopping) return
             runCatching { flushPendingSessionControls() }
             updateControlSyncStatus()
+            delayMillis = (delayMillis * 2).coerceAtMost(CONTROL_RETRY_MAX_DELAY_MS)
         }
     }
 
@@ -935,110 +966,72 @@ class LiveTrackingService : Service() {
         }
     }
 
-    private fun updateIntervalMs(): Long =
-        (settings?.updateIntervalSeconds ?: DEFAULT_UPDATE_INTERVAL_SECONDS)
-            .coerceIn(MIN_UPDATE_INTERVAL_SECONDS, MAX_UPDATE_INTERVAL_SECONDS)
-            .toLong() * 1000L
-
     private fun stopTracking() {
         if (isStopping) return
-        runCatching { locationClient.removeLocationUpdates(locationCallback) }
+        stopLiveTrackingLocalResources(
+            stopLocationUpdates = locationUpdates::stop,
+            stopSensors = cellularSignalMonitor::stop,
+        )
         isPaused = false
         isStopping = true
+        LiveTrackingSessionStore.setStopping(
+            getString(R.string.tracking_notification_live_tracking_stopped_waiting_for_server_confirmation),
+        )
         serviceScope.launch {
-            val location = sendMutex.withLock { lastLocation }
-            if (location == null) {
+            val pendingUpdates =
+                sendMutex.withLock {
+                    val activeSettings = settings
+                    val location = lastLocation
+                    if (activeSettings == null || location == null) {
+                        emptyList()
+                    } else {
+                        LiveTrackingControlQueue.load(this@LiveTrackingService) +
+                            arkluzClient.buildLocationUpdate(
+                                settings = activeSettings,
+                                location = location,
+                                start = false,
+                                stop = true,
+                            )
+                    }
+                }
+            if (pendingUpdates.isEmpty()) {
                 finishStopped(
                     status = "Stopped",
                     clearPlannedDraft = true,
                 )
                 return@launch
             }
-            retryStopUntilConfirmed(location)
+            persistStopReconciliationAndFinish(pendingUpdates)
         }
     }
 
-    private suspend fun retryStopUntilConfirmed(location: Location) {
-        var attempt = 1
-        while (true) {
-            LiveTrackingSessionStore.setStopping(
-                getString(R.string.tracking_notification_live_tracking_stopped_waiting_for_server_confirmation),
+    private fun persistStopReconciliationAndFinish(pendingUpdates: List<ArkluzLocationUpdate>) {
+        val requestId = newLiveTrackingStopRequestId()
+        val persisted =
+            runCatching {
+                SharedPreferencesLiveTrackingStopPendingStore(this)
+                    .save(requestId, pendingUpdates)
+            }.getOrDefault(false)
+        if (!persisted) {
+            finishStopped(
+                status = "Stopped; server confirmation could not be queued",
+                clearPlannedDraft = true,
             )
-            updateNotification(
-                getString(R.string.tracking_notification_live_tracking_stopped_waiting_for_server_confirmation),
+            LiveTrackingSessionStore.setStoppedWithError(
+                status = "Stopped; server confirmation could not be queued",
+                message = "The server close could not be saved for retry.",
             )
-            val result = runCatching { sendStopConfirmation(location) }
-            result
-                .onSuccess {
-                    finishStopped(
-                        status = "Stopped",
-                        clearPlannedDraft = true,
-                    )
-                    return
-                }.onFailure { error ->
-                    if (!error.isRetryableArkluzFailure()) {
-                        LiveTrackingSessionStore.setStoppedWithError(
-                            status = getString(R.string.tracking_notification_stopped_confirmation_failed),
-                            message =
-                                error.message ?: getString(R.string.tracking_notification_stop_confirmation_failed),
-                        )
-                        updateNotification(getString(R.string.tracking_notification_stop_confirmation_failed))
-                        LiveTrackingDiagnostics.finishLiveTrackingSession()
-                        ServiceCompat.stopForeground(this@LiveTrackingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                        return
-                    }
-                    val retryMessage =
-                        getString(
-                            R.string.tracking_notification_live_tracking_stopped_waiting_for_server_confirmation_2,
-                            attempt,
-                        )
-                    LiveTrackingSessionStore.setStopping(retryMessage)
-                    updateNotification(retryMessage)
-                    attempt += 1
-                    delay(STOP_RETRY_DELAY_MS)
-                }
+            return
         }
-    }
-
-    @Suppress("TooGenericExceptionCaught")
-    private suspend fun sendStopConfirmation(location: Location) {
-        sendMutex.withLock {
-            val activeSettings = settings ?: return@withLock
-            val update =
-                arkluzClient.buildLocationUpdate(
-                    settings = activeSettings,
-                    location = location,
-                    start = false,
-                    stop = true,
-                )
-            flushPendingSessionControlsLocked()
-            val queueSizeBefore = diagnosticPositionQueueSize()
-            try {
-                val result = arkluzClient.sendLocationUpdate(update)
-                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                    isCatchUp = false,
-                    fixTimestampEpochMillis = update.epochMilliseconds,
-                    fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
-                    gsmSignalPercent = update.gsmSignalPercent,
-                    queueSizeBefore = queueSizeBefore,
-                    queueSizeAfter = diagnosticPositionQueueSize(),
-                    outcome = "success",
-                )
-                result
-            } catch (error: Throwable) {
-                LiveTrackingDiagnostics.recordLiveTrackingTransmission(
-                    isCatchUp = false,
-                    fixTimestampEpochMillis = update.epochMilliseconds,
-                    fixAgeMillis = diagnosticFixAgeMillis(update.epochMilliseconds),
-                    gsmSignalPercent = update.gsmSignalPercent,
-                    queueSizeBefore = queueSizeBefore,
-                    queueSizeAfter = diagnosticPositionQueueSize(),
-                    outcome = if (error.isRetryableArkluzFailure()) "network_retry" else "failed",
-                )
-                throw error
-            }
-        }
+        finishStopped(
+            status =
+                getString(
+                    R.string.tracking_notification_live_tracking_stopped_waiting_for_server_confirmation,
+                ),
+            clearPlannedDraft = true,
+        )
+        // The persisted request lets app startup recover if scheduling is interrupted by process death.
+        runCatching { LiveTrackingStopReconciliationWork.enqueue(this, requestId) }
     }
 
     private fun finishStopped(
@@ -1186,10 +1179,12 @@ class LiveTrackingService : Service() {
         private const val REQ_PAUSE = 4203
         private const val REQ_RESUME = 4204
         private const val DEFAULT_UPDATE_INTERVAL_SECONDS = 60
-        private const val MIN_UPDATE_INTERVAL_SECONDS = 15
-        private const val MAX_UPDATE_INTERVAL_SECONDS = 600
-        private const val STOP_RETRY_DELAY_MS = 30_000L
-        private const val CONTROL_RETRY_DELAY_MS = 30_000L
+        private const val NANOS_PER_MILLISECOND = 1_000_000L
+
+        // Six retries spread from 30 seconds to a 5-minute cap, then later fixes or resume can flush controls.
+        private const val CONTROL_RETRY_INITIAL_DELAY_MS = 30_000L
+        private const val CONTROL_RETRY_MAX_DELAY_MS = 5 * 60_000L
+        private const val CONTROL_RETRY_MAX_ATTEMPTS = 6
         private const val RESCUE_TIMEOUT_MILLIS = 8_000L
 
         // Two minutes prevents repeated suspect callbacks from becoming fast GPS polling.
@@ -1284,7 +1279,10 @@ class LiveTrackingService : Service() {
                     getIntExtra(
                         EXTRA_UPDATE_INTERVAL_SECONDS,
                         DEFAULT_UPDATE_INTERVAL_SECONDS,
-                    ).coerceIn(MIN_UPDATE_INTERVAL_SECONDS, MAX_UPDATE_INTERVAL_SECONDS),
+                    ).coerceIn(
+                        LiveTrackingLocationPolicySettings.MIN_INTERVAL_SECONDS,
+                        LiveTrackingLocationPolicySettings.MAX_INTERVAL_SECONDS,
+                    ),
                 group = group,
                 participantPassword = pass,
                 followerPassword = getStringExtra(EXTRA_FOLLOWER_PASSWORD).orEmpty(),

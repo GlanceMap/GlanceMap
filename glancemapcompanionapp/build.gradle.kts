@@ -279,6 +279,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Explicit coroutine support
     implementation(libs.kotlinx.coroutines.android)
