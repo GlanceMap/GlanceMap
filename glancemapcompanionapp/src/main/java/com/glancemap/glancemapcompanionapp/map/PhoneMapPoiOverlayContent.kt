@@ -29,7 +29,7 @@ internal fun synchronizePoiOverlay(
     val currentPois by rememberUpdatedState(pois)
     val currentIsVisible by rememberUpdatedState(isVisible)
     val currentSettings by rememberUpdatedState(settings)
-    LaunchedEffect(runtime.map, runtime.generation.styleRevision, pois, isVisible, settings) {
+    LaunchedEffect(runtime.map, runtime.generation.styleReplayKey, pois, isVisible, settings) {
         runtime.withCurrentLoadedStyle(latestRuntime = { currentRuntime }) { _, mapView, style ->
             style.renderPois(
                 pois = currentPois,
@@ -37,6 +37,7 @@ internal fun synchronizePoiOverlay(
                 settings = currentSettings,
                 context = mapView.context,
             )
+            currentRuntime.recordStyleReplayPartApplied(PhoneMapLibreStyleReplayPart.POI)
         }
     }
 }
@@ -49,7 +50,7 @@ internal fun observePoiViewport(
 ) {
     val currentRuntime by rememberUpdatedState(runtime)
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
-    DisposableEffect(runtime.map, isVisible) {
+    DisposableEffect(runtime.map, runtime.generation.renderer, isVisible) {
         val activeMap = runtime.map
         if (activeMap == null || !isVisible) return@DisposableEffect onDispose {}
 
@@ -76,7 +77,7 @@ internal fun observePoiSelection(
     val currentRuntime by rememberUpdatedState(runtime)
     val currentPois by rememberUpdatedState(poiById)
     val currentOnPoiSelected by rememberUpdatedState(onPoiSelected)
-    DisposableEffect(runtime.map, isVisible) {
+    DisposableEffect(runtime.map, runtime.generation.renderer, isVisible) {
         val activeMap = runtime.map
         if (activeMap == null || !isVisible) return@DisposableEffect onDispose {}
 

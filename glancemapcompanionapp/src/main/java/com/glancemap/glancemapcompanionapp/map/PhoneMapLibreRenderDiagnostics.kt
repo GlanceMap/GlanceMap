@@ -1,12 +1,57 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Debug
 import android.os.SystemClock
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
+import org.maplibre.android.maps.MapView
 import java.util.concurrent.atomic.AtomicLong
 
 internal enum class PhoneMapLibreRendererRole {
     BASE,
     COMPARISON,
+}
+
+internal data class PhoneMapLibreRendererTransition(
+    val oldGeneration: Long?,
+    val newGeneration: Long?,
+    val oldProviderId: String?,
+    val newProviderId: String?,
+)
+
+internal data class PhoneMapLibreRenderBoundary(
+    val context: Context,
+    val role: PhoneMapLibreRendererRole,
+    val transition: PhoneMapLibreRendererTransition,
+    val mapView: MapView? = null,
+    val detail: String? = null,
+) {
+    fun log(event: String) {
+        val runtime = Runtime.getRuntime()
+        val memoryInfo = ActivityManager.MemoryInfo()
+        val memoryManager = context.applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val hasMemoryInfo = runCatching { memoryManager?.getMemoryInfo(memoryInfo) }.isSuccess && memoryManager != null
+        val mapIdentity = mapView?.let { System.identityHashCode(it).toString() } ?: "unavailable"
+        val destroyed = mapView?.isDestroyed?.toString() ?: "unavailable"
+        PhoneDebugCapture.log(
+            PhoneMapLibreRenderDiagnostics.TAG,
+            buildString {
+                append("event=$event role=${role.name.lowercase()} ")
+                append("oldRendererGeneration=${transition.oldGeneration ?: "none"} ")
+                append("newRendererGeneration=${transition.newGeneration ?: "none"} ")
+                append("oldProvider=${transition.oldProviderId ?: "none"} ")
+                append("newProvider=${transition.newProviderId ?: "none"} ")
+                append("mapViewIdentity=$mapIdentity mapViewDestroyed=$destroyed ")
+                append("javaHeapUsedBytes=${runtime.totalMemory() - runtime.freeMemory()} ")
+                append("javaHeapMaxBytes=${runtime.maxMemory()} ")
+                append("nativeHeapAllocatedBytes=${Debug.getNativeHeapAllocatedSize()} ")
+                append("activityAvailableMemoryBytes=${if (hasMemoryInfo) memoryInfo.availMem else "unavailable"} ")
+                append("activityLowMemory=${if (hasMemoryInfo) memoryInfo.lowMemory else "unavailable"}")
+                detail?.let { append(" $it") }
+            },
+        )
+    }
 }
 
 internal enum class PhoneMapLibreErrorCategory(
@@ -230,6 +275,119 @@ internal data class PhoneMapLibreLifecycleUpdate(
     val publishSummary: Boolean,
 )
 
+internal enum class PhoneMapLibreStyleReplayPart(
+    val value: String,
+    val event: String,
+) {
+    LOCATION("location", "overlay_reapplied"),
+    HILLSHADE("hillshade", "hillshade_reapplied"),
+    BASEMAP_OPACITY("basemap_opacity", "basemap_opacity_reapplied"),
+    GPX("gpx", "overlay_reapplied"),
+    POI("poi", "overlay_reapplied"),
+    ROUTE_ANALYSIS("route_analysis", "overlay_reapplied"),
+    SELECTION("selection", "overlay_reapplied"),
+    DISTANCE("distance", "overlay_reapplied"),
+}
+
+internal data class PhoneMapLibreStyleReplayUpdate(
+    val accepted: Boolean,
+    val partWasNew: Boolean = false,
+    val completed: Boolean = false,
+)
+
+/** Tracks one required declarative replay per logical renderer generation. */
+internal class PhoneMapLibreStyleReplayTracker {
+    private data class Replay(
+        val identity: PhoneMapLibreRendererIdentity,
+        val expected: Set<PhoneMapLibreStyleReplayPart>,
+        val applied: Set<PhoneMapLibreStyleReplayPart> = emptySet(),
+    )
+
+    private val currentByRole = mutableMapOf<PhoneMapLibreRendererRole, Replay>()
+
+    @Synchronized
+    fun begin(identity: PhoneMapLibreRendererIdentity): Set<PhoneMapLibreStyleReplayPart> {
+        val expected =
+            PhoneMapLibreStyleReplayPart.entries.toSet().let { all ->
+                if (identity.role == PhoneMapLibreRendererRole.BASE) {
+                    all - PhoneMapLibreStyleReplayPart.BASEMAP_OPACITY
+                } else {
+                    all
+                }
+            }
+        currentByRole[identity.role] = Replay(identity, expected)
+        return expected
+    }
+
+    @Synchronized
+    fun partApplied(
+        identity: PhoneMapLibreRendererIdentity,
+        part: PhoneMapLibreStyleReplayPart,
+    ): PhoneMapLibreStyleReplayUpdate {
+        val replay = currentByRole[identity.role]
+        return when {
+            replay == null || replay.identity != identity || part !in replay.expected ->
+                PhoneMapLibreStyleReplayUpdate(accepted = false)
+            part in replay.applied -> PhoneMapLibreStyleReplayUpdate(accepted = true)
+            else -> {
+                val applied = replay.applied + part
+                currentByRole[identity.role] = replay.copy(applied = applied)
+                PhoneMapLibreStyleReplayUpdate(
+                    accepted = true,
+                    partWasNew = true,
+                    completed = applied.containsAll(replay.expected),
+                )
+            }
+        }
+    }
+
+    @Synchronized
+    fun invalidate(identity: PhoneMapLibreRendererIdentity) {
+        if (currentByRole[identity.role]?.identity == identity) currentByRole.remove(identity.role)
+    }
+}
+
+internal object PhoneMapLibreStyleReplayDiagnostics {
+    private val tracker = PhoneMapLibreStyleReplayTracker()
+
+    fun started(
+        identity: PhoneMapLibreRendererIdentity,
+        boundary: PhoneMapLibreRenderBoundary,
+    ) {
+        val expected = tracker.begin(identity).joinToString(",") { part -> part.value }
+        boundary
+            .copy(detail = listOfNotNull(boundary.detail, "expected=$expected").joinToString(" "))
+            .log("style_replay_started")
+    }
+
+    fun partApplied(
+        identity: PhoneMapLibreRendererIdentity,
+        part: PhoneMapLibreStyleReplayPart,
+        boundary: PhoneMapLibreRenderBoundary,
+    ) {
+        val update = tracker.partApplied(identity, part)
+        if (!update.accepted) {
+            boundary
+                .copy(detail = listOfNotNull(boundary.detail, "type=${part.value}").joinToString(" "))
+                .log("style_replay_skipped_stale_generation")
+            return
+        }
+        if (!update.partWasNew) return
+        boundary
+            .copy(detail = listOfNotNull(boundary.detail, "type=${part.value}").joinToString(" "))
+            .log(part.event)
+        if (update.completed) boundary.log("style_replay_completed")
+    }
+
+    fun skippedStaleGeneration(boundary: PhoneMapLibreRenderBoundary) {
+        boundary.log("style_replay_skipped_stale_generation")
+    }
+
+    fun invalidate(identity: PhoneMapLibreRendererIdentity) {
+        tracker.invalidate(identity)
+    }
+}
+
 /** Pure state tracker; callbacks for a replaced renderer cannot mutate the current role snapshot. */
 internal class PhoneMapLibreRendererHealthTracker(
     private val resourceSummaryIntervalMs: Long = 5_000L,
@@ -324,7 +482,12 @@ internal class PhoneMapLibreRendererHealthTracker(
                         )
                     }
                     if (firstFullFrame) {
-                        add(PhoneMapLibreLifecycleEvent(PhoneMapLibreLifecycleKind.FULL_RENDER_FRAME_FINISHED, identity))
+                        add(
+                            PhoneMapLibreLifecycleEvent(
+                                PhoneMapLibreLifecycleKind.FULL_RENDER_FRAME_FINISHED,
+                                identity,
+                            ),
+                        )
                     }
                     if (recovered) {
                         add(
@@ -463,6 +626,7 @@ internal object PhoneMapLibreRenderDiagnostics {
         generation: Long,
         source: PhoneOnlineMapSource,
         providerId: String,
+        boundary: PhoneMapLibreRenderBoundary? = null,
     ): PhoneMapLibreRendererIdentity {
         val identity =
             PhoneMapLibreRendererIdentity(
@@ -473,11 +637,16 @@ internal object PhoneMapLibreRenderDiagnostics {
                 providerId,
             )
         publish(tracker.rendererCreated(identity, SystemClock.elapsedRealtime()))
+        boundary?.log("renderer_created_boundary")
         return identity
     }
 
-    fun styleLoadStarted(identity: PhoneMapLibreRendererIdentity) {
+    fun styleLoadStarted(
+        identity: PhoneMapLibreRendererIdentity,
+        boundary: PhoneMapLibreRenderBoundary? = null,
+    ) {
         publish(tracker.styleLoadStarted(identity, SystemClock.elapsedRealtime()))
+        boundary?.log("style_load_begin")
     }
 
     fun styleLoadCompleted(identity: PhoneMapLibreRendererIdentity) {
@@ -505,7 +674,16 @@ internal object PhoneMapLibreRenderDiagnostics {
         publish(tracker.resourceFailure(identity, kind, SystemClock.elapsedRealtime()))
     }
 
-    fun rendererDisposed(identity: PhoneMapLibreRendererIdentity) {
+    fun rendererDisposalBegin(boundary: PhoneMapLibreRenderBoundary) {
+        boundary.log("renderer_disposal_begin")
+    }
+
+    fun rendererDisposalComplete(
+        identity: PhoneMapLibreRendererIdentity,
+        boundary: PhoneMapLibreRenderBoundary,
+    ) {
+        boundary.log("renderer_disposal_complete")
+        PhoneMapLibreStyleReplayDiagnostics.invalidate(identity)
         publish(tracker.rendererDisposed(identity, SystemClock.elapsedRealtime()))
     }
 

@@ -5,6 +5,9 @@ internal data class PhoneMapLibreGeneration(
     val renderer: Long = 0L,
     val styleRevision: Long = 0L,
 ) {
+    val styleReplayKey: PhoneMapLibreStyleReplayKey
+        get() = PhoneMapLibreStyleReplayKey(renderer, styleRevision)
+
     fun nextRenderer(): PhoneMapLibreGeneration = PhoneMapLibreGeneration(renderer = renderer + 1)
 
     fun accepts(callbackRenderer: Long): Boolean = renderer == callbackRenderer
@@ -14,3 +17,8 @@ internal data class PhoneMapLibreGeneration(
     private val nextStyleRevision: PhoneMapLibreGeneration
         get() = copy(styleRevision = styleRevision + 1)
 }
+
+internal data class PhoneMapLibreStyleReplayKey(
+    val rendererGeneration: Long,
+    val styleRevision: Long,
+)

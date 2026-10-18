@@ -509,6 +509,26 @@ class PhoneMapLibreRenderDiagnosticsTest {
     }
 
     @Test
+    fun lateStyleCallbackFromDisposedRendererCannotReplaceCurrentProviderSnapshot() {
+        val tracker = PhoneMapLibreRendererHealthTracker()
+        val openTopo = rendererIdentity(rendererId = 1L, generation = 1L)
+        val ign =
+            rendererIdentity(rendererId = 2L, generation = 2L).copy(
+                source = PhoneOnlineMapSource.IGN_ORTHOPHOTO,
+                providerId = "ign_orthophoto",
+            )
+        tracker.rendererCreated(openTopo, nowElapsedMs = 1L)
+        tracker.styleLoadStarted(openTopo, nowElapsedMs = 2L)
+        tracker.rendererDisposed(openTopo, nowElapsedMs = 3L)
+        tracker.rendererCreated(ign, nowElapsedMs = 4L)
+
+        assertNull(tracker.styleLoadCompleted(openTopo, nowElapsedMs = 5L))
+        assertEquals(ign, tracker.snapshots.single().identity)
+        assertEquals(PhoneMapLibreRendererStatus.ACTIVE, tracker.snapshots.single().status)
+        assertNull(tracker.snapshots.single().styleLoadCompletedAtElapsedMs)
+    }
+
+    @Test
     fun baseAndComparisonHealthAreKeptAsSeparateRendererSnapshots() {
         val tracker = PhoneMapLibreRendererHealthTracker()
         val base = rendererIdentity(rendererId = 10L, generation = 1L)
