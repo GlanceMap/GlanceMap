@@ -145,21 +145,24 @@ class PhoneLibraryVisibilityUiTest {
                     Button(onClick = { settings.value = false }) { Text("Back from settings") }
                 } else {
                     saved.SaveableStateProvider("library") {
-                        libraryPanelContent(
-                            PhoneLibraryListState(
-                                items =
-                                    listOf(
-                                        PhoneLibraryItem.Pois(
-                                            mapState.value.poi.sources
-                                                .single(),
+                        Column {
+                            phoneLibraryHeader(filter.value) { filter.value = it }
+                            libraryPanelContent(
+                                PhoneLibraryListState(
+                                    items =
+                                        listOf(
+                                            PhoneLibraryItem.Pois(
+                                                mapState.value.poi.sources
+                                                    .single(),
+                                            ),
                                         ),
-                                    ),
-                                filter = filter.value,
-                            ),
-                            mapState.value,
-                            libraryTestMapActions(mapState),
-                            libraryTestActions({ settings.value = true }, { filter.value = it }),
-                        )
+                                    filter = filter.value,
+                                ),
+                                mapState.value,
+                                libraryTestMapActions(mapState),
+                                libraryTestActions({ settings.value = true }, { filter.value = it }),
+                            )
+                        }
                     }
                 }
             }

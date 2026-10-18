@@ -13,6 +13,20 @@ import org.junit.Test
 
 class PhoneHikeModelsTest {
     @Test
+    fun openingGpxInNewTabAddsAndSelectsDistinctRouteTabs() {
+        val today = PhoneHikeWorkspaceData().useForToday("today")
+        val first = today.openPreviewTab("route-a", "Ridge route")
+        val second = first.openPreviewTab("route-b", "Valley route")
+        val repeated = second.openPreviewTab("route-b", "Valley route")
+
+        assertEquals(listOf("route-a", "route-b"), repeated.previewTabs.map(PhoneHikePreviewTab::routeId))
+        assertEquals("route-b", repeated.selectedId)
+        assertEquals("Valley route", repeated.previewTabs.last().title)
+        assertEquals("today", repeated.copy(previewSelected = false).selectedId)
+        assertEquals("route-a", repeated.selectPreviewTab("route-a").selectedId)
+    }
+
+    @Test
     fun previewOfSameRouteDoesNotEditPinnedHike() {
         val original = PhoneHikePlan("a", startTime = "08:00")
         val data = PhoneHikeWorkspaceData().updatePlan(original).useForToday("a")

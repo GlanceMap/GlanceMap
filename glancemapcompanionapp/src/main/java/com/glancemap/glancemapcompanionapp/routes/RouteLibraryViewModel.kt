@@ -174,6 +174,7 @@ class RouteLibraryViewModel(
                         weatherForecastRepository.forecast(
                             location = weatherLocation,
                             forceRefresh = forceRefresh,
+                            requireHourlyForecast = true,
                         )
                     result to weatherForecastRepository.history(weatherLocation)
                 }

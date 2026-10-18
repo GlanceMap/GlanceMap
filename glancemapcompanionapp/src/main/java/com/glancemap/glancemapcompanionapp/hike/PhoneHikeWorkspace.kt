@@ -103,16 +103,25 @@ internal fun PhoneHikeWorkspace(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             FilterChip(!ui.data.previewSelected, {
                 controller.selectTab(false)
             }, { Text(stringResource(R.string.briefing_today_s_hike)) }, modifier = Modifier.testTag("hike-today-tab"))
-            if (ui.data.previewId !=
-                null
-            ) {
-                FilterChip(ui.data.previewSelected, {
+            if (ui.data.previewId != null) {
+                FilterChip(ui.data.previewSelected && ui.data.selectedPreviewTabId == null, {
                     controller.selectTab(true)
                 }, { Text(stringResource(R.string.hike_preview)) }, modifier = Modifier.testTag("hike-preview-tab"))
+            }
+            ui.data.previewTabs.forEach { tab ->
+                FilterChip(
+                    selected = ui.data.previewSelected && ui.data.selectedPreviewTabId == tab.routeId,
+                    onClick = { controller.selectPreviewTab(tab.routeId) },
+                    label = { Text(tab.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    modifier = Modifier.testTag("hike-route-tab-${tab.routeId}"),
+                )
             }
         }
         if (ui.loading) LinearProgressIndicator(Modifier.fillMaxWidth())

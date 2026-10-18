@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="route_weather_location">GPX · %1$s · %2$s</string>
+    <string name="route_weather_cached">Cached</string>
+    <string name="route_weather_at_update">Conditions at update · %1$s</string>
+    <string name="route_weather_at_update_short">At update</string>
+    <string name="route_weather_hourly">Hourly · local time at GPX location</string>
+    <string name="route_weather_upcoming">Upcoming days</string>
+    <string name="route_weather_today">Today</string>
+    <string name="route_weather_tomorrow">Tomorrow</string>
+    <string name="route_weather_feels_like">Feels like %1$s</string>
+    <string name="route_weather_rain">Rain</string>
+    <string name="route_weather_rain_chance">Rain %1$s</string>
+    <string name="route_weather_rain_increase">Rain chance rises to %1$s at %2$s.</string>
+    <string name="route_weather_probability">Probability</string>
+    <string name="route_weather_hourly_amount">%1$s in this hour</string>
+    <string name="route_weather_daily_amount">%1$s over the day</string>
+    <string name="route_weather_wind">Wind</string>
+    <string name="route_weather_speed">Speed</string>
+    <string name="route_weather_gusts">Gusts %1$s</string>
+    <string name="route_weather_max_gusts">Max gusts %1$s</string>
+    <string name="route_weather_high_low">%1$s high / %2$s low</string>
+    <string name="route_weather_mountain">Mountain details</string>
+    <string name="route_weather_visibility">Visibility</string>
+    <string name="route_weather_freezing">Freezing level</string>
+    <string name="route_weather_sunrise">Sunrise</string>
+    <string name="route_weather_sunset">Sunset</string>
+    <string name="route_weather_pick_hour">Select an hour for visibility and freezing level.</string>
+    <string name="route_weather_no_hours">No upcoming hourly data for this day. Try refreshing the forecast.</string>
+    <string name="route_weather_expanded">Expanded</string>
+    <string name="route_weather_collapsed">Collapsed</string>
+    <string name="route_weather_ready_to_load">Load the forecast at this GPX location.</string>
+</resources>

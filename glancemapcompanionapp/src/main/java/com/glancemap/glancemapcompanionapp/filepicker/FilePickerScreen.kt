@@ -67,6 +67,7 @@ import com.glancemap.glancemapcompanionapp.library.PhoneLibraryActions
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryFilter
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryItem
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryGpxPicker
+import com.glancemap.glancemapcompanionapp.library.phoneLibraryHeader
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryScreen
 import com.glancemap.glancemapcompanionapp.library.todayHikeGpxActions
 import com.glancemap.glancemapcompanionapp.livetracking.LiveTrackingScreen
@@ -108,6 +109,8 @@ import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.reversedForGuidance
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceForProgress
+import com.glancemap.glancemapcompanionapp.weather.RouteWeatherScreenState
+import com.glancemap.glancemapcompanionapp.weather.routeWeatherScreen
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
 import com.glancemap.shared.transfer.ActiveHikeSnapshot
@@ -859,6 +862,9 @@ internal fun FilePickerScreen(
                             initialToolSettings =
                                 activeHomeArea == CompanionHomeArea.SETTINGS &&
                                     contentSettingsTool != MapTool.SETTINGS,
+                            libraryHeaderContent = {
+                                phoneLibraryHeader(libraryFilter) { libraryFilter = it }
+                            },
                             libraryContent = { mapState, mapActions ->
                                 librarySaveableState.SaveableStateProvider("phone-library") {
                                     phoneLibraryScreen(
@@ -875,11 +881,17 @@ internal fun FilePickerScreen(
                                                     hikeController.preview(item)
                                                     mapActions.onOpenTool(MapTool.HIKE)
                                                 },
+                                                onOpenGpxInNewHikeTab = { item ->
+                                                    hikeController.openNewTab(item)
+                                                    mapActions.onOpenTool(MapTool.HIKE)
+                                                },
                                                 onRefresh = {
                                                     routeLibraryViewModel.refresh()
                                                     phoneMapPoiViewModel.refresh()
                                                 },
                                                 onImportGpx = routeLibraryViewModel::importLibraryGpx,
+                                                onRenameRoute = routeLibraryViewModel::renameRoute,
+                                                onDeleteRoute = routeLibraryViewModel::deleteRoute,
                                                 guidanceStartingKey = guidanceStartingKey,
                                                 guidanceActive =
                                                     phoneGuidanceState.session != null ||
@@ -1209,12 +1221,16 @@ internal fun FilePickerScreen(
                             routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
                         val isPreparingWeatherRoute =
                             weatherRoute != null && selectedRouteDetails?.route?.id != weatherRoute.id
-                        RouteWeatherScreen(
-                            route = weatherRoute,
-                            isPreparingRoute = isPreparingWeatherRoute,
-                            uiState =
-                                routeWeatherUiState.takeIf { weatherRoute?.id == routeLibraryUiState.selectedRoute?.id }
-                                    ?: RouteWeatherUiState(),
+                        routeWeatherScreen(
+                            state =
+                                RouteWeatherScreenState(
+                                    routeName = weatherRoute?.displayName,
+                                    isPreparingRoute = isPreparingWeatherRoute,
+                                    weather =
+                                        routeWeatherUiState.takeIf {
+                                            weatherRoute?.id == routeLibraryUiState.selectedRoute?.id
+                                        } ?: RouteWeatherUiState(),
+                                ),
                             onBack = returnToMapMenu,
                             onChooseRoute = {
                                 pickGpxForWeather = true
@@ -1988,100 +2004,6 @@ private fun TodayHikeCard(
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun RouteWeatherScreen(
-    route: RouteLibraryRoute?,
-    isPreparingRoute: Boolean,
-    uiState: RouteWeatherUiState,
-    onBack: () -> Unit,
-    onChooseRoute: () -> Unit,
-    onLoadWeather: (Boolean) -> Unit,
-) {
-    val textResources = LocalResources.current
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalIconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = textResources.getString(R.string.common_back_to_home_content_description),
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = textResources.getString(R.string.menu_route_weather),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = textResources.getString(R.string.briefing_forecasts_are_available_without_a_mission_plan),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-
-        if (route == null) {
-            Text(
-                text = textResources.getString(R.string.briefing_choose_an_imported_gpx_route_to_load),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        } else {
-            Text(
-                text = route.displayName,
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                text = todayRouteSummary(route),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (isPreparingRoute) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    Text(
-                        text = textResources.getString(R.string.briefing_preparing_gpx_forecast_location),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            } else {
-                RouteWeatherBriefing(
-                    uiState = uiState,
-                    onLoad = onLoadWeather,
-                )
-            }
-        }
-
-        OutlinedButton(
-            onClick = onChooseRoute,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                if (route ==
-                    null
-                ) {
-                    textResources.getString(R.string.briefing_choose_a_route)
-                } else {
-                    textResources.getString(R.string.briefing_choose_another_route)
-                },
-            )
         }
     }
 }

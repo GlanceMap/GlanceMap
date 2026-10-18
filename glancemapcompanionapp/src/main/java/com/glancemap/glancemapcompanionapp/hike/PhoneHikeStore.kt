@@ -12,7 +12,11 @@ internal class PhoneHikeStore(
     fun load(): PhoneHikeWorkspaceData {
         val file = File(directory, "workspace.json")
         if (!file.exists()) return PhoneHikeWorkspaceData()
-        return requireNotNull(file.reader().use { gson.fromJson(it, PhoneHikeWorkspaceData::class.java) }).also { data ->
+        val restored =
+            requireNotNull(file.reader().use { gson.fromJson(it, PhoneHikeWorkspaceData::class.java) }).let { data ->
+                data.copy(previewTabs = data.previewTabs.orEmpty())
+            }
+        return restored.also { data ->
             (data.plans + listOfNotNull(data.todayPlan)).forEach { plan ->
                 routeFile(plan.routeId)
                 require(
@@ -31,6 +35,10 @@ internal class PhoneHikeStore(
                 }
             }
             listOfNotNull(data.todayId, data.previewId).forEach(::routeFile)
+            data.previewTabs.forEach { tab -> routeFile(tab.routeId) }
+            require(
+                data.selectedPreviewTabId == null || data.previewTabs.any { it.routeId == data.selectedPreviewTabId },
+            )
             require(data.todayPlan == null || data.todayPlan.routeId == data.todayId)
         }
     }

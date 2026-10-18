@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.library
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.AltRoute
@@ -35,9 +36,23 @@ internal fun libraryItemRow(
         )
     val visibility = phoneLibraryVisibility(item, state.gpx.items, state.gpx.globalVisible, state.poi.globalVisible)
     Card(
-        onClick = { if (item.isNavigableGpx() && row.onPreviewGpx != null) row.onPreviewGpx.invoke(item) else onDetails() },
-        enabled = row.enabled,
-        modifier = Modifier.fillMaxWidth().testTag("library-item-${item.key}"),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    enabled = row.enabled,
+                    onClick = {
+                        if (item.isNavigableGpx() && row.onPreviewGpx != null) {
+                            row.onPreviewGpx.invoke(item)
+                        } else {
+                            onDetails()
+                        }
+                    },
+                    onLongClick =
+                        row.onOpenGpxInNewHikeTab
+                            ?.takeIf { item.isNavigableGpx() }
+                            ?.let { openInNewHikeTab -> { openInNewHikeTab(item) } },
+                ).testTag("library-item-${item.key}"),
     ) {
         Row(
             Modifier.padding(12.dp),
@@ -73,8 +88,12 @@ internal fun libraryItemRow(
             }
             libraryMapControl(row, visibility, state, actions)
             if (item.isNavigableGpx()) {
-                IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
+                if (item is PhoneLibraryItem.ReceivedGpx) {
+                    IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
+                    }
+                } else {
+                    libraryGpxOverflowMenu(row, actions, onDetails)
                 }
                 IconButton(
                     onClick = { row.onStartGuidance(item) },

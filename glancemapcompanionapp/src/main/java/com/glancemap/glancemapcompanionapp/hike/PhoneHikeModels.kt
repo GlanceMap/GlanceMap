@@ -83,15 +83,23 @@ internal data class PhoneHikePlan(
         }.getOrNull()
 }
 
+internal data class PhoneHikePreviewTab(
+    val routeId: String,
+    val title: String,
+)
+
 internal data class PhoneHikeWorkspaceData(
     val todayId: String? = null,
     val previewId: String? = null,
     val previewSelected: Boolean = false,
+    val previewTabs: List<PhoneHikePreviewTab> = emptyList(),
+    val selectedPreviewTabId: String? = null,
     val plans: List<PhoneHikePlan> = emptyList(),
     val todayPlan: PhoneHikePlan? = null,
     val routeTitles: Map<String, String> = emptyMap(),
 ) {
-    val selectedId: String? get() = if (previewSelected) previewId else todayId
+    val selectedId: String?
+        get() = if (previewSelected) selectedPreviewTabId ?: previewId else todayId
     val selectedPlan: PhoneHikePlan? get() =
         selectedId?.let {
             if (previewSelected) {
@@ -103,12 +111,47 @@ internal data class PhoneHikeWorkspaceData(
             }
         }
 
-    fun openPreview(routeId: String): PhoneHikeWorkspaceData = copy(previewId = routeId, previewSelected = true)
+    fun openPreview(routeId: String): PhoneHikeWorkspaceData =
+        copy(
+            previewId = routeId,
+            previewSelected = true,
+            previewTabs = previewTabs.filterNot { it.routeId == routeId },
+            selectedPreviewTabId = null,
+        )
+
+    fun openPreviewTab(
+        routeId: String,
+        title: String,
+    ): PhoneHikeWorkspaceData {
+        val tabs =
+            previewTabs
+                .filterNot { it.routeId == previewId || it.routeId == routeId }
+                .let { currentTabs ->
+                    if (routeId == previewId) currentTabs else currentTabs + PhoneHikePreviewTab(routeId, title)
+                }
+        return copy(
+            previewTabs = tabs.distinctBy(PhoneHikePreviewTab::routeId),
+            previewSelected = true,
+            selectedPreviewTabId = routeId.takeUnless { it == previewId },
+        )
+    }
+
+    fun selectPreviewTab(routeId: String): PhoneHikeWorkspaceData =
+        if (previewTabs.any { it.routeId == routeId }) {
+            copy(previewSelected = true, selectedPreviewTabId = routeId)
+        } else {
+            this
+        }
 
     fun useForToday(routeId: String): PhoneHikeWorkspaceData {
         val incoming = plan(routeId).copy(inspecting = false)
         val archived = todayPlan?.takeIf { it.routeId != routeId }?.let(::updatePlan) ?: this
-        return archived.copy(todayId = routeId, previewSelected = false, todayPlan = incoming)
+        return archived.copy(
+            todayId = routeId,
+            previewSelected = false,
+            selectedPreviewTabId = null,
+            todayPlan = incoming,
+        )
     }
 
     fun plan(routeId: String): PhoneHikePlan = plans.firstOrNull { it.routeId == routeId } ?: PhoneHikePlan(routeId)

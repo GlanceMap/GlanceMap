@@ -2,11 +2,9 @@ package com.glancemap.glancemapcompanionapp.library
 
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -122,7 +120,6 @@ internal fun libraryPanelContent(
     BackHandler(enabled = browse.folderId != null) { browse = state.organization.parentBrowse(browse) }
     BackHandler(enabled = checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) { checkpointsOpen = false }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        libraryFilters(state.filter, actions.onFilterChanged)
         if (state.filter == PhoneLibraryFilter.POIS) {
             TextButton(onClick = { checkpointsOpen = !checkpointsOpen }) {
                 Text(stringResource(if (checkpointsOpen) R.string.hike_back_pois else R.string.hike_checkpoints))
@@ -211,6 +208,9 @@ internal fun LazyListScope.libraryEntries(
                 guidanceLoading = actions.guidanceStartingKey == item.key,
                 onStartGuidance = actions.onStartGuidance,
                 onPreviewGpx = actions.onPreviewGpx,
+                onOpenGpxInNewHikeTab = actions.onOpenGpxInNewHikeTab,
+                onRenameRoute = actions.onRenameRoute,
+                onDeleteRoute = actions.onDeleteRoute,
             ),
             mapState,
             mapActions,
@@ -243,22 +243,6 @@ internal fun librarySearch(
         },
         singleLine = true,
     )
-}
-
-@Composable
-private fun libraryFilters(
-    selected: PhoneLibraryFilter,
-    onSelect: (PhoneLibraryFilter) -> Unit,
-) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PhoneLibraryFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = selected == filter,
-                onClick = { onSelect(filter) },
-                label = { Text(stringResource(filter.label)) },
-            )
-        }
-    }
 }
 
 @Composable

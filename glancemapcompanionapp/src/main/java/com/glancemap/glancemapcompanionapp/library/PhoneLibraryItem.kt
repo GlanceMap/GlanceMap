@@ -112,6 +112,9 @@ internal data class PhoneLibraryRowState(
     val guidanceLoading: Boolean = false,
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
     val onPreviewGpx: ((PhoneLibraryItem) -> Unit)? = null,
+    val onOpenGpxInNewHikeTab: ((PhoneLibraryItem) -> Unit)? = null,
+    val onRenameRoute: suspend (String, String) -> Unit = { _, _ -> },
+    val onDeleteRoute: suspend (String) -> Unit = {},
 )
 
 internal data class PhoneLibraryListState(
@@ -141,6 +144,9 @@ internal data class PhoneLibraryActions(
     val guidanceActive: Boolean = false,
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
     val onPreviewGpx: ((PhoneLibraryItem) -> Unit)? = null,
+    val onOpenGpxInNewHikeTab: ((PhoneLibraryItem) -> Unit)? = null,
+    val onRenameRoute: suspend (String, String) -> Unit = { _, _ -> },
+    val onDeleteRoute: suspend (String) -> Unit = {},
 )
 
 internal fun phoneLibraryItems(

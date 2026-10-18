@@ -181,6 +181,8 @@ internal class PhoneHikeViewModel(
 
     fun preview(item: PhoneMapGpxItem) = prepare(PhoneLibraryItem.FolderGpx(item), null, today = false)
 
+    fun openNewTab(item: PhoneLibraryItem) = prepare(item, null, today = false, openInNewTab = true)
+
     fun setMissionDay(day: MissionPlanDayUi) = prepare(PhoneLibraryItem.Gpx(day.route), day, today = true)
 
     fun useLibraryRoute(routeId: String) =
@@ -195,6 +197,7 @@ internal class PhoneHikeViewModel(
         item: PhoneLibraryItem,
         day: MissionPlanDayUi?,
         today: Boolean,
+        openInNewTab: Boolean = false,
     ) {
         if (!state.value.ready) return
         val token = ++generation
@@ -258,7 +261,13 @@ internal class PhoneHikeViewModel(
                 installRoute(route)
                 if (token != generation) return@guarded
                 val data = state.value.data
-                updateData(data.openPreview(route.id))
+                updateData(
+                    if (openInNewTab) {
+                        data.openPreviewTab(route.id, route.title)
+                    } else {
+                        data.openPreview(route.id)
+                    },
+                )
                 mutableState.value = state.value.copy(revealOnMap = true)
                 if (today) {
                     if (day != null && data.plans.none { it.routeId == route.id }) {
@@ -305,7 +314,16 @@ internal class PhoneHikeViewModel(
 
     fun selectTab(preview: Boolean) {
         ++generation
-        updateData(state.value.data.copy(previewSelected = preview))
+        updateData(state.value.data.copy(previewSelected = preview, selectedPreviewTabId = null))
+        mutableState.value = state.value.copy(revealOnMap = true)
+        viewModelScope.launch { guarded { showSelected() } }
+    }
+
+    fun selectPreviewTab(routeId: String) {
+        val data = state.value.data.selectPreviewTab(routeId)
+        if (data === state.value.data) return
+        ++generation
+        updateData(data)
         mutableState.value = state.value.copy(revealOnMap = true)
         viewModelScope.launch { guarded { showSelected() } }
     }
@@ -362,7 +380,10 @@ internal class PhoneHikeViewModel(
             }
         if (token != selectionGeneration || id != state.value.data.selectedId) return
         if (id != null && model != null) models[id] = model
-        val retained = listOfNotNull(state.value.data.todayId, state.value.data.previewId).toSet()
+        val retained =
+            listOfNotNull(state.value.data.todayId, state.value.data.previewId)
+                .plus(state.value.data.previewTabs.map(PhoneHikePreviewTab::routeId))
+                .toSet()
         models.keys.retainAll(retained)
         forecasts.keys.retainAll(retained)
         mutableState.value =

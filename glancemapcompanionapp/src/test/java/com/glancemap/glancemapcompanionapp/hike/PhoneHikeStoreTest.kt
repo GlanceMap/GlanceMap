@@ -27,6 +27,34 @@ class PhoneHikeStoreTest {
     }
 
     @Test
+    fun restoresIndependentlyOpenedRouteTabs() {
+        val folder = temporary.newFolder()
+        val store = PhoneHikeStore(folder)
+        val source = hikeRoute()
+        val route =
+            source.copy(
+                id = phoneHikeRouteId("another-gpx", source.points, source.routeOffsetMeters),
+                trackId = "another-gpx",
+                title = "Another trail",
+            )
+        store.saveRoute(route)
+        val data = PhoneHikeWorkspaceData().openPreviewTab(route.id, route.title)
+        store.save(data)
+
+        assertEquals(data, PhoneHikeStore(folder).load())
+    }
+
+    @Test
+    fun oldWorkspaceWithoutPreviewTabsLoadsWithNoExtraTabs() {
+        val folder = temporary.newFolder()
+        File(folder, "workspace.json").writeText(
+            """{"todayId":null,"previewId":null,"previewSelected":false,"plans":[],"todayPlan":null,"routeTitles":{}}""",
+        )
+
+        assertTrue(PhoneHikeStore(folder).load().previewTabs.isEmpty())
+    }
+
+    @Test
     fun corruptMetadataIsReportedAndKept() {
         val folder = temporary.newFolder()
         val file = File(folder, "workspace.json")
