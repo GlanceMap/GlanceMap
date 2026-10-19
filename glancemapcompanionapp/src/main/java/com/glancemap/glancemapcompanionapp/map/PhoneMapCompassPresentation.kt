@@ -9,6 +9,17 @@ internal data class PhoneMapCompassPresentation(
     val northIndicatorScreenRotationDegrees: Float,
 )
 
+/** Keep marker and north directions aligned with the live gesture instead of a delayed camera request. */
+internal fun PhoneMapCompassPresentation.withMapBearing(bearingDegrees: Float): PhoneMapCompassPresentation {
+    val bearing = normalizePhoneHeadingDegrees(bearingDegrees)
+    return copy(
+        mapBearingDegrees = bearing,
+        markerScreenRotationDegrees =
+            markerScreenRotationDegrees?.let { normalizePhoneHeadingDegrees(it + mapBearingDegrees - bearing) },
+        northIndicatorScreenRotationDegrees = phoneMapNorthIndicatorRotationDegrees(bearing),
+    )
+}
+
 internal fun phoneMapCompassPresentation(
     mapMode: PhoneMapMode,
     headingDegrees: Float?,

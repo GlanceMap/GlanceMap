@@ -23,6 +23,31 @@ class PhoneMapModeButtonTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun manualRotationShowsRecenterAndRestoresTheRememberedOrientation() {
+        val mode = mutableStateOf(PhoneMapMode())
+        composeRule.setContent {
+            MaterialTheme {
+                PhoneMapModeButton(
+                    mode = mode.value,
+                    onClick = { mode.value = mode.value.recenterOnLocation() },
+                    onToggleOffline = { mode.value = mode.value.toggleOfflineMode() },
+                )
+            }
+        }
+
+        fun description(label: Int) = composeRule.activity.getString(R.string.map_mode_content_description, composeRule.activity.getString(label))
+        PhoneMapOrientation.entries.forEach { orientation ->
+            composeRule.runOnIdle {
+                mode.value = PhoneMapMode(orientation).detachFromLocation().withManualBearing(90f)
+            }
+            composeRule.onNodeWithContentDescription(description(R.string.map_mode_recenter)).performClick()
+            composeRule.runOnIdle { assertEquals(PhoneMapMode(orientation), mode.value) }
+            val label = if (orientation == PhoneMapOrientation.NORTH_UP) R.string.map_mode_north_up else R.string.map_mode_heading_up
+            composeRule.onNodeWithContentDescription(description(label)).assertHasClickAction()
+        }
+    }
+
+    @Test
     fun longPressTogglesOfflineWithoutAlsoPerformingTheNormalTapAction() {
         val mode = mutableStateOf(PhoneMapMode())
         var taps = 0

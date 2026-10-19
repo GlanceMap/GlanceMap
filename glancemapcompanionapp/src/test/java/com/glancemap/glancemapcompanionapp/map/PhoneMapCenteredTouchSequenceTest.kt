@@ -47,7 +47,7 @@ class PhoneMapCenteredTouchSequenceTest {
 
     @Test
     fun enteringCompassModeClearsManualBearingAndRejectsLateRotationCallbacks() {
-        val mode = PhoneMapMode().withManualBearing(90f).toggleOrientation()
+        val mode = PhoneMapMode().withManualBearing(90f).recenterOnLocation().toggleOrientation()
         assertEquals(PhoneMapOrientation.HEADING_UP, mode.orientation)
         assertNull(mode.manualBearingDegrees)
         assertFalse(mode.allowsManualRotation)
@@ -56,14 +56,32 @@ class PhoneMapCenteredTouchSequenceTest {
     }
 
     @Test
-    fun centeredManualRotationKeepsFollowWhileFreeRotationWorksInEitherOrientation() {
-        val centered = PhoneMapMode().withManualBearing(375f)
-        assertEquals(PhoneMapFollowMode.FOLLOW_LOCATION, centered.follow)
-        assertEquals(15f, requireNotNull(centered.manualBearingDegrees), 0.001f)
+    fun northUpRotationEntersPanningWhileFreeRotationWorksInEitherOrientation() {
+        val rotated = PhoneMapMode().withManualBearing(375f)
+        assertEquals(PhoneMapFollowMode.FREE, rotated.follow)
+        assertTrue(rotated.isDetachedFromLocation)
+        assertEquals(15f, requireNotNull(rotated.manualBearingDegrees), 0.001f)
+        assertEquals(PhoneMapMode(), rotated.recenterOnLocation())
         PhoneMapOrientation.entries.forEach { orientation ->
             val free = PhoneMapMode(orientation, PhoneMapFollowMode.FREE)
             assertTrue(free.allowsManualRotation)
-            assertEquals(90f, requireNotNull(free.withManualBearing(90f).manualBearingDegrees), 0.001f)
+            val panning = free.withManualBearing(90f)
+            assertEquals(90f, requireNotNull(panning.manualBearingDegrees), 0.001f)
+            assertEquals(PhoneMapMode(orientation), panning.recenterOnLocation())
         }
+    }
+
+    @Test
+    fun rotationDoesNotTurnTheRemainingPinchFingerIntoANewPan() {
+        val touch = PhoneMapCenteredTouchSequence()
+        touch.onTouch(MotionEvent.ACTION_DOWN, 1, PhoneMapMode())
+        touch.onTouch(MotionEvent.ACTION_POINTER_DOWN, 2, PhoneMapMode())
+        val panning = PhoneMapMode().withManualBearing(90f)
+        touch.onTouch(MotionEvent.ACTION_MOVE, 2, panning)
+        touch.onTouch(MotionEvent.ACTION_POINTER_UP, 2, panning)
+        touch.onTouch(MotionEvent.ACTION_MOVE, 1, panning)
+        assertTrue(touch.isLocked)
+        touch.onTouch(MotionEvent.ACTION_UP, 1, panning)
+        assertFalse(touch.isLocked)
     }
 }

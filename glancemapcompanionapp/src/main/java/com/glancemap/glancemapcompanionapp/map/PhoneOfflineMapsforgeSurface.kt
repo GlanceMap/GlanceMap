@@ -359,7 +359,6 @@ private class PhoneOfflineMapsforgeView(
     private var lastAppliedState: PhoneOfflineMapSurfaceState? = null
     private var mapBounds: BoundingBox? = null
     private var appliedCompassPresentation: PhoneMapCompassPresentation? = null
-    private var appliedMapBearingDegrees: Float? = null
     private var redrawPosted = false
     private var lastHandledCameraCommandId: Long? = null
     private var locationMarker: PhoneOfflineLocationMarker? = null
@@ -417,10 +416,15 @@ private class PhoneOfflineMapsforgeView(
                     rotationGestureTracker.observeBearing(currentMapBearing(), reportUserRotation = true)
                 }
             }
+            val wasRotating = rotationDetector.rotateGestureDetector.isInProgress
             if (latestState?.gestureMapMode?.allowsManualRotation != false) {
                 rotationDetector.onTouchEvent(event)
             } else {
                 rotationDetector.cancelPhoneMapRotation()
+            }
+            if (wasRotating && !rotationDetector.rotateGestureDetector.isInProgress) {
+                // Apply any deferred camera request once the fingers release rotation.
+                latestState?.let(::render)
             }
             // The final finger belongs to the pinch, rather than a new one-finger pan.
             if (wasCenteredTouch && event.pointerCount == 1) {
@@ -639,12 +643,17 @@ private class PhoneOfflineMapsforgeView(
         }
     }
 
-    private fun applyCompassPresentation(presentation: PhoneMapCompassPresentation) {
-        if (presentation == appliedCompassPresentation) return
-        val appliedBearing = appliedMapBearingDegrees
-        if (appliedBearing == null || phoneMapBearingNeedsSync(appliedBearing, presentation.mapBearingDegrees)) {
+    private fun applyCompassPresentation(requested: PhoneMapCompassPresentation) {
+        val presentation =
+            if (rotationDetector.rotateGestureDetector.isInProgress) {
+                requested.withMapBearing(currentMapBearing())
+            } else {
+                requested
+            }
+        val bearingNeedsSync = phoneMapBearingNeedsSync(currentMapBearing(), presentation.mapBearingDegrees)
+        if (presentation == appliedCompassPresentation && !bearingNeedsSync) return
+        if (bearingNeedsSync) {
             applyMapBearing(presentation.mapBearingDegrees)
-            appliedMapBearingDegrees = normalizePhoneHeadingDegrees(presentation.mapBearingDegrees)
         }
         locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
         requestMapRedraw()
@@ -653,7 +662,7 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyCameraOverride(camera: PhoneMapCameraSnapshot?) {
         val target = camera?.forMapMode(latestState?.gestureMapMode ?: currentMapMode) ?: return
-        if (centeredTouch.isLocked) return
+        if (centeredTouch.isLocked || rotationDetector.rotateGestureDetector.isInProgress) return
         val model = mapView.model
         val mapsforgeTileSizePx = model.displayModel.tileSize.toDouble()
         val mapLibrePixelRatio = resources.displayMetrics.density.toDouble()
@@ -673,7 +682,6 @@ private class PhoneOfflineMapsforgeView(
             false,
         )
         applyMapBearing(target.bearingDegrees)
-        appliedMapBearingDegrees = normalizePhoneHeadingDegrees(target.bearingDegrees)
         requestMapRedraw()
     }
 

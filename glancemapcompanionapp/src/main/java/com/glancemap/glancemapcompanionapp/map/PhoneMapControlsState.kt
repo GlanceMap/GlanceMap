@@ -68,7 +68,14 @@ internal data class PhoneMapMode(
         }
 
     fun withManualBearing(bearingDegrees: Float): PhoneMapMode =
-        if (allowsManualRotation) copy(manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees)) else this
+        if (allowsManualRotation) {
+            copy(
+                follow = if (isOffline) follow else PhoneMapFollowMode.FREE,
+                manualBearingDegrees = normalizePhoneHeadingDegrees(bearingDegrees),
+            )
+        } else {
+            this
+        }
 
     fun detachAfterManualRotation(bearingDegrees: Float): PhoneMapMode =
         if (isOffline) {

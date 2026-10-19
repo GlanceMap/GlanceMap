@@ -56,6 +56,23 @@ class PhoneMapCompassPresentationTest {
     }
 
     @Test
+    fun liveRotationKeepsMarkerAndNorthAlignedWhenAnOlderBearingIsReplayed() {
+        val delayed = phoneMapCompassPresentation(PhoneMapMode().withManualBearing(350f), 10f)
+        val live = delayed.withMapBearing(20f)
+
+        assertEquals(20f, live.mapBearingDegrees, 0.001f)
+        assertEquals(350f, requireNotNull(live.markerScreenRotationDegrees), 0.001f)
+        assertEquals(340f, live.northIndicatorScreenRotationDegrees, 0.001f)
+        assertEquals(delayed, live.withMapBearing(350f))
+    }
+
+    @Test
+    fun offlineLiveRotationDoesNotInventACompassMarker() {
+        val offline = phoneMapCompassPresentation(PhoneMapMode().toggleOfflineMode(), 90f).withMapBearing(450f)
+        assertEquals(PhoneMapCompassPresentation(90f, null, 270f), offline)
+    }
+
+    @Test
     fun northIndicatorFollowsTheRenderedMapRatherThanTheRequestedCompassHeading() {
         val requested = phoneMapCompassPresentation(PhoneMapOrientation.HEADING_UP, 90f)
         val displayed = PhoneMapCameraSnapshot(46.0, 7.0, 12.0, bearingDegrees = 30f)

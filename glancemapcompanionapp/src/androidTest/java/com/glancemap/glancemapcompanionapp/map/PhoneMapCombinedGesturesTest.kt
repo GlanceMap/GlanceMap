@@ -25,6 +25,7 @@ import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.view.MapView
 import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.cos
 import kotlin.math.sin
@@ -46,6 +47,65 @@ class PhoneMapCombinedGesturesTest {
     @Test fun offlineBrowsingCanRotateDuringPinchAndResetNorthUpInPlace() = exerciseGesture(false, PhoneMapMode().toggleOfflineMode())
 
     @Test fun offlineBrowsingCanPinchAfterRotationAndResetNorthUpInPlace() = exerciseGesture(true, PhoneMapMode().toggleOfflineMode())
+
+    @Test
+    fun delayedBearingReplaysWaitUntilActiveRotationEnds() {
+        val activity = composeRule.activity
+        val fixture = Files.createTempFile(activity.cacheDir.toPath(), "gesture-replay-", ".map").toFile()
+        fixture.writeText("invalid map fixture")
+        val visible = mutableStateOf(true)
+        val replay = mutableStateOf(false)
+        val mode = PhoneMapMode().withManualBearing(0f)
+        val rotations = CopyOnWriteArrayList<Float>()
+        lateinit var gesture: MapGestureSequence
+        var liveRotation = 0f
+        try {
+            composeRule.runOnUiThread { AndroidGraphicFactory.createInstance(activity.application) }
+            composeRule.setContent {
+                if (visible.value) {
+                    offlineMapSurface(
+                        PhoneOfflineMapSurfaceState(
+                            map = PhoneOfflineMap(fixture),
+                            themeConfig = PhoneOfflineThemeCatalog.defaultConfig,
+                            initialCamera = defaultPhoneMapCamera,
+                            gpxOverlays = emptyList(),
+                            pois = emptyList(),
+                            mapMode = mode,
+                            cameraCommand = null,
+                            compassPresentation = phoneMapCompassPresentation(mode, if (replay.value) 90f else 0f),
+                            cameraOverride = defaultPhoneMapCamera.takeIf { replay.value },
+                        ),
+                        callbacks(rotations, AtomicInteger()),
+                    )
+                }
+            }
+            composeRule.waitUntil(5_000) { findMap(activity.window.decorView)?.width?.let { it > 0 } == true }
+            composeRule.runOnIdle {
+                val map = requireNotNull(findMap(activity.window.decorView))
+                gesture = MapGestureSequence(map)
+                gesture.start()
+                gesture.rotate()
+                liveRotation = map.mapRotation.degrees
+                assertTrue(kotlin.math.abs(liveRotation) > 5f)
+            }
+            val replayProcessed = AtomicBoolean(false)
+            composeRule.runOnIdle {
+                replay.value = true
+                requireNotNull(findMap(activity.window.decorView)).postDelayed({ replayProcessed.set(true) }, 100)
+            }
+            composeRule.waitUntil(5_000) { replayProcessed.get() }
+            composeRule.runOnIdle {
+                val map = requireNotNull(findMap(activity.window.decorView))
+                assertEquals("Delayed compass/camera state must not rewind the fingers", liveRotation, map.mapRotation.degrees, 0.01f)
+                gesture.end()
+            }
+            composeRule.waitUntil(5_000) { findMap(activity.window.decorView)?.mapRotation?.degrees == 0f }
+        } finally {
+            composeRule.runOnIdle { visible.value = false }
+            composeRule.waitForIdle()
+            fixture.delete()
+        }
+    }
 
     private fun exerciseGesture(
         rotateFirst: Boolean,
@@ -154,6 +214,9 @@ class PhoneMapCombinedGesturesTest {
                 }
                 if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
                     assertEquals("A pinch must not detach follow mode", 0, pans.get())
+                    val expectedFollow =
+                        if (mode.allowsManualRotation) PhoneMapFollowMode.FREE else PhoneMapFollowMode.FOLLOW_LOCATION
+                    assertEquals("Only a manual rotation enters panning", expectedFollow, currentMode.value.follow)
                 }
                 assertEquals("Measurement must not steal a pinch or twist", 0, measurements.get())
             }
