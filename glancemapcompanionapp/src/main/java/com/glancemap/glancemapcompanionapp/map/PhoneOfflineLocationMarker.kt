@@ -15,6 +15,7 @@ import org.mapsforge.map.layer.overlay.Marker
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /** Mapsforge rotates the map by the inverse of the semantic MapLibre-style bearing. */
 internal fun mapsforgeRotationDegreesFor(mapBearingDegrees: Float): Float =
@@ -170,5 +171,10 @@ private fun phoneLocationMarkerBitmap(
 ): AndroidBitmap {
     val drawable =
         requireNotNull(ContextCompat.getDrawable(context, phoneLocationMarkerDrawable(style, compassRenderable)))
-    return AndroidBitmap(drawable.toBitmap())
+    return AndroidBitmap(
+        drawable.toBitmap(
+            width = (drawable.intrinsicWidth * PHONE_LOCATION_MARKER_SCALE).roundToInt().coerceAtLeast(1),
+            height = (drawable.intrinsicHeight * PHONE_LOCATION_MARKER_SCALE).roundToInt().coerceAtLeast(1),
+        ),
+    )
 }

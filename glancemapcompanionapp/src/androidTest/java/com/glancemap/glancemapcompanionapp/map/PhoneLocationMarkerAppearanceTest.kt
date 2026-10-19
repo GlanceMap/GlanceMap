@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 import org.maplibre.android.location.LocationComponentOptions
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
+import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class PhoneLocationMarkerAppearanceTest {
@@ -37,6 +38,42 @@ class PhoneLocationMarkerAppearanceTest {
             assertEquals(null, options.foregroundTintColor())
             assertEquals(phoneLocationMarkerDrawable(style, compassRenderable = false), options.foregroundDrawable())
             assertFalse(options.compassAnimationEnabled())
+        }
+    }
+
+    @Test
+    fun onlineAndOfflineMarkersUseTheSameFixedSizeWithAndWithoutTheCone() {
+        AndroidGraphicFactory.createInstance(context.applicationContext as Application)
+        PhoneMapMarkerStyle.entries.forEach { style ->
+            val marker = PhoneOfflineLocationMarker(LatLong(46.0, 7.0), style, context)
+            try {
+                listOf(false, true).forEach { compassRenderable ->
+                    val options =
+                        LocationComponentOptions.builder(context).build().withPhoneLocationMarker(
+                            PhoneMapSettings(markerStyle = style),
+                            compassRenderable,
+                        )
+                    assertEquals(0.85f, options.minZoomIconScale(), 0f)
+                    assertEquals(options.minZoomIconScale(), options.maxZoomIconScale(), 0f)
+                    val drawable =
+                        requireNotNull(
+                            ContextCompat.getDrawable(context, phoneLocationMarkerDrawable(style, compassRenderable)),
+                        )
+                    marker.updateCompassAppearance(compassRenderable)
+                    assertEquals(
+                        (drawable.intrinsicWidth * options.minZoomIconScale()).roundToInt(),
+                        marker.bitmap.width,
+                    )
+                    assertEquals(
+                        (drawable.intrinsicHeight * options.minZoomIconScale()).roundToInt(),
+                        marker.bitmap.height,
+                    )
+                    assertEquals(-marker.bitmap.width / 2, marker.horizontalOffset)
+                    assertEquals(-marker.bitmap.height / 2, marker.verticalOffset)
+                }
+            } finally {
+                marker.onDestroy()
+            }
         }
     }
 

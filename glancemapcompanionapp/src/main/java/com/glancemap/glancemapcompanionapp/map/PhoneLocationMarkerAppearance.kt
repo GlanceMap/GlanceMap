@@ -5,6 +5,9 @@ import androidx.annotation.DrawableRes
 import com.glancemap.glancemapcompanionapp.R
 import org.maplibre.android.location.LocationComponentOptions
 
+// Match the usual online marker size and keep it stable across map renderers and zoom levels.
+internal const val PHONE_LOCATION_MARKER_SCALE = 0.85f
+
 @DrawableRes
 internal fun phoneLocationMarkerDrawable(
     style: PhoneMapMarkerStyle,
@@ -27,6 +30,8 @@ internal fun LocationComponentOptions.withPhoneLocationMarker(
         .bearingDrawable(phoneLocationMarkerDrawable(settings.markerStyle, compassRenderable = true))
         .bearingTintColor(null)
         .elevation(0f)
+        .minZoomIconScale(PHONE_LOCATION_MARKER_SCALE)
+        .maxZoomIconScale(PHONE_LOCATION_MARKER_SCALE)
         // The map uses immediate compass updates; a second SDK animation makes the cone lag behind it.
         .compassAnimationEnabled(false)
         .accuracyAlpha(if (settings.gpsAccuracyCircleEnabled) 0.25f else 0f)
