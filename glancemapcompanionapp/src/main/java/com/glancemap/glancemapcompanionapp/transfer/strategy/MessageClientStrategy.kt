@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -100,13 +101,26 @@ class MessageClientStrategy : TransferStrategy {
                             "file=${metadata.displayFileName}",
                         lastSendException,
                     )
-                    return@withContext TransferResult(false, "Send failed after $MAX_SEND_ATTEMPTS attempts: ${lastSendException.message}")
+                    return@withContext TransferResult(
+                        false,
+                        "Send failed after $MAX_SEND_ATTEMPTS attempts: ${lastSendException.message}",
+                    )
                 }
                 val sendMs = SystemClock.elapsedRealtime() - sendStartMs
                 onProgress(1f, "Sent. Waiting for confirmation...")
 
                 val ackStartMs = SystemClock.elapsedRealtime()
-                val result = withTimeoutOrNull(ACK_TIMEOUT_MS) { ackDeferred.await() }
+                val result =
+                    withTimeoutOrNull(
+                        if (MapsforgeThemePackage.isTransferName(
+                                metadata.safeFileName,
+                            )
+                        ) {
+                            MapsforgeThemePackage.INSTALL_ACK_TIMEOUT_MS
+                        } else {
+                            ACK_TIMEOUT_MS
+                        },
+                    ) { ackDeferred.await() }
                 val ackWaitMs = SystemClock.elapsedRealtime() - ackStartMs
                 Log.d(
                     "MessageClientStrategy",

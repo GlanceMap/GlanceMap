@@ -12,6 +12,7 @@ import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStra
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferTerminalResult
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -125,6 +126,10 @@ internal class TransferRunner(
                         "checksumVerified=$checksumVerified checksumDurationMs=$checksumDurationMs",
                 )
             }
+            if (MapsforgeThemePackage.isTransferName(metadata.fileName)) {
+                sendStatus(metadata.sourceNodeId, metadata.transferId, "VERIFYING", "Installing Mapsforge theme…")
+            }
+            host.finishReceivedFile(metadata.fileName)
             TransferDiagnostics.log(
                 "Runner",
                 "event=commit_complete transferId=${metadata.transferId} commitSucceeded=true",

@@ -6,6 +6,7 @@ import com.glancemap.glancemapcompanionapp.transfer.TransferStrategyKind
 import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferResult
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferStrategy
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import com.glancemap.shared.transfer.TransferDataLayerContract
 
 internal data class FileItem(
@@ -24,7 +25,7 @@ internal fun shouldFallbackToChannel(
     fileSize: Long,
     result: TransferResult,
 ): Boolean {
-    if (result.success) return false
+    if (result.success || isThemePackageFailure(result.message)) return false
     if (strategy !is HttpTransferServer) return false
     if (isTerminalForegroundServiceFailure(result.message)) return false
 
@@ -45,6 +46,7 @@ internal fun fallbackDecisionReason(
     result: TransferResult,
 ): String =
     when {
+        isThemePackageFailure(result.message) -> "invalid_theme_package"
         result.success -> "result_success"
         isTerminalForegroundServiceFailure(result.message) -> "terminal_fgs_failure"
         result.message.contains("file_exists", ignoreCase = true) -> "file_exists"
@@ -98,6 +100,7 @@ internal fun isTerminalForegroundServiceFailure(message: String): Boolean =
 
 internal fun shouldConsiderFreshHttpRetry(result: TransferResult): Boolean =
     !result.success &&
+        !isThemePackageFailure(result.message) &&
         !isTerminalForegroundServiceFailure(result.message) &&
         !isLikelyDifferentSubnetHttpFailure(result.message)
 
@@ -257,9 +260,12 @@ internal fun toUserFacingTransferError(result: TransferResult): String {
 internal fun isSupportedTransferFileName(fileName: String): Boolean =
     fileName.endsWith(".gpx", ignoreCase = true) ||
         isMapLikeTransferFile(fileName) ||
-        isDemTransferFile(fileName)
+        isDemTransferFile(fileName) ||
+        MapsforgeThemePackage.isTransferName(fileName)
 
-internal fun isReplaceableTransferFileName(fileName: String): Boolean = fileName.endsWith(".rd5", ignoreCase = true)
+internal fun isReplaceableTransferFileName(fileName: String): Boolean =
+    fileName.endsWith(".rd5", ignoreCase = true) ||
+        MapsforgeThemePackage.isTransferName(fileName)
 
 internal fun isMapLikeTransferFile(fileName: String): Boolean =
     fileName.endsWith(".map", ignoreCase = true) ||
@@ -270,3 +276,13 @@ internal fun isDemTransferFile(fileName: String): Boolean {
     val lower = fileName.lowercase()
     return lower.endsWith(".hgt") || lower.endsWith(".hgt.zip") || lower.endsWith(".hgt.gz")
 }
+
+private fun isThemePackageFailure(message: String): Boolean =
+    listOf(
+        "Not a valid Mapsforge theme package",
+        "No render theme XML found",
+        "Theme package is damaged",
+        "Theme package is too large",
+        "Theme could not be installed",
+        "Theme resources are missing",
+    ).any { message.contains(it, ignoreCase = true) }

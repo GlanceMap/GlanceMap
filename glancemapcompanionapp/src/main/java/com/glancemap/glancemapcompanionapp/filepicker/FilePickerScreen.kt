@@ -1019,7 +1019,7 @@ private fun SelectedFilesCompactSummary(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = fileNames.first(),
+            text = themeTransferDisplayLabel(fileNames.first()),
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1075,7 +1075,7 @@ private fun SelectedFilesCompactSummary(
                                     stringResource(
                                         R.string.transfer_selected_file_row,
                                         index + 1,
-                                        fileName,
+                                        themeTransferDisplayLabel(fileName),
                                     ),
                                 style = MaterialTheme.typography.bodySmall,
                                 overflow = TextOverflow.Ellipsis,
@@ -1449,3 +1449,14 @@ private fun openCompanionUrl(
         Toast.makeText(context, "Unable to open link.", Toast.LENGTH_SHORT).show()
     }
 }
+
+private fun themeTransferDisplayLabel(name: String): String =
+    if (com.glancemap.shared.transfer.MapsforgeThemePackage
+            .isTransferName(name)
+    ) {
+        "Mapsforge theme · ${name.dropLast(
+            com.glancemap.shared.transfer.MapsforgeThemePackage.TRANSFER_SUFFIX.length,
+        )}.zip"
+    } else {
+        name
+    }

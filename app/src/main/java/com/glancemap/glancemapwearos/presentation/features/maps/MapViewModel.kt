@@ -5,6 +5,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapwearos.core.cache.AppDerivedCacheCleaner
@@ -14,6 +15,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.maps.GeoBounds
 import com.glancemap.glancemapwearos.core.maps.geoBoundsOrNull
+import com.glancemap.glancemapwearos.core.maps.theme.validateExternalRenderTheme
 import com.glancemap.glancemapwearos.core.routing.RoutingCoverageUtils
 import com.glancemap.glancemapwearos.core.routing.isRoutingSegmentFileName
 import com.glancemap.glancemapwearos.core.routing.routingSegmentBounds
@@ -25,6 +27,7 @@ import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeSelection
+import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
@@ -116,9 +119,7 @@ internal data class MapAppearanceIndicatorPolicy(
     val retainOnFirstVisibleTimeout: Boolean,
 )
 
-internal fun mapAppearanceIndicatorPolicy(
-    request: MapAppearanceIndicatorRequest,
-): MapAppearanceIndicatorPolicy =
+internal fun mapAppearanceIndicatorPolicy(request: MapAppearanceIndicatorRequest): MapAppearanceIndicatorPolicy =
     when (request) {
         MapAppearanceIndicatorRequest.INITIAL_MAP_LOAD ->
             MapAppearanceIndicatorPolicy(
@@ -259,6 +260,7 @@ class MapViewModel(
     private var mapRenderer: MapRenderer? = null
     private val themeComposer = BundledAssetThemeComposer(context)
     private var latestThemeFile: File? = null
+    private var latestExternalTheme: RenderThemeSource.External? = null
     private var latestMapsforgeThemeName: String? = null
     private var latestBundledThemeId: String = MapsforgeThemeCatalog.ELEVATE_THEME_ID
     private var latestHillShadingEnabled: Boolean = false
@@ -1023,6 +1025,19 @@ class MapViewModel(
         return result
     }
 
+    private suspend fun prepareExternalThemeOrFallback(external: RenderThemeSource.External): Boolean =
+        try {
+            if (latestExternalTheme != external) {
+                withContext(Dispatchers.IO) { validateExternalRenderTheme(context, external) }
+            }
+            true
+        } catch (error: com.glancemap.glancemapwearos.data.repository.maps.theme.ThemePackageException) {
+            Log.w("CustomThemes", "external_theme_render_failure id=${external.id}", error)
+            Toast.makeText(context, "Theme could not be rendered. Using the default theme.", Toast.LENGTH_LONG).show()
+            themeRepository.onExternalRenderFailure(external.id)
+            false
+        }
+
     private suspend fun applyThemeSelection(
         selection: ThemeSelection,
         awaitVisibleContent: Boolean,
@@ -1039,11 +1054,21 @@ class MapViewModel(
             latestReliefOverlayEnabled = selection.reliefOverlayEnabled
             _reliefOverlayToggleEnabled.value = selection.reliefOverlayEnabled
 
-            if (selection.mapsforgeThemeName != null) {
+            val external = selection.source as? RenderThemeSource.External
+            if (external != null) {
+                if (!prepareExternalThemeOrFallback(external)) return
+                latestExternalTheme = external
+                latestThemeFile = external.xmlFile
+                latestMapsforgeThemeName = null
+                latestBundledThemeId = MapsforgeThemeCatalog.ELEVATE_THEME_ID
+                timingStatus = "external_theme"
+            } else if (selection.mapsforgeThemeName != null) {
+                latestExternalTheme = null
                 latestThemeFile = null
                 latestMapsforgeThemeName = selection.mapsforgeThemeName
                 timingStatus = "mapsforge_theme"
             } else {
+                latestExternalTheme = null
                 val bundledThemeId = selection.themeId.takeIf { MapsforgeThemeCatalog.isBundledAssetTheme(it) }
                 if (bundledThemeId == null) {
                     timingStatus = "invalid_bundled_theme"
@@ -1629,6 +1654,7 @@ class MapViewModel(
                 elevationLabelsMetric = latestIsMetric,
                 mapLabelTextScale = latestMapLabelTextScale,
                 themeFile = latestThemeFile,
+                externalTheme = latestExternalTheme,
                 mapsforgeThemeName = latestMapsforgeThemeName,
                 bundledThemeId = latestBundledThemeId,
                 hillShadingEnabled = latestHillShadingEnabled,

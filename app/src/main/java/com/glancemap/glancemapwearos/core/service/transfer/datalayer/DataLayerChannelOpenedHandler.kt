@@ -152,6 +152,7 @@ internal class DataLayerChannelOpenedHandler(
                         "checksumVerified=${if (expectedSha.isNullOrBlank()) "na" else "true"} " +
                         "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
                 )
+                fileOps.finishReceivedFile(metadata.fileName)
                 TransferDiagnostics.log(
                     "Channel",
                     "event=commit_complete transferId=${metadata.transferId} commitSucceeded=true",

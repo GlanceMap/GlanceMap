@@ -9,6 +9,7 @@ sealed class ThemeListItem {
         val id: String,
         val name: String,
         val selected: Boolean,
+        val packageId: String? = null,
     ) : ThemeListItem()
 
     data class GlobalToggle(

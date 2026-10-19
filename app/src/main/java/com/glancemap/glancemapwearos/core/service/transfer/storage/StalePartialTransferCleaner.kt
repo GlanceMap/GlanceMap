@@ -66,6 +66,7 @@ internal object StalePartialTransferCleaner {
                 add(context.getDir("poi", Context.MODE_PRIVATE))
                 add(context.getDir("oam_downloads", Context.MODE_PRIVATE))
                 add(routingSegmentsDir(context))
+                add(File(context.filesDir, "mapsforge-themes/.transfers"))
                 add(
                     context.getExternalFilesDir(DEM_DIR_NAME)
                         ?: File(context.getDir("maps", Context.MODE_PRIVATE), DEM_DIR_NAME),

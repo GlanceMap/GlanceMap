@@ -171,6 +171,25 @@ class ThemeViewModel(
         }
     }
 
+    // The filesystem/provider boundary must surface a short error without leaking implementation details.
+    @Suppress("TooGenericExceptionCaught")
+    fun deleteExternalPackage(
+        packageId: String,
+        onComplete: (String?) -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                themeRepository.deleteExternalPackage(packageId)
+                onComplete(null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "theme_delete_failed package=$packageId", error)
+                onComplete("Theme files could not be removed. Try again.")
+            }
+        }
+    }
+
     fun setMapStyle(styleId: String) {
         viewModelScope.launch {
             Log.d("Theme", "setMapStyle called with: $styleId")

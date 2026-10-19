@@ -32,7 +32,7 @@
     <string name="common_content_description_back">Back</string>
     <string name="common_refresh_watch_list_content_description">Refresh Watch List</string>
     <string name="transfer_section_download_title">1. Download</string>
-    <string name="transfer_section_select_files_title">2. Select files (.gpx / .map / .poi / .rd5 / .hgt / .hgt.gz)</string>
+    <string name="transfer_section_select_files_title">2. Select files (.gpx / .map / .poi / .rd5 / .hgt / .hgt.gz / theme .zip)</string>
     <string name="transfer_section_select_watch_title">3. Select watch</string>
     <string name="transfer_section_transfer_title">4. Transfer</string>
     <string name="transfer_section_history_title">5. History</string>

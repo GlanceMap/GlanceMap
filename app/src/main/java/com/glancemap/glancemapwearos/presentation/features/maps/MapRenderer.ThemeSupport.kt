@@ -3,25 +3,31 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import android.content.Context
 import android.util.Log
 import com.glancemap.glancemapwearos.core.maps.theme.BundledRenderThemeAssetLocator
+import com.glancemap.glancemapwearos.core.maps.theme.defaultRenderThemeMenuCallback
+import com.glancemap.glancemapwearos.core.maps.theme.externalRenderTheme
+import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import org.mapsforge.map.rendertheme.ExternalRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderTheme
-import org.mapsforge.map.rendertheme.XmlRenderThemeMenuCallback
-import org.mapsforge.map.rendertheme.XmlRenderThemeStyleLayer
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
 import java.io.File
 import java.util.Locale
 
 private const val MAP_RENDERER_THEME_TAG = "MapRenderer"
 
+// Preserve the existing fallback branches for bundled and native themes.
+@Suppress("NestedBlockDepth")
 internal fun buildMapRendererThemeOrNull(
     context: Context,
     themeFile: File?,
     mapsforgeThemeName: String?,
     bundledThemeId: String,
+    externalTheme: RenderThemeSource.External? = null,
 ): XmlRenderTheme? =
     try {
-        if (!mapsforgeThemeName.isNullOrBlank()) {
+        if (externalTheme != null) {
+            externalRenderTheme(externalTheme)
+        } else if (!mapsforgeThemeName.isNullOrBlank()) {
             val enumName = mapsforgeThemeName.uppercase(Locale.ROOT)
             runCatching { MapsforgeThemes.valueOf(enumName) }.getOrNull()
                 ?: run {
@@ -33,7 +39,7 @@ internal fun buildMapRendererThemeOrNull(
                 }
         } else {
             if (themeFile != null && themeFile.exists()) {
-                ExternalRenderTheme(themeFile, mapRendererStyleMenuCategoryCallback())
+                ExternalRenderTheme(themeFile, defaultRenderThemeMenuCallback())
             } else {
                 val bundledThemeXmlPath =
                     BundledRenderThemeAssetLocator.resolveThemeXmlPath(
@@ -51,7 +57,7 @@ internal fun buildMapRendererThemeOrNull(
                     context.assets,
                     bundledThemeAssetDir,
                     bundledThemeXmlName,
-                    mapRendererStyleMenuCategoryCallback(),
+                    defaultRenderThemeMenuCallback(),
                 )
             }
         }
@@ -75,31 +81,4 @@ internal fun computeMapRendererThemeSignature(
         "FILE:${mapRendererFileSignature(file)}|THEME:${bundledThemeId.uppercase(Locale.ROOT)}" +
             "|HILLS:$hillShadingEnabled"
     }
-}
-
-private fun mapRendererStyleMenuCategoryCallback(): XmlRenderThemeMenuCallback {
-    return XmlRenderThemeMenuCallback { menu ->
-        val styleLayer =
-            menu.getLayer(menu.defaultValue)
-                ?: menu.layers.values.firstOrNull { it.isVisible }
-                ?: return@XmlRenderThemeMenuCallback emptySet()
-
-        val categories = linkedSetOf<String>()
-        categories.addAll(styleLayer.categories)
-        addEnabledMapRendererOverlayCategories(styleLayer, categories)
-        categories
-    }
-}
-
-private fun addEnabledMapRendererOverlayCategories(
-    layer: XmlRenderThemeStyleLayer,
-    categories: MutableSet<String>,
-) {
-    layer.overlays
-        .asSequence()
-        .filter { it.isEnabled }
-        .forEach { overlay ->
-            categories.addAll(overlay.categories)
-            addEnabledMapRendererOverlayCategories(overlay, categories)
-        }
 }
