@@ -91,3 +91,5 @@ or app release.
 ## Contributing
 
 See [Contributing](CONTRIBUTING.md) for setup, workflow, and PR expectations.
+
+For specialist offline maps that require a provider theme, see [Custom Mapsforge themes](docs/custom-mapsforge-themes.md).
