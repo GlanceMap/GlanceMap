@@ -114,7 +114,7 @@
     <string name="menu_live_hike_sync">Live Hike sync</string>
     <string name="menu_live_hike">Live Hike</string>
     <string name="menu_mission_plan">Mission Plan</string>
-    <string name="menu_route_weather">Route Weather</string>
+    <string name="menu_route_weather">Weather</string>
     <string name="home_title">GlanceMap Companion</string>
     <string name="home_debug_capture_start_content_description">Phone diagnostics</string>
     <string name="home_debug_capture_stop_content_description">Phone diagnostics</string>

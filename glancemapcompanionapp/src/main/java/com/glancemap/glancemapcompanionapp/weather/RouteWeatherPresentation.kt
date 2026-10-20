@@ -10,6 +10,8 @@ internal data class RouteWeatherScreenState(
     val routeName: String?,
     val isPreparingRoute: Boolean,
     val weather: RouteWeatherUiState,
+    val isRoute: Boolean = true,
+    val isLocating: Boolean = false,
 )
 
 internal fun weatherTime(value: String?): LocalDateTime? =

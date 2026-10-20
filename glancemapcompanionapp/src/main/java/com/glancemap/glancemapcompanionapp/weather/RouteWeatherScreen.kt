@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.weather
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +44,8 @@ internal fun routeWeatherScreen(
     onBack: () -> Unit,
     onChooseRoute: () -> Unit,
     onLoadWeather: (Boolean) -> Unit,
+    onCurrentLocation: () -> Unit = {},
+    onChooseLocation: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -65,13 +69,25 @@ internal fun routeWeatherScreen(
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                state.routeName ?: stringResource(R.string.briefing_choose_a_route),
+                state.routeName ?: stringResource(R.string.weather_choose_forecast_location),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            TextButton(onClick = onChooseRoute) { Text(stringResource(R.string.briefing_change_route)) }
+            TextButton(onClick = onChooseRoute) {
+                val label =
+                    if (state.isRoute && state.routeName != null) {
+                        R.string.briefing_change_route
+                    } else {
+                        R.string.weather_choose_route
+                    }
+                Text(stringResource(label))
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onCurrentLocation) { Text(stringResource(R.string.weather_current_location)) }
+            OutlinedButton(onClick = onChooseLocation) { Text(stringResource(R.string.weather_choose_location)) }
         }
         state.weather.forecast?.let { forecast -> weatherLocationAndStatus(forecast, state.weather) }
         Column(
@@ -141,7 +157,7 @@ private fun weatherLoadStatus(
     onLoad: (Boolean) -> Unit,
 ) {
     when {
-        state.isPreparingRoute || state.weather.isLoading -> {
+        state.isPreparingRoute || state.isLocating || state.weather.isLoading -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -149,10 +165,12 @@ private fun weatherLoadStatus(
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(
                     stringResource(
-                        if (state.isPreparingRoute) {
+                        if (state.isLocating) {
+                            R.string.weather_finding_location
+                        } else if (state.isPreparingRoute) {
                             R.string.briefing_preparing_gpx_forecast_location
                         } else {
-                            R.string.briefing_loading_route_forecast
+                            if (state.isRoute) R.string.briefing_loading_route_forecast else R.string.weather_loading
                         },
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -163,15 +181,19 @@ private fun weatherLoadStatus(
             Text(
                 stringResource(
                     if (state.routeName == null) {
-                        R.string.briefing_choose_an_imported_gpx_route_to_load
+                        R.string.weather_choose_source
                     } else {
-                        R.string.route_weather_ready_to_load
+                        if (state.isRoute) R.string.route_weather_ready_to_load else R.string.weather_ready_to_load
                     },
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (state.routeName != null) {
-                Button(onClick = { onLoad(false) }) { Text(stringResource(R.string.briefing_load_route_weather)) }
+                Button(onClick = { onLoad(false) }) {
+                    val label =
+                        if (state.isRoute) R.string.briefing_load_route_weather else R.string.weather_load
+                    Text(stringResource(label))
+                }
             }
         }
     }

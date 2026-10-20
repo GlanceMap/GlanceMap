@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
@@ -109,7 +110,10 @@ import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.reversedForGuidance
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceForProgress
+import com.glancemap.glancemapcompanionapp.weather.LocationWeatherViewModel
 import com.glancemap.glancemapcompanionapp.weather.RouteWeatherScreenState
+import com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation
+import com.glancemap.glancemapcompanionapp.weather.rememberCurrentWeatherRequest
 import com.glancemap.glancemapcompanionapp.weather.routeWeatherScreen
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import com.glancemap.shared.transfer.ActiveHikePhase
@@ -150,6 +154,8 @@ internal fun FilePickerScreen(
     val routeLibraryUiState by routeLibraryViewModel.uiState.collectAsState()
     val selectedRouteDetails by routeLibraryViewModel.selectedRouteDetails.collectAsState()
     val phoneMapPoiUiState by phoneMapPoiViewModel.uiState.collectAsState()
+    val locationWeatherViewModel: LocationWeatherViewModel = composeViewModel()
+    val locationWeatherState by locationWeatherViewModel.controller.state.collectAsState()
     val routeWeatherUiState by routeLibraryViewModel.routeWeatherUiState.collectAsState()
     val missionPlanUiState by missionPlanViewModel.uiState.collectAsState()
     val phoneGuidanceState by PhoneGuidanceSessionStore.state.collectAsState()
@@ -238,6 +244,8 @@ internal fun FilePickerScreen(
     var settingsReturnToGeneral by rememberSaveable { mutableStateOf(false) }
     var showGpxPicker by rememberSaveable { mutableStateOf(false) }
     var pickGpxForWeather by rememberSaveable { mutableStateOf(false) }
+    var weatherPointSelection by rememberSaveable { mutableStateOf(false) }
+    var useRouteWeather by rememberSaveable { mutableStateOf(true) }
     val returnToMapMenu: () -> Unit = {
         libraryMapTool = null
         activeHomeArea = CompanionHomeArea.MAP
@@ -271,7 +279,13 @@ internal fun FilePickerScreen(
             state = routeLibraryUiState,
             onPick = { id ->
                 routeLibraryViewModel.selectRoute(id)
-                if (pickGpxForWeather) weatherRouteId = id else hikeController.useLibraryRoute(id)
+                if (pickGpxForWeather) {
+                    weatherRouteId = id
+                    useRouteWeather = true
+                    locationWeatherViewModel.controller.clear()
+                } else {
+                    hikeController.useLibraryRoute(id)
+                }
                 showGpxPicker = false
                 pickGpxForWeather = false
             },
@@ -799,6 +813,27 @@ internal fun FilePickerScreen(
                     mapSaveableState.SaveableStateProvider("phone-map") {
                         CompanionMapScreen(
                             isVisible = mapVisible,
+                            weatherPointSelection = weatherPointSelection && mapVisible,
+                            onWeatherPointSelected = { point, label ->
+                                if (weatherPointSelection) {
+                                    weatherPointSelection = false
+                                    useRouteWeather = false
+                                    locationWeatherViewModel.controller.load(
+                                        WeatherForecastLocation(
+                                            point.latitude,
+                                            point.longitude,
+                                            null,
+                                            label?.takeIf(String::isNotBlank)?.take(200)
+                                                ?: context.getString(R.string.weather_selected_location),
+                                        ),
+                                    )
+                                    activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
+                                }
+                            },
+                            onCancelWeatherPoint = {
+                                weatherPointSelection = false
+                                activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
+                            },
                             gpxSources =
                                 routeLibraryUiState.routes.map { route ->
                                     PhoneMapGpxSource(
@@ -841,6 +876,7 @@ internal fun FilePickerScreen(
                                     }
                                 },
                             onOpenMenu = {
+                                weatherPointSelection = false
                                 pendingMissionRouteDayId = null
                                 if (activeHomeArea == CompanionHomeArea.SETTINGS) {
                                     returnFromSettings()
@@ -1217,6 +1253,18 @@ internal fun FilePickerScreen(
             ) {
                 when (activeHomeArea) {
                     CompanionHomeArea.ROUTE_WEATHER -> {
+                        val currentWeatherRequest =
+                            rememberCurrentWeatherRequest { granted ->
+                                useRouteWeather = false
+                                if (granted) {
+                                    locationWeatherViewModel.controller.current()
+                                } else {
+                                    locationWeatherViewModel.controller.locationDenied()
+                                }
+                            }
+                        LifecycleStartEffect(locationWeatherViewModel) {
+                            onStopOrDispose { locationWeatherViewModel.controller.cancel() }
+                        }
                         val weatherRoute =
                             routeLibraryUiState.routes.firstOrNull { route -> route.id == weatherRouteId }
                         val isPreparingWeatherRoute =
@@ -1224,23 +1272,50 @@ internal fun FilePickerScreen(
                         routeWeatherScreen(
                             state =
                                 RouteWeatherScreenState(
-                                    routeName = weatherRoute?.displayName,
-                                    isPreparingRoute = isPreparingWeatherRoute,
+                                    routeName =
+                                        if (useRouteWeather) {
+                                            weatherRoute?.displayName
+                                        } else {
+                                            locationWeatherState.location?.label
+                                                ?: context.getString(R.string.weather_current_location)
+                                        },
+                                    isPreparingRoute = useRouteWeather && isPreparingWeatherRoute,
+                                    isRoute = useRouteWeather,
+                                    isLocating = !useRouteWeather && locationWeatherState.isLocating,
                                     weather =
-                                        routeWeatherUiState.takeIf {
-                                            weatherRoute?.id == routeLibraryUiState.selectedRoute?.id
-                                        } ?: RouteWeatherUiState(),
+                                        if (useRouteWeather) {
+                                            routeWeatherUiState.takeIf {
+                                                weatherRoute?.id == routeLibraryUiState.selectedRoute?.id
+                                            } ?: RouteWeatherUiState()
+                                        } else {
+                                            locationWeatherState.weather
+                                        },
                                 ),
                             onBack = returnToMapMenu,
                             onChooseRoute = {
                                 pickGpxForWeather = true
                                 showGpxPicker = true
                             },
+                            onCurrentLocation = currentWeatherRequest,
+                            onChooseLocation = {
+                                weatherPointSelection = true
+                                libraryMapTool = null
+                                activeHomeArea = CompanionHomeArea.MAP
+                            },
                             onLoadWeather = { forceRefresh ->
-                                routeLibraryViewModel.loadRouteWeather(
-                                    activeHikeSnapshot = null,
-                                    forceRefresh = forceRefresh,
-                                )
+                                if (useRouteWeather) {
+                                    routeLibraryViewModel.loadRouteWeather(
+                                        activeHikeSnapshot = null,
+                                        forceRefresh = forceRefresh,
+                                    )
+                                } else {
+                                    val location = locationWeatherState.location
+                                    if (location == null) {
+                                        currentWeatherRequest()
+                                    } else {
+                                        locationWeatherViewModel.controller.load(location, forceRefresh)
+                                    }
+                                }
                             },
                         )
                     }

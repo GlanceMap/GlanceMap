@@ -775,6 +775,9 @@ internal fun CompanionMapScreen(
     initialTool: MapTool? = null,
     initialToolSettings: Boolean = false,
     initialDiscoveryRequest: Long? = null,
+    weatherPointSelection: Boolean = false,
+    onWeatherPointSelected: (PhoneMapCoordinate, String?) -> Unit = { _, _ -> },
+    onCancelWeatherPoint: () -> Unit = {},
     navigation: MapNavigationActions = MapNavigationActions(),
     hikeController: PhoneHikeViewModel? = null,
     hikeContent: @Composable () -> Unit = {},
@@ -2391,8 +2394,35 @@ internal fun CompanionMapScreen(
             }
         }
     }
+    LaunchedEffect(weatherPointSelection) {
+        if (weatherPointSelection) {
+            clearRouteAnalysis()
+            mapToolbarHidden = false
+            searchOpen = false
+            searchViewModel.controller.cancel()
+            shouldCenterOnInitialLocation = false
+            hasFittedGpxOverlay = true
+            discoveryPickingPoint = false
+            discoveryNearMePending = false
+            discoveryOpen = false
+            poiCreationActive = false
+            poiCreationPoint = null
+            poiCreationDialogVisible = false
+            selectedPoi = null
+            searchSelection = null
+            mapUiState =
+                mapUiState
+                    .closeTool()
+                    .copy(
+                        toolLauncherExpanded = false,
+                        mapMode = mapUiState.mapMode.detachFromLocation(mapCamera.bearingDegrees),
+                    )
+        }
+    }
     val onMapTap: (PhoneMapCoordinate) -> Unit = { point ->
-        if (hikeUi.pickingCheckpoint) {
+        if (weatherPointSelection) {
+            onWeatherPointSelected(point, null)
+        } else if (hikeUi.pickingCheckpoint) {
             hikeController?.checkpointAt(GeoPoint(point.latitude, point.longitude))
         } else if (discoveryPickingPoint) {
             onSelectDiscoveryPoint(point)
@@ -2410,7 +2440,9 @@ internal fun CompanionMapScreen(
         }
     }
     val onHikeAwarePoiSelected: (PhoneMapPoi) -> Unit = { poi ->
-        if (hikeUi.pickingCheckpoint) {
+        if (weatherPointSelection) {
+            onWeatherPointSelected(PhoneMapCoordinate(poi.location.latitude, poi.location.longitude), poi.label)
+        } else if (hikeUi.pickingCheckpoint) {
             hikeController?.checkpointAt(
                 poi.location,
                 poi.label.orEmpty(),
@@ -2426,6 +2458,10 @@ internal fun CompanionMapScreen(
         }
     }
     val onMapLongPress: (PhoneMapCoordinate) -> Unit = fun(point) {
+        if (weatherPointSelection) {
+            onWeatherPointSelected(point, null)
+            return
+        }
         if (hikeUi.pickingCheckpoint || discoveryPickingPoint) {
             if (hikeUi.pickingCheckpoint) {
                 hikeController?.checkpointAt(GeoPoint(point.latitude, point.longitude))
@@ -2624,6 +2660,7 @@ internal fun CompanionMapScreen(
     }
     val onMapBack = {
         when {
+            weatherPointSelection -> onCancelWeatherPoint()
             discoveryPickingPoint || discoveryNearMePending -> {
                 discoveryPickingPoint = false
                 discoveryNearMePending = false
@@ -2659,7 +2696,8 @@ internal fun CompanionMapScreen(
 
     BackHandler(
         enabled =
-            hikeUi.pickingCheckpoint ||
+            weatherPointSelection ||
+                hikeUi.pickingCheckpoint ||
                 searchOpen ||
                 searchSelection != null ||
                 mapUiState.toolPanel.mode != MapToolPanelMode.CLOSED ||
@@ -4144,7 +4182,9 @@ internal fun CompanionMapScreen(
                                 searchOpen = false
                                 selectedPoi = null
                                 searchSelection = result
-                                if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
+                                if (weatherPointSelection) {
+                                    onWeatherPointSelected(result.point, result.label)
+                                } else if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
                                     discoveryPickingPoint = false
                                     discoveryNearMePending = false
                                     discoverySearchPoint = result.point
@@ -4230,13 +4270,26 @@ internal fun CompanionMapScreen(
                 }
 
                 phoneMapPointerOverlay(
-                    showPointer = mapUiState.mapMode.isDetachedFromLocation || routePointSelectionPhase != null,
+                    showPointer =
+                        weatherPointSelection ||
+                            mapUiState.mapMode.isDetachedFromLocation ||
+                            routePointSelectionPhase != null,
                     poiCreationActive = poiCreationActive,
                     pointerCoordinate = mapPointerCoordinate,
                     onSelectPoiAtPointer = onSelectPoiPoint,
                     onCancelPoi = { poiCreationActive = false },
                 )
 
+                if (weatherPointSelection && !searchOpen) {
+                    com.glancemap.glancemapcompanionapp.weather.weatherMapSelectionCard(
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 16.dp, end = 16.dp, bottom = 88.dp),
+                        onUseCenter = { onWeatherPointSelected(mapPointerCoordinate, null) },
+                        onCancel = onCancelWeatherPoint,
+                    )
+                }
                 selectedPoi?.let { poi ->
                     phoneMapPoiDetailsCard(
                         poi = poi,

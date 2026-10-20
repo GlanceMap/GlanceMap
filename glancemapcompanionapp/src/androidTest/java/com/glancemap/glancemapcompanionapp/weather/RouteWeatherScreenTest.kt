@@ -93,6 +93,75 @@ class RouteWeatherScreenTest {
         }
     }
 
+    @Test
+    fun weatherCanBeRequestedWithoutAGpxRoute() {
+        var current = 0
+        var selected = 0
+        compose.setContent {
+            MaterialTheme {
+                routeWeatherScreen(
+                    RouteWeatherScreenState(null, false, RouteWeatherUiState()),
+                    {},
+                    {},
+                    {},
+                    onCurrentLocation = { current++ },
+                    onChooseLocation = { selected++ },
+                )
+            }
+        }
+        compose.onNodeWithText("Current location").performClick()
+        compose.onNodeWithText("Choose on map").performClick()
+        compose.runOnIdle {
+            assertEquals(1, current)
+            assertEquals(1, selected)
+        }
+    }
+
+    @Test
+    fun selectedLocationUsesGenericWeatherLabelsAndCanRefresh() {
+        var refresh = false
+        compose.setContent {
+            MaterialTheme {
+                routeWeatherScreen(
+                    RouteWeatherScreenState(
+                        "Selected location",
+                        false,
+                        RouteWeatherUiState(
+                            forecast =
+                                testForecast().copy(
+                                    location = WeatherForecastLocation(45.0, 6.0, null, "Selected location"),
+                                ),
+                        ),
+                        isRoute = false,
+                    ),
+                    {},
+                    {},
+                    { refresh = it },
+                )
+            }
+        }
+        compose.onNodeWithText("Selected location · 45.0000, 6.0000").assertExists()
+        compose.onNodeWithContentDescription("Refresh weather").performClick()
+        compose.runOnIdle { assertEquals(true, refresh) }
+    }
+
+    @Test
+    fun choosingAMapCentreOrCancellingUsesTheSelectionCallbacks() {
+        var selected = 0
+        var cancelled = 0
+        compose.setContent {
+            MaterialTheme {
+                weatherMapSelectionCard(Modifier, { selected++ }, { cancelled++ })
+            }
+        }
+        compose.onNodeWithText("Use map centre").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle {
+            assertEquals(1, selected)
+            assertEquals(1, cancelled)
+        }
+    }
+
     private fun testForecast(): WeatherForecast {
         val tomorrow = LocalDate.now(ZoneOffset.UTC).plusDays(1).toString()
         return WeatherForecast(

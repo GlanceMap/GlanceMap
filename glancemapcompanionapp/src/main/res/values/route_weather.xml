@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="route_weather_location">GPX · %1$s · %2$s</string>
+    <string name="route_weather_location">%1$s · %2$s</string>
     <string name="route_weather_cached">Cached</string>
     <string name="route_weather_at_update">Conditions at update · %1$s</string>
     <string name="route_weather_at_update_short">At update</string>
-    <string name="route_weather_hourly">Hourly · local time at GPX location</string>
+    <string name="route_weather_hourly">Hourly · local time at forecast location</string>
     <string name="route_weather_upcoming">Upcoming days</string>
     <string name="route_weather_today">Today</string>
     <string name="route_weather_tomorrow">Tomorrow</string>
@@ -30,4 +30,16 @@
     <string name="route_weather_expanded">Expanded</string>
     <string name="route_weather_collapsed">Collapsed</string>
     <string name="route_weather_ready_to_load">Load the forecast at this GPX location.</string>
+    <string name="weather_current_location">Current location</string>
+    <string name="weather_choose_location">Choose on map</string>
+    <string name="weather_selected_location">Selected location</string>
+    <string name="weather_choose_location_hint">Tap a point or search for a place to load its weather.</string>
+    <string name="weather_finding_location">Finding your current location…</string>
+    <string name="weather_location_unavailable">Location unavailable. Allow location access and try again, or choose on the map.</string>
+    <string name="weather_choose_source">Choose a route, use your current location, or select a point on the map.</string>
+    <string name="weather_loading">Loading forecast…</string>
+    <string name="weather_load">Load weather</string>
+    <string name="weather_ready_to_load">Load the forecast for this location.</string>
+    <string name="weather_choose_route">Choose route</string>
+    <string name="weather_choose_forecast_location">Choose a forecast location</string>
 </resources>

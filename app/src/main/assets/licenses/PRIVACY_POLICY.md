@@ -1,6 +1,6 @@
 # Privacy Policy for GlanceMap
 
-Last updated: 2026-10-17
+Last updated: 2026-10-19
 
 This Privacy Policy applies to GlanceMap, including the Wear OS watch app and its Android companion app, distributed under the GlanceMap name and package `com.glancemap.glancemapwearos`.
 
@@ -52,6 +52,8 @@ Data may leave your device in the following situations:
 
 When you request online POI, routing, elevation, map-picker previews, or similar data, the app sends the information needed to fulfill that request to the selected provider, such as a user-selected geographic area (bounding box), requested routing tile names, map display tile coordinates, or requested files.
 
+When you request weather in the companion app, it sends the chosen forecast coordinate and optional route elevation to Open-Meteo. You can choose a GPX route point, a location on the map or through place search, or your current phone location. Current location uses a single recent fix after foreground permission; it does not enable background tracking or recording. Current location acquisition stops when you leave the weather page or the app goes into the background. Forecast snapshots are kept in bounded app-private storage for offline use.
+
 As with normal internet requests, those providers may also receive standard request metadata such as your IP address, request time, and user-agent or similar connection information.
 
 With online place/address search enabled, submitted place searches use Photon. French postal addresses are first tried with IGN Géoplateforme (Base Adresse Nationale), with Photon as a fallback. Photon receives the submitted text and map-centre coordinates to bias results; IGN receives the submitted address and postcode. Turn off online search to search downloaded POI files only. Search text and addresses are excluded from GlanceMap search diagnostic logs.
@@ -59,6 +61,8 @@ With online place/address search enabled, submitted place searches use Photon. F
 The optional 3D terrain preview displays a snapshot of visible tracks, loaded POIs and the last location fix locally. It requests map and terrain tiles for the viewed area; it does not upload those tracks or POIs to a rendering service. The preview is unavailable while offline mode is enabled.
 
 Providers used by the current app configuration include:
+
+- `api.open-meteo.com` (when you request weather)
 
 - `photon.komoot.io` (online place search)
 - `data.geopf.fr` (French postal-address search)
