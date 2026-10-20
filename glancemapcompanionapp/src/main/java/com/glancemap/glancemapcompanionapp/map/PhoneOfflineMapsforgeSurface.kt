@@ -284,7 +284,6 @@ private class PhoneOfflineMapsforgeView(
                         mapView.height * 0.5f,
                     ),
                 )
-                requestMapRedraw()
             },
         )
     private val workGate = PhoneMapsforgeRenderWorkGate()
@@ -419,6 +418,10 @@ private class PhoneOfflineMapsforgeView(
                 }
             }
             val wasRotating = rotationDetector.rotateGestureDetector.isInProgress
+            if (!wasRotating) {
+                rotationDetector.rotateGestureDetector.angleThreshold =
+                    phoneMapRotationActivationDegrees(latestState?.gestureMapMode ?: PhoneMapMode())
+            }
             if (latestState?.gestureMapMode?.allowsManualRotation != false) {
                 rotationDetector.onTouchEvent(event)
             } else {
@@ -953,7 +956,8 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun publishRuntimeDiagnostics() {
-        if (disposed || !renderActive) return
+        // Layers.size/contains take the monitor held during Mapsforge's background drawing.
+        if (disposed || !renderActive || rotationDetector.rotateGestureDetector.isInProgress) return
         val rendererSnapshot = renderer.runtimeSnapshot()
         val frameBuffer = runCatching { mapView.frameBuffer }.getOrNull()
         val dimensions = runCatching { frameBuffer?.dimension }.getOrNull()
@@ -1156,11 +1160,45 @@ private class PhoneOfflineMapsforgeMapView(
     private val onAndroidDrawObserved: () -> Unit,
 ) : MapView(context) {
     private val androidDrawObserved = AtomicBoolean(false)
+    private val displayFrameObserver = Observer { updateDisplayFrameTransform() }
 
     init {
         if (transparentBackground) {
             model.displayModel.setBackgroundColor(Color.TRANSPARENT)
             setBackgroundColor(Color.TRANSPARENT)
+        }
+        // Run after Mapsforge's controllers, including when it swaps in an older layer frame.
+        model.mapViewPosition.addObserver(displayFrameObserver)
+        model.frameBufferModel.addObserver(displayFrameObserver)
+        model.mapViewDimension.addObserver(displayFrameObserver)
+        model.displayModel.addObserver(displayFrameObserver)
+    }
+
+    private fun updateDisplayFrameTransform() {
+        if (!Parameters.ROTATION_MATRIX) return
+        // Preserve the watch and Mapsforge FrameBufferController's lock order.
+        synchronized(model.mapViewPosition) {
+            synchronized(frameBuffer) {
+                val bufferPosition = model.frameBufferModel.mapPosition
+                val viewDimension = model.mapViewDimension.dimension
+                if (bufferPosition != null && viewDimension != null && frameBuffer.dimension != null) {
+                    val position = model.mapViewPosition
+                    val camera =
+                        PhoneMapsforgeDisplayFrameCamera(
+                            position.mapPosition,
+                            viewDimension,
+                            if (model.frameBufferModel.isScaleEnabled) {
+                                position.scaleFactor
+                            } else {
+                                Math.pow(2.0, bufferPosition.zoomLevel.toDouble())
+                            },
+                            position.pivot,
+                            Point(position.mapViewCenterX.toDouble(), position.mapViewCenterY.toDouble()),
+                        )
+                    PhoneMapsforgeDisplayFrameTransform(bufferPosition, camera, model.displayModel.tileSize)
+                        .applyTo(frameBuffer)
+                }
+            }
         }
     }
 
@@ -1170,6 +1208,14 @@ private class PhoneOfflineMapsforgeMapView(
     override fun onDraw(canvas: Canvas) {
         if (androidDrawObserved.compareAndSet(false, true)) post(onAndroidDrawObserved)
         super.onDraw(canvas)
+    }
+
+    override fun destroy() {
+        model.mapViewPosition.removeObserver(displayFrameObserver)
+        model.frameBufferModel.removeObserver(displayFrameObserver)
+        model.mapViewDimension.removeObserver(displayFrameObserver)
+        model.displayModel.removeObserver(displayFrameObserver)
+        super.destroy()
     }
 }
 

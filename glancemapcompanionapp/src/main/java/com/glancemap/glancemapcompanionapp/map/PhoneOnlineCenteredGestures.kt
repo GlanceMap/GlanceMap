@@ -8,6 +8,8 @@ import org.maplibre.android.maps.MapView
 internal fun MapLibreMap.applyPhoneMapGestureSettings(mode: PhoneMapMode) {
     uiSettings.isRotateGesturesEnabled = mode.allowsManualRotation
     if (!mode.allowsManualRotation) gesturesManager.rotateGestureDetector.interrupt()
+    val rotation = gesturesManager.rotateGestureDetector
+    if (!rotation.isInProgress) rotation.angleThreshold = phoneMapRotationActivationDegrees(mode)
     val insets = padding
     uiSettings.focalPoint =
         if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {

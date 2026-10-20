@@ -9,6 +9,14 @@ import org.maplibre.android.gestures.RotateGestureDetector
 // Match MapLibre's map rotation threshold for offline gestures and measurement arbitration.
 internal const val PHONE_MAP_ROTATION_ACTIVATION_DEGREES = 3f
 
+internal fun phoneMapRotationActivationDegrees(mode: PhoneMapMode): Float =
+    if (!mode.isDetachedFromLocation && mode.orientation == PhoneMapOrientation.NORTH_UP) {
+        // A small incidental twist during a pinch must not detach location following.
+        8f
+    } else {
+        PHONE_MAP_ROTATION_ACTIVATION_DEGREES
+    }
+
 /** Observes rotation without consuming the native map's pinch-zoom events. */
 internal fun phoneMapRotationGestureDetector(
     context: Context,

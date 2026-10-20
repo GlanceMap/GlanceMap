@@ -121,6 +121,8 @@ class PhoneMapCombinedGesturesTest {
         val pans = AtomicInteger()
         val visible = mutableStateOf(true)
         val currentMode = mutableStateOf(mode)
+        lateinit var gesture: MapGestureSequence
+        var zoomedIn = 0.0
         val callbacks =
             callbacks(rotations, measurements).copy(
                 onUserPan = { pans.incrementAndGet() },
@@ -175,7 +177,7 @@ class PhoneMapCombinedGesturesTest {
                         offsetY = map.offsetY.toDouble(),
                     )
                 val screenCenter = centerOnScreen()
-                val gesture =
+                gesture =
                     MapGestureSequence(map, centerX = 0.35f, centerY = 0.3f) {
                         if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
                             assertEquals("The center must stay fixed during every gesture event", center, map.model.mapViewPosition.center)
@@ -187,11 +189,30 @@ class PhoneMapCombinedGesturesTest {
                 gesture.start()
                 if (rotateFirst) gesture.rotate()
                 gesture.pinch(1.4f)
-                val zoomedIn = map.model.mapViewPosition.zoom
+                zoomedIn = map.model.mapViewPosition.zoom
                 assertTrue("Native pinch zoom must remain active", zoomedIn > 12.0)
+                if (!rotateFirst) {
+                    gesture.rotate(5f)
+                    if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
+                        assertEquals("A small pinch twist must keep north up", 0f, map.mapRotation.degrees, 0.01f)
+                    } else {
+                        assertTrue("Free browsing must retain its smaller rotation threshold", map.mapRotation.degrees > 0f)
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                val map = requireNotNull(findMap(activity.window.decorView))
+                if (mode.follow == PhoneMapFollowMode.FOLLOW_LOCATION && !rotateFirst) {
+                    assertTrue("A pinch twist must not publish manual rotation", rotations.isEmpty())
+                    assertEquals("A pinch twist must keep location following", mode, currentMode.value)
+                }
                 if (!rotateFirst) gesture.rotate()
                 if (mode.allowsManualRotation) {
-                    assertTrue("Small rotation must work during a pinch", map.mapRotation.degrees > 5f)
+                    assertTrue("A deliberate rotation must work during a pinch", map.mapRotation.degrees > 5f)
+                    val bearing = map.mapRotation.degrees
+                    gesture.rotate(1f)
+                    assertEquals("Fine rotation must work after activation", bearing + 1f, map.mapRotation.degrees, 0.01f)
                 } else {
                     assertEquals("Compass mode must reject finger rotation", 0f, map.mapRotation.degrees, 0.01f)
                 }
@@ -282,8 +303,8 @@ internal class MapGestureSequence(
         dispatch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2)
     }
 
-    fun rotate() {
-        repeat(48) {
+    fun rotate(degrees: Float = 20f) {
+        repeat((degrees / 0.25f).toInt()) {
             angle += 0.25f
             dispatch(MotionEvent.ACTION_MOVE, 2)
         }

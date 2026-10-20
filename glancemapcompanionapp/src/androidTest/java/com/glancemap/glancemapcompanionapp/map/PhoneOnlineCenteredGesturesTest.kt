@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -98,12 +99,22 @@ class PhoneOnlineCenteredGesturesTest {
                     }
                 gesture.start()
                 gesture.pinch(1.4f)
+                if (!compass && !offline) gesture.rotate(5f)
             }
             composeRule.waitUntil(10_000) { readyMap.get().cameraPosition.zoom > 12.0 }
-            composeRule.runOnIdle { gesture.rotate() }
+            composeRule.runOnIdle {
+                if (!compass && !offline) {
+                    val map = readyMap.get()
+                    assertEquals("A small pinch twist must keep north up", 0.0, map.cameraPosition.bearing, 0.01)
+                    assertFalse("A small pinch twist must not start rotation", map.gesturesManager.rotateGestureDetector.isInProgress)
+                }
+                gesture.rotate()
+            }
             if (!compass) {
                 composeRule.waitUntil(10_000) {
-                    abs(shortestPhoneHeadingDelta(readyMap.get().cameraPosition.bearing.toFloat(), 0f)) > 5f
+                    val map = readyMap.get()
+                    val bearing = map.cameraPosition.bearing.toFloat()
+                    abs(shortestPhoneHeadingDelta(bearing, 0f)) > 5f
                 }
             }
             composeRule.runOnIdle {
