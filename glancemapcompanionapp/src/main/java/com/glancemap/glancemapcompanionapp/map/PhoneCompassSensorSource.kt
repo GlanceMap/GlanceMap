@@ -54,6 +54,7 @@ internal data class PhoneCompassState(
     val pipeline: PhoneCompassPipeline = PhoneCompassPipeline.NONE,
     val providerMode: PhoneCompassProviderMode = PhoneCompassProviderMode.GOOGLE_FUSED,
     val hasSample: Boolean = false,
+    val sampleElapsedRealtimeMillis: Long? = null,
     val calibrationRecommended: Boolean = false,
     val magneticInterference: Boolean = false,
 )
@@ -98,6 +99,7 @@ internal fun phoneCompassStateForSample(
     accuracy: Int,
     providerMode: PhoneCompassProviderMode = PhoneCompassProviderMode.SENSOR_MANAGER,
     hasSample: Boolean = headingDegrees != null,
+    sampleElapsedRealtimeMillis: Long? = null,
     calibrationRecommended: Boolean = false,
     magneticInterference: Boolean = false,
 ): PhoneCompassState {
@@ -123,6 +125,7 @@ internal fun phoneCompassStateForSample(
         pipeline = pipeline,
         providerMode = providerMode,
         hasSample = hasSample,
+        sampleElapsedRealtimeMillis = sampleElapsedRealtimeMillis,
         calibrationRecommended = calibrationRecommended,
         magneticInterference = magneticInterference,
     )
@@ -398,6 +401,7 @@ internal class PhoneCompassSensorSource(
                 accuracy = effectiveAccuracy,
                 providerMode = providerMode,
                 hasSample = hasSample,
+                sampleElapsedRealtimeMillis = lastSampleElapsedMs,
                 calibrationRecommended = calibrationRecommended,
                 magneticInterference = magneticInterference,
             )

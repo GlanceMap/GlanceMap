@@ -11,10 +11,11 @@ import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
 import org.mapsforge.core.util.MercatorProjection
 import org.mapsforge.map.android.graphics.AndroidBitmap
+import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.layer.overlay.Marker
+import org.mapsforge.map.model.MapViewPosition
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Mapsforge rotates the map by the inverse of the semantic MapLibre-style bearing. */
@@ -32,24 +33,35 @@ internal class PhoneOfflineLocationMarker(
     location: LatLong,
     val markerStyle: PhoneMapMarkerStyle,
     private val context: Context,
+    private val mapViewPosition: MapViewPosition? = null,
     private val onFirstDrawCall: (PhoneOfflineLocationMarker) -> Unit = {},
 ) : Marker(
         location,
-        phoneLocationMarkerBitmap(context, markerStyle, compassRenderable = false),
+        phoneLocationMarkerBitmap(context, markerStyle, compassRenderable = false, locationFresh = true),
         0,
         0,
     ) {
     private var hasCompassCone = false
+    private var locationFresh = true
+    private val bitmapMatrix = AndroidGraphicFactory.INSTANCE.createMatrix()
 
     init {
         centerBitmap()
     }
 
     fun updateCompassAppearance(compassRenderable: Boolean) {
-        val showCone = compassRenderable && markerStyle == PhoneMapMarkerStyle.DOT
-        if (hasCompassCone == showCone) return
-        bitmap = phoneLocationMarkerBitmap(context, markerStyle, showCone)
+        updateAppearance(compassConeRenderable = compassRenderable, locationFresh = true)
+    }
+
+    fun updateAppearance(
+        compassConeRenderable: Boolean,
+        locationFresh: Boolean,
+    ) {
+        val showCone = compassConeRenderable && locationFresh && markerStyle == PhoneMapMarkerStyle.DOT
+        if (hasCompassCone == showCone && this.locationFresh == locationFresh) return
+        bitmap = phoneLocationMarkerBitmap(context, markerStyle, showCone, locationFresh)
         hasCompassCone = showCone
+        this.locationFresh = locationFresh
         centerBitmap()
     }
 
@@ -114,16 +126,20 @@ internal class PhoneOfflineLocationMarker(
                 val mapSize = cachedMapSize(zoomLevel, displayModel.tileSize)
                 val pixelX = MercatorProjection.longitudeToPixelX(markerLocation.longitude, mapSize) - topLeft.x
                 val pixelY = MercatorProjection.latitudeToPixelY(markerLocation.latitude, mapSize) - topLeft.y
-                val drawX = floor(pixelX + horizontalOffset).toInt()
-                val drawY = floor(pixelY + verticalOffset).toInt()
-                val pivotX = drawX + markerBitmap.width / 2f
-                val pivotY = drawY + markerBitmap.height / 2f
+                val bitmapScale =
+                    mapViewPosition?.let { phoneOfflineMarkerBitmapScale(zoomLevel, it.scaleFactor) } ?: 1f
+                val pivotX = pixelX.toFloat()
+                val pivotY = pixelY.toFloat()
+                bitmapMatrix.reset()
+                bitmapMatrix.translate(pivotX, pivotY)
+                bitmapMatrix.scale(bitmapScale, bitmapScale)
+                bitmapMatrix.translate(-markerBitmap.width / 2f, -markerBitmap.height / 2f)
                 val effectiveRotation = phoneOfflineMarkerScreenRotationDegrees(heading, mapViewRotation.degrees)
                 canvas.save()
                 if (effectiveRotation != 0f) {
                     canvas.rotate(effectiveRotation, pivotX, pivotY)
                 }
-                canvas.drawBitmap(markerBitmap, drawX, drawY)
+                canvas.drawBitmap(markerBitmap, bitmapMatrix)
                 canvas.restore()
                 bitmapDrawCount.incrementAndGet()
                 lastDrawOutcome = "bitmap_drawn"
@@ -168,9 +184,12 @@ private fun phoneLocationMarkerBitmap(
     context: Context,
     style: PhoneMapMarkerStyle,
     compassRenderable: Boolean,
+    locationFresh: Boolean,
 ): AndroidBitmap {
     val drawable =
         requireNotNull(ContextCompat.getDrawable(context, phoneLocationMarkerDrawable(style, compassRenderable)))
+            .mutate()
+    if (!locationFresh) drawable.setTint(PHONE_LOCATION_MARKER_HISTORICAL_ARGB)
     return AndroidBitmap(
         drawable.toBitmap(
             width = (drawable.intrinsicWidth * PHONE_LOCATION_MARKER_SCALE).roundToInt().coerceAtLeast(1),

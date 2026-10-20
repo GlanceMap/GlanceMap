@@ -234,14 +234,14 @@ internal class PhoneMapLocationSource(
         when (this) {
             PhoneMapLocationRequestProfile.BROWSE ->
                 LocationRequest
-                    .Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, PHONE_MAP_BROWSE_LOCATION_INTERVAL_MS)
+                    .Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, expectedIntervalMillis)
                     .setMinUpdateIntervalMillis(PHONE_MAP_BROWSE_LOCATION_MIN_INTERVAL_MS)
                     // A puck need not move for sensor jitter; 25 m is a useful browse-scale displacement.
                     .setMinUpdateDistanceMeters(PHONE_MAP_BROWSE_MIN_DISTANCE_METERS)
                     .build()
             PhoneMapLocationRequestProfile.FOLLOW ->
                 LocationRequest
-                    .Builder(Priority.PRIORITY_HIGH_ACCURACY, PHONE_MAP_FOLLOW_LOCATION_INTERVAL_MS)
+                    .Builder(Priority.PRIORITY_HIGH_ACCURACY, expectedIntervalMillis)
                     .setMinUpdateIntervalMillis(PHONE_MAP_FOLLOW_LOCATION_MIN_INTERVAL_MS)
                     .build()
         }
@@ -254,9 +254,7 @@ internal class PhoneMapLocationSource(
 }
 
 // Browsing updates are five times slower and balanced-power; the distance gate avoids waking on small drift.
-private const val PHONE_MAP_BROWSE_LOCATION_INTERVAL_MS = 10_000L
 private const val PHONE_MAP_BROWSE_LOCATION_MIN_INTERVAL_MS = 5_000L
 private const val PHONE_MAP_BROWSE_MIN_DISTANCE_METERS = 25f
-private const val PHONE_MAP_FOLLOW_LOCATION_INTERVAL_MS = 2_000L
 private const val PHONE_MAP_FOLLOW_LOCATION_MIN_INTERVAL_MS = 1_000L
 private const val NANOSECONDS_PER_MILLISECOND = 1_000_000L

@@ -142,6 +142,7 @@ internal data class PhoneRecordingUiState(
     val distanceMeters: Double = 0.0,
     val latestLocation: PhoneMapLocation? = null,
     val locationUpdatesActive: Boolean = false,
+    val locationIntervalMillis: Long? = null,
     val settings: PhoneRecordingSettings = PhoneRecordingSettings(),
     val message: PhoneRecordingMessage = PhoneRecordingMessage.IDLE,
     val rejectedFixCount: Int = 0,
@@ -2278,7 +2279,11 @@ internal class PhoneRecordingService :
 
     private fun publish(state: PhoneRecordingUiState) {
         val previousPhase = PhoneRecordingSessionStore.state.value.session.phase
-        val published = state.copy(locationUpdatesActive = locationCallback != null)
+        val published =
+            state.copy(
+                locationUpdatesActive = locationCallback != null,
+                locationIntervalMillis = locationDeliveryIntervalMillis.takeIf { locationCallback != null && it > 0L },
+            )
         PhoneRecordingSessionStore.publish(published)
         updateNotificationIfActive(published)
         if (previousPhase != published.session.phase) startTimeVibrationTimer()

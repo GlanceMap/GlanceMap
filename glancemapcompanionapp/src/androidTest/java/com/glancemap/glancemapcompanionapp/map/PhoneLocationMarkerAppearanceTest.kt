@@ -1,7 +1,9 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,8 +16,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.maplibre.android.location.LocationComponentOptions
+import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
+import org.mapsforge.core.model.Point
+import org.mapsforge.core.model.Rotation
+import org.mapsforge.core.util.MercatorProjection
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
+import org.mapsforge.map.model.DisplayModel
+import org.mapsforge.map.model.MapViewPosition
 import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
@@ -75,6 +83,65 @@ class PhoneLocationMarkerAppearanceTest {
                 marker.onDestroy()
             }
         }
+    }
+
+    @Test
+    fun offlineDrawCancelsFramebufferScalingAndKeepsTheMarkerCentered() {
+        AndroidGraphicFactory.createInstance(context.applicationContext as Application)
+        val displayModel = DisplayModel()
+        val position = MapViewPosition(displayModel)
+        val marker =
+            PhoneOfflineLocationMarker(LatLong(0.0, 0.0), PhoneMapMarkerStyle.DOT, context, position)
+        marker.setDisplayModel(displayModel)
+        val frameBitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        val canvas = AndroidGraphicFactory.createGraphicContext(android.graphics.Canvas(frameBitmap))
+        try {
+            listOf(false, true).forEach { compassRenderable ->
+                marker.updateCompassAppearance(compassRenderable)
+                val referenceBounds = alphaBounds(AndroidGraphicFactory.getBitmap(marker.bitmap))
+                listOf(14.0, 14.25, 14.75, 14.99, 15.0).forEach { zoom ->
+                    position.setZoom(zoom, false)
+                    val zoomLevel = position.zoomLevel
+                    val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
+                    frameBitmap.eraseColor(Color.TRANSPARENT)
+                    marker.draw(
+                        BoundingBox(-1.0, -1.0, 1.0, 1.0),
+                        zoomLevel,
+                        canvas,
+                        Point(mapSize / 2.0 - 160.0, mapSize / 2.0 - 160.0),
+                        Rotation.NULL_ROTATION,
+                    )
+                    val bounds = alphaBounds(frameBitmap)
+                    val framebufferScale =
+                        (position.scaleFactor / MercatorProjection.zoomLevelToScaleFactor(zoomLevel)).toFloat()
+                    assertEquals(referenceBounds.width().toFloat(), bounds.width() * framebufferScale, 4f)
+                    assertEquals(referenceBounds.height().toFloat(), bounds.height() * framebufferScale, 4f)
+                    assertEquals(Color.rgb(0, 122, 255), frameBitmap.getPixel(160, 160))
+                }
+            }
+        } finally {
+            canvas.destroy()
+            frameBitmap.recycle()
+            marker.onDestroy()
+            position.destroy()
+        }
+    }
+
+    private fun alphaBounds(bitmap: Bitmap): Rect {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val bounds = Rect(bitmap.width, bitmap.height, 0, 0)
+        pixels.forEachIndexed { index, color ->
+            if (Color.alpha(color) > 0) {
+                val x = index % bitmap.width
+                val y = index / bitmap.width
+                bounds.left = minOf(bounds.left, x)
+                bounds.top = minOf(bounds.top, y)
+                bounds.right = maxOf(bounds.right, x + 1)
+                bounds.bottom = maxOf(bounds.bottom, y + 1)
+            }
+        }
+        return bounds
     }
 
     @Test

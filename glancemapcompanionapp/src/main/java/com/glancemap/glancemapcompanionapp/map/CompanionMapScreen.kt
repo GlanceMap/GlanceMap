@@ -7,6 +7,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PointF
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -1335,6 +1336,23 @@ internal fun CompanionMapScreen(
         hasLocationPermission = hasLocationPermission,
         onPermissionChanged = { hasLocationPermission = it },
     )
+    val markerTrustExpectedIntervalMillis =
+        recordingState.locationIntervalMillis ?: mapLocationProfile?.expectedIntervalMillis ?: 10_000L
+    val markerTrustNowElapsedRealtimeMillis =
+        rememberPhoneMapMarkerTrustNow(
+            mapActive = mapActive,
+            location = mapLocation,
+            expectedGpsIntervalMillis = markerTrustExpectedIntervalMillis,
+            compassSampleElapsedRealtimeMillis = compassState.sampleElapsedRealtimeMillis,
+        )
+    val locationMarkerFresh =
+        isPhoneMapLocationFreshForMarker(
+            location = mapLocation,
+            nowElapsedRealtimeMillis = markerTrustNowElapsedRealtimeMillis,
+            expectedIntervalMillis = markerTrustExpectedIntervalMillis,
+        )
+    val compassConeTrustworthy =
+        locationMarkerFresh && isPhoneCompassTrustworthyForCone(compassState, markerTrustNowElapsedRealtimeMillis)
     LaunchedEffect(pendingOfflineMap) {
         val selectedMap = pendingOfflineMap ?: return@LaunchedEffect
         withFrameNanos { }
@@ -3167,6 +3185,8 @@ internal fun CompanionMapScreen(
                                 userGestureActive = onlineGestureState.isActive,
                                 compassSource = compassSensorSource,
                                 compassPresentation = compassPresentation,
+                                locationMarkerFresh = locationMarkerFresh,
+                                compassConeTrustworthy = compassConeTrustworthy,
                                 showLocationMarker = !comparisonOwnsSemanticOverlays,
                                 ownsLocationFollow = !comparisonOwnsFollowAndCommands,
                                 onCameraInput = onBaseCameraInput,
@@ -3421,6 +3441,8 @@ internal fun CompanionMapScreen(
                                     userGestureActive = onlineGestureState.isActive,
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
+                                    locationMarkerFresh = locationMarkerFresh,
+                                    compassConeTrustworthy = compassConeTrustworthy,
                                     showLocationMarker = onlineComparisonActive,
                                     terrainOpacity = if (onlineComparisonActive) comparisonOverlayAlpha else 0f,
                                     ownsLocationFollow = comparisonOwnsFollowAndCommands,
@@ -3698,6 +3720,12 @@ internal fun CompanionMapScreen(
                                             locationState.location.takeIf {
                                                 locationState.hasPermission && !comparisonOwnsFollowAndCommands
                                             },
+                                        locationMarkerFresh =
+                                            locationMarkerFresh && locationState.hasPermission &&
+                                                !comparisonOwnsFollowAndCommands,
+                                        compassConeTrustworthy =
+                                            compassConeTrustworthy && locationState.hasPermission &&
+                                                !comparisonOwnsFollowAndCommands,
                                         hasLocationPermission =
                                             locationState.hasPermission && !comparisonOwnsFollowAndCommands,
                                         cameraCommand =
@@ -3797,6 +3825,8 @@ internal fun CompanionMapScreen(
                                     userGestureActive = onlineGestureState.isActive,
                                     compassSource = compassSensorSource,
                                     compassPresentation = compassPresentation,
+                                    locationMarkerFresh = locationMarkerFresh,
+                                    compassConeTrustworthy = compassConeTrustworthy,
                                     showLocationMarker = onlineComparisonActive,
                                     terrainOpacity = if (onlineComparisonActive) comparisonOverlayAlpha else 0f,
                                     ownsLocationFollow = comparisonOwnsFollowAndCommands,
@@ -4073,6 +4103,10 @@ internal fun CompanionMapScreen(
                                         locationState.location.takeIf {
                                             locationState.hasPermission && offlineComparisonActive
                                         },
+                                    locationMarkerFresh =
+                                        locationMarkerFresh && locationState.hasPermission && offlineComparisonActive,
+                                    compassConeTrustworthy =
+                                        compassConeTrustworthy && locationState.hasPermission && offlineComparisonActive,
                                     hasLocationPermission =
                                         locationState.hasPermission && offlineComparisonActive,
                                     cameraCommand = mapUiState.cameraCommand.takeIf { comparisonOwnsFollowAndCommands },
@@ -5387,6 +5421,8 @@ private fun synchronizeOnlineMapPresentation(
     userGestureActive: Boolean,
     compassSource: PhoneCompassSensorSource,
     compassPresentation: PhoneMapCompassPresentation,
+    locationMarkerFresh: Boolean,
+    compassConeTrustworthy: Boolean,
     showLocationMarker: Boolean = true,
     terrainOpacity: Float = 1f,
     ownsLocationFollow: Boolean = true,
@@ -5450,6 +5486,8 @@ private fun synchronizeOnlineMapPresentation(
         locationState.hasPermission,
         showLocationMarker,
         compassPresentation.markerScreenRotationDegrees != null,
+        locationMarkerFresh,
+        compassConeTrustworthy,
         mapSettings.markerStyle,
         mapSettings.gpsAccuracyCircleEnabled,
     ) {
@@ -5460,6 +5498,8 @@ private fun synchronizeOnlineMapPresentation(
                     context = context,
                     compassSource = compassSource,
                     compassRenderable = compassPresentation.markerScreenRotationDegrees != null,
+                    compassConeRenderable = compassConeTrustworthy,
+                    locationFresh = locationMarkerFresh,
                     mapSettings = mapSettings,
                 )
             } else if (activeMap.locationComponent.isLocationComponentActivated) {
@@ -6667,6 +6707,8 @@ private fun MapLibreMap.enableLocationPuck(
     context: Context,
     compassSource: PhoneCompassSensorSource,
     compassRenderable: Boolean,
+    compassConeRenderable: Boolean,
+    locationFresh: Boolean,
     mapSettings: PhoneMapSettings,
 ) {
     val locationComponent = locationComponent
@@ -6683,7 +6725,12 @@ private fun MapLibreMap.enableLocationPuck(
     locationComponent.compassEngine = compassSource
     locationComponent.renderMode = if (compassRenderable) RenderMode.COMPASS else RenderMode.NORMAL
     locationComponent.applyStyle(
-        locationComponent.getLocationComponentOptions().withPhoneLocationMarker(mapSettings, compassRenderable),
+        locationComponent.getLocationComponentOptions().withPhoneLocationMarker(
+            settings = mapSettings,
+            compassRenderable = compassRenderable,
+            locationFresh = locationFresh,
+            compassConeRenderable = compassConeRenderable,
+        ),
     )
 }
 
@@ -6695,6 +6742,35 @@ private fun MapLibreMap.disableLocationPuck() {
     }
     locationComponent.setLocationEngine(null)
     locationComponent.setCompassEngine(null)
+}
+
+@Composable
+private fun rememberPhoneMapMarkerTrustNow(
+    mapActive: Boolean,
+    location: PhoneMapLocation?,
+    expectedGpsIntervalMillis: Long,
+    compassSampleElapsedRealtimeMillis: Long?,
+): Long {
+    var nowElapsedRealtimeMillis by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(mapActive, location, expectedGpsIntervalMillis, compassSampleElapsedRealtimeMillis) {
+        nowElapsedRealtimeMillis = SystemClock.elapsedRealtime()
+        if (!mapActive) return@LaunchedEffect
+        while (true) {
+            val now = SystemClock.elapsedRealtime()
+            val nextStaleAtMillis =
+                listOfNotNull(
+                    location?.fixElapsedRealtimeMillis
+                        ?.takeIf { it > 0L }
+                        ?.plus(phoneMapMarkerFreshnessMaxAgeMillis(expectedGpsIntervalMillis) + 1L),
+                    compassSampleElapsedRealtimeMillis
+                        ?.takeIf { it > 0L }
+                        ?.plus(PHONE_COMPASS_TRUST_FRESHNESS_MAX_AGE_MILLIS + 1L),
+                ).filter { it > now }.minOrNull() ?: return@LaunchedEffect
+            delay((nextStaleAtMillis - now).coerceAtLeast(1L))
+            nowElapsedRealtimeMillis = SystemClock.elapsedRealtime()
+        }
+    }
+    return nowElapsedRealtimeMillis
 }
 
 private fun MapLibreMap.applyPhoneMapMarkerAnchor(anchor: PhoneMapMarkerAnchor): Boolean {

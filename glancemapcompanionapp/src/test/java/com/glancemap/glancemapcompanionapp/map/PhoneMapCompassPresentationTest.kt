@@ -143,6 +143,34 @@ class PhoneMapCompassPresentationTest {
     }
 
     @Test
+    fun compassConeRequiresRecentTrustworthyHeading() {
+        val trusted =
+            phoneCompassStateForSample(
+                pipeline = PhoneCompassPipeline.ROTATION_VECTOR,
+                headingDegrees = 90f,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
+                sampleElapsedRealtimeMillis = 10_000L,
+            )
+        val weak =
+            phoneCompassStateForSample(
+                pipeline = PhoneCompassPipeline.ROTATION_VECTOR,
+                headingDegrees = 90f,
+                accuracy = SensorManager.SENSOR_STATUS_ACCURACY_LOW,
+                sampleElapsedRealtimeMillis = 10_000L,
+            )
+
+        assertTrue(isPhoneCompassTrustworthyForCone(trusted, nowElapsedRealtimeMillis = 11_500L))
+        assertFalse(isPhoneCompassTrustworthyForCone(trusted, nowElapsedRealtimeMillis = 11_501L))
+        assertFalse(isPhoneCompassTrustworthyForCone(weak, nowElapsedRealtimeMillis = 10_100L))
+        assertFalse(
+            isPhoneCompassTrustworthyForCone(
+                trusted.copy(magneticInterference = true),
+                nowElapsedRealtimeMillis = 10_100L,
+            ),
+        )
+    }
+
+    @Test
     fun sensorPipelineUsesWearCompatibleFallbackPriority() {
         assertEquals(
             PhoneCompassPipeline.ROTATION_VECTOR,

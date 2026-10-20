@@ -125,6 +125,8 @@ internal data class PhoneOfflineMapSurfaceState(
     val cameraCommand: PhoneMapCameraCommand?,
     val compassPresentation: PhoneMapCompassPresentation = phoneMapCompassPresentation(mapMode, null),
     val location: PhoneMapLocation? = null,
+    val locationMarkerFresh: Boolean = false,
+    val compassConeTrustworthy: Boolean = false,
     val hasLocationPermission: Boolean = false,
 )
 
@@ -560,7 +562,14 @@ private class PhoneOfflineMapsforgeView(
         applyMapSettings(state.mapSettings, state.initialCamera)
         applyCompassPresentation(state.compassPresentation)
         overlayLayers.update(state)
-        updateLocation(state.location, state.mapMode, state.hasLocationPermission, state.mapSettings)
+        updateLocation(
+            state.location,
+            state.mapMode,
+            state.hasLocationPermission,
+            state.mapSettings,
+            state.locationMarkerFresh,
+            state.compassConeTrustworthy,
+        )
         applyCameraCommand(state.cameraCommand)
         applyCameraOverride(state.cameraOverride)
         publishCamera()
@@ -715,6 +724,8 @@ private class PhoneOfflineMapsforgeView(
         mapMode: PhoneMapMode,
         hasLocationPermission: Boolean,
         mapSettings: PhoneMapSettings,
+        locationMarkerFresh: Boolean,
+        compassConeTrustworthy: Boolean,
     ) {
         currentLocation = location
         currentMapMode = mapMode
@@ -747,7 +758,12 @@ private class PhoneOfflineMapsforgeView(
                     null
                 } else {
                     locationMarker
-                } ?: PhoneOfflineLocationMarker(latLong, mapSettings.markerStyle, context) { observedMarker ->
+                } ?: PhoneOfflineLocationMarker(
+                    latLong,
+                    mapSettings.markerStyle,
+                    context,
+                    mapViewPosition = mapView.model.mapViewPosition,
+                ) { observedMarker ->
                     post {
                         if (!disposed) {
                             PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
@@ -764,7 +780,7 @@ private class PhoneOfflineMapsforgeView(
                     locationMarker = created
                     layers.add(created)
                 }
-            marker.updateCompassAppearance(appliedCompassPresentation?.markerScreenRotationDegrees != null)
+            marker.updateAppearance(compassConeTrustworthy, locationMarkerFresh)
             if (marker.latLong != latLong) marker.latLong = latLong
             marker.heading = appliedCompassPresentation?.markerScreenRotationDegrees ?: 0f
         }
@@ -781,7 +797,14 @@ private class PhoneOfflineMapsforgeView(
 
     private fun applyLocationFromLatestState() {
         latestState?.let { state ->
-            updateLocation(state.location, state.mapMode, state.hasLocationPermission, state.mapSettings)
+            updateLocation(
+                state.location,
+                state.mapMode,
+                state.hasLocationPermission,
+                state.mapSettings,
+                state.locationMarkerFresh,
+                state.compassConeTrustworthy,
+            )
         }
     }
 
