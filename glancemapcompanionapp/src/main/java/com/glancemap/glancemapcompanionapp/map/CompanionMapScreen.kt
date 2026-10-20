@@ -3121,19 +3121,11 @@ internal fun CompanionMapScreen(
                 fullScreenPage = settingsPage,
                 toolbarVisible = mapToolbarVisible,
                 layersActive =
-                    offlineComparisonActive ||
-                        onlineComparisonActive ||
-                        (
-                            mapUiState.source is PhoneMapSource.Offline &&
-                                hasElevationData &&
-                                (
-                                    mapSettings.hillShadingEnabled ||
-                                        (
-                                            mapSettings.reliefOverlayEnabled &&
-                                                mapSettings.reliefOverlayOpacityPercent > 0
-                                        )
-                                )
-                        ),
+                    mapSettings.hasActiveMapLayer(
+                        offlineBase = mapUiState.source is PhoneMapSource.Offline,
+                        hasElevationData = hasElevationData,
+                        comparisonActive = offlineComparisonActive || onlineComparisonActive,
+                    ),
                 maptoolkitAttributionVisible =
                     maptoolkitAttributionRequired(activeOnlineBaseSource, activeOnlineComparisonSource),
             ),
@@ -5918,28 +5910,18 @@ private fun mapControls(
                 mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_BOTH &&
                 mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_PLUS
             ) {
-                FilledTonalIconButton(
-                    onClick = onZoomIn,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = stringResource(R.string.map_zoom_in_content_description),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                PhoneMapZoomButton(
+                    onZoom = onZoomIn,
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.map_zoom_in_content_description),
+                )
             }
             if (mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_BOTH) {
-                FilledTonalIconButton(
-                    onClick = onZoomOut,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Remove,
-                        contentDescription = stringResource(R.string.map_zoom_out_content_description),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                PhoneMapZoomButton(
+                    onZoom = onZoomOut,
+                    imageVector = Icons.Filled.Remove,
+                    contentDescription = stringResource(R.string.map_zoom_out_content_description),
+                )
             }
         }
 

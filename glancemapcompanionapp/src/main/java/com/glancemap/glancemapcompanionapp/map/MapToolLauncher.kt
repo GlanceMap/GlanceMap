@@ -1,8 +1,10 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -16,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -31,7 +34,6 @@ internal fun mapToolLauncher(
     modifier: Modifier = Modifier,
 ) {
     val expanded = presentation.launcherExpanded
-    val activeLayersDescription = stringResource(R.string.map_layers_active)
     val selectTool: (MapTool) -> Unit = { tool ->
         if (expanded) actions.onToggleLauncher()
         actions.onToolSelected(tool)
@@ -70,28 +72,10 @@ internal fun mapToolLauncher(
                 },
                 label = { Text(stringResource(R.string.library_title)) },
             )
-            NavigationBarItem(
+            mapLayersNavigationItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.LAYER,
-                onClick = { selectTool(MapTool.LAYER) },
-                modifier =
-                    Modifier.semantics {
-                        if (presentation.layersActive) stateDescription = activeLayersDescription
-                    },
-                icon = {
-                    Icon(
-                        Icons.Filled.Layers,
-                        contentDescription = null,
-                        modifier = Modifier.offset(y = 2.dp),
-                        tint =
-                            if (presentation.layersActive) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                LocalContentColor.current
-                            },
-                    )
-                },
-                label = { Text(stringResource(R.string.map_navigation_layers)) },
-            )
+                layersActive = presentation.layersActive,
+            ) { selectTool(MapTool.LAYER) }
             NavigationBarItem(
                 selected = !expanded && presentation.panel.activeTool == MapTool.HIKE,
                 onClick = { selectTool(MapTool.HIKE) },
@@ -106,6 +90,58 @@ internal fun mapToolLauncher(
             )
         }
     }
+}
+
+@Composable
+private fun RowScope.mapLayersNavigationItem(
+    selected: Boolean,
+    layersActive: Boolean,
+    onClick: () -> Unit,
+) {
+    val activeLayersDescription = stringResource(R.string.map_layers_active)
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        modifier =
+            Modifier.semantics {
+                if (layersActive) stateDescription = activeLayersDescription
+            },
+        icon = {
+            Icon(
+                Icons.Filled.Layers,
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .offset(y = 2.dp)
+                        .background(
+                            color =
+                                if (layersActive) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    Color.Transparent
+                                },
+                            shape = CircleShape,
+                        ).padding(horizontal = 6.dp),
+                tint =
+                    if (layersActive) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        LocalContentColor.current
+                    },
+            )
+        },
+        label = {
+            Text(
+                stringResource(R.string.map_navigation_layers),
+                color =
+                    if (layersActive) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        LocalContentColor.current
+                    },
+            )
+        },
+    )
 }
 
 @Composable
