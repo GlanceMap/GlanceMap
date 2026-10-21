@@ -12,8 +12,10 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
 import android.content.Context
+import android.content.res.Resources
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteStatement
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +50,8 @@ internal class RefugesInfoPoiImporter(
         withContext(Dispatchers.IO) {
             val bbox =
                 readMapBbox(mapFile)
-                    ?: throw IllegalArgumentException("Cannot read map bounds for Refuges.info.")
-            validateRefugesBbox(bbox)
+                    ?: throw IllegalArgumentException(context.resources.getString(R.string.download_cannot_read_map_bounds_for_refuges_info))
+            validateRefugesBbox(bbox, context.resources)
             val safeFileName = normalizeRefugesPoiFileName(fileName)
             val tempFile = File(context.cacheDir, ".$safeFileName.tmp")
             tempFile.parentFile?.mkdirs()
@@ -68,18 +70,18 @@ internal class RefugesInfoPoiImporter(
                 onProgress(
                     OamDownloadProgress(
                         phase = "PROCESSING",
-                        detail = "Refuges.info POI",
+                        detail = context.resources.getString(R.string.download_refuges_info_poi),
                     ),
                 )
                 val points = parsePoints(geoJson)
                 if (points.isEmpty()) {
-                    throw IllegalStateException("No Refuges.info points found for $areaLabel.")
+                    throw IllegalStateException(context.resources.getString(R.string.download_no_refuges_info_points_found_for, areaLabel))
                 }
 
                 onProgress(
                     OamDownloadProgress(
                         phase = "SAVING",
-                        detail = "Refuges.info POI",
+                        detail = context.resources.getString(R.string.download_refuges_info_poi),
                     ),
                 )
                 writePoiFile(
@@ -97,7 +99,7 @@ internal class RefugesInfoPoiImporter(
                             onProgress(
                                 OamDownloadProgress(
                                     phase = "SAVING",
-                                    detail = "Refuges.info POI",
+                                    detail = context.resources.getString(R.string.download_refuges_info_poi),
                                     bytesDone = bytes,
                                     totalBytes = tempFile.length().takeIf { it > 0L },
                                 ),
@@ -172,14 +174,14 @@ internal class RefugesInfoPoiImporter(
             val code = connection.responseCode
             val body =
                 if (code in 200..299) {
-                    readResponseText(connection.inputStream, REFUGES_MAX_RESPONSE_BYTES)
+                    readResponseText(connection.inputStream, REFUGES_MAX_RESPONSE_BYTES, context.resources)
                 } else {
-                    readResponseText(connection.errorStream, REFUGES_MAX_ERROR_RESPONSE_BYTES)
+                    readResponseText(connection.errorStream, REFUGES_MAX_ERROR_RESPONSE_BYTES, context.resources)
                 }
             if (code !in 200..299) {
                 val detail = body.take(220).replace('\n', ' ').trim()
                 throw IllegalStateException(
-                    "Refuges.info failed ($code). ${detail.ifBlank { "Please try again." }}",
+                    context.resources.getString(R.string.download_refuges_info_failed, code, detail.ifBlank { context.getString(R.string.download_please_try_again) }),
                 )
             }
             return JSONObject(body)
@@ -208,7 +210,7 @@ internal class RefugesInfoPoiImporter(
                     props.optString("nom", ""),
                     props.optString("name", ""),
                     props.optString("titre", ""),
-                ).ifBlank { "Refuges.info point" }
+                ).ifBlank { context.resources.getString(R.string.download_refuges_info_point) }
             if (name.equals("Cliquer pour zoomer", ignoreCase = true)) continue
 
             val type = parseTypeDescriptor(props.opt("type"), props)
@@ -418,9 +420,10 @@ internal class RefugesInfoPoiImporter(
 
 private fun validateRefugesBbox(
     bbox: RefugesBbox,
+    resources: Resources,
 ) {
     if (bbox.minLon >= bbox.maxLon || bbox.minLat >= bbox.maxLat) {
-        throw IllegalArgumentException("Invalid map bounds for Refuges.info.")
+        throw IllegalArgumentException(resources.getString(R.string.download_invalid_map_bounds_for_refuges_info))
     }
 }
 
@@ -647,6 +650,7 @@ private fun parseLongValue(vararg values: Any?): Long? {
 private fun readResponseText(
     stream: InputStream?,
     maxBytes: Int,
+    resources: Resources,
 ): String {
     if (stream == null) return ""
     stream.use { input ->
@@ -657,7 +661,7 @@ private fun readResponseText(
             val read = input.read(buffer)
             if (read < 0) break
             if (total + read > maxBytes) {
-                throw IllegalStateException("Refuges.info response is too large. Choose a smaller OAM area.")
+                throw IllegalStateException(resources.getString(R.string.download_refuges_info_response_is_too_large_choose_a_smaller_oam_area))
             }
             System.arraycopy(buffer, 0, out, total, read)
             total += read

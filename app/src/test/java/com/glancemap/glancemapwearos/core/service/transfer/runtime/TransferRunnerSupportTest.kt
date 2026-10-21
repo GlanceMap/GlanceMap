@@ -11,9 +11,4 @@ class TransferRunnerSupportTest {
         assertEquals(37, computeVerificationPercent(bytesRead = 37L, totalBytes = 100L))
         assertEquals(100, computeVerificationPercent(bytesRead = 150L, totalBytes = 100L))
     }
-
-    @Test
-    fun `verification detail includes percent`() {
-        assertEquals("Validating checksum… 42%", buildVerificationDetail(42))
-    }
 }

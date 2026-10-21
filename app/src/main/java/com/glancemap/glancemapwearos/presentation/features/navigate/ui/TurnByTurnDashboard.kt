@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
 import android.text.format.DateFormat
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,10 +14,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardMetricTile
@@ -29,25 +33,50 @@ import kotlin.math.roundToInt
 
 internal data class TurnByTurnMetricDefinition(
     val id: String,
-    val label: String,
+    @StringRes val labelRes: Int,
 )
 
 internal val turnByTurnMetricDefinitions =
     listOf(
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_CURRENT_ALTITUDE, "Current altitude"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_DISTANCE_COVERED, "Distance covered"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_ETA, "ETA"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_PROGRESS, "Progress"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_ASCENT, "Remaining ascent"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_DESCENT, "Remaining descent"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_DISTANCE, "Remaining distance"),
-        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_TIME, "Remaining time"),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_CURRENT_ALTITUDE,
+            R.string.navigation_current_altitude,
+        ),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_DISTANCE_COVERED,
+            R.string.navigation_distance_covered,
+        ),
+        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_ETA, R.string.navigation_eta),
+        TurnByTurnMetricDefinition(SettingsRepository.TURN_BY_TURN_METRIC_PROGRESS, R.string.navigation_progress),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_ASCENT,
+            R.string.navigation_remaining_ascent,
+        ),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_DESCENT,
+            R.string.navigation_remaining_descent,
+        ),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_DISTANCE,
+            R.string.navigation_remaining_distance,
+        ),
+        TurnByTurnMetricDefinition(
+            SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_TIME,
+            R.string.navigation_remaining_time,
+        ),
     )
 
 internal val turnByTurnMetricPickerOptions =
-    turnByTurnMetricDefinitions.sortedBy { it.label.lowercase() }.map { it.id to it.label }
+    turnByTurnMetricDefinitions.map { it.id to it.labelRes }
 
-internal fun turnByTurnMetricLabel(metricId: String): String = turnByTurnMetricDefinitions.firstOrNull { it.id == metricId }?.label ?: "Remaining distance"
+internal fun turnByTurnMetricLabel(
+    metricId: String,
+    resources: Resources,
+): String =
+    resources.getString(
+        turnByTurnMetricDefinitions.firstOrNull { it.id == metricId }?.labelRes
+            ?: R.string.navigation_remaining_distance,
+    )
 
 @Composable
 internal fun TurnByTurnMetricDashboardPage(
@@ -57,14 +86,15 @@ internal fun TurnByTurnMetricDashboardPage(
     isMetric: Boolean,
     onSlotLongPress: (Int) -> Unit,
 ) {
+    val resources = LocalResources.current
     val context = LocalContext.current
     TurnByTurnMetricDashboardGrid(
         metrics =
             listOf(
-                formattedTurnByTurnMetric(slots[0], state, isMetric, context),
-                formattedTurnByTurnMetric(slots[1], state, isMetric, context),
-                formattedTurnByTurnMetric(slots[2], state, isMetric, context),
-                formattedTurnByTurnMetric(slots[3], state, isMetric, context),
+                formattedTurnByTurnMetric(slots[0], state, isMetric, context, resources = resources),
+                formattedTurnByTurnMetric(slots[1], state, isMetric, context, resources = resources),
+                formattedTurnByTurnMetric(slots[2], state, isMetric, context, resources = resources),
+                formattedTurnByTurnMetric(slots[3], state, isMetric, context, resources = resources),
             ),
         header = "REMAINING",
         screenSize = screenSize,
@@ -135,37 +165,41 @@ private fun formattedTurnByTurnMetric(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
     context: android.content.Context,
+    resources: Resources,
 ): RecordingMetricValue =
     when (metricId) {
         SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_ASCENT ->
-            elevationMetric("Ascent ↑", state.remainingAscentMeters, isMetric)
+            elevationMetric(R.string.navigation_ascent, state.remainingAscentMeters, isMetric)
         SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_DESCENT ->
-            elevationMetric("Descent ↓", state.remainingDescentMeters, isMetric)
+            elevationMetric(R.string.navigation_descent, state.remainingDescentMeters, isMetric)
         SettingsRepository.TURN_BY_TURN_METRIC_ETA -> {
             val eta =
                 state.estimatedRemainingSeconds?.let { seconds ->
                     DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + seconds * 1_000L))
                 } ?: "--"
-            RecordingMetricValue("ETA", eta)
+            RecordingMetricValue(R.string.navigation_eta, eta)
         }
         SettingsRepository.TURN_BY_TURN_METRIC_REMAINING_TIME ->
-            RecordingMetricValue("Time", formatRemainingDuration(state.estimatedRemainingSeconds))
+            RecordingMetricValue(
+                R.string.common_time,
+                formatRemainingDuration(state.estimatedRemainingSeconds, resources = resources),
+            )
         SettingsRepository.TURN_BY_TURN_METRIC_PROGRESS ->
             RecordingMetricValue(
-                "Progress",
+                R.string.navigation_progress,
                 state.routeProgressFraction?.let { "${(it * 100).roundToInt()}%" } ?: "--",
             )
         SettingsRepository.TURN_BY_TURN_METRIC_DISTANCE_COVERED ->
-            distanceMetric("Covered", state.distanceFromStartMeters, isMetric)
+            distanceMetric(R.string.navigation_covered, state.distanceFromStartMeters, isMetric)
         SettingsRepository.TURN_BY_TURN_METRIC_CURRENT_ALTITUDE ->
-            elevationMetric("Altitude", state.currentAltitudeMeters, isMetric)
+            elevationMetric(R.string.recording_altitude, state.currentAltitudeMeters, isMetric)
         else -> {
-            distanceMetric("Distance", state.distanceRemainingMeters, isMetric)
+            distanceMetric(R.string.common_distance, state.distanceRemainingMeters, isMetric)
         }
     }
 
 private fun distanceMetric(
-    label: String,
+    @StringRes label: Int,
     meters: Double?,
     isMetric: Boolean,
 ): RecordingMetricValue {
@@ -174,7 +208,7 @@ private fun distanceMetric(
 }
 
 private fun elevationMetric(
-    label: String,
+    @StringRes label: Int,
     meters: Double?,
     isMetric: Boolean,
 ): RecordingMetricValue {
@@ -182,9 +216,18 @@ private fun elevationMetric(
     return RecordingMetricValue(label, value, unit)
 }
 
-private fun formatRemainingDuration(seconds: Long?): String {
+private fun formatRemainingDuration(
+    seconds: Long?,
+    resources: Resources,
+): String {
     val totalMinutes = seconds?.let { (it.coerceAtLeast(0L) + 30L) / 60L } ?: return "--"
     val hours = totalMinutes / 60L
     val minutes = totalMinutes % 60L
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+    return if (hours >
+        0
+    ) {
+        resources.getString(R.string.navigation_h_m, hours, minutes)
+    } else {
+        resources.getString(R.string.navigation_m, minutes)
+    }
 }

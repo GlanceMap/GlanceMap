@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -7,10 +8,14 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavHostController
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.transfer.storage.StalePartialTransferCleaner
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxViewModel
@@ -30,6 +35,7 @@ fun SettingsScreen(
     mapViewModel: MapViewModel,
     gpxViewModel: GpxViewModel,
 ) {
+    val resources = LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listTokens = rememberSettingsListTokens()
@@ -72,16 +78,21 @@ fun SettingsScreen(
 
     val partialSummaryText =
         when {
-            isLoadingPartialSummary -> "Scanning..."
-            partialSummary.count <= 0 -> "No partial files"
-            partialSummary.count == 1 -> "1 file · ${formatStorageSize(partialSummary.totalBytes)}"
-            else -> "${partialSummary.count} files · ${formatStorageSize(partialSummary.totalBytes)}"
+            isLoadingPartialSummary -> stringResource(R.string.settings_scanning)
+            partialSummary.count <= 0 -> stringResource(R.string.settings_no_partial_files)
+            else ->
+                pluralStringResource(
+                    R.plurals.settings_partial_files_summary,
+                    partialSummary.count,
+                    partialSummary.count,
+                    formatStorageSize(partialSummary.totalBytes, resources = resources),
+                )
         }
 
     WearSettingsListScreen(listTokens = listTokens) {
         item {
             Text(
-                "General",
+                stringResource(R.string.settings_general),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -89,7 +100,7 @@ fun SettingsScreen(
         }
         item {
             SettingsSectionChip(
-                label = "User profile",
+                label = stringResource(R.string.settings_user_profile),
                 secondaryLabel =
                     formatUserProfileSummary(
                         activityProfile = activityProfile,
@@ -97,6 +108,7 @@ fun SettingsScreen(
                         userWeightKg = userWeightKg,
                         backpackWeightKg = backpackWeightKg,
                         bikeWeightKg = bikeWeightKg,
+                        resources = resources,
                     ),
                 compactRoundWidthFraction = 0.86f,
                 onClick = { navController.navigate(WatchRoutes.USER_PROFILE_SETTINGS) },
@@ -104,39 +116,39 @@ fun SettingsScreen(
         }
         item {
             SettingsSectionChip(
-                label = "REC settings",
+                label = stringResource(R.string.settings_rec_settings),
                 onClick = { navController.navigate(WatchRoutes.RECORDING_SETTINGS) },
             )
         }
         item {
             SettingsSectionChip(
-                label = "GPS settings",
+                label = stringResource(R.string.gps_settings),
                 onClick = { navController.navigate(WatchRoutes.GPS_SETTINGS) },
             )
         }
         item {
             SettingsSectionChip(
-                label = "Compass settings",
+                label = stringResource(R.string.settings_compass_settings),
                 onClick = { navController.navigate(WatchRoutes.COMPASS_SETTINGS) },
             )
         }
 
-        item { Text("Screen settings", style = MaterialTheme.typography.titleMedium) }
+        item { Text(stringResource(R.string.settings_screen_settings), style = MaterialTheme.typography.titleMedium) }
         item {
             SettingsSectionChip(
-                label = "POI settings",
+                label = stringResource(R.string.settings_poi_settings),
                 onClick = { navController.navigate(WatchRoutes.POI_SETTINGS) },
             )
         }
         item {
             SettingsSectionChip(
-                label = "GPX settings",
+                label = stringResource(R.string.settings_gpx_settings),
                 onClick = { navController.navigate(WatchRoutes.GPX_SETTINGS) },
             )
         }
         item {
             SettingsSectionChip(
-                label = "Map settings",
+                label = stringResource(R.string.settings_map_settings),
                 onClick = { navController.navigate(WatchRoutes.MAP_SETTINGS) },
             )
         }
@@ -148,8 +160,15 @@ fun SettingsScreen(
 
         item {
             SettingsPickerChip(
-                label = "Advanced settings",
-                secondaryLabel = if (advancedSettingsExpanded) "Hide advanced options" else "Show advanced options",
+                label = stringResource(R.string.settings_advanced_settings),
+                secondaryLabel =
+                    if (advancedSettingsExpanded) {
+                        stringResource(
+                            R.string.settings_hide_advanced_options,
+                        )
+                    } else {
+                        stringResource(R.string.settings_show_advanced_options)
+                    },
                 iconImageVector =
                     if (advancedSettingsExpanded) {
                         Icons.Filled.KeyboardArrowDown
@@ -170,13 +189,20 @@ fun SettingsScreen(
                 SettingsToggleChip(
                     checked = backButtonExitsNavigation,
                     onCheckedChanged = viewModel::setBackButtonExitsNavigation,
-                    label = "Exit back button",
-                    secondaryLabel = "For compatible watches",
+                    label = stringResource(R.string.settings_exit_back_button),
+                    secondaryLabel = stringResource(R.string.settings_for_compatible_watches),
                 )
             }
             item {
                 SettingsPickerChip(
-                    label = if (isClearingCache) "Clearing cache..." else "Clear cache",
+                    label =
+                        if (isClearingCache) {
+                            stringResource(
+                                R.string.settings_clearing_cache,
+                            )
+                        } else {
+                            stringResource(R.string.settings_clear_cache)
+                        },
                     iconImageVector = null,
                     onClick = {
                         if (!isClearingCache) {
@@ -189,9 +215,9 @@ fun SettingsScreen(
                 SettingsPickerChip(
                     label =
                         if (isClearingPartialFiles) {
-                            "Clearing partial transfer..."
+                            stringResource(R.string.settings_clearing_partial_transfer)
                         } else {
-                            "Clear partial transfer"
+                            stringResource(R.string.settings_clear_partial_transfer)
                         },
                     secondaryLabel = partialSummaryText,
                     iconImageVector = null,
@@ -201,7 +227,7 @@ fun SettingsScreen(
                             Toast
                                 .makeText(
                                     context,
-                                    "No partial transfer files",
+                                    resources.getString(R.string.settings_no_partial_transfer_files),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                         } else {
@@ -212,21 +238,21 @@ fun SettingsScreen(
             }
             item {
                 SettingsPickerChip(
-                    label = "Reset to Default",
+                    label = stringResource(R.string.settings_reset_to_default),
                     iconImageVector = null,
                     onClick = { navController.navigate(WatchRoutes.RESET_DEFAULTS_CONFIRM) },
                 )
             }
             item {
                 SettingsSectionChip(
-                    label = "Debugging",
+                    label = stringResource(R.string.settings_debugging),
                     onClick = { navController.navigate(WatchRoutes.DEBUG_SETTINGS) },
                 )
             }
         }
         item {
             SettingsSectionChip(
-                label = "Credits & Legal",
+                label = stringResource(R.string.settings_credits_legal),
                 iconImageVector = Icons.Filled.Gavel,
                 onClick = { navController.navigate(WatchRoutes.LICENSES) },
             )
@@ -240,11 +266,17 @@ fun SettingsScreen(
                 showClearCacheDialog = false
             }
         },
-        title = "Clear cache",
+        title = stringResource(R.string.settings_clear_cache),
         message =
-            "Removes temporary map, GPX, relief and theme caches. " +
-                "Imported maps, GPX and DEM files stay on the watch.",
-        confirmText = if (isClearingCache) "Clearing..." else "Clear",
+            stringResource(R.string.settings_removes_temporary_map_gpx_relief_and_theme_caches_imported_maps_gpx_an),
+        confirmText =
+            if (isClearingCache) {
+                stringResource(
+                    R.string.settings_clearing,
+                )
+            } else {
+                stringResource(R.string.common_clear)
+            },
         confirmEnabled = !isClearingCache,
         onConfirm = {
             if (!isClearingCache) {
@@ -255,23 +287,30 @@ fun SettingsScreen(
                         gpxViewModel.clearDerivedCaches()
                         result
                     }.onSuccess { result ->
-                        val deletedMb =
+                        val message =
                             if (result.deletedBytes > 0L) {
-                                " (${(result.deletedBytes / (1024.0 * 1024.0)).let { String.format(java.util.Locale.US, "%.1f", it) }} MB)"
+                                resources.getString(
+                                    R.string.settings_cache_cleared_mb,
+                                    String.format(
+                                        java.util.Locale.getDefault(),
+                                        "%.1f",
+                                        result.deletedBytes / (1024.0 * 1024.0),
+                                    ),
+                                )
                             } else {
-                                ""
+                                resources.getString(R.string.settings_cache_cleared_message)
                             }
                         Toast
                             .makeText(
                                 context,
-                                "Cache cleared$deletedMb",
+                                message,
                                 Toast.LENGTH_SHORT,
                             ).show()
                     }.onFailure {
                         Toast
                             .makeText(
                                 context,
-                                "Cache cleanup failed",
+                                resources.getString(R.string.settings_cache_cleanup_failed),
                                 Toast.LENGTH_SHORT,
                             ).show()
                     }
@@ -280,7 +319,7 @@ fun SettingsScreen(
                 }
             }
         },
-        dismissText = "Cancel",
+        dismissText = stringResource(R.string.common_cancel),
         dismissEnabled = !isClearingCache,
         onDismiss = { showClearCacheDialog = false },
     )
@@ -292,11 +331,22 @@ fun SettingsScreen(
                 showClearPartialTransfersDialog = false
             }
         },
-        title = "Clear partial transfers",
+        title = stringResource(R.string.settings_clear_partial_transfers),
         message =
-            "Deletes ${partialSummary.count} partial transfer file(s) and frees " +
-                "${formatStorageSize(partialSummary.totalBytes)}. Finished files stay on the watch.",
-        confirmText = if (isClearingPartialFiles) "Clearing..." else "Clear",
+            pluralStringResource(
+                R.plurals.settings_partial_transfer_delete_confirmation,
+                partialSummary.count,
+                partialSummary.count,
+                formatStorageSize(partialSummary.totalBytes, resources = resources),
+            ),
+        confirmText =
+            if (isClearingPartialFiles) {
+                stringResource(
+                    R.string.settings_clearing,
+                )
+            } else {
+                stringResource(R.string.common_clear)
+            },
         confirmEnabled = !isClearingPartialFiles,
         onConfirm = {
             if (!isClearingPartialFiles) {
@@ -311,9 +361,13 @@ fun SettingsScreen(
                             .makeText(
                                 context,
                                 if (result.removedFiles > 0) {
-                                    "Cleared ${result.removedFiles} partial file(s)"
+                                    resources.getQuantityString(
+                                        R.plurals.settings_partial_files_cleared,
+                                        result.removedFiles,
+                                        result.removedFiles,
+                                    )
                                 } else {
-                                    "No partial transfer files"
+                                    resources.getString(R.string.settings_no_partial_transfer_files)
                                 },
                                 Toast.LENGTH_SHORT,
                             ).show()
@@ -321,7 +375,7 @@ fun SettingsScreen(
                         Toast
                             .makeText(
                                 context,
-                                "Partial transfer cleanup failed",
+                                resources.getString(R.string.settings_partial_transfer_cleanup_failed),
                                 Toast.LENGTH_SHORT,
                             ).show()
                     }
@@ -331,54 +385,75 @@ fun SettingsScreen(
                 }
             }
         },
-        dismissText = "Cancel",
+        dismissText = stringResource(R.string.common_cancel),
         dismissEnabled = !isClearingPartialFiles,
         onDismiss = { showClearPartialTransfersDialog = false },
     )
 }
 
-private fun formatStorageSize(bytes: Long): String {
+private fun formatStorageSize(
+    bytes: Long,
+    resources: Resources,
+): String {
     val safeBytes = bytes.coerceAtLeast(0L).toDouble()
     val kb = 1024.0
     val mb = kb * 1024.0
     val gb = mb * 1024.0
     return when {
-        safeBytes >= gb -> String.format(Locale.US, "%.2f GB", safeBytes / gb)
-        safeBytes >= mb -> String.format(Locale.US, "%.1f MB", safeBytes / mb)
-        safeBytes >= kb -> String.format(Locale.US, "%.0f KB", safeBytes / kb)
-        else -> "${bytes.coerceAtLeast(0L)} B"
+        safeBytes >= gb -> resources.getString(R.string.settings_gb, safeBytes / gb)
+        safeBytes >= mb -> resources.getString(R.string.settings_mb_2, safeBytes / mb)
+        safeBytes >= kb -> resources.getString(R.string.settings_kb, safeBytes / kb)
+        else -> resources.getString(R.string.download_b, bytes.coerceAtLeast(0L))
     }
 }
 
 private fun formatSettingsUserWeight(
     weightKg: Float,
     isMetric: Boolean,
+    resources: Resources,
 ): String =
     if (isMetric) {
-        "${weightKg.roundToInt()} kg"
+        resources.getString(R.string.settings_whole_kg, weightKg.roundToInt())
     } else {
-        "${(weightKg * SETTINGS_KG_TO_LB).roundToInt()} lb"
+        resources.getString(R.string.settings_whole_lb, (weightKg * SETTINGS_KG_TO_LB).roundToInt())
     }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 private fun formatUserProfileSummary(
     activityProfile: String,
     isMetric: Boolean,
     userWeightKg: Float,
     backpackWeightKg: Float,
     bikeWeightKg: Float,
+    resources: Resources,
 ): String {
     val isBike = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE
     val parts =
         mutableListOf(
-            if (isBike) "Bike" else "Hike",
-            if (isMetric) "Metric" else "Imperial",
-            formatSettingsUserWeight(userWeightKg, isMetric),
+            if (isBike) resources.getString(R.string.common_bike) else resources.getString(R.string.common_hike),
+            if (isMetric) {
+                resources.getString(
+                    R.string.common_metric,
+                )
+            } else {
+                resources.getString(R.string.common_imperial)
+            },
+            formatSettingsUserWeight(userWeightKg, isMetric, resources = resources),
         )
     if (backpackWeightKg.roundToInt() > 0) {
-        parts += "pack ${formatSettingsUserWeight(backpackWeightKg, isMetric)}"
+        parts +=
+            resources.getString(
+                R.string.settings_pack,
+                formatSettingsUserWeight(backpackWeightKg, isMetric, resources = resources),
+            )
     }
     if (isBike) {
-        parts += "bike ${formatSettingsUserWeight(bikeWeightKg, isMetric)}"
+        parts +=
+            resources.getString(
+                R.string.settings_bike,
+                formatSettingsUserWeight(bikeWeightKg, isMetric, resources = resources),
+            )
     }
     return parts.joinToString(" · ")
 }

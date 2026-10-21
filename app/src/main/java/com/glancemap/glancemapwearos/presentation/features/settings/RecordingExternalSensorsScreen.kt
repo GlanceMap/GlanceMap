@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -33,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodRuntimeStatus
@@ -65,14 +69,30 @@ fun RecordingExternalSensorsScreen(
 ) {
     val listTokens = rememberSettingsListTokens()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scanner = remember(context) { ExternalSensorScanner(context.applicationContext) }
     val scannedDevices by scanner.devices.collectAsState()
     val simulationEnabled by ExternalSensorSimulation.enabled.collectAsState()
     val devices =
-        remember(scannedDevices, simulationEnabled) {
-            (ExternalSensorSimulation.devices + scannedDevices)
-                .distinctBy(ExternalSensorDevice::address)
+        remember(scannedDevices, simulationEnabled, resources) {
+            (
+                ExternalSensorSimulation.devices.map { device ->
+                    device.copy(
+                        name =
+                            resources.getString(
+                                if (ExternalSensorKind.HEART_RATE in
+                                    device.kinds
+                                ) {
+                                    R.string.recording_simulated_hr_strap
+                                } else {
+                                    R.string.recording_simulated_run_pod
+                                },
+                            ),
+                    )
+                } +
+                    scannedDevices
+            ).distinctBy(ExternalSensorDevice::address)
         }
     val status by scanner.status.collectAsState()
     val linkedHeartRateAddress by viewModel.recordingExternalHeartRateAddress.collectAsState()
@@ -171,7 +191,10 @@ fun RecordingExternalSensorsScreen(
                 item {
                     val connected = address.isConnectedIn(connectedAddresses)
                     LinkedExternalSensorChip(
-                        name = linkedHeartRateName.orLinkedSensorFallback("Heart strap"),
+                        name =
+                            linkedHeartRateName.orLinkedSensorFallback(
+                                resources.getString(R.string.recording_heart_strap),
+                            ),
                         address = address,
                         connected = connected,
                         reconnecting = !connected && address.isConnectedIn(connectingAddresses),
@@ -180,7 +203,10 @@ fun RecordingExternalSensorsScreen(
                             pendingSensorRemoval =
                                 PendingExternalSensorRemoval(
                                     type = LinkedExternalSensorType.HEART_RATE,
-                                    name = linkedHeartRateName.orLinkedSensorFallback("Heart strap"),
+                                    name =
+                                        linkedHeartRateName.orLinkedSensorFallback(
+                                            resources.getString(R.string.recording_heart_strap),
+                                        ),
                                     address = address,
                                 )
                         },
@@ -194,7 +220,10 @@ fun RecordingExternalSensorsScreen(
                     val normalizedAddress = address.normalizedBluetoothAddress()
                     val connected = address.isConnectedIn(connectedAddresses)
                     LinkedExternalSensorChip(
-                        name = linkedRunPodName.orLinkedSensorFallback("External sensor"),
+                        name =
+                            linkedRunPodName.orLinkedSensorFallback(
+                                resources.getString(R.string.recording_external_sensor_2),
+                            ),
                         address = address,
                         connected = connected,
                         reconnecting = !connected && address.isConnectedIn(connectingAddresses),
@@ -205,7 +234,10 @@ fun RecordingExternalSensorsScreen(
                             pendingSensorRemoval =
                                 PendingExternalSensorRemoval(
                                     type = LinkedExternalSensorType.RUN_POD,
-                                    name = linkedRunPodName.orLinkedSensorFallback("External sensor"),
+                                    name =
+                                        linkedRunPodName.orLinkedSensorFallback(
+                                            resources.getString(R.string.recording_external_sensor_2),
+                                        ),
                                     address = address,
                                 )
                         },
@@ -218,9 +250,9 @@ fun RecordingExternalSensorsScreen(
                 ExternalSensorInfo(
                     primaryText =
                         if (status == ExternalSensorScanStatus.SCANNING) {
-                            "Searching nearby sensors..."
+                            resources.getString(R.string.recording_searching_nearby_sensors)
                         } else {
-                            "No devices found yet."
+                            resources.getString(R.string.recording_no_devices_found_yet)
                         },
                 )
             }
@@ -327,14 +359,14 @@ fun RecordingExternalSensorsScreen(
                                     ExternalSensorConnectionStatus.markConnecting(device.address)
                                     viewModel.setRecordingExternalRunPodDevice(device.address, device.name)
                                 } else {
-                                    unsupportedSensorMessage = "${device.name} is not supported yet"
+                                    unsupportedSensorMessage =
+                                        resources.getString(R.string.settings_is_not_supported_yet, device.name)
                                     unsupportedSensorDetail =
-                                        "The sensor does not advertise a supported heart-rate, run-pod, " +
-                                        "cycling speed/cadence, or cycling power service."
+                                        resources.getString(R.string.recording_sensor_services_unsupported)
                                     DebugTelemetry.log(
                                         "ExternalSensors",
                                         "event=device_tap_unsupported name=${device.name.sanitizeTelemetryToken()} " +
-                                            "kinds=${device.supportedLabel.sanitizeTelemetryToken()}",
+                                            "kinds=${device.kinds.joinToString { it.name }.sanitizeTelemetryToken()}",
                                     )
                                 }
                             },
@@ -348,9 +380,9 @@ fun RecordingExternalSensorsScreen(
     pendingSensorRemoval?.let { pending ->
         WearActionDialog(
             visible = true,
-            title = "Remove device?",
+            title = stringResource(R.string.settings_remove_device),
             message = pending.name,
-            confirmText = "Yes",
+            confirmText = stringResource(R.string.common_yes),
             onConfirm = {
                 pendingSensorRemoval = null
                 unsupportedSensorMessage = null
@@ -373,7 +405,7 @@ fun RecordingExternalSensorsScreen(
                 }
             },
             onDismissRequest = { pendingSensorRemoval = null },
-            dismissText = "No",
+            dismissText = stringResource(R.string.common_no),
             onDismiss = { pendingSensorRemoval = null },
             confirmRole = WearActionButtonRole.Destructive,
         )
@@ -503,14 +535,14 @@ private fun LinkedExternalSensorChipContent(
                 )
                 if (connected && batteryLevelPercent in 0..100) {
                     Text(
-                        text = "$batteryLevelPercent%",
+                        text = stringResource(R.string.common_percent, batteryLevelPercent.toString()),
                         modifier = Modifier.padding(start = 5.dp),
                         color = contentColor,
                         maxLines = 1,
                     )
                 } else if (!connected && reconnecting) {
                     Text(
-                        text = "Connecting",
+                        text = stringResource(R.string.settings_connecting),
                         modifier = Modifier.padding(start = 5.dp),
                         color = contentColor,
                         maxLines = 1,
@@ -544,22 +576,22 @@ private fun ExternalSensorScanChip(
     when {
         !hasPermissions ->
             SettingsPickerChip(
-                label = "Allow Bluetooth",
-                secondaryLabel = "Needed to find sensors",
+                label = stringResource(R.string.settings_allow_bluetooth),
+                secondaryLabel = stringResource(R.string.settings_needed_to_find_sensors),
                 iconImageVector = Icons.Default.Bluetooth,
                 onClick = onRequestPermissions,
             )
         status == ExternalSensorScanStatus.SCANNING ->
             SettingsPickerChip(
-                label = "Stop scan",
-                secondaryLabel = "Searching nearby BLE devices",
+                label = stringResource(R.string.settings_stop_scan),
+                secondaryLabel = stringResource(R.string.settings_searching_nearby_ble_devices),
                 iconImageVector = Icons.AutoMirrored.Filled.BluetoothSearching,
                 onClick = onStopScan,
             )
         else ->
             SettingsPickerChip(
-                label = "Scan sensors",
-                secondaryLabel = scanStatusLabel(status),
+                label = stringResource(R.string.settings_scan_sensors),
+                secondaryLabel = scanStatusLabel(status, resources = LocalResources.current),
                 iconImageVector = Icons.AutoMirrored.Filled.BluetoothSearching,
                 onClick = onStartScan,
             )
@@ -571,9 +603,10 @@ private fun ExternalSensorDeviceChip(
     device: ExternalSensorDevice,
     onClick: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val icon =
         when {
-            device.kinds.any { it.label == "Heart rate" } -> Icons.Default.Favorite
+            ExternalSensorKind.HEART_RATE in device.kinds -> Icons.Default.Favorite
             device.kinds.isNotEmpty() -> Icons.Default.Sensors
             else -> Icons.Default.Bluetooth
         }
@@ -581,8 +614,8 @@ private fun ExternalSensorDeviceChip(
         label = device.name,
         secondaryLabel =
             buildString {
-                append(device.supportedLabel)
-                device.rssi?.let { append(" · $it dBm") }
+                append(device.supportedLabel(resources))
+                device.rssi?.let { append(stringResource(R.string.settings_dbm, it)) }
             },
         iconImageVector = icon,
         onClick = onClick,
@@ -615,14 +648,17 @@ private fun ExternalSensorInfo(
     }
 }
 
-private fun scanStatusLabel(status: ExternalSensorScanStatus): String =
+private fun scanStatusLabel(
+    status: ExternalSensorScanStatus,
+    resources: Resources,
+): String =
     when (status) {
-        ExternalSensorScanStatus.IDLE -> "Heart straps and sensors"
-        ExternalSensorScanStatus.SCANNING -> "Searching"
-        ExternalSensorScanStatus.BLUETOOTH_UNAVAILABLE -> "Bluetooth unavailable"
-        ExternalSensorScanStatus.BLUETOOTH_OFF -> "Turn Bluetooth on"
-        ExternalSensorScanStatus.PERMISSION_MISSING -> "Permission needed"
-        ExternalSensorScanStatus.SCAN_FAILED -> "Scan failed, try again"
+        ExternalSensorScanStatus.IDLE -> resources.getString(R.string.settings_heart_straps_and_sensors)
+        ExternalSensorScanStatus.SCANNING -> resources.getString(R.string.settings_searching)
+        ExternalSensorScanStatus.BLUETOOTH_UNAVAILABLE -> resources.getString(R.string.settings_bluetooth_unavailable)
+        ExternalSensorScanStatus.BLUETOOTH_OFF -> resources.getString(R.string.settings_turn_bluetooth_on)
+        ExternalSensorScanStatus.PERMISSION_MISSING -> resources.getString(R.string.settings_permission_needed)
+        ExternalSensorScanStatus.SCAN_FAILED -> resources.getString(R.string.settings_scan_failed_try_again)
     }
 
 private fun ExternalSensorDevice.canLinkHeartRate(): Boolean = kinds.isEmpty() || ExternalSensorKind.HEART_RATE in kinds

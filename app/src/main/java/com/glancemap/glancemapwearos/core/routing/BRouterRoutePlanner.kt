@@ -1,11 +1,13 @@
 package com.glancemap.glancemapwearos.core.routing
 
 import android.content.Context
+import android.content.res.Resources
 import btools.router.FormatGpx
 import btools.router.OsmNodeNamed
 import btools.router.RoutingContext
 import btools.router.RoutingEngine
 import btools.util.CheapRuler
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -211,10 +213,13 @@ private fun adjustedSearchRadii(
                 .coerceIn(LOOP_SEARCH_RADIUS_MIN_METERS, LOOP_SEARCH_RADIUS_MAX_METERS)
         }.distinct()
 
-internal fun normalizeRoutingErrorMessage(message: String): String =
+internal fun normalizeRoutingErrorMessage(
+    message: String,
+    resources: Resources,
+): String =
     when {
         message.isBlank() -> {
-            "Could not create route."
+            resources.getString(R.string.gpx_could_not_create_route)
         }
 
         message.startsWith("Missing routing data:", ignoreCase = true) -> {
@@ -222,38 +227,41 @@ internal fun normalizeRoutingErrorMessage(message: String): String =
         }
 
         message.contains("lookup version mismatch", ignoreCase = true) -> {
-            normalizeLookupVersionMismatch(message)
+            normalizeLookupVersionMismatch(message, resources = resources)
         }
 
         message.contains("checksum error", ignoreCase = true) ||
             message.contains("checksum failed", ignoreCase = true) -> {
-            "Routing data is damaged. Open Downloads, check the bundle for updates, then choose Refresh to repair it."
+            resources.getString(R.string.gpx_routing_data_is_damaged_open_downloads_check_the_bundle_for_updates_th)
         }
 
         message.contains("dummy.brf", ignoreCase = true) -> {
-            "Routing profiles missing. Reopen route tools and try again."
+            resources.getString(R.string.gpx_routing_profiles_missing_reopen_route_tools_and_try_again)
         }
 
         message.contains("datafile", ignoreCase = true) -> {
-            "Routing data missing"
+            resources.getString(R.string.gpx_routing_data_missing)
         }
 
         message.contains("not found", ignoreCase = true) -> {
-            "No route found."
+            resources.getString(R.string.gpx_no_route_found)
         }
 
         message.contains("no track found", ignoreCase = true) -> {
-            "No route found."
+            resources.getString(R.string.gpx_no_route_found)
         }
 
         message.contains("fresh GPS fix", ignoreCase = true) -> {
-            "Waiting for GPS"
+            resources.getString(R.string.navigation_waiting_for_gps)
         }
 
         else -> message
     }
 
-private fun normalizeLookupVersionMismatch(message: String): String {
+private fun normalizeLookupVersionMismatch(
+    message: String,
+    resources: Resources,
+): String {
     val versionMatch = LOOKUP_VERSION_MISMATCH_REGEX.find(message)
     val appLookupVersion = versionMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
     val packLookupVersion = versionMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
@@ -262,18 +270,17 @@ private fun normalizeLookupVersionMismatch(message: String): String {
         appLookupVersion != null &&
             packLookupVersion != null &&
             packLookupVersion > appLookupVersion -> {
-            "Routing packs are newer than this app supports. " +
-                "Update GlanceMap, then refresh routing packs."
+            resources.getString(R.string.gpx_routing_packs_are_newer_than_this_app_supports_update_glancemap_then_r)
         }
 
         appLookupVersion != null &&
             packLookupVersion != null &&
             packLookupVersion < appLookupVersion -> {
-            "Routing packs use an older format. Refresh the routing packs."
+            resources.getString(R.string.gpx_routing_packs_use_an_older_format_refresh_the_routing_packs)
         }
 
         else -> {
-            "Routing data format does not match this app. Update GlanceMap or refresh routing packs."
+            resources.getString(R.string.gpx_routing_data_format_does_not_match_this_app_update_glancemap_or_refres)
         }
     }
 }
@@ -297,13 +304,13 @@ class BRouterRoutePlanner(
                 buildRoutePlannerOutput(
                     routingContext = routedAttempt.routingContext,
                     engine = routedAttempt.engine,
-                    title = "BRouter route $stamp",
+                    title = context.getString(R.string.gpx_brouter_route_title, stamp),
                     fileName = "route-$stamp.gpx",
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                val normalized = normalizeRoutingErrorMessage(error.message.orEmpty())
+                val normalized = normalizeRoutingErrorMessage(error.message.orEmpty(), resources = context.resources)
                 throw IllegalStateException(normalized, error)
             }
         }
@@ -444,22 +451,26 @@ class BRouterRoutePlanner(
                         lastErrorMessage
                             ?.takeIf { it.isNotBlank() }
                             ?: if (request.allowOutAndBack) {
-                                "No loop found near the selected target. Try a different start or target."
+                                context.resources.getString(
+                                    R.string.gpx_no_loop_found_near_the_selected_target_try_a_different_start_or_target,
+                                )
                             } else {
-                                "No circuit loop found near the selected target. Try a different start or target."
+                                context.resources.getString(
+                                    R.string.gpx_no_circuit_loop_found_near_the_selected_target_try_a_different_start_o,
+                                )
                             },
                     )
                 }
 
                 val errorMessage = selectedAttempt.engine.errorMessage
                 require(errorMessage.isNullOrBlank()) {
-                    normalizeRoutingErrorMessage(errorMessage)
+                    normalizeRoutingErrorMessage(errorMessage, resources = context.resources)
                 }
 
                 buildRoutePlannerOutput(
                     routingContext = selectedAttempt.routingContext,
                     engine = selectedAttempt.engine,
-                    title = "BRouter loop ${request.targetLabel} $stamp",
+                    title = context.getString(R.string.gpx_brouter_loop_title, request.targetLabel, stamp),
                     fileName = "loop-$stamp.gpx",
                 )
             } catch (suggestion: LoopRouteSuggestionException) {
@@ -467,7 +478,7 @@ class BRouterRoutePlanner(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                val normalized = normalizeRoutingErrorMessage(error.message.orEmpty())
+                val normalized = normalizeRoutingErrorMessage(error.message.orEmpty(), resources = context.resources)
                 throw IllegalStateException(normalized, error)
             }
         }
@@ -579,7 +590,7 @@ class BRouterRoutePlanner(
 
         val errorMessage = engine.errorMessage
         require(errorMessage.isNullOrBlank()) {
-            normalizeRoutingErrorMessage(errorMessage)
+            normalizeRoutingErrorMessage(errorMessage, resources = context.resources)
         }
 
         return RoutedAttemptResult(
@@ -930,9 +941,7 @@ class BRouterRoutePlanner(
         fun hasSuggestion(): Boolean = lowerDistanceMeters != null || higherDistanceMeters != null
     }
 
-    private fun List<LoopCandidate>.closestLoopSuggestions(
-        targetDistanceMeters: Int,
-    ): LoopDistanceSuggestions {
+    private fun List<LoopCandidate>.closestLoopSuggestions(targetDistanceMeters: Int): LoopDistanceSuggestions {
         val viableDistances =
             asSequence()
                 .map { it.actualDistanceMeters() }
@@ -1140,9 +1149,14 @@ class BRouterRoutePlanner(
 
     private fun buildMissingSegmentsMessage(missingSegments: List<String>): String =
         when (missingSegments.size) {
-            0 -> "Routing data missing"
-            1 -> "Missing routing data: ${missingSegments.first()}"
-            else -> "Missing routing data: ${missingSegments.first()} +${missingSegments.size - 1}"
+            0 -> context.getString(R.string.gpx_routing_data_missing)
+            1 -> context.getString(R.string.gpx_missing_routing_data, missingSegments.first())
+            else ->
+                context.getString(
+                    R.string.gpx_missing_routing_data_2,
+                    missingSegments.first(),
+                    missingSegments.size - 1,
+                )
         }
 
     private fun buildRouteWaypoints(request: RoutePlannerRequest): List<OsmNodeNamed> {
@@ -1165,10 +1179,10 @@ class BRouterRoutePlanner(
     ): RoutePlannerOutput {
         val track =
             requireNotNull(engine.foundTrack) {
-                "No route found."
+                context.resources.getString(R.string.gpx_no_route_found)
             }
         require(track.nodes.isNotEmpty()) {
-            "No route found."
+            context.resources.getString(R.string.gpx_no_route_found)
         }
         val messageSummary = track.message?.takeIf { it.isNotBlank() } ?: title
         when {

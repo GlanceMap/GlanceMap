@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -37,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearWindowClass
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 
@@ -186,6 +189,7 @@ fun GpxElevationProfileDialog(
     isMetric: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val sizing = rememberElevationProfileDialogSizing()
     val samples = profile.samples
 
@@ -320,7 +324,7 @@ fun GpxElevationProfileDialog(
 
                 if (samples.size < 2 || profile.minElevation == null || profile.maxElevation == null) {
                     Text(
-                        text = "No elevation data in this GPX.",
+                        text = stringResource(R.string.gpx_no_elevation_data_in_this_gpx),
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                         color = Color.White.copy(alpha = 0.9f),
@@ -329,21 +333,25 @@ fun GpxElevationProfileDialog(
                 } else {
                     val doneDistanceText =
                         progress?.let {
-                            formatDistanceScaleText(it.doneDistance, isMetric)
-                        } ?: formatDistanceScaleText(0.0, isMetric)
-                    val doneEta = formatDurationText(progress?.doneDurationSec)
+                            formatDistanceScaleText(it.doneDistance, isMetric, resources = resources)
+                        } ?: formatDistanceScaleText(0.0, isMetric, resources = resources)
+                    val doneEta = formatDurationText(progress?.doneDurationSec, resources = resources)
 
-                    val doneUp = formatElevationCompactText(progress?.doneAscent ?: 0.0, isMetric)
+                    val doneUp =
+                        formatElevationCompactText(progress?.doneAscent ?: 0.0, isMetric, resources = resources)
                     val remainingUp =
                         formatElevationCompactText(
                             (profile.totalAscent - (progress?.doneAscent ?: 0.0)).coerceAtLeast(0.0),
                             isMetric,
+                            resources = resources,
                         )
-                    val doneDown = formatElevationCompactText(progress?.doneDescent ?: 0.0, isMetric)
+                    val doneDown =
+                        formatElevationCompactText(progress?.doneDescent ?: 0.0, isMetric, resources = resources)
                     val remainingDown =
                         formatElevationCompactText(
                             (profile.totalDescent - (progress?.doneDescent ?: 0.0)).coerceAtLeast(0.0),
                             isMetric,
+                            resources = resources,
                         )
                     val ascentSummaryText = "$doneUp/$remainingUp"
                     val descentSummaryText = "$doneDown/$remainingDown"

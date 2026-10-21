@@ -86,6 +86,7 @@ class AppContainer(
 
     val gpxViewModel: GpxViewModel by lazy {
         GpxViewModel(
+            resources = applicationContext.resources,
             gpxRepository = gpxRepository,
             gpxExportRepository = gpxExportRepository,
             syncManager = syncManager,
@@ -112,6 +113,7 @@ class AppContainer(
 
     val poiViewModel: PoiViewModel by lazy {
         PoiViewModel(
+            resources = applicationContext.resources,
             poiRepository = poiRepository,
             userPoiRepository = userPoiRepository,
             settingsRepository = settingsRepository,
@@ -121,6 +123,7 @@ class AppContainer(
 
     val downloadViewModel: DownloadViewModel by lazy {
         DownloadViewModel(
+            resources = applicationContext.resources,
             downloader =
                 OamBundleDownloader(
                     context = applicationContext,
@@ -156,6 +159,7 @@ class AppContainer(
     val traceRecordingViewModel: TraceRecordingViewModel by lazy {
         val viewModel =
             TraceRecordingViewModel(
+                resources = applicationContext.resources,
                 gpxRepository = gpxRepository,
                 settingsRepository = settingsRepository,
                 syncManager = syncManager,

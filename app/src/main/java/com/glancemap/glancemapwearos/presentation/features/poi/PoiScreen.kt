@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.poi
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -41,9 +41,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,8 +57,10 @@ import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.USER_POI_CATEGORY_ID
 import com.glancemap.glancemapwearos.data.repository.USER_POI_SOURCE_PATH
+import com.glancemap.glancemapwearos.presentation.features.gpx.gpxHelpAnnotatedText
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
@@ -101,12 +104,15 @@ private sealed interface PoiListRow {
     ) : PoiListRow
 }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 private fun MutableList<PoiListRow>.addCategoryPreviewRows(
     filePath: String,
     categoryId: Int,
     depth: Int,
     preview: PoiCategoryPreviewUiState?,
     emptyText: String,
+    resources: Resources,
 ) {
     when {
         preview == null || preview.isLoading -> {
@@ -115,7 +121,7 @@ private fun MutableList<PoiListRow>.addCategoryPreviewRows(
                     filePath = filePath,
                     categoryId = categoryId,
                     depth = depth,
-                    text = "Loading POI...",
+                    text = resources.getString(R.string.gpx_loading_poi),
                 ),
             )
         }
@@ -160,7 +166,7 @@ private fun MutableList<PoiListRow>.addCategoryPreviewRows(
                         filePath = filePath,
                         categoryId = categoryId,
                         depth = depth,
-                        text = "${preview.points.size}/${preview.totalPoiCount} POI shown",
+                        text = resources.getString(R.string.gpx_poi_shown, preview.points.size, preview.totalPoiCount),
                     ),
                 )
             }
@@ -198,6 +204,9 @@ fun PoiScreen(
     var loadingOverlayDismissed by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val createPoiHelpText = stringResource(R.string.poi_create_using_tool, "__toolButton__")
+    val createPoiHelpAlternative = stringResource(R.string.poi_tool)
     val helpPrefs =
         remember(context) {
             context.getSharedPreferences(POI_HELP_PREFS, android.content.Context.MODE_PRIVATE)
@@ -343,7 +352,7 @@ fun PoiScreen(
 
     val expandedByFileSnapshot = expandedCategoryIdsByFile.toMap()
     val rows =
-        remember(poiFiles, categoryPreviews, isDeleteMode, expandedByFileSnapshot) {
+        remember(poiFiles, categoryPreviews, isDeleteMode, expandedByFileSnapshot, resources) {
             buildList<PoiListRow> {
                 val userFiles = poiFiles.filter { it.path == USER_POI_SOURCE_PATH }
                 val waypointFiles =
@@ -352,9 +361,9 @@ fun PoiScreen(
                     poiFiles.filter { it.path != USER_POI_SOURCE_PATH && !it.isGpxWaypointFolder }
                 val sections =
                     listOf(
-                        "My creation" to userFiles,
-                        "GPX waypoints" to waypointFiles,
-                        "POI files" to importedPoiFiles,
+                        resources.getString(R.string.poi_my_creation) to userFiles,
+                        resources.getString(R.string.poi_gpx_waypoints) to waypointFiles,
+                        resources.getString(R.string.poi_poi_files) to importedPoiFiles,
                     )
 
                 sections.forEach { (label, files) ->
@@ -377,7 +386,8 @@ fun PoiScreen(
                                         categoryPreviews[
                                             PoiCategoryPreviewKey(file.path, USER_POI_CATEGORY_ID),
                                         ],
-                                    emptyText = "No saved places yet.",
+                                    emptyText = resources.getString(R.string.poi_no_saved_places_yet),
+                                    resources = resources,
                                 )
                                 return@forEach
                             }
@@ -407,10 +417,13 @@ fun PoiScreen(
                                                     ],
                                                 emptyText =
                                                     if (category.hasChildren) {
-                                                        "No direct POI. Expand sub-folders."
+                                                        resources.getString(
+                                                            R.string.poi_no_direct_poi_expand_sub_folders,
+                                                        )
                                                     } else {
-                                                        "No POI in this folder."
+                                                        resources.getString(R.string.poi_no_poi_in_this_folder)
                                                     },
+                                                resources = resources,
                                             )
                                         }
                                     }
@@ -499,19 +512,19 @@ fun PoiScreen(
             visible = showDeleteDialog,
             title =
                 if (fileToDelete?.path == USER_POI_SOURCE_PATH) {
-                    "Delete all created places?"
+                    stringResource(R.string.poi_delete_all_created_places)
                 } else if (poiToDelete != null) {
-                    "Delete created place?"
+                    stringResource(R.string.poi_delete_created_place)
                 } else {
-                    "Delete POI file?"
+                    stringResource(R.string.poi_delete_poi_file_2)
                 },
             message =
                 if (fileToDelete?.path == USER_POI_SOURCE_PATH) {
-                    "Delete every place in mycreation?"
+                    stringResource(R.string.poi_delete_every_place_in_mycreation)
                 } else if (poiToDelete != null) {
-                    "Delete '${poiToDelete?.name}'?"
+                    stringResource(R.string.gpx_delete, poiToDelete?.name.toString())
                 } else {
-                    "Delete '${fileToDelete?.name}'?"
+                    stringResource(R.string.gpx_delete, fileToDelete?.name.toString())
                 },
             onConfirm = {
                 when {
@@ -544,7 +557,7 @@ fun PoiScreen(
 
         RenameValueDialog(
             visible = showRenameDialog && poiToRename != null,
-            title = "Rename POI",
+            title = stringResource(R.string.navigate_rename_poi),
             initialValue = poiToRename?.name.orEmpty(),
             isSaving = renameInProgress,
             error = renameError,
@@ -572,7 +585,7 @@ fun PoiScreen(
                     }.onFailure { error ->
                         renameInProgress = false
                         renameError = error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to rename the POI."
+                            ?: resources.getString(R.string.navigate_failed_to_rename_the_poi)
                     }
                 }
             },
@@ -580,26 +593,26 @@ fun PoiScreen(
 
         WearInfoDialog(
             visible = showHelpDialog,
-            title = "POI Actions",
+            title = stringResource(R.string.poi_poi_actions),
             onDismiss = { dismissHelpDialog() },
         ) {
             item {
                 Text(
-                    "Toggle POI files or categories to show them on the map.",
+                    stringResource(R.string.poi_toggle_poi_files_or_categories_to_show_them_on_the_map),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             item {
                 Text(
-                    "Expand a category to preview its POIs.",
+                    stringResource(R.string.poi_expand_a_category_to_preview_its_pois),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             item {
                 Text(
-                    "Tap a POI on the map to see details.",
+                    stringResource(R.string.poi_tap_a_poi_on_the_map_to_see_details),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -607,11 +620,10 @@ fun PoiScreen(
             item {
                 Text(
                     text =
-                        buildAnnotatedString {
-                            append("Create POI by using the tool button (")
-                            appendInlineContent("toolButton", "[tool]")
-                            append(").")
-                        },
+                        gpxHelpAnnotatedText(
+                            createPoiHelpText,
+                            mapOf("toolButton" to createPoiHelpAlternative),
+                        ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                     inlineContent =
@@ -639,7 +651,7 @@ fun PoiScreen(
 
         FeatureListScaffold {
             FeatureListHeader(
-                title = "POI",
+                title = stringResource(R.string.common_poi),
                 titleStyle =
                     if (adaptive.isCompact) {
                         MaterialTheme.typography.titleSmall
@@ -652,8 +664,8 @@ fun PoiScreen(
                 verticalSpacing = headerVerticalSpacing,
                 statusText =
                     when {
-                        isDeleteMode -> "Delete mode"
-                        isRenameMode -> "Rename mode"
+                        isDeleteMode -> stringResource(R.string.download_delete_mode)
+                        isRenameMode -> stringResource(R.string.gpx_rename_mode)
                         else -> null
                     },
                 statusColor =
@@ -675,7 +687,7 @@ fun PoiScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "POI actions help",
+                        contentDescription = stringResource(R.string.poi_poi_actions_help),
                         modifier = Modifier.size(headerActionIconSize),
                     )
                 }
@@ -703,7 +715,7 @@ fun PoiScreen(
                     if (rows.isEmpty()) {
                         item {
                             Text(
-                                text = "Loading POI...",
+                                text = stringResource(R.string.gpx_loading_poi),
                                 modifier = Modifier.padding(emptyStatePadding),
                                 textAlign = TextAlign.Center,
                             )
@@ -836,7 +848,10 @@ fun PoiScreen(
                     if (rows.isNotEmpty() && !hasDownloadedPoiFiles) {
                         item(key = "no-downloaded-poi-files") {
                             Text(
-                                text = "Download POIs on the watch or send .poi files from the companion phone app.",
+                                text =
+                                    stringResource(
+                                        R.string.poi_empty_state_help,
+                                    ),
                                 modifier = Modifier.padding(emptyStatePadding),
                                 textAlign = TextAlign.Center,
                             )
@@ -885,9 +900,9 @@ fun PoiScreen(
                                 imageVector = if (isRenameMode) Icons.Default.Close else Icons.Default.Edit,
                                 contentDescription =
                                     if (isRenameMode) {
-                                        "Exit rename mode"
+                                        stringResource(R.string.gpx_exit_rename_mode)
                                     } else {
-                                        "Enter rename mode"
+                                        stringResource(R.string.gpx_enter_rename_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -900,7 +915,7 @@ fun PoiScreen(
                         containerColor = Color.Black.copy(alpha = 0.8f),
                         contentColor = Color.White,
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "POI Settings")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.poi_poi_settings))
                     }
                     if (poiFiles.isNotEmpty()) {
                         CompactIconHitTargetButton(
@@ -930,9 +945,9 @@ fun PoiScreen(
                                 imageVector = if (isDeleteMode) Icons.Default.Close else Icons.Default.Delete,
                                 contentDescription =
                                     if (isDeleteMode) {
-                                        "Exit delete mode"
+                                        stringResource(R.string.download_exit_delete_mode)
                                     } else {
-                                        "Enter delete mode"
+                                        stringResource(R.string.download_enter_delete_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -942,7 +957,12 @@ fun PoiScreen(
             }
         }
 
-        if (isLoadingPoiFiles && !loadingOverlayDismissed && !showHelpDialog && !showDeleteDialog && !showRenameDialog) {
+        if (isLoadingPoiFiles &&
+            !loadingOverlayDismissed &&
+            !showHelpDialog &&
+            !showDeleteDialog &&
+            !showRenameDialog
+        ) {
             PoiLoadingOverlay(
                 onDismiss = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -999,13 +1019,13 @@ private fun PoiLoadingOverlay(onDismiss: () -> Unit) {
                             .background(Color.White.copy(alpha = 0.42f), RoundedCornerShape(50)),
                 )
                 Text(
-                    text = "Loading POI...",
+                    text = stringResource(R.string.gpx_loading_poi),
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    text = "Downloaded POIs will appear shortly.",
+                    text = stringResource(R.string.poi_downloaded_pois_will_appear_shortly),
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),

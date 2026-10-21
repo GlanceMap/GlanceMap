@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.Shortcut
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -17,6 +18,7 @@ import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearWindowClass
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 
@@ -27,10 +29,10 @@ internal fun GeneralSettingsShortcutChip(
     applyTopPadding: Boolean = true,
 ) {
     AdaptiveSettingsShortcutChip(
-        standardLabel = "General Settings",
-        compactLabel = "General",
-        standardSecondaryLabel = "Back to settings menu",
-        compactSecondaryLabel = "Settings menu",
+        standardLabel = stringResource(R.string.settings_general_settings),
+        compactLabel = stringResource(R.string.settings_general),
+        standardSecondaryLabel = stringResource(R.string.settings_back_to_settings_menu),
+        compactSecondaryLabel = stringResource(R.string.settings_settings_menu),
         iconImageVector = Icons.AutoMirrored.Filled.Shortcut,
         applyTopPadding = applyTopPadding,
         compactRoundWidthFraction = 0.78f,

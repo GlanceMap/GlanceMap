@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
 import com.glancemap.glancemapwearos.data.repository.maps.theme.MapThemePreferences
 import kotlinx.coroutines.Dispatchers
@@ -89,28 +90,30 @@ class MapRepositoryImpl(
     ): File =
         withContext(Dispatchers.IO) {
             val sourceFile = File(path)
-            require(sourceFile.exists()) { "The map could not be found." }
+            require(sourceFile.exists()) { context.getString(R.string.map_the_map_could_not_be_found) }
 
             val isInsideDir = sourceFile.canonicalFile.parentFile?.canonicalPath == mapDir.canonicalPath
-            require(isInsideDir) { "The map is outside the app storage." }
+            require(isInsideDir) { context.getString(R.string.map_the_map_is_outside_the_app_storage) }
 
             val normalizedTitle =
                 newName
                     .trim()
                     .replace(Regex("\\s+"), " ")
-            require(normalizedTitle.isNotBlank()) { "Enter a map name first." }
+            require(normalizedTitle.isNotBlank()) { context.getString(R.string.map_enter_a_map_name_first) }
 
             val targetFileName = buildRenamedMapFileName(normalizedTitle)
             val targetMatchesSource = targetFileName.equals(sourceFile.name, ignoreCase = true)
             if (!targetMatchesSource && fileExists(targetFileName)) {
-                error("A map with that name already exists.")
+                error(context.getString(R.string.map_a_map_with_that_name_already_exists))
             }
 
             val targetFile = File(mapDir, targetFileName)
             if (!targetMatchesSource) {
                 if (!sourceFile.renameTo(targetFile)) {
                     sourceFile.copyTo(targetFile, overwrite = true)
-                    require(sourceFile.delete()) { "The original map could not be removed after renaming." }
+                    require(
+                        sourceFile.delete(),
+                    ) { context.getString(R.string.map_the_original_map_could_not_be_removed_after_renaming) }
                 }
 
                 val sourcePartial = File(mapDir, ".${sourceFile.name}.part")

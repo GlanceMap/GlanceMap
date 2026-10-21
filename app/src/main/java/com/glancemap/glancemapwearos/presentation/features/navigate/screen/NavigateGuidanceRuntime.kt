@@ -9,6 +9,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -276,17 +278,17 @@ internal fun rememberNavigateGuidanceRuntime(
             when (decision) {
                 GuidanceStartDecision.REVERSE_ROUTE ->
                     GuidanceDecisionPrompt(
-                        title = "Closer to end",
-                        detail = "Follow GPX in reverse?",
-                        acceptText = "Reverse",
-                        dismissText = "Start",
+                        title = stringResource(R.string.navigate_closer_to_end),
+                        detail = stringResource(R.string.navigate_follow_gpx_in_reverse),
+                        acceptText = stringResource(R.string.navigate_reverse),
+                        dismissText = stringResource(R.string.common_start),
                     )
                 GuidanceStartDecision.START_HERE ->
                     GuidanceDecisionPrompt(
-                        title = "On route",
-                        detail = "Start from nearest point?",
-                        acceptText = "Start",
-                        dismissText = "GPX start",
+                        title = stringResource(R.string.navigate_on_route),
+                        detail = stringResource(R.string.navigate_start_from_nearest_point),
+                        acceptText = stringResource(R.string.common_start),
+                        dismissText = stringResource(R.string.navigate_gpx_start),
                     )
             }
         }

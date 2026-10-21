@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.content.Context
+import android.content.res.Resources
 import android.media.AudioAttributes
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -13,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalResources
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
@@ -39,6 +42,7 @@ internal fun TurnByTurnGuidanceVoiceEffect(
     paused: Boolean,
     isMetric: Boolean,
 ) {
+    val resources = LocalResources.current
     if (!voiceEnabled) return
 
     val appContext = context.applicationContext
@@ -175,6 +179,7 @@ internal fun TurnByTurnGuidanceVoiceEffect(
                 followingInstruction = state.followingInstruction,
                 distanceToFollowingInstructionMeters = state.distanceToFollowingInstructionMeters,
                 isMetric = isMetric,
+                resources = resources,
             )
         DebugTelemetry.log(
             "TurnByTurn",
@@ -210,7 +215,7 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         val straightKey = "${state.trackTitle}:straight:${instruction.trackPointIndex}"
         if (alertedStraightSectionKey == straightKey) return@LaunchedEffect
 
-        val spokenText = spokenContinueStraightText(distanceMeters, isMetric)
+        val spokenText = spokenContinueStraightText(distanceMeters, isMetric, resources = resources)
         DebugTelemetry.log(
             "TurnByTurn",
             "voice=continue_straight index=${instruction.trackPointIndex} " +
@@ -236,7 +241,12 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         val utteranceId = "arrival:$trackKey"
         val speakResult =
             ttsLifecycle.runIfActive {
-                tts.speak("You have arrived", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+                tts.speak(
+                    resources.getString(R.string.navigate_you_have_arrived),
+                    TextToSpeech.QUEUE_FLUSH,
+                    null,
+                    utteranceId,
+                )
             } ?: return@LaunchedEffect
         DebugTelemetry.log("TurnByTurn", "voice=speak_result id=$utteranceId result=$speakResult")
         if (speakResult == TextToSpeech.SUCCESS) {
@@ -266,7 +276,12 @@ internal fun TurnByTurnGuidanceVoiceEffect(
             val utteranceId = "off_route:${System.currentTimeMillis()}"
             val speakResult =
                 ttsLifecycle.runIfActive {
-                    tts.speak("You are off route.", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+                    tts.speak(
+                        resources.getString(R.string.navigate_you_are_off_route),
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        utteranceId,
+                    )
                 } ?: return@LaunchedEffect
             DebugTelemetry.log(
                 "TurnByTurn",
@@ -294,7 +309,12 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         val utteranceId = "back_on_route:${System.currentTimeMillis()}"
         val speakResult =
             ttsLifecycle.runIfActive {
-                tts.speak("Back on route", TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+                tts.speak(
+                    resources.getString(R.string.navigate_back_on_route),
+                    TextToSpeech.QUEUE_FLUSH,
+                    null,
+                    utteranceId,
+                )
             } ?: return@LaunchedEffect
         DebugTelemetry.log(
             "TurnByTurn",
@@ -365,95 +385,140 @@ internal fun shouldSpeakContinueStraightPrompt(state: TurnByTurnGuidanceState): 
 internal fun spokenContinueStraightText(
     distanceMeters: Double,
     isMetric: Boolean,
-): String = "Continue straight ${spokenStraightDistance(distanceMeters, isMetric)}"
+    resources: Resources,
+): String =
+    resources.getString(
+        R.string.navigation_continue_straight,
+        spokenStraightDistance(distanceMeters, isMetric, resources = resources),
+    )
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 private fun spokenInstructionText(
     instruction: RouteInstruction,
     distanceMeters: Double,
     followingInstruction: RouteInstruction?,
     distanceToFollowingInstructionMeters: Double?,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
-    val action = spokenTurnAction(instruction.command)
-    val distance = spokenDistancePrefix(distanceMeters, isMetric)
-    val primary = if (distance == null) action else "$distance, $action"
+    val action = spokenTurnAction(instruction.command, resources = resources)
+    val distance = spokenDistancePrefix(distanceMeters, isMetric, resources = resources)
+    val primary =
+        if (distance ==
+            null
+        ) {
+            action
+        } else {
+            resources.getString(R.string.navigation_spoken_distance_action, distance, action)
+        }
     val followingGapMeters =
         distanceToFollowingInstructionMeters
             ?.let { it - distanceMeters }
             ?.takeIf { it in 0.0..VOICE_FOLLOWING_TURN_MAX_GAP_METERS }
     val followingAction =
         if (followingGapMeters != null && followingInstruction != null) {
-            spokenTurnAction(followingInstruction.command)
+            spokenTurnAction(followingInstruction.command, resources = resources)
         } else {
             null
         }
-    return if (followingAction != null) "$primary, then $followingAction" else primary
+    return if (followingAction !=
+        null
+    ) {
+        resources.getString(R.string.navigation_then, primary, followingAction)
+    } else {
+        primary
+    }
 }
 
+// Keep the existing guard order and presentation thresholds while localizing the result.
+@Suppress("ReturnCount")
 private fun spokenStraightDistance(
     distanceMeters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     if (!distanceMeters.isFinite() || distanceMeters <= 0.0) return ""
     if (!isMetric) {
         val feet = distanceMeters * METERS_TO_FEET
         return if (feet < FEET_PER_HALF_MILE) {
             val roundedFeet = ((feet / 25.0).roundToInt() * 25).coerceAtLeast(50)
-            "for $roundedFeet feet"
+            resources.getQuantityString(R.plurals.navigation_for_feet, roundedFeet, roundedFeet)
         } else {
             val miles = distanceMeters * METERS_TO_MILES
             val roundedTenths = (miles * 10.0).roundToInt().coerceAtLeast(1)
-            val spokenMiles = String.format(Locale.US, "%.1f", roundedTenths / 10.0)
-            "for $spokenMiles miles"
+            formatSpokenDistance(
+                value = roundedTenths / 10.0,
+                fractionDigits = 1,
+                pattern = resources.getString(R.string.navigation_for_miles),
+                locale = resources.configuration.locales[0],
+            )
         }
     }
     return if (distanceMeters < 1000.0) {
         val roundedMeters = ((distanceMeters / 25.0).roundToInt() * 25).coerceAtLeast(50)
-        "for $roundedMeters meters"
+        resources.getQuantityString(R.plurals.navigation_for_meters, roundedMeters, roundedMeters)
     } else {
         val kilometers = distanceMeters / 1000.0
+        val fractionDigits = if (kilometers >= 10.0) 0 else 1
         val spokenKilometers =
             if (kilometers >= 10.0) {
-                kilometers.roundToInt().toString()
+                kilometers.roundToInt().toDouble()
             } else {
-                String.format(Locale.US, "%.1f", kilometers)
+                // Keep the existing decimal rounding before ICU selects the plural form.
+                String.format(Locale.ROOT, "%.1f", kilometers).toDouble()
             }
-        "for $spokenKilometers kilometers"
+        formatSpokenDistance(
+            value = spokenKilometers,
+            fractionDigits = fractionDigits,
+            pattern = resources.getString(R.string.navigation_for_kilometers),
+            locale = resources.configuration.locales[0],
+        )
     }
 }
 
-private fun spokenTurnAction(command: RouteInstructionCommand): String =
+private fun spokenTurnAction(
+    command: RouteInstructionCommand,
+    resources: Resources,
+): String =
     when (command) {
-        RouteInstructionCommand.SLIGHT_LEFT -> "slight left"
-        RouteInstructionCommand.LEFT -> "turn left"
-        RouteInstructionCommand.SHARP_LEFT -> "sharp left"
-        RouteInstructionCommand.SLIGHT_RIGHT -> "slight right"
-        RouteInstructionCommand.RIGHT -> "turn right"
-        RouteInstructionCommand.SHARP_RIGHT -> "sharp right"
-        RouteInstructionCommand.CONTINUE -> "continue"
-        RouteInstructionCommand.FINISH -> "finish"
+        RouteInstructionCommand.SLIGHT_LEFT -> resources.getString(R.string.navigation_slight_left_2)
+        RouteInstructionCommand.LEFT -> resources.getString(R.string.navigation_turn_left)
+        RouteInstructionCommand.SHARP_LEFT -> resources.getString(R.string.navigation_sharp_left_2)
+        RouteInstructionCommand.SLIGHT_RIGHT -> resources.getString(R.string.navigation_slight_right_2)
+        RouteInstructionCommand.RIGHT -> resources.getString(R.string.navigation_turn_right)
+        RouteInstructionCommand.SHARP_RIGHT -> resources.getString(R.string.navigation_sharp_right_2)
+        RouteInstructionCommand.CONTINUE -> resources.getString(R.string.navigation_continue)
+        RouteInstructionCommand.FINISH -> resources.getString(R.string.navigation_finish_2)
     }
 
-private fun spokenDistancePrefix(
+// Keep the existing guard order and presentation thresholds while localizing the result.
+@Suppress("ReturnCount")
+internal fun spokenDistancePrefix(
     distanceMeters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String? {
     if (!distanceMeters.isFinite()) return null
-    if (distanceMeters < 15.0) return "now"
+    if (distanceMeters < 15.0) return resources.getString(R.string.navigation_now_2)
     if (!isMetric) {
         val feet = distanceMeters * METERS_TO_FEET
         return if (feet < FEET_PER_HALF_MILE) {
             val roundedFeet = ((feet / 25.0).roundToInt() * 25).coerceAtLeast(50)
-            "in $roundedFeet feet"
+            resources.getQuantityString(R.plurals.navigation_in_feet, roundedFeet, roundedFeet)
         } else {
             val miles = distanceMeters * METERS_TO_MILES
             val roundedTenths = (miles * 10.0).roundToInt().coerceAtLeast(1)
-            val spokenMiles = String.format(Locale.US, "%.1f", roundedTenths / 10.0)
-            "in $spokenMiles miles"
+            formatSpokenDistance(
+                value = roundedTenths / 10.0,
+                fractionDigits = 1,
+                pattern = resources.getString(R.string.navigation_in_miles),
+                locale = resources.configuration.locales[0],
+            )
         }
     }
     val roundedMeters = ((distanceMeters / 5.0).roundToInt() * 5).coerceAtLeast(15)
-    return "in $roundedMeters meters"
+    return resources.getQuantityString(R.plurals.navigation_in_meters, roundedMeters, roundedMeters)
 }
 
 private const val VOICE_FOLLOWING_TURN_MAX_GAP_METERS = 120.0

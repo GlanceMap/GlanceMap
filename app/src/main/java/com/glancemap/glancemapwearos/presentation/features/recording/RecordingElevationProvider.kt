@@ -15,7 +15,7 @@ class RecordingElevationProvider(
         DemSource.entries.associateWith { demSource ->
             ReliefDemRepository(
                 demRootDir = Dem3CoverageUtils.demRootDir(context.applicationContext, demSource),
-                tag = "TraceRecordingDem-${demSource.shortLabel}",
+                tag = "TraceRecordingDem-${demSource.telemetryLabel}",
             )
         }
 

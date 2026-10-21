@@ -1,5 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.HikeRouteProfileParams
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPosition
@@ -8,73 +11,73 @@ import org.mapsforge.core.model.LatLong
 internal const val ROUTE_TOOL_TRACK_END_SENTINEL_SEGMENT_INDEX = -1
 
 internal enum class RouteToolKind(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    CREATE(title = "Create"),
-    MODIFY(title = "Modify"),
+    CREATE(titleRes = R.string.gpx_create),
+    MODIFY(titleRes = R.string.gpx_modify),
 }
 
 internal enum class RouteCreateMode(
-    val title: String,
-    val summary: String,
+    @StringRes val titleRes: Int,
+    @StringRes val summaryRes: Int,
 ) {
     CURRENT_TO_HERE(
-        title = "Select a point",
-        summary = "Create a new GPX from current location to the selected destination.",
+        titleRes = R.string.gpx_select_a_point,
+        summaryRes = R.string.gpx_create_a_new_gpx_from_current_location_to_the_selected_destination,
     ),
     MULTI_POINT_CHAIN(
-        title = "Multi-point",
-        summary = "Pick one point, then another, to build a route section by section.",
+        titleRes = R.string.gpx_multi_point,
+        summaryRes = R.string.gpx_pick_one_point_then_another_to_build_a_route_section_by_section,
     ),
     ACTIVE_GPX_END_TO_HERE(
-        title = "Extend to here",
-        summary = "Extend the active GPX from its end to the crosshair.",
+        titleRes = R.string.gpx_extend_to_here,
+        summaryRes = R.string.gpx_extend_the_active_gpx_from_its_end_to_the_crosshair,
     ),
     POINT_A_TO_B(
-        title = "Two points",
-        summary = "Pick a start and end point on the map.",
+        titleRes = R.string.gpx_two_points,
+        summaryRes = R.string.gpx_pick_a_start_and_end_point_on_the_map,
     ),
     SEARCH(
-        title = "Search POI",
-        summary = "Search enabled offline POIs and create a route to a result.",
+        titleRes = R.string.gpx_search_poi,
+        summaryRes = R.string.gpx_search_enabled_offline_pois_and_create_a_route_to_a_result,
     ),
     COORDINATES(
-        title = "Coordinates",
-        summary = "Set precise start and destination coordinates.",
+        titleRes = R.string.navigate_coordinates,
+        summaryRes = R.string.gpx_set_precise_start_and_destination_coordinates,
     ),
     LOOP_AROUND_HERE(
-        title = "Loop route",
-        summary = "Create a round trip with a target distance or time.",
+        titleRes = R.string.gpx_loop_route,
+        summaryRes = R.string.gpx_create_a_round_trip_with_a_target_distance_or_time,
     ),
 }
 
 internal enum class RouteModifyMode(
-    val title: String,
-    val summary: String,
+    @StringRes val titleRes: Int,
+    @StringRes val summaryRes: Int,
 ) {
     RESHAPE_ROUTE(
-        title = "Reshape route",
-        summary = "Select a route point, then select the replacement point to recalculate the route.",
+        titleRes = R.string.gpx_reshape_route,
+        summaryRes = R.string.gpx_select_a_route_point_then_select_the_replacement_point_to_recalculate,
     ),
     REPLACE_SECTION_A_TO_B(
-        title = "Replace A-B",
-        summary = "Replace the selected section of the active GPX with a newly routed segment.",
+        titleRes = R.string.gpx_replace_a_b,
+        summaryRes = R.string.gpx_replace_the_selected_section_of_the_active_gpx_with_a_newly_routed_seg,
     ),
     KEEP_ONLY_A_TO_B(
-        title = "Keep A-B",
-        summary = "Keep only the selected section of the active GPX.",
+        titleRes = R.string.gpx_keep_a_b,
+        summaryRes = R.string.gpx_keep_only_the_selected_section_of_the_active_gpx,
     ),
     TRIM_START_TO_HERE(
-        title = "Change start",
-        summary = "Move the active GPX start forward to the picked point.",
+        titleRes = R.string.gpx_change_start,
+        summaryRes = R.string.gpx_move_the_active_gpx_start_forward_to_the_picked_point,
     ),
     TRIM_END_FROM_HERE(
-        title = "Change end",
-        summary = "Move the active GPX end back to the picked point.",
+        titleRes = R.string.gpx_change_end,
+        summaryRes = R.string.gpx_move_the_active_gpx_end_back_to_the_picked_point,
     ),
     REVERSE_GPX(
-        title = "Reverse GPX",
-        summary = "Reverse the active GPX so the end becomes the start.",
+        titleRes = R.string.gpx_reverse_gpx,
+        summaryRes = R.string.gpx_reverse_the_active_gpx_so_the_end_becomes_the_start,
     ),
 }
 
@@ -93,44 +96,44 @@ internal val RouteModifyMode.previewBeforeSaving: Boolean
         }
 
 internal enum class RouteStylePreset(
-    val title: String,
-    val summary: String,
+    @StringRes val titleRes: Int,
+    @StringRes val summaryRes: Int,
 ) {
     BALANCED_HIKE(
-        title = "Balanced hike",
-        summary = "Good default for most hikes, with balanced path and difficulty choices.",
+        titleRes = R.string.gpx_balanced_hike,
+        summaryRes = R.string.gpx_good_default_for_most_hikes_with_balanced_path_and_difficulty_choices,
     ),
     PREFER_TRAILS(
-        title = "Prefer trails",
-        summary = "Favors paths, marked hiking routes, and more natural-feeling terrain.",
+        titleRes = R.string.gpx_prefer_trails,
+        summaryRes = R.string.gpx_favors_paths_marked_hiking_routes_and_more_natural_feeling_terrain,
     ),
     PREFER_EASIEST(
-        title = "Prefer easiest",
-        summary = "Avoids harder terrain when possible and prefers simpler route choices.",
+        titleRes = R.string.gpx_prefer_easiest,
+        summaryRes = R.string.gpx_avoids_harder_terrain_when_possible_and_prefers_simpler_route_choices,
     ),
     CUSTOM_HIKE(
-        title = "Custom hike",
-        summary = "Uses your advanced hike routing choices.",
+        titleRes = R.string.gpx_custom_hike,
+        summaryRes = R.string.gpx_uses_your_advanced_hike_routing_choices,
     ),
     BIKE_TOURING(
-        title = "Touring bike",
-        summary = "Uses BRouter trekking routing for efficient, calmer bike touring.",
+        titleRes = R.string.gpx_touring_bike,
+        summaryRes = R.string.gpx_uses_brouter_trekking_routing_for_efficient_calmer_bike_touring,
     ),
     BIKE_ROAD(
-        title = "Roadbike",
-        summary = "Uses BRouter fastbike routing for faster road cycling.",
+        titleRes = R.string.gpx_roadbike,
+        summaryRes = R.string.gpx_uses_brouter_fastbike_routing_for_faster_road_cycling,
     ),
     BIKE_QUIET_ROAD(
-        title = "Roadbike Low-traffic",
-        summary = "Uses BRouter fastbike low-traffic routing for quieter roads.",
+        titleRes = R.string.gpx_roadbike_low_traffic,
+        summaryRes = R.string.gpx_uses_brouter_fastbike_low_traffic_routing_for_quieter_roads,
     ),
     BIKE_GRAVEL(
-        title = "Gravel",
-        summary = "Uses BRouter gravel routing for mixed paved and unpaved surfaces.",
+        titleRes = R.string.gpx_gravel,
+        summaryRes = R.string.gpx_uses_brouter_gravel_routing_for_mixed_paved_and_unpaved_surfaces,
     ),
     BIKE_MTB(
-        title = "MTB",
-        summary = "Uses BRouter MTB routing for mountain-bike oriented routes.",
+        titleRes = R.string.gpx_mtb,
+        summaryRes = R.string.gpx_uses_brouter_mtb_routing_for_mountain_bike_oriented_routes,
     ),
 }
 
@@ -165,22 +168,22 @@ internal val bikeRouteStylePresets: List<RouteStylePreset> =
         RouteStylePreset.BIKE_MTB,
     )
 
-internal fun routeStylePickerOptionsFor(selected: RouteStylePreset): List<Pair<RouteStylePreset, String>> =
+internal fun routeStylePickerOptionsFor(selected: RouteStylePreset): List<Pair<RouteStylePreset, Int>> =
     if (selected in bikeRouteStylePresets) {
         bikeRouteStylePresets
     } else {
         hikeRouteStylePresets
-    }.map { preset -> preset to preset.title }
+    }.map { preset -> preset to preset.titleRes }
 
-internal val routeStyleSettingsOptions: List<Pair<String, String>> =
-    RouteStylePreset.entries.map { preset -> preset.settingsValue to preset.title }
+internal val routeStyleSettingsOptions: List<Pair<String, Int>> =
+    RouteStylePreset.entries.map { preset -> preset.settingsValue to preset.titleRes }
 
-internal fun routeStyleSettingsOptionsForActivityProfile(activityProfile: String): List<Pair<String, String>> =
+internal fun routeStyleSettingsOptionsForActivityProfile(activityProfile: String): List<Pair<String, Int>> =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
         bikeRouteStylePresets
     } else {
         hikeRouteStylePresets
-    }.map { preset -> preset.settingsValue to preset.title }
+    }.map { preset -> preset.settingsValue to preset.titleRes }
 
 internal fun routeStylePresetFromSettingsValue(value: String): RouteStylePreset = RouteStylePreset.entries.firstOrNull { it.settingsValue == value } ?: RouteStylePreset.BALANCED_HIKE
 
@@ -190,47 +193,50 @@ internal fun routeStylePresetFromSavedName(name: String): RouteStylePreset =
         else -> RouteStylePreset.entries.firstOrNull { it.name == name } ?: RouteStylePreset.BALANCED_HIKE
     }
 
-internal fun routeStyleTitleForSettingsValue(value: String): String = routeStyleSettingsOptions.firstOrNull { it.first == value }?.second ?: RouteStylePreset.BALANCED_HIKE.title
+@StringRes
+internal fun routeStyleTitleForSettingsValue(
+    value: String,
+): Int = routeStyleSettingsOptions.firstOrNull { it.first == value }?.second ?: RouteStylePreset.BALANCED_HIKE.titleRes
 
 internal enum class RouteSaveBehavior(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    SAVE_AS_NEW(title = "Save as new"),
-    REPLACE_CURRENT(title = "Replace current"),
+    SAVE_AS_NEW(titleRes = R.string.gpx_save_as_new),
+    REPLACE_CURRENT(titleRes = R.string.gpx_replace_current),
 }
 
 internal enum class LoopStartMode(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    CURRENT_LOCATION(title = "Current"),
-    PICK_ON_MAP(title = "Pick on map"),
+    CURRENT_LOCATION(titleRes = R.string.gpx_current),
+    PICK_ON_MAP(titleRes = R.string.navigate_pick_on_map),
 }
 
 internal enum class RouteEndpointSource(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    CURRENT_LOCATION(title = "Current"),
-    COORDINATES(title = "Coordinates"),
+    CURRENT_LOCATION(titleRes = R.string.gpx_current),
+    COORDINATES(titleRes = R.string.navigate_coordinates),
 }
 
 internal enum class LoopTargetMode(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    DISTANCE(title = "Distance"),
-    TIME(title = "Time"),
+    DISTANCE(titleRes = R.string.common_distance),
+    TIME(titleRes = R.string.common_time),
 }
 
 internal enum class LoopShapeMode(
-    val title: String,
-    val summary: String,
+    @StringRes val titleRes: Int,
+    @StringRes val summaryRes: Int,
 ) {
     PREFER_CIRCUIT(
-        title = "Prefer circuit",
-        summary = "Try to avoid using the same path twice.",
+        titleRes = R.string.gpx_prefer_circuit,
+        summaryRes = R.string.gpx_try_to_avoid_using_the_same_path_twice,
     ),
     ALLOW_OUT_AND_BACK(
-        title = "Allow out-and-back",
-        summary = "Allow same-path fallback if no better loop exists.",
+        titleRes = R.string.gpx_allow_out_and_back,
+        summaryRes = R.string.gpx_allow_same_path_fallback_if_no_better_loop_exists,
     ),
 }
 
@@ -256,11 +262,11 @@ internal data class RouteToolOptions(
     val showAdvancedOptions: Boolean = false,
     val saveBehavior: RouteSaveBehavior = RouteSaveBehavior.SAVE_AS_NEW,
 ) {
-    val activeSummary: String
+    @get:StringRes val activeSummaryRes: Int
         get() =
             when (toolKind) {
-                RouteToolKind.CREATE -> createMode.summary
-                RouteToolKind.MODIFY -> modifyMode.summary
+                RouteToolKind.CREATE -> createMode.summaryRes
+                RouteToolKind.MODIFY -> modifyMode.summaryRes
             }
 
     val requiresSingleActiveGpx: Boolean
@@ -323,18 +329,21 @@ internal fun RouteToolOptions.seedCoordinateEndpoints(seed: LatLong?): RouteTool
     return seeded
 }
 
-internal fun RouteToolOptions.coordinateEndpointValidationMessage(currentLocation: LatLong?): String? {
+internal fun RouteToolOptions.coordinateEndpointValidationMessage(
+    currentLocation: LatLong?,
+    resources: Resources,
+): String? {
     val endpointMessage =
         when {
             startEndpointSource == RouteEndpointSource.CURRENT_LOCATION &&
                 destinationEndpointSource == RouteEndpointSource.CURRENT_LOCATION ->
-                "Choose coordinates for start or destination."
+                resources.getString(R.string.gpx_choose_coordinates_for_start_or_destination)
             startEndpointSource == RouteEndpointSource.COORDINATES &&
                 !isValidRouteToolCoordinate(startCoordinateLatitude, startCoordinateLongitude) ->
-                "Enter valid start coordinates."
+                resources.getString(R.string.gpx_enter_valid_start_coordinates)
             destinationEndpointSource == RouteEndpointSource.COORDINATES &&
                 !isValidRouteToolCoordinate(destinationCoordinateLatitude, destinationCoordinateLongitude) ->
-                "Enter valid destination coordinates."
+                resources.getString(R.string.gpx_enter_valid_destination_coordinates)
             else -> null
         }
     if (endpointMessage != null) return endpointMessage
@@ -353,37 +362,41 @@ internal fun RouteToolOptions.coordinateEndpointValidationMessage(currentLocatio
             },
         )
     return if (endpoints.size == 2 && sameRouteToolEndpointLocation(endpoints[0], endpoints[1])) {
-        "Start and destination must be different."
+        resources.getString(R.string.gpx_start_and_destination_must_be_different)
     } else {
         null
     }
 }
 
-internal fun RouteToolOptions.resolveCoordinateEndpoints(currentLocation: LatLong?): RouteToolResolvedEndpoints {
-    require(coordinateEndpointValidationMessage(currentLocation) == null) {
-        coordinateEndpointValidationMessage(currentLocation) ?: "Enter valid route endpoints."
+internal fun RouteToolOptions.resolveCoordinateEndpoints(
+    currentLocation: LatLong?,
+    resources: Resources,
+): RouteToolResolvedEndpoints {
+    require(coordinateEndpointValidationMessage(currentLocation, resources = resources) == null) {
+        coordinateEndpointValidationMessage(currentLocation, resources = resources)
+            ?: resources.getString(R.string.gpx_enter_valid_route_endpoints)
     }
     return RouteToolResolvedEndpoints(
         origin =
             when (startEndpointSource) {
                 RouteEndpointSource.CURRENT_LOCATION ->
                     requireNotNull(currentLocation) {
-                        "Wait for a fresh GPS fix before using current location."
+                        resources.getString(R.string.gpx_wait_for_a_fresh_gps_fix_before_using_current_location)
                     }
                 RouteEndpointSource.COORDINATES ->
                     requireNotNull(routeToolLatLong(startCoordinateLatitude, startCoordinateLongitude)) {
-                        "Enter valid start coordinates."
+                        resources.getString(R.string.gpx_enter_valid_start_coordinates)
                     }
             },
         destination =
             when (destinationEndpointSource) {
                 RouteEndpointSource.CURRENT_LOCATION ->
                     requireNotNull(currentLocation) {
-                        "Wait for a fresh GPS fix before using current location."
+                        resources.getString(R.string.gpx_wait_for_a_fresh_gps_fix_before_using_current_location)
                     }
                 RouteEndpointSource.COORDINATES ->
                     requireNotNull(routeToolLatLong(destinationCoordinateLatitude, destinationCoordinateLongitude)) {
-                        "Enter valid destination coordinates."
+                        resources.getString(R.string.gpx_enter_valid_destination_coordinates)
                     }
             },
     )
@@ -454,14 +467,14 @@ internal fun routeToolMultiPointDraftConnectorPoints(
 }
 
 internal enum class RouteSelectionTarget(
-    val title: String,
+    @StringRes val titleRes: Int,
 ) {
-    RESHAPE_POINT(title = "route point"),
-    TRACK_INSERTION(title = "route"),
-    DESTINATION(title = "destination"),
-    POINT_A(title = "point A"),
-    POINT_B(title = "point B"),
-    LOOP_CENTER(title = "loop center"),
+    RESHAPE_POINT(titleRes = R.string.gpx_route_point),
+    TRACK_INSERTION(titleRes = R.string.gpx_route_2),
+    DESTINATION(titleRes = R.string.gpx_destination),
+    POINT_A(titleRes = R.string.gpx_point_a),
+    POINT_B(titleRes = R.string.gpx_point_b),
+    LOOP_CENTER(titleRes = R.string.gpx_loop_center),
 }
 
 internal data class RouteToolSession(
@@ -554,64 +567,64 @@ internal data class RouteToolSession(
     val isComplete: Boolean
         get() = !isMultiPointCreate && currentSelectionTarget == null
 
-    val modeTitle: String
+    @get:StringRes val modeTitleRes: Int
         get() =
             when (options.toolKind) {
-                RouteToolKind.CREATE -> options.createMode.title
-                RouteToolKind.MODIFY -> options.modifyMode.title
+                RouteToolKind.CREATE -> options.createMode.titleRes
+                RouteToolKind.MODIFY -> options.modifyMode.titleRes
             }
 
-    val toolTitle: String
-        get() = options.toolKind.title
+    @get:StringRes val toolTitleRes: Int
+        get() = options.toolKind.titleRes
 
-    val instructionText: String
+    @get:StringRes val instructionTextRes: Int
         get() =
             when (currentSelectionTarget) {
-                RouteSelectionTarget.RESHAPE_POINT -> "Pick point to move"
+                RouteSelectionTarget.RESHAPE_POINT -> R.string.gpx_pick_point_to_move
                 RouteSelectionTarget.DESTINATION ->
                     when {
-                        isMultiPointCreate && chainPoints.isEmpty() -> "Place start, then check."
-                        isMultiPointCreate && chainPoints.size == 1 -> "Place next point, then check."
-                        isMultiPointCreate -> "Add point, then check."
+                        isMultiPointCreate && chainPoints.isEmpty() -> R.string.gpx_place_start_then_check
+                        isMultiPointCreate && chainPoints.size == 1 -> R.string.gpx_place_next_point_then_check
+                        isMultiPointCreate -> R.string.gpx_add_point_then_check
                         options.toolKind == RouteToolKind.MODIFY &&
                             options.modifyMode == RouteModifyMode.RESHAPE_ROUTE -> {
-                            "Pick new point"
+                            R.string.gpx_pick_new_point
                         }
 
                         else -> {
-                            "Place destination, then check."
+                            R.string.gpx_place_destination_then_check
                         }
                     }
-                RouteSelectionTarget.TRACK_INSERTION -> "Tap the GPX."
+                RouteSelectionTarget.TRACK_INSERTION -> R.string.gpx_tap_the_gpx
                 RouteSelectionTarget.POINT_A ->
                     if (
                         options.toolKind == RouteToolKind.CREATE &&
                         options.createMode == RouteCreateMode.LOOP_AROUND_HERE
                     ) {
-                        "Place start, then check."
+                        R.string.gpx_place_start_then_check
                     } else if (options.toolKind == RouteToolKind.CREATE) {
-                        "Place start, then check."
+                        R.string.gpx_place_start_then_check
                     } else if (
                         options.toolKind == RouteToolKind.MODIFY &&
                         options.modifyMode == RouteModifyMode.TRIM_START_TO_HERE
                     ) {
-                        "Pick new start"
+                        R.string.gpx_pick_new_start
                     } else {
-                        "Place A, then check."
+                        R.string.gpx_place_a_then_check
                     }
                 RouteSelectionTarget.POINT_B ->
                     if (options.toolKind == RouteToolKind.CREATE) {
-                        "Place end, then check."
+                        R.string.gpx_place_end_then_check
                     } else if (
                         options.toolKind == RouteToolKind.MODIFY &&
                         options.modifyMode == RouteModifyMode.TRIM_END_FROM_HERE
                     ) {
-                        "Pick new end"
+                        R.string.gpx_pick_new_end
                     } else {
-                        "Place B, then check."
+                        R.string.gpx_place_b_then_check
                     }
-                RouteSelectionTarget.LOOP_CENTER -> "Place loop center, then check."
-                null -> "Ready."
+                RouteSelectionTarget.LOOP_CENTER -> R.string.gpx_place_loop_center_then_check
+                null -> R.string.gpx_ready
             }
 
     fun captureSelection(point: LatLong): RouteToolSession =
@@ -726,12 +739,15 @@ internal fun routeToolTrackEndPosition(): TrackPosition =
 
 internal fun LatLong.toRoutePointLabel(): String = String.format("%.5f, %.5f", latitude, longitude)
 
-internal fun formatLoopDuration(minutes: Int): String {
+internal fun formatLoopDuration(
+    minutes: Int,
+    resources: Resources,
+): String {
     val hours = minutes / 60
     val mins = minutes % 60
     return when {
-        hours <= 0 -> "$mins min"
-        mins == 0 -> "$hours h"
-        else -> "$hours h $mins"
+        hours <= 0 -> resources.getString(R.string.gpx_min, mins)
+        mins == 0 -> resources.getString(R.string.gpx_h, hours)
+        else -> resources.getString(R.string.gpx_h_2, hours, mins)
     }
 }

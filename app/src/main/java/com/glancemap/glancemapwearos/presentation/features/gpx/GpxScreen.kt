@@ -4,6 +4,7 @@ package com.glancemap.glancemapwearos.presentation.features.gpx
 
 import android.os.SystemClock
 import android.view.ViewConfiguration
+import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,7 +48,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -76,6 +80,7 @@ import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.R
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.moveLabelAfter
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.recordingRecapMetricsForSnapshot
+import com.glancemap.glancemapwearos.presentation.features.routetools.routeToolFailureMessage
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
@@ -100,31 +105,31 @@ internal fun CoroutineScope.launchGpxGuidanceCompletion(
 
 private enum class GpxListMode(
     val storedPage: String,
-    val headerTitle: String,
+    @StringRes val headerTitleRes: Int,
     val icon: ImageVector,
-    val toggleContentDescription: String,
-    val emptyStateMessage: String,
+    @StringRes val toggleContentDescriptionRes: Int,
+    @StringRes val emptyStateMessageRes: Int,
 ) {
     TRACKS(
         storedPage = SettingsRepository.GPX_LIST_PAGE_TRACKS,
-        headerTitle = "GPX",
+        headerTitleRes = R.string.common_gpx,
         icon = Icons.Default.Route,
-        toggleContentDescription = "Show hike activities",
-        emptyStateMessage = "Send GPX files from the companion phone app.",
+        toggleContentDescriptionRes = R.string.gpx_show_hike_activities,
+        emptyStateMessageRes = R.string.gpx_send_gpx_files_from_the_companion_phone_app,
     ),
     HIKE_ACTIVITIES(
         storedPage = SettingsRepository.GPX_LIST_PAGE_HIKE_ACTIVITIES,
-        headerTitle = "Hike",
+        headerTitleRes = R.string.common_hike,
         icon = Icons.AutoMirrored.Filled.DirectionsRun,
-        toggleContentDescription = "Show bike activities",
-        emptyStateMessage = "Hike recordings will appear here.",
+        toggleContentDescriptionRes = R.string.gpx_show_bike_activities,
+        emptyStateMessageRes = R.string.gpx_hike_recordings_will_appear_here,
     ),
     BIKE_ACTIVITIES(
         storedPage = SettingsRepository.GPX_LIST_PAGE_BIKE_ACTIVITIES,
-        headerTitle = "Bike",
+        headerTitleRes = R.string.common_bike,
         icon = Icons.AutoMirrored.Filled.DirectionsBike,
-        toggleContentDescription = "Show GPX tracks",
-        emptyStateMessage = "Bike recordings will appear here.",
+        toggleContentDescriptionRes = R.string.gpx_show_gpx_tracks,
+        emptyStateMessageRes = R.string.gpx_bike_recordings_will_appear_here,
     ),
     ;
 
@@ -152,6 +157,7 @@ fun GpxScreen(
     recordingActiveOrSaving: Boolean = false,
     onStartRecording: () -> Unit = {},
 ) {
+    val resources = LocalResources.current
     val guidanceCompletionScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val screenSize = rememberWearScreenSize()
@@ -437,7 +443,7 @@ fun GpxScreen(
                         }
                         val warning = startResult.warningMessage
                         if (warning != null) {
-                            guidanceMessageTitle = "BRouter unavailable"
+                            guidanceMessageTitle = resources.getString(R.string.gpx_brouter_unavailable)
                             guidanceMessageBody = warning
                             navigateAfterGuidanceMessage = true
                         } else {
@@ -447,10 +453,10 @@ fun GpxScreen(
                             }
                         }
                     }.onFailure { error ->
-                        guidanceMessageTitle = "Guidance failed"
+                        guidanceMessageTitle = resources.getString(R.string.gpx_guidance_failed)
                         guidanceMessageBody =
-                            error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "The GPX could not be started for guidance."
+                            error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                                ?: resources.getString(R.string.gpx_the_gpx_could_not_be_started_for_guidance)
                         navigateAfterGuidanceMessage = false
                     }
             }
@@ -470,8 +476,8 @@ fun GpxScreen(
     ScreenScaffold(scrollState = listState) {
         DeleteConfirmationDialog(
             visible = showDeleteDialog,
-            title = "Delete Track?",
-            message = "Delete '${fileToDelete?.displayTitle.orEmpty()}'?",
+            title = stringResource(R.string.gpx_delete_track),
+            message = stringResource(R.string.gpx_delete, fileToDelete?.displayTitle.orEmpty()),
             messageTopPadding = dialogTextTopPadding,
             messageBottomPadding = dialogTextBottomPadding,
             onConfirm = {
@@ -490,7 +496,7 @@ fun GpxScreen(
 
         RenameValueDialog(
             visible = showRenameDialog && fileToRename != null,
-            title = "Rename GPX",
+            title = stringResource(R.string.gpx_rename_gpx),
             initialValue = fileToRename?.displayTitle.orEmpty(),
             isSaving = renameInProgress,
             error = renameError,
@@ -519,7 +525,7 @@ fun GpxScreen(
                             renameError = null
                         }.onFailure { error ->
                             renameError = error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "Failed to rename the GPX."
+                                ?: resources.getString(R.string.gpx_failed_to_rename_the_gpx)
                         }
                 }
             },
@@ -541,7 +547,7 @@ fun GpxScreen(
 
         WearHelpDialog(
             visible = guidanceMessageBody != null,
-            title = guidanceMessageTitle ?: "GPX guidance",
+            title = guidanceMessageTitle ?: stringResource(R.string.gpx_gpx_guidance),
             onDismiss = {
                 guidanceMessageTitle = null
                 guidanceMessageBody = null
@@ -565,7 +571,7 @@ fun GpxScreen(
 
         FeatureListScaffold {
             FeatureListHeader(
-                title = listMode.headerTitle,
+                title = stringResource(listMode.headerTitleRes),
                 titleStyle =
                     if (adaptive.isCompact) {
                         MaterialTheme.typography.titleSmall
@@ -578,10 +584,15 @@ fun GpxScreen(
                 verticalSpacing = headerVerticalSpacing,
                 statusText =
                     when {
-                        isSendMode && selectedSendPaths.isEmpty() -> "Select GPX"
-                        isSendMode -> "${selectedSendPaths.size} selected"
-                        isRenameMode -> "Rename mode"
-                        isDeleteMode -> "Delete mode"
+                        isSendMode && selectedSendPaths.isEmpty() -> stringResource(R.string.gpx_select_gpx)
+                        isSendMode ->
+                            pluralStringResource(
+                                R.plurals.download_selected_count,
+                                selectedSendPaths.size,
+                                selectedSendPaths.size,
+                            )
+                        isRenameMode -> stringResource(R.string.gpx_rename_mode)
+                        isDeleteMode -> stringResource(R.string.download_delete_mode)
                         else -> null
                     },
                 statusColor =
@@ -616,7 +627,7 @@ fun GpxScreen(
                         Icon(
                             imageVector =
                                 listMode.icon,
-                            contentDescription = listMode.toggleContentDescription,
+                            contentDescription = stringResource(listMode.toggleContentDescriptionRes),
                             modifier = Modifier.size(activityToggleIconSize),
                         )
                     }
@@ -633,7 +644,7 @@ fun GpxScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "GPX actions help",
+                        contentDescription = stringResource(R.string.gpx_gpx_actions_help),
                         modifier = Modifier.size(headerActionIconSize),
                     )
                 }
@@ -668,13 +679,13 @@ fun GpxScreen(
                         if (isSendMode) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Exit send mode",
+                                contentDescription = stringResource(R.string.gpx_exit_send_mode),
                                 modifier = Modifier.size(headerActionIconSize),
                             )
                         } else {
                             Icon(
                                 painter = painterResource(R.drawable.ic_mobile_arrow_right),
-                                contentDescription = "Send GPX to phone",
+                                contentDescription = stringResource(R.string.gpx_send_gpx_to_phone),
                                 modifier = Modifier.size(headerActionIconSize),
                             )
                         }
@@ -706,7 +717,7 @@ fun GpxScreen(
                         item {
                             Text(
                                 text =
-                                    listMode.emptyStateMessage,
+                                    stringResource(listMode.emptyStateMessageRes),
                                 modifier = Modifier.padding(emptyStatePadding),
                                 textAlign = TextAlign.Center,
                             )
@@ -817,9 +828,9 @@ fun GpxScreen(
                                 imageVector = if (isRenameMode) Icons.Default.Close else Icons.Default.Edit,
                                 contentDescription =
                                     if (isRenameMode) {
-                                        "Exit rename mode"
+                                        stringResource(R.string.gpx_exit_rename_mode)
                                     } else {
-                                        "Enter rename mode"
+                                        stringResource(R.string.gpx_enter_rename_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -860,10 +871,10 @@ fun GpxScreen(
                         if (isSendMode) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_mobile_arrow_right),
-                                contentDescription = "Send selected GPX to phone",
+                                contentDescription = stringResource(R.string.gpx_send_selected_gpx_to_phone),
                             )
                         } else {
-                            Icon(Icons.Default.Settings, contentDescription = "GPX Settings")
+                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.gpx_gpx_settings))
                         }
                     }
                     if (gpxFiles.isNotEmpty()) {
@@ -897,9 +908,9 @@ fun GpxScreen(
                                 imageVector = if (isDeleteMode) Icons.Default.Close else Icons.Default.Delete,
                                 contentDescription =
                                     if (isDeleteMode) {
-                                        "Exit delete mode"
+                                        stringResource(R.string.download_exit_delete_mode)
                                     } else {
-                                        "Enter delete mode"
+                                        stringResource(R.string.download_enter_delete_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -917,6 +928,7 @@ private fun ActivityDetailsDialog(
     isMetric: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     if (gpxFile == null) return
     val (distanceValue, distanceUnit) = gpxFile.formattedDistance(isMetric)
     val (elevationValue, elevationUnit) = gpxFile.formattedElevation(isMetric)
@@ -936,7 +948,7 @@ private fun ActivityDetailsDialog(
         }
     WearInfoDialog(
         visible = true,
-        title = "Activity details",
+        title = stringResource(R.string.gpx_activity_details),
         onDismiss = onDismiss,
         backgroundColor = Color.Black,
     ) {
@@ -972,16 +984,16 @@ internal fun activityDetailsMetrics(
     val summary = gpxFile.summaryForGpxDetails()
     if (summary == null) {
         return listOf(
-            recordingRecapMetric("Dist", fallbackDistanceValue, fallbackDistanceUnit),
-            recordingRecapMetric("Time", gpxFile.formattedActivityDurationClock()),
-            recordingRecapMetric("Elev +", fallbackElevationValue, fallbackElevationUnit),
-            recordingRecapMetric("Elev -", fallbackElevationLossValue, fallbackElevationLossUnit),
+            recordingRecapMetric(R.string.gpx_dist, fallbackDistanceValue, fallbackDistanceUnit),
+            recordingRecapMetric(R.string.common_time, gpxFile.formattedActivityDurationClock()),
+            recordingRecapMetric(R.string.recording_elev, fallbackElevationValue, fallbackElevationUnit),
+            recordingRecapMetric(R.string.recording_elev_2, fallbackElevationLossValue, fallbackElevationLossUnit),
         )
     }
 
     return recordingRecapMetricsForSnapshot(summary, isMetric)
-        .moveLabelAfter(label = "HR (Avg)", afterLabel = "Elev -")
-        .moveLabelAfter(label = "Max HR", afterLabel = "HR (Avg)")
+        .moveLabelAfter(label = R.string.gpx_hr_avg, afterLabel = R.string.recording_elev_2)
+        .moveLabelAfter(label = R.string.gpx_max_hr, afterLabel = R.string.gpx_hr_avg)
 }
 
 private const val GPX_HELP_PREFS = "gpx_screen_help_prefs"
@@ -1021,6 +1033,7 @@ private fun GpxTrackItem(
     activityActionButtonSize: Dp,
     activityActionHitTargetSize: Dp,
 ) {
+    val resources = LocalResources.current
     val interactionSource = remember { MutableInteractionSource() }
     val longPressHandler by rememberUpdatedState(onLongPress)
     val longPressTimeoutMs = remember { ViewConfiguration.getLongPressTimeout().toLong() }
@@ -1102,10 +1115,11 @@ private fun GpxTrackItem(
             secondaryLabel = {
                 val (distValue, distUnit) = gpxFile.formattedDistance(isMetric)
                 val (elevValue, elevUnit) = gpxFile.formattedElevation(isMetric)
-                val eta = gpxFile.formattedEtaShort()
+                val eta = gpxFile.formattedEtaShort(resources = resources)
                 val exportMessage = exportState?.message
                 Text(
-                    text = exportMessage ?: "$distValue $distUnit · D+ $elevValue $elevUnit · $eta",
+                    text =
+                        exportMessage ?: stringResource(R.string.gpx_d, distValue, distUnit, elevValue, elevUnit, eta),
                     modifier = Modifier.basicMarquee(),
                     maxLines = 1,
                     overflow = TextOverflow.Visible,
@@ -1133,11 +1147,11 @@ private fun GpxTrackItem(
                     },
             ) {
                 if (isSendSelected) {
-                    Icon(Icons.Default.Check, contentDescription = "Selected for send")
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.gpx_selected_for_send))
                 } else {
                     Icon(
                         painter = painterResource(R.drawable.ic_mobile_arrow_right),
-                        contentDescription = "Select for send",
+                        contentDescription = stringResource(R.string.gpx_select_for_send),
                     )
                 }
             }
@@ -1148,7 +1162,7 @@ private fun GpxTrackItem(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "Rename")
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.gpx_rename))
             }
         } else if (showDelete) {
             CompactIconHitTargetButton(
@@ -1157,7 +1171,7 @@ private fun GpxTrackItem(
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
             ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
             }
         } else if (showGuidance) {
             if (gpxFile.isActivity) {
@@ -1174,7 +1188,7 @@ private fun GpxTrackItem(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Analytics,
-                            contentDescription = "Activity details",
+                            contentDescription = stringResource(R.string.gpx_activity_details),
                             modifier = Modifier.size(15.dp),
                         )
                     }
@@ -1245,9 +1259,9 @@ private fun GuidanceActionButton(
                 },
             contentDescription =
                 when {
-                    isGuidanceStarting -> "Starting GPX guidance"
-                    isGuidanceActive -> "Stop GPX guidance"
-                    else -> "Start GPX guidance"
+                    isGuidanceStarting -> stringResource(R.string.gpx_starting_gpx_guidance)
+                    isGuidanceActive -> stringResource(R.string.gpx_stop_gpx_guidance)
+                    else -> stringResource(R.string.gpx_start_gpx_guidance)
                 },
             modifier = iconSize?.let { Modifier.size(it) } ?: Modifier,
         )

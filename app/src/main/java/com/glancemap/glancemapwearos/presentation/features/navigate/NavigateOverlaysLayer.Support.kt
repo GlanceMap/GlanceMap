@@ -58,12 +58,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +75,7 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
+import com.glancemap.glancemapwearos.presentation.ui.superscriptResourceText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import org.mapsforge.core.model.LatLong
@@ -186,7 +184,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             }
             Icon(
                 imageVector = Icons.Default.Landscape,
-                contentDescription = "Slope rendering in progress",
+                contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
                 modifier = Modifier.size(slopeIndicatorIconSize),
                 tint = Color(0xFFFFB300),
             )
@@ -243,12 +241,12 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_live_elevation_altitude),
-                    contentDescription = "live_elevation",
+                    contentDescription = stringResource(R.string.navigate_live_elevation),
                     modifier = Modifier.size(liveMetricIconSize),
                     tint = Color(0xFF34D399),
                 )
                 Text(
-                    text = " ${liveElevationLabel ?: "--"}",
+                    text = stringResource(R.string.navigation_spaced_elevation, liveElevationLabel ?: "--"),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = liveMetricFontSize,
@@ -274,7 +272,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Adjust,
-                        contentDescription = "live_elevation_center",
+                        contentDescription = stringResource(R.string.navigate_live_elevation_center),
                         modifier = Modifier.size(9.dp),
                         tint = Color(0xFF8B5CF6),
                     )
@@ -295,7 +293,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_live_distance_step_out),
-                    contentDescription = "live_distance",
+                    contentDescription = stringResource(R.string.navigate_live_distance),
                     modifier =
                         Modifier
                             .size(liveMetricIconSize)
@@ -542,7 +540,14 @@ internal fun BoxScope.PoiTapMessageOverlay(
             ) {
                 if (poiTapCanExpand) {
                     Text(
-                        text = if (poiTapExpanded) "Less" else "More",
+                        text =
+                            if (poiTapExpanded) {
+                                stringResource(
+                                    R.string.navigate_less,
+                                )
+                            } else {
+                                stringResource(R.string.navigate_more)
+                            },
                         modifier =
                             Modifier
                                 .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(10.dp))
@@ -578,7 +583,7 @@ internal fun BoxScope.PoiTapMessageOverlay(
                             tint = Color.White,
                         )
                         Text(
-                            text = "To here",
+                            text = stringResource(R.string.navigate_to_here),
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = popupPrimaryActionFontSize,
@@ -597,7 +602,7 @@ internal fun BoxScope.PoiTapMessageOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close POI details",
+                        contentDescription = stringResource(R.string.navigate_close_poi_details),
                         modifier = Modifier.size(popupCloseIconSize),
                     )
                 }
@@ -674,18 +679,7 @@ internal fun BoxScope.GpxInspectionBSelectionPromptOverlay(
         ) {
             Text(
                 text =
-                    buildAnnotatedString {
-                        append("Select 2")
-                        withStyle(
-                            SpanStyle(
-                                baselineShift = BaselineShift.Superscript,
-                                fontSize = textSize * 0.72f,
-                            ),
-                        ) {
-                            append("nd")
-                        }
-                        append(" point")
-                    },
+                    superscriptResourceText(R.string.navigation_select_second_point_label, textSize * 0.72f),
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = textSize,
@@ -703,7 +697,7 @@ internal fun BoxScope.GpxInspectionBSelectionPromptOverlay(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Cancel point B selection",
+                    contentDescription = stringResource(R.string.navigate_cancel_point_b_selection),
                     modifier = Modifier.size(closeIconSize),
                 )
             }
@@ -866,7 +860,7 @@ internal fun BoxScope.NavModeButtonOverlay(
             } else {
                 Icon(
                     imageVector = navIcon,
-                    contentDescription = "Nav mode",
+                    contentDescription = stringResource(R.string.navigate_nav_mode),
                     modifier = Modifier.size(navButtonIconSize),
                     tint = navTint,
                 )
@@ -956,7 +950,7 @@ internal fun NorthUpLockedModeIcon(
             )
         }
         Text(
-            text = "N",
+            text = stringResource(R.string.navigate_n),
             color = tint.copy(alpha = 0.98f),
             fontWeight = FontWeight.ExtraBold,
             fontSize = 10.sp,
@@ -1081,7 +1075,7 @@ internal fun BoxScope.NorthIndicatorOverlay(
             ) {
                 Icon(
                     imageVector = Icons.Default.Navigation,
-                    contentDescription = "North",
+                    contentDescription = stringResource(R.string.navigate_north),
                     modifier = Modifier.size(indicatorIconSize),
                     tint = Color.Red,
                 )

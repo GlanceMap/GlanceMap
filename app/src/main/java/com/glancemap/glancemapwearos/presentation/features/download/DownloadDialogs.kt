@@ -6,6 +6,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -29,7 +30,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,6 +41,7 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearFormDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
@@ -62,7 +66,7 @@ internal fun AreaSearchDialog(
 
     WearFormDialog(
         visible = visible,
-        title = "Search area",
+        title = stringResource(R.string.download_search_area),
         onDismiss = onDismiss,
     ) { formTokens ->
         BasicTextField(
@@ -85,7 +89,7 @@ internal fun AreaSearchDialog(
             decorationBox = { innerTextField ->
                 if (draftQuery.isBlank()) {
                     Text(
-                        text = "France, Alps...",
+                        text = stringResource(R.string.download_france_alps),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.45f),
                         textAlign = TextAlign.Center,
@@ -102,7 +106,7 @@ internal fun AreaSearchDialog(
                 formTokens.controlModifier
                     .heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text("Apply")
+            Text(stringResource(R.string.download_apply))
         }
 
         Button(
@@ -116,7 +120,7 @@ internal fun AreaSearchDialog(
                     contentColor = Color.White,
                 ),
         ) {
-            Text("Cancel")
+            Text(stringResource(R.string.common_cancel))
         }
     }
 }
@@ -130,33 +134,36 @@ internal fun OamAttributionDialog(
 
     WearInfoDialog(
         visible = visible,
-        title = "Download",
+        title = stringResource(R.string.common_download),
         onDismiss = onDismiss,
     ) {
         item {
             Text(
-                text = "Connect the watch to Wi-Fi and keep it on the charger.",
+                text = stringResource(R.string.download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         item {
             Text(
-                text = "Thank you to OpenAndroMaps for providing the offline maps and POIs.",
+                text =
+                    stringResource(
+                        R.string.download_thank_you_to_openandromaps_for_providing_the_offline_maps_and_pois,
+                    ),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         item {
             Text(
-                text = "Routing enables offline route calculation.",
+                text = stringResource(R.string.download_routing_enables_offline_route_calculation),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         item {
             Text(
-                text = "Elevation adds altitude, slope, and terrain shading.",
+                text = stringResource(R.string.download_elevation_adds_altitude_slope_and_terrain_shading),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -172,7 +179,7 @@ internal fun OamAttributionDialog(
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
                 )
-                Text("Use update button to refresh bundles.")
+                Text(stringResource(R.string.download_use_update_button_to_refresh_bundles))
             }
         }
     }
@@ -188,12 +195,12 @@ internal fun DownloadNetworkWarningDialog(
 
     WearActionDialog(
         visible = true,
-        title = "Wi-Fi recommended",
+        title = stringResource(R.string.download_wi_fi_recommended),
         message = message,
-        confirmText = "Continue",
+        confirmText = stringResource(R.string.common_continue),
         onConfirm = onContinue,
         onDismissRequest = onDismiss,
-        dismissText = "Cancel",
+        dismissText = stringResource(R.string.common_cancel),
     )
 }
 
@@ -204,6 +211,7 @@ internal fun RefreshBundleDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     if (check == null) return
 
     val repairNeeded = check.status == OamBundleUpdateStatus.REPAIR_NEEDED
@@ -214,18 +222,25 @@ internal fun RefreshBundleDialog(
         visible = true,
         title =
             when {
-                repairNeeded -> "Repair needed"
-                updateAvailable -> "Update available"
-                upToDate && hasSelectedAdditions -> "Components available"
-                upToDate -> "Already up to date"
-                check.checkedFileCount == 0 -> "Update info missing"
-                else -> "Check incomplete"
+                repairNeeded -> stringResource(R.string.download_repair_needed)
+                updateAvailable -> stringResource(R.string.download_update_available)
+                upToDate && hasSelectedAdditions -> stringResource(R.string.download_components_available)
+                upToDate -> stringResource(R.string.download_already_up_to_date)
+                check.checkedFileCount == 0 -> stringResource(R.string.download_update_info_missing)
+                else -> stringResource(R.string.download_check_incomplete)
             },
-        message = refreshBundleDialogText(check, selection),
-        confirmText = if (upToDate) "Add selected" else "Refresh",
+        message = refreshBundleDialogText(check, selection, resources = resources),
+        confirmText =
+            if (upToDate) {
+                stringResource(
+                    R.string.download_add_selected,
+                )
+            } else {
+                stringResource(R.string.download_refresh)
+            },
         onConfirm = if (upToDate && !hasSelectedAdditions) onDismiss else onConfirm,
         onDismissRequest = onDismiss,
-        dismissText = if (upToDate && !hasSelectedAdditions) null else "Cancel",
+        dismissText = if (upToDate && !hasSelectedAdditions) null else stringResource(R.string.common_cancel),
     )
 }
 
@@ -235,6 +250,7 @@ internal fun RefreshBundleSummaryDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     if (summary == null) return
 
     val refreshCount = summary.bundlesToRefresh.size
@@ -245,126 +261,222 @@ internal fun RefreshBundleSummaryDialog(
         visible = true,
         title =
             when {
-                summary.repairNeededCount > 0 -> "Repair bundles?"
-                hasRemoteRefresh -> "Refresh bundles?"
-                hasSelectedAdditions -> "Add selected components?"
-                summary.unknownCount > 0 -> "Check incomplete"
-                else -> "All up to date"
+                summary.repairNeededCount > 0 -> stringResource(R.string.download_repair_bundles)
+                hasRemoteRefresh -> stringResource(R.string.download_refresh_bundles)
+                hasSelectedAdditions -> stringResource(R.string.download_add_selected_components_title)
+                summary.unknownCount > 0 -> stringResource(R.string.download_check_incomplete)
+                else -> stringResource(R.string.download_all_up_to_date)
             },
-        message = refreshSummaryDialogText(summary),
+        message = refreshSummaryDialogText(summary, resources = resources),
         confirmText =
             when {
-                hasRemoteRefresh -> "Refresh $refreshCount"
-                hasSelectedAdditions -> "Add $refreshCount"
-                else -> "OK"
+                hasRemoteRefresh -> stringResource(R.string.download_refresh_2, refreshCount)
+                hasSelectedAdditions -> stringResource(R.string.download_add, refreshCount)
+                else -> stringResource(R.string.common_ok)
             },
         onConfirm = if (hasRefreshWork) onConfirm else onDismiss,
         onDismissRequest = onDismiss,
-        dismissText = if (hasRefreshWork) "Cancel" else null,
+        dismissText = if (hasRefreshWork) stringResource(R.string.common_cancel) else null,
     )
 }
 
 private fun refreshBundleDialogText(
     check: OamBundleUpdateCheck,
     selection: OamDownloadSelection,
+    resources: Resources,
 ): String =
     when (check.status) {
         OamBundleUpdateStatus.REPAIR_NEEDED ->
             buildString {
-                append("Some files in ${check.bundle.areaLabel} are missing or damaged.")
+                append(
+                    resources.getString(R.string.download_some_files_in_are_missing_or_damaged, check.bundle.areaLabel),
+                )
                 if (check.repairFileNames.isNotEmpty()) {
-                    append("\n\nRepair: ")
-                    append(check.repairFileNames.take(MAX_DIALOG_FILE_NAMES).joinToString(", "))
-                    if (check.repairFileNames.size > MAX_DIALOG_FILE_NAMES) {
-                        append(" +")
-                        append(check.repairFileNames.size - MAX_DIALOG_FILE_NAMES)
-                    }
+                    append(
+                        resources.getString(
+                            R.string.download_repair_files,
+                            dialogFileNames(check.repairFileNames, resources),
+                        ),
+                    )
                 }
-                append("\n\nRefresh will download only the affected parts.")
-                appendSelectedAdditions(check, selection)
+                append(resources.getString(R.string.download_refresh_will_download_only_the_affected_parts))
+                appendSelectedAdditions(check, selection, resources = resources)
             }
         OamBundleUpdateStatus.UPDATE_AVAILABLE ->
             buildString {
-                append(check.bundle.areaLabel)
-                append(" has newer files available.")
+                append(resources.getString(R.string.download_newer_files_available, check.bundle.areaLabel))
                 if (check.changedFileNames.isNotEmpty()) {
-                    append("\n\nChanged: ")
-                    append(check.changedFileNames.take(MAX_DIALOG_FILE_NAMES).joinToString(", "))
-                    if (check.changedFileNames.size > MAX_DIALOG_FILE_NAMES) {
-                        append(" +")
-                        append(check.changedFileNames.size - MAX_DIALOG_FILE_NAMES)
-                    }
+                    append(
+                        resources.getString(
+                            R.string.download_changed_files,
+                            dialogFileNames(check.changedFileNames, resources),
+                        ),
+                    )
                 }
-                append("\n\nExisting files will be replaced after the download completes.")
-                appendSelectedAdditions(check, selection)
+                append(
+                    resources.getString(R.string.download_existing_files_will_be_replaced_after_the_download_completes),
+                )
+                appendSelectedAdditions(check, selection, resources = resources)
             }
         OamBundleUpdateStatus.UNKNOWN ->
             if (check.checkedFileCount == 0) {
-                "${check.bundle.areaLabel} has no saved update info yet.\n\n" +
-                    "Refresh once to enable future checks."
+                resources.getString(
+                    R.string.download_has_no_saved_update_info_yet_refresh_once_to_enable_future_checks,
+                    check.bundle.areaLabel,
+                )
             } else {
-                "Some files for ${check.bundle.areaLabel} could not be checked.\n\n" +
-                    "Refresh anyway?"
+                resources.getString(
+                    R.string.download_some_files_for_could_not_be_checked_refresh_anyway,
+                    check.bundle.areaLabel,
+                )
             }
         OamBundleUpdateStatus.UP_TO_DATE ->
             if (check.hasSelectedAdditions(selection)) {
-                "${check.bundle.areaLabel} is up to date, but selected settings include missing components: " +
-                    "${check.bundle.missingComponentsFor(selection).label()}.\n\nAdd them without replacing " +
-                    "healthy existing files?"
+                resources.getString(
+                    R.string.download_is_up_to_date_but_selected_settings_include_missing_components_add_the,
+                    check.bundle.areaLabel,
+                    check.bundle.missingComponentsFor(selection).label(resources = resources),
+                )
             } else {
-                "${check.bundle.areaLabel} is already up to date."
+                resources.getString(R.string.download_is_already_up_to_date, check.bundle.areaLabel)
             }
     }
 
 private fun StringBuilder.appendSelectedAdditions(
     check: OamBundleUpdateCheck,
     selection: OamDownloadSelection,
+    resources: Resources,
 ) {
     if (check.hasSelectedAdditions(selection)) {
-        append("\n\nSelected settings will also add: ")
-        append(check.bundle.missingComponentsFor(selection).label())
-        append(".")
+        append(
+            resources.getString(
+                R.string.download_selected_additions,
+                check.bundle.missingComponentsFor(selection).label(resources = resources),
+            ),
+        )
     }
 }
 
-private fun refreshSummaryDialogText(summary: OamBundleRefreshSummary): String =
+private fun refreshSummaryDialogText(
+    summary: OamBundleRefreshSummary,
+    resources: Resources,
+): String =
     when {
         summary.bundlesToRefresh.isNotEmpty() ->
             buildString {
-                append("${summary.totalCount} checked")
+                append(resources.getQuantityString(R.plurals.download_checked, summary.totalCount, summary.totalCount))
                 if (summary.repairNeededCount > 0) {
-                    append("\n${summary.repairNeededCount} repair needed")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_repair_needed_3,
+                            summary.repairNeededCount,
+                            summary.repairNeededCount,
+                        ),
+                    )
                 }
                 if (summary.updateAvailableCount > 0) {
-                    append("\n${summary.updateAvailableCount} update available")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_update_available_2,
+                            summary.updateAvailableCount,
+                            summary.updateAvailableCount,
+                        ),
+                    )
                 }
                 if (summary.unknownCount > 0) {
-                    append("\n${summary.unknownCount} check incomplete")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_check_incomplete_2,
+                            summary.unknownCount,
+                            summary.unknownCount,
+                        ),
+                    )
                 }
                 if (summary.selectedAdditionCount > 0) {
-                    append("\n${summary.selectedAdditionCount} can add selected components")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_can_add_selected_components,
+                            summary.selectedAdditionCount,
+                            summary.selectedAdditionCount,
+                        ),
+                    )
                 }
                 if (summary.upToDateCount > 0) {
-                    append("\n${summary.upToDateCount} up to date")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_up_to_date,
+                            summary.upToDateCount,
+                            summary.upToDateCount,
+                        ),
+                    )
                 }
-                append("\n\nRefresh ${summary.bundlesToRefresh.size} bundle(s)?")
+                append(
+                    resources.getQuantityString(
+                        R.plurals.download_refresh_bundle_s,
+                        summary.bundlesToRefresh.size,
+                        summary.bundlesToRefresh.size,
+                    ),
+                )
             }
         summary.unknownCount > 0 ->
             buildString {
-                append("${summary.totalCount} checked")
-                append("\n${summary.unknownCount} check incomplete")
+                append(resources.getQuantityString(R.plurals.download_checked, summary.totalCount, summary.totalCount))
+                append(
+                    resources.getQuantityString(
+                        R.plurals.download_check_incomplete_2,
+                        summary.unknownCount,
+                        summary.unknownCount,
+                    ),
+                )
                 if (summary.upToDateCount > 0) {
-                    append("\n${summary.upToDateCount} up to date")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_up_to_date,
+                            summary.upToDateCount,
+                            summary.upToDateCount,
+                        ),
+                    )
                 }
                 if (summary.selectedAdditionCount > 0) {
-                    append("\n${summary.selectedAdditionCount} can add selected components")
+                    append(
+                        resources.getQuantityString(
+                            R.plurals.download_can_add_selected_components,
+                            summary.selectedAdditionCount,
+                            summary.selectedAdditionCount,
+                        ),
+                    )
                 }
-                append("\n\nNo confirmed updates were found.")
+                append(resources.getString(R.string.download_no_confirmed_updates_were_found))
             }
         summary.selectedAdditionCount > 0 ->
-            "${summary.totalCount} selected bundle(s) are up to date.\n\n" +
-                "Add selected components to ${summary.selectedAdditionCount} bundle(s)?"
-        else -> "${summary.totalCount} selected bundle(s) are up to date."
+            resources.getString(
+                R.string.download_combined_summary,
+                resources.getQuantityString(
+                    R.plurals.download_selected_bundles_up_to_date,
+                    summary.totalCount,
+                    summary.totalCount,
+                ),
+                resources.getQuantityString(
+                    R.plurals.download_add_selected_components,
+                    summary.selectedAdditionCount,
+                    summary.selectedAdditionCount,
+                ),
+            )
+        else ->
+            resources.getQuantityString(
+                R.plurals.download_selected_bundles_are_up_to_date_2,
+                summary.totalCount,
+                summary.totalCount,
+            )
     }
 
 private const val MAX_DIALOG_FILE_NAMES = 3
+
+private fun dialogFileNames(
+    names: List<String>,
+    resources: Resources,
+): String {
+    val visible = names.take(MAX_DIALOG_FILE_NAMES).joinToString(", ")
+    val extra = names.size - MAX_DIALOG_FILE_NAMES
+    return if (extra > 0) resources.getString(R.string.common_list_with_more_count, visible, extra) else visible
+}

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -35,6 +36,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -44,6 +47,7 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.ui.WearHelpDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
@@ -60,6 +64,7 @@ fun UserProfileSettingsScreen(
     onOpenGeneralSettings: () -> Unit,
     profileChangeEnabled: Boolean = true,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val isMetric by viewModel.isMetric.collectAsState()
     val activityProfile by viewModel.activityProfile.collectAsState()
@@ -74,7 +79,7 @@ fun UserProfileSettingsScreen(
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             SettingsInfoButton(
-                contentDescription = "User profile info",
+                contentDescription = stringResource(R.string.settings_user_profile_info),
                 onClick = { showInfoDialog = true },
             )
         }
@@ -86,10 +91,21 @@ fun UserProfileSettingsScreen(
         }
         item {
             SettingsOptionPickerRow(
-                label = "Units",
+                label = stringResource(R.string.settings_units),
                 selectedValue = isMetric,
-                options = listOf(true to "Metric", false to "Imperial"),
-                secondaryLabel = if (isMetric) "Metric" else "Imperial",
+                options =
+                    listOf(
+                        true to stringResource(R.string.common_metric),
+                        false to stringResource(R.string.common_imperial),
+                    ),
+                secondaryLabel =
+                    if (isMetric) {
+                        stringResource(
+                            R.string.common_metric,
+                        )
+                    } else {
+                        stringResource(R.string.common_imperial)
+                    },
                 onSelect = viewModel::setMetric,
             )
         }
@@ -102,23 +118,23 @@ fun UserProfileSettingsScreen(
         }
         item {
             SettingsPickerChip(
-                label = "Body weight",
-                secondaryLabel = formatUserWeight(userWeightKg, isMetric),
+                label = stringResource(R.string.settings_body_weight),
+                secondaryLabel = formatUserWeight(userWeightKg, isMetric, resources = resources),
                 onClick = { showWeightPicker = true },
             )
         }
         item {
             SettingsPickerChip(
-                label = "Backpack",
-                secondaryLabel = formatUserWeight(backpackWeightKg, isMetric),
+                label = stringResource(R.string.settings_backpack),
+                secondaryLabel = formatUserWeight(backpackWeightKg, isMetric, resources = resources),
                 onClick = { showBackpackPicker = true },
             )
         }
         if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
             item {
                 SettingsPickerChip(
-                    label = "Bike weight",
-                    secondaryLabel = formatUserWeight(bikeWeightKg, isMetric),
+                    label = stringResource(R.string.settings_bike_weight),
+                    secondaryLabel = formatUserWeight(bikeWeightKg, isMetric, resources = resources),
                     onClick = { showBikeWeightPicker = true },
                 )
             }
@@ -127,7 +143,7 @@ fun UserProfileSettingsScreen(
 
     RotaryWeightPickerDialog(
         visible = showWeightPicker,
-        title = "Body weight",
+        title = stringResource(R.string.settings_body_weight),
         valueKg = userWeightKg,
         minKg = SettingsRepository.MIN_USER_WEIGHT_KG,
         maxKg = SettingsRepository.MAX_USER_WEIGHT_KG,
@@ -137,7 +153,7 @@ fun UserProfileSettingsScreen(
     )
     RotaryWeightPickerDialog(
         visible = showBackpackPicker,
-        title = "Backpack",
+        title = stringResource(R.string.settings_backpack),
         valueKg = backpackWeightKg,
         minKg = SettingsRepository.MIN_BACKPACK_WEIGHT_KG,
         maxKg = SettingsRepository.MAX_BACKPACK_WEIGHT_KG,
@@ -147,7 +163,7 @@ fun UserProfileSettingsScreen(
     )
     RotaryWeightPickerDialog(
         visible = showBikeWeightPicker,
-        title = "Bike weight",
+        title = stringResource(R.string.settings_bike_weight),
         valueKg = bikeWeightKg,
         minKg = SettingsRepository.MIN_BIKE_WEIGHT_KG,
         maxKg = SettingsRepository.MAX_BIKE_WEIGHT_KG,
@@ -168,15 +184,13 @@ private fun UserProfileInfoDialog(
 ) {
     WearHelpDialog(
         visible = visible,
-        title = "User profile",
+        title = stringResource(R.string.settings_user_profile),
         onDismiss = onDismiss,
         lines =
             listOf(
-                "Weight and backpack improve hiking calories.\n" +
-                    "Bike weight improves cycling ETA and calories.\n" +
-                    "Activity changes default route tools, ETA and dashboard choices.\n" +
-                    "Calories use Pandolf/Santee and LCDA with speed and slope.\n" +
-                    "DEM elevation is used when available.",
+                stringResource(
+                    R.string.settings_weight_and_backpack_improve_hiking_calories_bike_weight_improves_cycli,
+                ),
             ),
     )
 }
@@ -184,11 +198,12 @@ private fun UserProfileInfoDialog(
 private fun formatUserWeight(
     weightKg: Float,
     isMetric: Boolean,
+    resources: Resources,
 ): String =
     if (isMetric) {
-        "${ONE_DECIMAL_FORMAT.format(weightKg)} kg"
+        resources.getString(R.string.settings_kg, ONE_DECIMAL_FORMAT.format(weightKg))
     } else {
-        "${ONE_DECIMAL_FORMAT.format(weightKg * KG_TO_LB)} lb"
+        resources.getString(R.string.settings_lb, ONE_DECIMAL_FORMAT.format(weightKg * KG_TO_LB))
     }
 
 @Suppress("FunctionNaming")
@@ -204,14 +219,14 @@ private fun ActivityProfileToggle(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            "Activity",
+            stringResource(R.string.common_activity),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         if (!enabled) {
             Text(
-                "Stop the recording to change profile",
+                stringResource(R.string.settings_stop_the_recording_to_change_profile),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -223,7 +238,7 @@ private fun ActivityProfileToggle(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ActivityProfileButton(
-                label = "Hike",
+                label = stringResource(R.string.common_hike),
                 selected = selectedProfile != SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 onClick = { onSelect(SettingsRepository.ACTIVITY_PROFILE_HIKE) },
                 enabled = enabled,
@@ -231,7 +246,7 @@ private fun ActivityProfileToggle(
                 modifier = Modifier.weight(1f),
             )
             ActivityProfileButton(
-                label = "Bike",
+                label = stringResource(R.string.common_bike),
                 selected = selectedProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE,
                 onClick = { onSelect(SettingsRepository.ACTIVITY_PROFILE_BIKE) },
                 enabled = enabled,
@@ -304,6 +319,7 @@ private fun RotaryWeightPickerDialog(
     onDismiss: () -> Unit,
     onValueChange: (Float) -> Unit,
 ) {
+    val resources = LocalResources.current
     if (!visible) return
 
     val adaptive = rememberWearAdaptiveSpec()
@@ -385,7 +401,7 @@ private fun RotaryWeightPickerDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = formatUserWeight(localValueKg, isMetric),
+                        text = formatUserWeight(localValueKg, isMetric, resources = resources),
                         style = MaterialTheme.typography.displaySmall,
                         color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center,
@@ -415,7 +431,7 @@ private fun RotaryWeightPickerDialog(
                                 .width(108.dp),
                         colors = ButtonDefaults.buttonColors(),
                     ) {
-                        Text("Done")
+                        Text(stringResource(R.string.common_done))
                     }
                 }
             }

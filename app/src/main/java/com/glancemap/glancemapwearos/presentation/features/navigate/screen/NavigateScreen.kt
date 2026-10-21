@@ -18,7 +18,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
@@ -92,6 +95,7 @@ fun NavigateScreen(
     compassViewModel: CompassViewModel = viewModel(),
     navigateViewModel: NavigateViewModel = viewModel(),
 ) {
+    val resources = LocalResources.current
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val adaptive = rememberWearAdaptiveSpec()
@@ -200,9 +204,11 @@ fun NavigateScreen(
         val offlinePoiSearchUiState by poiViewModel.offlineSearchUiState.collectAsState()
         val traceRecordingState by traceRecordingViewModel.recordingPresentationState.collectAsState()
         val recordingSampleIntervalSeconds by settingsViewModel.recordingSampleIntervalSeconds.collectAsState()
-        val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
+        val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds
+            .collectAsState()
         val turnByTurnGpsIntervalSeconds by settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
-        val turnByTurnScreenOffGpsIntervalSeconds by settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+        val turnByTurnScreenOffGpsIntervalSeconds by settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds
+            .collectAsState()
         val recordingScreenOnGpsEnabled =
             recordingSampleIntervalSeconds != SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
         val recordingScreenOffGpsEnabled =
@@ -518,7 +524,9 @@ fun NavigateScreen(
             }
         val gpsSignalSnapshot by locationViewModel.gpsSignalSnapshot.collectAsState()
         LaunchedEffect(routeToolPreflightMessage, gpsSignalSnapshot.lastFixFresh) {
-            if (routeToolPreflightMessage == "Waiting for GPS" && gpsSignalSnapshot.lastFixFresh) {
+            if (routeToolPreflightMessage == resources.getString(R.string.navigation_waiting_for_gps) &&
+                gpsSignalSnapshot.lastFixFresh
+            ) {
                 routeToolPreflightMessage = null
             }
         }
@@ -699,21 +707,27 @@ fun NavigateScreen(
         val routeModifyPreviewTitle =
             reshapePreviewInspectDraft?.options?.modifyMode?.let { mode ->
                 when (mode) {
-                    RouteModifyMode.RESHAPE_ROUTE -> "Reshape preview"
-                    RouteModifyMode.TRIM_START_TO_HERE -> "Change start preview"
-                    RouteModifyMode.TRIM_END_FROM_HERE -> "Change end preview"
-                    else -> "GPX preview"
+                    RouteModifyMode.RESHAPE_ROUTE -> stringResource(R.string.navigate_reshape_preview)
+                    RouteModifyMode.TRIM_START_TO_HERE -> stringResource(R.string.navigate_change_start_preview)
+                    RouteModifyMode.TRIM_END_FROM_HERE -> stringResource(R.string.navigate_change_end_preview)
+                    else -> stringResource(R.string.navigate_gpx_preview)
                 }
-            } ?: "GPX preview"
+            } ?: stringResource(R.string.navigate_gpx_preview)
         val routeModifyPreviewInstruction =
             reshapePreviewInspectDraft?.options?.modifyMode?.let { mode ->
                 when (mode) {
-                    RouteModifyMode.RESHAPE_ROUTE -> "Inspect the reroute, then save."
-                    RouteModifyMode.TRIM_START_TO_HERE -> "Inspect the new start, then save."
-                    RouteModifyMode.TRIM_END_FROM_HERE -> "Inspect the new end, then save."
-                    else -> "Inspect the edit, then save."
+                    RouteModifyMode.RESHAPE_ROUTE -> stringResource(R.string.navigate_inspect_the_reroute_then_save)
+                    RouteModifyMode.TRIM_START_TO_HERE ->
+                        stringResource(
+                            R.string.navigate_inspect_the_new_start_then_save,
+                        )
+                    RouteModifyMode.TRIM_END_FROM_HERE ->
+                        stringResource(
+                            R.string.navigate_inspect_the_new_end_then_save,
+                        )
+                    else -> stringResource(R.string.navigate_inspect_the_edit_then_save)
                 }
-            } ?: "Inspect the edit, then save."
+            } ?: stringResource(R.string.navigate_inspect_the_edit_then_save)
         val startupCentering =
             NavigateStartupCenteringEffects(
                 offlineMode = offlineMode,
@@ -952,7 +966,7 @@ fun NavigateScreen(
                     }.onFailure { error ->
                         createdPoiRenameInProgress = false
                         createdPoiRenameError = error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to rename the POI."
+                            ?: resources.getString(R.string.navigate_failed_to_rename_the_poi)
                     }
                 }
             },
@@ -1175,10 +1189,10 @@ fun NavigateScreen(
             gpxTrackColor = gpxTrackColor,
             routeToolSession = routeToolSession,
             crosshairSelectionActive = poiCreationSelectionActive,
-            crosshairSelectionTitle = "+ POI",
-            crosshairSelectionInstruction = "Move map, then check.",
+            crosshairSelectionTitle = stringResource(R.string.navigate_poi),
+            crosshairSelectionInstruction = stringResource(R.string.navigate_move_map_then_check),
             crosshairSelectionBusy = createdPoiCreateInProgress,
-            crosshairSelectionBusyMessage = "Saving POI...",
+            crosshairSelectionBusyMessage = stringResource(R.string.navigate_saving_poi),
             routeToolCreatePreview = displayedRouteToolCreatePreview,
             routeToolDraftConnectorPoints = routeToolDraftConnectorPoints,
             routeToolCreatePreviewInProgress = routeToolCreatePreviewInProgress,

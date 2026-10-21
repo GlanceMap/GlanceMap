@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,11 +15,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.recordingProgressVibrationDistanceMetersOptions
 import com.glancemap.glancemapwearos.data.repository.recordingProgressVibrationTimeMinutesOptions
@@ -29,6 +33,7 @@ fun RecordingAdvancedSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenRecordingSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val trackSmoothingMode by viewModel.recordingTrackSmoothingMode.collectAsState()
     val progressVibrationSettings by viewModel.recordingProgressVibrationSettings.collectAsState()
 
@@ -38,10 +43,14 @@ fun RecordingAdvancedSettingsScreen(
         }
         item {
             SettingsOptionPickerRow(
-                label = "Track smoothing",
+                label = stringResource(R.string.settings_track_smoothing),
                 selectedValue = trackSmoothingMode,
-                options = RECORDING_TRACK_SMOOTHING_OPTIONS.map { it to recordingTrackSmoothingLabel(it) },
-                secondaryLabel = recordingTrackSmoothingLabel(trackSmoothingMode),
+                options =
+                    RECORDING_TRACK_SMOOTHING_OPTIONS.map {
+                        it to
+                            recordingTrackSmoothingLabel(it, resources = resources)
+                    },
+                secondaryLabel = recordingTrackSmoothingLabel(trackSmoothingMode, resources = resources),
                 onSelect = viewModel::setRecordingTrackSmoothingMode,
             )
         }
@@ -49,12 +58,12 @@ fun RecordingAdvancedSettingsScreen(
             SettingsToggleChip(
                 checked = progressVibrationSettings.distanceEnabled,
                 onCheckedChanged = viewModel::setRecordingProgressVibrationDistanceEnabled,
-                label = "Distance vibration",
+                label = stringResource(R.string.settings_distance_vibration),
                 secondaryLabel =
                     if (progressVibrationSettings.distanceEnabled) {
-                        distanceVibrationIntervalLabel(progressVibrationSettings.distanceMeters)
+                        distanceVibrationIntervalLabel(progressVibrationSettings.distanceMeters, resources = resources)
                     } else {
-                        "Off"
+                        stringResource(R.string.glancemap_state_off)
                     },
             )
         }
@@ -70,12 +79,12 @@ fun RecordingAdvancedSettingsScreen(
             SettingsToggleChip(
                 checked = progressVibrationSettings.timeEnabled,
                 onCheckedChanged = viewModel::setRecordingProgressVibrationTimeEnabled,
-                label = "Time vibration",
+                label = stringResource(R.string.settings_time_vibration),
                 secondaryLabel =
                     if (progressVibrationSettings.timeEnabled) {
-                        timeVibrationIntervalLabel(progressVibrationSettings.timeMinutes)
+                        timeVibrationIntervalLabel(progressVibrationSettings.timeMinutes, resources = resources)
                     } else {
-                        "Off"
+                        stringResource(R.string.glancemap_state_off)
                     },
             )
         }
@@ -95,6 +104,7 @@ private fun ProgressVibrationDistanceSlider(
     distanceMeters: Int,
     onDistanceMetersChanged: (Int) -> Unit,
 ) {
+    val resources = LocalResources.current
     var selectedIndex by remember(distanceMeters) {
         mutableStateOf(
             recordingProgressVibrationDistanceMetersOptions.indexOf(distanceMeters).coerceAtLeast(0),
@@ -102,8 +112,12 @@ private fun ProgressVibrationDistanceSlider(
     }
 
     ProgressVibrationSlider(
-        label = "Distance",
-        valueLabel = distanceVibrationIntervalLabel(recordingProgressVibrationDistanceMetersOptions[selectedIndex]),
+        label = stringResource(R.string.common_distance),
+        valueLabel =
+            distanceVibrationIntervalLabel(
+                recordingProgressVibrationDistanceMetersOptions[selectedIndex],
+                resources = resources,
+            ),
         value = selectedIndex.toFloat(),
         valueRange = 0f..recordingProgressVibrationDistanceMetersOptions.lastIndex.toFloat(),
         steps = (recordingProgressVibrationDistanceMetersOptions.size - 2).coerceAtLeast(0),
@@ -123,6 +137,7 @@ private fun ProgressVibrationTimeSlider(
     timeMinutes: Int,
     onTimeMinutesChanged: (Int) -> Unit,
 ) {
+    val resources = LocalResources.current
     var selectedIndex by remember(timeMinutes) {
         mutableStateOf(
             recordingProgressVibrationTimeMinutesOptions.indexOf(timeMinutes).coerceAtLeast(0),
@@ -130,8 +145,12 @@ private fun ProgressVibrationTimeSlider(
     }
 
     ProgressVibrationSlider(
-        label = "Time",
-        valueLabel = timeVibrationIntervalLabel(recordingProgressVibrationTimeMinutesOptions[selectedIndex]),
+        label = stringResource(R.string.common_time),
+        valueLabel =
+            timeVibrationIntervalLabel(
+                recordingProgressVibrationTimeMinutesOptions[selectedIndex],
+                resources = resources,
+            ),
         value = selectedIndex.toFloat(),
         valueRange = 0f..recordingProgressVibrationTimeMinutesOptions.lastIndex.toFloat(),
         steps = (recordingProgressVibrationTimeMinutesOptions.size - 2).coerceAtLeast(0),
@@ -161,7 +180,7 @@ private fun ProgressVibrationSlider(
         verticalArrangement = Arrangement.spacedBy(PROGRESS_VIBRATION_SLIDER_SPACING),
     ) {
         Text(
-            text = "$label: $valueLabel",
+            text = stringResource(R.string.settings_label_value, label, valueLabel),
             style = MaterialTheme.typography.titleMedium,
         )
         Slider(
@@ -169,8 +188,15 @@ private fun ProgressVibrationSlider(
             onValueChange = onValueChange,
             valueRange = valueRange,
             steps = steps,
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase $label interval") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease $label interval") },
+            increaseIcon = {
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.settings_increase_interval, label))
+            },
+            decreaseIcon = {
+                Icon(
+                    Icons.Filled.Remove,
+                    contentDescription = stringResource(R.string.settings_decrease_interval, label),
+                )
+            },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -183,22 +209,37 @@ private val RECORDING_TRACK_SMOOTHING_OPTIONS =
         SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG,
     )
 
-private fun recordingTrackSmoothingLabel(mode: String): String =
+private fun recordingTrackSmoothingLabel(
+    mode: String,
+    resources: Resources,
+): String =
     when (mode) {
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF -> "Off · quality checks only"
-        SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG -> "Strong · cleaner track"
-        else -> "Adaptive · recommended"
+        SettingsRepository.RECORDING_TRACK_SMOOTHING_OFF ->
+            resources.getString(
+                R.string.settings_off_quality_checks_only,
+            )
+        SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG ->
+            resources.getString(
+                R.string.settings_strong_cleaner_track,
+            )
+        else -> resources.getString(R.string.settings_adaptive_recommended)
     }
 
-private fun distanceVibrationIntervalLabel(distanceMeters: Int): String =
+private fun distanceVibrationIntervalLabel(
+    distanceMeters: Int,
+    resources: Resources,
+): String =
     if (distanceMeters < 1_000) {
-        "Every $distanceMeters m"
+        resources.getString(R.string.settings_every_m, distanceMeters)
     } else if (distanceMeters % 1_000 == 0) {
-        "Every ${distanceMeters / 1_000} km"
+        resources.getString(R.string.settings_every_km, distanceMeters / 1_000)
     } else {
-        "Every ${distanceMeters / 1_000}.${(distanceMeters % 1_000) / 100} km"
+        resources.getString(R.string.settings_every_km_2, distanceMeters / 1_000, (distanceMeters % 1_000) / 100)
     }
 
-private fun timeVibrationIntervalLabel(timeMinutes: Int): String = "Every $timeMinutes min"
+private fun timeVibrationIntervalLabel(
+    timeMinutes: Int,
+    resources: Resources,
+): String = resources.getString(R.string.settings_every_min, timeMinutes)
 
 private val PROGRESS_VIBRATION_SLIDER_SPACING = 4.dp

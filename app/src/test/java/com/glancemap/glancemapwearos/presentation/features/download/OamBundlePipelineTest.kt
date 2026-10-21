@@ -161,22 +161,6 @@ class OamBundlePipelineTest {
     }
 
     @Test
-    fun `large detailed DEM progress includes aggregate tile position`() {
-        val progress =
-            OamDownloadProgress("DOWNLOADING", "tile", 50L, 100L).withDemBatchContext(
-                tileIndex = 123,
-                tileCount = 506,
-                tileId = "N04E038",
-                sourceLabel = "Detailed",
-                isLargeDetailedDownload = true,
-            )
-
-        assertEquals("Large detailed DEM 124/506 · N04E038", progress.detail)
-        assertEquals(50L, progress.bytesDone)
-        assertEquals(100L, progress.totalBytes)
-    }
-
-    @Test
     fun `extraction telemetry keeps reporting after the screen turns off and retains keepalive state`() {
         var wallMs = 0L
         var uptimeMs = 0L

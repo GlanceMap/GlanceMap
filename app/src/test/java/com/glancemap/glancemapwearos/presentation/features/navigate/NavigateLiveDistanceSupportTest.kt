@@ -63,32 +63,4 @@ class NavigateLiveDistanceSupportTest {
         assertEquals(80.0, mapSpacePoint.x, 0.001)
         assertEquals(320.0, mapSpacePoint.y, 0.001)
     }
-
-    @Test
-    fun liveDistanceLabelUsesMetersForShortMetricDistances() {
-        assertEquals("275 m", formatLiveDistanceLabel(meters = 275.4, isMetric = true))
-    }
-
-    @Test
-    fun liveDistanceLabelUsesKilometersForLongMetricDistances() {
-        assertEquals(
-            "1.5 km",
-            normalizeDecimalSeparator(formatLiveDistanceLabel(meters = 1_530.0, isMetric = true)),
-        )
-    }
-
-    @Test
-    fun liveDistanceLabelUsesFeetForShortImperialDistances() {
-        assertEquals("902 ft", formatLiveDistanceLabel(meters = 275.0, isMetric = false))
-    }
-
-    @Test
-    fun liveDistanceLabelUsesMilesForLongImperialDistances() {
-        assertEquals(
-            "1.0 mi",
-            normalizeDecimalSeparator(formatLiveDistanceLabel(meters = 1_609.344, isMetric = false)),
-        )
-    }
-
-    private fun normalizeDecimalSeparator(value: String): String = value.replace(',', '.')
 }

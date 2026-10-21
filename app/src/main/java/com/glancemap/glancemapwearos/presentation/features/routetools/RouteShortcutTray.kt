@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -31,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +45,7 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 
 @Composable
@@ -64,6 +68,7 @@ internal fun BoxScope.RouteShortcutTray(
     onRecordingClick: () -> Unit,
     onHeadingReferenceMark: (Float) -> Unit,
 ) {
+    val resources = LocalResources.current
     var headingReferenceIndex by remember(headingReferenceTestActive) { mutableIntStateOf(0) }
     val headingReferenceDeg = headingReferenceIndex * 90f
     Box(
@@ -91,12 +96,16 @@ internal fun BoxScope.RouteShortcutTray(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         ShortcutActionChip(
-                            text = "Ref ${headingReferenceLabel(headingReferenceIndex)}",
+                            text =
+                                stringResource(
+                                    R.string.gpx_ref,
+                                    headingReferenceLabel(headingReferenceIndex, resources = resources),
+                                ),
                             height = actionHeight,
                             onClick = { headingReferenceIndex = (headingReferenceIndex + 1) % 4 },
                         )
                         ShortcutActionChip(
-                            text = "Mark",
+                            text = stringResource(R.string.gpx_mark),
                             height = actionHeight,
                             onClick = { onHeadingReferenceMark(headingReferenceDeg) },
                         )
@@ -107,7 +116,7 @@ internal fun BoxScope.RouteShortcutTray(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ShortcutActionChip(
-                        text = "POI",
+                        text = stringResource(R.string.common_poi),
                         height = actionHeight,
                         onClick = onCreatePoiClick,
                     ) {
@@ -119,7 +128,7 @@ internal fun BoxScope.RouteShortcutTray(
                         )
                     }
                     ShortcutActionChip(
-                        text = "Stay",
+                        text = stringResource(R.string.gpx_stay),
                         height = actionHeight,
                         onClick = onKeepAppOpenClick,
                     ) {
@@ -146,7 +155,7 @@ internal fun BoxScope.RouteShortcutTray(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ShortcutActionChip(
-                        text = "GPX",
+                        text = stringResource(R.string.common_gpx),
                         height = actionHeight,
                         onClick = onGpxToolsClick,
                     ) {
@@ -160,8 +169,8 @@ internal fun BoxScope.RouteShortcutTray(
                     ShortcutActionChip(
                         text =
                             when {
-                                recordingSaving -> "Save"
-                                else -> "REC"
+                                recordingSaving -> stringResource(R.string.common_save)
+                                else -> stringResource(R.string.common_rec)
                             },
                         height = actionHeight,
                         onClick = onRecordingClick,
@@ -192,13 +201,13 @@ internal fun BoxScope.RouteShortcutTray(
             if (expanded) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Close shortcuts",
+                    contentDescription = stringResource(R.string.gpx_close_shortcuts),
                     modifier = Modifier.size(iconSize),
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.ViewComfyAlt,
-                    contentDescription = "Open shortcuts",
+                    contentDescription = stringResource(R.string.gpx_open_shortcuts),
                     modifier = Modifier.size(iconSize),
                 )
             }
@@ -206,12 +215,15 @@ internal fun BoxScope.RouteShortcutTray(
     }
 }
 
-private fun headingReferenceLabel(index: Int): String =
+private fun headingReferenceLabel(
+    index: Int,
+    resources: Resources,
+): String =
     when (index) {
-        0 -> "N"
-        1 -> "E"
-        2 -> "S"
-        else -> "W"
+        0 -> resources.getString(R.string.navigate_n)
+        1 -> resources.getString(R.string.navigate_e)
+        2 -> resources.getString(R.string.navigate_s)
+        else -> resources.getString(R.string.gpx_w)
     }
 
 @Composable

@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.DataLayerListenerService
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
@@ -103,7 +104,11 @@ internal class DataLayerSmallFileRequestHandler(
                 if (fileOps.fileBlocksIncomingTransfer(fileName)) {
                     val msg = "FILE_EXISTS:$fileName"
                     TransferDiagnostics.warn("Small", "Target file already exists id=$transferId file=$fileName")
-                    notificationHelper.showError(notificationId, fileName, "Already exists")
+                    notificationHelper.showError(
+                        notificationId,
+                        fileName,
+                        service.getString(R.string.download_already_exists),
+                    )
                     appScope.launch(Dispatchers.IO) {
                         runCatching { sendAck(sourceNodeId, transferId, "ERROR", msg) }
                             .onFailure {
@@ -134,7 +139,11 @@ internal class DataLayerSmallFileRequestHandler(
                         "Small",
                         "event=fgs_start_attempt id=$transferId file=$fileName size=${bytes.size} fgsType=dataSync",
                     )
-                    notificationHelper.startForeground(notificationId, fileName, "Saving…")
+                    notificationHelper.startForeground(
+                        notificationId,
+                        fileName,
+                        service.getString(R.string.download_saving),
+                    )
                     foregroundStarted = true
                     TransferDiagnostics.log(
                         "Small",
@@ -203,7 +212,7 @@ internal class DataLayerSmallFileRequestHandler(
                     terminalAck = TerminalAck(status = "DONE", detail = "")
                     notificationHelper.stopForeground(notificationId)
                     foregroundStopped = true
-                    notificationHelper.showCompletion(notificationId, fileName, "Saved ✓")
+                    notificationHelper.showCompletion(notificationId, fileName, service.getString(R.string.gpx_saved))
                     val sizeMiB = bytes.size / (1024.0 * 1024.0)
                     val speedMiBps = if (durationMs > 0) sizeMiB / (durationMs / 1000.0) else 0.0
                     TransferDiagnostics.log(
@@ -240,7 +249,11 @@ internal class DataLayerSmallFileRequestHandler(
                         if (foregroundStarted && !foregroundStopped) {
                             runCatching { notificationHelper.stopForeground(notificationId) }
                         }
-                        notificationHelper.showError(notificationId, fileName, "Failed: $detail")
+                        notificationHelper.showError(
+                            notificationId,
+                            fileName,
+                            service.getString(R.string.download_failed, detail),
+                        )
                         EnergyDiagnostics.recordEvent(
                             reason = "small_transfer_error",
                             detail = "file=$fileName transferId=$transferId msg=$detail",

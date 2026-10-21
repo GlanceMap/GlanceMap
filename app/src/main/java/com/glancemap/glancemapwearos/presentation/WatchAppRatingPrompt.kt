@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 
 private const val RATING_PROMPT_PREFS = "watch_app_rating_prompt"
@@ -46,15 +48,15 @@ internal fun WatchAppRatingPrompt() {
 
     WearActionDialog(
         visible = visible,
-        title = "Enjoying GlanceMap?",
-        message = "Please take a moment to rate GlanceMap on Google Play.",
-        confirmText = "Rate app",
+        title = stringResource(R.string.common_enjoying_glancemap),
+        message = stringResource(R.string.common_please_take_a_moment_to_rate_glancemap_on_google_play),
+        confirmText = stringResource(R.string.common_rate_app),
         onConfirm = {
             visible = false
             openWatchAppPlayStore(context)
         },
         onDismissRequest = { visible = false },
-        dismissText = "Not now",
+        dismissText = stringResource(R.string.common_not_now),
         onDismiss = { visible = false },
     )
 }

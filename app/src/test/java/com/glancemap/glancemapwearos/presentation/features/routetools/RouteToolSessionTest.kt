@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import com.glancemap.glancemapwearos.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -37,12 +38,12 @@ class RouteToolSessionTest {
             )
 
         assertEquals(RouteSelectionTarget.RESHAPE_POINT, initial.currentSelectionTarget)
-        assertEquals("Pick point to move", initial.instructionText)
+        assertEquals(R.string.gpx_pick_point_to_move, initial.instructionTextRes)
         assertTrue(initial.usesCrosshair)
 
         val selectedPoint = initial.captureSelection(LatLong(0.0, 1.0))
         assertEquals(RouteSelectionTarget.DESTINATION, selectedPoint.currentSelectionTarget)
-        assertEquals("Pick new point", selectedPoint.instructionText)
+        assertEquals(R.string.gpx_pick_new_point, selectedPoint.instructionTextRes)
         assertEquals(LatLong(0.0, 1.0), selectedPoint.pointA)
 
         val completed = selectedPoint.captureSelection(LatLong(0.5, 1.5))
@@ -62,21 +63,21 @@ class RouteToolSessionTest {
             )
 
         assertEquals(RouteSelectionTarget.DESTINATION, initial.currentSelectionTarget)
-        assertEquals("Place start, then check.", initial.instructionText)
+        assertEquals(R.string.gpx_place_start_then_check, initial.instructionTextRes)
 
         val firstPoint = initial.captureSelection(LatLong(42.5, 1.5))
         assertEquals(1, firstPoint.chainPoints.size)
-        assertEquals("Place next point, then check.", firstPoint.instructionText)
+        assertEquals(R.string.gpx_place_next_point_then_check, firstPoint.instructionTextRes)
         assertTrue(!firstPoint.isComplete)
 
         val secondPoint = firstPoint.captureSelection(LatLong(42.6, 1.6))
         assertEquals(2, secondPoint.chainPoints.size)
-        assertEquals("Add point, then check.", secondPoint.instructionText)
+        assertEquals(R.string.gpx_add_point_then_check, secondPoint.instructionTextRes)
         assertTrue(!secondPoint.isComplete)
 
         val undone = secondPoint.removeLastChainPoint()
         assertEquals(1, undone.chainPoints.size)
-        assertEquals("Place next point, then check.", undone.instructionText)
+        assertEquals(R.string.gpx_place_next_point_then_check, undone.instructionTextRes)
     }
 
     @Test
@@ -165,7 +166,7 @@ class RouteToolSessionTest {
 
         assertNull(session.currentSelectionTarget)
         assertTrue(session.isComplete)
-        assertEquals("Ready.", session.instructionText)
+        assertEquals(R.string.gpx_ready, session.instructionTextRes)
     }
 
     @Test

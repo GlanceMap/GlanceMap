@@ -3,8 +3,10 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteCreateMode
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteCrosshairOverlay
@@ -135,8 +137,11 @@ internal fun BoxScope.NavigateRouteToolOverlayHost(
             isMetric = isMetric,
             busy = crosshairSelectionBusy,
             busyMessage = crosshairSelectionBusyMessage,
-            titleOverride = crosshairSelectionTitle ?: "+ POI",
-            instructionOverride = crosshairSelectionInstruction ?: "Move map, then check.",
+            titleOverride = crosshairSelectionTitle ?: stringResource(R.string.navigate_poi),
+            instructionOverride =
+                crosshairSelectionInstruction ?: stringResource(
+                    R.string.navigate_move_map_then_check,
+                ),
             popupTopOffset = 4.dp,
             showCapturedPoints = false,
             onPickHere = {

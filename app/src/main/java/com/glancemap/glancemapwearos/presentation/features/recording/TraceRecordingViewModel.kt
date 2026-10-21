@@ -1,10 +1,12 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import android.content.res.Resources
 import android.location.Location
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
@@ -58,7 +60,10 @@ private data class RecordingGapTelemetryContext(
     val continuityRecoveryGapMillis: Long?,
 )
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 class TraceRecordingViewModel(
+    private val resources: Resources,
     private val gpxRepository: GpxRepositoryImpl,
     private val settingsRepository: SettingsRepository,
     private val syncManager: SyncManager,
@@ -491,7 +496,11 @@ class TraceRecordingViewModel(
                 speedSource = recordingSpeedSource,
                 distanceSource = recordingDistanceSource,
                 stepsSource = recordingStepsSource,
-                message = "REC on · ${recordingProfileLabel(activityProfile)}",
+                message =
+                    resources.getString(
+                        R.string.recording_rec_on,
+                        recordingProfileLabel(activityProfile, resources = resources),
+                    ),
             )
         recordingProgressVibrationTracker.start(recordingProgressVibrationSettings)
         syncRecordingProgressVibrationTimer()
@@ -1025,7 +1034,9 @@ class TraceRecordingViewModel(
                                 "reason=${continuityRecoveryReason ?: "na"} " +
                                 "geometricMeters=${watchGpsGeometricDelta.formatTelemetry(1)} " +
                                 "estimatedMeters=${addedDistance.formatTelemetry(1)} " +
-                                "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(1) ?: "na"} " +
+                                "maximumTrustedMeters=${distanceEstimate.maximumTrustedMeters?.formatTelemetry(
+                                    1,
+                                ) ?: "na"} " +
                                 "suppressedMeters=${suppressedMeters.formatTelemetry(1)} " +
                                 "totalSuppressedMeters=${continuityDistanceSuppressedMeters.formatTelemetry(1)}"
                         },
@@ -1477,7 +1488,7 @@ class TraceRecordingViewModel(
                 paused = true,
                 autoPaused = false,
                 pausedAtMillis = System.currentTimeMillis(),
-                message = "REC paused",
+                message = resources.getString(R.string.recording_rec_paused),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1520,7 +1531,7 @@ class TraceRecordingViewModel(
                 autoPaused = false,
                 pausedAtMillis = null,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
-                message = "REC on",
+                message = resources.getString(R.string.recording_rec_on_2),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1610,7 +1621,7 @@ class TraceRecordingViewModel(
         pendingDraftPersistJob = null
         lastUiAction = "save"
         if (state.points.size < 2) {
-            _uiState.value = TraceRecordingUiState(message = "Too few points")
+            _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_too_few_points))
             syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
@@ -1634,7 +1645,7 @@ class TraceRecordingViewModel(
                 autoPaused = false,
                 saving = true,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + finalPausedMillis,
-                message = "Saving REC",
+                message = resources.getString(R.string.recording_saving_rec),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1646,7 +1657,10 @@ class TraceRecordingViewModel(
             val saveResult =
                 withContext(Dispatchers.IO) {
                     runCatching {
-                        val customTitle = titleOverride?.trim()?.takeIf { it.isNotBlank() }?.take(MAX_RECORDING_TITLE_LENGTH)
+                        val customTitle =
+                            titleOverride?.trim()?.takeIf { it.isNotBlank() }?.take(
+                                MAX_RECORDING_TITLE_LENGTH,
+                            )
                         val startedAtMillis = state.startedAtMillis ?: now
                         val title =
                             customTitle
@@ -1726,7 +1740,7 @@ class TraceRecordingViewModel(
             if (saveResult.isSuccess) {
                 val saveInfo = saveResult.getOrNull()
                 syncManager.requestGpxSync()
-                _uiState.value = TraceRecordingUiState(message = "REC saved")
+                _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_rec_saved))
                 syncRecordingProgressVibrationTimer()
                 draftPersistMutex.withLock { draftStore.clear() }
                 DebugTelemetry.log(
@@ -1749,7 +1763,7 @@ class TraceRecordingViewModel(
                         .exceptionOrNull()
                         ?.localizedMessage
                         ?.takeIf { it.isNotBlank() }
-                        ?: "Recording save failed"
+                        ?: resources.getString(R.string.recording_recording_save_failed)
                 _uiState.value =
                     state.copy(
                         active = true,
@@ -1773,7 +1787,7 @@ class TraceRecordingViewModel(
         pendingTerminalLocationRefreshTimeout?.cancel()
         pendingTerminalLocationRefreshTimeout = null
         lastUiAction = "discard"
-        _uiState.value = TraceRecordingUiState(message = "Discarded")
+        _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_discarded))
         syncRecordingProgressVibrationTimer()
         clearDraftAsync(reason = "user_discard")
         DebugTelemetry.log(
@@ -1843,7 +1857,7 @@ class TraceRecordingViewModel(
                     externalDistanceMeters = draft.externalDistanceMeters,
                     externalIntegratedDistanceMeters = draft.externalIntegratedDistanceMeters,
                     stepCount = recoveredStepCount,
-                    message = "REC recovered",
+                    message = resources.getString(R.string.recording_rec_recovered),
                 )
             recordingDistanceDiagnostics.markPostRecoveryPartial()
             rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
@@ -1929,7 +1943,9 @@ class TraceRecordingViewModel(
                     .onFailure { error ->
                         DebugTelemetry.log(
                             "TraceRecording",
-                            "event=draft_clear_failure reason=$reason error=${sanitizeTelemetryValue(error.javaClass.simpleName)}",
+                            "event=draft_clear_failure reason=$reason error=${sanitizeTelemetryValue(
+                                error.javaClass.simpleName,
+                            )}",
                         )
                     }
             }
@@ -2074,7 +2090,7 @@ class TraceRecordingViewModel(
                 autoPaused = true,
                 pausedAtMillis = effectivePauseMillis,
                 latestLivePoint = livePoint,
-                message = "REC auto-paused",
+                message = resources.getString(R.string.recording_rec_auto_paused),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -2174,7 +2190,7 @@ class TraceRecordingViewModel(
                 pausedAtMillis = null,
                 latestLivePoint = livePoint,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
-                message = "REC on",
+                message = resources.getString(R.string.recording_rec_on_2),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -2309,7 +2325,12 @@ class TraceRecordingViewModel(
         val pressureHpa =
             latestSensorMetrics.barometricPressureHpa
                 ?.takeIf { latestSensorMetrics.barometricPressureUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        if (heartRateBpm == null && stepCount == null && cadenceSpm == null && powerWatts == null && pressureHpa == null) {
+        if (heartRateBpm == null &&
+            stepCount == null &&
+            cadenceSpm == null &&
+            powerWatts == null &&
+            pressureHpa == null
+        ) {
             return null
         }
         return RecordingSensorMetrics(
@@ -2385,7 +2406,10 @@ class TraceRecordingViewModel(
             ) {
                 recordingGapCount += 1
                 recordingMaxGapMillis = maxOf(recordingMaxGapMillis, gapContext.continuityRecoveryGapMillis)
-                val expectedPointCount = recordingPointCaptureExpectation.expectedPointCount(SystemClock.elapsedRealtime())
+                val expectedPointCount =
+                    recordingPointCaptureExpectation.expectedPointCount(
+                        SystemClock.elapsedRealtime(),
+                    )
                 DebugTelemetry.log(
                     "TraceRecording",
                     "event=gap gapMs=${gapContext.continuityRecoveryGapMillis} " +
@@ -2734,7 +2758,10 @@ class TraceRecordingViewModel(
             "stepCountAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.stepCountUpdatedAtMillis)} " +
             "cadenceAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.cadenceUpdatedAtMillis)} " +
             "externalSpeedAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.externalSpeedUpdatedAtMillis)} " +
-            "externalDistanceAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.externalDistanceUpdatedAtMillis)} " +
+            "externalDistanceAgeMs=${sensorAgeMillis(
+                nowMillis,
+                latestSensorMetrics.externalDistanceUpdatedAtMillis,
+            )} " +
             "externalPowerAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.externalPowerUpdatedAtMillis)} " +
             "externalBatteryAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.externalBatteryUpdatedAtMillis)} " +
             "pressureAgeMs=${sensorAgeMillis(nowMillis, latestSensorMetrics.barometricPressureUpdatedAtMillis)} " +
@@ -2763,8 +2790,10 @@ class TraceRecordingViewModel(
     }
 
     private fun updateExternalSpeedIntegration(metrics: RecordingSensorMetrics): Double? {
-        val speedMps = metrics.externalSpeedMps?.takeIf { it.isFinite() && it >= 0f } ?: return externalIntegratedDistanceMeters
-        val sampleTimeMillis = metrics.externalSpeedUpdatedAtMillis.takeIf { it > 0L } ?: return externalIntegratedDistanceMeters
+        val speedMps =
+            metrics.externalSpeedMps?.takeIf { it.isFinite() && it >= 0f } ?: return externalIntegratedDistanceMeters
+        val sampleTimeMillis =
+            metrics.externalSpeedUpdatedAtMillis.takeIf { it > 0L } ?: return externalIntegratedDistanceMeters
         val previousTimeMillis = externalSpeedIntegrationLastTimeMillis
         val previousSpeedMps = externalSpeedIntegrationLastMps
         if (previousTimeMillis != null && sampleTimeMillis > previousTimeMillis) {
@@ -2944,11 +2973,14 @@ private fun sanitizeTelemetryValue(value: String): String =
         .replace(Regex("\\s+"), "_")
         .take(80)
 
-private fun recordingProfileLabel(activityProfile: String): String =
+private fun recordingProfileLabel(
+    activityProfile: String,
+    resources: Resources,
+): String =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-        "Bike"
+        resources.getString(R.string.common_bike)
     } else {
-        "Hike"
+        resources.getString(R.string.common_hike)
     }
 
 private fun String?.toRecordingActivityProfile(fallback: String): String =

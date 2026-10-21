@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 
 internal fun recordingDashboardMetricTileHeight(screenSize: WearScreenSize): Dp =
@@ -61,7 +63,7 @@ internal fun RecordingDashboardMetricTile(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = metric.label,
+                text = stringResource(metric.labelRes),
                 color = Color.White.copy(alpha = 0.62f),
                 fontSize = 12.sp,
                 lineHeight = 12.sp,
@@ -73,7 +75,7 @@ internal fun RecordingDashboardMetricTile(
             if (metric.bluetooth) {
                 Icon(
                     imageVector = Icons.Default.Bluetooth,
-                    contentDescription = "Bluetooth",
+                    contentDescription = stringResource(R.string.recording_bluetooth),
                     tint = Color.White.copy(alpha = 0.72f),
                     modifier = Modifier.size(10.dp),
                 )

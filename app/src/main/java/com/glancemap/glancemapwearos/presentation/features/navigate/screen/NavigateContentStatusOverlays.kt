@@ -160,7 +160,10 @@ internal fun BoxScope.GpsEnvironmentWarningOverlay(
     val message =
         when (warning) {
             GpsEnvironmentWarning.NONE -> null
-            GpsEnvironmentWarning.LOCATION_SETTINGS_UNSATISFIED -> "Turn on watch Location"
+            GpsEnvironmentWarning.LOCATION_SETTINGS_UNSATISFIED ->
+                stringResource(
+                    R.string.navigate_turn_on_watch_location,
+                )
             GpsEnvironmentWarning.WATCH_GPS_UNAVAILABLE -> null
             GpsEnvironmentWarning.AUTO_PHONE_DISCONNECTED_NO_WATCH_GPS,
             GpsEnvironmentWarning.AUTO_PHONE_DISCONNECTED_USING_WATCH_GPS,
@@ -240,7 +243,14 @@ private fun CompassIssueButton(
         saved = false
     }
     Text(
-        text = if (saved) "Compass issue saved" else "Compass issue now",
+        text =
+            if (saved) {
+                stringResource(
+                    R.string.navigate_compass_issue_saved,
+                )
+            } else {
+                stringResource(R.string.navigate_compass_issue_now)
+            },
         modifier =
             Modifier
                 .padding(top = 3.dp)

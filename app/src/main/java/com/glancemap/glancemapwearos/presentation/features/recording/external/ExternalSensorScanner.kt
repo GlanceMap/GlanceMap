@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -141,7 +142,10 @@ class ExternalSensorScanner(
                 .map { it.uuid }
                 .toSet()
         val kinds = ExternalSensorKind.entries.filter { it.serviceUuid in serviceUuids }.toSet()
-        val name = safeName(result).ifBlank { "BLE ${address.takeLast(5)}" }
+        val name =
+            safeName(
+                result,
+            ).ifBlank { context.getString(R.string.recording_ble_device_name, address.takeLast(5)) }
         if (loggedDeviceAddresses.add(address)) {
             val scanRecord = result.scanRecord
             val manufacturerIds =
@@ -155,7 +159,9 @@ class ExternalSensorScanner(
                 "event=device_seen name=${name.sanitizeTelemetryToken()} " +
                     "addressSuffix=${address.takeLast(5)} " +
                     "rssi=${result.rssi} txPower=${scanRecord?.txPowerLevel ?: Int.MIN_VALUE} " +
-                    "kinds=${kinds.joinToString("|") { it.label.sanitizeTelemetryToken() }.ifBlank { "unknown" }} " +
+                    "kinds=${kinds.joinToString(
+                        "|",
+                    ) { it.telemetryLabel.sanitizeTelemetryToken() }.ifBlank { "unknown" }} " +
                     "services=${serviceUuids.joinToString("|") { it.toString() }.ifBlank { "none" }} " +
                     "serviceData=${serviceDataUuids.joinToString("|") { it.toString() }.ifBlank { "none" }} " +
                     "manufacturerIds=${manufacturerIds.joinToString("|").ifBlank { "none" }}",

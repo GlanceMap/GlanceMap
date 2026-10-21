@@ -9,8 +9,10 @@
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -71,6 +73,7 @@ enum class DownloadOperation {
 }
 
 class DownloadViewModel(
+    private val resources: Resources,
     private val downloader: OamBundleDownloader,
     private val notificationController: OamDownloadNotificationController,
     private val networkMonitor: OamDownloadNetworkMonitor,
@@ -272,8 +275,11 @@ class DownloadViewModel(
         if (!state.selection.canDownload) {
             _uiState.update {
                 it.copy(
-                    statusMessage = "Nothing selected",
-                    errorMessage = "Enable Maps, POI, Routing, DEM, or Refuges.info in Bundle settings.",
+                    statusMessage = resources.getString(R.string.download_nothing_selected),
+                    errorMessage =
+                        resources.getString(
+                            R.string.download_enable_maps_poi_routing_dem_or_refuges_info_in_bundle_settings,
+                        ),
                     networkWarningMessage = null,
                 )
             }
@@ -283,8 +289,8 @@ class DownloadViewModel(
         if (areas.isEmpty()) {
             _uiState.update {
                 it.copy(
-                    statusMessage = "No area selected",
-                    errorMessage = "Select at least one area before downloading.",
+                    statusMessage = resources.getString(R.string.download_no_area_selected),
+                    errorMessage = resources.getString(R.string.download_select_at_least_one_area_before_downloading),
                     networkWarningMessage = null,
                 )
             }
@@ -303,16 +309,18 @@ class DownloadViewModel(
         if (!allowNonWifi && !networkState.isValidatedWifi) {
             _uiState.update {
                 it.copy(
-                    statusMessage = "Wi-Fi recommended",
+                    statusMessage = resources.getString(R.string.download_wi_fi_recommended),
                     errorMessage = null,
                     networkWarningMessage =
-                        "${networkState.userLabel}. Connect the watch to Wi-Fi for large downloads, " +
-                            "or continue and the app will reconnect automatically if Wi-Fi appears.",
+                        resources.getString(
+                            R.string.download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app,
+                            resources.getString(networkState.userLabelRes),
+                        ),
                 )
             }
             DebugTelemetry.log(
                 OAM_DOWNLOAD_TELEMETRY_TAG,
-                "event=wifi_preflight_blocked state=${networkState.userLabel.telemetryValue()} " +
+                "event=wifi_preflight_blocked state=${networkState.transportLabel.telemetryValue()} " +
                     networkState.telemetryFields,
             )
             return
@@ -327,14 +335,19 @@ class DownloadViewModel(
             "event=user_pause_request ${networkMonitor.currentState().telemetryFields}",
         )
         if (downloadServiceClient.state.value.status == OamOwnedDownloadStatus.RUNNING) {
-            _uiState.update { it.copy(phase = "PAUSING", statusMessage = "Pausing download") }
+            _uiState.update {
+                it.copy(
+                    phase = "PAUSING",
+                    statusMessage = resources.getString(R.string.download_pausing_download),
+                )
+            }
             downloadServiceClient.pause()
         } else {
             requestDownloadStop(
                 request = DownloadStopRequest.PAUSE,
                 abortReason = "user_pause",
                 phase = "PAUSING",
-                statusMessage = "Pausing download",
+                statusMessage = resources.getString(R.string.download_pausing_download),
             )
         }
     }
@@ -345,14 +358,16 @@ class DownloadViewModel(
             "event=user_cancel_request ${networkMonitor.currentState().telemetryFields}",
         )
         if (downloadServiceClient.state.value.status == OamOwnedDownloadStatus.RUNNING) {
-            _uiState.update { it.copy(phase = "CANCELING", statusMessage = "Canceling download") }
+            _uiState.update {
+                it.copy(phase = "CANCELING", statusMessage = resources.getString(R.string.download_canceling_download))
+            }
             downloadServiceClient.cancel()
         } else {
             requestDownloadStop(
                 request = DownloadStopRequest.CANCEL,
                 abortReason = "user_cancel",
                 phase = "CANCELING",
-                statusMessage = "Canceling download",
+                statusMessage = resources.getString(R.string.download_canceling_download),
             )
         }
     }
@@ -385,7 +400,7 @@ class DownloadViewModel(
                 it.copy(
                     isCheckingUpdates = true,
                     refreshPrompt = null,
-                    statusMessage = "Checking updates",
+                    statusMessage = resources.getString(R.string.download_checking_updates),
                     errorMessage = null,
                     networkWarningMessage = null,
                 )
@@ -397,7 +412,10 @@ class DownloadViewModel(
                             bundle = bundle,
                             status = OamBundleUpdateStatus.UNKNOWN,
                             checkedFileCount = 0,
-                            unknownFileNames = listOf(error.message ?: "Update check failed"),
+                            unknownFileNames =
+                                listOf(
+                                    error.message ?: resources.getString(R.string.download_update_check_failed),
+                                ),
                         )
                     }
             _uiState.update {
@@ -409,7 +427,7 @@ class DownloadViewModel(
                         it.copy(
                             bundleHealthByAreaId = updatedHealth,
                             isCheckingUpdates = false,
-                            statusMessage = "Repair needed",
+                            statusMessage = resources.getString(R.string.download_repair_needed),
                             errorMessage = null,
                             refreshPrompt = check,
                             networkWarningMessage = null,
@@ -420,9 +438,9 @@ class DownloadViewModel(
                             isCheckingUpdates = false,
                             statusMessage =
                                 if (check.hasSelectedAdditions(it.selection)) {
-                                    "Selected components available"
+                                    resources.getString(R.string.download_selected_components_available)
                                 } else {
-                                    "${bundle.areaLabel} is up to date"
+                                    resources.getString(R.string.download_is_up_to_date, bundle.areaLabel)
                                 },
                             errorMessage = null,
                             refreshPrompt = check,
@@ -436,9 +454,9 @@ class DownloadViewModel(
                             isCheckingUpdates = false,
                             statusMessage =
                                 if (check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE) {
-                                    "Update available"
+                                    resources.getString(R.string.download_update_available)
                                 } else {
-                                    "Update check incomplete"
+                                    resources.getString(R.string.download_update_check_incomplete)
                                 },
                             errorMessage = null,
                             refreshPrompt = check,
@@ -503,8 +521,8 @@ class DownloadViewModel(
         if (bundles.isEmpty()) {
             _uiState.update {
                 it.copy(
-                    statusMessage = "No bundle selected",
-                    errorMessage = "Select at least one installed bundle.",
+                    statusMessage = resources.getString(R.string.download_no_bundle_selected),
+                    errorMessage = resources.getString(R.string.download_select_at_least_one_installed_bundle),
                     refreshSummaryPrompt = null,
                     networkWarningMessage = null,
                 )
@@ -517,7 +535,12 @@ class DownloadViewModel(
                     isCheckingUpdates = true,
                     refreshPrompt = null,
                     refreshSummaryPrompt = null,
-                    statusMessage = "Checking ${bundles.size} bundle(s)",
+                    statusMessage =
+                        resources.getQuantityString(
+                            R.plurals.download_checking_bundle_s,
+                            bundles.size,
+                            bundles.size,
+                        ),
                     errorMessage = null,
                     networkWarningMessage = null,
                 )
@@ -530,7 +553,10 @@ class DownloadViewModel(
                                 bundle = bundle,
                                 status = OamBundleUpdateStatus.UNKNOWN,
                                 checkedFileCount = 0,
-                                unknownFileNames = listOf(error.message ?: "Update check failed"),
+                                unknownFileNames =
+                                    listOf(
+                                        error.message ?: resources.getString(R.string.download_update_check_failed),
+                                    ),
                             )
                         }
                 }
@@ -548,13 +574,25 @@ class DownloadViewModel(
                     statusMessage =
                         when {
                             summary.repairNeededCount > 0 ->
-                                "${summary.repairNeededCount} bundle(s) need repair"
+                                resources.getQuantityString(
+                                    R.plurals.download_bundle_s_need_repair,
+                                    summary.repairNeededCount,
+                                    summary.repairNeededCount,
+                                )
                             summary.updateAvailableCount > 0 ->
-                                "${summary.bundlesToRefresh.size} bundle(s) need refresh"
+                                resources.getQuantityString(
+                                    R.plurals.download_bundle_s_need_refresh,
+                                    summary.bundlesToRefresh.size,
+                                    summary.bundlesToRefresh.size,
+                                )
                             summary.selectedAdditionCount > 0 ->
-                                "${summary.selectedAdditionCount} bundle(s) can add selected components"
-                            summary.unknownCount > 0 -> "Update check incomplete"
-                            else -> "Selected bundles are up to date"
+                                resources.getQuantityString(
+                                    R.plurals.download_bundle_s_can_add_selected_components,
+                                    summary.selectedAdditionCount,
+                                    summary.selectedAdditionCount,
+                                )
+                            summary.unknownCount > 0 -> resources.getString(R.string.download_update_check_incomplete)
+                            else -> resources.getString(R.string.download_selected_bundles_are_up_to_date)
                         },
                     errorMessage = null,
                     networkWarningMessage = null,
@@ -595,7 +633,7 @@ class DownloadViewModel(
                     it.copy(
                         installedBundles = installed,
                         bundleHealthByAreaId = healthByAreaId,
-                        statusMessage = "Bundle deleted",
+                        statusMessage = resources.getString(R.string.download_bundle_deleted),
                         errorMessage = null,
                         networkWarningMessage = null,
                         lastLibraryChangedAtMillis = System.currentTimeMillis(),
@@ -604,8 +642,8 @@ class DownloadViewModel(
             } catch (error: Throwable) {
                 _uiState.update {
                     it.copy(
-                        statusMessage = "Delete failed",
-                        errorMessage = error.message ?: "Delete failed",
+                        statusMessage = resources.getString(R.string.download_delete_failed),
+                        errorMessage = error.message ?: resources.getString(R.string.download_delete_failed),
                         networkWarningMessage = null,
                     )
                 }
@@ -653,8 +691,8 @@ class DownloadViewModel(
         if (targets.size != requests.size || targets.isEmpty()) {
             _uiState.update {
                 it.copy(
-                    statusMessage = "Refresh failed",
-                    errorMessage = "One or more bundle areas are unknown.",
+                    statusMessage = resources.getString(R.string.download_refresh_failed),
+                    errorMessage = resources.getString(R.string.download_one_or_more_bundle_areas_are_unknown),
                     networkWarningMessage = null,
                 )
             }
@@ -670,16 +708,18 @@ class DownloadViewModel(
             pendingNonWifiRefreshRequests = requests
             _uiState.update {
                 it.copy(
-                    statusMessage = "Wi-Fi recommended",
+                    statusMessage = resources.getString(R.string.download_wi_fi_recommended),
                     errorMessage = null,
                     networkWarningMessage =
-                        "${networkState.userLabel}. Connect the watch to Wi-Fi for large downloads, " +
-                            "or continue and the app will reconnect automatically if Wi-Fi appears.",
+                        resources.getString(
+                            R.string.download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app,
+                            resources.getString(networkState.userLabelRes),
+                        ),
                 )
             }
             DebugTelemetry.log(
                 OAM_DOWNLOAD_TELEMETRY_TAG,
-                "event=wifi_preflight_blocked state=${networkState.userLabel.telemetryValue()} " +
+                "event=wifi_preflight_blocked state=${networkState.transportLabel.telemetryValue()} " +
                     networkState.telemetryFields,
             )
             return
@@ -690,13 +730,13 @@ class DownloadViewModel(
             it.copy(
                 isDownloading = true,
                 phase = "STARTING",
-                detail = "${targets.size} bundle(s)",
+                detail = resources.getQuantityString(R.plurals.download_bundle_s, targets.size, targets.size),
                 bytesDone = 0L,
                 totalBytes = null,
                 isPausedDownload = false,
                 pausedOperation = null,
                 selectedRefreshBundleIds = emptySet(),
-                statusMessage = "Refreshing bundles",
+                statusMessage = resources.getString(R.string.download_refreshing_bundles),
                 errorMessage = null,
                 networkWarningMessage = null,
             )
@@ -707,8 +747,8 @@ class DownloadViewModel(
                 val progressThrottler = OamProgressThrottler()
                 try {
                     notificationController.showProgress(
-                        title = "Refreshing bundles",
-                        detail = "${targets.size} bundle(s)",
+                        title = resources.getString(R.string.download_refreshing_bundles),
+                        detail = resources.getQuantityString(R.plurals.download_bundle_s, targets.size, targets.size),
                         bytesDone = 0L,
                         totalBytes = null,
                     )
@@ -724,9 +764,16 @@ class DownloadViewModel(
                         ) { progress ->
                             if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                             if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
-                            val detail = "${index + 1}/${targets.size} ${target.area.region} - ${progress.detail}"
+                            val detail =
+                                resources.getString(
+                                    R.string.download_area_progress_detail,
+                                    index + 1,
+                                    targets.size,
+                                    target.area.region,
+                                    progress.detail,
+                                )
                             notificationController.showProgress(
-                                title = "Refreshing offline bundle",
+                                title = resources.getString(R.string.download_refreshing_offline_bundle),
                                 detail = detail,
                                 bytesDone = progress.bytesDone,
                                 totalBytes = progress.totalBytes,
@@ -755,12 +802,21 @@ class DownloadViewModel(
                             selectedRefreshBundleIds = emptySet(),
                             isDownloading = false,
                             phase = "READY",
-                            detail = "${targets.size} bundle(s)",
+                            detail =
+                                resources.getQuantityString(
+                                    R.plurals.download_bundle_s,
+                                    targets.size,
+                                    targets.size,
+                                ),
                             bytesDone = 0L,
                             totalBytes = null,
                             isPausedDownload = false,
                             pausedOperation = null,
-                            statusMessage = if (targets.size == 1) "Bundle refreshed" else "Bundles refreshed",
+                            statusMessage =
+                                resources.getQuantityString(
+                                    R.plurals.download_bundle_status_refreshed,
+                                    targets.size,
+                                ),
                             errorMessage = null,
                             networkWarningMessage = null,
                             lastLibraryChangedAtMillis = System.currentTimeMillis(),
@@ -768,9 +824,13 @@ class DownloadViewModel(
                     }
                     notificationController.showComplete(
                         if (targets.size == 1) {
-                            "${targets.first().area.region} refreshed"
+                            resources.getString(R.string.download_refreshed, targets.first().area.region)
                         } else {
-                            "${targets.size} bundles refreshed"
+                            resources.getQuantityString(
+                                R.plurals.download_bundles_refreshed_2,
+                                targets.size,
+                                targets.size,
+                            )
                         },
                     )
                 } catch (cancelled: CancellationException) {
@@ -784,19 +844,26 @@ class DownloadViewModel(
                     if (request == DownloadStopRequest.CANCEL) {
                         notificationController.clear()
                     } else {
-                        notificationController.showPaused("${targets.size} bundle(s)")
+                        notificationController.showPaused(
+                            resources.getQuantityString(R.plurals.download_bundle_s, targets.size, targets.size),
+                        )
                     }
                     _uiState.update {
                         if (request == DownloadStopRequest.CANCEL) {
                             it.copy(
                                 isDownloading = false,
                                 phase = "CANCELED",
-                                detail = "${targets.size} bundle(s)",
+                                detail =
+                                    resources.getQuantityString(
+                                        R.plurals.download_bundle_s,
+                                        targets.size,
+                                        targets.size,
+                                    ),
                                 bytesDone = 0L,
                                 totalBytes = null,
                                 isPausedDownload = false,
                                 pausedOperation = null,
-                                statusMessage = "Refresh canceled",
+                                statusMessage = resources.getString(R.string.download_refresh_canceled),
                                 errorMessage = null,
                                 networkWarningMessage = null,
                             )
@@ -806,7 +873,7 @@ class DownloadViewModel(
                                 phase = "PAUSED",
                                 isPausedDownload = true,
                                 pausedOperation = DownloadOperation.REFRESH,
-                                statusMessage = "Refresh paused",
+                                statusMessage = resources.getString(R.string.download_refresh_paused),
                                 errorMessage = null,
                                 networkWarningMessage = null,
                             )
@@ -818,14 +885,16 @@ class DownloadViewModel(
                         it.copy(
                             isDownloading = false,
                             phase = "FAILED",
-                            statusMessage = "Refresh failed",
+                            statusMessage = resources.getString(R.string.download_refresh_failed),
                             isPausedDownload = false,
                             pausedOperation = null,
-                            errorMessage = error.message ?: "Refresh failed",
+                            errorMessage = error.message ?: resources.getString(R.string.download_refresh_failed),
                             networkWarningMessage = null,
                         )
                     }
-                    notificationController.showError(error.message ?: "Refresh failed")
+                    notificationController.showError(
+                        error.message ?: resources.getString(R.string.download_refresh_failed),
+                    )
                 } finally {
                     DebugTelemetry.log(
                         OAM_DOWNLOAD_TELEMETRY_TAG,
@@ -881,7 +950,7 @@ class DownloadViewModel(
                         totalBytes = state.totalBytes,
                         isPausedDownload = true,
                         pausedOperation = DownloadOperation.DOWNLOAD,
-                        statusMessage = "Download paused",
+                        statusMessage = resources.getString(R.string.download_download_paused),
                         errorMessage = null,
                         networkWarningMessage = null,
                     )
@@ -902,7 +971,11 @@ class DownloadViewModel(
                         totalBytes = null,
                         isPausedDownload = false,
                         pausedOperation = null,
-                        statusMessage = if (state.areaCount == 1) "Bundle installed" else "Bundles installed",
+                        statusMessage =
+                            resources.getQuantityString(
+                                R.plurals.download_bundle_status_installed,
+                                state.areaCount,
+                            ),
                         errorMessage = null,
                         networkWarningMessage = null,
                         lastLibraryChangedAtMillis = System.currentTimeMillis(),
@@ -919,7 +992,7 @@ class DownloadViewModel(
                         totalBytes = null,
                         isPausedDownload = false,
                         pausedOperation = null,
-                        statusMessage = "Download canceled",
+                        statusMessage = resources.getString(R.string.download_download_canceled),
                         errorMessage = null,
                         networkWarningMessage = null,
                     )
@@ -933,8 +1006,8 @@ class DownloadViewModel(
                         detail = state.detail,
                         isPausedDownload = false,
                         pausedOperation = null,
-                        statusMessage = "Download failed",
-                        errorMessage = state.errorMessage ?: "Download failed",
+                        statusMessage = resources.getString(R.string.download_download_failed),
+                        errorMessage = state.errorMessage ?: resources.getString(R.string.download_download_failed),
                         networkWarningMessage = null,
                     )
                 }
