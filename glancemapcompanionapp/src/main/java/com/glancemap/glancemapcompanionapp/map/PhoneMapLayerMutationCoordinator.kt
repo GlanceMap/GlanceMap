@@ -19,7 +19,10 @@ internal class PhoneMapLayerMutationQueue {
         coalescingKey: Any?,
         mutation: () -> Unit,
     ): Boolean {
-        if (!gestureActive) return true
+        if (!gestureActive) {
+            if (coalescingKey != null) coalescedPending.remove(coalescingKey)
+            return true
+        }
         if (coalescingKey == null) {
             pending += mutation
         } else {

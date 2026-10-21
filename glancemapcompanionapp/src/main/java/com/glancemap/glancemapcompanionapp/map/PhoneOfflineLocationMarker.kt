@@ -10,6 +10,7 @@ import org.mapsforge.core.model.LatLong
 import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
 import org.mapsforge.core.util.MercatorProjection
+import org.mapsforge.core.util.Parameters
 import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.layer.overlay.Marker
@@ -34,6 +35,7 @@ internal class PhoneOfflineLocationMarker(
     val markerStyle: PhoneMapMarkerStyle,
     private val context: Context,
     private val mapViewPosition: MapViewPosition? = null,
+    private val displayFrameOwner: PhoneOfflineMapsforgeMapView? = null,
     private val onFirstDrawCall: (PhoneOfflineLocationMarker) -> Unit = {},
 ) : Marker(
         location,
@@ -108,7 +110,29 @@ internal class PhoneOfflineLocationMarker(
     val lastDrawResult: String
         get() = lastDrawOutcome
 
+    override fun onAdd() {
+        super.onAdd()
+        displayFrameOwner?.locationMarker = this
+    }
+
+    override fun onRemove() {
+        if (displayFrameOwner?.locationMarker === this) displayFrameOwner.locationMarker = null
+        super.onRemove()
+    }
+
     override fun draw(
+        boundingBox: BoundingBox,
+        zoomLevel: Byte,
+        canvas: org.mapsforge.core.graphics.Canvas,
+        topLeft: Point,
+        mapViewRotation: Rotation,
+    ) {
+        if (displayFrameOwner == null || !Parameters.ROTATION_MATRIX) {
+            drawDisplayFrame(boundingBox, zoomLevel, canvas, topLeft, mapViewRotation)
+        }
+    }
+
+    fun drawDisplayFrame(
         boundingBox: BoundingBox,
         zoomLevel: Byte,
         canvas: org.mapsforge.core.graphics.Canvas,

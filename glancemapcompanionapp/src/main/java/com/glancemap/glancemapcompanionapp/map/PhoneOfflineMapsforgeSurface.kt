@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.view.MotionEvent
@@ -26,11 +27,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.graphics.withMatrix
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import com.glancemap.trailcore.poi.PoiType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.maplibre.android.gestures.AndroidGesturesManager
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
@@ -41,12 +51,14 @@ import org.mapsforge.core.util.Parameters
 import org.mapsforge.map.android.graphics.AndroidBitmap
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.view.MapView
+import org.mapsforge.map.layer.Layer
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.overlay.Circle
 import org.mapsforge.map.layer.overlay.Marker
 import org.mapsforge.map.layer.overlay.Polyline
 import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.model.common.Observer
+import org.mapsforge.map.util.MapPositionUtil
 import org.mapsforge.map.view.InputListener
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -56,6 +68,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private const val PHONE_OFFLINE_MAP_RENDER_APPLY_DELAY_MS = 16L
+private const val PHONE_OFFLINE_RUNTIME_DIAGNOSTICS_INTERVAL_MS = 250L
 
 /** Keeps Mapsforge's process-global framebuffer format enabled only while alpha-capable views exist. */
 private object PhoneMapsforgeFramebufferFormat {
@@ -133,6 +146,28 @@ internal data class PhoneOfflineMapSurfaceState(
 internal fun PhoneOfflineMapSurfaceState.isOpacityOnlyChangeFrom(
     previous: PhoneOfflineMapSurfaceState?,
 ): Boolean = previous != null && baseLayerOpacity != previous.baseLayerOpacity && copy(baseLayerOpacity = previous.baseLayerOpacity) == previous
+
+/** Bearing echoes are camera observations, not changes to tiles, overlays, or location. */
+internal fun PhoneOfflineMapSurfaceState.hasOnlyCompassChangesFrom(
+    previous: PhoneOfflineMapSurfaceState?,
+): Boolean =
+    previous != null &&
+        copy(
+            compassPresentation = previous.compassPresentation,
+            initialCamera = initialCamera.copy(bearingDegrees = previous.initialCamera.bearingDegrees),
+        ) == previous
+
+/** Camera, heading and transparency changes do not change the location layer. */
+internal fun PhoneOfflineMapSurfaceState.needsLocationUpdateFrom(previous: PhoneOfflineMapSurfaceState?): Boolean =
+    previous == null ||
+        map != previous.map ||
+        location != previous.location ||
+        mapMode.follow != previous.mapMode.follow ||
+        gestureMapMode.follow != previous.gestureMapMode.follow ||
+        hasLocationPermission != previous.hasLocationPermission ||
+        mapSettings.markerStyle != previous.mapSettings.markerStyle ||
+        locationMarkerFresh != previous.locationMarkerFresh ||
+        compassConeTrustworthy != previous.compassConeTrustworthy
 
 internal data class PhoneOfflineMapsforgeRendererOwner(
     val role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
@@ -216,7 +251,7 @@ internal fun offlineMapSurface(
 
 /** Persistent Android host for one Mapsforge MapView and its delayed renderer lifecycle. */
 @Suppress("TooManyFunctions") // Explicit callbacks make Mapsforge ownership easy to audit.
-private class PhoneOfflineMapsforgeView(
+internal class PhoneOfflineMapsforgeView(
     context: Context,
     transparentBackground: Boolean,
     private val rendererRole: PhoneOfflineMapRendererRole,
@@ -287,6 +322,8 @@ private class PhoneOfflineMapsforgeView(
             },
         )
     private val workGate = PhoneMapsforgeRenderWorkGate()
+    private val diagnosticsScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var runtimeDiagnosticsJob: Job? = null
     private val renderer =
         PhoneMapsforgeRenderer(
             context = context.applicationContext,
@@ -299,9 +336,11 @@ private class PhoneOfflineMapsforgeView(
             onRendererFailure = { error -> post { if (!disposed) callbacks.onMapError(error) } },
             onRuntimeChanged = {
                 mapView.post {
-                    if (!disposed && renderActive) latestState?.baseLayerOpacity?.let(::applyBaseLayerOpacity)
+                    if (!disposed && renderActive) {
+                        latestState?.baseLayerOpacity?.let(::applyBaseLayerOpacity)
+                        publishRuntimeDiagnostics()
+                    }
                 }
-                publishRuntimeDiagnostics()
             },
         )
     private val overlayLayers =
@@ -486,6 +525,13 @@ private class PhoneOfflineMapsforgeView(
         mapView.isLongClickable = renderActive && state.isInteractive
         mapView.isFocusable = renderActive && state.isInteractive
         latestState = state
+        // Heading samples must not wait for tile/layer work or take Mapsforge's Layers monitor.
+        val canUpdateCompass = renderer.isBaseLayerReady && !workGate.hasPendingWork() && currentReadiness().isReady
+        if (canUpdateCompass && state.hasOnlyCompassChangesFrom(lastAppliedState)) {
+            applyCompassPresentation(state.compassPresentation)
+            lastAppliedState = state
+            return
+        }
         workGate.requestWork()
         schedulePendingRendererWorkIfReady()
     }
@@ -507,6 +553,7 @@ private class PhoneOfflineMapsforgeView(
     fun dispose() {
         if (disposed) return
         disposed = true
+        diagnosticsScope.cancel()
         mapView.model.mapViewPosition.removeObserver(cameraObserver)
         mapView.removeInputListener(inputListener)
         mapView.removeOnLayoutChangeListener(mapViewLayoutListener)
@@ -565,14 +612,17 @@ private class PhoneOfflineMapsforgeView(
         applyMapSettings(state.mapSettings, state.initialCamera)
         applyCompassPresentation(state.compassPresentation)
         overlayLayers.update(state)
-        updateLocation(
-            state.location,
-            state.mapMode,
-            state.hasLocationPermission,
-            state.mapSettings,
-            state.locationMarkerFresh,
-            state.compassConeTrustworthy,
-        )
+        currentMapMode = state.mapMode
+        if (state.needsLocationUpdateFrom(lastAppliedState)) {
+            updateLocation(
+                state.location,
+                state.mapMode,
+                state.hasLocationPermission,
+                state.mapSettings,
+                state.locationMarkerFresh,
+                state.compassConeTrustworthy,
+            )
+        }
         applyCameraCommand(state.cameraCommand)
         applyCameraOverride(state.cameraOverride)
         publishCamera()
@@ -668,7 +718,7 @@ private class PhoneOfflineMapsforgeView(
             applyMapBearing(presentation.mapBearingDegrees)
         }
         locationMarker?.heading = presentation.markerScreenRotationDegrees ?: 0f
-        requestMapRedraw()
+        mapView.postInvalidateOnAnimation()
         appliedCompassPresentation = presentation
     }
 
@@ -766,6 +816,7 @@ private class PhoneOfflineMapsforgeView(
                     mapSettings.markerStyle,
                     context,
                     mapViewPosition = mapView.model.mapViewPosition,
+                    displayFrameOwner = mapView,
                 ) { observedMarker ->
                     post {
                         if (!disposed) {
@@ -956,8 +1007,20 @@ private class PhoneOfflineMapsforgeView(
     }
 
     private fun publishRuntimeDiagnostics() {
-        // Layers.size/contains take the monitor held during Mapsforge's background drawing.
         if (disposed || !renderActive || rotationDetector.rotateGestureDetector.isInProgress) return
+        if (runtimeDiagnosticsJob?.isActive == true) return
+        val layers = mapView.layerManager.layers
+        runtimeDiagnosticsJob =
+            diagnosticsScope.launch {
+                // Runtime reports do not need to be rebuilt at camera frame rate.
+                delay(PHONE_OFFLINE_RUNTIME_DIAGNOSTICS_INTERVAL_MS)
+                // Even Layers.iterator() waits for the monitor held throughout background drawing.
+                val snapshot = withContext(Dispatchers.Default) { layers.toList() }
+                if (!disposed && renderActive) recordRuntimeDiagnostics(snapshot)
+            }
+    }
+
+    private fun recordRuntimeDiagnostics(layers: List<Layer>) {
         val rendererSnapshot = renderer.runtimeSnapshot()
         val frameBuffer = runCatching { mapView.frameBuffer }.getOrNull()
         val dimensions = runCatching { frameBuffer?.dimension }.getOrNull()
@@ -985,8 +1048,8 @@ private class PhoneOfflineMapsforgeView(
                 androidMapViewDrawObserved = mapView.hasAndroidDrawObserved,
                 tileLayerDrawObserved = rendererSnapshot.tileLayerDrawObserved,
                 firstVisibleBaseTileObserved = rendererSnapshot.firstVisibleBaseTileObserved,
-                layerCount = mapView.layerManager.layers.size(),
-                tileLayerPresent = rendererSnapshot.layerPresentIn(mapView.layerManager.layers),
+                layerCount = layers.size,
+                tileLayerPresent = rendererSnapshot.layerPresentIn(layers),
                 tileLayerVisible = renderer.currentBaseLayer?.isVisible,
                 frameBufferDimensionAvailable = dimensions != null,
                 frameBufferWidth = dimensions?.width,
@@ -1006,7 +1069,7 @@ private class PhoneOfflineMapsforgeView(
                 locationInsideMapBounds = currentLocation?.let { mapBounds?.contains(it.latitude, it.longitude) },
                 followMode = currentMapMode.follow,
                 orientation = currentMapMode.orientation,
-                locationMarkerAttached = locationMarker?.let(mapView.layerManager.layers::contains) == true,
+                locationMarkerAttached = locationMarker?.let(layers::contains) == true,
                 locationMarkerVisible = locationMarker?.isVisible,
                 locationMarkerDrawCalls = locationMarker?.drawCalls ?: 0,
                 locationMarkerBitmapDrawObserved = locationMarker?.bitmapDrawObserved == true,
@@ -1153,14 +1216,31 @@ private class PhoneOfflineMapsforgeView(
     }
 }
 
+private data class PhoneMapsforgeMarkerFrame(
+    val zoomLevel: Byte,
+    val bounds: BoundingBox,
+    val topLeft: Point,
+    val rotation: Rotation,
+    val matrixValues: FloatArray,
+)
+
 /** Captures Android traversal separately from Mapsforge base-layer drawing. */
-private class PhoneOfflineMapsforgeMapView(
+internal class PhoneOfflineMapsforgeMapView(
     context: Context,
     transparentBackground: Boolean,
     private val onAndroidDrawObserved: () -> Unit,
 ) : MapView(context) {
     private val androidDrawObserved = AtomicBoolean(false)
     private val displayFrameObserver = Observer { updateDisplayFrameTransform() }
+    private val markerMatrix = Matrix()
+
+    @Volatile private var displayFrame: PhoneMapsforgeMarkerFrame? = null
+
+    var locationMarker: PhoneOfflineLocationMarker? = null
+        set(value) {
+            field = value
+            postInvalidateOnAnimation()
+        }
 
     init {
         if (transparentBackground) {
@@ -1195,8 +1275,28 @@ private class PhoneOfflineMapsforgeMapView(
                             position.pivot,
                             Point(position.mapViewCenterX.toDouble(), position.mapViewCenterY.toDouble()),
                         )
-                    PhoneMapsforgeDisplayFrameTransform(bufferPosition, camera, model.displayModel.tileSize)
-                        .applyTo(frameBuffer)
+                    val transform =
+                        PhoneMapsforgeDisplayFrameTransform(bufferPosition, camera, model.displayModel.tileSize)
+                    transform.applyTo(frameBuffer)
+                    val dimension = frameBuffer.dimension
+                    val tileSize = model.displayModel.tileSize
+                    val projection =
+                        MapPosition(bufferPosition.latLong, bufferPosition.zoomLevel.toDouble(), Rotation.NULL_ROTATION)
+                    displayFrame =
+                        PhoneMapsforgeMarkerFrame(
+                            bufferPosition.zoomLevel,
+                            MapPositionUtil.getBoundingBox(
+                                projection,
+                                Rotation.NULL_ROTATION,
+                                tileSize,
+                                dimension,
+                                0.5f,
+                                0.5f,
+                            ),
+                            MapPositionUtil.getTopLeftPoint(projection, dimension, tileSize),
+                            transform.rotation,
+                            transform.matrixValues(dimension),
+                        )
                 }
             }
         }
@@ -1208,9 +1308,23 @@ private class PhoneOfflineMapsforgeMapView(
     override fun onDraw(canvas: Canvas) {
         if (androidDrawObserved.compareAndSet(false, true)) post(onAndroidDrawObserved)
         super.onDraw(canvas)
+        // Match the image actually displayed, including a buffer swap inside super.onDraw.
+        val frame = displayFrame.takeIf { Parameters.ROTATION_MATRIX } ?: return
+        val marker = locationMarker ?: return
+        markerMatrix.setValues(frame.matrixValues)
+        canvas.withMatrix(markerMatrix) {
+            val graphics = AndroidGraphicFactory.createGraphicContext(canvas)
+            try {
+                marker.drawDisplayFrame(frame.bounds, frame.zoomLevel, graphics, frame.topLeft, frame.rotation)
+            } finally {
+                graphics.destroy()
+            }
+        }
     }
 
     override fun destroy() {
+        locationMarker = null
+        displayFrame = null
         model.mapViewPosition.removeObserver(displayFrameObserver)
         model.frameBufferModel.removeObserver(displayFrameObserver)
         model.mapViewDimension.removeObserver(displayFrameObserver)

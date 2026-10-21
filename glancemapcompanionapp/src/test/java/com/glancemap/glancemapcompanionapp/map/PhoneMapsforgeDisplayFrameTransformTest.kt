@@ -83,17 +83,20 @@ class PhoneMapsforgeDisplayFrameTransformTest {
         val reference = frameBuffer(expected)
         try {
             val rotation = Rotation(angle, 160f, 220f)
-            PhoneMapsforgeDisplayFrameTransform(
-                MapPosition(origin, 3.0, Rotation(20f, 160f, 220f)),
-                PhoneMapsforgeDisplayFrameCamera(
-                    MapPosition(LatLong(0.0, 45.0), 3.0, rotation),
-                    viewDimension,
-                    8.0 * scale,
-                    pivot,
-                    Point(0.5, centerY.toDouble()),
-                ),
-                256,
-            ).applyTo(buffer)
+            val transform =
+                PhoneMapsforgeDisplayFrameTransform(
+                    MapPosition(origin, 3.0, Rotation(20f, 160f, 220f)),
+                    PhoneMapsforgeDisplayFrameCamera(
+                        MapPosition(LatLong(0.0, 45.0), 3.0, rotation),
+                        viewDimension,
+                        8.0 * scale,
+                        pivot,
+                        Point(0.5, centerY.toDouble()),
+                    ),
+                    256,
+                )
+            transform.applyTo(buffer)
+            val overlay = transform.matrixValues(bufferDimension)
             // At zoom 3, 45 degrees is 256 px; the pinch pivot is 128 px from the buffer center.
             reference.adjustMatrix(
                 -256f,
@@ -110,6 +113,8 @@ class PhoneMapsforgeDisplayFrameTransformTest {
                 val target = expected.map(point)
                 assertEquals(target.x, actual.map(point).x, 0.002)
                 assertEquals(target.y, actual.map(point).y, 0.002)
+                assertEquals(target.x, overlay[0] * point.x + overlay[1] * point.y + overlay[2], 0.002)
+                assertEquals(target.y, overlay[3] * point.x + overlay[4] * point.y + overlay[5], 0.002)
             }
         } finally {
             buffer.destroy()

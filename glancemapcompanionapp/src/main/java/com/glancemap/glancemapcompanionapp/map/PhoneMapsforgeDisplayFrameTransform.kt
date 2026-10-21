@@ -7,7 +7,9 @@ import org.mapsforge.core.model.Point
 import org.mapsforge.core.model.Rotation
 import org.mapsforge.core.util.MercatorProjection
 import org.mapsforge.map.view.FrameBuffer
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 
 internal data class PhoneMapsforgeDisplayFrameCamera(
     val position: MapPosition,
@@ -35,6 +37,35 @@ internal class PhoneMapsforgeDisplayFrameTransform(
             Point(pixel.x - bufferCenter.x, pixel.y - bufferCenter.y)
         } ?: Point(0.0, 0.0)
     private val scale = (camera.scaleFactor / 2.0.pow(bufferPosition.zoomLevel.toInt())).toFloat()
+
+    /** Same matrix as Mapsforge's framebuffer; project the marker over that image without a layer redraw. */
+    fun matrixValues(bufferDimension: Dimension): FloatArray {
+        val centerX = bufferDimension.width * 0.5
+        val centerY = bufferDimension.height * 0.5
+        val offset =
+            Point(camera.dimension.width * (camera.center.x - 0.5), camera.dimension.height * (camera.center.y - 0.5))
+        val hasPivot = pivotDistance.x != 0.0 || pivotDistance.y != 0.0
+        val scalePivot = if (hasPivot) pivotDistance else offset
+        val cos = cos(rotation.radians)
+        val sin = sin(rotation.radians)
+        val a = scale * cos
+        val b = -scale * sin
+        val d = scale * sin
+        val e = scale * cos
+        val panX = if (hasPivot) 0.0 else shift.x
+        val panY = if (hasPivot) 0.0 else shift.y
+        val x =
+            (camera.dimension.width - bufferDimension.width) * 0.5 +
+                (1 - scale) * (centerX + scalePivot.x) +
+                scale * (offset.x + centerX - cos * centerX + sin * centerY) +
+                a * panX + b * panY
+        val y =
+            (camera.dimension.height - bufferDimension.height) * 0.5 +
+                (1 - scale) * (centerY + scalePivot.y) +
+                scale * (offset.y + centerY - sin * centerX - cos * centerY) +
+                d * panX + e * panY
+        return floatArrayOf(a.toFloat(), b.toFloat(), x.toFloat(), d.toFloat(), e.toFloat(), y.toFloat(), 0f, 0f, 1f)
+    }
 
     fun applyTo(frameBuffer: FrameBuffer) {
         frameBuffer.adjustMatrix(

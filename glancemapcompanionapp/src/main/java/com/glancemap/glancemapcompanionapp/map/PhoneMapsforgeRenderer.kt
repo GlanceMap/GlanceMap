@@ -16,6 +16,7 @@ import org.mapsforge.core.model.Tile
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.util.AndroidUtil
 import org.mapsforge.map.android.view.MapView
+import org.mapsforge.map.layer.Layer
 import org.mapsforge.map.layer.Layers
 import org.mapsforge.map.layer.cache.TileCache
 import org.mapsforge.map.layer.cache.TwoLevelTileCache
@@ -925,7 +926,7 @@ internal data class PhoneMapsforgeRendererRuntimeSnapshot(
     val tileLayerDrawObserved: Boolean,
     val firstVisibleBaseTileObserved: Boolean,
 ) {
-    fun layerPresentIn(layers: Layers): Boolean {
+    fun layerPresentIn(layers: Iterable<Layer>): Boolean {
         val expectedLayerId = layerId ?: return false
         return layers.any { System.identityHashCode(it) == expectedLayerId }
     }
