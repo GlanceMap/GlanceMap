@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.data.repository.maps.theme
 
 import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import com.glancemap.shared.transfer.MapsforgeThemePackage
+import com.glancemap.shared.transfer.mapsforgeSvgStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
@@ -306,7 +307,12 @@ class ExternalThemeStore(
     private fun readXmlInfo(file: File): MapsforgeThemePackage.XmlInfo? {
         if (file.length() > MapsforgeThemePackage.MAX_XML_BYTES) tooLarge()
         return try {
-            file.inputStream().use { MapsforgeThemePackage.inspectXml(it) }
+            if (file.extension.equals("svg", ignoreCase = true)) {
+                val input = file.inputStream().use { mapsforgeSvgStream(it) }
+                input.use { MapsforgeThemePackage.inspectXml(it) }
+            } else {
+                file.inputStream().use { MapsforgeThemePackage.inspectXml(it) }
+            }
         } catch (error: Exception) {
             throw ThemePackageException("Theme package is damaged", error)
         }
@@ -323,7 +329,7 @@ class ExternalThemeStore(
                 }
             if (!inside(theme.resourceRoot, resource)) invalidPackage()
             if (!resource.isFile) throw ThemePackageException("Theme resources are missing")
-            // AndroidSVG enables internal entities by default; never pass imported declarations to it.
+            // Check the same declaration-free SVG stream that the native decoder receives.
             if (resource.extension.equals("svg", ignoreCase = true)) readXmlInfo(resource)
         }
     }

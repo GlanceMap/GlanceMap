@@ -4,6 +4,7 @@ import android.content.Context
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemePackageException
 import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import com.glancemap.shared.transfer.MapsforgeThemePackage
+import com.glancemap.shared.transfer.mapsforgeSvgStream
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.model.DisplayModel
 import org.mapsforge.map.rendertheme.ExternalRenderTheme
@@ -23,7 +24,11 @@ internal fun externalRenderTheme(source: RenderThemeSource.External): ExternalRe
                 throw ThemePackageException("Not a valid Mapsforge theme package")
             }
             if (!file.isFile) throw ThemePackageException("Theme resources are missing")
-            file.inputStream()
+            if (file.extension.equals("svg", ignoreCase = true)) {
+                file.inputStream().use { mapsforgeSvgStream(it) }
+            } else {
+                file.inputStream()
+            }
         }
     }
 

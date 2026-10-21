@@ -2,9 +2,12 @@ package com.glancemap.glancemapwearos.data.repository.maps.theme
 
 import com.glancemap.glancemapwearos.core.maps.theme.externalRenderTheme
 import com.glancemap.shared.transfer.MapsforgeThemePackage
+import com.glancemap.shared.transfer.mapsforgeSvgStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -321,6 +324,75 @@ class ExternalThemeStoreTest {
     }
 
     @Test
+    fun `standard SVG public doctype installs and is removed only from decoder streams`() {
+        val svg = "$SVG_DOCTYPE<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>"
+        val installed =
+            store().install(archive(mapOf("Theme.xml" to xml("icon.svg"), "icon.svg" to svg)), NAME).single()
+        assertEquals(svg, File(installed.resourceRoot, "icon.svg").readText())
+        assertEquals(xml("icon.svg"), installed.xmlFile.readText())
+        val theme = externalRenderTheme(installed)
+        val decoded =
+            theme.resourceProvider.createInputStream(theme.relativePathPrefix, "file:icon.svg").use {
+                it.bufferedReader().readText()
+            }
+        assertEquals(svg.removePrefix(SVG_DOCTYPE), decoded)
+    }
+
+    @Test
+    fun `SVG internal subsets and unapproved external declarations fail before decoding`() {
+        var decoded = false
+        val repository = ExternalThemeStore(root, validateTheme = { decoded = true })
+        listOf(
+            SVG_DOCTYPE.removeSuffix(">") + " [<!ENTITY injected SYSTEM 'file:///private/secret'>]>",
+            SVG_DOCTYPE.removeSuffix(">") + " []>",
+            "<!DOCTYPE svg SYSTEM 'https://example.org/external.dtd'>",
+            SVG_DOCTYPE.replace("http://www.w3.org", "https://example.org"),
+            SVG_DOCTYPE + "<!ENTITY injected 'expanded'>",
+            SVG_DOCTYPE + "<!DOCTYPE svg>",
+        ).forEach { declaration ->
+            val svg = "$declaration<svg xmlns='http://www.w3.org/2000/svg'/>"
+            rejected(
+                archive(mapOf("Theme.xml" to xml("icon.svg"), "icon.svg" to svg)),
+                "Theme package is damaged",
+                repository,
+            )
+            assertFalse(decoded)
+            assertTrue(repository.themes().isEmpty())
+        }
+    }
+
+    @Test
+    fun `standard SVG declaration accepts paired quotes line breaks and Unicode encodings`() {
+        val declaration = SVG_DOCTYPE.replace('"', '\'').replace(" PUBLIC ", "\nPUBLIC\n").replace("http:", "https:")
+        val svg = "\uFEFF$declaration<svg xmlns='http://www.w3.org/2000/svg'/>"
+        listOf(Charsets.UTF_8, Charsets.UTF_16LE, Charsets.UTF_16BE).forEach { charset ->
+            val safe = svg.toByteArray(charset).inputStream().use { mapsforgeSvgStream(it).readBytes() }
+            assertEquals(svg.replace(declaration, ""), safe.toString(charset))
+            assertNull(MapsforgeThemePackage.inspectXml(safe.inputStream()))
+        }
+    }
+
+    @Test
+    fun `decoder streams still reject entity declarations if a stored resource changes`() {
+        val svg = "<svg xmlns='http://www.w3.org/2000/svg'/>"
+        val installed =
+            store().install(archive(mapOf("Theme.xml" to xml("icon.svg"), "icon.svg" to svg)), NAME).single()
+        File(installed.resourceRoot, "icon.svg").writeText("<!DOCTYPE svg [<!ENTITY x 'expanded'>]>$svg")
+        val theme = externalRenderTheme(installed)
+        assertThrows(IllegalStateException::class.java) {
+            theme.resourceProvider.createInputStream(theme.relativePathPrefix, "file:icon.svg").close()
+        }
+    }
+
+    @Test
+    fun `SVG decoder streams retain the XML byte limit`() {
+        val tooLarge = ByteArray((MapsforgeThemePackage.MAX_XML_BYTES + 1L).toInt())
+        assertThrows(IllegalStateException::class.java) {
+            tooLarge.inputStream().use { mapsforgeSvgStream(it).close() }
+        }
+    }
+
+    @Test
     fun `SVG entity declarations are rejected before the native decoder runs`() {
         var decoded = false
         val repository = ExternalThemeStore(root, validateTheme = { decoded = true })
@@ -366,5 +438,7 @@ class ExternalThemeStoreTest {
 
     companion object {
         private const val NAME = "sample.mapsforge-theme.zip"
+        private const val SVG_DOCTYPE =
+            "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">"
     }
 }

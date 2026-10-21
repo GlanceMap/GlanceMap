@@ -92,7 +92,7 @@ object MapsforgeThemePackage {
     fun inspectXml(input: InputStream): XmlInfo? {
         val bytes = input.readBounded(MAX_XML_BYTES)
         val xml = bytes.toString(themeXmlCharset(bytes)).removePrefix("\uFEFF")
-        check(!xml.contains("<!DOCTYPE") && !xml.contains("<!ENTITY") && !xml.contains('\u0000'))
+        checkXmlDeclarations(xml)
         var depth = 0
         var renderTheme = false
         var title: String? = null
@@ -142,17 +142,6 @@ object MapsforgeThemePackage {
         return path
     }
 
-    private fun InputStream.readBounded(maximum: Long): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (true) {
-            val read = read(buffer)
-            if (read < 0) return output.toByteArray()
-            check(output.size().toLong() + read <= maximum)
-            output.write(buffer, 0, read)
-        }
-    }
-
     fun boundedArchiveStream(
         input: InputStream,
         offset: Long = 0L,
@@ -176,6 +165,36 @@ object MapsforgeThemePackage {
             bytes += count
             check(bytes <= MAX_ARCHIVE_BYTES) { "Theme package is too large" }
         }
+    }
+}
+
+/** Ignore the standard SVG 1.1 public declaration without ever loading its DTD or allowing entities. */
+fun mapsforgeSvgStream(input: InputStream): InputStream {
+    val bytes = input.readBounded(MapsforgeThemePackage.MAX_XML_BYTES)
+    val charset = themeXmlCharset(bytes)
+    val svg = bytes.toString(charset).replace(STANDARD_SVG_DOCTYPE, "")
+    checkXmlDeclarations(svg)
+    return svg.toByteArray(charset).inputStream()
+}
+
+private val STANDARD_SVG_DOCTYPE =
+    Regex(
+        """<!DOCTYPE\s+svg\s+PUBLIC\s+(["'])-//W3C//DTD SVG 1\.1//EN\1\s+""" +
+            """(["'])https?://www\.w3\.org/Graphics/SVG/1\.1/DTD/svg11\.dtd\2\s*>""",
+    )
+
+private fun checkXmlDeclarations(xml: String) {
+    check(!xml.contains("<!DOCTYPE") && !xml.contains("<!ENTITY") && !xml.contains('\u0000'))
+}
+
+private fun InputStream.readBounded(maximum: Long): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return output.toByteArray()
+        check(output.size().toLong() + read <= maximum)
+        output.write(buffer, 0, read)
     }
 }
 
