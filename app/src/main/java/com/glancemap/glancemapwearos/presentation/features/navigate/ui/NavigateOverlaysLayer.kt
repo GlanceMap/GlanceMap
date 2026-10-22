@@ -337,7 +337,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     if (!suppressMapControlsForGuidance && showZoomPlusButton) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 316f,
+            anchor = 308f,
             anchorType = AnchorType.Center,
         ) {
             curvedComposable(
@@ -361,7 +361,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
                         modifier =
                             Modifier
                                 .size(zoomIconSize)
-                                .rotate(44f),
+                                .rotate(52f),
                     )
                 }
             }
@@ -371,7 +371,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     if (!suppressMapControlsForGuidance && showZoomMinusButton) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
-            anchor = 338f,
+            anchor = 330f,
             anchorType = AnchorType.Center,
         ) {
             curvedComposable(
@@ -395,7 +395,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
                         modifier =
                             Modifier
                                 .size(zoomIconSize)
-                                .rotate(112f),
+                                .rotate(120f),
                     )
                 }
             }
