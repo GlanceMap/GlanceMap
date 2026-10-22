@@ -40,7 +40,11 @@ internal fun AppLanguagePickerRow(
             listOf(
                 AppLanguage.SYSTEM to stringResource(R.string.settings_language_system),
                 AppLanguage.ENGLISH to stringResource(R.string.language_english),
+                AppLanguage.SPANISH to stringResource(R.string.language_spanish),
                 AppLanguage.FRENCH to stringResource(R.string.language_french),
+                AppLanguage.GERMAN to stringResource(R.string.language_german),
+                AppLanguage.ITALIAN to stringResource(R.string.language_italian),
+                AppLanguage.POLISH to stringResource(R.string.language_polish),
             ),
         onSelect = onSelect,
     )

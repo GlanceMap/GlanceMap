@@ -34,7 +34,7 @@ class AppLanguageResourceTest {
         val restored = AppLanguageSettings.localizedConfiguration(configuration, AppLanguage.SYSTEM, system)
         assertEquals(system, restored.locales)
         val context = InstrumentationRegistry.getInstrumentation().targetContext.createConfigurationContext(restored)
-        assertEquals("Cancel", context.getString(R.string.common_cancel))
+        assertEquals("Abbrechen", context.getString(R.string.common_cancel))
     }
 
     @Test

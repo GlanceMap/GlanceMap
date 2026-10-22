@@ -145,7 +145,7 @@ android {
 
     bundle {
         language {
-            // Keep both languages available offline when changed from the watch.
+            // Keep all supported languages available offline when changed from the watch.
             enableSplit = false
         }
         density {
