@@ -412,6 +412,7 @@ class MainActivity : ComponentActivity() {
                                 recordingActionPromptRequestToken = recordingActionPromptRequestToken,
                                 onRecordingTimeTap = onRecordingTimeTap,
                                 onRecordingTimeLongPress = onRecordingTimeLongPress,
+                                onCloseApp = { finishAndRemoveTask() },
                                 onMenuClick = {
                                     logNavigationTelemetry(
                                         event = "menu_click",

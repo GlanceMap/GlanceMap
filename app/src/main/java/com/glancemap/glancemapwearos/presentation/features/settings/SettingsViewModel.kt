@@ -1308,6 +1308,19 @@ class SettingsViewModel(
         settingsRepository.setMapFocusControlVisible(control, visible)
     }
 
+    val backButtonClosesApp: StateFlow<Boolean> =
+        settingsRepository.backButtonClosesApp
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_BACK_BUTTON_CLOSES_APP,
+            )
+
+    fun setBackButtonClosesApp(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setBackButtonClosesApp(enabled)
+        }
+
     val poiIconSizePx: StateFlow<Int> =
         settingsRepository.poiIconSizePx
             .stateIn(

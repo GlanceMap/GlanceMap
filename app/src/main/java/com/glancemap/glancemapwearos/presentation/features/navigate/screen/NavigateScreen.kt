@@ -88,6 +88,7 @@ fun NavigateScreen(
     onRecordingTimeTap: () -> Unit = {},
     onRecordingTimeLongPress: () -> Unit = {},
     onMenuClick: () -> Unit,
+    onCloseApp: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
     compassViewModel: CompassViewModel = viewModel(),
     navigateViewModel: NavigateViewModel = viewModel(),
@@ -674,6 +675,8 @@ fun NavigateScreen(
             showRouteToolsPanel = showRouteToolsPanel,
             shortcutTrayExpanded = shortcutTrayExpanded,
             backButtonExitsNavigation = backButtonExitsNavigation,
+            backButtonClosesApp = backButtonClosesApp,
+            onCloseApp = onCloseApp,
             onDismissCompletedRouteToolDraft = {
                 completedRouteToolDraft = null
                 routeToolPreview = null

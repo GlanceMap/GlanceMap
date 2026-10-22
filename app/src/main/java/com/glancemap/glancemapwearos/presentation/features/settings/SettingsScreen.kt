@@ -54,6 +54,7 @@ fun SettingsScreen(
     val backpackWeightKg by viewModel.backpackWeightKg.collectAsState()
     val bikeWeightKg by viewModel.bikeWeightKg.collectAsState()
     val backButtonExitsNavigation by viewModel.backButtonExitsNavigation.collectAsState()
+    val backButtonClosesApp by viewModel.backButtonClosesApp.collectAsState()
 
     fun refreshPartialSummary() {
         scope.launch {
@@ -172,6 +173,14 @@ fun SettingsScreen(
                     onCheckedChanged = viewModel::setBackButtonExitsNavigation,
                     label = "Exit back button",
                     secondaryLabel = "For compatible watches",
+                )
+            }
+            item {
+                SettingsToggleChip(
+                    checked = backButtonClosesApp,
+                    onCheckedChanged = viewModel::setBackButtonClosesApp,
+                    label = "Back closes app",
+                    secondaryLabel = "Close directly from Navigate",
                 )
             }
             item {

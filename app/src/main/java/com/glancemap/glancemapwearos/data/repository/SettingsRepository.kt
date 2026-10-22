@@ -16,6 +16,8 @@ interface SettingsRepository {
         const val TIME_FORMAT_24_HOUR = "24_HOUR"
         const val TIME_FORMAT_12_HOUR = "12_HOUR"
 
+        const val DEFAULT_BACK_BUTTON_CLOSES_APP = false
+
         const val DEFAULT_GPS_INTERVAL_MS = 3000L
         const val DEFAULT_AMBIENT_GPS_INTERVAL_MS = 60_000L
         const val DIAGNOSTICS_CAPTURE_MODE_FULL = "FULL"
@@ -787,6 +789,10 @@ interface SettingsRepository {
         control: MapFocusControl,
         visible: Boolean,
     )
+
+    val backButtonClosesApp: Flow<Boolean>
+
+    suspend fun setBackButtonClosesApp(enabled: Boolean)
 
     val poiIconSizePx: Flow<Int>
 

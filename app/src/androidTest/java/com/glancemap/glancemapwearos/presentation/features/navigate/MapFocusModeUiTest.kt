@@ -64,6 +64,8 @@ class MapFocusModeUiTest {
     private var compatBack by mutableStateOf(false)
     private lateinit var backDispatcher: OnBackPressedDispatcher
     private var menuCalls = 0
+    private var closeAppCalls = 0
+    private var closeAppBack by mutableStateOf(false)
     private var routeDismissCalls = 0
     private lateinit var mapView: MapView
     private var mapCreations = 0
@@ -114,6 +116,32 @@ class MapFocusModeUiTest {
             composeRule.runOnIdle { assertEquals(if (compat) 1 else 0, menuCalls) }
         }
         assertEquals(2, routeDismissCalls)
+    }
+
+    @Test
+    fun closeAppBackExitsFocusAndClosesWorkflowsBeforeClosingApp() {
+        launch()
+        composeRule.runOnIdle { closeAppBack = true }
+        enterFocus()
+        composeRule.runOnIdle {
+            routeToolsOpen = true
+            backDispatcher.onBackPressed()
+        }
+        composeRule.runOnIdle {
+            assertFalse(focus.mapFocusMode)
+            assertTrue(routeToolsOpen)
+            assertEquals(0, closeAppCalls)
+            backDispatcher.onBackPressed()
+        }
+        composeRule.runOnIdle {
+            assertFalse(routeToolsOpen)
+            assertEquals(0, closeAppCalls)
+            backDispatcher.onBackPressed()
+        }
+        composeRule.runOnIdle {
+            assertEquals(1, closeAppCalls)
+            assertEquals(0, menuCalls)
+        }
     }
 
     @Test
@@ -362,6 +390,8 @@ class MapFocusModeUiTest {
             showRouteToolsPanel = routeToolsOpen,
             shortcutTrayExpanded = expanded,
             backButtonExitsNavigation = compatBack,
+            backButtonClosesApp = closeAppBack,
+            onCloseApp = { closeAppCalls++ },
             onDismissCompletedRouteToolDraft = {},
             onCancelRouteToolSession = {},
             onDismissPoiCreationChoiceDialog = {},

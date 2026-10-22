@@ -115,6 +115,7 @@ fun DebuggingSettingsScreen(
     val diagnosticsCaptureMode by viewModel.diagnosticsCaptureMode.collectAsState()
     val gpsPassiveLocationExperiment by viewModel.gpsPassiveLocationExperiment.collectAsState()
     val backButtonExitsNavigation by viewModel.backButtonExitsNavigation.collectAsState()
+    val backButtonClosesApp by viewModel.backButtonClosesApp.collectAsState()
     val gpsDebugTelemetryPopupEnabled by
         viewModel.gpsDebugTelemetryPopupEnabled.collectAsState(
             initial = SettingsRepository.DEFAULT_GPS_DEBUG_TELEMETRY_POPUP_ENABLED,
@@ -531,6 +532,7 @@ fun DebuggingSettingsScreen(
                                                 diagnosticsCaptureMode = diagnosticsCaptureMode,
                                                 gpsPassiveLocationExperiment = gpsPassiveLocationExperiment,
                                                 backButtonExitsNavigation = backButtonExitsNavigation,
+                                                backButtonClosesApp = backButtonClosesApp,
                                                 recordingSampleIntervalSeconds = recordingSampleIntervalSeconds,
                                                 recordingScreenOffSampleIntervalSeconds =
                                                 recordingScreenOffSampleIntervalSeconds,

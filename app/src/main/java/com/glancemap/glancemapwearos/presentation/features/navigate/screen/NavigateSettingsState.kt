@@ -54,6 +54,7 @@ internal data class NavigateSettingsState(
     val isGpxInspectionEnabled: Boolean,
     val isMetric: Boolean,
     val backButtonExitsNavigation: Boolean,
+    val backButtonClosesApp: Boolean,
     val mapFocusVisibleControls: Set<MapFocusControl>,
     val poiIconSizePx: Int,
     val poiMarkerStyle: String,
@@ -161,6 +162,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val isGpxInspectionEnabled by settingsViewModel.isGpxInspectionEnabled.collectAsState()
     val isMetric by settingsViewModel.isMetric.collectAsState()
     val backButtonExitsNavigation by settingsViewModel.backButtonExitsNavigation.collectAsState()
+    val backButtonClosesApp by settingsViewModel.backButtonClosesApp.collectAsState()
     val mapFocusVisibleControls by settingsViewModel.mapFocusVisibleControls.collectAsState()
     val poiIconSizePx by settingsViewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by settingsViewModel.poiMarkerStyle.collectAsState()
@@ -240,6 +242,7 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         isGpxInspectionEnabled = isGpxInspectionEnabled,
         isMetric = isMetric,
         backButtonExitsNavigation = backButtonExitsNavigation,
+        backButtonClosesApp = backButtonClosesApp,
         mapFocusVisibleControls = mapFocusVisibleControls,
         poiIconSizePx = poiIconSizePx,
         poiMarkerStyle = poiMarkerStyle,

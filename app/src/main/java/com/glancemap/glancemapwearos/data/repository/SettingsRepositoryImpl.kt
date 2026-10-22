@@ -249,6 +249,7 @@ class SettingsRepositoryImpl private constructor(
         val GPX_TOOL_HIKE_CONSIDER_FOREST = booleanPreferencesKey("gpx_tool_hike_consider_forest")
         val IS_METRIC = booleanPreferencesKey("is_metric")
         val BACK_BUTTON_EXITS_NAVIGATION = booleanPreferencesKey("back_button_exits_navigation")
+        val BACK_BUTTON_CLOSES_APP = booleanPreferencesKey("back_button_closes_app")
         val MAP_FOCUS_VISIBLE_CONTROLS = stringSetPreferencesKey("map_focus_visible_controls")
         val POI_ICON_SIZE_PX = intPreferencesKey("poi_icon_size_px")
         val POI_MARKER_STYLE = stringPreferencesKey("poi_marker_style")
@@ -1935,6 +1936,15 @@ class SettingsRepositoryImpl private constructor(
             prefs[PrefKeys.MAP_FOCUS_VISIBLE_CONTROLS] =
                 if (visible) current + control.name else current - control.name
         }
+    }
+
+    override val backButtonClosesApp: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.BACK_BUTTON_CLOSES_APP] ?: SettingsRepository.DEFAULT_BACK_BUTTON_CLOSES_APP
+        }
+
+    override suspend fun setBackButtonClosesApp(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.BACK_BUTTON_CLOSES_APP] = enabled }
     }
 
     override val poiIconSizePx: Flow<Int> =
