@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,7 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
@@ -70,6 +72,9 @@ import org.mapsforge.map.android.view.MapView
 )
 @Composable
 internal fun BoxScope.NavigateOverlaysLayer(
+    mapFocusMode: Boolean,
+    mapFocusVisibleControls: Set<MapFocusControl>,
+    onEnterMapFocus: () -> Unit,
     mapView: MapView,
     mapAppearanceApplyInProgress: Boolean,
     slopeOverlayToggleEnabled: Boolean,
@@ -176,6 +181,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onDismissStartDecisionPrompt: () -> Unit,
 ) {
     val context = LocalContext.current
+    val mapChrome =
+        mapFocusChromePolicy(
+            mapFocusMode = mapFocusMode,
+            dashboardFullscreen = false,
+            visibleControls = mapFocusVisibleControls,
+        )
     val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
     var liveDistanceLineStart by
         remember(mapView, locationMarker, lastKnownLocation) {
@@ -203,11 +214,11 @@ internal fun BoxScope.NavigateOverlaysLayer(
         } else {
             0.dp
         }
-    val suppressLiveMetricsForPoi = poiTapMessage != null
+    val suppressLiveMetricsForPoi = poiTapMessage != null || !mapChrome.shows(MapFocusControl.LIVE_METRICS)
     val suppressCompactGuidancePopup =
         shouldSuppressCompactGuidancePopup(
             navMode = navMode,
-            liveElevationEnabled = liveElevationEnabled,
+            liveElevationEnabled = liveElevationEnabled && mapChrome.shows(MapFocusControl.LIVE_METRICS),
             shortcutTrayExpanded = shortcutTrayExpanded,
         )
     val hasTurnByTurnDecisionPrompt = startDecisionPrompt != null || showGuideBackPrompt
@@ -296,8 +307,15 @@ internal fun BoxScope.NavigateOverlaysLayer(
     RouteToolInlineProgressBanner(
         visible = mapAppearanceApplyInProgress,
         message = stringResource(R.string.navigation_updating_map),
-        startInset = sideButtonEdgePadding + sideButtonSize + 8.dp,
-        endInset = sideButtonEdgePadding + sideButtonSize + routeShortcutAccessoryWidth + 8.dp,
+        startInset =
+            if (mapChrome.shows(MapFocusControl.MENU_BUTTON)) {
+                sideButtonEdgePadding + sideButtonSize + 8.dp
+            } else {
+                8.dp
+            },
+        endInset =
+            sideButtonEdgePadding +
+                (if (mapFocusMode) 48.dp else sideButtonSize + routeShortcutAccessoryWidth) + 8.dp,
     )
 
     SlopeOverlayStatusIndicator(
@@ -307,7 +325,11 @@ internal fun BoxScope.NavigateOverlaysLayer(
         enabled = slopeOverlayEnabled,
         screenSize = screenSize,
         sideButtonEdgePadding = sideButtonEdgePadding,
-        sideButtonSize = sideButtonSize,
+        sideButtonSize = if (mapFocusMode) 48.dp else sideButtonSize,
+        modifier =
+            Modifier.offset(
+                y = if (shortcutTrayExpanded && !mapFocusMode) -(48.dp + slopeIndicatorButtonSize / 2 + 4.dp) else 0.dp,
+            ),
     )
 
     PanningLiveMetricsOverlay(
@@ -323,7 +345,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         navButtonSize = navButtonSize,
     )
 
-    if (!suppressMapControlsForGuidance) {
+    if (mapChrome.shows(MapFocusControl.NORTH_INDICATOR) && !suppressMapControlsForGuidance) {
         NorthIndicatorOverlay(
             northIndicatorMode = northIndicatorMode,
             navMode = navMode,
@@ -334,7 +356,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         )
     }
 
-    if (!suppressMapControlsForGuidance && showZoomPlusButton) {
+    if (mapChrome.shows(MapFocusControl.ZOOM_PLUS) && !suppressMapControlsForGuidance && showZoomPlusButton) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
             anchor = 308f,
@@ -368,7 +390,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         }
     }
 
-    if (!suppressMapControlsForGuidance && showZoomMinusButton) {
+    if (mapChrome.shows(MapFocusControl.ZOOM_MINUS) && !suppressMapControlsForGuidance && showZoomMinusButton) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
             anchor = 330f,
@@ -402,7 +424,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         }
     }
 
-    if (!suppressMapControlsForGuidance) {
+    if (mapChrome.shows(MapFocusControl.SCALE) && !suppressMapControlsForGuidance) {
         scaleIndicator?.let { indicator ->
             val scaleFontScale = LocalDensity.current.fontScale
             val scaleTopPadding = zoomLabelTopPadding + if (scaleFontScale > 1f) 4.dp else 0.dp
@@ -463,35 +485,37 @@ internal fun BoxScope.NavigateOverlaysLayer(
         onCancel = onCancelSelectingGpxPointB,
     )
 
-    IconButton(
-        onClick = onMenuClick,
-        modifier =
-            Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = sideButtonEdgePadding)
-                .size(sideButtonSize),
-        colors =
-            IconButtonDefaults.iconButtonColors(
-                containerColor = Color.Black.copy(alpha = 0.7f),
-                contentColor = Color.White,
-            ),
-    ) {
-        Icon(Icons.Default.Menu, "Menu", Modifier.size(sideButtonIconSize))
+    if (mapChrome.shows(MapFocusControl.MENU_BUTTON)) {
+        IconButton(
+            onClick = onMenuClick,
+            modifier =
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = sideButtonEdgePadding)
+                    .size(sideButtonSize),
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White,
+                ),
+        ) {
+            Icon(Icons.Default.Menu, "Menu", Modifier.size(sideButtonIconSize))
+        }
     }
 
-    if (!suppressMapControlsForGuidance && !routeToolModeActive) {
+    if (mapChrome.showRoutineChrome && !suppressMapControlsForGuidance && !routeToolModeActive) {
         RouteShortcutTray(
             expanded = shortcutTrayExpanded,
             keepAppOpen = keepAppOpen,
             edgePadding = sideButtonEdgePadding,
             anchorSize = sideButtonSize,
-            adjacentAccessoryWidth = routeShortcutAccessoryWidth,
             actionHeight = sideButtonSize,
             iconSize = sideButtonIconSize,
             onToggleExpanded = onShortcutTrayToggle,
             onKeepAppOpenClick = onKeepAppOpenToggle,
             onGpxToolsClick = onGpxToolsClick,
             onCreatePoiClick = onCreatePoiClick,
+            onMapFocusClick = onEnterMapFocus,
             recordingActive = traceRecordingState.active,
             recordingPaused = traceRecordingState.paused,
             recordingSaving = traceRecordingState.saving,
@@ -514,7 +538,8 @@ internal fun BoxScope.NavigateOverlaysLayer(
                 offRoute = turnByTurnGuidanceState.offRoute,
                 guideBackToRouteActive = guideBackToRouteActive,
                 suppressed =
-                    poiTapMessage != null ||
+                    mapFocusMode ||
+                        poiTapMessage != null ||
                         turnByTurnFullScreenExpanded ||
                         recordingDashboardFullScreenExpanded ||
                         combinedGuidanceRecordingFullScreenExpanded,
@@ -524,6 +549,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     )
 
     NavModeButtonOverlay(
+        visible = mapChrome.shows(MapFocusControl.NAV_MODE_BUTTON),
         mapView = mapView,
         navMode = navMode,
         isOfflineMode = isOfflineMode,

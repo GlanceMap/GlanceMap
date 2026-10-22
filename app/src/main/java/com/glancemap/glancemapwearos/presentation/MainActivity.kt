@@ -63,6 +63,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.GpxSettingsS
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxToolsSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.LicensesScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapDisplaySettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.MapFocusSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapZoomSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.PoiSettingsScreen
@@ -1008,6 +1009,24 @@ class MainActivity : ComponentActivity() {
                                 onSwipeLeftNavigate = navigateViaSwipeLeft,
                             ) {
                                 MapDisplaySettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenGeneralSettings = {
+                                        navController.navigate(WatchRoutes.SETTINGS) {
+                                            popUpTo(WatchRoutes.SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.MAP_FOCUS_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                MapFocusSettingsScreen(
                                     viewModel = appContainer.settingsViewModel,
                                     onOpenGeneralSettings = {
                                         navController.navigate(WatchRoutes.SETTINGS) {

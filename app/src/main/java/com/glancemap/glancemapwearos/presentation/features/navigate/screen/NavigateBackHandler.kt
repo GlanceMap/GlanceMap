@@ -7,6 +7,8 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 @Composable
 @Suppress("LongParameterList", "FunctionNaming")
 internal fun NavigateBackHandler(
+    mapFocusMode: Boolean,
+    onExitMapFocus: () -> Unit,
     createdPoiCreateInProgress: Boolean,
     completedRouteToolDraftActive: Boolean,
     routeToolExecutionInProgress: Boolean,
@@ -29,7 +31,7 @@ internal fun NavigateBackHandler(
     onDismissShortcutTray: () -> Unit,
     onMenuClick: () -> Unit,
 ) {
-    BackHandler(enabled = true) {
+    BackHandler(enabled = !mapFocusMode) {
         when {
             createdPoiCreateInProgress -> Unit
             completedRouteToolDraftActive -> {
@@ -64,4 +66,5 @@ internal fun NavigateBackHandler(
             }
         }
     }
+    BackHandler(enabled = mapFocusMode, onBack = onExitMapFocus)
 }

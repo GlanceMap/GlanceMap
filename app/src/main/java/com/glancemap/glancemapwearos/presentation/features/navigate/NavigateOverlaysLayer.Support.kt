@@ -722,6 +722,7 @@ private enum class NavButtonTrustState {
 @Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.NavModeButtonOverlay(
+    visible: Boolean,
     mapView: MapView,
     navMode: NavMode,
     isOfflineMode: Boolean,
@@ -738,6 +739,7 @@ internal fun BoxScope.NavModeButtonOverlay(
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
 ) {
+    if (!visible) return
     val navIcon =
         when {
             isOfflineMode -> Icons.Default.LocationDisabled

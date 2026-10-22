@@ -33,6 +33,7 @@ object WatchRoutes {
     const val MAP_SETTINGS = "map_settings_screen"
     const val POI_SETTINGS = "poi_settings_screen"
     const val MAP_DISPLAY_SETTINGS = "map_display_settings_screen"
+    const val MAP_FOCUS_SETTINGS = "map_focus_settings_screen"
     const val MAP_ZOOM_SETTINGS = "map_zoom_settings_screen"
     const val THEME_SETTINGS = "theme_settings_screen"
     const val RESET_DEFAULTS_CONFIRM = "reset_defaults_confirm_screen"

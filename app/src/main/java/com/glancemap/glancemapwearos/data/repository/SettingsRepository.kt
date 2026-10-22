@@ -781,6 +781,13 @@ interface SettingsRepository {
 
     suspend fun setBackButtonExitsNavigation(enabled: Boolean)
 
+    val mapFocusVisibleControls: Flow<Set<MapFocusControl>>
+
+    suspend fun setMapFocusControlVisible(
+        control: MapFocusControl,
+        visible: Boolean,
+    )
+
     val poiIconSizePx: Flow<Int>
 
     suspend fun setPoiIconSizePx(sizePx: Int)

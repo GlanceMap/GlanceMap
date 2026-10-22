@@ -98,6 +98,7 @@ fun NavigateScreen(
     val screenSize = rememberWearScreenSize()
     val density = LocalDensity.current
     val focusRequester = remember { FocusRequester() }
+    val mapFocusState = remember { NavigateMapFocusState() }
     SideEffect {
         BenchmarkTrace.mark("recompose.NavigateScreen")
     }
@@ -200,9 +201,11 @@ fun NavigateScreen(
         val offlinePoiSearchUiState by poiViewModel.offlineSearchUiState.collectAsState()
         val traceRecordingState by traceRecordingViewModel.recordingPresentationState.collectAsState()
         val recordingSampleIntervalSeconds by settingsViewModel.recordingSampleIntervalSeconds.collectAsState()
-        val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
+        val recordingScreenOffSampleIntervalSeconds by settingsViewModel.recordingScreenOffSampleIntervalSeconds
+            .collectAsState()
         val turnByTurnGpsIntervalSeconds by settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
-        val turnByTurnScreenOffGpsIntervalSeconds by settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+        val turnByTurnScreenOffGpsIntervalSeconds by settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds
+            .collectAsState()
         val recordingScreenOnGpsEnabled =
             recordingSampleIntervalSeconds != SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
         val recordingScreenOffGpsEnabled =
@@ -451,6 +454,19 @@ fun NavigateScreen(
                 isShortcutTrayExpanded = shortcutTrayExpanded,
             )
 
+        fun enterMapFocus() {
+            screenActions.triggerHaptic()
+            mapFocusState.enter { shortcutTrayExpanded = false }
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=shortcut")
+        }
+
+        fun exitMapFocus(source: String) {
+            if (!mapFocusState.mapFocusMode) return
+            if (source == "button") screenActions.triggerHaptic()
+            mapFocusState.exit()
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
+        }
+
         // ---- Auto-recenter timer ----
         LaunchedEffect(effectiveNavMode, autoRecenterEnabled, autoRecenterDelay, offlineMode) {
             if (!offlineMode && effectiveNavMode == NavMode.PANNING && autoRecenterEnabled) {
@@ -644,6 +660,8 @@ fun NavigateScreen(
         )
 
         NavigateBackHandler(
+            mapFocusMode = mapFocusState.mapFocusMode,
+            onExitMapFocus = { exitMapFocus("back") },
             createdPoiCreateInProgress = createdPoiCreateInProgress,
             completedRouteToolDraftActive = completedRouteToolDraft != null,
             routeToolExecutionInProgress = routeToolExecutionInProgress,
@@ -1030,6 +1048,10 @@ fun NavigateScreen(
             }
 
         NavigateContent(
+            mapFocusState = mapFocusState,
+            mapFocusVisibleControls = mapFocusVisibleControls,
+            onEnterMapFocus = ::enterMapFocus,
+            onExitMapFocus = ::exitMapFocus,
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
