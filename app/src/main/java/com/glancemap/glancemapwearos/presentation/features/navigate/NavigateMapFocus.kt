@@ -3,9 +3,9 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -108,13 +108,20 @@ internal fun BoxScope.MapFocusExitControl(
         // Match the tools anchor's visible center while keeping the full touch target on-screen.
         Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) {
             Box(
-                modifier = Modifier.size(anchorSize).background(Color.Black.copy(alpha = 0.78f), CircleShape),
+                modifier = Modifier.size(anchorSize),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Default.FullscreenExit,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp).offset(y = 1.dp),
+                    tint = Color.Black.copy(alpha = 0.4f),
+                )
+                Icon(
+                    imageVector = Icons.Default.FullscreenExit,
                     contentDescription = stringResource(R.string.navigation_exit_map_focus),
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(18.dp),
+                    tint = Color.White.copy(alpha = 0.6f),
                 )
             }
         }
