@@ -75,10 +75,10 @@ import androidx.wear.compose.material.Text as WearText
 
 private const val DEBUG_HELP_PREFS = "debug_settings_help_prefs"
 private const val DEBUG_EXPORT_INFO_SHOWN_KEY = "debug_export_info_shown"
-private const val CLEAN_CAPTURE_DEFAULT_LABEL = R.string.debug_clear_all_captured_logs
-private const val CLEAN_CAPTURE_CLEARED_LABEL = R.string.debug_all_captured_logs_have_been_cleared
+private val CLEAN_CAPTURE_DEFAULT_LABEL = R.string.debug_clear_all_captured_logs
+private val CLEAN_CAPTURE_CLEARED_LABEL = R.string.debug_all_captured_logs_have_been_cleared
 private const val CLEAN_CAPTURE_RESET_DELAY_MS = 3500L
-private const val DIAGNOSTICS_DEFAULT_STATUS = R.string.debug_export_to_support_email
+private val DIAGNOSTICS_DEFAULT_STATUS = R.string.debug_export_to_support_email
 
 private enum class DiagnosticsExportDialogMode {
     GENERATING,

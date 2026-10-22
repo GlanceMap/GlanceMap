@@ -156,6 +156,8 @@ android {
     }
 
     lint {
+        // Resource constants can inline placeholder IDs and crash string lookups.
+        fatal += "NonConstantResourceId"
         // Work around a lint internal crash in ActivityIconColorDetector on this project.
         disable += "ActivityIconColor"
         // Current transfer pipeline still relies on BIND_LISTENER-based listener service.
