@@ -110,6 +110,9 @@ fun UserProfileSettingsScreen(
             )
         }
         item {
+            AppLanguagePicker()
+        }
+        item {
             ActivityProfileToggle(
                 selectedProfile = activityProfile,
                 onSelect = viewModel::setActivityProfile,

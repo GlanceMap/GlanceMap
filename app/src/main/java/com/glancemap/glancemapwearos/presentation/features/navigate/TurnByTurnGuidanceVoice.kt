@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.R
@@ -43,6 +44,7 @@ internal fun TurnByTurnGuidanceVoiceEffect(
     isMetric: Boolean,
 ) {
     val resources = LocalResources.current
+    val voiceLocale = LocalConfiguration.current.locales[0]
     if (!voiceEnabled) return
 
     val appContext = context.applicationContext
@@ -113,10 +115,10 @@ internal fun TurnByTurnGuidanceVoiceEffect(
         }
     }
 
-    LaunchedEffect(ttsReady) {
+    LaunchedEffect(ttsReady, voiceLocale) {
         if (ttsReady) {
             ttsLifecycle.runIfActive {
-                val locale = Locale.getDefault()
+                val locale = voiceLocale
                 val languageResult = tts.setLanguage(locale)
                 val selectedVoice = selectBestLocalTtsVoice(tts.voices, locale)
                 val voiceResult = selectedVoice?.let { tts.setVoice(it) }

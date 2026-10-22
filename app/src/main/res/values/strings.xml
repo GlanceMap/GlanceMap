@@ -1960,4 +1960,8 @@
     <string name="settings_whole_kg">"%1$d kg"</string>
     <string name="settings_whole_lb">"%1$d lb"</string>
     <string name="settings_zoom_buttons">"Zoom buttons"</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="language_french" translatable="false">Français</string>
 </resources>

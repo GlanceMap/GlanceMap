@@ -2000,4 +2000,6 @@
     <string name="settings_whole_kg">"%1$d kg"</string>
     <string name="settings_whole_lb">"%1$d lb"</string>
     <string name="settings_zoom_buttons">"Boutons de zoom"</string>
+    <string name="settings_language">Langue</string>
+    <string name="settings_language_system">Système</string>
 </resources>

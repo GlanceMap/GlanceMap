@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -33,6 +34,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.localization.AppLanguageSettings
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
@@ -116,6 +118,7 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("CyclomaticComplexMethod", "LongMethod")
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppLanguageSettings.applyLegacy(this)
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(this.application)
         ambientState.refreshDeviceInteractive(fallback = true)
@@ -1197,6 +1200,10 @@ class MainActivity : ComponentActivity() {
             onConfirm = acknowledge,
             onDismissRequest = {},
         )
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(AppLanguageSettings.applyLegacy(this, newConfig))
     }
 
     override fun onResume() {
