@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.maps
 
 import com.glancemap.glancemapwearos.core.maps.DemSource
+import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ internal data class MapRendererConfiguration(
     val hillShadingEnabled: Boolean,
     val reliefOverlayEnabled: Boolean,
     val demSource: DemSource,
+    val externalTheme: RenderThemeSource.External? = null,
 )
 
 /** Serialize renderer state on its caller; IO resources cannot outlive an abandoned preparation. */

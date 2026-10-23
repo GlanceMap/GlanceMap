@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -1294,6 +1295,30 @@ class SettingsViewModel(
     fun setBackButtonExitsNavigation(enabled: Boolean) =
         viewModelScope.launch {
             settingsRepository.setBackButtonExitsNavigation(enabled)
+        }
+
+    val mapFocusVisibleControls: StateFlow<Set<MapFocusControl>> =
+        settingsRepository.mapFocusVisibleControls
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    fun setMapFocusControlVisible(
+        control: MapFocusControl,
+        visible: Boolean,
+    ) = viewModelScope.launch {
+        settingsRepository.setMapFocusControlVisible(control, visible)
+    }
+
+    val backButtonClosesApp: StateFlow<Boolean> =
+        settingsRepository.backButtonClosesApp
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsRepository.DEFAULT_BACK_BUTTON_CLOSES_APP,
+            )
+
+    fun setBackButtonClosesApp(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setBackButtonClosesApp(enabled)
         }
 
     val poiIconSizePx: StateFlow<Int> =

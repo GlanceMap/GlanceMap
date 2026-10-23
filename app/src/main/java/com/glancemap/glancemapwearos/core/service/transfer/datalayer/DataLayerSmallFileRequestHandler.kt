@@ -193,6 +193,7 @@ internal class DataLayerSmallFileRequestHandler(
                             "checksumVerified=${if (expectedSha.isNullOrBlank()) "na" else "true"} " +
                             "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
                     )
+                    fileOps.finishReceivedFile(fileName)
                     TransferDiagnostics.log(
                         "Small",
                         "event=commit_complete transferId=$transferId commitSucceeded=true",

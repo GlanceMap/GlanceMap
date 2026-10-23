@@ -55,6 +55,7 @@ data class DiagnosticsSettingsSnapshot(
     val diagnosticsCaptureMode: String = SettingsRepository.DEFAULT_DIAGNOSTICS_CAPTURE_MODE,
     val gpsPassiveLocationExperiment: Boolean,
     val backButtonExitsNavigation: Boolean,
+    val backButtonClosesApp: Boolean = SettingsRepository.DEFAULT_BACK_BUTTON_CLOSES_APP,
     val recordingSampleIntervalSeconds: Int = 0,
     val recordingScreenOffSampleIntervalSeconds: Int = SettingsRepository.DEFAULT_RECORDING_SCREEN_OFF_SAMPLE_INTERVAL_SECONDS,
     val recordingAutoPauseMode: String = SettingsRepository.DEFAULT_RECORDING_AUTO_PAUSE_MODE,
@@ -860,6 +861,7 @@ object DiagnosticsExporter {
             writer.appendLine("diagnosticsCaptureMode=${settings.diagnosticsCaptureMode}")
             writer.appendLine("gpsPassiveLocationExperiment=${settings.gpsPassiveLocationExperiment}")
             writer.appendLine("backButtonExitsNavigation=${settings.backButtonExitsNavigation}")
+            writer.appendLine("backButtonClosesApp=${settings.backButtonClosesApp}")
             writer.appendLine("recordingSampleIntervalSeconds=${settings.recordingSampleIntervalSeconds}")
             writer.appendLine(
                 "recordingScreenOffSampleIntervalSeconds=${settings.recordingScreenOffSampleIntervalSeconds}",

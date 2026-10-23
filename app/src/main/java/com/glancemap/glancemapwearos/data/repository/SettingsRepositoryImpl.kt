@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
@@ -217,6 +218,7 @@ class SettingsRepositoryImpl private constructor(
         val SELECTED_MAP_PATH = stringPreferencesKey("selected_map_path")
         val KEEP_APP_OPEN = booleanPreferencesKey("keep_app_open")
         val KEEP_APP_OPEN_TIP_SHOWN = booleanPreferencesKey("keep_app_open_tip_shown")
+        val MISSING_MAP_PROMPT_DISABLED = booleanPreferencesKey("missing_map_prompt_disabled")
         val COMPASS_MODE = booleanPreferencesKey("compass_mode")
         val GPX_LAST_VISITED_LIST_PAGE = stringPreferencesKey("gpx_last_visited_list_page")
         val GPX_INSPECTION_ENABLED = booleanPreferencesKey("gpx_inspection_enabled")
@@ -248,6 +250,8 @@ class SettingsRepositoryImpl private constructor(
         val GPX_TOOL_HIKE_CONSIDER_FOREST = booleanPreferencesKey("gpx_tool_hike_consider_forest")
         val IS_METRIC = booleanPreferencesKey("is_metric")
         val BACK_BUTTON_EXITS_NAVIGATION = booleanPreferencesKey("back_button_exits_navigation")
+        val BACK_BUTTON_CLOSES_APP = booleanPreferencesKey("back_button_closes_app")
+        val MAP_FOCUS_VISIBLE_CONTROLS = stringSetPreferencesKey("map_focus_visible_controls")
         val POI_ICON_SIZE_PX = intPreferencesKey("poi_icon_size_px")
         val POI_MARKER_STYLE = stringPreferencesKey("poi_marker_style")
         val POI_TAP_TO_CENTER_ENABLED = booleanPreferencesKey("poi_tap_to_center_enabled")
@@ -1624,6 +1628,13 @@ class SettingsRepositoryImpl private constructor(
         context.dataStore.edit { it[PrefKeys.KEEP_APP_OPEN_TIP_SHOWN] = shown }
     }
 
+    override val missingMapPromptDisabled: Flow<Boolean> =
+        context.dataStore.data.map { it[PrefKeys.MISSING_MAP_PROMPT_DISABLED] ?: false }
+
+    override suspend fun setMissingMapPromptDisabled(disabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.MISSING_MAP_PROMPT_DISABLED] = disabled }
+    }
+
     override val compassMode: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.COMPASS_MODE] ?: true }
 
     override suspend fun setCompassMode(isCompassMode: Boolean) {
@@ -1919,6 +1930,29 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setBackButtonExitsNavigation(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.BACK_BUTTON_EXITS_NAVIGATION] = enabled }
+    }
+
+    override val mapFocusVisibleControls: Flow<Set<MapFocusControl>> =
+        context.dataStore.data.map { decodeMapFocusControls(it[PrefKeys.MAP_FOCUS_VISIBLE_CONTROLS]) }
+
+    override suspend fun setMapFocusControlVisible(
+        control: MapFocusControl,
+        visible: Boolean,
+    ) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[PrefKeys.MAP_FOCUS_VISIBLE_CONTROLS].orEmpty()
+            prefs[PrefKeys.MAP_FOCUS_VISIBLE_CONTROLS] =
+                if (visible) current + control.name else current - control.name
+        }
+    }
+
+    override val backButtonClosesApp: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[PrefKeys.BACK_BUTTON_CLOSES_APP] ?: SettingsRepository.DEFAULT_BACK_BUTTON_CLOSES_APP
+        }
+
+    override suspend fun setBackButtonClosesApp(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.BACK_BUTTON_CLOSES_APP] = enabled }
     }
 
     override val poiIconSizePx: Flow<Int> =

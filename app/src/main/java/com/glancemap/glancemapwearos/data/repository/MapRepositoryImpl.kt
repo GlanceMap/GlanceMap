@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
+import com.glancemap.glancemapwearos.data.repository.maps.theme.MapThemePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -74,6 +75,8 @@ class MapRepositoryImpl(
             val isInsideDir = file.canonicalFile.parentFile?.canonicalPath == mapDir.canonicalPath
             val ok = if (file.exists() && isInsideDir) file.delete() else false
 
+            if (ok) mapThemePreferences().deleteMap(path)
+
             // delete hidden part too
             File(mapDir, ".${file.name}.part").delete()
 
@@ -120,8 +123,17 @@ class MapRepositoryImpl(
                 }
             }
 
+            mapThemePreferences().renameMap(sourceFile.absolutePath, targetFile.absolutePath)
             targetFile
         }
+
+    private fun mapThemePreferences() =
+        MapThemePreferences(
+            context.getSharedPreferences(
+                MapThemePreferences.PREFERENCES_NAME,
+                Context.MODE_PRIVATE,
+            ),
+        )
 
     private fun buildRenamedMapFileName(name: String): String {
         val sanitized = File(name).name.removeSuffix(".map").trim()

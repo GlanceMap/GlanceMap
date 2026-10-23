@@ -14,6 +14,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.MapHotPathDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -152,6 +153,7 @@ class MapRenderer(
         val hillShadingEnabled: Boolean,
         val reliefOverlayEnabled: Boolean,
         val demSource: DemSource,
+        val externalTheme: RenderThemeSource.External?,
     )
 
     private data class HillshadeTerrainUnavailableRequest(
@@ -239,6 +241,7 @@ class MapRenderer(
     private var currentMapPath: String? = null
     private var currentMapSignature: String? = null
     private var currentThemeFile: File? = null
+    private var currentExternalTheme: RenderThemeSource.External? = null
     private var currentMapsforgeThemeName: String? = null
     private var currentBundledThemeId: String = MapsforgeThemeCatalog.ELEVATE_THEME_ID
     private var currentHillShadingEnabled: Boolean = true
@@ -455,6 +458,7 @@ class MapRenderer(
                 hillShadingEnabled = configuration.hillShadingEnabled,
                 reliefOverlayEnabled = configuration.reliefOverlayEnabled,
                 demSource = configuration.demSource,
+                externalTheme = configuration.externalTheme,
             ).also { configurationInterrupted = false }
         } ?: ThemeApplyResult()
 
@@ -488,7 +492,7 @@ class MapRenderer(
 
     // This established orchestration was baseline-exempt before becoming suspend. Keep the
     // configuration and resource handoff in one ordered flow rather than split state transitions.
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "ReturnCount", "LongParameterList")
     private suspend fun setThemeConfigLocked(
         themeFile: File?,
         mapsforgeThemeName: String?,
@@ -496,6 +500,7 @@ class MapRenderer(
         hillShadingEnabled: Boolean,
         reliefOverlayEnabled: Boolean,
         demSource: DemSource = DemSource.DEFAULT,
+        externalTheme: RenderThemeSource.External? = null,
     ): ThemeApplyResult {
         var timingStatus = "ok"
         var usedLightweightReload = false
@@ -520,6 +525,7 @@ class MapRenderer(
                 hillShadingEnabled = hillShadingEnabled,
                 reliefOverlayEnabled = reliefOverlayEnabled,
                 demSource = demSource,
+                externalTheme = externalTheme,
             )
         val newSignature =
             workOwner.read {
@@ -556,6 +562,7 @@ class MapRenderer(
                             themeFile = themeFile,
                             mapsforgeThemeName = normalizedMapsforge,
                             bundledThemeId = normalizedBundledThemeId,
+                            externalTheme = externalTheme,
                         )
                     }
                 } ?: run {
@@ -564,6 +571,7 @@ class MapRenderer(
                     return themeApplyResult
                 }
 
+            currentExternalTheme = externalTheme
             currentThemeFile = themeFile
             currentMapsforgeThemeName = normalizedMapsforge
             currentBundledThemeId = normalizedBundledThemeId
@@ -638,6 +646,7 @@ class MapRenderer(
             return applyUnchangedLayerOnlyThemeConfig(request, timingMarker)
         }
 
+        currentExternalTheme = request.externalTheme
         currentThemeFile = request.themeFile
         currentMapsforgeThemeName = request.mapsforgeThemeName
         currentBundledThemeId = request.bundledThemeId
@@ -953,6 +962,7 @@ class MapRenderer(
                             themeFile = currentThemeFile,
                             mapsforgeThemeName = currentMapsforgeThemeName,
                             bundledThemeId = currentBundledThemeId,
+                            externalTheme = currentExternalTheme,
                         )
                     }
                 }
@@ -1900,9 +1910,7 @@ class MapRenderer(
             "detailedDemTiles=$detailedDemTileCount standardFallbackDemTiles=$standardFallbackDemTileCount " +
             "missingDemTiles=$missingDemTileCount"
 
-    private fun publishHillshadeTerrainUnavailable(
-        request: HillshadeTerrainUnavailableRequest,
-    ) {
+    private fun publishHillshadeTerrainUnavailable(request: HillshadeTerrainUnavailableRequest) {
         val correlationId = TerrainDiagnostics.nextCorrelationId()
         Log.w(
             TAG,

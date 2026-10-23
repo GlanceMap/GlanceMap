@@ -12,7 +12,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -26,6 +28,7 @@ import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.theme.ThemeViewModel
+import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import java.util.Locale
 
 internal object ThemeOverlayGrouping {
@@ -154,6 +157,10 @@ fun ThemeSettingsScreen(
     val selectedThemeId = selectedTheme?.id
 
     val themeOptions = themeItems.filterIsInstance<ThemeListItem.ThemeOption>()
+    val customPackages = themeOptions.filter { it.packageId != null }.groupBy { checkNotNull(it.packageId) }
+    var deletingPackage by remember { mutableStateOf<String?>(null) }
+    var deleteInProgress by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
     val styleOptions = themeItems.filterIsInstance<ThemeListItem.Style>()
     val overlayOptions = themeItems.filterIsInstance<ThemeListItem.Overlay>()
     val nightModeToggle =
@@ -206,6 +213,33 @@ fun ThemeSettingsScreen(
         remember(overlayGroups, expandedGroups.toMap()) {
             buildOverlayRows(overlayGroups, expandedGroups)
         }
+
+    WearActionDialog(
+        visible = deletingPackage != null,
+        title = "Delete custom theme package?",
+        message = "Removes every theme in this package. Associated maps will use the default theme.",
+        confirmText = if (deleteInProgress) "Deleting…" else "Delete",
+        confirmEnabled = !deleteInProgress,
+        onConfirm = {
+            deletingPackage?.let { packageId ->
+                deleteInProgress = true
+                themeViewModel.deleteExternalPackage(packageId) { error ->
+                    deleteInProgress = false
+                    deletingPackage = null
+                    deleteError = error
+                }
+            }
+        },
+        onDismissRequest = { if (!deleteInProgress) deletingPackage = null },
+    )
+    WearActionDialog(
+        visible = deleteError != null,
+        title = "Custom themes",
+        message = deleteError.orEmpty(),
+        confirmText = "OK",
+        onConfirm = { deleteError = null },
+        onDismissRequest = { deleteError = null },
+    )
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -264,6 +298,22 @@ fun ThemeSettingsScreen(
                         secondaryLabel = selectedTheme?.name?.ifBlank { selectedTheme.id } ?: "-",
                         onSelect = themeViewModel::setTheme,
                     )
+                }
+            }
+        }
+
+        if (customPackages.isNotEmpty()) {
+            item {
+                Text("Custom themes", color = MaterialTheme.colorScheme.onBackground)
+            }
+            customPackages.forEach { (packageId, themes) ->
+                item {
+                    Button(onClick = { deletingPackage = packageId }) {
+                        Text(
+                            text = "Delete ${themes.joinToString { it.name.removePrefix("Custom · ") }}",
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
                 }
             }
         }

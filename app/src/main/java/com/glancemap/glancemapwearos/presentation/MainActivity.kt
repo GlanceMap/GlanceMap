@@ -23,10 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
@@ -63,6 +65,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.GpxSettingsS
 import com.glancemap.glancemapwearos.presentation.features.settings.GpxToolsSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.LicensesScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapDisplaySettingsScreen
+import com.glancemap.glancemapwearos.presentation.features.settings.MapFocusSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.MapZoomSettingsScreen
 import com.glancemap.glancemapwearos.presentation.features.settings.PoiSettingsScreen
@@ -411,6 +414,7 @@ class MainActivity : ComponentActivity() {
                                 recordingActionPromptRequestToken = recordingActionPromptRequestToken,
                                 onRecordingTimeTap = onRecordingTimeTap,
                                 onRecordingTimeLongPress = onRecordingTimeLongPress,
+                                onCloseApp = { finishAndRemoveTask() },
                                 onMenuClick = {
                                     logNavigationTelemetry(
                                         event = "menu_click",
@@ -423,6 +427,15 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenGpxToolsSettings = {
                                     navController.navigate(WatchRoutes.GPX_TOOLS_SETTINGS) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onOpenMapBundles = { location ->
+                                    appContainer.downloadViewModel.suggestAreasForLocation(
+                                        latitude = location.latitude,
+                                        longitude = location.longitude,
+                                    )
+                                    navController.navigate(WatchRoutes.DOWNLOAD_AREA_PICKER) {
                                         launchSingleTop = true
                                     }
                                 },
@@ -447,6 +460,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(WatchRoutes.GPX) {
+                            val gpxTrackColor by appContainer.settingsViewModel.gpxTrackColor.collectAsState()
                             DismissableScreen(
                                 onDismiss = { navController.popBackStack() },
                                 onSwipeLeftNavigate = navigateViaSwipeLeft,
@@ -456,6 +470,7 @@ class MainActivity : ComponentActivity() {
                                     gpxViewModel = appContainer.gpxViewModel,
                                     locationViewModel = appContainer.locationViewModel,
                                     isMetric = isMetric,
+                                    gpxTrackColor = gpxTrackColor,
                                     autoStartRecordingWithGuidance = recordingStartWithTurnByTurn,
                                     recordingActiveOrSaving = traceRecordingState.active || traceRecordingState.saving,
                                     onStartRecording = appContainer.traceRecordingViewModel::startRecording,
@@ -488,8 +503,19 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        composable(WatchRoutes.DOWNLOAD) {
-                            var isDownloadAreaPickerOpen by rememberSaveable { mutableStateOf(false) }
+                        composable(
+                            route = "${WatchRoutes.DOWNLOAD}?pickArea={pickArea}",
+                            arguments =
+                                listOf(
+                                    navArgument("pickArea") {
+                                        type = NavType.BoolType
+                                        defaultValue = false
+                                    },
+                                ),
+                        ) { entry ->
+                            var isDownloadAreaPickerOpen by rememberSaveable {
+                                mutableStateOf(entry.arguments?.getBoolean("pickArea") == true)
+                            }
                             var downloadAreaFolder by rememberSaveable { mutableStateOf<String?>(null) }
                             var downloadAreaSearchQuery by rememberSaveable { mutableStateOf("") }
                             DismissableScreen(
@@ -1008,6 +1034,24 @@ class MainActivity : ComponentActivity() {
                                 onSwipeLeftNavigate = navigateViaSwipeLeft,
                             ) {
                                 MapDisplaySettingsScreen(
+                                    viewModel = appContainer.settingsViewModel,
+                                    onOpenGeneralSettings = {
+                                        navController.navigate(WatchRoutes.SETTINGS) {
+                                            popUpTo(WatchRoutes.SETTINGS) { inclusive = false }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(WatchRoutes.MAP_FOCUS_SETTINGS) {
+                            DismissableScreen(
+                                onDismiss = { navController.popBackStack() },
+                                onSwipeLeftNavigate = navigateViaSwipeLeft,
+                            ) {
+                                MapFocusSettingsScreen(
                                     viewModel = appContainer.settingsViewModel,
                                     onOpenGeneralSettings = {
                                         navController.navigate(WatchRoutes.SETTINGS) {

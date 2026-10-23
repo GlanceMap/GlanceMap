@@ -10,16 +10,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.ViewComfyAlt
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -31,7 +37,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -42,15 +51,18 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 
+// Keep the existing actions and 48 dp chip targets together in the compact tray.
 @Composable
+@Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 internal fun BoxScope.RouteShortcutTray(
     expanded: Boolean,
+    mapFocusMode: Boolean,
     keepAppOpen: Boolean,
     edgePadding: Dp,
     anchorSize: Dp,
-    adjacentAccessoryWidth: Dp,
     actionHeight: Dp,
     iconSize: Dp,
     recordingActive: Boolean,
@@ -61,6 +73,7 @@ internal fun BoxScope.RouteShortcutTray(
     onKeepAppOpenClick: () -> Unit,
     onGpxToolsClick: () -> Unit,
     onCreatePoiClick: () -> Unit,
+    onMapFocusClick: () -> Unit,
     onRecordingClick: () -> Unit,
     onHeadingReferenceMark: (Float) -> Unit,
 ) {
@@ -69,20 +82,26 @@ internal fun BoxScope.RouteShortcutTray(
     Box(
         modifier =
             Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = edgePadding),
+                .align(Alignment.Center)
+                .fillMaxSize(),
     ) {
         AnimatedVisibility(
             visible = expanded,
             modifier =
                 Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = anchorSize + adjacentAccessoryWidth + 20.dp),
+                    .align(Alignment.Center)
+                    // Center the 2×2 grid on the side buttons, with Full one row above.
+                    .offset(y = -24.dp),
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
             Column(
-                horizontalAlignment = Alignment.End,
+                modifier =
+                    Modifier
+                        .heightIn(
+                            max = 144.dp,
+                        ).verticalScroll(rememberScrollState(), enabled = headingReferenceTestActive),
+                horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 if (headingReferenceTestActive) {
@@ -102,42 +121,32 @@ internal fun BoxScope.RouteShortcutTray(
                         )
                     }
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                ShortcutActionChip(
+                    text =
+                        stringResource(
+                            if (mapFocusMode) {
+                                R.string.navigation_exit_map_focus_shortcut
+                            } else {
+                                R.string.navigation_map_focus_shortcut
+                            },
+                        ),
+                    height = actionHeight,
+                    onClick = onMapFocusClick,
+                    accessibilityLabel =
+                        stringResource(
+                            if (mapFocusMode) {
+                                R.string.navigation_exit_map_focus
+                            } else {
+                                R.string.navigation_enter_map_focus
+                            },
+                        ),
                 ) {
-                    ShortcutActionChip(
-                        text = "POI",
-                        height = actionHeight,
-                        onClick = onCreatePoiClick,
-                    ) {
+                    if (!mapFocusMode) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = Icons.Default.Fullscreen,
                             contentDescription = null,
                             modifier = Modifier.size(iconSize),
-                            tint = Color(0xFFFFD54F),
-                        )
-                    }
-                    ShortcutActionChip(
-                        text = "Stay",
-                        height = actionHeight,
-                        onClick = onKeepAppOpenClick,
-                    ) {
-                        Icon(
-                            imageVector =
-                                if (keepAppOpen) {
-                                    Icons.Default.Visibility
-                                } else {
-                                    Icons.Default.VisibilityOff
-                                },
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            tint =
-                                if (keepAppOpen) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    Color.White
-                                },
+                            tint = Color.White,
                         )
                     }
                 }
@@ -145,33 +154,71 @@ internal fun BoxScope.RouteShortcutTray(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ShortcutActionChip(
-                        text = "GPX",
-                        height = actionHeight,
-                        onClick = onGpxToolsClick,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            tint = Color.White,
-                        )
+                    Column {
+                        ShortcutActionChip(
+                            text = "POI",
+                            height = actionHeight,
+                            onClick = onCreatePoiClick,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(iconSize),
+                                tint = Color(0xFFFFD54F),
+                            )
+                        }
+                        ShortcutActionChip(
+                            text = "GPX",
+                            height = actionHeight,
+                            onClick = onGpxToolsClick,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(iconSize),
+                                tint = Color.White,
+                            )
+                        }
                     }
-                    ShortcutActionChip(
-                        text =
-                            when {
-                                recordingSaving -> "Save"
-                                else -> "REC"
-                            },
-                        height = actionHeight,
-                        onClick = onRecordingClick,
-                    ) {
-                        RecordingShortcutIcon(
-                            iconSize = iconSize,
-                            recordingSaving = recordingSaving,
-                            recordingPaused = recordingPaused,
-                            recordingActive = recordingActive,
-                        )
+                    Column {
+                        ShortcutActionChip(
+                            text = "Stay",
+                            height = actionHeight,
+                            onClick = onKeepAppOpenClick,
+                        ) {
+                            Icon(
+                                imageVector =
+                                    if (keepAppOpen) {
+                                        Icons.Default.Visibility
+                                    } else {
+                                        Icons.Default.VisibilityOff
+                                    },
+                                contentDescription = null,
+                                modifier = Modifier.size(iconSize),
+                                tint =
+                                    if (keepAppOpen) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        Color.White
+                                    },
+                            )
+                        }
+                        ShortcutActionChip(
+                            text =
+                                when {
+                                    recordingSaving -> "Save"
+                                    else -> "REC"
+                                },
+                            height = actionHeight,
+                            onClick = onRecordingClick,
+                        ) {
+                            RecordingShortcutIcon(
+                                iconSize = iconSize,
+                                recordingSaving = recordingSaving,
+                                recordingPaused = recordingPaused,
+                                recordingActive = recordingActive,
+                            )
+                        }
                     }
                 }
             }
@@ -182,6 +229,7 @@ internal fun BoxScope.RouteShortcutTray(
             modifier =
                 Modifier
                     .align(Alignment.CenterEnd)
+                    .padding(end = edgePadding)
                     .size(anchorSize),
             colors =
                 IconButtonDefaults.iconButtonColors(
@@ -215,10 +263,12 @@ private fun headingReferenceLabel(index: Int): String =
     }
 
 @Composable
+@Suppress("FunctionNaming")
 private fun ShortcutActionChip(
     text: String,
     height: Dp,
     onClick: () -> Unit,
+    accessibilityLabel: String? = null,
     icon: (@Composable () -> Unit)? = null,
 ) {
     val hitTargetHeight = height.coerceAtLeast(48.dp)
@@ -231,11 +281,13 @@ private fun ShortcutActionChip(
             Modifier
                 .width(hitTargetWidth)
                 .height(hitTargetHeight)
-                .clickable(
+                .semantics {
+                    if (accessibilityLabel != null) contentDescription = accessibilityLabel
+                }.clickable(
                     role = Role.Button,
                     onClick = onClick,
                 ),
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = Alignment.Center,
     ) {
         Row(
             modifier =

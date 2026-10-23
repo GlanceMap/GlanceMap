@@ -137,6 +137,7 @@ data class ElevationSample(
     val cumulativeAscent: Double,
     val cumulativeDescent: Double,
     val cumulativeDurationSec: Double?,
+    val gapBefore: Boolean = false,
 )
 
 data class ElevationProfileLocationMarker(

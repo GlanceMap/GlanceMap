@@ -26,6 +26,8 @@ internal interface TransferRuntimeHost {
         onProgress: (Long) -> Unit,
     ): String?
 
+    suspend fun finishReceivedFile(fileName: String)
+
     fun getPartialSize(fileName: String): Long
 
     fun deletePartial(fileName: String): Boolean

@@ -124,6 +124,8 @@ class WatchTransferForegroundService :
         return START_NOT_STICKY
     }
 
+    // Keep admission, terminal delivery and cleanup in the established transfer scope.
+    @Suppress("LongMethod")
     private fun launchTransfer(
         request: TransferRequest,
         startId: Int,
@@ -155,7 +157,11 @@ class WatchTransferForegroundService :
                                     "Already exists",
                                     -1,
                                 )
-                                notificationHelper.showError(request.metadata.notificationId, request.metadata.fileName, "Already exists")
+                                notificationHelper.showError(
+                                    request.metadata.notificationId,
+                                    request.metadata.fileName,
+                                    "Already exists",
+                                )
                                 request.terminalResult.record(
                                     HttpTransferTerminalResult(
                                         phase = "ERROR",
@@ -290,6 +296,8 @@ class WatchTransferForegroundService :
             diagnosticContext = diagnosticContext,
             onProgress = onProgress,
         )
+
+    override suspend fun finishReceivedFile(fileName: String) = fileOps.finishReceivedFile(fileName)
 
     override fun getPartialSize(fileName: String): Long = fileOps.getPartialSize(fileName)
 
@@ -477,9 +485,7 @@ class WatchTransferForegroundService :
 
     // Platform foreground promotion failures are runtime exceptions on supported API levels.
     @Suppress("TooGenericExceptionCaught")
-    private fun startForegroundForRequest(
-        request: TransferRequest,
-    ): String? {
+    private fun startForegroundForRequest(request: TransferRequest): String? {
         try {
             TransferDiagnostics.log(
                 "FgService",
