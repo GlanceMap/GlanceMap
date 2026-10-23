@@ -616,7 +616,13 @@ internal fun NavigateContent(
             recordingDashboardFullScreenExpanded ||
             combinedGuidanceRecordingFullScreenExpanded
     val showNoActiveMapNotice = rememberNoActiveMapNotice(hasActiveMap, mapAppearanceApplyInProgress)
-    val mapChrome = mapFocusChromePolicy(mapFocusState.mapFocusMode, fullScreenPopupExpanded, mapFocusVisibleControls)
+    val mapChrome =
+        mapFocusChromePolicy(
+            mapFocusMode = mapFocusState.mapFocusMode,
+            dashboardFullscreen = fullScreenPopupExpanded,
+            visibleControls = mapFocusVisibleControls,
+            toolsAvailable = hasLocationPermission && mapView != null && !routeToolModeActive,
+        )
     val suppressNavigateTimeForLayout =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -1037,6 +1043,7 @@ internal fun NavigateContent(
                     mapFocusMode = mapFocusState.mapFocusMode,
                     mapFocusVisibleControls = mapFocusVisibleControls,
                     onEnterMapFocus = onEnterMapFocus,
+                    onExitMapFocus = { onExitMapFocus("button") },
                     mapView = mapView,
                     traceRecordingViewModel = traceRecordingViewModel,
                     mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
@@ -1267,11 +1274,12 @@ internal fun NavigateContent(
                 onPermissionLaunch = onPermissionLaunch,
             )
         }
+        MapFocusHint(visible = mapFocusState.hintVisible && !fullScreenPopupExpanded)
         if (mapChrome.showExitControl) {
-            MapFocusHint(visible = mapFocusState.hintVisible)
             MapFocusExitControl(
                 edgePadding = sideButtonEdgePadding,
                 anchorSize = sideButtonSize,
+                highlighted = mapFocusState.exitHighlightVisible,
                 onClick = { onExitMapFocus("button") },
             )
         }

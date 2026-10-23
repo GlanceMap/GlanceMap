@@ -14,8 +14,8 @@ class MapFocusControlTest {
     @Test
     fun persistedSelectionKeepsIndependentControls() {
         assertEquals(
-            setOf(MapFocusControl.ZOOM_PLUS, MapFocusControl.TIME),
-            decodeMapFocusControls(setOf("ZOOM_PLUS", "TIME")),
+            setOf(MapFocusControl.ZOOM_PLUS, MapFocusControl.TIME, MapFocusControl.TOOLS_BUTTON),
+            decodeMapFocusControls(setOf("ZOOM_PLUS", "TIME", "TOOLS_BUTTON")),
         )
     }
 

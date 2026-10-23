@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import com.glancemap.glancemapwearos.data.repository.MapFocusControl
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,7 +64,8 @@ class NavigateMapFocusStateTest {
             MapFocusControl.entries.forEach { control ->
                 if (control == selected) assertTrue(policy.shows(control)) else assertFalse(policy.shows(control))
             }
-            assertTrue(policy.showExitControl)
+            assertEquals(selected != MapFocusControl.TOOLS_BUTTON, policy.showExitControl)
+            assertEquals(selected == MapFocusControl.TOOLS_BUTTON, policy.showToolsControl)
         }
     }
 
@@ -75,9 +77,38 @@ class NavigateMapFocusStateTest {
     }
 
     @Test
-    fun `enabling controls never removes the focus exit or dashboard precedence`() {
+    fun `tools replace the standalone exit while dashboards still take precedence`() {
         val all = MapFocusControl.entries.toSet()
-        assertTrue(mapFocusChromePolicy(true, false, all).showExitControl)
-        assertFalse(mapFocusChromePolicy(true, true, all).showExitControl)
+        val focused = mapFocusChromePolicy(true, false, all)
+        assertTrue(focused.showToolsControl)
+        assertFalse(focused.showExitControl)
+        val dashboard = mapFocusChromePolicy(true, true, all)
+        assertFalse(dashboard.showToolsControl)
+        assertFalse(dashboard.showExitControl)
+    }
+
+    @Test
+    fun `standalone exit stays available when a workflow or missing map hides tools`() {
+        val policy = mapFocusChromePolicy(true, false, setOf(MapFocusControl.TOOLS_BUTTON), toolsAvailable = false)
+        assertFalse(policy.showToolsControl)
+        assertTrue(policy.showExitControl)
+        assertFalse(mapFocusChromePolicy(false, false, toolsAvailable = false).showExitControl)
+    }
+
+    @Test
+    fun `exit highlight repeats only on entry and clears when focus ends`() {
+        val state = NavigateMapFocusState()
+        assertFalse(state.exitHighlightVisible)
+        state.enter {}
+        assertTrue(state.exitHighlightVisible)
+        state.dismissExitHighlight()
+        assertFalse(state.exitHighlightVisible)
+        assertTrue(state.mapFocusMode)
+        state.exit()
+        state.enter {}
+        assertTrue(state.exitHighlightVisible)
+        assertFalse(state.hintVisible)
+        state.exit()
+        assertFalse(state.exitHighlightVisible)
     }
 }

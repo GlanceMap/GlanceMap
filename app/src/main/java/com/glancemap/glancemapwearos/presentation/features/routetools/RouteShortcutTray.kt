@@ -59,6 +59,7 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 internal fun BoxScope.RouteShortcutTray(
     expanded: Boolean,
+    mapFocusMode: Boolean,
     keepAppOpen: Boolean,
     edgePadding: Dp,
     anchorSize: Dp,
@@ -121,17 +122,33 @@ internal fun BoxScope.RouteShortcutTray(
                     }
                 }
                 ShortcutActionChip(
-                    text = stringResource(R.string.navigation_map_focus_shortcut),
+                    text =
+                        stringResource(
+                            if (mapFocusMode) {
+                                R.string.navigation_exit_map_focus_shortcut
+                            } else {
+                                R.string.navigation_map_focus_shortcut
+                            },
+                        ),
                     height = actionHeight,
                     onClick = onMapFocusClick,
-                    accessibilityLabel = stringResource(R.string.navigation_enter_map_focus),
+                    accessibilityLabel =
+                        stringResource(
+                            if (mapFocusMode) {
+                                R.string.navigation_exit_map_focus
+                            } else {
+                                R.string.navigation_enter_map_focus
+                            },
+                        ),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Fullscreen,
-                        contentDescription = null,
-                        modifier = Modifier.size(iconSize),
-                        tint = Color.White,
-                    )
+                    if (!mapFocusMode) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = null,
+                            modifier = Modifier.size(iconSize),
+                            tint = Color.White,
+                        )
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),

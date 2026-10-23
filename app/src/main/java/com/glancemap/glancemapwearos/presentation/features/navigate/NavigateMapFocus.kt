@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -36,11 +38,14 @@ internal class NavigateMapFocusState {
         private set
     var hintVisible by mutableStateOf(false)
         private set
+    var exitHighlightVisible by mutableStateOf(false)
+        private set
     private var hintShown = false
 
     fun enter(onDismissShortcuts: () -> Unit) {
         onDismissShortcuts()
         mapFocusMode = true
+        exitHighlightVisible = true
         hintVisible = !hintShown
         hintShown = true
     }
@@ -48,6 +53,11 @@ internal class NavigateMapFocusState {
     fun exit() {
         mapFocusMode = false
         hintVisible = false
+        exitHighlightVisible = false
+    }
+
+    fun dismissExitHighlight() {
+        exitHighlightVisible = false
     }
 
     fun dismissHint() {
@@ -58,6 +68,7 @@ internal class NavigateMapFocusState {
 internal data class MapFocusChromePolicy(
     val showRoutineChrome: Boolean,
     val showExitControl: Boolean,
+    val showToolsControl: Boolean,
     private val visibleControls: Set<MapFocusControl> = emptySet(),
 ) {
     fun shows(control: MapFocusControl): Boolean = showRoutineChrome || control in visibleControls
@@ -67,12 +78,17 @@ internal fun mapFocusChromePolicy(
     mapFocusMode: Boolean,
     dashboardFullscreen: Boolean,
     visibleControls: Set<MapFocusControl> = emptySet(),
-): MapFocusChromePolicy =
-    MapFocusChromePolicy(
+    toolsAvailable: Boolean = true,
+): MapFocusChromePolicy {
+    val showTools =
+        toolsAvailable && !dashboardFullscreen && (!mapFocusMode || MapFocusControl.TOOLS_BUTTON in visibleControls)
+    return MapFocusChromePolicy(
         showRoutineChrome = !mapFocusMode,
-        showExitControl = mapFocusMode && !dashboardFullscreen,
+        showExitControl = mapFocusMode && !dashboardFullscreen && !showTools,
+        showToolsControl = showTools,
         visibleControls = visibleControls,
     )
+}
 
 @Composable
 @Suppress("FunctionNaming")
@@ -84,6 +100,12 @@ internal fun MapFocusModeEffects(
     // Existing dashboards take over normally and return to the ordinary map when closed.
     LaunchedEffect(dashboardFullscreen, state.mapFocusMode) {
         if (dashboardFullscreen && state.mapFocusMode) onExitMapFocus("dashboard")
+    }
+    LaunchedEffect(state.mapFocusMode) {
+        if (state.mapFocusMode) {
+            delay(1_000L)
+            state.dismissExitHighlight()
+        }
     }
     LaunchedEffect(state.hintVisible) {
         if (state.hintVisible) {
@@ -98,8 +120,16 @@ internal fun MapFocusModeEffects(
 internal fun BoxScope.MapFocusExitControl(
     edgePadding: Dp,
     anchorSize: Dp,
+    highlighted: Boolean,
     onClick: () -> Unit,
 ) {
+    val emphasis by
+        animateFloatAsState(
+            targetValue = if (highlighted) 1f else 0f,
+            animationSpec = tween(durationMillis = 250),
+            label = "Map focus exit highlight",
+        )
+    val iconSize = 18.dp + 4.dp * emphasis
     IconButton(
         onClick = onClick,
         modifier = Modifier.align(Alignment.CenterEnd).padding(end = edgePadding).size(48.dp),
@@ -114,14 +144,14 @@ internal fun BoxScope.MapFocusExitControl(
                 Icon(
                     imageVector = Icons.Default.FullscreenExit,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp).offset(y = 1.dp),
+                    modifier = Modifier.size(iconSize).offset(y = 1.dp),
                     tint = Color.Black.copy(alpha = 0.4f),
                 )
                 Icon(
                     imageVector = Icons.Default.FullscreenExit,
                     contentDescription = stringResource(R.string.navigation_exit_map_focus),
-                    modifier = Modifier.size(18.dp),
-                    tint = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.size(iconSize),
+                    tint = Color.White.copy(alpha = 0.6f + 0.4f * emphasis),
                 )
             }
         }

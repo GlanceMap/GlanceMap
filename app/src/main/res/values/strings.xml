@@ -77,6 +77,7 @@
         <item quantity="other">%1$d seconds</item>
     </plurals>
     <string name="navigation_map_focus_shortcut">Full</string>
+    <string name="navigation_exit_map_focus_shortcut">Exit full</string>
     <string name="navigation_enter_map_focus">Enter map focus</string>
     <string name="navigation_exit_map_focus">Exit map focus</string>
     <string name="navigation_map_focus_hint">Map focus</string>

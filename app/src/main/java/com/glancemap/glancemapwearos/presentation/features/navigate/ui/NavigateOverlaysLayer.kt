@@ -75,6 +75,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     mapFocusMode: Boolean,
     mapFocusVisibleControls: Set<MapFocusControl>,
     onEnterMapFocus: () -> Unit,
+    onExitMapFocus: () -> Unit,
     mapView: MapView,
     mapAppearanceApplyInProgress: Boolean,
     slopeOverlayToggleEnabled: Boolean,
@@ -184,8 +185,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
     val mapChrome =
         mapFocusChromePolicy(
             mapFocusMode = mapFocusMode,
-            dashboardFullscreen = false,
+            dashboardFullscreen =
+                turnByTurnFullScreenExpanded ||
+                    recordingDashboardFullScreenExpanded ||
+                    combinedGuidanceRecordingFullScreenExpanded,
             visibleControls = mapFocusVisibleControls,
+            toolsAvailable = !routeToolModeActive,
         )
     val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
     var liveDistanceLineStart by
@@ -328,7 +333,12 @@ internal fun BoxScope.NavigateOverlaysLayer(
         sideButtonSize = if (mapFocusMode) 48.dp else sideButtonSize,
         modifier =
             Modifier.offset(
-                y = if (shortcutTrayExpanded && !mapFocusMode) -(48.dp + slopeIndicatorButtonSize / 2 + 4.dp) else 0.dp,
+                y =
+                    if (shortcutTrayExpanded && mapChrome.showToolsControl) {
+                        -(48.dp + slopeIndicatorButtonSize / 2 + 4.dp)
+                    } else {
+                        0.dp
+                    },
             ),
     )
 
@@ -503,9 +513,10 @@ internal fun BoxScope.NavigateOverlaysLayer(
         }
     }
 
-    if (mapChrome.showRoutineChrome && !suppressMapControlsForGuidance && !routeToolModeActive) {
+    if (mapChrome.showToolsControl) {
         RouteShortcutTray(
             expanded = shortcutTrayExpanded,
+            mapFocusMode = mapFocusMode,
             keepAppOpen = keepAppOpen,
             edgePadding = sideButtonEdgePadding,
             anchorSize = sideButtonSize,
@@ -515,7 +526,10 @@ internal fun BoxScope.NavigateOverlaysLayer(
             onKeepAppOpenClick = onKeepAppOpenToggle,
             onGpxToolsClick = onGpxToolsClick,
             onCreatePoiClick = onCreatePoiClick,
-            onMapFocusClick = onEnterMapFocus,
+            onMapFocusClick = {
+                onShortcutTrayDismiss()
+                if (mapFocusMode) onExitMapFocus() else onEnterMapFocus()
+            },
             recordingActive = traceRecordingState.active,
             recordingPaused = traceRecordingState.paused,
             recordingSaving = traceRecordingState.saving,

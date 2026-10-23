@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.data.repository
 
 enum class MapFocusControl {
     MENU_BUTTON,
+    TOOLS_BUTTON,
     ZOOM_PLUS,
     ZOOM_MINUS,
     NORTH_INDICATOR,

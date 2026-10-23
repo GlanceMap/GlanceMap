@@ -464,6 +464,7 @@ fun NavigateScreen(
         fun exitMapFocus(source: String) {
             if (!mapFocusState.mapFocusMode) return
             if (source == "button") screenActions.triggerHaptic()
+            shortcutTrayExpanded = false
             mapFocusState.exit()
             DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
         }

@@ -48,6 +48,7 @@ internal fun MapFocusSettingsContent(
 internal fun mapFocusControlLabel(control: MapFocusControl): String =
     when (control) {
         MapFocusControl.MENU_BUTTON -> "menu button"
+        MapFocusControl.TOOLS_BUTTON -> "tools button"
         MapFocusControl.ZOOM_PLUS -> "zoom +"
         MapFocusControl.ZOOM_MINUS -> "zoom −"
         MapFocusControl.NORTH_INDICATOR -> "north indicator"

@@ -20,6 +20,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -73,6 +74,7 @@ class MapFocusModeUiTest {
     private var gpsState by mutableStateOf(GpsFixIndicatorState.GOOD)
     private var gpsDegraded by mutableStateOf(false)
     private var visibleControls by mutableStateOf(emptySet<MapFocusControl>())
+    private var toolsAvailable by mutableStateOf(true)
 
     @Test
     fun fullActionClosesTrayAndExitRestoresNormalControls() {
@@ -87,6 +89,45 @@ class MapFocusModeUiTest {
         assertFalse(focus.mapFocusMode)
         composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+    }
+
+    @Test
+    fun smallRoundToolsKeepExitInTheFullActionSlot() = checkToolsVisibleLayout(SmallRoundWatchMaxText)
+
+    @Test
+    fun squareToolsKeepExitInTheFullActionSlot() = checkToolsVisibleLayout(MediumSquareWatch)
+
+    @Test
+    fun standaloneExitReturnsWhenToolsAreUnavailableOrDisabled() {
+        visibleControls = setOf(MapFocusControl.TOOLS_BUTTON)
+        launch()
+        enterFocus()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.runOnIdle { toolsAvailable = false }
+        composeRule.onNodeWithContentDescription("Open shortcuts").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed()
+        composeRule.runOnIdle { toolsAvailable = true }
+        composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.runOnIdle { visibleControls = emptySet() }
+        composeRule.onNodeWithContentDescription("Open shortcuts").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed().performClick()
+        assertFalse(focus.mapFocusMode)
+    }
+
+    @Test
+    fun entranceHighlightSettlesAndReturnsOnTheNextEntry() {
+        launch()
+        enterFocus()
+        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
+        composeRule.waitUntil(timeoutMillis = 3_000) { !focus.exitHighlightVisible }
+        composeRule.waitForIdle()
+        assertTrue(focus.mapFocusMode)
+        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(18.dp)
+        composeRule.onNodeWithContentDescription("Exit map focus").assertWidthIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithContentDescription("Open shortcuts").performClick()
+        enterFocus()
+        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
     }
 
     @Test
@@ -248,6 +289,32 @@ class MapFocusModeUiTest {
         composeRule.runOnIdle { assertTrue(mapTouches > 0) }
     }
 
+    private fun checkToolsVisibleLayout(config: WearDeviceTestConfig) {
+        visibleControls = setOf(MapFocusControl.TOOLS_BUTTON)
+        launch(config, anchorSize = if (config.isRound) 26.dp else 30.dp)
+        val fullCenter = shortcutCenter("Full")
+        enterFocus()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Full").assertDoesNotExist()
+        composeRule.onNodeWithText("Exit full").assertIsDisplayed()
+        composeRule
+            .onNodeWithContentDescription("Exit map focus")
+            .assertHasClickAction()
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+        val exitCenter = shortcutCenter("Exit full")
+        assertEquals(fullCenter.x, exitCenter.x, 1f)
+        assertEquals(fullCenter.y, exitCenter.y, 1f)
+        composeRule.onNodeWithContentDescription("Exit map focus").performClick()
+        composeRule.runOnIdle {
+            assertFalse(focus.mapFocusMode)
+            assertFalse(expanded)
+        }
+        composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+    }
+
     private fun shortcutCenter(label: String): Offset =
         composeRule
             .onNodeWithText(label)
@@ -319,7 +386,8 @@ class MapFocusModeUiTest {
                     TestBackHandler()
                     MapFocusModeEffects(focus, dashboardFullscreen) { focus.exit() }
                     Box(Modifier.fillMaxSize().testTag("map_focus_test_surface")) {
-                        val chrome = mapFocusChromePolicy(focus.mapFocusMode, dashboardFullscreen, visibleControls)
+                        val chrome =
+                            mapFocusChromePolicy(focus.mapFocusMode, dashboardFullscreen, visibleControls, toolsAvailable)
                         if (withMap) {
                             TestMapSurface()
                             NavModeButtonOverlay(
@@ -341,9 +409,10 @@ class MapFocusModeUiTest {
                                 isScreenInteractive = false,
                             )
                         }
-                        if (chrome.showRoutineChrome) {
+                        if (chrome.showToolsControl) {
                             RouteShortcutTray(
                                 expanded = expanded,
+                                mapFocusMode = focus.mapFocusMode,
                                 keepAppOpen = false,
                                 edgePadding = 2.dp,
                                 anchorSize = anchorSize,
@@ -359,12 +428,19 @@ class MapFocusModeUiTest {
                                 onCreatePoiClick = {},
                                 onRecordingClick = {},
                                 onHeadingReferenceMark = {},
-                                onMapFocusClick = { focus.enter { expanded = false } },
+                                onMapFocusClick = {
+                                    expanded = false
+                                    if (focus.mapFocusMode) focus.exit() else focus.enter {}
+                                },
                             )
                         }
+                        MapFocusHint(focus.hintVisible && !dashboardFullscreen)
                         if (chrome.showExitControl) {
-                            MapFocusHint(focus.hintVisible)
-                            MapFocusExitControl(edgePadding = 2.dp, anchorSize = anchorSize) { focus.exit() }
+                            MapFocusExitControl(
+                                edgePadding = 2.dp,
+                                anchorSize = anchorSize,
+                                highlighted = focus.exitHighlightVisible,
+                            ) { focus.exit() }
                         }
                     }
                 }
@@ -377,7 +453,10 @@ class MapFocusModeUiTest {
     private fun TestBackHandler() {
         NavigateBackHandler(
             mapFocusMode = focus.mapFocusMode,
-            onExitMapFocus = focus::exit,
+            onExitMapFocus = {
+                expanded = false
+                focus.exit()
+            },
             createdPoiCreateInProgress = false,
             completedRouteToolDraftActive = false,
             routeToolExecutionInProgress = false,
