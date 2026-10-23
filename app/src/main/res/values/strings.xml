@@ -28,6 +28,10 @@
     <string name="navigation_waiting_for_location">Waiting for location…</string>
     <string name="navigation_zoom_in">Zoom in</string>
     <string name="navigation_zoom_out">Zoom out</string>
+    <string name="navigation_toggle_auto_recenter">Toggle auto recenter</string>
+    <string name="navigation_auto_recenter_on">Auto recenter on · %1$ds</string>
+    <string name="navigation_auto_recenter_off">Auto recenter off</string>
+    <string name="navigation_auto_recenter_badge" translatable="false">A</string>
 
     <string name="gps_source">GPS Source</string>
     <string name="gps_source_watch_only">Watch Only (more ⚡)</string>
@@ -78,7 +82,7 @@
     </plurals>
     <string name="navigation_map_focus_shortcut">Full</string>
     <string name="navigation_exit_map_focus_shortcut">Exit full</string>
-    <string name="navigation_enter_map_focus">Enter map focus</string>
-    <string name="navigation_exit_map_focus">Exit map focus</string>
-    <string name="navigation_map_focus_hint">Map focus</string>
+    <string name="navigation_enter_map_focus">Enter full screen</string>
+    <string name="navigation_exit_map_focus">Exit full screen</string>
+    <string name="navigation_map_focus_hint">Full screen</string>
 </resources>

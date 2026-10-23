@@ -1117,6 +1117,9 @@ fun NavigateScreen(
                     locationViewModel.requestImmediateLocation(source = "ui_recenter_from_panning")
                 }
             },
+            autoRecenterEnabled = autoRecenterEnabled,
+            autoRecenterDelay = autoRecenterDelay,
+            onToggleAutoRecenter = { settingsViewModel.setAutoRecenterEnabled(!autoRecenterEnabled) },
             triggerHaptic = screenActions.triggerHaptic,
             onMenuClick = {
                 val nowElapsedMs = SystemClock.elapsedRealtime()

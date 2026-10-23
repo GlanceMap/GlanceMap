@@ -85,10 +85,10 @@ class MapFocusModeUiTest {
         composeRule.onNodeWithContentDescription("Open shortcuts").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Close shortcuts").assertDoesNotExist()
         composeRule.onNodeWithText("Full").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed().performClick()
         assertFalse(focus.mapFocusMode)
         composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
     }
 
     @Test
@@ -102,16 +102,16 @@ class MapFocusModeUiTest {
         visibleControls = setOf(MapFocusControl.TOOLS_BUTTON)
         launch()
         enterFocus()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
         composeRule.runOnIdle { toolsAvailable = false }
         composeRule.onNodeWithContentDescription("Open shortcuts").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed()
         composeRule.runOnIdle { toolsAvailable = true }
         composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
         composeRule.runOnIdle { visibleControls = emptySet() }
         composeRule.onNodeWithContentDescription("Open shortcuts").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed().performClick()
         assertFalse(focus.mapFocusMode)
     }
 
@@ -119,15 +119,15 @@ class MapFocusModeUiTest {
     fun entranceHighlightSettlesAndReturnsOnTheNextEntry() {
         launch()
         enterFocus()
-        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
+        composeRule.onNodeWithContentDescription("Exit full screen", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
         composeRule.waitUntil(timeoutMillis = 3_000) { !focus.exitHighlightVisible }
         composeRule.waitForIdle()
         assertTrue(focus.mapFocusMode)
-        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(18.dp)
-        composeRule.onNodeWithContentDescription("Exit map focus").assertWidthIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen", useUnmergedTree = true).assertWidthIsEqualTo(18.dp)
+        composeRule.onNodeWithContentDescription("Exit full screen").assertWidthIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithContentDescription("Open shortcuts").performClick()
         enterFocus()
-        composeRule.onNodeWithContentDescription("Exit map focus", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
+        composeRule.onNodeWithContentDescription("Exit full screen", useUnmergedTree = true).assertWidthIsEqualTo(22.dp)
     }
 
     @Test
@@ -198,13 +198,13 @@ class MapFocusModeUiTest {
     fun hintExpiresWithoutLeavingFocusAndDoesNotRepeatOnToggle() {
         launch()
         enterFocus()
-        composeRule.onNodeWithText("Map focus").assertIsDisplayed()
+        composeRule.onNodeWithText("Full screen").assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 4_000) { !focus.hintVisible }
         assertTrue(focus.mapFocusMode)
-        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed().performClick()
         composeRule.onNodeWithContentDescription("Open shortcuts").performClick()
         enterFocus()
-        composeRule.onNodeWithText("Map focus").assertDoesNotExist()
+        composeRule.onNodeWithText("Full screen").assertDoesNotExist()
     }
 
     @Test
@@ -216,7 +216,7 @@ class MapFocusModeUiTest {
             assertFalse(focus.mapFocusMode)
             assertTrue(dashboardFullscreen)
         }
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
     }
 
     @Test
@@ -231,11 +231,11 @@ class MapFocusModeUiTest {
                     gpsDegraded = degraded
                 }
                 composeRule.onNodeWithContentDescription("Nav mode").assertDoesNotExist()
-                composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed()
+                composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed()
                 composeRule.runOnIdle { assertTrue(focus.mapFocusMode) }
             }
         }
-        composeRule.onNodeWithContentDescription("Exit map focus").performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").performClick()
         composeRule.onNodeWithContentDescription("Nav mode").assertIsDisplayed()
     }
 
@@ -247,7 +247,7 @@ class MapFocusModeUiTest {
         composeRule.onNodeWithContentDescription("Nav mode").assertDoesNotExist()
         composeRule.runOnIdle { visibleControls = setOf(MapFocusControl.NAV_MODE_BUTTON) }
         composeRule.onNodeWithContentDescription("Nav mode").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed()
         composeRule.runOnIdle { visibleControls = emptySet() }
         composeRule.onNodeWithContentDescription("Nav mode").assertDoesNotExist()
     }
@@ -273,7 +273,7 @@ class MapFocusModeUiTest {
             assertEquals(zoom, mapView.model.mapViewPosition.zoomLevel)
             assertEquals(rotation, mapView.mapRotation)
         }
-        composeRule.onNodeWithContentDescription("Exit map focus").performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").performClick()
         composeRule.runOnIdle {
             assertSame(original, mapView)
             assertEquals(1, mapCreations)
@@ -294,25 +294,25 @@ class MapFocusModeUiTest {
         launch(config, anchorSize = if (config.isRound) 26.dp else 30.dp)
         val fullCenter = shortcutCenter("Full")
         enterFocus()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Full").assertDoesNotExist()
         composeRule.onNodeWithText("Exit full").assertIsDisplayed()
         composeRule
-            .onNodeWithContentDescription("Exit map focus")
+            .onNodeWithContentDescription("Exit full screen")
             .assertHasClickAction()
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
         val exitCenter = shortcutCenter("Exit full")
         assertEquals(fullCenter.x, exitCenter.x, 1f)
         assertEquals(fullCenter.y, exitCenter.y, 1f)
-        composeRule.onNodeWithContentDescription("Exit map focus").performClick()
+        composeRule.onNodeWithContentDescription("Exit full screen").performClick()
         composeRule.runOnIdle {
             assertFalse(focus.mapFocusMode)
             assertFalse(expanded)
         }
         composeRule.onNodeWithContentDescription("Open shortcuts").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Exit map focus").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
     }
 
     private fun shortcutCenter(label: String): Offset =
@@ -356,13 +356,13 @@ class MapFocusModeUiTest {
         assertTrue(full.y < poi.y)
         enterFocus()
         composeRule
-            .onNodeWithContentDescription("Exit map focus")
+            .onNodeWithContentDescription("Exit full screen")
             .assertIsDisplayed()
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
         val exitCenter =
             composeRule
-                .onNodeWithContentDescription("Exit map focus", useUnmergedTree = true)
+                .onNodeWithContentDescription("Exit full screen", useUnmergedTree = true)
                 .fetchSemanticsNode()
                 .boundsInRoot.center
         assertEquals(toolsCenter.x, exitCenter.x, 1f)
@@ -370,7 +370,7 @@ class MapFocusModeUiTest {
     }
 
     private fun enterFocus() {
-        composeRule.onNodeWithContentDescription("Enter map focus").performClick()
+        composeRule.onNodeWithContentDescription("Enter full screen").performClick()
         composeRule.waitForIdle()
     }
 
@@ -404,6 +404,9 @@ class MapFocusModeUiTest {
                                 navButtonIconSize = 16.dp,
                                 onRecenter = {},
                                 onRecenterRequested = {},
+                                autoRecenterEnabled = false,
+                                autoRecenterDelay = 5,
+                                onToggleAutoRecenter = {},
                                 onToggleOrientation = {},
                                 navigationMarkerAnchorMode = SettingsRepository.NAVIGATION_MARKER_ANCHOR_CENTER,
                                 isScreenInteractive = false,

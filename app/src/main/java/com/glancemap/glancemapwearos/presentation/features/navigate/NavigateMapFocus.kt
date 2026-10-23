@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -138,7 +139,10 @@ internal fun BoxScope.MapFocusExitControl(
         // Match the tools anchor's visible center while keeping the full touch target on-screen.
         Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) {
             Box(
-                modifier = Modifier.size(anchorSize),
+                modifier =
+                    Modifier
+                        .size(anchorSize)
+                        .background(Color.Black.copy(alpha = 0.78f * emphasis), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

@@ -8,7 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -54,10 +54,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -735,6 +741,9 @@ internal fun BoxScope.NavModeButtonOverlay(
     navButtonIconSize: Dp,
     onRecenter: () -> Unit,
     onRecenterRequested: () -> Unit,
+    autoRecenterEnabled: Boolean,
+    autoRecenterDelay: Int,
+    onToggleAutoRecenter: () -> Unit,
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
@@ -801,6 +810,20 @@ internal fun BoxScope.NavModeButtonOverlay(
             NavButtonTrustState.GOOD -> Color.Transparent
         }
     val trustRingStroke = 2.dp
+    val autoRecenterDescription =
+        if (autoRecenterEnabled) {
+            stringResource(R.string.navigation_auto_recenter_on, autoRecenterDelay)
+        } else {
+            stringResource(R.string.navigation_auto_recenter_off)
+        }
+    val toggleAutoRecenterLabel = stringResource(R.string.navigation_toggle_auto_recenter)
+    var autoRecenterFeedback by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(autoRecenterFeedback) {
+        if (autoRecenterFeedback != null) {
+            delay(2_000L)
+            autoRecenterFeedback = null
+        }
+    }
 
     Box(
         modifier =
@@ -808,23 +831,31 @@ internal fun BoxScope.NavModeButtonOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = navButtonBottomPadding)
                 .size(trustContainerSize)
-                .pointerInput(navMode, lastKnownLocation, isOfflineMode) {
-                    detectTapGestures(
-                        onTap = {
-                            if (isOfflineMode) return@detectTapGestures
-                            triggerHaptic()
-                            if (navMode == NavMode.PANNING) {
-                                lastKnownLocation?.let {
-                                    mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
-                                }
-                                onRecenter()
-                                onRecenterRequested()
-                            } else {
-                                onToggleOrientation()
+                .combinedClickable(
+                    interactionSource = null,
+                    indication = null,
+                    enabled = !isOfflineMode,
+                    role = Role.Button,
+                    onLongClickLabel = toggleAutoRecenterLabel,
+                    hapticFeedbackEnabled = false,
+                    onLongClick = {
+                        triggerHaptic()
+                        autoRecenterFeedback = !autoRecenterEnabled
+                        onToggleAutoRecenter()
+                    },
+                    onClick = {
+                        triggerHaptic()
+                        if (navMode == NavMode.PANNING) {
+                            lastKnownLocation?.let {
+                                mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
                             }
-                        },
-                    )
-                },
+                            onRecenter()
+                            onRecenterRequested()
+                        } else {
+                            onToggleOrientation()
+                        }
+                    },
+                ).semantics { stateDescription = autoRecenterDescription },
         contentAlignment = Alignment.Center,
     ) {
         if (trustState != NavButtonTrustState.GOOD) {
@@ -873,6 +904,45 @@ internal fun BoxScope.NavModeButtonOverlay(
                     tint = navTint,
                 )
             }
+        }
+        if (autoRecenterEnabled) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(10.dp)
+                        .background(Color.Black.copy(alpha = 0.88f), CircleShape)
+                        .clearAndSetSemantics {},
+                contentAlignment = Alignment.Center,
+            ) {
+                cappedFontScale(maxFontScale = 1f) {
+                    Text(
+                        text = stringResource(R.string.navigation_auto_recenter_badge),
+                        color = Color.White,
+                        fontSize = 8.sp,
+                        lineHeight = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+    autoRecenterFeedback?.let { enabled ->
+        cappedFontScale(maxFontScale = 1f) {
+            RecordingStatusMessageChip(
+                message =
+                    if (enabled) {
+                        stringResource(R.string.navigation_auto_recenter_on, autoRecenterDelay)
+                    } else {
+                        stringResource(R.string.navigation_auto_recenter_off)
+                    },
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 12.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
     }
 }
