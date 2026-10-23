@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.app.Application
+import android.view.GestureDetector
+import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
@@ -9,20 +11,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
@@ -49,6 +57,8 @@ class NavModeButtonUiTest {
     private var recenterCalls = 0
     private var refreshCalls = 0
     private var orientationCalls = 0
+    private var mapTouchStarts = 0
+    private var mapPoiLongPressCalls = 0
 
     @Test
     fun longPressTogglesAutoRecenterWithFeedbackAndNeverFiresTheTapAction() {
@@ -144,9 +154,60 @@ class NavModeButtonUiTest {
         }
     }
 
+    @Test
+    fun buttonLongPressIsIsolatedFromTheNativeMapPoiGesture() {
+        launch(withMapSurface = true)
+        button().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        button().performTouchInput { longClick() }
+        assertButtonOwnsLongPress()
+    }
+
+    @Test
+    fun longPressInTheMarginAboveTheVisibleButtonStillBelongsToTheButton() {
+        launch(withMapSurface = true)
+        button().performTouchInput { longClick(Offset(center.x, 4.dp.toPx())) }
+        assertButtonOwnsLongPress()
+    }
+
+    @Test
+    fun longPressOutsideTheButtonStillReachesTheEnabledMapPoiGesture() {
+        launch(withMapSurface = true)
+        val buttonBounds = button().fetchSemanticsNode().boundsInRoot
+        val map = composeRule.onNodeWithTag("recenter_gesture_map")
+        val mapBounds = map.fetchSemanticsNode().boundsInRoot
+        map.performTouchInput {
+            down(
+                Offset(
+                    buttonBounds.left - mapBounds.left - 12.dp.toPx(),
+                    buttonBounds.center.y - mapBounds.top,
+                ),
+            )
+        }
+        // Android's native detector uses the main looper's clock, not the Compose test clock.
+        composeRule.waitUntil(timeoutMillis = 2_000) { mapPoiLongPressCalls == 1 }
+        map.performTouchInput { up() }
+        composeRule.runOnIdle {
+            assertEquals(1, mapTouchStarts)
+            assertEquals(1, mapPoiLongPressCalls)
+            assertFalse(autoRecenterEnabled)
+            assertEquals(0, hapticCalls)
+        }
+    }
+
+    private fun assertButtonOwnsLongPress() {
+        composeRule.runOnIdle {
+            assertTrue(autoRecenterEnabled)
+            assertEquals(1, hapticCalls)
+            assertEquals(0, mapTouchStarts)
+            assertEquals(0, mapPoiLongPressCalls)
+            assertEquals(0, recenterCalls)
+            assertEquals(0, orientationCalls)
+        }
+    }
+
     private fun button() = composeRule.onNodeWithContentDescription("Nav mode")
 
-    private fun launch() {
+    private fun launch(withMapSurface: Boolean = false) {
         composeRule.setContent {
             val context = LocalContext.current
             val map =
@@ -159,9 +220,36 @@ class NavModeButtonUiTest {
                     }
                 }
             DisposableEffect(map) { onDispose { map.destroyAll() } }
+            val mapGestureDetector =
+                remember {
+                    GestureDetector(
+                        context,
+                        object : GestureDetector.SimpleOnGestureListener() {
+                            override fun onDown(event: MotionEvent): Boolean = true
+
+                            override fun onLongPress(event: MotionEvent) {
+                                mapPoiLongPressCalls++
+                            }
+                        },
+                    )
+                }
             withWearDeviceConfig(SmallRoundWatchMaxText) {
                 GlanceMapTheme {
                     Box(Modifier.fillMaxSize()) {
+                        if (withMapSurface) {
+                            AndroidView(
+                                factory = {
+                                    map.apply {
+                                        setOnTouchListener { _, event ->
+                                            if (event.actionMasked == MotionEvent.ACTION_DOWN) mapTouchStarts++
+                                            mapGestureDetector.onTouchEvent(event)
+                                            false
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize().testTag("recenter_gesture_map"),
+                            )
+                        }
                         NavModeButtonOverlay(
                             visible = true,
                             mapView = map,

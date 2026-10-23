@@ -830,7 +830,7 @@ internal fun BoxScope.NavModeButtonOverlay(
             Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = navButtonBottomPadding)
-                .size(trustContainerSize)
+                .size(maxOf(48.dp, trustContainerSize))
                 .combinedClickable(
                     interactionSource = null,
                     indication = null,
@@ -856,74 +856,77 @@ internal fun BoxScope.NavModeButtonOverlay(
                         }
                     },
                 ).semantics { stateDescription = autoRecenterDescription },
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        if (trustState != NavButtonTrustState.GOOD) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokePx = trustRingStroke.toPx()
-                val radius = size.minDimension / 2f
-                drawCircle(
-                    color = trustGlowColor,
-                    radius = radius,
-                )
-                drawCircle(
-                    color = trustRingColor,
-                    radius = radius - strokePx / 2f,
-                    style = Stroke(width = strokePx),
-                )
+        // Reserve real hit bounds above the native map without moving the visible button.
+        Box(Modifier.size(trustContainerSize), contentAlignment = Alignment.Center) {
+            if (trustState != NavButtonTrustState.GOOD) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokePx = trustRingStroke.toPx()
+                    val radius = size.minDimension / 2f
+                    drawCircle(
+                        color = trustGlowColor,
+                        radius = radius,
+                    )
+                    drawCircle(
+                        color = trustRingColor,
+                        radius = radius - strokePx / 2f,
+                        style = Stroke(width = strokePx),
+                    )
+                }
             }
-        }
 
-        Box(
-            modifier =
-                Modifier
-                    .size(navButtonSize)
-                    .background(
-                        Color.Black.copy(
-                            alpha =
-                                if (trustState == NavButtonTrustState.SEARCHING && pulseOn) {
-                                    0.78f
-                                } else {
-                                    0.7f
-                                },
-                        ),
-                        CircleShape,
-                    ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (navMode == NavMode.NORTH_UP_FOLLOW) {
-                NorthUpLockedModeIcon(
-                    iconSize = navButtonIconSize,
-                    tint = navTint,
-                )
-            } else {
-                Icon(
-                    imageVector = navIcon,
-                    contentDescription = "Nav mode",
-                    modifier = Modifier.size(navButtonIconSize),
-                    tint = navTint,
-                )
-            }
-        }
-        if (autoRecenterEnabled) {
             Box(
                 modifier =
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .size(10.dp)
-                        .background(Color.Black.copy(alpha = 0.88f), CircleShape)
-                        .clearAndSetSemantics {},
+                        .size(navButtonSize)
+                        .background(
+                            Color.Black.copy(
+                                alpha =
+                                    if (trustState == NavButtonTrustState.SEARCHING && pulseOn) {
+                                        0.78f
+                                    } else {
+                                        0.7f
+                                    },
+                            ),
+                            CircleShape,
+                        ),
                 contentAlignment = Alignment.Center,
             ) {
-                cappedFontScale(maxFontScale = 1f) {
-                    Text(
-                        text = stringResource(R.string.navigation_auto_recenter_badge),
-                        color = Color.White,
-                        fontSize = 8.sp,
-                        lineHeight = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                if (navMode == NavMode.NORTH_UP_FOLLOW) {
+                    NorthUpLockedModeIcon(
+                        iconSize = navButtonIconSize,
+                        tint = navTint,
                     )
+                } else {
+                    Icon(
+                        imageVector = navIcon,
+                        contentDescription = "Nav mode",
+                        modifier = Modifier.size(navButtonIconSize),
+                        tint = navTint,
+                    )
+                }
+            }
+            if (autoRecenterEnabled) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(10.dp)
+                            .background(Color.Black.copy(alpha = 0.88f), CircleShape)
+                            .clearAndSetSemantics {},
+                    contentAlignment = Alignment.Center,
+                ) {
+                    cappedFontScale(maxFontScale = 1f) {
+                        Text(
+                            text = stringResource(R.string.navigation_auto_recenter_badge),
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            lineHeight = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
