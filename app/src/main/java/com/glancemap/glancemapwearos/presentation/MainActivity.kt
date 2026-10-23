@@ -449,6 +449,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(WatchRoutes.GPX) {
+                            val gpxTrackColor by appContainer.settingsViewModel.gpxTrackColor.collectAsState()
                             DismissableScreen(
                                 onDismiss = { navController.popBackStack() },
                                 onSwipeLeftNavigate = navigateViaSwipeLeft,
@@ -458,6 +459,7 @@ class MainActivity : ComponentActivity() {
                                     gpxViewModel = appContainer.gpxViewModel,
                                     locationViewModel = appContainer.locationViewModel,
                                     isMetric = isMetric,
+                                    gpxTrackColor = gpxTrackColor,
                                     autoStartRecordingWithGuidance = recordingStartWithTurnByTurn,
                                     recordingActiveOrSaving = traceRecordingState.active || traceRecordingState.saving,
                                     onStartRecording = appContainer.traceRecordingViewModel::startRecording,
