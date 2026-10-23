@@ -19,6 +19,7 @@ data class RecordedTracePoint(
     val barometricPressureHpa: Double? = null,
     val startsNewSegment: Boolean = false,
     val segmentStartReason: String? = null,
+    val locationQuality: RecordedLocationQuality? = null,
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
 )
@@ -44,6 +45,7 @@ data class TraceRecordingUiState(
     val saving: Boolean = false,
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val trackSmoothingMode: String = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE,
+    val recordingMetadata: RecordingCaptureMetadata? = null,
     val points: List<RecordedTracePoint> = emptyList(),
     /** Display-only invalidation; neither field is persisted or exported. */
     val pointsRevision: Long = 0L,

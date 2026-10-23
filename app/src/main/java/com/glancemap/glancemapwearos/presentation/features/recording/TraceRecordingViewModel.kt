@@ -161,6 +161,7 @@ class TraceRecordingViewModel(
     private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
+    private var recordingRecoveredFromDraft = false
     private var qualityRelocationCount = 0
     private var smoothedPointCount = 0
     private var smoothedAdjustmentMeters = 0.0
@@ -469,6 +470,7 @@ class TraceRecordingViewModel(
 
     private fun startRecordingNow() {
         val now = System.currentTimeMillis()
+        val powerManager = runtimeDependencies.applicationContext?.getSystemService(PowerManager::class.java)
         lastAcceptedElapsedMs = Long.MIN_VALUE
         resetSessionTelemetry()
         recordingPointCaptureExpectation.start(
@@ -487,6 +489,14 @@ class TraceRecordingViewModel(
                 activityProfile = activityProfile,
                 trackSmoothingMode = recordingTrackSmoothingMode,
                 startedAtMillis = now,
+                recordingMetadata =
+                    captureRecordingMetadata(
+                        locationSourceMode = latestGpsSignalSnapshot.activeSourceModeValue,
+                        sampleIntervalSeconds = sampleIntervalSeconds,
+                        effectiveLocationIntervalMillis = latestEffectiveRecordingSamplingIntervalMs,
+                        elevationSource = recordingElevationSource,
+                        powerSaveMode = powerManager?.isPowerSaveMode,
+                    ),
                 cadenceSource = recordingCadenceSource,
                 speedSource = recordingSpeedSource,
                 distanceSource = recordingDistanceSource,
@@ -554,6 +564,11 @@ class TraceRecordingViewModel(
         // Batches retain each fix's monotonic timestamp. Using delivery time here would make
         // every point in the batch look simultaneous and discard all but the first one.
         val sampleElapsedMs = callbackElapsedMs
+        val locationQuality =
+            location.recordingLocationQuality(
+                sourceMode = latestGpsSignalSnapshot.activeSourceModeValue,
+                nowElapsedMillis = SystemClock.elapsedRealtime(),
+            )
         if (pausedForAutoResumeMonitoring) {
             if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
@@ -932,6 +947,7 @@ class TraceRecordingViewModel(
                         barometricPressureHpa = sensorMetrics?.barometricPressureHpa,
                         startsNewSegment = startsNewSegment,
                         segmentStartReason = segmentStartReason,
+                        locationQuality = locationQuality,
                     )
                 val currentState = _uiState.value
                 if (!currentState.active || currentState.saving) {
@@ -1642,6 +1658,9 @@ class TraceRecordingViewModel(
             "event=save_start ${recordingSummaryTokens(state, now, finalPausedMillis)}",
         )
         val smartElevationDiagnostics = hybridElevationFilter.diagnostics()
+        val locationCallbackCount = recordingPointDensityTelemetry.snapshot().callbackReceivedCount
+        val rejectedFixCount = qualityRejectedFixCount
+        val countersScope = if (recordingRecoveredFromDraft) "since_recovery" else "session"
         viewModelScope.launch {
             val saveResult =
                 withContext(Dispatchers.IO) {
@@ -1680,12 +1699,18 @@ class TraceRecordingViewModel(
                                 title = title,
                                 points = state.points,
                                 summary =
-                                    summarySnapshot.toRecordedTraceSummary(
-                                        activityProfile = state.activityProfile,
-                                        trackSmoothingMode = state.trackSmoothingMode,
-                                        distanceSource = state.distanceSource,
-                                        smartElevationDiagnostics = smartElevationDiagnostics,
-                                    ),
+                                    summarySnapshot
+                                        .toRecordedTraceSummary(
+                                            activityProfile = state.activityProfile,
+                                            trackSmoothingMode = state.trackSmoothingMode,
+                                            distanceSource = state.distanceSource,
+                                            smartElevationDiagnostics = smartElevationDiagnostics,
+                                        ).copy(
+                                            recordingLocationCallbackCount = locationCallbackCount,
+                                            recordingQualityRejectedFixCount = rejectedFixCount,
+                                            recordingCountersScope = countersScope,
+                                        ),
+                                recordingMetadata = state.recordingMetadata,
                             )
                         val gpxPersistStartedAtElapsedMs =
                             RecordingScreenOffDiagnostics.start()
@@ -1798,6 +1823,7 @@ class TraceRecordingViewModel(
                 return@launch
             }
             resetSessionTelemetry()
+            recordingRecoveredFromDraft = true
             lastAcceptedElapsedMs = Long.MIN_VALUE
             lastUiAction = draft.lastUiAction ?: "restore"
             gpsActiveDurationMillis = draft.gpsActiveDurationMillis
@@ -1829,6 +1855,7 @@ class TraceRecordingViewModel(
                     saving = false,
                     activityProfile = draft.activityProfile.toRecordingActivityProfile(activityProfile),
                     trackSmoothingMode = draft.trackSmoothingMode.toRecordingTrackSmoothingMode(),
+                    recordingMetadata = draft.recordingMetadata,
                     distanceSource = recordingDistanceSource,
                     points = draft.points,
                     latestLivePoint = draft.points.lastOrNull(),
@@ -1958,6 +1985,7 @@ class TraceRecordingViewModel(
     }
 
     private fun resetSessionTelemetry() {
+        recordingRecoveredFromDraft = false
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
         lastDraftPersistElapsedMs = Long.MIN_VALUE
