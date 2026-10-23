@@ -90,6 +90,7 @@ fun NavigateScreen(
     onMenuClick: () -> Unit,
     onCloseApp: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
+    onOpenMapBundles: (LatLong) -> Unit = {},
     compassViewModel: CompassViewModel = viewModel(),
     navigateViewModel: NavigateViewModel = viewModel(),
 ) {
@@ -182,6 +183,9 @@ fun NavigateScreen(
     with<NavigateSettingsState, Unit>(navigateSettings) {
         // ---- VMS ----
         val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
+        val installedMapBounds by mapViewModel.installedMapBounds.collectAsState()
+        val missingMapPromptDisabled by mapViewModel.missingMapPromptDisabled.collectAsState()
+        val missingMapPromptDismissed by mapViewModel.missingMapPromptDismissed.collectAsState()
         val activeGpxDetails by gpxViewModel.activeGpxDetails.collectAsState()
         val turnByTurnGuidanceSession by gpxViewModel.turnByTurnGuidanceSession.collectAsState()
         val turnByTurnGuidancePaused by gpxViewModel.turnByTurnGuidancePaused.collectAsState()
@@ -1282,6 +1286,51 @@ fun NavigateScreen(
                 } else {
                     null
                 },
+        )
+
+        val missingMapPromptLocation =
+            uiState.lastKnownLocation.takeIf { gpsSignalSnapshot.lastFixFresh && gpsFixFreshForAccuracyCircle }
+        val canShowMissingMapPrompt =
+            isScreenResumed &&
+                screenState.isInteractive &&
+                !offlineMode &&
+                !traceRecordingState.active &&
+                !traceRecordingState.saving &&
+                turnByTurnGuidanceSession == null &&
+                !showCalibrationDialog &&
+                hillshadeTerrainUnavailableEvent == null &&
+                !showKeepAppOpenInfoDialog &&
+                !showNotificationPermissionDialog &&
+                !shortcutTrayExpanded &&
+                !showRouteToolsPanel &&
+                routeToolSession == null &&
+                completedRouteToolDraft == null &&
+                !routeToolExecutionInProgress &&
+                routeToolResult == null &&
+                mapLongPressTarget == null &&
+                !poiCreationSelectionActive &&
+                !selectingGpxPointB &&
+                !showPoiCreationChoiceDialog &&
+                !showPoiCoordinateEntryDialog &&
+                !showCreatedPoiRenameDialog &&
+                !createdPoiCreateInProgress
+        MissingMapPrompt(
+            visible =
+                shouldShowMissingMapPrompt(
+                    location = missingMapPromptLocation,
+                    installedBounds = installedMapBounds,
+                    disabled = missingMapPromptDisabled,
+                    dismissed = missingMapPromptDismissed,
+                    canShow = canShowMissingMapPrompt,
+                ),
+            onDownload = {
+                missingMapPromptLocation?.let { location ->
+                    mapViewModel.dismissMissingMapPrompt()
+                    onOpenMapBundles(location)
+                }
+            },
+            onDismiss = { mapViewModel.dismissMissingMapPrompt() },
+            onNeverShowAgain = { mapViewModel.dismissMissingMapPrompt(neverShowAgain = true) },
         )
 
         LaunchedEffect(isScreenResumed) {

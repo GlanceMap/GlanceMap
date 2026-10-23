@@ -85,4 +85,9 @@
     <string name="navigation_enter_map_focus">Enter full screen</string>
     <string name="navigation_exit_map_focus">Exit full screen</string>
     <string name="navigation_map_focus_hint">Full screen</string>
+    <string name="navigation_missing_map_title">No map for this area</string>
+    <string name="navigation_missing_map_message">Send a .map file from your phone using Send to Watch, or download a bundle directly on your watch.</string>
+    <string name="navigation_missing_map_download">Download bundle</string>
+    <string name="navigation_missing_map_not_now">Not now</string>
+    <string name="navigation_missing_map_never_again">Never show again</string>
 </resources>

@@ -23,10 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
@@ -428,6 +430,15 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                     }
                                 },
+                                onOpenMapBundles = { location ->
+                                    appContainer.downloadViewModel.suggestAreasForLocation(
+                                        latitude = location.latitude,
+                                        longitude = location.longitude,
+                                    )
+                                    navController.navigate(WatchRoutes.DOWNLOAD_AREA_PICKER) {
+                                        launchSingleTop = true
+                                    }
+                                },
                             )
                         }
 
@@ -492,8 +503,19 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        composable(WatchRoutes.DOWNLOAD) {
-                            var isDownloadAreaPickerOpen by rememberSaveable { mutableStateOf(false) }
+                        composable(
+                            route = "${WatchRoutes.DOWNLOAD}?pickArea={pickArea}",
+                            arguments =
+                                listOf(
+                                    navArgument("pickArea") {
+                                        type = NavType.BoolType
+                                        defaultValue = false
+                                    },
+                                ),
+                        ) { entry ->
+                            var isDownloadAreaPickerOpen by rememberSaveable {
+                                mutableStateOf(entry.arguments?.getBoolean("pickArea") == true)
+                            }
                             var downloadAreaFolder by rememberSaveable { mutableStateOf<String?>(null) }
                             var downloadAreaSearchQuery by rememberSaveable { mutableStateOf("") }
                             DismissableScreen(

@@ -687,6 +687,10 @@ interface SettingsRepository {
 
     suspend fun setKeepAppOpenTipShown(shown: Boolean)
 
+    val missingMapPromptDisabled: Flow<Boolean>
+
+    suspend fun setMissingMapPromptDisabled(disabled: Boolean)
+
     val compassMode: Flow<Boolean>
 
     suspend fun setCompassMode(isCompassMode: Boolean)

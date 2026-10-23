@@ -218,6 +218,7 @@ class SettingsRepositoryImpl private constructor(
         val SELECTED_MAP_PATH = stringPreferencesKey("selected_map_path")
         val KEEP_APP_OPEN = booleanPreferencesKey("keep_app_open")
         val KEEP_APP_OPEN_TIP_SHOWN = booleanPreferencesKey("keep_app_open_tip_shown")
+        val MISSING_MAP_PROMPT_DISABLED = booleanPreferencesKey("missing_map_prompt_disabled")
         val COMPASS_MODE = booleanPreferencesKey("compass_mode")
         val GPX_LAST_VISITED_LIST_PAGE = stringPreferencesKey("gpx_last_visited_list_page")
         val GPX_INSPECTION_ENABLED = booleanPreferencesKey("gpx_inspection_enabled")
@@ -1625,6 +1626,13 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setKeepAppOpenTipShown(shown: Boolean) {
         context.dataStore.edit { it[PrefKeys.KEEP_APP_OPEN_TIP_SHOWN] = shown }
+    }
+
+    override val missingMapPromptDisabled: Flow<Boolean> =
+        context.dataStore.data.map { it[PrefKeys.MISSING_MAP_PROMPT_DISABLED] ?: false }
+
+    override suspend fun setMissingMapPromptDisabled(disabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.MISSING_MAP_PROMPT_DISABLED] = disabled }
     }
 
     override val compassMode: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.COMPASS_MODE] ?: true }

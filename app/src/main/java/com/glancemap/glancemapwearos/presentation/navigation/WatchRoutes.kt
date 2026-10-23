@@ -7,6 +7,7 @@ object WatchRoutes {
     const val GPX = "gpx_screen"
     const val MAPS = "maps_screen"
     const val DOWNLOAD = "download_screen"
+    const val DOWNLOAD_AREA_PICKER = "$DOWNLOAD?pickArea=true"
     const val DOWNLOAD_SETTINGS = "download_settings_screen"
     const val SETTINGS = "settings_screen"
     const val USER_PROFILE_SETTINGS = "user_profile_settings_screen"

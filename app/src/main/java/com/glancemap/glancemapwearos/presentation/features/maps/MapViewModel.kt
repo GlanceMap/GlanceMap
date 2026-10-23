@@ -238,6 +238,15 @@ class MapViewModel(
 
     private val _mapFiles = MutableStateFlow<List<MapFileState>>(emptyList())
     val mapFiles: StateFlow<List<MapFileState>> = _mapFiles.asStateFlow()
+
+    // Null while the current library scan is pending; null entries have unknown coverage.
+    private val _installedMapBounds = MutableStateFlow<List<GeoBounds?>?>(null)
+    val installedMapBounds: StateFlow<List<GeoBounds?>?> = _installedMapBounds.asStateFlow()
+    val missingMapPromptDisabled: StateFlow<Boolean> =
+        settingsRepository.missingMapPromptDisabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    private val _missingMapPromptDismissed = MutableStateFlow(false)
+    val missingMapPromptDismissed: StateFlow<Boolean> = _missingMapPromptDismissed.asStateFlow()
     private val _demTileFiles = MutableStateFlow<List<DemTileFileState>>(emptyList())
     val demTileFiles: StateFlow<List<DemTileFileState>> = _demTileFiles.asStateFlow()
     private val _reliefOverlayToggleEnabled = MutableStateFlow(false)
@@ -785,12 +794,21 @@ class MapViewModel(
         schedulePendingRendererWorkIfReady()
     }
 
+    fun dismissMissingMapPrompt(neverShowAgain: Boolean = false) {
+        _missingMapPromptDismissed.value = true
+        if (neverShowAgain) {
+            viewModelScope.launch { settingsRepository.setMissingMapPromptDisabled(true) }
+        }
+    }
+
     fun loadMapFiles(preserveExistingCoverage: Boolean = true) {
+        val generation = ++mapMetadataLoadGeneration
+        mapMetadataLoadJob?.cancel()
+        _installedMapBounds.value = null
         viewModelScope.launch {
             val files = mapRepository.listMapFiles()
+            if (generation != mapMetadataLoadGeneration) return@launch
             val demSource = selectedDemSourceForCoverage
-            val generation = ++mapMetadataLoadGeneration
-            mapMetadataLoadJob?.cancel()
             val previousByPath = _mapFiles.value.associateBy { it.path }
             _mapFiles.value =
                 files.map { file ->
@@ -800,6 +818,8 @@ class MapViewModel(
                         preserveExistingCoverage = preserveExistingCoverage,
                     )
                 }
+
+            if (files.isEmpty()) _installedMapBounds.value = emptyList()
 
             val currentPath = selectedMapPath.value
             if (currentPath != null && files.none { it.absolutePath == currentPath }) {
@@ -818,6 +838,7 @@ class MapViewModel(
                         }
                     if (generation == mapMetadataLoadGeneration) {
                         _mapFiles.value = states
+                        _installedMapBounds.value = states.map { it.bounds }
                     }
                 }
         }
