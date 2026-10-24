@@ -8,11 +8,12 @@ Do not create duplicates: check the owner's existing projects/components first.
 
 ## Branch gate
 
-The existing checkout is `codex/watch-localization-readiness`. At the initial
-2026-10-23 check it was three commits ahead of the remote; that mismatch was
-reported and left untouched. The local snapshot contains all five translations;
-the remote branch at that check contains only French. The current `main` resource
-listing does not contain the localization-ready locale files.
+The existing checkout is `codex/watch-localization-readiness`. All five languages
+and the community workflow are proposed for `main` in
+[PR #115](https://github.com/GlanceMap/GlanceMap/pull/115). During integration,
+`main` was checked at `0847e6eb2c8155a4542da3464d67e5c1ffafd176` and still lacked
+the localization-ready locale files. This branch also translates the newer
+full-screen controls, auto-recenter feedback and activity elevation profile.
 
 **Production synchronization must target `main`, after these resources and CI
 reach it through normal maintainer review.** Do not configure the development
@@ -105,11 +106,11 @@ repository is automatically installed into Weblate.
 
 | Android locale | File detected locally | Strings | Plurals | Legal documents | Weblate mapping | Hosted import |
 |---|---|---:|---:|---:|---|---|
-| de | `values-de/strings.xml` | 1710 | 58 | 14 | German (`de`) | Pending owner authorization; not verified |
-| es | `values-es/strings.xml` | 1710 | 58 | 14 | Spanish (`es`) | Pending owner authorization; not verified |
-| fr | `values-fr/strings.xml` | 1710 | 58 | 14 | French (`fr`) | Pending owner authorization; not verified |
-| it | `values-it/strings.xml` | 1710 | 58 | 14 | Italian (`it`) | Pending owner authorization; not verified |
-| pl | `values-pl/strings.xml` | 1710 | 58 | 14 | Polish (`pl`) | Pending owner authorization; not verified |
+| de | `values-de/strings.xml` | 1744 | 58 | 14 | German (`de`) | Pending owner authorization; not verified |
+| es | `values-es/strings.xml` | 1744 | 58 | 14 | Spanish (`es`) | Pending owner authorization; not verified |
+| fr | `values-fr/strings.xml` | 1744 | 58 | 14 | French (`fr`) | Pending owner authorization; not verified |
+| it | `values-it/strings.xml` | 1744 | 58 | 14 | Italian (`it`) | Pending owner authorization; not verified |
+| pl | `values-pl/strings.xml` | 1744 | 58 | 14 | Polish (`pl`) | Pending owner authorization; not verified |
 
 English is the shared base, not separate USA/UK translations. Current validation
 covers every locale above. To refresh the machine-readable inventory and length
@@ -119,7 +120,7 @@ For **each** existing language, before enabling writes:
 
 1. Check the real component's repository, branch, source language, mask and filter.
 2. Confirm the file is detected as an existing translation, not a new blank language.
-3. Match all 1,768 source entries (1,710 strings plus 58 plural resources). Weblate
+3. Match all 1,802 source entries (1,744 strings plus 58 plural resources). Weblate
    may display plural units/forms differently; compare keys and values, not just
    one dashboard percentage.
 4. Inspect actual imported ordinary, formatted, plural, annotated, newline, ICU,
@@ -136,12 +137,13 @@ quoted XML and ordinal annotations make a no-op round-trip check important.
 Local format probing is useful evidence, but **does not confirm Hosted Weblate
 import** or the serializer version used by that service.
 
-An isolated Translate Toolkit 3.20.0 probe recognized 1,768 existing units in
-each of de/es/fr/it/pl. No-edit serialization was byte-identical for every file.
+Before integration, an isolated Translate Toolkit 3.20.0 probe recognized the
+original 1,768 units (1,710 strings and 58 plurals) in each of de/es/fr/it/pl. No-edit serialization was byte-identical for every file.
 Assigning the existing Cancel value back to itself only removed that string's
 unnecessary outer quotes (one changed line per locale). No source file was
 changed. This suggests no initial bulk rewrite for that parser version, while
-showing why actual exports and automatic fixups still need review.
+showing why actual exports and automatic fixups still need review. Repeat the
+round-trip review for the current 1,802 entries before enabling Hosted writes.
 
 ## Component instructions to paste into Weblate
 

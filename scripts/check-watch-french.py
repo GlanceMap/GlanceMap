@@ -46,6 +46,15 @@ def identical_reason(value):
     return "Valid shared French spelling or established French borrowing"
 
 
+def check_english_leftovers(resource, english, french):
+    reviewed = french
+    if resource == "navigation_missing_map_message":
+        # The companion screen is still titled "Send to Watch" in every locale.
+        assert english.count("Send to Watch") == french.count("Send to Watch") == 1
+        reviewed = reviewed.replace("Send to Watch", "")
+    assert not ENGLISH_LEFTOVER.search(reviewed), (resource, "possible English leftover")
+
+
 def run(report_dir):
     # Check the audit itself: reordering is allowed, type/precision changes are not.
     assert arguments("%2$s / %1$d %%") == arguments("%1$d / %2$s %%")
@@ -82,7 +91,7 @@ def run(report_dir):
             for glyph in ("•", "…", "→", "↑", "↓", "▲", "▼", "▾", "▸", "▽", "±", "°"):
                 assert x.count(glyph) == y.count(glyph), (key, glyph)
             assert not any(c in y for c in "\u00a0\u202f\u2009"), (key, "unusual spacing")
-            assert not ENGLISH_LEFTOVER.search(y), (key, "possible English leftover")
+            check_english_leftovers(key, x, y)
             if x == y:
                 identical.append({"resource": key, "value": y, "classification": identical_reason(y)})
             expansion = round(100 * (len(y) - len(x)) / max(len(x), 1), 1)

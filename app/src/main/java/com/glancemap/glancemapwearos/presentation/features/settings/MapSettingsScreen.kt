@@ -265,6 +265,13 @@ fun MapSettingsScreen(
         }
         item {
             SettingsSectionChip(
+                label = stringResource(R.string.settings_fullscreen_mode),
+                secondaryLabel = stringResource(R.string.settings_choose_visible_controls),
+                onClick = { navController.navigate(WatchRoutes.MAP_FOCUS_SETTINGS) },
+            )
+        }
+        item {
+            SettingsSectionChip(
                 label = stringResource(R.string.map_zoom),
                 secondaryLabel = stringResource(R.string.map_open_zoom_settings),
                 onClick = { navController.navigate(WatchRoutes.MAP_ZOOM_SETTINGS) },

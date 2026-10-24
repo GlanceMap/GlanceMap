@@ -1463,6 +1463,13 @@ class GpxViewModel(
         }
     }
 
+    internal suspend fun loadActivityElevationProfile(path: String): ActivityElevationProfile? =
+        withContext(Dispatchers.IO) {
+            val file = File(path)
+            if (!file.isFile) return@withContext null
+            buildActivityElevationProfile(getOrBuildProfile(path = path, file = file, sig = sigOf(file)))
+        }
+
     fun showElevationProfile(path: String) {
         if (_elevationProfileUiState.value?.trackPath != path) {
             elevationProfileLocationJob?.cancel()

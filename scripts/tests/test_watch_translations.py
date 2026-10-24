@@ -31,6 +31,22 @@ BASE = '''<resources>
 TARGET = BASE.replace('<string name="brand" translatable="false">GlanceMap</string>', '').replace('>Save<', '>Speichern<')
 
 
+class FrenchEditorialCaptionTest(unittest.TestCase):
+    def test_companion_caption_is_allowed_only_in_its_matching_instruction(self):
+        spec = importlib.util.spec_from_file_location("watch_french", SCRIPTS / "check-watch-french.py")
+        french = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(french)
+        source = "Send a file using Send to Watch."
+        french.check_english_leftovers("navigation_missing_map_message", source, "Utilisez Send to Watch.")
+        for resource, original, translated in (
+            ("unrelated", source, "Send to Watch"),
+            ("navigation_missing_map_message", source, "Utilisez Send to Watch with your watch."),
+            ("navigation_missing_map_message", source, "Utilisez la montre."),
+        ):
+            with self.subTest(resource=resource, translated=translated), self.assertRaises(AssertionError):
+                french.check_english_leftovers(resource, original, translated)
+
+
 class LocaleDiscoveryTest(unittest.TestCase):
     def test_configuration_qualifiers_are_not_languages(self):
         for name in ("values", "values-round", "values-night", "values-v31", "values-car", "values-land", "raw-watch", "values-anydpi-v26"):

@@ -28,6 +28,10 @@
     <string name="navigation_waiting_for_location">Waiting for location…</string>
     <string name="navigation_zoom_in">Zoom in</string>
     <string name="navigation_zoom_out">Zoom out</string>
+    <string name="navigation_toggle_auto_recenter">Toggle auto recenter</string>
+    <string name="navigation_auto_recenter_on">Auto recenter on · %1$ds</string>
+    <string name="navigation_auto_recenter_off">Auto recenter off</string>
+    <string name="navigation_auto_recenter_badge" translatable="false">A</string>
 
     <string name="gps_source">GPS Source</string>
     <string name="gps_source_watch_only">Watch Only (more ⚡)</string>
@@ -1968,4 +1972,38 @@
     <string name="language_german" translatable="false">Deutsch</string>
     <string name="language_italian" translatable="false">Italiano</string>
     <string name="language_polish" translatable="false">Polski</string>
+    <string name="navigation_map_focus_shortcut">Full</string>
+    <string name="navigation_exit_map_focus_shortcut">Exit full</string>
+    <string name="navigation_enter_map_focus">Enter full screen</string>
+    <string name="navigation_exit_map_focus">Exit full screen</string>
+    <string name="navigation_map_focus_hint">Full screen</string>
+    <string name="navigation_missing_map_title">No map for this area</string>
+    <string name="navigation_missing_map_message">Send a .map file from your phone using Send to Watch, or download a bundle directly on your watch.</string>
+    <string name="navigation_missing_map_download">Download bundle</string>
+    <string name="navigation_missing_map_not_now">Not now</string>
+    <string name="navigation_missing_map_never_again">Never show again</string>
+
+    <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
+    <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
+    <string name="settings_fullscreen_mode">"Fullscreen mode"</string>
+    <string name="settings_choose_visible_controls">"Choose visible controls"</string>
+    <string name="settings_fullscreen_controls_help">"Choose controls to keep visible. Normal map settings still apply. Exit is always available."</string>
+    <string name="settings_fullscreen_show_menu">"Show menu button"</string>
+    <string name="settings_fullscreen_show_tools">"Show tools button"</string>
+    <string name="settings_fullscreen_show_zoom_plus">"Show zoom +"</string>
+    <string name="settings_fullscreen_show_zoom_minus">"Show zoom −"</string>
+    <string name="settings_fullscreen_show_north">"Show north indicator"</string>
+    <string name="settings_fullscreen_show_nav_mode">"Show center/mode button"</string>
+    <string name="settings_fullscreen_show_scale">"Show scale"</string>
+    <string name="settings_fullscreen_show_time">"Show time"</string>
+    <string name="settings_fullscreen_show_metrics">"Show live metrics"</string>
+    <string name="gpx_activity_profile_title">"Elevation profile"</string>
+    <string name="gpx_activity_profile_loading">"Loading elevation profile…"</string>
+    <string name="gpx_activity_profile_error">"Unable to load elevation profile"</string>
+    <string name="gpx_activity_profile_empty">"No elevation data"</string>
+    <string name="gpx_activity_profile_gaps">"Grey lines: gaps"</string>
+    <string name="gpx_activity_profile_description">"Elevation profile, %1$s, %2$s to %3$s"</string>
+    <string name="gpx_activity_profile_description_with_gaps">"Elevation profile, %1$s, %2$s to %3$s; grey lines indicate gaps"</string>
+    <string name="settings_back_closes_app">"Back closes app"</string>
+    <string name="settings_close_directly_from_navigate">"Close directly from Navigate"</string>
 </resources>

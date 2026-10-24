@@ -2002,4 +2002,41 @@
     <string name="settings_zoom_buttons">"Boutons de zoom"</string>
     <string name="settings_language">Langue</string>
     <string name="settings_language_system">Système</string>
+
+    <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
+    <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
+    <string name="navigation_toggle_auto_recenter">"Basculer le recentrage auto"</string>
+    <string name="navigation_auto_recenter_on">"Recentrage auto activé · %1$ds"</string>
+    <string name="navigation_auto_recenter_off">"Recentrage auto désactivé"</string>
+    <string name="navigation_map_focus_shortcut">"Max."</string>
+    <string name="navigation_exit_map_focus_shortcut">"Normal"</string>
+    <string name="navigation_enter_map_focus">"Passer en plein écran"</string>
+    <string name="navigation_exit_map_focus">"Quitter le plein écran"</string>
+    <string name="navigation_map_focus_hint">"Plein écran"</string>
+    <string name="navigation_missing_map_title">"Pas de carte pour cette zone"</string>
+    <string name="navigation_missing_map_message">"Envoyez un fichier .map depuis le téléphone avec Send to Watch, ou téléchargez un pack directement sur la montre."</string>
+    <string name="navigation_missing_map_download">"Télécharger un pack"</string>
+    <string name="navigation_missing_map_not_now">"Pas maintenant"</string>
+    <string name="navigation_missing_map_never_again">"Ne plus afficher"</string>
+    <string name="settings_fullscreen_mode">"Plein écran"</string>
+    <string name="settings_choose_visible_controls">"Choisir les commandes visibles"</string>
+    <string name="settings_fullscreen_controls_help">"Choisissez les commandes à garder visibles. Les réglages habituels de la carte s’appliquent. La sortie reste toujours accessible."</string>
+    <string name="settings_fullscreen_show_menu">"Afficher le bouton de menu"</string>
+    <string name="settings_fullscreen_show_tools">"Afficher le bouton d’outils"</string>
+    <string name="settings_fullscreen_show_zoom_plus">"Afficher le zoom +"</string>
+    <string name="settings_fullscreen_show_zoom_minus">"Afficher le zoom −"</string>
+    <string name="settings_fullscreen_show_north">"Afficher l’indicateur du nord"</string>
+    <string name="settings_fullscreen_show_nav_mode">"Afficher le bouton centrage/mode"</string>
+    <string name="settings_fullscreen_show_scale">"Afficher l’échelle"</string>
+    <string name="settings_fullscreen_show_time">"Afficher l’heure"</string>
+    <string name="settings_fullscreen_show_metrics">"Afficher les mesures en direct"</string>
+    <string name="gpx_activity_profile_title">"Profil altimétrique"</string>
+    <string name="gpx_activity_profile_loading">"Chargement du profil…"</string>
+    <string name="gpx_activity_profile_error">"Impossible de charger le profil"</string>
+    <string name="gpx_activity_profile_empty">"Aucune donnée d’altitude"</string>
+    <string name="gpx_activity_profile_gaps">"Lignes grises : coupures"</string>
+    <string name="gpx_activity_profile_description">"Profil altimétrique, %1$s, de %2$s à %3$s"</string>
+    <string name="gpx_activity_profile_description_with_gaps">"Profil altimétrique, %1$s, de %2$s à %3$s ; les lignes grises indiquent des coupures"</string>
+    <string name="settings_back_closes_app">"Retour ferme l’appli"</string>
+    <string name="settings_close_directly_from_navigate">"Fermer directement depuis Naviguer"</string>
 </resources>

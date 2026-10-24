@@ -49,6 +49,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -153,6 +154,7 @@ fun GpxScreen(
     gpxViewModel: GpxViewModel,
     locationViewModel: LocationViewModel,
     isMetric: Boolean,
+    gpxTrackColor: Int,
     autoStartRecordingWithGuidance: Boolean = false,
     recordingActiveOrSaving: Boolean = false,
     onStartRecording: () -> Unit = {},
@@ -566,6 +568,8 @@ fun GpxScreen(
         ActivityDetailsDialog(
             gpxFile = activityDetailsFile,
             isMetric = isMetric,
+            trackColor = if (gpxTrackColor != 0) Color(gpxTrackColor) else colorResource(R.color.default_gpx_track),
+            loadElevationProfile = gpxViewModel::loadActivityElevationProfile,
             onDismiss = { activityDetailsFile = null },
         )
 
@@ -923,9 +927,12 @@ fun GpxScreen(
 }
 
 @Composable
-private fun ActivityDetailsDialog(
+@Suppress("FunctionNaming")
+internal fun ActivityDetailsDialog(
     gpxFile: GpxFileState?,
     isMetric: Boolean,
+    trackColor: Color,
+    loadElevationProfile: suspend (String) -> ActivityElevationProfile?,
     onDismiss: () -> Unit,
 ) {
     val resources = LocalResources.current
@@ -964,6 +971,14 @@ private fun ActivityDetailsDialog(
         }
         item {
             RecordingRecapMetricsGrid(metrics = metrics)
+        }
+        item {
+            ActivityElevationProfileSection(
+                filePath = gpxFile.path,
+                isMetric = isMetric,
+                trackColor = trackColor,
+                loadProfile = loadElevationProfile,
+            )
         }
         item {
             Spacer(modifier = Modifier.height(56.dp))

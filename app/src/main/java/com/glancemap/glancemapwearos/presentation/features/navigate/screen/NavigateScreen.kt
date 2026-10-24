@@ -91,7 +91,9 @@ fun NavigateScreen(
     onRecordingTimeTap: () -> Unit = {},
     onRecordingTimeLongPress: () -> Unit = {},
     onMenuClick: () -> Unit,
+    onCloseApp: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
+    onOpenMapBundles: (LatLong) -> Unit = {},
     compassViewModel: CompassViewModel = viewModel(),
     navigateViewModel: NavigateViewModel = viewModel(),
 ) {
@@ -102,6 +104,7 @@ fun NavigateScreen(
     val screenSize = rememberWearScreenSize()
     val density = LocalDensity.current
     val focusRequester = remember { FocusRequester() }
+    val mapFocusState = remember { NavigateMapFocusState() }
     SideEffect {
         BenchmarkTrace.mark("recompose.NavigateScreen")
     }
@@ -184,6 +187,9 @@ fun NavigateScreen(
     with<NavigateSettingsState, Unit>(navigateSettings) {
         // ---- VMS ----
         val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
+        val installedMapBounds by mapViewModel.installedMapBounds.collectAsState()
+        val missingMapPromptDisabled by mapViewModel.missingMapPromptDisabled.collectAsState()
+        val missingMapPromptDismissed by mapViewModel.missingMapPromptDismissed.collectAsState()
         val activeGpxDetails by gpxViewModel.activeGpxDetails.collectAsState()
         val turnByTurnGuidanceSession by gpxViewModel.turnByTurnGuidanceSession.collectAsState()
         val turnByTurnGuidancePaused by gpxViewModel.turnByTurnGuidancePaused.collectAsState()
@@ -457,6 +463,20 @@ fun NavigateScreen(
                 isShortcutTrayExpanded = shortcutTrayExpanded,
             )
 
+        fun enterMapFocus() {
+            screenActions.triggerHaptic()
+            mapFocusState.enter { shortcutTrayExpanded = false }
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=shortcut")
+        }
+
+        fun exitMapFocus(source: String) {
+            if (!mapFocusState.mapFocusMode) return
+            if (source == "button") screenActions.triggerHaptic()
+            shortcutTrayExpanded = false
+            mapFocusState.exit()
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
+        }
+
         // ---- Auto-recenter timer ----
         LaunchedEffect(effectiveNavMode, autoRecenterEnabled, autoRecenterDelay, offlineMode) {
             if (!offlineMode && effectiveNavMode == NavMode.PANNING && autoRecenterEnabled) {
@@ -652,6 +672,8 @@ fun NavigateScreen(
         )
 
         NavigateBackHandler(
+            mapFocusMode = mapFocusState.mapFocusMode,
+            onExitMapFocus = { exitMapFocus("back") },
             createdPoiCreateInProgress = createdPoiCreateInProgress,
             completedRouteToolDraftActive = completedRouteToolDraft != null,
             routeToolExecutionInProgress = routeToolExecutionInProgress,
@@ -664,6 +686,8 @@ fun NavigateScreen(
             showRouteToolsPanel = showRouteToolsPanel,
             shortcutTrayExpanded = shortcutTrayExpanded,
             backButtonExitsNavigation = backButtonExitsNavigation,
+            backButtonClosesApp = backButtonClosesApp,
+            onCloseApp = onCloseApp,
             onDismissCompletedRouteToolDraft = {
                 completedRouteToolDraft = null
                 routeToolPreview = null
@@ -1044,6 +1068,10 @@ fun NavigateScreen(
             }
 
         NavigateContent(
+            mapFocusState = mapFocusState,
+            mapFocusVisibleControls = mapFocusVisibleControls,
+            onEnterMapFocus = ::enterMapFocus,
+            onExitMapFocus = ::exitMapFocus,
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
@@ -1105,6 +1133,9 @@ fun NavigateScreen(
                     locationViewModel.requestImmediateLocation(source = "ui_recenter_from_panning")
                 }
             },
+            autoRecenterEnabled = autoRecenterEnabled,
+            autoRecenterDelay = autoRecenterDelay,
+            onToggleAutoRecenter = { settingsViewModel.setAutoRecenterEnabled(!autoRecenterEnabled) },
             triggerHaptic = screenActions.triggerHaptic,
             onMenuClick = {
                 val nowElapsedMs = SystemClock.elapsedRealtime()
@@ -1267,6 +1298,51 @@ fun NavigateScreen(
                 } else {
                     null
                 },
+        )
+
+        val missingMapPromptLocation =
+            uiState.lastKnownLocation.takeIf { gpsSignalSnapshot.lastFixFresh && gpsFixFreshForAccuracyCircle }
+        val canShowMissingMapPrompt =
+            isScreenResumed &&
+                screenState.isInteractive &&
+                !offlineMode &&
+                !traceRecordingState.active &&
+                !traceRecordingState.saving &&
+                turnByTurnGuidanceSession == null &&
+                !showCalibrationDialog &&
+                hillshadeTerrainUnavailableEvent == null &&
+                !showKeepAppOpenInfoDialog &&
+                !showNotificationPermissionDialog &&
+                !shortcutTrayExpanded &&
+                !showRouteToolsPanel &&
+                routeToolSession == null &&
+                completedRouteToolDraft == null &&
+                !routeToolExecutionInProgress &&
+                routeToolResult == null &&
+                mapLongPressTarget == null &&
+                !poiCreationSelectionActive &&
+                !selectingGpxPointB &&
+                !showPoiCreationChoiceDialog &&
+                !showPoiCoordinateEntryDialog &&
+                !showCreatedPoiRenameDialog &&
+                !createdPoiCreateInProgress
+        MissingMapPrompt(
+            visible =
+                shouldShowMissingMapPrompt(
+                    location = missingMapPromptLocation,
+                    installedBounds = installedMapBounds,
+                    disabled = missingMapPromptDisabled,
+                    dismissed = missingMapPromptDismissed,
+                    canShow = canShowMissingMapPrompt,
+                ),
+            onDownload = {
+                missingMapPromptLocation?.let { location ->
+                    mapViewModel.dismissMissingMapPrompt()
+                    onOpenMapBundles(location)
+                }
+            },
+            onDismiss = { mapViewModel.dismissMissingMapPrompt() },
+            onNeverShowAgain = { mapViewModel.dismissMissingMapPrompt(neverShowAgain = true) },
         )
 
         LaunchedEffect(isScreenResumed) {

@@ -2,7 +2,10 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.location.Location
+import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
+import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -56,6 +59,7 @@ class TraceRecordingDraftStoreTest {
             assertEquals(state.activityProfile, recovered.activityProfile)
             assertEquals(state.trackSmoothingMode, recovered.trackSmoothingMode)
             assertEquals(state.distanceSource, recovered.distanceSource)
+            assertEquals(state.recordingMetadata, recovered.recordingMetadata)
             assertEquals(state.startedAtMillis, recovered.startedAtMillis)
             assertEquals(state.pausedAtMillis, recovered.pausedAtMillis)
             assertEquals(state.accumulatedPausedMillis, recovered.accumulatedPausedMillis)
@@ -69,6 +73,16 @@ class TraceRecordingDraftStoreTest {
             assertEquals(state.stepCount, recovered.stepCount)
             assertEquals("pause", recovered.lastUiAction)
             assertEquals(state.points, recovered.points)
+            val xml =
+                encodeRecordedTraceAsGpx(
+                    "Recovered",
+                    recovered.points,
+                    recordingMetadata = recovered.recordingMetadata,
+                    exporterVersion = "new-exporter",
+                ).toString(Charsets.UTF_8)
+            assertTrue(xml.contains("creator=\"GlanceMap new-exporter\""))
+            assertTrue(xml.contains("<gmap:recordingAppVersion>old-recorder</gmap:recordingAppVersion>"))
+            assertTrue(xml.contains("<gmap:locationAgeMillis>120</gmap:locationAgeMillis>"))
         }
 
     @Test
@@ -127,6 +141,21 @@ class TraceRecordingDraftStoreTest {
             autoPaused = true,
             activityProfile = SettingsRepository.ACTIVITY_PROFILE_BIKE,
             trackSmoothingMode = SettingsRepository.RECORDING_TRACK_SMOOTHING_STRONG,
+            recordingMetadata =
+                RecordingCaptureMetadata(
+                    appVersion = "old-recorder",
+                    appBuild = 42,
+                    deviceManufacturer = "Example",
+                    deviceModel = "Test Watch",
+                    androidVersion = "14",
+                    androidApiLevel = 34,
+                    androidBuild = "test-build",
+                    locationSourceModeAtStart = "WATCH_GPS",
+                    sampleIntervalSecondsAtStart = 3,
+                    effectiveLocationIntervalMillisAtStart = 1_000L,
+                    elevationSourceAtStart = "GPS",
+                    powerSaveModeAtStart = false,
+                ),
             points =
                 listOf(
                     RecordedTracePoint(
@@ -146,6 +175,7 @@ class TraceRecordingDraftStoreTest {
                         startsNewSegment = true,
                         segmentStartReason = RecordingSegmentStartReason.AUTO_PAUSE,
                         trajectoryFinalized = true,
+                        locationQuality = RecordedLocationQuality("gps", "WATCH_GPS", 4.5f, 0.25f, 120L),
                     ),
                 ),
             distanceMeters = 4_321.0,
@@ -181,10 +211,38 @@ class TraceRecordingDraftStoreTest {
             val recovered = requireNotNull(store.load())
             val point = recovered.points.single()
 
+            assertEquals(null, recovered.recordingMetadata)
+            assertEquals(null, point.locationQuality)
             assertEquals(125f, point.accuracyMeters)
             assertEquals(125f, point.effectiveAccuracyMeters)
             assertEquals(RECORDING_ACCURACY_INTERPRETATION_RAW, point.accuracyInterpretation)
         }
+
+    @Test
+    fun captureUsesTheRecordingDeviceAndAvailableMeasurementQuality() {
+        val metadata = captureRecordingMetadata("WATCH_GPS", 3, 1_000L, "GPS", false)
+        assertEquals(BuildConfig.VERSION_NAME, metadata.appVersion)
+        assertEquals(BuildConfig.VERSION_CODE, metadata.appBuild)
+        assertEquals(Build.MANUFACTURER, metadata.deviceManufacturer)
+        assertEquals(Build.MODEL, metadata.deviceModel)
+        assertEquals(Build.VERSION.RELEASE, metadata.androidVersion)
+        assertEquals(Build.VERSION.SDK_INT, metadata.androidApiLevel)
+        assertEquals(Build.DISPLAY, metadata.androidBuild)
+
+        val location =
+            Location("gps").apply {
+                elapsedRealtimeNanos = 1_000_000_000L
+                verticalAccuracyMeters = 4.5f
+                speedAccuracyMetersPerSecond = 0.25f
+            }
+        assertEquals(
+            RecordedLocationQuality("gps", "WATCH_GPS", 4.5f, 0.25f, 120L),
+            location.recordingLocationQuality("WATCH_GPS", 1_120L),
+        )
+        val unavailable = Location("fused").recordingLocationQuality(null, 1_120L)
+        assertEquals(RecordedLocationQuality(provider = "fused"), unavailable)
+        assertEquals(null, location.recordingLocationQuality(null, 900L).ageMillis)
+    }
 
     private class TestContext(
         base: Context,

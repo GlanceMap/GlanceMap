@@ -366,9 +366,8 @@ internal fun ElevationProfileChart(
         for (i in 1..points.lastIndex) {
             val from = samples[drawingRange.first + i - 1]
             val to = samples[drawingRange.first + i]
-            val segmentType = classifySegment(from, to)
             drawLine(
-                color = segmentColor(segmentType),
+                color = elevationProfileSegmentColor(from, to),
                 start = points[i - 1],
                 end = points[i],
                 strokeWidth = 2.5.dp.toPx(),
@@ -468,6 +467,12 @@ private fun interpolateElevation(
     val fraction = ((distance - before.distance) / span).coerceIn(0.0, 1.0)
     return before.elevation + (after.elevation - before.elevation) * fraction
 }
+
+internal fun elevationProfileSegmentColor(
+    from: ElevationSample,
+    to: ElevationSample,
+    trackColor: Color? = null,
+): Color = if (to.gapBefore) Color.Gray else trackColor ?: segmentColor(classifySegment(from, to))
 
 private fun classifySegment(
     from: ElevationSample,

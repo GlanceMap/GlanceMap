@@ -14,6 +14,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `wear-transfer-service.md`
   - Watch transfer handling (Data Layer + channel + LAN HTTP), session state, lock policy.
 
+- `activity-elevation-profile.md`
+  - Corrected distance, grey gap connectors, loading, and display sampling for saved activities.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`
