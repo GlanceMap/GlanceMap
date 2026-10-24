@@ -61,6 +61,62 @@ class OamDownloadConnectionsTest {
             assertEquals(listOf("wifi", "cellular"), routes)
         }
 
+    @Test
+    fun resumedRequestUsesStrongEntityValidator() =
+        runTest {
+            val connection = FakeConnection()
+            val connections = OamDownloadConnections { connection }
+            connections.download("https://example.test/map.zip", 4096, "\"revision-1\"")
+            assertEquals("\"revision-1\"", connection.getRequestProperty("If-Range"))
+        }
+
+    @Test
+    fun weakEntityTagFallsBackToLastModified() {
+        assertEquals(
+            "Wed, 21 Oct 2026 10:00:00 GMT",
+            oamResumeValidator(
+                "W/\"weak\"",
+                "Wed, 21 Oct 2026 10:00:00 GMT",
+            ),
+        )
+        assertEquals(null, oamResumeValidator("W/\"weak\"", null))
+    }
+
+    @Test
+    fun freshRequestNeverUsesIfRange() =
+        runTest {
+            val connection = FakeConnection()
+            val connections = OamDownloadConnections { connection }
+            connections.download("https://example.test/map.zip", 0, "\"revision-1\"")
+            assertEquals(null, connection.getRequestProperty("If-Range"))
+        }
+
+    @Test
+    fun omittedHeadersOnSecondResumeKeepKnownValidator() =
+        runTest {
+            val firstValidator = oamResumeValidator(null, "Wed, 21 Oct 2026 10:00:00 GMT")
+            val afterPartialResponse = oamResumeValidator(null, null, firstValidator, isAppending = true)
+            val connection = FakeConnection()
+            OamDownloadConnections { connection }.download(
+                "https://example.test/map.zip",
+                8192,
+                afterPartialResponse,
+            )
+            assertEquals("Wed, 21 Oct 2026 10:00:00 GMT", connection.getRequestProperty("If-Range"))
+            assertEquals(OamResumeResponse.RESTART, oamResumeResponse(8192, HttpURLConnection.HTTP_OK))
+            assertEquals(null, oamResumeValidator(null, null, afterPartialResponse, isAppending = false))
+        }
+
+    @Test
+    fun responsePolicyAppendsOnlyPartialResponsesAndRestartsIgnoredRanges() {
+        assertEquals(OamResumeResponse.APPEND, oamResumeResponse(4096, HttpURLConnection.HTTP_PARTIAL))
+        assertEquals(OamResumeResponse.RESTART, oamResumeResponse(4096, HttpURLConnection.HTTP_OK))
+        assertEquals(OamResumeResponse.RESTART, oamResumeResponse(4096, 416))
+        assertEquals(OamResumeResponse.FRESH, oamResumeResponse(0, HttpURLConnection.HTTP_OK))
+        assertEquals(OamResumeResponse.ERROR, oamResumeResponse(0, HttpURLConnection.HTTP_PARTIAL))
+        assertEquals(OamResumeResponse.ERROR, oamResumeResponse(0, 416))
+    }
+
     private class FakeConnection : HttpURLConnection(URL("https://example.test/file")) {
         override fun disconnect() = Unit
 

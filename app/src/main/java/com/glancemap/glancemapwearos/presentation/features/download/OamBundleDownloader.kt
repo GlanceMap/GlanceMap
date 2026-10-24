@@ -356,6 +356,15 @@ class OamBundleDownloader(
             )
         }
 
+    fun requestNetworkHandoff(disconnect: (HttpURLConnection) -> Unit = { it.disconnect() }) {
+        val interrupted = activeConnectionRegistry.requestHandoff(disconnect)
+        DebugTelemetry.log(
+            OAM_DOWNLOAD_TELEMETRY_TAG,
+            "event=auto_reconnect_request reason=wifi_recovered activePayloads=$interrupted " +
+                "handoffGeneration=${activeConnectionRegistry.handoffGeneration}",
+        )
+    }
+
     fun abortActiveDownloads(reason: String = "manual") {
         val connectionCount = synchronized(activeConnections) { activeConnections.size }
         DebugTelemetry.log(
@@ -1415,6 +1424,9 @@ class OamBundleDownloader(
             val partFile = File(dir, ".$safeName.part")
             var resumeOffset = partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
             var restartCount = 0
+            var resumeValidator: String? = null
+            var attempt = 0
+            var reconnectReason = "initial"
             val retryBudget = OamDownloadRetryBudget(MAX_IO_RETRIES)
             val downloadStartedAtMs = System.currentTimeMillis()
             var lastSpeedSampleAtMs = downloadStartedAtMs
@@ -1423,33 +1435,38 @@ class OamBundleDownloader(
             while (true) {
                 coroutineContext.ensureActive()
                 val attemptStartOffset = resumeOffset
+                val openingGeneration = activeConnectionRegistry.handoffGeneration
+                attempt++
                 val connection =
                     openConnection(
                         url = url,
                         resumeOffset = resumeOffset,
+                        resumeValidator = resumeValidator,
                     )
-                activeConnections.add(connection)
+                activeConnectionRegistry.registerResumable(connection, openingGeneration)
+                DebugTelemetry.log(
+                    OAM_DOWNLOAD_TELEMETRY_TAG,
+                    "event=http_attempt file=$safeName attempt=$attempt resumeOffset=$resumeOffset " +
+                        "reason=$reconnectReason connection=${System.identityHashCode(connection)}",
+                )
                 try {
+                    activeConnectionRegistry.throwIfHandoffRequested(connection)
                     val code = connection.responseCode
+                    activeConnectionRegistry.throwIfHandoffRequested(connection)
                     val append =
-                        when {
-                            resumeOffset > 0L && code == HttpURLConnection.HTTP_PARTIAL -> true
-                            resumeOffset > 0L && code == HttpURLConnection.HTTP_OK -> {
+                        when (oamResumeResponse(resumeOffset, code)) {
+                            OamResumeResponse.APPEND -> true
+                            OamResumeResponse.RESTART -> {
                                 partFile.delete()
                                 resumeOffset = 0L
                                 restartCount += 1
                                 connection.disconnect()
                                 continue
                             }
-                            resumeOffset > 0L && code == HTTP_RANGE_NOT_SATISFIABLE -> {
-                                partFile.delete()
-                                resumeOffset = 0L
-                                restartCount += 1
-                                connection.disconnect()
-                                continue
-                            }
-                            code == HttpURLConnection.HTTP_OK -> false
-                            else -> throw IOException(context.resources.getString(R.string.download_http_for_2, code.toString(), url))
+                            OamResumeResponse.FRESH -> false
+                            OamResumeResponse.ERROR -> throw IOException(
+                                context.resources.getString(R.string.download_http_for_2, code.toString(), url),
+                            )
                         }
 
                     if (restartCount > MAX_RANGE_RESTARTS) {
@@ -1460,6 +1477,13 @@ class OamBundleDownloader(
                         connection.contentLengthLong
                             .takeIf { it > 0L }
                             ?.let { contentLength -> (if (append) resumeOffset else 0L) + contentLength }
+                    resumeValidator =
+                        oamResumeValidator(
+                            connection.getHeaderField("ETag"),
+                            connection.getHeaderField("Last-Modified"),
+                            previousValidator = resumeValidator,
+                            isAppending = append,
+                        )
                     onResponseMetadata(
                         OamRemoteFileMetadata(
                             url = url,
@@ -1519,7 +1543,7 @@ class OamBundleDownloader(
                             }
                         }
                     try {
-                        connection.inputStream.use { input ->
+                        activeConnectionRegistry.checkedInput(connection, connection.inputStream).use { input ->
                             AtomicStreamWriter.writeAtomic(
                                 dir = dir,
                                 fileName = safeName,
@@ -1587,12 +1611,18 @@ class OamBundleDownloader(
                     )
                     return@withContext finalFile
                 } catch (error: IOException) {
+                    val networkHandoff = activeConnectionRegistry.isHandoffRequested(connection)
                     val resumeOffsetAfterFailure =
                         partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
-                    if (error.isHttpResponseError()) {
-                        throw error
-                    }
-                    if (!retryBudget.shouldRetry(attemptStartOffset, resumeOffsetAfterFailure)) {
+                    val retry =
+                        retryBudget.shouldRetryAfterFailure(
+                            error,
+                            attemptStartOffset,
+                            resumeOffsetAfterFailure,
+                            networkHandoff,
+                            coroutineContext,
+                        )
+                    if (!retry) {
                         throw IOException(
                             oamNoProgressFailureMessage(
                                 fileName = safeName,
@@ -1605,6 +1635,12 @@ class OamBundleDownloader(
                         )
                     }
                     resumeOffset = resumeOffsetAfterFailure
+                    reconnectReason = if (networkHandoff) "wifi_recovered" else "io_failure"
+                    DebugTelemetry.log(
+                        OAM_DOWNLOAD_TELEMETRY_TAG,
+                        "event=http_retry file=$safeName attempt=$attempt resumeOffset=$resumeOffset " +
+                            "reason=$reconnectReason ioRetryCount=${retryBudget.currentRetryCount()}",
+                    )
                     onProgress(
                         OamDownloadProgress(
                             phase = "RECONNECTING",
@@ -1625,10 +1661,12 @@ class OamBundleDownloader(
                                 elapsedMs = System.currentTimeMillis() - lastSpeedSampleAtMs,
                             ),
                     )
-                    delay(IO_RETRY_DELAY_MS * retryBudget.currentRetryCount().coerceAtLeast(1))
+                    if (!networkHandoff) {
+                        delay(IO_RETRY_DELAY_MS * retryBudget.currentRetryCount().coerceAtLeast(1))
+                    }
                     continue
                 } finally {
-                    activeConnections.remove(connection)
+                    activeConnectionRegistry.unregisterResumable(connection)
                     connection.disconnect()
                 }
             }
@@ -1639,7 +1677,8 @@ class OamBundleDownloader(
     private suspend fun openConnection(
         url: String,
         resumeOffset: Long,
-    ): HttpURLConnection = connections.download(url, resumeOffset)
+        resumeValidator: String?,
+    ): HttpURLConnection = connections.download(url, resumeOffset, resumeValidator)
 
     private fun remoteFileName(url: String): String =
         runCatching { File(URI(url).path).name }
@@ -1860,7 +1899,6 @@ class OamBundleDownloader(
     private companion object {
         private const val STALL_CHECK_INTERVAL_MS = 15_000L
         private const val STALL_RECONNECT_TIMEOUT_MS = 75_000L
-        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
         private const val MAX_RANGE_RESTARTS = 1
         private const val MAX_IO_RETRIES = 3
         private const val IO_RETRY_DELAY_MS = 2_000L
@@ -1933,8 +1971,6 @@ private fun Throwable.demTelemetryMessage(): String =
         .replace(Regex("[^A-Za-z0-9._:-]"), "_")
         .take(120)
         .ifBlank { "na" }
-
-private fun Throwable.isHttpResponseError(): Boolean = message?.startsWith("HTTP ", ignoreCase = true) == true
 
 private fun OamRemoteFileMetadata.telemetrySummary(): String = "etag=${entityTag ?: "na"},modified=${lastModifiedMillis ?: "na"},bytes=${contentLengthBytes ?: "na"}"
 

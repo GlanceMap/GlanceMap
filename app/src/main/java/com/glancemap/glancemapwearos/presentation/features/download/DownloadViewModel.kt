@@ -1022,6 +1022,7 @@ class DownloadViewModel(
                     OAM_DOWNLOAD_TELEMETRY_TAG,
                     "event=wifi_recovered ${state.telemetryFields}",
                 )
+                downloader.requestNetworkHandoff()
             }
         return networkMonitor.watchNetworkState(observer::onChanged)
     }

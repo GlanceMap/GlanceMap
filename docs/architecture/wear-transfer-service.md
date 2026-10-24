@@ -108,6 +108,31 @@ Low-latency Wi-Fi locks are not screen-off protection: Android only activates th
 screen is on. The standalone DEM path uses its foreground owner, bounded CPU wake lock, and retained
 network requests instead. Bluetooth/cellular internet remains usable when Wi-Fi is unavailable.
 
+## OAM network handoff
+
+A default-network Wi-Fi event is telemetry, not evidence that an existing HTTP connection moved.
+The foreground bundle service requests a targeted handoff only after its retained-network selector
+reaches validated Wi-Fi. The ViewModel-owned refresh path requests the same handoff after default
+Wi-Fi recovery. Initial Wi-Fi and repeated validated callbacks do not request reconnects; a real
+loss/recovery rearms the transition. Continue-without-Wi-Fi permits a fallback start, not a permanent
+Bluetooth route. VPN routing priority remains intact.
+
+`OamActiveConnectionRegistry` marks/disconnects resumable payloads only; metadata, Refuges.info and
+extraction are excluded. A generation covers connections being opened during the handoff. Checked
+reads turn a deliberate disconnect/EOF into a planned IOException. The existing atomic writer
+settles its pipeline and retains partial bytes before the retry reads the actual partial length.
+User cancellation takes precedence. Planned handoffs consume no ordinary no-progress retry and
+skip failure backoff; genuine I/O failures retain their bounded retry policy. Available strong
+ETag/Last-Modified validators are sent with If-Range within the transfer. HTTP 206 appends, while
+HTTP 200/416 on a resumed request retains the existing safe full-restart path. A server without a
+validator retains the pre-existing cross-request entity-consistency limitation.
+
+Telemetry separates `http_attempt` (connection identity, attempt, offset, cause), `http_retry`
+(planned Wi-Fi handoff versus I/O failure and budget), and `http_network_selected` (the service
+factory-selected Network handle, transport and validation). Existing monitor events describe the
+logical default network. Refresh connections use the system default; their precise socket Network
+is not established by a monitor snapshot. No URLs, credentials or network names are added.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

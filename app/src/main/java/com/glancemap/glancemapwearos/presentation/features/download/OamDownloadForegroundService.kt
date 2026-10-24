@@ -39,7 +39,7 @@ class OamDownloadForegroundService : Service() {
     private val notificationManager by lazy { getSystemService(NotificationManager::class.java) }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val serviceClient by lazy { OamDownloadServiceClient(applicationContext) }
-    private val downloader by lazy {
+    private val downloader: OamBundleDownloader by lazy {
         val container = (application as GlanceMapWearApp).container
         OamBundleDownloader(
             context = applicationContext,
@@ -49,15 +49,28 @@ class OamDownloadForegroundService : Service() {
                 val network =
                     downloadNetwork.awaitNetwork(DOWNLOAD_NETWORK_WAIT_TIMEOUT_MS)
                         ?: throw IOException(resources.getString(R.string.download_no_internet))
-                network.openConnection(url) as HttpURLConnection
+                (network.openConnection(url) as HttpURLConnection).also { connection ->
+                    DebugTelemetry.log(
+                        "OamDownload",
+                        "event=http_network_selected connection=${System.identityHashCode(connection)} " +
+                            downloadNetwork.describeNetwork(network),
+                    )
+                }
             },
         )
     }
     private val networkMonitor by lazy { OamDownloadNetworkMonitor(applicationContext) }
-    private val downloadNetwork by lazy {
-        DownloadNetworkLease(this) { event, detail ->
-            DebugTelemetry.log("OamDownload", "event=$event $detail")
-        }
+    private val downloadNetwork: DownloadNetworkLease by lazy {
+        DownloadNetworkLease(
+            context = this,
+            onEvent = { event, detail -> DebugTelemetry.log("OamDownload", "event=$event $detail") },
+            onWifiReady = {
+                // Capture/mark targets now; only the potentially blocking disconnect is deferred.
+                downloader.requestNetworkHandoff { connection ->
+                    serviceScope.launch { runCatching { connection.disconnect() } }
+                }
+            },
+        )
     }
     private val operationGate = OamDownloadOperationGate()
     private var operationJob: Job? = null
