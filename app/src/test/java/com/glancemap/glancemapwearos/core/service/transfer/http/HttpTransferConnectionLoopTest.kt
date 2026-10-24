@@ -4,8 +4,31 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.util.Locale
 
 class HttpTransferConnectionLoopTest {
+    @Test
+    fun `binding refresh classification and retry cadence do not depend on locale`() {
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(Locale.ENGLISH, Locale.FRENCH, Locale.forLanguageTag("tr")).forEach { locale ->
+                Locale.setDefault(locale)
+                assertTrue(shouldRefreshBinding(1, IOException("connect timed out")))
+                assertTrue(shouldRefreshBinding(2, IOException("CONNECT TIMED OUT")))
+                assertTrue(shouldRefreshBinding(3, IOException("timeout")))
+                assertTrue(shouldRefreshBinding(4, IOException("connection refused")))
+                assertFalse(shouldRefreshBinding(1, IOException("connection refused")))
+                assertFalse(shouldRefreshBinding(2, IOException(null as String?)))
+                assertFalse(shouldRefreshBinding(3, SocketTimeoutException()))
+                assertFalse(shouldRefreshBinding(1, IOException("connection failed", SocketTimeoutException())))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     @Test
     fun `fresh http transfer computes checksum inline`() {
         assertTrue(shouldComputeInlineChecksumForHttp(resumeOffset = 0L))

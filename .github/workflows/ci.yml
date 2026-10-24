@@ -47,6 +47,7 @@ jobs:
             ktlintCheck \
             detekt \
             :app:compileDebugKotlin \
+            :app:compileDebugAndroidTestKotlin \
             :glancemapcompanionapp:compileDebugKotlin \
             :app:testDebugUnitTest \
             :glancemapcompanionapp:testDebugUnitTest \

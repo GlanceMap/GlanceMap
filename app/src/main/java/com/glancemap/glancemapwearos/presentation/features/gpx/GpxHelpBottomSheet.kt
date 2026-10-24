@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
@@ -34,14 +35,28 @@ fun GpxHelpBottomSheet(
     onDismiss: () -> Unit,
 ) {
     if (!visible) return
+    val switchText = stringResource(R.string.gpx_help_switch_tracks, "__route__", "__hike__", "__bike__")
+    val guidanceText = stringResource(R.string.gpx_help_start_guidance, "__guidance__")
+    val sendText = stringResource(R.string.gpx_help_send_to_phone, "__sendToPhone__")
+    val editText = stringResource(R.string.gpx_help_edit_tracks, "__edit__", "__delete__")
+    val alternatives =
+        mapOf(
+            "route" to stringResource(R.string.gpx_help_route_icon),
+            "hike" to stringResource(R.string.gpx_help_hike_icon),
+            "bike" to stringResource(R.string.gpx_help_bike_icon),
+            "guidance" to stringResource(R.string.gpx_help_guidance_icon),
+            "sendToPhone" to stringResource(R.string.gpx_help_send_icon),
+            "edit" to stringResource(R.string.gpx_help_edit_icon),
+            "delete" to stringResource(R.string.gpx_help_delete_icon),
+        )
 
     WearInfoDialog(
         visible = visible,
-        title = "GPX Actions",
+        title = stringResource(R.string.gpx_help_title),
         onDismiss = onDismiss,
     ) {
         item {
-            WearInfoText("Toggle tracks on the map.")
+            WearInfoText(stringResource(R.string.gpx_help_toggle_tracks))
         }
         item {
             GpxHelpInlineText(
@@ -52,33 +67,23 @@ fun GpxHelpBottomSheet(
                         "bike" to Icons.AutoMirrored.Filled.DirectionsBike,
                     ),
             ) {
-                append("Tap ")
-                appendInlineContent("route", "[route]")
-                append(" to switch between GPX, REC hike ")
-                appendInlineContent("hike", "[hike]")
-                append(" and REC bike ")
-                appendInlineContent("bike", "[bike]")
-                append(".")
+                append(gpxHelpAnnotatedText(switchText, alternatives))
             }
         }
         item {
             GpxHelpInlineText(iconContent = mapOf("guidance" to Icons.AutoMirrored.Filled.AssistantDirection)) {
-                append("Use ")
-                appendInlineContent("guidance", "[guidance]")
-                append(" to start turn-by-turn.")
+                append(gpxHelpAnnotatedText(guidanceText, alternatives))
             }
         }
         item {
-            WearInfoText("Long press for elevation.")
+            WearInfoText(stringResource(R.string.gpx_help_elevation))
         }
         item {
             cappedFontScale(maxFontScale = 1.08f) {
                 Text(
                     text =
                         buildAnnotatedString {
-                            append("Use ")
-                            appendInlineContent("sendToPhone", "[send]")
-                            append(" to send GPX to phone.")
+                            append(gpxHelpAnnotatedText(sendText, alternatives))
                         },
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
@@ -111,11 +116,7 @@ fun GpxHelpBottomSheet(
                         "delete" to Icons.Default.Delete,
                     ),
             ) {
-                append("Use ")
-                appendInlineContent("edit", "[edit]")
-                append(" and ")
-                appendInlineContent("delete", "[delete]")
-                append(" to edit or delete tracks.")
+                append(gpxHelpAnnotatedText(editText, alternatives))
             }
         }
     }
@@ -151,3 +152,25 @@ private fun GpxHelpInlineText(
         )
     }
 }
+
+internal fun gpxHelpAnnotatedText(
+    text: String,
+    alternatives: Map<String, String>,
+): androidx.compose.ui.text.AnnotatedString =
+    buildAnnotatedString {
+        val occurrences =
+            alternatives.keys
+                .flatMap { id ->
+                    val token = "__${id}__"
+                    generateSequence(text.indexOf(token).takeIf { it >= 0 }) { start ->
+                        text.indexOf(token, start + token.length).takeIf { it >= 0 }
+                    }.map { it to id }.toList()
+                }.sortedBy { it.first }
+        var start = 0
+        occurrences.forEach { (position, id) ->
+            append(text.substring(start, position))
+            appendInlineContent(id, alternatives.getValue(id))
+            start = position + id.length + 4
+        }
+        append(text.substring(start))
+    }

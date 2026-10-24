@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -56,6 +58,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.tooling.preview.devices.WearDevices
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenEdgeScrollIndicator
@@ -72,6 +75,7 @@ fun MainScreen(
     settingsViewModel: SettingsViewModel? = null,
     onNavigateClick: () -> Unit = { navController.navigate(WatchRoutes.NAVIGATE) },
 ) {
+    val resources = LocalResources.current
     val offlineModeFlow = settingsViewModel?.offlineMode ?: flowOf(false)
     val offlineMode by offlineModeFlow.collectAsState(initial = false)
     val fontScale = LocalDensity.current.fontScale
@@ -224,7 +228,7 @@ fun MainScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     HomeActionButton(
-                        label = "POI",
+                        label = stringResource(R.string.common_poi),
                         icon = Icons.Filled.Place,
                         width = centerButtonWidth,
                         height = centerButtonHeight,
@@ -233,7 +237,7 @@ fun MainScreen(
                         onClick = { navController.navigate(WatchRoutes.POI) },
                     )
                     HomeActionButton(
-                        label = "GPX",
+                        label = stringResource(R.string.common_gpx),
                         icon = Icons.Filled.Timeline,
                         width = centerButtonWidth,
                         height = centerButtonHeight,
@@ -242,7 +246,7 @@ fun MainScreen(
                         onClick = { navController.navigate(WatchRoutes.GPX) },
                     )
                     HomeActionButton(
-                        label = "Maps",
+                        label = stringResource(R.string.download_maps),
                         icon = Icons.Filled.Map,
                         width = centerButtonWidth,
                         height = centerButtonHeight,
@@ -270,7 +274,14 @@ fun MainScreen(
                 onGpsClick = {
                     val nextOfflineMode = !offlineMode
                     settingsViewModel?.setOfflineMode(nextOfflineMode)
-                    gpsStatusMessage = if (nextOfflineMode) "GPS deactivated" else "GPS activated"
+                    gpsStatusMessage =
+                        if (nextOfflineMode) {
+                            resources.getString(
+                                R.string.navigation_gps_deactivated,
+                            )
+                        } else {
+                            resources.getString(R.string.navigation_gps_activated)
+                        }
                 },
                 onDownloadClick = { navController.navigate(WatchRoutes.DOWNLOAD) },
             )
@@ -292,7 +303,7 @@ fun MainScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Explore,
-                    contentDescription = "Navigate",
+                    contentDescription = stringResource(R.string.navigation_navigate),
                     modifier = Modifier.size(navigateIconSize),
                 )
             }
@@ -312,7 +323,7 @@ fun MainScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
+                    contentDescription = stringResource(R.string.common_settings),
                     modifier =
                         Modifier
                             .offset(y = settingsIconYOffset)
@@ -356,6 +367,8 @@ private fun GpsStatusOverlay(
 }
 
 @Composable
+// Resource-call wrapping increases line count; keep the existing flow together.
+@Suppress("LongMethod")
 private fun LeftHomeRail(
     offlineMode: Boolean,
     buttonWidth: Dp,
@@ -390,7 +403,14 @@ private fun LeftHomeRail(
         ) {
             Icon(
                 imageVector = if (offlineMode) Icons.Filled.LocationDisabled else Icons.Filled.MyLocation,
-                contentDescription = if (offlineMode) "Offline mode" else "Online mode",
+                contentDescription =
+                    if (offlineMode) {
+                        stringResource(
+                            R.string.navigation_offline_mode,
+                        )
+                    } else {
+                        stringResource(R.string.navigation_online_mode)
+                    },
                 modifier = Modifier.size(iconSize),
             )
         }
@@ -415,7 +435,7 @@ private fun LeftHomeRail(
         ) {
             Icon(
                 imageVector = Icons.Filled.Download,
-                contentDescription = "Download",
+                contentDescription = stringResource(R.string.common_download),
                 modifier = Modifier.size(iconSize),
             )
         }

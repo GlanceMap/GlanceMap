@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -20,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -33,6 +35,8 @@ import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.localization.AppLanguageSettings
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenStateDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
@@ -117,6 +121,7 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("CyclomaticComplexMethod", "LongMethod")
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppLanguageSettings.applyLegacy(this)
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(this.application)
         ambientState.refreshDeviceInteractive(fallback = true)
@@ -153,21 +158,32 @@ class MainActivity : ComponentActivity() {
             val gpxElevationProfileUiState by appContainer.gpxViewModel.elevationProfileUiState.collectAsState()
             val gpsInAmbientMode by appContainer.settingsViewModel.gpsInAmbientMode.collectAsState(initial = false)
             val offlineMode by appContainer.settingsViewModel.offlineMode.collectAsState(initial = false)
-            val recordingDashboardMetricSlots by appContainer.settingsViewModel.recordingDashboardMetricSlots.collectAsState()
-            val recordingStartWithTurnByTurn by appContainer.settingsViewModel.recordingStartWithTurnByTurn.collectAsState()
-            val recordingSampleIntervalSeconds by appContainer.settingsViewModel.recordingSampleIntervalSeconds.collectAsState()
-            val recordingScreenOffSampleIntervalSeconds by appContainer.settingsViewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
-            val turnByTurnGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnGpsIntervalSeconds.collectAsState()
-            val turnByTurnScreenOffGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds.collectAsState()
+            val recordingDashboardMetricSlots by appContainer.settingsViewModel.recordingDashboardMetricSlots
+                .collectAsState()
+            val recordingStartWithTurnByTurn by appContainer.settingsViewModel.recordingStartWithTurnByTurn
+                .collectAsState()
+            val recordingSampleIntervalSeconds by appContainer.settingsViewModel.recordingSampleIntervalSeconds
+                .collectAsState()
+            val recordingScreenOffSampleIntervalSeconds by
+                appContainer.settingsViewModel.recordingScreenOffSampleIntervalSeconds
+                    .collectAsState()
+            val turnByTurnGpsIntervalSeconds by appContainer.settingsViewModel.turnByTurnGpsIntervalSeconds
+                .collectAsState()
+            val turnByTurnScreenOffGpsIntervalSeconds by
+                appContainer.settingsViewModel.turnByTurnScreenOffGpsIntervalSeconds
+                    .collectAsState()
             val recordingElevationSource by appContainer.settingsViewModel.recordingElevationSource.collectAsState()
             val recordingHeartRateSource by appContainer.settingsViewModel.recordingHeartRateSource.collectAsState()
             val recordingCadenceSource by appContainer.settingsViewModel.recordingCadenceSource.collectAsState()
             val recordingSpeedSource by appContainer.settingsViewModel.recordingSpeedSource.collectAsState()
             val recordingDistanceSource by appContainer.settingsViewModel.recordingDistanceSource.collectAsState()
             val recordingStepsSource by appContainer.settingsViewModel.recordingStepsSource.collectAsState()
-            val recordingExternalHeartRateAddress by appContainer.settingsViewModel.recordingExternalHeartRateAddress.collectAsState()
-            val recordingExternalRunPodAddress by appContainer.settingsViewModel.recordingExternalRunPodAddress.collectAsState()
-            val cyclingWheelCircumferenceMeters by appContainer.settingsViewModel.cyclingWheelCircumferenceMeters.collectAsState()
+            val recordingExternalHeartRateAddress by appContainer.settingsViewModel.recordingExternalHeartRateAddress
+                .collectAsState()
+            val recordingExternalRunPodAddress by appContainer.settingsViewModel.recordingExternalRunPodAddress
+                .collectAsState()
+            val cyclingWheelCircumferenceMeters by appContainer.settingsViewModel.cyclingWheelCircumferenceMeters
+                .collectAsState()
             val activityProfile by appContainer.settingsViewModel.activityProfile.collectAsState()
 
             LaunchedEffect(recordingLocationStartWarning) {
@@ -1111,24 +1127,24 @@ class MainActivity : ComponentActivity() {
                 WatchAppRatingPrompt()
                 WearActionDialog(
                     visible = recordingStartWarning != null,
-                    title = "External sensors unavailable",
+                    title = stringResource(R.string.recording_external_sensors_unavailable),
                     onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithUnavailableSensors,
                     buttons =
                         listOf(
                             WearActionDialogButton(
-                                text = "Use watch sensors",
+                                text = stringResource(R.string.recording_use_watch_sensors),
                                 onClick = {
                                     appContainer.traceRecordingViewModel
                                         .switchUnavailableSensorSourcesToWatchAndStartRecording()
                                 },
                             ),
                             WearActionDialogButton(
-                                text = "Record anyway",
+                                text = stringResource(R.string.recording_record_anyway),
                                 onClick = appContainer.traceRecordingViewModel::confirmStartRecordingWithUnavailableSensors,
                                 role = WearActionButtonRole.Secondary,
                             ),
                             WearActionDialogButton(
-                                text = "Sources",
+                                text = stringResource(R.string.settings_sources),
                                 icon = Icons.Filled.Folder,
                                 iconTint = Color(0xFFFFD54F),
                                 onClick = {
@@ -1141,50 +1157,53 @@ class MainActivity : ComponentActivity() {
                                 role = WearActionButtonRole.Secondary,
                             ),
                             WearActionDialogButton(
-                                text = "Cancel",
+                                text = stringResource(R.string.common_cancel),
                                 onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithUnavailableSensors,
                                 role = WearActionButtonRole.Secondary,
                             ),
                         ),
                 ) {
                     Text(
-                        text = recordingStartWarning?.message.orEmpty(),
+                        text = recordingStartWarning?.message(resources).orEmpty(),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 WearActionDialog(
                     visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.GPS_UNAVAILABLE,
-                    title = "GPS needed",
-                    message = "Wait for a fresh GPS position, then start REC again.",
-                    confirmText = "OK",
+                    title = stringResource(R.string.common_gps_needed),
+                    message = stringResource(R.string.common_wait_for_a_fresh_gps_position_then_start_rec_again),
+                    confirmText = stringResource(R.string.common_ok),
                     onConfirm = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                     onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                 )
                 WearActionDialog(
                     visible = recordingLocationStartWarning?.kind == RecordingLocationStartWarning.Kind.LOW_ACCURACY,
-                    title = "GPS accuracy low",
+                    title = stringResource(R.string.recording_gps_accuracy_low),
                     onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                     buttons =
                         listOf(
                             WearActionDialogButton(
-                                text = "Recheck",
+                                text = stringResource(R.string.recording_recheck),
                                 onClick = appContainer.traceRecordingViewModel::recheckRecordingStartLocation,
                             ),
                             WearActionDialogButton(
-                                text = "Start anyway",
+                                text = stringResource(R.string.recording_start_anyway),
                                 onClick = appContainer.traceRecordingViewModel::startRecordingWithLowAccuracyOverride,
                                 role = WearActionButtonRole.Secondary,
                             ),
                             WearActionDialogButton(
-                                text = "Cancel",
+                                text = stringResource(R.string.common_cancel),
                                 onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithoutLocation,
                                 role = WearActionButtonRole.Secondary,
                             ),
                         ),
                 ) {
                     Text(
-                        text = "Current GPS accuracy is too low. Recheck or start anyway.",
+                        text =
+                            stringResource(
+                                R.string.recording_current_gps_accuracy_is_too_low_recheck_or_start_anyway,
+                            ),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -1218,15 +1237,17 @@ class MainActivity : ComponentActivity() {
                     capability = capability,
                     acknowledged = acknowledged,
                 ),
-            title = "Compass not available on this watch",
+            title = stringResource(R.string.common_compass_not_available_on_this_watch),
             message =
-                "This watch does not expose a hardware compass to apps. Maps, GPS navigation and activity " +
-                    "recording will continue to work, but compass-follow map rotation and directional " +
-                    "heading may be limited.",
-            confirmText = "Continue",
+                stringResource(R.string.common_this_watch_does_not_expose_a_hardware_compass_to_apps_maps_gps_navigat),
+            confirmText = stringResource(R.string.common_continue),
             onConfirm = acknowledge,
             onDismissRequest = {},
         )
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(AppLanguageSettings.applyLegacy(this, newConfig))
     }
 
     override fun onResume() {

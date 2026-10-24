@@ -1,14 +1,41 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Configuration
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_VIEWPORT_WIDTH_PX
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import java.util.Locale
 
-class NavigateScaleIndicatorTest {
+@RunWith(AndroidJUnit4::class)
+class NavigateScaleIndicatorResourceTest {
+    private lateinit var previousLocale: Locale
+
+    @Before
+    fun useEnglishFormattingLocale() {
+        previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.ENGLISH)
+    }
+
+    @After
+    fun restoreFormattingLocale() {
+        Locale.setDefault(previousLocale)
+    }
+
+    private val resources =
+        InstrumentationRegistry.getInstrumentation().targetContext.let { context ->
+            val configuration = Configuration(context.resources.configuration).apply { setLocale(Locale.ENGLISH) }
+            context.createConfigurationContext(configuration).resources
+        }
+
     @Test
-    fun `farthest bound shows configured two hundred kilometer scale with truthful bar width`() {
+    fun farthestBoundShowsConfiguredTwoHundredKilometerScaleWithTruthfulBarWidth() {
         val indicator =
             requireNotNull(
                 calculateScaleIndicatorForZoom(
@@ -17,6 +44,7 @@ class NavigateScaleIndicatorTest {
                     latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                     isMetric = true,
                     preferredScaleMeters = 200_000,
+                    resources = resources,
                 ),
             )
 
@@ -25,7 +53,7 @@ class NavigateScaleIndicatorTest {
     }
 
     @Test
-    fun `closest bound shows configured twenty meter scale with truthful bar width`() {
+    fun closestBoundShowsConfiguredTwentyMeterScaleWithTruthfulBarWidth() {
         val indicator =
             requireNotNull(
                 calculateScaleIndicatorForZoom(
@@ -34,6 +62,7 @@ class NavigateScaleIndicatorTest {
                     latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                     isMetric = true,
                     preferredScaleMeters = 20,
+                    resources = resources,
                 ),
             )
 
@@ -42,7 +71,7 @@ class NavigateScaleIndicatorTest {
     }
 
     @Test
-    fun `closest zoom uses configured five meter scale`() {
+    fun closestZoomUsesConfiguredFiveMeterScale() {
         val indicator =
             requireNotNull(
                 calculateScaleIndicatorForZoom(
@@ -51,6 +80,7 @@ class NavigateScaleIndicatorTest {
                     latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                     isMetric = true,
                     preferredScaleMeters = 5,
+                    resources = resources,
                 ),
             )
 
@@ -59,7 +89,7 @@ class NavigateScaleIndicatorTest {
     }
 
     @Test
-    fun `five meter limit produces stable close zoom labels`() {
+    fun fiveMeterLimitProducesStableCloseZoomLabels() {
         val labels =
             (18..22).map { zoomLevel ->
                 val preferredScaleMeters =
@@ -77,6 +107,7 @@ class NavigateScaleIndicatorTest {
                         latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                         isMetric = true,
                         preferredScaleMeters = preferredScaleMeters,
+                        resources = resources,
                     ),
                 ).label
             }
@@ -88,7 +119,7 @@ class NavigateScaleIndicatorTest {
     }
 
     @Test
-    fun `twenty meter limit remains the final close zoom label`() {
+    fun twentyMeterLimitRemainsTheFinalCloseZoomLabel() {
         val labels =
             (18..20).map { zoomLevel ->
                 val preferredScaleMeters =
@@ -106,6 +137,7 @@ class NavigateScaleIndicatorTest {
                         latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                         isMetric = true,
                         preferredScaleMeters = preferredScaleMeters,
+                        resources = resources,
                     ),
                 ).label
             }
@@ -114,7 +146,7 @@ class NavigateScaleIndicatorTest {
     }
 
     @Test
-    fun `ten meter limit remains the final close zoom label`() {
+    fun tenMeterLimitRemainsTheFinalCloseZoomLabel() {
         val labels =
             (18..21).map { zoomLevel ->
                 val preferredScaleMeters =
@@ -132,6 +164,7 @@ class NavigateScaleIndicatorTest {
                         latitudeDegrees = MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES,
                         isMetric = true,
                         preferredScaleMeters = preferredScaleMeters,
+                        resources = resources,
                     ),
                 ).label
             }

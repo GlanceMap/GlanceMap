@@ -43,6 +43,8 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +52,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
@@ -233,6 +236,7 @@ internal fun NavigateContent(
     markerMotionDebugOverlayLabel: String?,
     onCompassIssueNow: (() -> Unit)?,
 ) {
+    val resources = LocalResources.current
     SideEffect {
         BenchmarkTrace.mark("recompose.NavigateContent")
     }
@@ -338,7 +342,7 @@ internal fun NavigateContent(
                 details = target.details,
             )
         poiTapMarker = marker
-        poiTapPopup = buildPoiTapPopupContent(marker, isMetric = isMetric)
+        poiTapPopup = buildPoiTapPopupContent(marker, isMetric = isMetric, resources = resources)
         poiTapPopupExpanded = false
         poiTapPopupScrollInProgress = false
         onPoiFocusTargetConsumed()
@@ -544,7 +548,7 @@ internal fun NavigateContent(
 
                         triggerHaptic()
                         poiTapMarker = tappedPoi
-                        poiTapPopup = buildPoiTapPopupContent(tappedPoi, isMetric = isMetric)
+                        poiTapPopup = buildPoiTapPopupContent(tappedPoi, isMetric = isMetric, resources = resources)
                         poiTapPopupExpanded = false
                         poiTapPopupScrollInProgress = false
                         return true
@@ -1362,7 +1366,7 @@ private fun CenteredNavigateTimeChip(
             showTime -> formatNavigateClockTime(nowMillis, timeFormat)
             recordingSaving -> "SAVE"
             recordingPaused -> "PAUSE"
-            recordingActive -> "REC"
+            recordingActive -> stringResource(R.string.common_rec)
             else -> ""
         }
     val accentColor =

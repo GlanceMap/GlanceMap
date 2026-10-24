@@ -19,10 +19,33 @@ import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
+enum class ThemePackageFailureReason {
+    INVALID_PACKAGE,
+    MISSING_RESOURCES,
+    NO_XML,
+    INSTALL_FAILED,
+    REMOVE_FAILED,
+    DAMAGED,
+    TOO_LARGE,
+    UNKNOWN,
+}
+
 class ThemePackageException(
     message: String,
     cause: Throwable? = null,
-) : IllegalArgumentException(message, cause)
+) : IllegalArgumentException(message, cause) {
+    val reason: ThemePackageFailureReason =
+        when (message) {
+            "Not a valid Mapsforge theme package" -> ThemePackageFailureReason.INVALID_PACKAGE
+            "Theme resources are missing" -> ThemePackageFailureReason.MISSING_RESOURCES
+            "No render theme XML found" -> ThemePackageFailureReason.NO_XML
+            "Theme could not be installed" -> ThemePackageFailureReason.INSTALL_FAILED
+            "Theme files could not be removed" -> ThemePackageFailureReason.REMOVE_FAILED
+            "Theme package is damaged" -> ThemePackageFailureReason.DAMAGED
+            "Theme package is too large" -> ThemePackageFailureReason.TOO_LARGE
+            else -> ThemePackageFailureReason.UNKNOWN
+        }
+}
 
 // Installation and catalog helpers share the package bounds and atomic publication state.
 
@@ -347,8 +370,7 @@ class ExternalThemeStore(
             title?.take(100) ?: File(path)
                 .nameWithoutExtension
                 .replace('_', ' ')
-                .take(100)
-                .ifBlank { "Imported theme" },
+                .take(100),
         xmlPath = path,
         resourceRoot = resourceRoot,
         revision = revision,

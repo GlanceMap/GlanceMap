@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.LoopRouteSuggestionException
 import kotlin.math.roundToInt
 
@@ -11,14 +13,15 @@ internal data class RouteToolLoopRetryOption(
 internal fun buildLoopRetryOptions(
     base: RouteToolOptions,
     error: LoopRouteSuggestionException,
+    resources: Resources,
 ): List<RouteToolLoopRetryOption> =
     buildList {
-        buildOutAndBackRetryOption(base)?.let(::add)
+        buildOutAndBackRetryOption(base, resources)?.let(::add)
         error.lowerDistanceMeters?.let { distanceMeters ->
-            buildLoopRetryOption(base, distanceMeters)?.let(::add)
+            buildLoopRetryOption(base, distanceMeters, resources = resources)?.let(::add)
         }
         error.higherDistanceMeters?.let { distanceMeters ->
-            buildLoopRetryOption(base, distanceMeters)?.let(::add)
+            buildLoopRetryOption(base, distanceMeters, resources = resources)?.let(::add)
         }
     }.distinctBy { option ->
         option.label
@@ -26,17 +29,21 @@ internal fun buildLoopRetryOptions(
 
 private fun buildOutAndBackRetryOption(
     base: RouteToolOptions,
+    resources: Resources,
 ): RouteToolLoopRetryOption? {
     if (base.loopShapeMode != LoopShapeMode.PREFER_CIRCUIT) return null
     return RouteToolLoopRetryOption(
-        label = LoopShapeMode.ALLOW_OUT_AND_BACK.title,
+        label = resources.getString(R.string.gpx_allow_out_and_back),
         options = base.copy(loopShapeMode = LoopShapeMode.ALLOW_OUT_AND_BACK),
     )
 }
 
+// Keep the existing guard order and presentation thresholds while localizing the result.
+@Suppress("ReturnCount")
 private fun buildLoopRetryOption(
     base: RouteToolOptions,
     distanceMeters: Int,
+    resources: Resources,
 ): RouteToolLoopRetryOption? {
     return when (base.loopTargetMode) {
         LoopTargetMode.DISTANCE -> {
@@ -46,7 +53,7 @@ private fun buildLoopRetryOption(
                     .coerceIn(2, 60)
             if (distanceKm == base.loopDistanceKm) return null
             RouteToolLoopRetryOption(
-                label = "$distanceKm km",
+                label = resources.getString(R.string.gpx_km, distanceKm),
                 options = base.copy(loopDistanceKm = distanceKm),
             )
         }
@@ -55,7 +62,7 @@ private fun buildLoopRetryOption(
             val durationMinutes = estimateLoopDurationMinutes(base, distanceMeters)
             if (durationMinutes == base.loopDurationMinutes) return null
             RouteToolLoopRetryOption(
-                label = formatLoopDuration(durationMinutes),
+                label = formatLoopDuration(durationMinutes, resources = resources),
                 options = base.copy(loopDurationMinutes = durationMinutes),
             )
         }

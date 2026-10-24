@@ -2,6 +2,8 @@
 
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +45,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +59,7 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchUiState
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
@@ -119,26 +124,26 @@ internal fun RouteToolDraftSummaryDialog(
     val isReplaceCurrent = session.options.saveBehavior == RouteSaveBehavior.REPLACE_CURRENT
     val title =
         when {
-            executionMessage != null && isCreate -> "Create failed"
-            executionMessage != null -> "Save failed"
-            isCreate -> "Create GPX?"
-            isReplaceCurrent -> "Replace GPX?"
-            else -> "Save GPX?"
+            executionMessage != null && isCreate -> stringResource(R.string.gpx_create_failed)
+            executionMessage != null -> stringResource(R.string.gpx_save_failed)
+            isCreate -> stringResource(R.string.gpx_create_gpx)
+            isReplaceCurrent -> stringResource(R.string.gpx_replace_gpx)
+            else -> stringResource(R.string.gpx_save_gpx_2)
         }
     val actionLabel =
         if (executionMessage != null) {
-            "Retry"
+            stringResource(R.string.common_retry)
         } else if (isCreate) {
-            if (isExecuting) "Creating..." else "Create GPX"
+            if (isExecuting) stringResource(R.string.gpx_creating) else stringResource(R.string.gpx_create_gpx_2)
         } else {
-            if (isExecuting) "Saving..." else "Save GPX"
+            if (isExecuting) stringResource(R.string.common_saving) else stringResource(R.string.gpx_save_gpx)
         }
     val supportingLine =
         buildString {
-            append(session.modeTitle)
+            append(stringResource(session.modeTitleRes))
             if (!isCreate) {
                 append(" • ")
-                append(session.options.saveBehavior.title)
+                append(stringResource(session.options.saveBehavior.titleRes))
             }
         }
 
@@ -156,7 +161,7 @@ internal fun RouteToolDraftSummaryDialog(
                     )
                 } +
                     WearActionDialogButton(
-                        text = "Back",
+                        text = stringResource(R.string.common_back),
                         onClick = onDismiss,
                         role = WearActionButtonRole.Secondary,
                     )
@@ -169,7 +174,7 @@ internal fun RouteToolDraftSummaryDialog(
                         enabled = !isExecuting,
                     ),
                     WearActionDialogButton(
-                        text = "Back",
+                        text = stringResource(R.string.common_back),
                         onClick = onDismiss,
                         role = WearActionButtonRole.Secondary,
                     ),
@@ -183,7 +188,7 @@ internal fun RouteToolDraftSummaryDialog(
                         enabled = !isExecuting,
                     ),
                     WearActionDialogButton(
-                        text = "Back",
+                        text = stringResource(R.string.common_back),
                         onClick = onDismiss,
                         role = WearActionButtonRole.Secondary,
                     ),
@@ -192,7 +197,7 @@ internal fun RouteToolDraftSummaryDialog(
             else ->
                 listOf(
                     WearActionDialogButton(
-                        text = "Close",
+                        text = stringResource(R.string.common_close),
                         onClick = onDismiss,
                     ),
                 )
@@ -216,11 +221,11 @@ internal fun RouteToolDraftSummaryDialog(
             text =
                 when {
                     executionMessage != null -> executionMessage
-                    isCreate -> "Ready to generate the GPX."
+                    isCreate -> stringResource(R.string.gpx_ready_to_generate_the_gpx)
                     session.options.modifyMode.previewBeforeSaving ->
-                        "Preview the edit, then save."
-                    isReplaceCurrent -> "This will replace the active GPX."
-                    else -> "Ready to save the GPX edit."
+                        stringResource(R.string.gpx_preview_the_edit_then_save)
+                    isReplaceCurrent -> stringResource(R.string.gpx_this_will_replace_the_active_gpx)
+                    else -> stringResource(R.string.gpx_ready_to_save_the_gpx_edit)
                 },
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
@@ -242,13 +247,13 @@ internal fun RouteToolKindSelector(
         ) {
             RouteSegmentButton(
                 modifier = Modifier.fillMaxWidth(),
-                text = RouteToolKind.CREATE.title,
+                text = stringResource(RouteToolKind.CREATE.titleRes),
                 selected = selected == RouteToolKind.CREATE,
                 onClick = { onSelected(RouteToolKind.CREATE) },
             )
             RouteSegmentButton(
                 modifier = Modifier.fillMaxWidth(),
-                text = RouteToolKind.MODIFY.title,
+                text = stringResource(RouteToolKind.MODIFY.titleRes),
                 selected = selected == RouteToolKind.MODIFY,
                 onClick = { onSelected(RouteToolKind.MODIFY) },
             )
@@ -263,13 +268,13 @@ internal fun RouteToolKindSelector(
     ) {
         RouteSegmentButton(
             modifier = Modifier.weight(1f),
-            text = RouteToolKind.CREATE.title,
+            text = stringResource(RouteToolKind.CREATE.titleRes),
             selected = selected == RouteToolKind.CREATE,
             onClick = { onSelected(RouteToolKind.CREATE) },
         )
         RouteSegmentButton(
             modifier = Modifier.weight(1f),
-            text = RouteToolKind.MODIFY.title,
+            text = stringResource(RouteToolKind.MODIFY.titleRes),
             selected = selected == RouteToolKind.MODIFY,
             onClick = { onSelected(RouteToolKind.MODIFY) },
         )
@@ -303,7 +308,7 @@ internal fun RouteActionSelector(
                             else -> options.copy(createMode = mode)
                         }
                     RouteActionButton(
-                        text = mode.title,
+                        text = stringResource(mode.titleRes),
                         icon = createModeIcon(mode),
                         selected = options.createMode == mode,
                         enabled = true,
@@ -340,7 +345,7 @@ internal fun RouteActionSelector(
             RouteToolKind.MODIFY -> {
                 visibleModifyModes().forEach { mode ->
                     RouteActionButton(
-                        text = mode.title,
+                        text = stringResource(mode.titleRes),
                         icon = null,
                         selected = options.modifyMode == mode,
                         enabled = canModifyActiveGpx,
@@ -366,7 +371,7 @@ internal fun RouteSaveBehaviorSelector(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "Save mode",
+            text = stringResource(R.string.gpx_save_mode),
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -378,13 +383,13 @@ internal fun RouteSaveBehaviorSelector(
         ) {
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = RouteSaveBehavior.SAVE_AS_NEW.title,
+                text = stringResource(RouteSaveBehavior.SAVE_AS_NEW.titleRes),
                 selected = selected == RouteSaveBehavior.SAVE_AS_NEW,
                 onClick = { onSelected(RouteSaveBehavior.SAVE_AS_NEW) },
             )
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = RouteSaveBehavior.REPLACE_CURRENT.title,
+                text = stringResource(RouteSaveBehavior.REPLACE_CURRENT.titleRes),
                 selected = selected == RouteSaveBehavior.REPLACE_CURRENT,
                 onClick = { onSelected(RouteSaveBehavior.REPLACE_CURRENT) },
             )
@@ -402,7 +407,7 @@ internal fun LoopTargetModeSelector(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "Loop by",
+            text = stringResource(R.string.gpx_loop_by),
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -414,13 +419,13 @@ internal fun LoopTargetModeSelector(
         ) {
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = LoopTargetMode.DISTANCE.title,
+                text = stringResource(LoopTargetMode.DISTANCE.titleRes),
                 selected = selected == LoopTargetMode.DISTANCE,
                 onClick = { onSelected(LoopTargetMode.DISTANCE) },
             )
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = LoopTargetMode.TIME.title,
+                text = stringResource(LoopTargetMode.TIME.titleRes),
                 selected = selected == LoopTargetMode.TIME,
                 onClick = { onSelected(LoopTargetMode.TIME) },
             )
@@ -436,6 +441,7 @@ internal fun LoopTargetEditor(
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
 ) {
+    val resources = LocalResources.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -444,8 +450,8 @@ internal fun LoopTargetEditor(
         Text(
             text =
                 when (targetMode) {
-                    LoopTargetMode.DISTANCE -> "Loop distance"
-                    LoopTargetMode.TIME -> "Loop time"
+                    LoopTargetMode.DISTANCE -> stringResource(R.string.gpx_loop_distance)
+                    LoopTargetMode.TIME -> stringResource(R.string.gpx_loop_time)
                 },
             style = MaterialTheme.typography.labelMedium,
         )
@@ -461,13 +467,13 @@ internal fun LoopTargetEditor(
                         contentColor = Color.White,
                     ),
             ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease loop distance")
+                Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.gpx_decrease_loop_distance))
             }
             Text(
                 text =
                     when (targetMode) {
-                        LoopTargetMode.DISTANCE -> "$distanceKm km"
-                        LoopTargetMode.TIME -> formatLoopDuration(durationMinutes)
+                        LoopTargetMode.DISTANCE -> stringResource(R.string.gpx_km, distanceKm)
+                        LoopTargetMode.TIME -> formatLoopDuration(durationMinutes, resources = resources)
                     },
                 style = MaterialTheme.typography.titleSmall,
             )
@@ -479,12 +485,12 @@ internal fun LoopTargetEditor(
                         contentColor = Color.White,
                     ),
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase loop distance")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.gpx_increase_loop_distance))
             }
         }
         if (targetMode == LoopTargetMode.TIME) {
             Text(
-                text = "Time is estimated from hiking pace.",
+                text = stringResource(R.string.gpx_time_is_estimated_from_hiking_pace),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.72f),
                 textAlign = TextAlign.Center,
@@ -503,7 +509,7 @@ internal fun LoopStartModeSelector(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "Start from",
+            text = stringResource(R.string.gpx_start_from),
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -515,13 +521,13 @@ internal fun LoopStartModeSelector(
         ) {
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = LoopStartMode.CURRENT_LOCATION.title,
+                text = stringResource(LoopStartMode.CURRENT_LOCATION.titleRes),
                 selected = selected == LoopStartMode.CURRENT_LOCATION,
                 onClick = { onSelected(LoopStartMode.CURRENT_LOCATION) },
             )
             RouteSegmentButton(
                 modifier = Modifier.weight(1f),
-                text = LoopStartMode.PICK_ON_MAP.title,
+                text = stringResource(LoopStartMode.PICK_ON_MAP.titleRes),
                 selected = selected == LoopStartMode.PICK_ON_MAP,
                 onClick = { onSelected(LoopStartMode.PICK_ON_MAP) },
             )
@@ -685,13 +691,13 @@ internal enum class CoordinateStep(
 }
 
 private enum class CoordinateEntryField(
-    val title: String,
+    @StringRes val titleRes: Int,
     val isLatitude: Boolean,
 ) {
-    START_LATITUDE("Start latitude", true),
-    START_LONGITUDE("Start longitude", false),
-    DESTINATION_LATITUDE("Destination latitude", true),
-    DESTINATION_LONGITUDE("Destination longitude", false),
+    START_LATITUDE(R.string.gpx_start_latitude, true),
+    START_LONGITUDE(R.string.gpx_start_longitude, false),
+    DESTINATION_LATITUDE(R.string.gpx_destination_latitude, true),
+    DESTINATION_LONGITUDE(R.string.gpx_destination_longitude, false),
 }
 
 @Composable
@@ -707,6 +713,7 @@ internal fun RouteEndpointEditorDialog(
     onCreateRoute: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     if (!visible) return
 
     var editingField by remember(visible) { mutableStateOf<CoordinateEntryField?>(null) }
@@ -714,7 +721,7 @@ internal fun RouteEndpointEditorDialog(
     if (selectedField != null) {
         CoordinateTextEntryDialog(
             visible = true,
-            title = selectedField.title,
+            title = stringResource(selectedField.titleRes),
             initialValue = options.coordinateValue(selectedField)?.let(::formatCoordinateValue).orEmpty(),
             isLatitude = selectedField.isLatitude,
             onConfirm = { value ->
@@ -726,15 +733,15 @@ internal fun RouteEndpointEditorDialog(
         return
     }
 
-    val endpointValidation = options.coordinateEndpointValidationMessage(currentLocation = null)
+    val endpointValidation = options.coordinateEndpointValidationMessage(currentLocation = null, resources = resources)
     WearFormDialog(
         visible = true,
-        title = "Route endpoints",
+        title = stringResource(R.string.gpx_route_endpoints),
         onDismiss = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.92f),
     ) { formTokens ->
         RouteEndpointEditorSection(
-            title = "START",
+            title = stringResource(R.string.gpx_start),
             source = options.startEndpointSource,
             latitude = options.startCoordinateLatitude,
             longitude = options.startCoordinateLongitude,
@@ -756,7 +763,7 @@ internal fun RouteEndpointEditorDialog(
             modifier = formTokens.controlModifier,
         )
         RouteEndpointEditorSection(
-            title = "DESTINATION",
+            title = stringResource(R.string.gpx_destination_2),
             source = options.destinationEndpointSource,
             latitude = options.destinationCoordinateLatitude,
             longitude = options.destinationCoordinateLongitude,
@@ -800,7 +807,7 @@ internal fun RouteEndpointEditorDialog(
             enabled = endpointValidation == null,
             modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text("Create route")
+            Text(stringResource(R.string.navigate_create_route))
         }
         Button(
             onClick = onDismiss,
@@ -811,7 +818,7 @@ internal fun RouteEndpointEditorDialog(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ),
         ) {
-            Text("Back")
+            Text(stringResource(R.string.common_back))
         }
     }
 }
@@ -841,7 +848,7 @@ private fun RouteEndpointEditorSection(
     RouteEndpointSourceSelector(selected = source, onSelected = onSourceChange, modifier = modifier)
     if (source == RouteEndpointSource.COORDINATES) {
         CoordinateValueEditorRow(
-            label = "Lat",
+            label = stringResource(R.string.gpx_lat),
             value = latitude,
             onEdit = onLatitudeEdit,
             onDecrease = { latitude?.let { onLatitudeChange(it - step.delta) } },
@@ -849,7 +856,7 @@ private fun RouteEndpointEditorSection(
             modifier = modifier,
         )
         CoordinateValueEditorRow(
-            label = "Lon",
+            label = stringResource(R.string.gpx_lon),
             value = longitude,
             onEdit = onLongitudeEdit,
             onDecrease = { longitude?.let { onLongitudeChange(it - step.delta) } },
@@ -871,7 +878,7 @@ internal fun CoordinateStepSelector(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Step ${step.label}", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.gpx_step, step.label), style = MaterialTheme.typography.bodySmall)
         IconButton(
             enabled = step != CoordinateStep.ONE_TEN_THOUSANDTH,
             onClick = { onStepChange(step.next()) },
@@ -881,7 +888,7 @@ internal fun CoordinateStepSelector(
                     contentColor = Color.White,
                 ),
         ) {
-            Icon(Icons.Default.Remove, contentDescription = "Decrease coordinate step")
+            Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.gpx_decrease_coordinate_step))
         }
         IconButton(
             enabled = step != CoordinateStep.TENTH,
@@ -892,7 +899,7 @@ internal fun CoordinateStepSelector(
                     contentColor = Color.White,
                 ),
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Increase coordinate step")
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.gpx_increase_coordinate_step))
         }
     }
 }
@@ -910,13 +917,13 @@ private fun RouteEndpointSourceSelector(
     ) {
         RouteSegmentButton(
             modifier = Modifier.weight(1f),
-            text = RouteEndpointSource.CURRENT_LOCATION.title,
+            text = stringResource(RouteEndpointSource.CURRENT_LOCATION.titleRes),
             selected = selected == RouteEndpointSource.CURRENT_LOCATION,
             onClick = { onSelected(RouteEndpointSource.CURRENT_LOCATION) },
         )
         RouteSegmentButton(
             modifier = Modifier.weight(1f),
-            text = RouteEndpointSource.COORDINATES.title,
+            text = stringResource(RouteEndpointSource.COORDINATES.titleRes),
             selected = selected == RouteEndpointSource.COORDINATES,
             onClick = { onSelected(RouteEndpointSource.COORDINATES) },
         )
@@ -933,6 +940,7 @@ internal fun CoordinateTextEntryDialog(
     onConfirm: (Double) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var draftValue by remember(initialValue) { mutableStateOf(initialValue) }
@@ -980,14 +988,18 @@ internal fun CoordinateTextEntryDialog(
             onClick = {
                 val parsed = draftValue.trim().toDoubleOrNull()
                 when {
-                    parsed == null || !parsed.isFinite() -> errorMessage = "Enter a number."
-                    isLatitude && parsed !in -90.0..90.0 -> errorMessage = "Latitude: -90 to 90."
+                    parsed == null || !parsed.isFinite() ->
+                        errorMessage =
+                            resources.getString(R.string.gpx_enter_a_number)
+                    isLatitude && parsed !in -90.0..90.0 ->
+                        errorMessage =
+                            resources.getString(R.string.gpx_latitude_90_to_90)
                     else -> onConfirm(if (isLatitude) parsed else normalizeLongitude(parsed))
                 }
             },
             modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text("Apply")
+            Text(stringResource(R.string.download_apply))
         }
         Button(
             onClick = onDismiss,
@@ -998,7 +1010,7 @@ internal fun CoordinateTextEntryDialog(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ),
         ) {
-            Text("Back")
+            Text(stringResource(R.string.common_back))
         }
     }
 }
@@ -1026,14 +1038,17 @@ internal fun CoordinateValueEditorRow(
                     contentColor = Color.White,
                 ),
         ) {
-            Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
+            Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.gpx_decrease, label))
         }
         Column(
             modifier = Modifier.weight(1f).clickable(onClick = onEdit),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(value?.let(::formatCoordinateValue) ?: "Not set", style = MaterialTheme.typography.bodySmall)
+            Text(
+                value?.let(::formatCoordinateValue) ?: stringResource(R.string.gpx_not_set),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         IconButton(
             onClick = onIncrease,
@@ -1043,7 +1058,7 @@ internal fun CoordinateValueEditorRow(
                     contentColor = Color.White,
                 ),
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Increase $label")
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.gpx_increase, label))
         }
     }
 }
@@ -1069,34 +1084,37 @@ internal fun createModeIcon(mode: RouteCreateMode): ImageVector =
         RouteCreateMode.ACTIVE_GPX_END_TO_HERE -> Icons.Default.Loop
     }
 
-internal fun routeToolsHintText(options: RouteToolOptions): String =
+internal fun routeToolsHintText(
+    options: RouteToolOptions,
+    resources: Resources,
+): String =
     when {
         options.toolKind == RouteToolKind.CREATE &&
             options.createMode == RouteCreateMode.MULTI_POINT_CHAIN -> {
-            "Pick one point at a time and build the route step by step."
+            resources.getString(R.string.gpx_pick_one_point_at_a_time_and_build_the_route_step_by_step)
         }
 
         options.toolKind == RouteToolKind.CREATE &&
             options.createMode == RouteCreateMode.SEARCH -> {
-            "Search enabled offline POIs and route from current location."
+            resources.getString(R.string.gpx_search_enabled_offline_pois_and_route_from_current_location)
         }
 
         options.toolKind == RouteToolKind.CREATE &&
             options.createMode == RouteCreateMode.COORDINATES -> {
-            "Set the route endpoints, then create the route."
+            resources.getString(R.string.gpx_set_the_route_endpoints_then_create_the_route)
         }
 
         options.toolKind == RouteToolKind.CREATE &&
             options.createMode == RouteCreateMode.LOOP_AROUND_HERE -> {
-            "Choose target, shape, and where the loop should start."
+            resources.getString(R.string.gpx_choose_target_shape_and_where_the_loop_should_start)
         }
 
         options.toolKind == RouteToolKind.MODIFY -> {
-            "Tap an action to start editing on the map."
+            resources.getString(R.string.gpx_tap_an_action_to_start_editing_on_the_map)
         }
 
         else -> {
-            "Tap an action to start on the map."
+            resources.getString(R.string.gpx_tap_an_action_to_start_on_the_map)
         }
     }
 
@@ -1119,13 +1137,21 @@ private fun RouteToolOptions.withCoordinateValue(
         CoordinateEntryField.DESTINATION_LONGITUDE -> copy(destinationCoordinateLongitude = value)
     }
 
-internal fun poiSearchSummary(state: PoiSearchUiState): String =
+internal fun poiSearchSummary(
+    state: PoiSearchUiState,
+    resources: Resources,
+): String =
     when {
-        state.isLoading -> "Searching..."
+        state.isLoading -> resources.getString(R.string.gpx_searching)
         !state.errorMessage.isNullOrBlank() -> state.errorMessage
-        state.results.isNotEmpty() -> "${state.results.size} result(s)"
-        state.query.isNotBlank() -> "Search again"
-        else -> "Enabled .poi files"
+        state.results.isNotEmpty() ->
+            resources.getQuantityString(
+                R.plurals.download_result_s,
+                state.results.size,
+                state.results.size,
+            )
+        state.query.isNotBlank() -> resources.getString(R.string.gpx_search_again)
+        else -> resources.getString(R.string.gpx_enabled_poi_files)
     }
 
 internal fun formatCoordinateValue(value: Double): String = String.format("%.5f", value)

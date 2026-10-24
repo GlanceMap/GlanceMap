@@ -1,5 +1,11 @@
 # Contributing
 
+## Translations and wording
+
+Community translators can use Weblate or the wording-correction form without
+installing developer tools. See [TRANSLATING.md](TRANSLATING.md) for all languages,
+watch-length guidance, direct XML contributions and the required localization checks.
+
 ## Before You Start
 
 1. Use JDK 17.

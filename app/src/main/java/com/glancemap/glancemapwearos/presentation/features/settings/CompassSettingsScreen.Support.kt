@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import android.hardware.SensorManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -12,9 +13,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingSourceMode
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
@@ -53,27 +57,49 @@ internal data class CompatibilityCandidateScore(
     val available: Boolean,
     val unavailableReason: String? = null,
 ) {
-    fun signalSummary(): String {
+    fun signalSummary(resources: Resources): String {
         if (!available) {
-            return unavailableReason ?: "Unavailable"
+            return unavailableReason ?: resources.getString(R.string.common_unavailable)
         }
-        val accuracyLabel = accuracyLabelFromAverageRank(averageAccuracyRank)
+        val accuracyLabel = accuracyLabelFromAverageRank(averageAccuracyRank, resources = resources)
         val accuracy = "%.1f".format(averageAccuracyRank)
         val noise = "%.1f".format(averageNoiseDeg)
         val match = "%.0f".format(sourceMatchRatio * 100f)
-        val response = turnResponseLabel(turnSpanDeg)
-        return "accuracy=$accuracyLabel ($accuracy/3), noise=$noise deg, response=$response, source match=$match%"
+        val response = turnResponseLabel(turnSpanDeg, resources = resources)
+        return resources.getString(
+            R.string.settings_accuracy_3_noise_deg_response_source_match,
+            accuracyLabel,
+            accuracy,
+            noise,
+            response,
+            match,
+        )
     }
 
-    fun userSummary(isBest: Boolean): String {
+    fun userSummary(
+        isBest: Boolean,
+        resources: Resources,
+    ): String {
         val prefix = if (isBest) "* " else "- "
         if (!available) {
-            return prefix + headingSourceModeLabel(mode) + ": " + (unavailableReason ?: "Unavailable")
+            return resources.getString(
+                R.string.compass_source_unavailable_summary,
+                prefix,
+                headingSourceModeLabel(mode, resources = resources),
+                unavailableReason ?: resources.getString(R.string.common_unavailable),
+            )
         }
-        val accuracyLabel = accuracyLabelFromAverageRank(averageAccuracyRank)
+        val accuracyLabel = accuracyLabelFromAverageRank(averageAccuracyRank, resources = resources)
         val noise = "%.1f".format(averageNoiseDeg)
-        val response = turnResponseLabel(turnSpanDeg)
-        return prefix + headingSourceModeLabel(mode) + ": " + accuracyLabel + ", noise " + noise + " deg, response " + response
+        val response = turnResponseLabel(turnSpanDeg, resources = resources)
+        return resources.getString(
+            R.string.compass_source_signal_summary,
+            prefix,
+            headingSourceModeLabel(mode, resources = resources),
+            accuracyLabel,
+            noise,
+            response,
+        )
     }
 }
 
@@ -85,6 +111,8 @@ internal data class CompatibilitySampleSummary(
     val magneticInterferenceRatio: Float,
 )
 
+// Keep the existing flow and inputs; localization adds resources and wrapped calls.
+@Suppress("LongMethod", "LongParameterList")
 internal suspend fun evaluateCompatibilityCandidate(
     mode: CompassHeadingSourceMode,
     availability: HeadingSourceStatus,
@@ -94,6 +122,7 @@ internal suspend fun evaluateCompatibilityCandidate(
     readSource: () -> HeadingSource,
     readMagneticInterference: () -> Boolean,
     onPhaseStart: (Int, String) -> Unit,
+    resources: Resources,
 ): CompatibilityCandidateScore {
     compassViewModel.setHeadingSourceMode(mode, forceRefresh = true)
     delay(COMPATIBILITY_SWITCH_SETTLE_MS)
@@ -108,11 +137,14 @@ internal suspend fun evaluateCompatibilityCandidate(
             sourceMatchRatio = 0f,
             magneticInterferenceRatio = 0f,
             available = false,
-            unavailableReason = sourceModeUnavailableReason(mode, availability),
+            unavailableReason = sourceModeUnavailableReason(mode, availability, resources = resources),
         )
     }
 
-    onPhaseStart(1, "Keep watch still: ${headingSourceModeLabel(mode)}")
+    onPhaseStart(
+        1,
+        resources.getString(R.string.settings_keep_watch_still, headingSourceModeLabel(mode, resources = resources)),
+    )
     val stillSummary =
         collectCompatibilitySampleSummary(
             sampleCount = COMPATIBILITY_STILL_SAMPLE_COUNT,
@@ -123,7 +155,13 @@ internal suspend fun evaluateCompatibilityCandidate(
             expectedMode = mode,
         )
 
-    onPhaseStart(2, "Turn slowly left/right: ${headingSourceModeLabel(mode)}")
+    onPhaseStart(
+        2,
+        resources.getString(
+            R.string.settings_turn_slowly_left_right,
+            headingSourceModeLabel(mode, resources = resources),
+        ),
+    )
     delay(COMPATIBILITY_TURN_PREPARE_MS)
     val turnSummary =
         collectCompatibilitySampleSummary(
@@ -248,12 +286,15 @@ internal fun turnResponseBonus(turnSpanDeg: Float): Float =
         else -> 0f
     }
 
-internal fun turnResponseLabel(turnSpanDeg: Float): String =
+internal fun turnResponseLabel(
+    turnSpanDeg: Float,
+    resources: Resources,
+): String =
     when {
-        turnSpanDeg >= 45f -> "good"
-        turnSpanDeg >= 28f -> "ok"
-        turnSpanDeg >= 14f -> "limited"
-        else -> "not enough movement"
+        turnSpanDeg >= 45f -> resources.getString(R.string.settings_good_2)
+        turnSpanDeg >= 28f -> resources.getString(R.string.gpx_ok)
+        turnSpanDeg >= 14f -> resources.getString(R.string.settings_limited)
+        else -> resources.getString(R.string.settings_not_enough_movement)
     }
 
 internal fun shortestAngularDiffDeg(
@@ -286,14 +327,17 @@ internal fun accuracyRank(accuracy: Int): Float =
         else -> 0f
     }
 
-internal fun accuracyLabelFromAverageRank(rank: Float): String =
+internal fun accuracyLabelFromAverageRank(
+    rank: Float,
+    resources: Resources,
+): String =
     when {
-        rank >= 2.7f -> "High"
-        rank >= 2.2f -> "Medium-high"
-        rank >= 1.7f -> "Medium"
-        rank >= 1.2f -> "Low-medium"
-        rank > 0f -> "Low"
-        else -> "Unreliable"
+        rank >= 2.7f -> resources.getString(R.string.settings_high)
+        rank >= 2.2f -> resources.getString(R.string.settings_medium_high)
+        rank >= 1.7f -> resources.getString(R.string.settings_medium)
+        rank >= 1.2f -> resources.getString(R.string.settings_low_medium)
+        rank > 0f -> resources.getString(R.string.settings_low)
+        else -> resources.getString(R.string.settings_unreliable)
     }
 
 internal fun recommendedModeFromCandidate(
@@ -306,24 +350,33 @@ internal fun recommendedModeFromCandidate(
     return best.mode
 }
 
-internal fun CompatibilityTestResult.recommendedCompassModeLabel(): String =
+internal fun CompatibilityTestResult.recommendedCompassModeLabel(resources: Resources): String =
     when (recommendedMode) {
-        CompassHeadingSourceMode.AUTO -> "Automatic (recommended)"
-        else -> "Advanced..."
+        CompassHeadingSourceMode.AUTO -> resources.getString(R.string.settings_automatic_recommended)
+        else -> resources.getString(R.string.settings_advanced)
     }
 
-internal fun CompatibilityTestResult.recommendedHeadingSourceLine(): String {
+internal fun CompatibilityTestResult.recommendedHeadingSourceLine(resources: Resources): String {
     if (!bestCandidate.available) return ""
     return if (recommendedMode == CompassHeadingSourceMode.AUTO) {
-        "Automatic will use: ${headingSourceModeLabel(bestCandidate.mode)}\n"
+        resources.getString(
+            R.string.settings_automatic_will_use,
+            headingSourceModeLabel(bestCandidate.mode, resources = resources),
+        )
     } else {
-        "Heading source: ${headingSourceModeLabel(recommendedMode)}\n"
+        resources.getString(
+            R.string.settings_heading_source_2,
+            headingSourceModeLabel(recommendedMode, resources = resources),
+        )
     }
 }
 
-internal fun CompatibilityTestResult.candidateSummaryLines(): String =
+internal fun CompatibilityTestResult.candidateSummaryLines(resources: Resources): String =
     candidates.joinToString("\n") { candidate ->
-        candidate.userSummary(isBest = candidate.mode == bestCandidate.mode && candidate.available)
+        candidate.userSummary(
+            isBest = candidate.mode == bestCandidate.mode && candidate.available,
+            resources = resources,
+        )
     }
 
 internal fun autoResolvesToMode(
@@ -355,30 +408,31 @@ internal fun sourceModeAvailable(
 internal fun sourceModeUnavailableReason(
     mode: CompassHeadingSourceMode,
     availability: HeadingSourceStatus,
+    resources: Resources,
 ): String =
     when (mode) {
         CompassHeadingSourceMode.TYPE_HEADING -> {
             if (availability.headingSensorAvailable) {
-                "Unavailable"
+                resources.getString(R.string.common_unavailable)
             } else {
-                "Not exposed by this watch"
+                resources.getString(R.string.settings_not_exposed_by_this_watch)
             }
         }
         CompassHeadingSourceMode.ROTATION_VECTOR -> {
             if (availability.rotationVectorAvailable) {
-                "Unavailable"
+                resources.getString(R.string.common_unavailable)
             } else {
-                "Not exposed by this watch"
+                resources.getString(R.string.settings_not_exposed_by_this_watch)
             }
         }
         CompassHeadingSourceMode.MAGNETOMETER -> {
             if (availability.magAccelFallbackAvailable) {
-                "Unavailable"
+                resources.getString(R.string.common_unavailable)
             } else {
-                "Magnetometer fallback unavailable"
+                resources.getString(R.string.settings_magnetometer_fallback_unavailable)
             }
         }
-        CompassHeadingSourceMode.AUTO -> "Unavailable"
+        CompassHeadingSourceMode.AUTO -> resources.getString(R.string.common_unavailable)
     }
 
 internal fun northReferenceModeFromSetting(mode: String): NorthReferenceMode =
@@ -407,10 +461,13 @@ internal fun headingSourceSettingFromMode(mode: CompassHeadingSourceMode): Strin
             SettingsRepository.COMPASS_HEADING_SOURCE_AUTO
     }
 
-internal fun compassSettingsModeLabel(mode: String): String =
+internal fun compassSettingsModeLabel(
+    mode: String,
+    resources: Resources,
+): String =
     when (mode) {
-        SettingsRepository.COMPASS_SETTINGS_MODE_ADVANCED -> "Advanced..."
-        else -> "Automatic (recommended)"
+        SettingsRepository.COMPASS_SETTINGS_MODE_ADVANCED -> resources.getString(R.string.settings_advanced)
+        else -> resources.getString(R.string.settings_automatic_recommended)
     }
 
 internal fun compassProviderTypeFromSetting(mode: String): CompassProviderType =
@@ -419,10 +476,13 @@ internal fun compassProviderTypeFromSetting(mode: String): CompassProviderType =
         else -> CompassProviderType.GOOGLE_FUSED
     }
 
-internal fun compassProviderModeLabel(mode: String): String =
+internal fun compassProviderModeLabel(
+    mode: String,
+    resources: Resources,
+): String =
     when (compassProviderTypeFromSetting(mode)) {
-        CompassProviderType.SENSOR_MANAGER -> "Custom sensors"
-        CompassProviderType.GOOGLE_FUSED -> "Google Fused (default)"
+        CompassProviderType.SENSOR_MANAGER -> resources.getString(R.string.settings_custom_sensors)
+        CompassProviderType.GOOGLE_FUSED -> resources.getString(R.string.settings_google_fused_default)
     }
 
 internal fun usesAutomaticGoogleNorthReference(
@@ -431,60 +491,72 @@ internal fun usesAutomaticGoogleNorthReference(
 
 internal fun automaticNorthReferenceStatusLabel(
     activeProviderType: CompassProviderType,
+    resources: Resources,
 ): String =
     when (activeProviderType) {
-        CompassProviderType.GOOGLE_FUSED -> "Automatic (Google)"
-        CompassProviderType.SENSOR_MANAGER -> "True north (sensor fallback)"
+        CompassProviderType.GOOGLE_FUSED -> resources.getString(R.string.settings_automatic_google)
+        CompassProviderType.SENSOR_MANAGER -> resources.getString(R.string.settings_true_north_sensor_fallback)
     }
 
 internal fun compassProviderStatusLabel(
     requestedMode: String,
     activeProviderType: CompassProviderType,
+    resources: Resources,
 ): String {
     val requestedType = compassProviderTypeFromSetting(requestedMode)
     if (requestedType == activeProviderType) {
-        return compassProviderModeLabel(requestedMode)
+        return compassProviderModeLabel(requestedMode, resources = resources)
     }
     return when {
         requestedType == CompassProviderType.GOOGLE_FUSED &&
             activeProviderType == CompassProviderType.SENSOR_MANAGER ->
-            "Google Fused -> Custom backup"
+            resources.getString(R.string.settings_google_fused_custom_backup)
         requestedType == CompassProviderType.SENSOR_MANAGER &&
             activeProviderType == CompassProviderType.GOOGLE_FUSED ->
-            "Custom sensors -> Google Fused"
-        else -> compassProviderModeLabel(requestedMode)
+            resources.getString(R.string.settings_custom_sensors_google_fused)
+        else -> compassProviderModeLabel(requestedMode, resources = resources)
     }
 }
 
-internal fun northReferenceModeLabel(mode: String): String =
+internal fun northReferenceModeLabel(
+    mode: String,
+    resources: Resources,
+): String =
     when (mode) {
-        SettingsRepository.NORTH_REFERENCE_MAGNETIC -> "Magnetic north"
-        else -> "True north"
+        SettingsRepository.NORTH_REFERENCE_MAGNETIC -> resources.getString(R.string.settings_magnetic_north)
+        else -> resources.getString(R.string.settings_true_north)
     }
 
 internal fun northReferenceStatusSecondaryLabel(
     requestedMode: String,
     status: NorthReferenceStatus,
+    resources: Resources,
 ): String {
-    val requestedLabel = northReferenceModeLabel(requestedMode)
+    val requestedLabel = northReferenceModeLabel(requestedMode, resources = resources)
     return when {
-        status.automaticByProvider -> "Automatic (Google)"
+        status.automaticByProvider -> resources.getString(R.string.settings_automatic_google)
         status.waitingForDeclination && status.requestedMode == NorthReferenceMode.TRUE ->
-            "$requestedLabel (waiting for location)"
+            resources.getString(R.string.settings_waiting_for_location, requestedLabel)
         status.waitingForDeclination && status.requestedMode == NorthReferenceMode.MAGNETIC ->
-            "$requestedLabel (needs declination)"
-        else -> "$requestedLabel ready"
+            resources.getString(R.string.settings_needs_declination, requestedLabel)
+        else -> resources.getString(R.string.settings_ready, requestedLabel)
     }
 }
 
-internal fun headingSourceModeLabel(mode: String): String = headingSourceModeLabel(headingSourceModeFromSetting(mode))
+internal fun headingSourceModeLabel(
+    mode: String,
+    resources: Resources,
+): String = headingSourceModeLabel(headingSourceModeFromSetting(mode), resources = resources)
 
-internal fun headingSourceModeLabel(mode: CompassHeadingSourceMode): String =
+internal fun headingSourceModeLabel(
+    mode: CompassHeadingSourceMode,
+    resources: Resources,
+): String =
     when (mode) {
         CompassHeadingSourceMode.TYPE_HEADING -> "TYPE_HEADING"
-        CompassHeadingSourceMode.ROTATION_VECTOR -> "Rotation vector"
-        CompassHeadingSourceMode.MAGNETOMETER -> "Magnetometer"
-        CompassHeadingSourceMode.AUTO -> "Auto (recommended)"
+        CompassHeadingSourceMode.ROTATION_VECTOR -> resources.getString(R.string.settings_rotation_vector_2)
+        CompassHeadingSourceMode.MAGNETOMETER -> resources.getString(R.string.settings_magnetometer_2)
+        CompassHeadingSourceMode.AUTO -> resources.getString(R.string.settings_auto_recommended)
     }
 
 internal val COMPATIBILITY_CANDIDATES =
@@ -503,20 +575,35 @@ internal fun SensorStatusPanel(
     status: HeadingSourceStatus,
     northReferenceStatus: NorthReferenceStatus,
 ) {
-    val requested = sensorModeLabel(status.requestedMode)
-    val active = sensorActiveLabel(status.activeSource)
-    val headingAvailability = "Heading sensor: ${status.headingSensorAvailable.yesNoLabel()}"
+    val resources = LocalResources.current
+    val requested = sensorModeLabel(status.requestedMode, resources = resources)
+    val active = sensorActiveLabel(status.activeSource, resources = resources)
+    val headingAvailability =
+        stringResource(
+            R.string.settings_heading_sensor,
+            status.headingSensorAvailable.yesNoLabel(resources = resources),
+        )
     val rotationVectorAvailability =
-        "Rotation vector: ${status.rotationVectorAvailable.yesNoLabel()}"
+        stringResource(
+            R.string.settings_rotation_vector,
+            status.rotationVectorAvailable.yesNoLabel(resources = resources),
+        )
     val magnetometerAvailability =
-        "Magnetometer: ${status.magAccelFallbackAvailable.yesNoLabel()}"
+        stringResource(
+            R.string.settings_magnetometer,
+            status.magAccelFallbackAvailable.yesNoLabel(resources = resources),
+        )
     val northStatus =
-        "North: ${northReferenceStatus.requestedMode.userLabel()} -> ${northReferenceStatus.effectiveMode.userLabel()}"
+        stringResource(
+            R.string.settings_north,
+            northReferenceStatus.requestedMode.userLabel(resources = resources),
+            northReferenceStatus.effectiveMode.userLabel(resources = resources),
+        )
     val declinationStatus =
         when {
-            northReferenceStatus.declinationAvailable -> "Declination: ready"
-            northReferenceStatus.waitingForDeclination -> "Declination: waiting"
-            else -> "Declination: not needed"
+            northReferenceStatus.declinationAvailable -> stringResource(R.string.settings_declination_ready)
+            northReferenceStatus.waitingForDeclination -> stringResource(R.string.settings_declination_waiting)
+            else -> stringResource(R.string.settings_declination_not_needed)
         }
 
     Box(
@@ -531,17 +618,17 @@ internal fun SensorStatusPanel(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Sensor status",
+                text = stringResource(R.string.settings_sensor_status),
                 style = MaterialTheme.typography.titleMedium,
                 color = SensorStatusChipContent,
             )
             Text(
-                text = "Requested: $requested",
+                text = stringResource(R.string.settings_requested, requested),
                 style = MaterialTheme.typography.bodySmall,
                 color = SensorStatusChipSecondary,
             )
             Text(
-                text = "Active: $active",
+                text = stringResource(R.string.settings_active, active),
                 style = MaterialTheme.typography.bodySmall,
                 color = SensorStatusChipSecondary,
             )
@@ -574,30 +661,38 @@ internal fun SensorStatusPanel(
     }
 }
 
-private fun sensorModeLabel(mode: CompassHeadingSourceMode): String =
+private fun sensorModeLabel(
+    mode: CompassHeadingSourceMode,
+    resources: Resources,
+): String =
     when (mode) {
-        CompassHeadingSourceMode.AUTO -> "Auto"
-        CompassHeadingSourceMode.TYPE_HEADING -> "Type heading"
-        CompassHeadingSourceMode.ROTATION_VECTOR -> "Rotation vector"
-        CompassHeadingSourceMode.MAGNETOMETER -> "Magnetometer"
+        CompassHeadingSourceMode.AUTO -> resources.getString(R.string.settings_auto)
+        CompassHeadingSourceMode.TYPE_HEADING -> resources.getString(R.string.settings_type_heading)
+        CompassHeadingSourceMode.ROTATION_VECTOR -> resources.getString(R.string.settings_rotation_vector_2)
+        CompassHeadingSourceMode.MAGNETOMETER -> resources.getString(R.string.settings_magnetometer_2)
     }
 
-private fun sensorActiveLabel(source: HeadingSource): String =
+private fun sensorActiveLabel(
+    source: HeadingSource,
+    resources: Resources,
+): String =
     when (source) {
-        HeadingSource.NONE -> "Unavailable"
-        HeadingSource.FUSED_ORIENTATION -> "Google fused"
-        HeadingSource.HEADING_SENSOR -> "Type heading"
-        HeadingSource.ROTATION_VECTOR -> "Rotation vector"
-        HeadingSource.MAG_ACCEL_FALLBACK -> "Mag fallback"
+        HeadingSource.NONE -> resources.getString(R.string.common_unavailable)
+        HeadingSource.FUSED_ORIENTATION -> resources.getString(R.string.settings_google_fused)
+        HeadingSource.HEADING_SENSOR -> resources.getString(R.string.settings_type_heading)
+        HeadingSource.ROTATION_VECTOR -> resources.getString(R.string.settings_rotation_vector_2)
+        HeadingSource.MAG_ACCEL_FALLBACK -> resources.getString(R.string.settings_mag_fallback)
     }
 
-private fun NorthReferenceMode.userLabel(): String =
+private fun NorthReferenceMode.userLabel(resources: Resources): String =
     when (this) {
-        NorthReferenceMode.TRUE -> "True"
-        NorthReferenceMode.MAGNETIC -> "Magnetic"
+        NorthReferenceMode.TRUE -> resources.getString(R.string.settings_true)
+        NorthReferenceMode.MAGNETIC -> resources.getString(R.string.settings_magnetic)
     }
 
-private fun Boolean.yesNoLabel(): String = if (this) "Yes" else "No"
+private fun Boolean.yesNoLabel(
+    resources: Resources,
+): String = if (this) resources.getString(R.string.common_yes) else resources.getString(R.string.common_no)
 
 internal const val COMPATIBILITY_PREPARE_DELAY_MS = 350L
 internal const val COMPATIBILITY_SWITCH_SETTLE_MS = 1_700L

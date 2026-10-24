@@ -1,9 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Resources
 import android.location.Location
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterConfig
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
@@ -32,6 +34,7 @@ import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolK
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolModifyPreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSaveResult
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
+import com.glancemap.glancemapwearos.presentation.features.routetools.routeToolFailureMessage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,7 +104,10 @@ data class GpxRouteServices(
     val elevationProvider: RecordingElevationProvider,
 )
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 class GpxViewModel(
+    private val resources: Resources,
     private val gpxRepository: GpxRepositoryImpl,
     private val gpxExportRepository: GpxExportRepository,
     private val syncManager: SyncManager,
@@ -220,6 +226,7 @@ class GpxViewModel(
     private var activeActivityProfile = SettingsRepository.DEFAULT_ACTIVITY_PROFILE
     private val routeToolOperations =
         GpxRouteToolOperations(
+            resources = resources,
             gpxRepository = gpxRepository,
             routePlanner = routeServices.planner,
             activeGpxFiles = { _gpxFiles.value },
@@ -798,14 +805,16 @@ class GpxViewModel(
                     userWeightKg = userWeightKg,
                     backpackWeightKg = backpackWeightKg,
                     bikeWeightKg = bikeWeightKg,
-                    activityProfile = parsed.activitySummary?.activityProfile?.resolvedActivityProfile() ?: activeActivityProfile,
+                    activityProfile =
+                        parsed.activitySummary?.activityProfile?.resolvedActivityProfile() ?: activeActivityProfile,
                 )
             } else {
                 RecordingCalorieEstimate()
             }
 
         return RecordingDashboardSnapshot(
-            activityProfile = parsed.activitySummary?.activityProfile?.resolvedActivityProfile() ?: activeActivityProfile,
+            activityProfile =
+                parsed.activitySummary?.activityProfile?.resolvedActivityProfile() ?: activeActivityProfile,
             durationSeconds = durationSeconds ?: 0.0,
             totalDurationSeconds = durationSeconds ?: 0.0,
             distanceMeters = profile.totalDistance,
@@ -925,7 +934,8 @@ class GpxViewModel(
             averagePowerWatts = averagePowerWatts ?: fallbackPoints.averagePowerWatts(),
             maxPowerWatts = maxPowerWatts ?: fallbackPoints.maxPowerWatts() ?: powerWatts,
             powerFromBluetooth = (powerWatts ?: fallbackPoints.lastMappedNotNull { it.powerWatts }) != null,
-            barometricPressureHpa = barometricPressureHpa ?: fallbackPoints.lastMappedNotNull { it.barometricPressureHpa },
+            barometricPressureHpa =
+                barometricPressureHpa ?: fallbackPoints.lastMappedNotNull { it.barometricPressureHpa },
             hasElevationData = fallbackHasElevationData || currentElevationMeters != null,
         )
     }
@@ -1062,6 +1072,8 @@ class GpxViewModel(
         return changed
     }
 
+    // Resource-call wrapping increases line count; keep the existing flow together.
+    @Suppress("LongMethod")
     fun startTurnByTurnGuidance(
         path: String,
         onComplete: (Result<GpxGuidanceStartResult>) -> Unit,
@@ -1070,7 +1082,13 @@ class GpxViewModel(
             val buildStartElapsedMs = SystemClock.elapsedRealtime()
             DebugTelemetry.log(
                 "TurnByTurnStart",
-                "event=build_start file=${File(path).name.telemetryToken()} activeSession=${_turnByTurnGuidanceSession.value?.trackId?.let { File(it).name.telemetryToken() } ?: "none"}",
+                "event=build_start file=${File(
+                    path,
+                ).name.telemetryToken()} activeSession=${_turnByTurnGuidanceSession.value?.trackId?.let {
+                    File(
+                        it,
+                    ).name.telemetryToken()
+                } ?: "none"}",
             )
             val result =
                 withContext(Dispatchers.IO) {
@@ -1099,19 +1117,29 @@ class GpxViewModel(
                     }
                     DebugTelemetry.log(
                         "TurnByTurnStart",
-                        "event=build_success elapsedMs=${(SystemClock.elapsedRealtime() - buildStartElapsedMs).coerceAtLeast(0L)} " +
+                        "event=build_success elapsedMs=${(SystemClock.elapsedRealtime() - buildStartElapsedMs).coerceAtLeast(
+                            0L,
+                        )} " +
                             "file=${File(path).name.telemetryToken()} points=${session.trackPoints.size} " +
                             "instructions=${session.instructions.size} distanceMeters=${session.totalDistanceMeters.toInt()} " +
                             "guidanceMode=${buildResult.guidanceMode} geometry=original_gpx " +
-                            "embeddedHints=${session.instructions.count { it.source == RouteInstructionSource.BROUTER_HINT }} " +
-                            "generatedTurns=${session.instructions.count { it.source == RouteInstructionSource.GPX_GEOMETRY }} " +
+                            "embeddedHints=${session.instructions.count {
+                                it.source == RouteInstructionSource.BROUTER_HINT
+                            }} " +
+                            "generatedTurns=${session.instructions.count {
+                                it.source == RouteInstructionSource.GPX_GEOMETRY
+                            }} " +
                             "warning=${buildResult.warningMessage?.telemetryToken() ?: "none"}",
                     )
                 }.onFailure { error ->
                     DebugTelemetry.log(
                         "TurnByTurnStart",
-                        "event=build_failure elapsedMs=${(SystemClock.elapsedRealtime() - buildStartElapsedMs).coerceAtLeast(0L)} " +
-                            "file=${File(path).name.telemetryToken()} error=${error.javaClass.simpleName.telemetryToken()} " +
+                        "event=build_failure elapsedMs=${(SystemClock.elapsedRealtime() - buildStartElapsedMs).coerceAtLeast(
+                            0L,
+                        )} " +
+                            "file=${File(
+                                path,
+                            ).name.telemetryToken()} error=${error.javaClass.simpleName.telemetryToken()} " +
                             "message=${error.localizedMessage?.telemetryToken() ?: "na"}",
                     )
                 }
@@ -1153,7 +1181,9 @@ class GpxViewModel(
                             ).points
                             .map { it.latLong }
                             .also { points ->
-                                require(points.size >= 2) { "BRouter did not return a guide-back route." }
+                                require(
+                                    points.size >= 2,
+                                ) { resources.getString(R.string.gpx_brouter_did_not_return_a_guide_back_route) }
                             }
                     }
                 }
@@ -1232,12 +1262,12 @@ class GpxViewModel(
         reversed: Boolean,
     ): GpxGuidanceBuildResult {
         val file = File(path)
-        require(file.exists()) { "The GPX could not be found on disk." }
+        require(file.exists()) { resources.getString(R.string.gpx_the_gpx_could_not_be_found_on_disk) }
 
         val absolutePath = file.absolutePath
         val profile = getOrBuildProfile(path = absolutePath, file = file, sig = sigOf(file))
         require(profile.points.size >= 2) {
-            "The GPX does not contain enough points for guidance."
+            resources.getString(R.string.gpx_the_gpx_does_not_contain_enough_points_for_guidance)
         }
         val displayTitle =
             _gpxFiles.value.firstOrNull { it.path == absolutePath }?.displayTitle
@@ -1247,7 +1277,15 @@ class GpxViewModel(
             session =
                 buildTurnByTurnGuidanceSessionFromProfile(
                     trackId = absolutePath,
-                    trackTitle = if (reversed) "$displayTitle reverse" else displayTitle,
+                    trackTitle =
+                        if (reversed) {
+                            resources.getString(
+                                R.string.gpx_reverse,
+                                displayTitle,
+                            )
+                        } else {
+                            displayTitle
+                        },
                     profile = profile,
                     startReached = startReached,
                     reversed = reversed,
@@ -1331,7 +1369,7 @@ class GpxViewModel(
                 GpxExportUiState(
                     filePath = path,
                     isSending = true,
-                    message = "Sending ${displayName.take(18)}…",
+                    message = resources.getString(R.string.gpx_sending, displayName.take(18)),
                 )
             val result =
                 withContext(Dispatchers.IO) {
@@ -1345,16 +1383,17 @@ class GpxViewModel(
                     onSuccess = {
                         GpxExportUiState(
                             filePath = path,
-                            message = "Sent to phone",
+                            message = resources.getString(R.string.gpx_sent_to_phone),
                         )
                     },
                     onFailure = { error ->
                         GpxExportUiState(
                             filePath = path,
                             message =
-                                error.localizedMessage
+                                error
+                                    .routeToolFailureMessage(resources)
                                     ?.takeIf { it.isNotBlank() }
-                                    ?: "Send failed",
+                                    ?: resources.getString(R.string.gpx_send_failed),
                         )
                     },
                 )
@@ -1378,7 +1417,7 @@ class GpxViewModel(
                     GpxExportUiState(
                         filePath = path,
                         isSending = true,
-                        message = "Sending ${index + 1}/${uniquePaths.size}…",
+                        message = resources.getString(R.string.gpx_sending_2, index + 1, uniquePaths.size),
                     )
                 val result =
                     withContext(Dispatchers.IO) {
@@ -1393,7 +1432,7 @@ class GpxViewModel(
                         _exportUiState.value =
                             GpxExportUiState(
                                 filePath = path,
-                                message = "Sent ${index + 1}/${uniquePaths.size}",
+                                message = resources.getString(R.string.gpx_sent, index + 1, uniquePaths.size),
                             )
                     },
                     onFailure = { error ->
@@ -1402,9 +1441,10 @@ class GpxViewModel(
                             GpxExportUiState(
                                 filePath = path,
                                 message =
-                                    error.localizedMessage
+                                    error
+                                        .routeToolFailureMessage(resources)
                                         ?.takeIf { it.isNotBlank() }
-                                        ?: "Send failed",
+                                        ?: resources.getString(R.string.gpx_send_failed),
                             )
                     },
                 )
@@ -1414,7 +1454,7 @@ class GpxViewModel(
             _exportUiState.value =
                 GpxExportUiState(
                     filePath = uniquePaths.last(),
-                    message = batchSendSummary(sentCount = sentCount, failedCount = failedCount),
+                    message = batchSendSummary(sentCount = sentCount, failedCount = failedCount, resources = resources),
                 )
             delay(3_000L)
             if (!_exportUiState.value.isSending) {
@@ -1782,7 +1822,13 @@ class GpxViewModel(
         onComplete: (Result<RouteToolSaveResult>) -> Unit,
     ) {
         if (session.options.toolKind != RouteToolKind.MODIFY) {
-            onComplete(Result.failure(IllegalArgumentException("Only GPX modify actions are supported here.")))
+            onComplete(
+                Result.failure(
+                    IllegalArgumentException(
+                        resources.getString(R.string.gpx_only_gpx_modify_actions_are_supported_here),
+                    ),
+                ),
+            )
             return
         }
 
@@ -1807,7 +1853,13 @@ class GpxViewModel(
         onComplete: (Result<RouteToolModifyPreview>) -> Unit,
     ) {
         if (session.options.toolKind != RouteToolKind.MODIFY) {
-            onComplete(Result.failure(IllegalArgumentException("Only GPX modify actions are supported here.")))
+            onComplete(
+                Result.failure(
+                    IllegalArgumentException(
+                        resources.getString(R.string.gpx_only_gpx_modify_actions_are_supported_here),
+                    ),
+                ),
+            )
             return
         }
 
@@ -1826,7 +1878,13 @@ class GpxViewModel(
         onComplete: (Result<RouteToolCreatePreview>) -> Unit,
     ) {
         if (session.options.toolKind != RouteToolKind.CREATE) {
-            onComplete(Result.failure(IllegalArgumentException("Only GPX create actions are supported here.")))
+            onComplete(
+                Result.failure(
+                    IllegalArgumentException(
+                        resources.getString(R.string.gpx_only_gpx_create_actions_are_supported_here),
+                    ),
+                ),
+            )
             return
         }
 
@@ -1847,7 +1905,13 @@ class GpxViewModel(
         onComplete: (Result<RouteToolSaveResult>) -> Unit,
     ) {
         if (session.options.toolKind != RouteToolKind.CREATE) {
-            onComplete(Result.failure(IllegalArgumentException("Only GPX create actions are supported here.")))
+            onComplete(
+                Result.failure(
+                    IllegalArgumentException(
+                        resources.getString(R.string.gpx_only_gpx_create_actions_are_supported_here),
+                    ),
+                ),
+            )
             return
         }
 
@@ -2051,15 +2115,17 @@ private fun defaultCalorieModelForActivityProfile(activityProfile: String?): Str
 private fun batchSendSummary(
     sentCount: Int,
     failedCount: Int,
+    resources: Resources,
 ): String =
     when {
         failedCount == 0 -> {
-            if (sentCount == 1) {
-                "Sent 1 GPX"
-            } else {
-                "Sent $sentCount GPX"
-            }
+            resources.getQuantityString(R.plurals.gpx_sent_gpx_2, sentCount, sentCount)
         }
-        sentCount == 0 -> "Send failed"
-        else -> "Sent $sentCount, failed $failedCount"
+        sentCount == 0 -> resources.getString(R.string.gpx_send_failed)
+        else ->
+            resources.getString(
+                R.string.gpx_sent_failed,
+                resources.getQuantityString(R.plurals.gpx_sent_count, sentCount, sentCount),
+                resources.getQuantityString(R.plurals.gpx_failed_count, failedCount, failedCount),
+            )
     }

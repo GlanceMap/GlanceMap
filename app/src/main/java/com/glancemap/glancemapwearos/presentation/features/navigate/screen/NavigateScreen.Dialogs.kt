@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -27,6 +30,7 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.UserPoiRecord
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxViewModel
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchUiState
@@ -114,6 +118,7 @@ internal fun NavigateScreenDialogsHost(
     onOpenGpxToolsSettings: () -> Unit,
     onRouteToolGuidanceStarted: () -> Unit,
 ) {
+    val resources = LocalResources.current
     var showGpsDeactivatedInfo by rememberSaveable { mutableStateOf(false) }
 
     NavigateKeepAppOpenDialog(
@@ -167,7 +172,7 @@ internal fun NavigateScreenDialogsHost(
 
     RouteToolProgressDialog(
         visible = createdPoiCreateInProgress,
-        message = "Saving POI...",
+        message = stringResource(R.string.navigate_saving_poi),
         fullScreenBackground = true,
     )
 
@@ -226,7 +231,7 @@ internal fun NavigateScreenDialogsHost(
             routeToolExecutionInProgress &&
                 completedRouteToolDraft == null &&
                 routeToolExecutionStatus != null,
-        routeToolProgressMessage = routeToolExecutionStatus ?: "Working...",
+        routeToolProgressMessage = routeToolExecutionStatus ?: stringResource(R.string.navigate_working),
         routeToolResult = routeToolResult,
         isMetric = isMetric,
         routeToolRenameInProgress = routeToolRenameInProgress,
@@ -264,7 +269,7 @@ internal fun NavigateScreenDialogsHost(
                     }.onFailure { error ->
                         onSetRouteToolRenameError(
                             error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "Failed to rename the GPX.",
+                                ?: resources.getString(R.string.gpx_failed_to_rename_the_gpx),
                         )
                     }
             }
@@ -286,7 +291,7 @@ internal fun NavigateScreenDialogsHost(
                     }.onFailure { error ->
                         onSetRouteToolRenameError(
                             error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "Failed to start guidance.",
+                                ?: resources.getString(R.string.navigate_failed_to_start_guidance),
                         )
                     }
             }
@@ -295,9 +300,9 @@ internal fun NavigateScreenDialogsHost(
 
     WearActionDialog(
         visible = showGpsDeactivatedInfo,
-        title = "GPS deactivated",
-        message = "Activate GPS in Recording settings before starting guidance.",
-        confirmText = "OK",
+        title = stringResource(R.string.navigation_gps_deactivated),
+        message = stringResource(R.string.navigate_activate_gps_in_recording_settings_before_starting_guidance),
+        confirmText = stringResource(R.string.common_ok),
         onConfirm = { showGpsDeactivatedInfo = false },
         onDismissRequest = { showGpsDeactivatedInfo = false },
     )
@@ -313,20 +318,20 @@ private fun PoiCreationChoiceDialog(
 ) {
     WearActionDialog(
         visible = visible,
-        title = "Create POI",
+        title = stringResource(R.string.navigate_create_poi),
         onDismissRequest = onDismiss,
         buttons =
             listOf(
                 WearActionDialogButton(
-                    text = "Pick on map",
+                    text = stringResource(R.string.navigate_pick_on_map),
                     onClick = onPickOnMap,
                 ),
                 WearActionDialogButton(
-                    text = "Coordinates",
+                    text = stringResource(R.string.navigate_coordinates),
                     onClick = onCoordinates,
                 ),
                 WearActionDialogButton(
-                    text = "Cancel",
+                    text = stringResource(R.string.common_cancel),
                     onClick = onDismiss,
                     role = WearActionButtonRole.Secondary,
                 ),
@@ -345,20 +350,20 @@ private fun MapLongPressActionDialog(
     val point = target ?: return
     WearActionDialog(
         visible = true,
-        title = "Map point",
+        title = stringResource(R.string.navigate_map_point),
         onDismissRequest = onDismiss,
         buttons =
             listOf(
                 WearActionDialogButton(
-                    text = "Create POI",
+                    text = stringResource(R.string.navigate_create_poi),
                     onClick = { onCreatePoi(point) },
                 ),
                 WearActionDialogButton(
-                    text = "Create route",
+                    text = stringResource(R.string.navigate_create_route),
                     onClick = { onCreateRoute(point) },
                 ),
                 WearActionDialogButton(
-                    text = "Cancel",
+                    text = stringResource(R.string.common_cancel),
                     onClick = onDismiss,
                     role = WearActionButtonRole.Secondary,
                 ),
@@ -367,11 +372,11 @@ private fun MapLongPressActionDialog(
 }
 
 private enum class PoiCoordinateEntryField(
-    val title: String,
+    @StringRes val titleRes: Int,
     val isLatitude: Boolean,
 ) {
-    LATITUDE("Latitude", true),
-    LONGITUDE("Longitude", false),
+    LATITUDE(R.string.navigate_latitude, true),
+    LONGITUDE(R.string.navigate_longitude, false),
 }
 
 @Composable
@@ -393,7 +398,7 @@ private fun PoiCoordinateEntryDialog(
         val value = if (selectedField.isLatitude) latitude else longitude
         CoordinateTextEntryDialog(
             visible = true,
-            title = selectedField.title,
+            title = stringResource(selectedField.titleRes),
             initialValue = value?.let(::formatCoordinateValue).orEmpty(),
             isLatitude = selectedField.isLatitude,
             onConfirm = { updatedValue ->
@@ -417,12 +422,12 @@ private fun PoiCoordinateEntryDialog(
         }
     WearFormDialog(
         visible = true,
-        title = "Coordinates",
+        title = stringResource(R.string.navigate_coordinates),
         onDismiss = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.92f),
     ) { formTokens ->
         CoordinateValueEditorRow(
-            label = "Latitude",
+            label = stringResource(R.string.navigate_latitude),
             value = latitude,
             onEdit = { editingField = PoiCoordinateEntryField.LATITUDE },
             onDecrease = { latitude = latitude?.let { (it - coordinateStep.delta).coerceAtLeast(-90.0) } },
@@ -430,7 +435,7 @@ private fun PoiCoordinateEntryDialog(
             modifier = formTokens.controlModifier,
         )
         CoordinateValueEditorRow(
-            label = "Longitude",
+            label = stringResource(R.string.navigate_longitude),
             value = longitude,
             onEdit = { editingField = PoiCoordinateEntryField.LONGITUDE },
             onDecrease = { longitude = longitude?.let { normalizeLongitude(it - coordinateStep.delta) } },
@@ -444,7 +449,7 @@ private fun PoiCoordinateEntryDialog(
         )
         if (endpoint == null) {
             Text(
-                text = "Enter valid coordinates.",
+                text = stringResource(R.string.navigate_enter_valid_coordinates),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center,
@@ -456,7 +461,7 @@ private fun PoiCoordinateEntryDialog(
             enabled = endpoint != null,
             modifier = formTokens.controlModifier.heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text("Create POI")
+            Text(stringResource(R.string.navigate_create_poi))
         }
         Button(
             onClick = onDismiss,
@@ -467,7 +472,7 @@ private fun PoiCoordinateEntryDialog(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ),
         ) {
-            Text("Back")
+            Text(stringResource(R.string.common_back))
         }
     }
 }
@@ -483,16 +488,16 @@ internal fun NavigateKeepAppOpenDialog(
 ) {
     WearActionDialog(
         visible = visible,
-        title = "Stay open",
+        title = stringResource(R.string.navigate_stay_open),
         onDismissRequest = onDismiss,
         buttons =
             listOf(
                 WearActionDialogButton(
-                    text = "Continue",
+                    text = stringResource(R.string.common_continue),
                     onClick = onContinue,
                 ),
                 WearActionDialogButton(
-                    text = "Later",
+                    text = stringResource(R.string.navigate_later),
                     onClick = onDismiss,
                     role = WearActionButtonRole.Secondary,
                 ),
@@ -504,11 +509,11 @@ internal fun NavigateKeepAppOpenDialog(
         ) {
             KeepAppOpenInfoRow(
                 imageVector = Icons.Filled.Visibility,
-                text = "keeps GlanceMap active.",
+                text = stringResource(R.string.navigate_keeps_glancemap_active),
             )
             KeepAppOpenInfoRow(
                 imageVector = Icons.Filled.VisibilityOff,
-                text = "lets the watch sleep and removes it from Recents.",
+                text = stringResource(R.string.navigate_lets_the_watch_sleep_and_removes_it_from_recents),
             )
         }
     }
@@ -523,16 +528,16 @@ internal fun NavigateNotificationPermissionDialog(
 ) {
     WearActionDialog(
         visible = visible,
-        title = "Notifications",
+        title = stringResource(R.string.navigate_notifications),
         onDismissRequest = onDismiss,
         buttons =
             listOf(
                 WearActionDialogButton(
-                    text = "Continue",
+                    text = stringResource(R.string.common_continue),
                     onClick = onContinue,
                 ),
                 WearActionDialogButton(
-                    text = "Later",
+                    text = stringResource(R.string.navigate_later),
                     onClick = onDismiss,
                     role = WearActionButtonRole.Secondary,
                 ),
@@ -540,7 +545,7 @@ internal fun NavigateNotificationPermissionDialog(
     ) {
         KeepAppOpenInfoRow(
             imageVector = Icons.Filled.Visibility,
-            text = "Stay uses notifications while GlanceMap remains active.",
+            text = stringResource(R.string.navigate_stay_uses_notifications_while_glancemap_remains_active),
         )
     }
 }
@@ -578,7 +583,7 @@ internal fun NavigateCreatedPoiRenameDialog(
 ) {
     RenameValueDialog(
         visible = visible && pendingRename != null,
-        title = "Rename POI",
+        title = stringResource(R.string.navigate_rename_poi),
         initialValue = pendingRename?.name.orEmpty(),
         isSaving = isSaving,
         error = error,

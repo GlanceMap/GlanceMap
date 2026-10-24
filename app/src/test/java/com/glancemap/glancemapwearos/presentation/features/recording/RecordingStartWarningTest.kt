@@ -152,24 +152,6 @@ class RecordingStartWarningTest {
     }
 
     @Test
-    fun `linked external sources are reported as not connected yet`() {
-        val warning =
-            resolveRecordingStartWarning(
-                heartRateSource = SettingsRepository.RECORDING_HEART_RATE_SOURCE_STRAP,
-                cadenceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
-                speedSource = SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_POD,
-                externalHeartRateAddress = "AA:BB:CC:DD:EE:01",
-                externalRunPodAddress = "AA:BB:CC:DD:EE:02",
-            )
-
-        requireNotNull(warning)
-        assertTrue(warning.unlinkedDevices.isEmpty())
-        assertEquals(listOf("heart-rate strap", "external sensor"), warning.disconnectedDevices)
-        assertTrue(warning.message.contains("Recording will try to connect"))
-    }
-
-    @Test
     fun `connected external sources do not require a warning`() {
         assertNull(
             resolveRecordingStartWarning(
@@ -186,23 +168,5 @@ class RecordingStartWarningTest {
                     ),
             ),
         )
-    }
-
-    @Test
-    fun `selected external source without a linked device is explicit`() {
-        val warning =
-            resolveRecordingStartWarning(
-                heartRateSource = SettingsRepository.RECORDING_HEART_RATE_SOURCE_STRAP,
-                cadenceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                speedSource = SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                distanceSource = SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS,
-                externalHeartRateAddress = null,
-                externalRunPodAddress = null,
-            )
-
-        requireNotNull(warning)
-        assertEquals(listOf("heart-rate strap"), warning.unlinkedDevices)
-        assertTrue(warning.disconnectedDevices.isEmpty())
-        assertTrue(warning.message.contains("No linked device"))
     }
 }

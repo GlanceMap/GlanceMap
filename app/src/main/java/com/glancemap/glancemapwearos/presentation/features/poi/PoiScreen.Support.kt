@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.USER_POI_SOURCE_PATH
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
@@ -140,7 +142,7 @@ internal fun PoiFileRow(
                     color = Color(0xFFF5F2FF),
                 )
                 Text(
-                    text = "${file.enabledPoiCount}/${file.totalPoiCount} POI",
+                    text = stringResource(R.string.poi_poi, file.enabledPoiCount, file.totalPoiCount),
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 10.sp,
                     color = Color(0xFFD0D3F2),
@@ -165,9 +167,9 @@ internal fun PoiFileRow(
                     imageVector = Icons.Default.Delete,
                     contentDescription =
                         if (isUserPoiFile(file.path)) {
-                            "Delete created POI"
+                            stringResource(R.string.poi_delete_created_poi)
                         } else {
-                            "Delete POI file"
+                            stringResource(R.string.poi_delete_poi_file)
                         },
                     modifier = Modifier.size(actionIconSize),
                 )
@@ -187,9 +189,21 @@ internal fun PoiFileRow(
                         imageVector = if (file.isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription =
                             if (isUserPoiFile(file.path)) {
-                                if (file.isExpanded) "Collapse saved places" else "Expand saved places"
+                                if (file.isExpanded) {
+                                    stringResource(
+                                        R.string.poi_collapse_saved_places,
+                                    )
+                                } else {
+                                    stringResource(R.string.poi_expand_saved_places)
+                                }
                             } else {
-                                if (file.isExpanded) "Collapse categories" else "Expand categories"
+                                if (file.isExpanded) {
+                                    stringResource(
+                                        R.string.poi_collapse_categories,
+                                    )
+                                } else {
+                                    stringResource(R.string.poi_expand_categories)
+                                }
                             },
                         modifier = Modifier.size(actionIconSize),
                     )
@@ -243,8 +257,8 @@ internal fun PoiCategoryRow(
     val countLabel =
         when {
             categoryCount == null || categoryCount.isLoading -> "..."
-            categoryCount.errorMessage != null -> "Count unavailable"
-            else -> "${categoryCount.enabledPoiCount}/${categoryCount.totalPoiCount} POI"
+            categoryCount.errorMessage != null -> stringResource(R.string.poi_count_unavailable)
+            else -> stringResource(R.string.poi_poi, categoryCount.enabledPoiCount, categoryCount.totalPoiCount)
         }
     val cardShape =
         when {
@@ -349,7 +363,7 @@ internal fun PoiCategoryRow(
                         verticalArrangement = Arrangement.spacedBy(1.dp),
                     ) {
                         Text(
-                            text = category.name,
+                            text = poiCategoryNameRes(category.name)?.let { stringResource(it) } ?: category.name,
                             modifier = Modifier.basicMarquee(),
                             maxLines = 1,
                             overflow = TextOverflow.Visible,
@@ -385,9 +399,21 @@ internal fun PoiCategoryRow(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 contentDescription =
                     if (isExpanded) {
-                        if (category.hasChildren) "Collapse folder" else "Hide POI list"
+                        if (category.hasChildren) {
+                            stringResource(
+                                R.string.poi_collapse_folder,
+                            )
+                        } else {
+                            stringResource(R.string.poi_hide_poi_list)
+                        }
                     } else {
-                        if (category.hasChildren) "Expand folder" else "Show POI list"
+                        if (category.hasChildren) {
+                            stringResource(
+                                R.string.poi_expand_folder,
+                            )
+                        } else {
+                            stringResource(R.string.poi_show_poi_list)
+                        }
                     },
                 modifier = Modifier.size(actionIconSize),
             )
@@ -469,7 +495,7 @@ internal fun PoiCategoryPoiRow(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "Rename saved place")
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.poi_rename_saved_place))
             }
         } else if (showDelete) {
             CompactIconHitTargetButton(
@@ -478,7 +504,7 @@ internal fun PoiCategoryPoiRow(
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
             ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete saved place")
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.poi_delete_saved_place))
             }
         }
     }

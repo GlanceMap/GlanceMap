@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.ChannelTransferForegroundService
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
@@ -73,7 +74,11 @@ internal class DataLayerChannelOpenedHandler(
             if (fileOps.fileBlocksIncomingTransfer(fileName)) {
                 val msg = "FILE_EXISTS:$fileName"
                 TransferDiagnostics.warn("Channel", "Target file already exists id=$transferId file=$fileName")
-                notificationHelper.showError(metadata.notificationId, metadata.fileName, "Already exists")
+                notificationHelper.showError(
+                    metadata.notificationId,
+                    metadata.fileName,
+                    service.getString(R.string.download_already_exists),
+                )
                 runCatching { Wearable.getChannelClient(service).close(channel).await() }
                 service.appScope().launch(Dispatchers.IO) {
                     runCatching { sendAck(metadata.sourceNodeId, metadata.transferId, "ERROR", msg) }
@@ -106,7 +111,7 @@ internal class DataLayerChannelOpenedHandler(
                         notificationHelper.updateForeground(
                             metadata.notificationId,
                             metadata.fileName,
-                            "Receiving… ${bytesCopied / (1024 * 1024)} MB",
+                            service.getString(R.string.download_receiving_mb, bytesCopied / (1024 * 1024)),
                             -1, // Indeterminate progress for channel transfers
                         )
                     }
@@ -162,7 +167,11 @@ internal class DataLayerChannelOpenedHandler(
                     service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.DONE)
                 if (!terminalClaimed) return@withTransferLock
                 terminalAck = TerminalAck(status = "DONE", detail = "")
-                notificationHelper.showCompletion(metadata.notificationId, metadata.fileName, "Saved ✓")
+                notificationHelper.showCompletion(
+                    metadata.notificationId,
+                    metadata.fileName,
+                    service.getString(R.string.gpx_saved),
+                )
                 val sizeMiB = lastBytesCopied / (1024.0 * 1024.0)
                 val speedMiBps = if (durationMs > 0) sizeMiB / (durationMs / 1000.0) else 0.0
                 TransferDiagnostics.log(
@@ -197,7 +206,11 @@ internal class DataLayerChannelOpenedHandler(
                 )
                 if (service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.ERROR)) {
                     terminalAck = TerminalAck(status = "ERROR", detail = detail)
-                    notificationHelper.showError(metadata.notificationId, metadata.fileName, "Failed: $detail")
+                    notificationHelper.showError(
+                        metadata.notificationId,
+                        metadata.fileName,
+                        service.getString(R.string.download_failed, detail),
+                    )
                     EnergyDiagnostics.recordEvent(
                         reason = "channel_transfer_error",
                         detail = "file=${metadata.fileName} transferId=${metadata.transferId} msg=$detail",

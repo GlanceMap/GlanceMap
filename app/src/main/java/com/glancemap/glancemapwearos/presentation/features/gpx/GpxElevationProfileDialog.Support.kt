@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Resources
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.formatting.DurationFormatter
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import java.util.Locale
@@ -752,6 +754,7 @@ private fun findNearestSampleIndexInRange(
 internal fun formatDistanceScaleText(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val value =
         if (isMetric) {
@@ -762,25 +765,27 @@ internal fun formatDistanceScaleText(
     val unit = if (isMetric) "km" else "mi"
 
     if (value < 0.05) {
-        return "0 $unit"
+        return resources.getString(R.string.gpx_0, unit)
     }
-    return String.format(Locale.getDefault(), "%.1f %s", value, unit)
+    return String.format(Locale.getDefault(), resources.getString(R.string.gpx_1f_s), value, unit)
 }
 
 internal fun formatElevationText(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val (value, unit) = UnitFormatter.formatElevation(meters, isMetric)
-    return "$value $unit"
+    return resources.getString(R.string.common_value_unit, value, unit)
 }
 
 internal fun formatElevationCompactText(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val (value, unit) = UnitFormatter.formatElevation(meters, isMetric)
-    return "$value$unit"
+    return resources.getString(R.string.common_compact_value_unit, value, unit)
 }
 
 internal fun formatElevationScaleTick(
@@ -796,4 +801,7 @@ internal fun formatElevationScaleTick(
     return String.format(Locale.getDefault(), "%,d", value.roundToInt())
 }
 
-internal fun formatDurationText(seconds: Double?): String = DurationFormatter.formatDurationShort(seconds)
+internal fun formatDurationText(
+    seconds: Double?,
+    resources: Resources,
+): String = DurationFormatter.formatDurationShort(seconds, resources = resources)

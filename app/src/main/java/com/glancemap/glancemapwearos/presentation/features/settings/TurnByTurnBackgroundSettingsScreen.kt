@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 
 @Composable
 fun TurnByTurnBackgroundSettingsScreen(
@@ -20,12 +22,12 @@ fun TurnByTurnBackgroundSettingsScreen(
             SettingsToggleChip(
                 checked = guidanceGpsInAmbient,
                 onCheckedChanged = viewModel::setTurnByTurnGpsInAmbientMode,
-                label = "Guidance GPS ambient",
+                label = stringResource(R.string.settings_guidance_gps_ambient),
                 secondaryLabel =
                     if (guidanceGpsInAmbient) {
-                        "Keep GPS for alerts while screen is off"
+                        stringResource(R.string.settings_keep_gps_for_alerts_while_screen_is_off)
                     } else {
-                        "Use normal GPS ambient setting"
+                        stringResource(R.string.settings_use_normal_gps_ambient_setting)
                     },
             )
         }

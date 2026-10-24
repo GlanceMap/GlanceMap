@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -11,6 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_MAX_PAGE_COUNT
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_MIN_PAGE_COUNT
@@ -28,6 +33,7 @@ fun RecordingDashboardSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenRecordingSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val dashboardMetricSlots by viewModel.recordingDashboardMetricSlots.collectAsState()
     val activityProfile by viewModel.activityProfile.collectAsState()
@@ -56,7 +62,7 @@ fun RecordingDashboardSettingsScreen(
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             SettingsInfoButton(
-                contentDescription = "Dashboard info",
+                contentDescription = stringResource(R.string.settings_dashboard_info),
                 onClick = { showInfoDialog = true },
             )
         }
@@ -72,9 +78,9 @@ fun RecordingDashboardSettingsScreen(
                 pageCount = dashboardPageCount,
                 dashboardLabel =
                     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-                        "Bike"
+                        stringResource(R.string.common_bike)
                     } else {
-                        "Hike"
+                        stringResource(R.string.common_hike)
                     },
                 onClick = {
                     selectedDashboardPage = (selectedDashboardPage + 1) % dashboardPageCount
@@ -84,8 +90,14 @@ fun RecordingDashboardSettingsScreen(
         if (dashboardPageCount < RECORDING_DASHBOARD_MAX_PAGE_COUNT) {
             item {
                 SettingsSectionChip(
-                    label = "Add dashboard page",
-                    secondaryLabel = "$dashboardPageCount of $RECORDING_DASHBOARD_MAX_PAGE_COUNT pages",
+                    label = stringResource(R.string.settings_add_dashboard_page),
+                    secondaryLabel =
+                        pluralStringResource(
+                            R.plurals.settings_of_pages,
+                            RECORDING_DASHBOARD_MAX_PAGE_COUNT,
+                            dashboardPageCount,
+                            RECORDING_DASHBOARD_MAX_PAGE_COUNT,
+                        ),
                     iconImageVector = Icons.Filled.Add,
                     onClick = {
                         pendingAddedPage = dashboardPageCount
@@ -97,8 +109,8 @@ fun RecordingDashboardSettingsScreen(
         if (dashboardPageCount > RECORDING_DASHBOARD_MIN_PAGE_COUNT) {
             item {
                 SettingsPickerChip(
-                    label = "Delete this page",
-                    secondaryLabel = recordingDashboardPageLabel(selectedDashboardPage),
+                    label = stringResource(R.string.settings_delete_this_page),
+                    secondaryLabel = recordingDashboardPageLabel(selectedDashboardPage, resources = resources),
                     iconImageVector = Icons.Filled.Delete,
                     onClick = {
                         val pageToDelete = selectedDashboardPage
@@ -113,7 +125,7 @@ fun RecordingDashboardSettingsScreen(
             val absoluteSlotIndex = selectedDashboardPage * RECORDING_DASHBOARD_PAGE_SLOT_COUNT + pageSlotIndex
             item {
                 RecordingMetricSlotSetting(
-                    label = label,
+                    label = stringResource(label),
                     metricId = dashboardSlots[absoluteSlotIndex],
                     onClick = { selectedDashboardSlot = absoluteSlotIndex },
                 )
@@ -128,9 +140,9 @@ fun RecordingDashboardSettingsScreen(
     selectedDashboardSlot?.let { slotIndex ->
         OptionPickerDialog(
             visible = true,
-            title = RECORDING_DASHBOARD_SLOT_LABELS[slotIndex % RECORDING_DASHBOARD_PAGE_SLOT_COUNT],
+            title = stringResource(RECORDING_DASHBOARD_SLOT_LABELS[slotIndex % RECORDING_DASHBOARD_PAGE_SLOT_COUNT]),
             selectedValue = dashboardSlots[slotIndex],
-            options = recordingMetricPickerOptionsForProfile(activityProfile),
+            options = recordingMetricPickerOptionsForProfile(activityProfile, resources = resources),
             onDismiss = { selectedDashboardSlot = null },
             onSelect = { metricId ->
                 viewModel.setRecordingDashboardMetricSlot(slotIndex, metricId)
@@ -155,15 +167,15 @@ private fun RecordingDashboardInfoDialog(
         visible = visible,
         title =
             if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-                "Bike dashboard"
+                stringResource(R.string.settings_bike_dashboard)
             } else {
-                "Hike dashboard"
+                stringResource(R.string.settings_hike_dashboard)
             },
         onDismiss = onDismiss,
         lines =
             listOf(
-                "Hike and Bike keep separate dashboards.",
-                "In the REC popup, long press any metric to change it.",
+                stringResource(R.string.settings_hike_and_bike_keep_separate_dashboards),
+                stringResource(R.string.settings_in_the_rec_popup_long_press_any_metric_to_change_it),
             ),
     )
 }
@@ -174,15 +186,31 @@ private fun RecordingMetricSlotSetting(
     metricId: String,
     onClick: () -> Unit,
 ) {
+    val resources = LocalResources.current
     SettingsPickerChip(
         label = label,
-        secondaryLabel = recordingMetricLabel(metricId),
+        secondaryLabel = recordingMetricLabel(metricId, resources = resources),
         onClick = onClick,
     )
 }
 
-private val RECORDING_DASHBOARD_SLOT_LABELS = listOf("Top measure", "Left measure", "Right measure", "Bottom measure")
+private val RECORDING_DASHBOARD_SLOT_LABELS =
+    listOf(
+        R.string.settings_top_measure,
+        R.string.settings_left_measure,
+        R.string.settings_right_measure,
+        R.string.settings_bottom_measure,
+    )
 
-private fun recordingDashboardPageLabel(pageIndex: Int): String = "Page ${pageIndex + 1}"
+private fun recordingDashboardPageLabel(
+    pageIndex: Int,
+    resources: Resources,
+): String = resources.getString(R.string.settings_page, pageIndex + 1)
 
-private fun recordingMetricLabel(metricId: String): String = recordingMetricDefinitions.firstOrNull { it.id == metricId }?.label ?: "Distance"
+private fun recordingMetricLabel(
+    metricId: String,
+    resources: Resources,
+): String =
+    resources.getString(
+        recordingMetricDefinitions.firstOrNull { it.id == metricId }?.labelRes ?: R.string.common_distance,
+    )

@@ -13,11 +13,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 
 enum class DemSetupReason {
@@ -39,36 +41,27 @@ fun DemSetupBottomSheet(
     if (!visible) return
     val title =
         when (reason) {
-            DemSetupReason.GENERIC -> "DEM Setup"
-            DemSetupReason.HILL_SHADING -> "Elevation data needed"
-            DemSetupReason.HILL_SHADING_MAP_REQUIRED -> "Select a map"
-            DemSetupReason.HILL_SHADING_VISIBLE_AREA -> "No terrain data"
-            DemSetupReason.LIVE_ELEVATION -> "Elevation data needed"
-            DemSetupReason.SLOPE_OVERLAY -> "Elevation data needed"
+            DemSetupReason.GENERIC -> stringResource(R.string.maps_dem_setup)
+            DemSetupReason.HILL_SHADING -> stringResource(R.string.maps_elevation_data_needed)
+            DemSetupReason.HILL_SHADING_MAP_REQUIRED -> stringResource(R.string.maps_select_a_map)
+            DemSetupReason.HILL_SHADING_VISIBLE_AREA -> stringResource(R.string.maps_no_terrain_data)
+            DemSetupReason.LIVE_ELEVATION -> stringResource(R.string.maps_elevation_data_needed)
+            DemSetupReason.SLOPE_OVERLAY -> stringResource(R.string.maps_elevation_data_needed)
         }
     val message =
         when (reason) {
             DemSetupReason.GENERIC ->
-                "For each offline map, use the DEM icon to download elevation data (DEM).\n" +
-                    "Grey icon means not downloaded.\n" +
-                    "Green icon means ready for hill/slope layers."
+                stringResource(R.string.maps_for_each_offline_map_use_the_dem_icon_to_download_elevation_data_dem_g)
             DemSetupReason.HILL_SHADING ->
-                "Hill shading needs DEM data for this map.\n" +
-                    "Open Maps and tap the DEM icon to download it.\n" +
-                    "When it is ready, come back and enable Hill shading again."
+                stringResource(R.string.maps_hill_shading_needs_dem_data_for_this_map_open_maps_and_tap_the_dem_ico)
             DemSetupReason.HILL_SHADING_MAP_REQUIRED ->
-                "Select an offline map first."
+                stringResource(R.string.maps_select_an_offline_map_first)
             DemSetupReason.HILL_SHADING_VISIBLE_AREA ->
-                "No Detailed or Standard terrain data is available for this area.\n" +
-                    "Open Maps and download terrain data to display hill shading here."
+                stringResource(R.string.maps_no_detailed_or_standard_terrain_data_is_available_for_this_area_open_m)
             DemSetupReason.LIVE_ELEVATION ->
-                "Live elevation needs DEM data for this map.\n" +
-                    "Open Maps and tap the DEM icon to download it.\n" +
-                    "When it is ready, come back and enable Live elevation again."
+                stringResource(R.string.maps_live_elevation_needs_dem_data_for_this_map_open_maps_and_tap_the_dem_i)
             DemSetupReason.SLOPE_OVERLAY ->
-                "Slope overlay needs DEM data for this map.\n" +
-                    "Open Maps and tap the DEM icon to download it.\n" +
-                    "When it is ready, come back and enable Slope overlay again."
+                stringResource(R.string.maps_slope_overlay_needs_dem_data_for_this_map_open_maps_and_tap_the_dem_ic)
         }
 
     WearInfoDialog(
@@ -84,17 +77,17 @@ fun DemSetupBottomSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Landscape,
-                        contentDescription = "Elevation icon",
+                        contentDescription = stringResource(R.string.maps_elevation_icon),
                         tint = Color(0xFFFFB300),
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        text = "DEM",
+                        text = stringResource(R.string.maps_dem),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "DEM means elevation data",
+                        contentDescription = stringResource(R.string.maps_dem_means_elevation_data),
                         tint = Color.White.copy(alpha = 0.82f),
                         modifier = Modifier.size(14.dp),
                     )

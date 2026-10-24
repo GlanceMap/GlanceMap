@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import java.io.IOException
 
 internal class OamDownloadRetryBudget(
@@ -34,6 +36,13 @@ internal fun oamNoProgressFailureMessage(
     maxRetries: Int,
     offset: Long,
     error: IOException,
+    resources: Resources,
 ): String =
-    "No payload progress for $fileName after $maxRetries retries " +
-        "at offset=$offset: ${error.message ?: error.javaClass.simpleName}"
+    resources.getQuantityString(
+        R.plurals.download_no_payload_progress_for_after_retries_at_offset,
+        maxRetries,
+        fileName,
+        maxRetries,
+        offset,
+        error.message ?: error.javaClass.simpleName,
+    )

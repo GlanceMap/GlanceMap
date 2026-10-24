@@ -1,5 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterConfig
 import com.glancemap.glancemapwearos.core.routing.RouteGeometryPoint
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
@@ -45,6 +48,7 @@ import java.io.File
 
 @Suppress("LargeClass")
 internal class GpxRouteToolOperations(
+    private val resources: Resources,
     private val gpxRepository: GpxRepositoryImpl,
     private val routePlanner: RoutePlanner,
     private val activeGpxFiles: () -> List<GpxFileState>,
@@ -56,7 +60,7 @@ internal class GpxRouteToolOperations(
         onProgress: (String) -> Unit = {},
     ): RouteToolSaveResult {
         require(session.options.toolKind == RouteToolKind.MODIFY) {
-            "Only GPX modify actions are supported here."
+            resources.getString(R.string.gpx_only_gpx_modify_actions_are_supported_here)
         }
 
         val source = requireSingleActiveRouteToolSource()
@@ -68,7 +72,7 @@ internal class GpxRouteToolOperations(
                 points = editOutput.points,
             )
 
-        reportProgress(onProgress, "Saving GPX...")
+        reportProgress(onProgress, resources.getString(R.string.gpx_saving_gpx))
         gpxRepository.saveGpxFileAtomic(
             fileName = editOutput.fileName,
             inputStream = ByteArrayInputStream(bytes),
@@ -80,11 +84,11 @@ internal class GpxRouteToolOperations(
             gpxRepository
                 .listGpxFiles()
                 .firstOrNull { it.name == editOutput.fileName }
-                ?: error("The edited GPX was not found after saving.")
+                ?: error(resources.getString(R.string.gpx_the_edited_gpx_was_not_found_after_saving))
 
         gpxRepository.setActiveGpxFiles(setOf(savedFile.absolutePath))
 
-        reportProgress(onProgress, "Preparing stats...")
+        reportProgress(onProgress, resources.getString(R.string.gpx_preparing_stats))
         return buildRouteToolSaveResult(
             savedFile = savedFile,
             replacedCurrent = session.options.saveBehavior == RouteSaveBehavior.REPLACE_CURRENT,
@@ -107,17 +111,18 @@ internal class GpxRouteToolOperations(
                     firstLegPoints = reshapePlan.firstLegPoints,
                     secondLegPoints = reshapePlan.secondLegPoints,
                     bounds = reshapePlan.bounds,
+                    resources = resources,
                 )
             }
 
             RouteModifyMode.REPLACE_SECTION_A_TO_B -> {
                 val sectionStart =
                     requireNotNull(session.pointA) {
-                        "Pick point A first."
+                        resources.getString(R.string.gpx_pick_point_a_first)
                     }
                 val sectionEnd =
                     requireNotNull(session.pointB) {
-                        "Pick point B first."
+                        resources.getString(R.string.gpx_pick_point_b_first)
                     }
                 val (origin, destination) =
                     resolveReplaceSectionEndpoints(
@@ -143,13 +148,14 @@ internal class GpxRouteToolOperations(
                     profile = source.profile,
                     session = session,
                     routedPoints = route.points,
+                    resources = resources,
                 )
             }
 
             RouteModifyMode.TRIM_START_TO_HERE -> {
                 val startTarget =
                     requireNotNull(session.pointA) {
-                        "Pick the new start first."
+                        resources.getString(R.string.gpx_pick_the_new_start_first)
                     }
                 val match =
                     resolveRouteToolTrackMatch(
@@ -167,6 +173,7 @@ internal class GpxRouteToolOperations(
                         sourceTitle = source.fileState.displayTitle,
                         profile = source.profile,
                         session = session.copy(pointATrackPosition = match.position),
+                        resources = resources,
                     )
                 } else if (endpointPosition != null) {
                     val originalStart = pointAt(source.profile.points, endpointPosition).latLong
@@ -187,6 +194,7 @@ internal class GpxRouteToolOperations(
                         session = session,
                         snappedPosition = endpointPosition,
                         routedPoints = route.points,
+                        resources = resources,
                     )
                 } else {
                     val route =
@@ -206,6 +214,7 @@ internal class GpxRouteToolOperations(
                         session = session,
                         snappedPosition = match.position,
                         routedPoints = route.points,
+                        resources = resources,
                     )
                 }
             }
@@ -213,7 +222,7 @@ internal class GpxRouteToolOperations(
             RouteModifyMode.TRIM_END_FROM_HERE -> {
                 val endTarget =
                     requireNotNull(session.pointB) {
-                        "Pick the new end first."
+                        resources.getString(R.string.gpx_pick_the_new_end_first)
                     }
                 val match =
                     resolveRouteToolTrackMatch(
@@ -231,6 +240,7 @@ internal class GpxRouteToolOperations(
                         sourceTitle = source.fileState.displayTitle,
                         profile = source.profile,
                         session = session.copy(pointBTrackPosition = match.position),
+                        resources = resources,
                     )
                 } else if (endpointPosition != null) {
                     val originalEnd = pointAt(source.profile.points, endpointPosition).latLong
@@ -251,6 +261,7 @@ internal class GpxRouteToolOperations(
                         session = session,
                         snappedPosition = endpointPosition,
                         routedPoints = route.points,
+                        resources = resources,
                     )
                 } else {
                     val route =
@@ -270,6 +281,7 @@ internal class GpxRouteToolOperations(
                         session = session,
                         snappedPosition = match.position,
                         routedPoints = route.points,
+                        resources = resources,
                     )
                 }
             }
@@ -281,15 +293,16 @@ internal class GpxRouteToolOperations(
                     sourceTitle = source.fileState.displayTitle,
                     profile = source.profile,
                     session = session,
+                    resources = resources,
                 )
         }
 
     suspend fun previewModification(session: RouteToolSession): RouteToolModifyPreview {
         require(session.options.toolKind == RouteToolKind.MODIFY) {
-            "Only GPX modify actions are supported here."
+            resources.getString(R.string.gpx_only_gpx_modify_actions_are_supported_here)
         }
         require(session.options.modifyMode.previewBeforeSaving) {
-            "Preview is only available for reshape and endpoint edits."
+            resources.getString(R.string.gpx_preview_is_only_available_for_reshape_and_endpoint_edits)
         }
 
         val source = requireSingleActiveRouteToolSource()
@@ -315,19 +328,19 @@ internal class GpxRouteToolOperations(
         currentLocation: LatLong?,
     ): RouteToolCreatePreview {
         require(session.options.toolKind == RouteToolKind.CREATE) {
-            "Only GPX create actions are supported here."
+            resources.getString(R.string.gpx_only_gpx_create_actions_are_supported_here)
         }
         require(
             session.options.createMode == RouteCreateMode.MULTI_POINT_CHAIN ||
                 session.options.createMode == RouteCreateMode.LOOP_AROUND_HERE,
         ) {
-            "Preview is only available for multi-point and loop creation."
+            resources.getString(R.string.gpx_preview_is_only_available_for_multi_point_and_loop_creation)
         }
 
         val route =
             when (session.options.createMode) {
                 RouteCreateMode.MULTI_POINT_CHAIN -> {
-                    val plannerRequest = session.toRoutePlannerRequest(currentLocation)
+                    val plannerRequest = session.toRoutePlannerRequest(currentLocation, resources = resources)
                     routePlanner.createRoute(plannerRequest)
                 }
 
@@ -338,6 +351,7 @@ internal class GpxRouteToolOperations(
                         etaModelConfig = etaModelConfig,
                         session = session,
                         currentLocation = currentLocation,
+                        resources = resources,
                     )
                 }
             }
@@ -372,7 +386,7 @@ internal class GpxRouteToolOperations(
         onProgress: (String) -> Unit = {},
     ): RouteToolSaveResult {
         require(session.options.toolKind == RouteToolKind.CREATE) {
-            "Only GPX create actions are supported here."
+            resources.getString(R.string.gpx_only_gpx_create_actions_are_supported_here)
         }
 
         val currentActive = gpxRepository.getActiveGpxFiles().first()
@@ -386,6 +400,7 @@ internal class GpxRouteToolOperations(
                             source.profile.points
                                 .lastOrNull()
                                 ?.latLong,
+                        resources = resources,
                     )
                 val route = routePlanner.createRoute(plannerRequest)
                 val extensionOutput =
@@ -394,6 +409,7 @@ internal class GpxRouteToolOperations(
                         sourceTitle = source.fileState.displayTitle,
                         profile = source.profile,
                         routedPoints = route.points,
+                        resources = resources,
                     )
                 val extensionBytes =
                     encodeTrackAsGpx(
@@ -401,7 +417,7 @@ internal class GpxRouteToolOperations(
                         points = extensionOutput.points,
                     )
 
-                reportProgress(onProgress, "Saving GPX...")
+                reportProgress(onProgress, resources.getString(R.string.gpx_saving_gpx))
                 gpxRepository.saveGpxFileAtomic(
                     fileName = extensionOutput.fileName,
                     inputStream = ByteArrayInputStream(extensionBytes),
@@ -413,13 +429,13 @@ internal class GpxRouteToolOperations(
                     gpxRepository
                         .listGpxFiles()
                         .firstOrNull { it.name == extensionOutput.fileName }
-                        ?: error("The extended GPX was not found after saving.")
+                        ?: error(resources.getString(R.string.gpx_the_extended_gpx_was_not_found_after_saving))
 
                 gpxRepository.setActiveGpxFiles(
                     (currentActive - source.file.absolutePath) + savedFile.absolutePath,
                 )
 
-                reportProgress(onProgress, "Preparing stats...")
+                reportProgress(onProgress, resources.getString(R.string.gpx_preparing_stats))
                 buildRouteToolSaveResult(
                     savedFile = savedFile,
                     replacedCurrent = false,
@@ -436,6 +452,7 @@ internal class GpxRouteToolOperations(
                                 etaModelConfig = etaModelConfig,
                                 session = session,
                                 currentLocation = currentLocation,
+                                resources = resources,
                             )
                         RouteToolPlannedCreation(
                             fileName = route.fileName,
@@ -452,7 +469,7 @@ internal class GpxRouteToolOperations(
             else -> {
                 val plannedCreation =
                     preview?.plannedCreation ?: run {
-                        val plannerRequest = session.toRoutePlannerRequest(currentLocation)
+                        val plannerRequest = session.toRoutePlannerRequest(currentLocation, resources = resources)
                         val route = routePlanner.createRoute(plannerRequest)
                         RouteToolPlannedCreation(
                             fileName = route.fileName,
@@ -480,7 +497,7 @@ internal class GpxRouteToolOperations(
         return buildRouteToolSaveResult(
             savedFile = savedFile,
             replacedCurrent = false,
-            successMessage = "GPX renamed",
+            successMessageRes = R.string.gpx_gpx_renamed,
         )
     }
 
@@ -489,21 +506,21 @@ internal class GpxRouteToolOperations(
         newName: String,
     ): File {
         val sourceFile = File(filePath)
-        require(sourceFile.exists()) { "The GPX could not be found." }
+        require(sourceFile.exists()) { resources.getString(R.string.gpx_the_gpx_could_not_be_found) }
 
         val normalizedTitle =
             newName
                 .trim()
                 .replace(Regex("\\s+"), " ")
-        require(normalizedTitle.isNotBlank()) { "Enter a GPX name first." }
+        require(normalizedTitle.isNotBlank()) { resources.getString(R.string.gpx_enter_a_gpx_name_first) }
 
         val parsed = parseGpxData(sourceFile)
-        require(parsed.points.isNotEmpty()) { "The GPX does not contain any points." }
+        require(parsed.points.isNotEmpty()) { resources.getString(R.string.gpx_the_gpx_does_not_contain_any_points) }
 
         val targetFileName = buildRenamedGpxFileName(normalizedTitle)
         val targetMatchesSource = targetFileName.equals(sourceFile.name, ignoreCase = true)
         if (!targetMatchesSource && gpxRepository.fileExists(targetFileName)) {
-            error("A GPX with that name already exists.")
+            error(resources.getString(R.string.gpx_a_gpx_with_that_name_already_exists))
         }
 
         val bytes = renameGpxXmlTitle(sourceFile.readText(), normalizedTitle)
@@ -518,7 +535,7 @@ internal class GpxRouteToolOperations(
             gpxRepository
                 .listGpxFiles()
                 .firstOrNull { it.name.equals(targetFileName, ignoreCase = true) }
-                ?: error("The renamed GPX was not found after saving.")
+                ?: error(resources.getString(R.string.gpx_the_renamed_gpx_was_not_found_after_saving))
 
         val currentActive = gpxRepository.getActiveGpxFiles().first()
         if (filePath in currentActive || savedFile.absolutePath in currentActive) {
@@ -536,15 +553,17 @@ internal class GpxRouteToolOperations(
     private suspend fun requireSingleActiveRouteToolSource(): ActiveRouteToolSource {
         val activeFiles = activeGpxFiles().filter { it.isActive }
         require(activeFiles.size == 1) {
-            "Activate exactly one GPX before using this tool."
+            resources.getString(R.string.gpx_activate_exactly_one_gpx_before_using_this_tool)
         }
 
         val sourceFileState = activeFiles.single()
         val sourceFile = File(sourceFileState.path)
-        require(sourceFile.exists()) { "The active GPX could not be found on disk." }
+        require(sourceFile.exists()) { resources.getString(R.string.gpx_the_active_gpx_could_not_be_found_on_disk) }
 
         val parsed = parseGpxData(sourceFile)
-        require(parsed.points.size >= 2) { "The active GPX does not contain enough points to edit." }
+        require(parsed.points.size >= 2) {
+            resources.getString(R.string.gpx_the_active_gpx_does_not_contain_enough_points_to_edit)
+        }
 
         return ActiveRouteToolSource(
             fileState = sourceFileState,
@@ -565,11 +584,11 @@ internal class GpxRouteToolOperations(
     ): RouteToolReshapePlan {
         val selectedPoint =
             requireNotNull(session.pointA) {
-                "Select the route point first."
+                resources.getString(R.string.gpx_select_the_route_point_first)
             }
         val shapingPoint =
             requireNotNull(session.destination) {
-                "Pick the shaping point first."
+                resources.getString(R.string.gpx_pick_the_shaping_point_first)
             }
         val sourceTitle = source.fileState.displayTitle
         val segmentStart =
@@ -637,13 +656,13 @@ internal class GpxRouteToolOperations(
             }
         }
 
-        return fallbackPlan ?: error("Could not build the reshape route.")
+        return fallbackPlan ?: error(resources.getString(R.string.gpx_could_not_build_the_reshape_route))
     }
 
     private fun buildRouteToolSaveResult(
         savedFile: File,
         replacedCurrent: Boolean,
-        successMessage: String? = null,
+        @StringRes successMessageRes: Int? = null,
     ): RouteToolSaveResult {
         val parsed = parseGpxData(savedFile)
         val profile =
@@ -664,7 +683,7 @@ internal class GpxRouteToolOperations(
             elevationLossMeters = profile.totalDescent,
             estimatedDurationSec = etaSeconds,
             replacedCurrent = replacedCurrent,
-            successMessage = successMessage,
+            successMessageRes = successMessageRes,
         )
     }
 
@@ -673,7 +692,7 @@ internal class GpxRouteToolOperations(
         currentActive: Set<String>,
         onProgress: (String) -> Unit,
     ): RouteToolSaveResult {
-        reportProgress(onProgress, "Saving GPX...")
+        reportProgress(onProgress, resources.getString(R.string.gpx_saving_gpx))
         gpxRepository.saveGpxFileAtomic(
             fileName = plannedCreation.fileName,
             inputStream = ByteArrayInputStream(plannedCreation.gpxBytes),
@@ -685,11 +704,11 @@ internal class GpxRouteToolOperations(
             gpxRepository
                 .listGpxFiles()
                 .firstOrNull { it.name == plannedCreation.fileName }
-                ?: error("The generated GPX was not found after saving.")
+                ?: error(resources.getString(R.string.gpx_the_generated_gpx_was_not_found_after_saving))
 
         gpxRepository.setActiveGpxFiles(currentActive + savedFile.absolutePath)
 
-        reportProgress(onProgress, "Preparing stats...")
+        reportProgress(onProgress, resources.getString(R.string.gpx_preparing_stats))
         return buildRouteToolSaveResult(
             savedFile = savedFile,
             replacedCurrent = false,

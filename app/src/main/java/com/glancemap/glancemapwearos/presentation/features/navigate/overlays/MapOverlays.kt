@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalResources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.data.repository.PoiViewport
@@ -103,7 +105,9 @@ internal fun MapOverlays(
     isMetric: Boolean,
     onRenderedHeadingChanged: (Float) -> Unit,
     onRenderedMapRotationChanged: (Float) -> Unit,
-    onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
+    onPoiMarkersSnapshotChanged: (
+        List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>,
+    ) -> Unit,
 ) {
     val mapView = mapHolder.mapView
     var compassConeSuppressed by remember(mapView) {
@@ -476,7 +480,9 @@ private fun PoiOverlayEffect(
     poiMarkerSizePx: Int,
     poiMarkerStyle: String,
     requestMapRedraw: () -> Unit,
-    onPoiMarkersSnapshotChanged: (List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>) -> Unit,
+    onPoiMarkersSnapshotChanged: (
+        List<com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker>,
+    ) -> Unit,
     locationMarker: RotatableMarker?,
     topOverlayCoordinator: MapTopOverlayCoordinator,
 ) {
@@ -769,6 +775,7 @@ private fun GpxAndInspectionOverlayEffect(
     topOverlayCoordinator: MapTopOverlayCoordinator,
     requestMapRedraw: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val useElevationTrackColors = gpxTrackColorMode == SettingsRepository.GPX_TRACK_COLOR_MODE_ELEVATION
 
     val trackPaint =
@@ -802,13 +809,15 @@ private fun GpxAndInspectionOverlayEffect(
         }
 
     // Bitmaps
-    val markerBitmapA = remember { AndroidBitmap(makeLabeledYellowDotBitmap("A", 28, 3, 235)) }
-    val markerBitmapB = remember { AndroidBitmap(makeLabeledYellowDotBitmap("B", 28, 3, 190)) }
+    val markerBitmapA =
+        remember { AndroidBitmap(makeLabeledYellowDotBitmap(resources.getString(R.string.navigate_a), 28, 3, 235)) }
+    val markerBitmapB =
+        remember { AndroidBitmap(makeLabeledYellowDotBitmap(resources.getString(R.string.navigate_b), 28, 3, 190)) }
     val startBitmap =
         remember {
             AndroidBitmap(
                 makeLabeledDotBitmap(
-                    label = "S",
+                    label = resources.getString(R.string.navigate_s),
                     sizePx = 20,
                     strokePx = 2,
                     fillColorArgb = android.graphics.Color.rgb(76, 175, 80),
@@ -819,7 +828,7 @@ private fun GpxAndInspectionOverlayEffect(
         remember {
             AndroidBitmap(
                 makeLabeledDotBitmap(
-                    label = "E",
+                    label = resources.getString(R.string.navigate_e),
                     sizePx = 20,
                     strokePx = 2,
                     fillColorArgb = android.graphics.Color.rgb(244, 67, 54),

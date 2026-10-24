@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.motion
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.filter.LocationOutputFilterMetricSummary
 import com.glancemap.glancemapwearos.core.service.location.filter.LocationOutputFilterTelemetry
@@ -108,25 +110,72 @@ internal data class MarkerMotionSnapshot(
         return parts.joinToString(" ")
     }
 
-    fun overlayLabel(): String? {
+    // Keep the existing presentation branches and fallbacks while resolving localized labels.
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
+    fun overlayLabel(resources: Resources): String? {
         if (mode == MarkerMotionMode.IDLE && updatedAtElapsedMs <= 0L) return null
 
         val header =
             buildString {
-                append(mode.label.uppercase())
-                reasonLabel(reason)?.let {
+                append(
+                    when (mode) {
+                        MarkerMotionMode.IDLE -> resources.getString(R.string.debug_idle)
+                        MarkerMotionMode.FIXED -> resources.getString(R.string.debug_fixed)
+                        MarkerMotionMode.BLEND -> resources.getString(R.string.debug_blend)
+                        MarkerMotionMode.PREDICT -> resources.getString(R.string.debug_predict)
+                    },
+                )
+                when (reason) {
+                    null -> null
+                    "await_fresh_fix" -> resources.getString(R.string.debug_wait_fix)
+                    "wake_anchor" -> resources.getString(R.string.debug_wake)
+                    "initial_fix" -> resources.getString(R.string.debug_first)
+                    "gps_correction" -> resources.getString(R.string.debug_correct)
+                    "correction_clamped" -> resources.getString(R.string.debug_clamp)
+                    "stationary_jitter" -> resources.getString(R.string.debug_steady)
+                    "deadband_snap" -> resources.getString(R.string.debug_snap)
+                    "stale_fix" -> resources.getString(R.string.debug_stale_fix)
+                    "outlier_drop" -> resources.getString(R.string.debug_outlier)
+                    "prediction_delay" -> resources.getString(R.string.debug_delay)
+                    "stale" -> resources.getString(R.string.debug_stale)
+                    "bad_accuracy" -> resources.getString(R.string.debug_bad_acc)
+                    "no_bearing" -> resources.getString(R.string.debug_no_brg)
+                    "slow" -> resources.getString(R.string.debug_slow)
+                    "too_close" -> resources.getString(R.string.debug_tiny)
+                    "between_fixes" -> resources.getString(R.string.debug_between)
+                    "degraded_gps" -> resources.getString(R.string.debug_gps_weak)
+                    "watch_gps_catch_up" -> resources.getString(R.string.debug_watch_catch_up)
+                    "auto_fused_catch_up" -> resources.getString(R.string.debug_fused_catch_up)
+                    "auto_fused_high_speed_catch_up" -> resources.getString(R.string.debug_fused_fast_catch_up)
+                    "screen_off_anchor" -> resources.getString(R.string.debug_screen_off_anchor)
+                    "reset" -> resources.getString(R.string.debug_reset)
+                    "interactive_start" -> resources.getString(R.string.debug_screen_wake)
+                    "tracking_stopped" -> resources.getString(R.string.debug_track_off)
+                    "fresh_fix_release" -> resources.getString(R.string.debug_fresh_start)
+                    "marker_hidden" -> resources.getString(R.string.debug_hidden)
+                    "dispose" -> resources.getString(R.string.debug_dispose)
+                    else -> reason.replace('_', ' ')
+                }?.let {
                     append(' ')
                     append(it)
                 }
             }
         val details = mutableListOf<String>()
-        fixAgeMs?.let { details += "age ${it}ms" }
-        accuracyM?.let { details += "acc ${it.format(0)}m" }
-        speedMps?.let { details += "v ${it.format(1)}" }
-        bearingDeg?.let { details += "brg ${it.format(0)}" }
-        correctionDistanceM?.let { details += "corr ${it.format(1)}m" }
-        correctionAgeMs?.let { details += "corrAge ${it}ms" }
-        return if (details.isEmpty()) header else "$header\n${details.joinToString(" ")}"
+        fixAgeMs?.let { details += resources.getString(R.string.debug_age_ms, it) }
+        accuracyM?.let { details += resources.getString(R.string.debug_acc_m, it.format(0)) }
+        speedMps?.let { details += resources.getString(R.string.debug_v, it.format(1)) }
+        bearingDeg?.let { details += resources.getString(R.string.debug_brg, it.format(0)) }
+        correctionDistanceM?.let { details += resources.getString(R.string.debug_corr_m, it.format(1)) }
+        correctionAgeMs?.let { details += resources.getString(R.string.debug_corrage_ms, it) }
+        return if (details.isEmpty()) {
+            header
+        } else {
+            resources.getString(
+                R.string.debug_value,
+                header,
+                details.joinToString(" "),
+            )
+        }
     }
 }
 

@@ -1,14 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasScrollAction
@@ -19,19 +24,57 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
 import com.glancemap.glancemapwearos.test.SmallRoundWatchMaxText
 import com.glancemap.glancemapwearos.test.withWearDeviceConfig
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
+import java.util.Locale
 
 @RunWith(AndroidJUnit4::class)
 class ActivityElevationProfileUiTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun frenchProfileLocalizesItsTitleGapLegendAndAccessibleRange() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val configuration = Configuration(context.resources.configuration).apply { setLocale(Locale.FRENCH) }
+        val localized = context.createConfigurationContext(configuration)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalContext provides localized, LocalResources provides localized.resources) {
+                GlanceMapTheme {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        ActivityElevationProfileSection("french.gpx", true, Color.Magenta) { profile }
+                    }
+                }
+            }
+        }
+        val title = localized.getString(R.string.gpx_activity_profile_title)
+        composeRule.onNodeWithText(title).assertIsDisplayed()
+        composeRule.onNodeWithTag(ACTIVITY_ELEVATION_CHART_TAG).performScrollTo().assertIsDisplayed()
+        val description =
+            composeRule
+                .onNodeWithTag(ACTIVITY_ELEVATION_CHART_TAG)
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.ContentDescription]
+                .single()
+        assertTrue(description.startsWith(title))
+        assertTrue(description.contains("100"))
+        assertTrue(description.contains("130"))
+        assertFalse(description.contains("grey lines"))
+        composeRule
+            .onNodeWithText(localized.getString(R.string.gpx_activity_profile_gaps))
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
 
     @Test
     fun activityDetailsCanScrollToTheInlineProfileOnASmallRoundWatch() {

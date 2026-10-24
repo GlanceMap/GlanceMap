@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -185,6 +186,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     onDismissStartDecisionPrompt: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val mapChrome =
         mapFocusChromePolicy(
             mapFocusMode = mapFocusMode,
@@ -512,7 +514,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
                     contentColor = Color.White,
                 ),
         ) {
-            Icon(Icons.Default.Menu, "Menu", Modifier.size(sideButtonIconSize))
+            Icon(Icons.Default.Menu, stringResource(R.string.navigate_menu), Modifier.size(sideButtonIconSize))
         }
     }
 
@@ -540,7 +542,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
             onRecordingClick = onRecordingClick,
             onHeadingReferenceMark = { referenceHeadingDeg ->
                 val result = CompassHeadingReferenceDiagnostics.recordReference(referenceHeadingDeg)
-                Toast.makeText(context, result.userMessage, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, resources.getString(result.userMessageRes), Toast.LENGTH_SHORT).show()
             },
         )
     }
