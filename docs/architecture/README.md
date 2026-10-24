@@ -17,6 +17,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `activity-elevation-profile.md`
   - Corrected distance, grey gap connectors, loading, and display sampling for saved activities.
 
+- `recording-sensor-pipeline.md`
+  - Sensor ownership, freshness, callback/publication diagnostics and SmartTrack motion evidence.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`

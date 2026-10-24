@@ -702,7 +702,10 @@ class TraceRecordingViewModel(
                             "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
                             "speedAboveThreshold=${motionResult.evidence.speedAboveThreshold} " +
                             "speedCredible=${motionResult.evidence.reportedSpeedCredible} " +
+                            "stepDataAvailable=${motionResult.evidence.stepDataAvailable} " +
                             "stepsAdvanced=${motionResult.evidence.stepsAdvanced} " +
+                            "stepsUnchanged=${motionResult.evidence.stepsUnchanged} " +
+                            "cadenceDataAvailable=${motionResult.evidence.cadenceDataAvailable} " +
                             "cadenceShowsMotion=${motionResult.evidence.cadenceShowsMotion} " +
                             "stepCount=${sensorMetricsAtFix?.stepCount ?: -1} " +
                             "cadenceSpm=${sensorMetricsAtFix?.cadenceSpm ?: -1}"

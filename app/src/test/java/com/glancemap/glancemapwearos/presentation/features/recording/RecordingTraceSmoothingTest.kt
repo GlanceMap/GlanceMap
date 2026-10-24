@@ -203,6 +203,42 @@ class RecordingTraceSmoothingTest {
     }
 
     @Test
+    fun unknownSensorsDoNotTurnUncertainFusedSpeedIntoStationaryEvidence() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous =
+            point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 1.8f)
+                .copy(stepCount = 231)
+        val held =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.0003714, elapsedMillis = 11_706L, speedMps = 1.77f)
+                        .copy(accuracyMeters = 16.1f, speedAccuracyMps = 2.5f, stepCount = null, cadenceSpm = null),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionStatus.HELD, held.status)
+        assertEquals(RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS, held.reason)
+        assertFalse(held.evidence.stepDataAvailable)
+        assertFalse(held.evidence.cadenceDataAvailable)
+        assertFalse(held.evidence.stepsUnchanged)
+        assertTrue(held.evidence.speedAboveThreshold)
+        assertFalse(held.evidence.reportedSpeedCredible)
+
+        val recovered =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.0004803, elapsedMillis = 25_048L, speedMps = 1.48f)
+                        .copy(accuracyMeters = 13.3f, speedAccuracyMps = 1.5f, stepCount = null, cadenceSpm = null),
+                activityProfile = HIKE,
+            )
+        assertTrue(recovered.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, recovered.reason)
+        assertFalse(recovered.evidence.stepsUnchanged)
+    }
+
+    @Test
     fun continuityRecoveryCapsDistanceWithoutBreakingVisibleGeometry() {
         val previous = point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 1.2f)
         val current =
