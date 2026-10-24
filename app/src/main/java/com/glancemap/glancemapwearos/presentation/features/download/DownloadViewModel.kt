@@ -17,6 +17,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,7 @@ data class DownloadUiState(
     val suggestedAreaIds: List<String> = emptyList(),
     val selection: OamDownloadSelection = OamDownloadSelection(),
     val installedBundles: List<OamInstalledBundle> = emptyList(),
+    val deletingBundleId: String? = null,
     val bundleHealthByAreaId: Map<String, OamBundleLocalHealth> = emptyMap(),
     val isDownloading: Boolean = false,
     val phase: String? = null,
@@ -50,6 +52,12 @@ data class DownloadUiState(
     val networkWarningMessage: String? = null,
     val lastLibraryChangedAtMillis: Long = 0L,
 ) {
+    val visibleInstalledBundles: List<OamInstalledBundle>
+        get() = installedBundles.filterNot { it.areaId == deletingBundleId }
+
+    val isLibraryBusy: Boolean
+        get() = isDownloading || deletingBundleId != null
+
     val selectedAreas: List<OamDownloadArea>
         get() = areas.filter { it.id in selectedAreaIds }
 
@@ -61,10 +69,11 @@ data class DownloadUiState(
 
     val canStartOrResumeDownload: Boolean
         get() =
-            when (pausedOperation) {
-                DownloadOperation.REFRESH -> true
-                DownloadOperation.DOWNLOAD, null -> selection.canDownload && selectedAreas.isNotEmpty()
-            }
+            !isLibraryBusy &&
+                when (pausedOperation) {
+                    DownloadOperation.REFRESH -> true
+                    DownloadOperation.DOWNLOAD, null -> selection.canDownload && selectedAreas.isNotEmpty()
+                }
 }
 
 enum class DownloadOperation {
@@ -268,7 +277,7 @@ class DownloadViewModel(
 
     private fun downloadSelectedBundleInternal(allowNonWifi: Boolean) {
         val serviceIsDownloading = downloadServiceClient.state.value.status == OamOwnedDownloadStatus.RUNNING
-        if (downloadJob?.isActive == true || serviceIsDownloading) {
+        if (downloadJob?.isActive == true || serviceIsDownloading || _uiState.value.deletingBundleId != null) {
             return
         }
         val state = _uiState.value
@@ -394,7 +403,7 @@ class DownloadViewModel(
     }
 
     fun checkBundleForRefresh(bundle: OamInstalledBundle) {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -484,7 +493,7 @@ class DownloadViewModel(
     }
 
     fun toggleRefreshBundleSelection(areaId: String) {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         _uiState.update { state ->
             val nextSelection =
                 if (areaId in state.selectedRefreshBundleIds) {
@@ -504,7 +513,7 @@ class DownloadViewModel(
     }
 
     fun clearRefreshBundleSelection() {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         _uiState.update {
             it.copy(
                 selectedRefreshBundleIds = emptySet(),
@@ -516,7 +525,7 @@ class DownloadViewModel(
 
     fun checkSelectedBundlesForRefresh() {
         val state = _uiState.value
-        if (state.isDownloading || state.isCheckingUpdates) return
+        if (state.isLibraryBusy || state.isCheckingUpdates) return
         val bundles = state.installedBundles.filter { it.areaId in state.selectedRefreshBundleIds }
         if (bundles.isEmpty()) {
             _uiState.update {
@@ -624,42 +633,19 @@ class DownloadViewModel(
     }
 
     fun deleteBundle(bundle: OamInstalledBundle) {
-        if (_uiState.value.isDownloading) return
-        viewModelScope.launch {
-            try {
-                downloader.deleteBundle(bundle)
-                val (installed, healthByAreaId) = loadInstalledBundlesAndHealth()
-                _uiState.update {
-                    it.copy(
-                        installedBundles = installed,
-                        bundleHealthByAreaId = healthByAreaId,
-                        statusMessage = resources.getString(R.string.download_bundle_deleted),
-                        errorMessage = null,
-                        networkWarningMessage = null,
-                        lastLibraryChangedAtMillis = System.currentTimeMillis(),
-                    )
-                }
-            } catch (error: Throwable) {
-                _uiState.update {
-                    it.copy(
-                        statusMessage = resources.getString(R.string.download_delete_failed),
-                        errorMessage = error.message ?: resources.getString(R.string.download_delete_failed),
-                        networkWarningMessage = null,
-                    )
-                }
-            }
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            _uiState.deleteInstalledBundle(
+                bundle = bundle,
+                delete = downloader::deleteBundle,
+                reload = ::loadInstalledBundlesAndHealth,
+                failureMessage = resources.getString(R.string.download_delete_failed),
+            )
         }
     }
 
     fun refreshInstalledBundles() {
         viewModelScope.launch {
-            val (installed, healthByAreaId) = loadInstalledBundlesAndHealth()
-            _uiState.update {
-                it.copy(
-                    installedBundles = installed,
-                    bundleHealthByAreaId = healthByAreaId,
-                )
-            }
+            _uiState.refreshInstalledBundleState(::loadInstalledBundlesAndHealth)
         }
     }
 
@@ -676,7 +662,7 @@ class DownloadViewModel(
         requests: List<BundleRefreshRequest>,
         allowNonWifi: Boolean,
     ) {
-        if (downloadJob?.isActive == true) return
+        if (downloadJob?.isActive == true || _uiState.value.isLibraryBusy) return
         val targets =
             requests.mapNotNull { request ->
                 _uiState.value.areas.firstOrNull { it.id == request.bundle.areaId }?.let { area ->

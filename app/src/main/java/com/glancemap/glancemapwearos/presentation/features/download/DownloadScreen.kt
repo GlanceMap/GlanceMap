@@ -104,7 +104,7 @@ fun DownloadScreen(
     var refreshMode by remember { mutableStateOf(false) }
     val effectiveRefreshMode =
         refreshMode &&
-            !uiState.isDownloading &&
+            !uiState.isLibraryBusy &&
             uiState.pausedOperation != DownloadOperation.REFRESH
     var showAreaSearchDialog by remember { mutableStateOf(false) }
     val infoPrefs =
@@ -307,8 +307,8 @@ fun DownloadScreen(
             showOamInfoDialog = true
         }
     }
-    LaunchedEffect(uiState.installedBundles.isEmpty()) {
-        if (uiState.installedBundles.isEmpty()) {
+    LaunchedEffect(uiState.visibleInstalledBundles.isEmpty()) {
+        if (uiState.visibleInstalledBundles.isEmpty()) {
             deleteMode = false
             refreshMode = false
             viewModel.clearRefreshBundleSelection()
@@ -394,9 +394,9 @@ fun DownloadScreen(
     ScreenScaffold(scrollState = listState) {
         FeatureListScaffold {
             DownloadHeader(
-                isDownloading = uiState.isDownloading,
+                isDownloading = uiState.isLibraryBusy,
                 isCheckingUpdates = uiState.isCheckingUpdates,
-                hasInstalledBundles = uiState.installedBundles.isNotEmpty(),
+                hasInstalledBundles = uiState.visibleInstalledBundles.isNotEmpty(),
                 refreshMode = effectiveRefreshMode,
                 deleteMode = deleteMode,
                 selectedRefreshBundleCount = uiState.selectedRefreshBundleIds.size,
@@ -553,7 +553,7 @@ fun DownloadScreen(
                         }
                     }
 
-                    if (uiState.installedBundles.isEmpty()) {
+                    if (uiState.visibleInstalledBundles.isEmpty()) {
                         item {
                             Text(
                                 text = stringResource(R.string.download_no_bundles_installed),
@@ -564,7 +564,7 @@ fun DownloadScreen(
                             )
                         }
                     } else {
-                        uiState.installedBundles.forEach { bundle ->
+                        uiState.visibleInstalledBundles.forEach { bundle ->
                             item {
                                 InstalledBundleRow(
                                     bundle = bundle,
@@ -572,13 +572,14 @@ fun DownloadScreen(
                                     refreshMode = effectiveRefreshMode,
                                     refreshSelected = bundle.areaId in uiState.selectedRefreshBundleIds,
                                     deleteMode = deleteMode,
+                                    enabled = !uiState.isLibraryBusy && !uiState.isCheckingUpdates,
                                     onRefresh = {
-                                        if (!uiState.isDownloading && effectiveRefreshMode) {
+                                        if (!uiState.isLibraryBusy && effectiveRefreshMode) {
                                             viewModel.toggleRefreshBundleSelection(bundle.areaId)
                                         }
                                     },
                                     onDelete = {
-                                        if (!uiState.isDownloading && deleteMode) {
+                                        if (!uiState.isLibraryBusy && !uiState.isCheckingUpdates && deleteMode) {
                                             bundlePendingDelete = bundle
                                         }
                                     },
@@ -642,7 +643,7 @@ fun DownloadScreen(
                     }
                 }
             } else {
-                if (effectiveRefreshMode && uiState.installedBundles.isNotEmpty()) {
+                if (effectiveRefreshMode && uiState.visibleInstalledBundles.isNotEmpty()) {
                     Box(
                         modifier =
                             Modifier
@@ -664,7 +665,8 @@ fun DownloadScreen(
                             icon = Icons.Filled.Update,
                             enabled =
                                 uiState.selectedRefreshBundleIds.isNotEmpty() &&
-                                    !uiState.isCheckingUpdates,
+                                    !uiState.isCheckingUpdates &&
+                                    !uiState.isLibraryBusy,
                             height = actionButtonHeight,
                             iconSize = actionButtonIconSize,
                             widthFraction = refreshActionWidthFraction,
@@ -698,7 +700,7 @@ fun DownloadScreen(
                                     contentDescription = stringResource(R.string.download_bundle_settings),
                                 )
                             }
-                            if (uiState.installedBundles.isNotEmpty()) {
+                            if (uiState.visibleInstalledBundles.isNotEmpty()) {
                                 CompactIconHitTargetButton(
                                     onClick = {
                                         val nextDeleteMode = !deleteMode
@@ -708,7 +710,7 @@ fun DownloadScreen(
                                             viewModel.clearRefreshBundleSelection()
                                         }
                                     },
-                                    enabled = !uiState.isDownloading,
+                                    enabled = !uiState.isLibraryBusy && !uiState.isCheckingUpdates,
                                     visualSize = headerActionButtonSize,
                                     visualOffsetY = bottomActionVisualOffsetY,
                                     containerColor =
@@ -1017,12 +1019,14 @@ private fun InstalledBundleRow(
     refreshMode: Boolean,
     refreshSelected: Boolean,
     deleteMode: Boolean,
+    enabled: Boolean,
     onRefresh: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val resources = LocalResources.current
     DownloadChip(
         label = bundle.areaLabel,
+        enabled = enabled,
         secondaryLabel =
             if (needsRepair) {
                 stringResource(
@@ -1184,9 +1188,11 @@ internal fun DownloadChip(
     selected: Boolean = false,
     warning: Boolean = false,
     secondaryMarquee: Boolean = false,
+    enabled: Boolean = true,
 ) {
     Chip(
         modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
         label = {
             Text(
                 text = label,

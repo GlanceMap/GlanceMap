@@ -133,6 +133,17 @@ factory-selected Network handle, transport and validation). Existing monitor eve
 logical default network. Refresh connections use the system default; their precise socket Network
 is not established by a monitor snapshot. No URLs, credentials or network names are added.
 
+## Bundle deletion feedback
+
+Bundle deletion retains the shared destructive confirmation dialog. Confirmation immediately hides
+the bundle through a pending area ID; it adds no progress or success message. The filesystem cleanup
+still runs on IO, preserves shared routing/DEM assets, and verifies the intended file candidates are
+gone before removing the bundle record. A failure reloads the remaining files/health and restores
+the bundle with an error. Downloads, refreshes and further deletes are disabled during cleanup.
+Library refreshes discard snapshots from before a completed deletion, so stale data cannot restore
+the deleted row. Successful deletion removes just that bundle's cached health without rescanning
+every remaining bundle.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

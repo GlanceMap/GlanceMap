@@ -850,46 +850,37 @@ class OamBundleDownloader(
 
     suspend fun deleteBundle(bundle: OamInstalledBundle) {
         withContext(Dispatchers.IO) {
-            val routingFilesUsedByOtherBundles =
-                bundleStore
-                    .listInstalledBundles()
-                    .asSequence()
-                    .filterNot { it.areaId == bundle.areaId }
-                    .flatMap { it.routingFileNames.asSequence() }
-                    .toSet()
+            val otherBundles = bundleStore.listInstalledBundles().filterNot { it.areaId == bundle.areaId }
+            val routingFilesUsedByOtherBundles = otherBundles.flatMap { it.routingFileNames }.toSet()
             val demTilesUsedByOtherBundles =
-                bundleStore
-                    .listInstalledBundles()
-                    .asSequence()
-                    .filterNot { it.areaId == bundle.areaId }
-                    .filter { it.demSource == bundle.demSource }
-                    .flatMap { it.demTileIds.asSequence() }
-                    .toSet()
-            bundle.mapFileName?.let { fileName ->
-                mapRepository
-                    .listMapFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { mapRepository.deleteMapFile(it.absolutePath) }
+                otherBundles.filter { it.demSource == bundle.demSource }.flatMap { it.demTileIds }.toSet()
+            val deletedFiles = mutableListOf<File>()
+            val mapFile = mapRepository.listMapFiles().firstOrNull { it.name == bundle.mapFileName }
+            val poiFiles = poiRepository.listPoiFiles()
+            val poiFile = poiFiles.firstOrNull { it.name == bundle.poiFileName }
+            val refugesFile = poiFiles.firstOrNull { it.name == bundle.refugesInfoFileName }
+            listOfNotNull(mapFile, poiFile, refugesFile).forEach { file ->
+                deletedFiles += file
+                deletedFiles += File(file.parentFile, ".${file.name}.part")
             }
-            bundle.poiFileName?.let { fileName ->
-                poiRepository
-                    .listPoiFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            mapFile?.let { mapRepository.deleteMapFile(it.absolutePath) }
+            poiFile?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            refugesFile?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            listOf("${bundle.areaId}.map.zip", "${bundle.areaId}.poi.zip").forEach { name ->
+                val file = File(downloadDir, File(name).name)
+                val partial = File(downloadDir, ".${file.name}.part")
+                deletedFiles += listOf(file, partial)
+                file.delete()
+                partial.delete()
             }
-            bundle.refugesInfoFileName?.let { fileName ->
-                poiRepository
-                    .listPoiFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { poiRepository.deletePoiFile(it.absolutePath) }
-            }
-            deleteZipAndPartial("${bundle.areaId}.map.zip")
-            deleteZipAndPartial("${bundle.areaId}.poi.zip")
             bundle.downloadedRoutingFileNames
                 .filterNot { it in routingFilesUsedByOtherBundles }
                 .forEach { fileName ->
-                    routingSegmentTargetFile(context, fileName).delete()
-                    routingSegmentPartFile(context, fileName).delete()
+                    val file = routingSegmentTargetFile(context, fileName)
+                    val partial = routingSegmentPartFile(context, fileName)
+                    deletedFiles += listOf(file, partial)
+                    file.delete()
+                    partial.delete()
                 }
             RoutingCoverageUtils.clearCaches()
             val remainingMapDemTiles =
@@ -897,15 +888,21 @@ class OamBundleDownloader(
                     .listMapFiles()
                     .flatMap { file -> Dem3CoverageUtils.requiredTileIdsForMap(file).orEmpty() }
                     .toSet()
-            Dem3CoverageUtils.deleteTiles(
-                context = context,
-                tileIds =
-                    bundle.downloadedDemTileIds
-                        .filterNot { it in demTilesUsedByOtherBundles || it in remainingMapDemTiles }
-                        .toSet(),
-                sources = listOf(bundle.demSource),
-            )
+            val removableDemTiles =
+                bundle.downloadedDemTileIds
+                    .filterNot { it in demTilesUsedByOtherBundles || it in remainingMapDemTiles }
+                    .toSet()
+            val demRoot = Dem3CoverageUtils.demRootDir(context, bundle.demSource)
+            removableDemTiles.forEach { tileId ->
+                Dem3CoverageUtils.tileFileCandidates(demRoot, tileId).forEach { file ->
+                    deletedFiles += file
+                    deletedFiles += File(file.parentFile, ".${file.name}.part")
+                }
+                deletedFiles += Dem3CoverageUtils.missingTileMarkerCandidates(demRoot, tileId)
+            }
+            Dem3CoverageUtils.deleteTiles(context, removableDemTiles, sources = listOf(bundle.demSource))
             Dem3CoverageUtils.clearCaches()
+            requireBundleFilesDeleted(deletedFiles)
         }
         bundleStore.remove(bundle.areaId)
     }
