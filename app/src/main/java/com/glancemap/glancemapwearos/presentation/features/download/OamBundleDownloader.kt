@@ -51,6 +51,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.util.Locale
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
@@ -194,7 +195,9 @@ class OamBundleDownloader(
     private val mapRepository: MapRepositoryImpl,
     private val poiRepository: PoiRepository,
     private val bundleStore: OamBundleStore = OamBundleStore(context),
+    connectionFactory: suspend (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) {
+    private val connections = OamDownloadConnections(connectionFactory)
     private val downloadDir: File by lazy { context.getDir("oam_downloads", Context.MODE_PRIVATE) }
     private val activeConnectionRegistry = OamActiveConnectionRegistry()
     private val activeConnections: MutableSet<HttpURLConnection>
@@ -1368,16 +1371,7 @@ class OamBundleDownloader(
 
     private suspend fun fetchRemoteMetadata(request: RemoteFileRequest): OamRemoteFileMetadata =
         withContext(Dispatchers.IO) {
-            val connection =
-                (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
-                    requestMethod = "HEAD"
-                    connectTimeout = CONNECT_TIMEOUT_MS
-                    readTimeout = READ_TIMEOUT_MS
-                    instanceFollowRedirects = true
-                    useCaches = false
-                    setRequestProperty("Accept-Encoding", "identity")
-                    setRequestProperty("User-Agent", USER_AGENT)
-                }
+            val connection = connections.metadata(request.url)
             activeConnections.add(connection)
             try {
                 val code = connection.responseCode
@@ -1642,22 +1636,10 @@ class OamBundleDownloader(
             finalFile
         }
 
-    private fun openConnection(
+    private suspend fun openConnection(
         url: String,
         resumeOffset: Long,
-    ): HttpURLConnection =
-        (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            useCaches = false
-            setRequestProperty("Accept-Encoding", "identity")
-            setRequestProperty("User-Agent", USER_AGENT)
-            if (resumeOffset > 0L) {
-                setRequestProperty("Range", "bytes=$resumeOffset-")
-            }
-        }
+    ): HttpURLConnection = connections.download(url, resumeOffset)
 
     private fun remoteFileName(url: String): String =
         runCatching { File(URI(url).path).name }
@@ -1876,8 +1858,6 @@ class OamBundleDownloader(
     }
 
     private companion object {
-        private const val CONNECT_TIMEOUT_MS = 20_000
-        private const val READ_TIMEOUT_MS = 60_000
         private const val STALL_CHECK_INTERVAL_MS = 15_000L
         private const val STALL_RECONNECT_TIMEOUT_MS = 75_000L
         private const val HTTP_RANGE_NOT_SATISFIABLE = 416
@@ -1890,7 +1870,6 @@ class OamBundleDownloader(
         private const val EXTRACTION_STALL_HEARTBEAT_INTERVAL_MS = 30_000L
         private const val LARGE_DETAILED_DEM_TILE_THRESHOLD = 100
         private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
-        private const val USER_AGENT = "GlanceMap-WearOS-OAM-Downloader/1.0 https://www.openandromaps.org"
         private const val OAM_DOWNLOAD_TELEMETRY_TAG = "OamDownload"
     }
 }

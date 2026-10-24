@@ -52,6 +52,9 @@ This module owns:
 - Keep Android API request details in `adapters/`.
 - Keep service coordinators side-effect focused.
 - Keep telemetry formatting in `LocationServiceTelemetry`.
+- GPS phone availability means a directly nearby Data Layer node (`Node.isNearby`), not a
+  remote node reachable through the cloud. Remote-only connectivity must leave onboard-GPS
+  fallback available. Existing nearby-phone recovery gates and location-quality thresholds remain.
 - If a behavior change affects battery or accuracy, include before/after evidence in PR.
 
 ## Tests

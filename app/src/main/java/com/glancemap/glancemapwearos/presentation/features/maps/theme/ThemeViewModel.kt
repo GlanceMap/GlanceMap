@@ -4,11 +4,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps.theme
 
 import android.content.Context
 import android.content.res.Resources
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.net.wifi.WifiManager
 import android.os.PowerManager
-import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +13,7 @@ import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DemDownloadDiagnostics
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.DownloadNetworkLease
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferLockManager
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
@@ -135,7 +132,7 @@ class ThemeViewModel(
         private const val DEM_TILE_MAX_ATTEMPTS = 3
         private const val DEM_TILE_RETRY_BASE_DELAY_MS = 1_500L
         private const val DEM_INTERNET_WAIT_TIMEOUT_MS = 8_000L
-        private const val DEM_INTERNET_RECHECK_MS = 500L
+        private const val DEM_SERVICE_TIMEOUT = "DEM foreground service timed out"
         private const val DEM_DOWNLOAD_WAKE_LOCK_TIMEOUT_MS = 6L * 60L * 60L * 1_000L
     }
 
@@ -146,7 +143,7 @@ class ThemeViewModel(
     private var demDownloadJob: Job? = null
     private val demDownloadLockManager by lazy { TransferLockManager(appContext) }
     private var demDownloadWakeLock: PowerManager.WakeLock? = null
-    private var demDownloadWifiLock: WifiManager.WifiLock? = null
+    private var demDownloadNetwork: DownloadNetworkLease? = null
 
     @Volatile
     private var activeDemConnection: HttpURLConnection? = null
@@ -353,151 +350,199 @@ class ThemeViewModel(
 
     fun downloadDemForMap(mapPath: String?) {
         if (_demDownloadUiState.value.isDownloading) return
+        if (mapPath.isNullOrBlank()) {
+            DemDownloadDiagnostics.record("start_rejected", "reason=no_map_selected")
+            _demDownloadUiState.value =
+                DemDownloadUiState(
+                    statusMessage = context.getString(R.string.dem_no_map_selected_select_a_map_first),
+                    lastCompletedAtMillis = System.currentTimeMillis(),
+                )
+            return
+        }
+        _demDownloadUiState.value =
+            DemDownloadUiState(
+                isDownloading = true,
+                activeMapPath = mapPath,
+                statusMessage = context.getString(R.string.dem_checking_watch_internet),
+            )
+        runCatching { StandaloneDemDownloadForegroundService.start(appContext, mapPath) }
+            .onFailure(::reportDemDownloadServiceFailure)
+    }
 
-        demDownloadJob =
-            viewModelScope.launch {
-                try {
-                    if (mapPath.isNullOrBlank()) {
-                        DemDownloadDiagnostics.record(
-                            event = "start_rejected",
-                            detail = "reason=no_map_selected",
-                        )
-                        _demDownloadUiState.value =
-                            DemDownloadUiState(
-                                activeMapPath = null,
-                                statusMessage =
-                                    context.resources.getString(
-                                        R.string.dem_no_map_selected_select_a_map_first,
-                                    ),
-                                lastCompletedAtMillis = System.currentTimeMillis(),
-                            )
-                        return@launch
-                    }
-
-                    val selectedMapFile = File(mapPath)
-                    if (!selectedMapFile.exists()) {
-                        DemDownloadDiagnostics.record(
-                            event = "start_rejected",
-                            detail = "reason=map_missing path=${mapPath.demDiagValue()}",
-                        )
-                        _demDownloadUiState.value =
-                            DemDownloadUiState(
-                                activeMapPath = null,
-                                statusMessage =
-                                    context.resources.getString(
-                                        R.string.dem_selected_map_not_found_on_watch,
-                                    ),
-                                lastCompletedAtMillis = System.currentTimeMillis(),
-                            )
-                        return@launch
-                    }
-
-                    _demDownloadUiState.value =
-                        DemDownloadUiState(
-                            isDownloading = true,
-                            activeMapPath = mapPath,
-                            statusMessage = context.resources.getString(R.string.dem_checking_watch_internet),
-                        )
-
-                    if (!waitForWatchInternetConnection()) {
-                        DemDownloadDiagnostics.record(
-                            event = "start_rejected",
-                            detail = "reason=no_internet path=${mapPath.demDiagValue()}",
-                        )
-                        _demDownloadUiState.value =
-                            DemDownloadUiState(
-                                isDownloading = false,
-                                activeMapPath = null,
-                                networkUnavailable = true,
-                                statusMessage =
-                                    context.getString(
-                                        R.string.maps_dem_internet_required,
-                                    ),
-                                lastCompletedAtMillis = System.currentTimeMillis(),
-                            )
-                        return@launch
-                    }
-
-                    _demDownloadUiState.value =
-                        _demDownloadUiState.value.copy(
-                            statusMessage = context.resources.getString(R.string.dem_reading_map_area),
-                        )
-                    val source = settingsRepository.demSource.first()
-                    acquireDemDownloadKeepAlive(source)
-
-                    runCatching {
-                        withContext(Dispatchers.IO) {
-                            downloadDemForMapInternal(selectedMapFile, source)
-                        }
-                    }.onSuccess { result ->
-                        _demDownloadUiState.value =
-                            DemDownloadUiState(
-                                isDownloading = false,
-                                activeMapPath = null,
-                                totalTiles = result.totalTiles,
-                                processedTiles = result.processedTiles,
-                                downloadedTiles = result.downloadedTiles,
-                                skippedTiles = result.skippedTiles,
-                                missingTiles = result.missingTiles,
-                                failedTiles = result.failedTiles,
-                                networkUnavailable = result.networkUnavailable,
-                                statusMessage = result.statusMessage,
-                                lastCompletedAtMillis = System.currentTimeMillis(),
-                            )
-                    }.onFailure { error ->
-                        if (error is CancellationException) {
-                            DemDownloadDiagnostics.record(
-                                event = "cancelled",
-                                detail = "path=${mapPath.demDiagValue()}",
-                            )
-                            _demDownloadUiState.value =
-                                DemDownloadUiState(
-                                    isDownloading = false,
-                                    activeMapPath = null,
-                                    statusMessage =
-                                        context.resources.getString(
-                                            R.string.dem_elevation_download_cancelled,
-                                        ),
-                                    lastCompletedAtMillis = System.currentTimeMillis(),
-                                )
-                            return@onFailure
-                        }
-                        Log.e(TAG, "DEM download failed", error)
-                        val networkUnavailable =
-                            classifyDemFailureAsNetworkUnavailable(
-                                throwable = error,
-                                internetAvailableNow = hasWatchInternetConnection(),
-                            )
-                        _demDownloadUiState.value =
-                            DemDownloadUiState(
-                                isDownloading = false,
-                                activeMapPath = null,
-                                networkUnavailable = networkUnavailable,
-                                statusMessage =
-                                    buildDemFailureMessage(
-                                        error,
-                                        networkUnavailable,
-                                        resources = context.resources,
-                                    ),
-                                lastCompletedAtMillis = System.currentTimeMillis(),
-                            )
-                    }
-                } finally {
-                    activeDemConnection = null
-                    releaseDemDownloadKeepAlive()
-                    demDownloadJob = null
-                }
+    internal suspend fun runDemDownloadForMap(
+        mapPath: String,
+        network: DownloadNetworkLease,
+    ) {
+        val owner = coroutineContext[Job]
+        demDownloadJob?.takeIf { it !== owner }?.join()
+        demDownloadJob = owner
+        demDownloadNetwork = network
+        try {
+            if (mapPath.isNullOrBlank()) {
+                DemDownloadDiagnostics.record(
+                    event = "start_rejected",
+                    detail = "reason=no_map_selected",
+                )
+                _demDownloadUiState.value =
+                    DemDownloadUiState(
+                        activeMapPath = null,
+                        statusMessage =
+                            context.resources.getString(
+                                R.string.dem_no_map_selected_select_a_map_first,
+                            ),
+                        lastCompletedAtMillis = System.currentTimeMillis(),
+                    )
+                return
             }
+
+            val selectedMapFile = File(mapPath)
+            if (!selectedMapFile.exists()) {
+                DemDownloadDiagnostics.record(
+                    event = "start_rejected",
+                    detail = "reason=map_missing path=${mapPath.demDiagValue()}",
+                )
+                _demDownloadUiState.value =
+                    DemDownloadUiState(
+                        activeMapPath = null,
+                        statusMessage =
+                            context.resources.getString(
+                                R.string.dem_selected_map_not_found_on_watch,
+                            ),
+                        lastCompletedAtMillis = System.currentTimeMillis(),
+                    )
+                return
+            }
+
+            _demDownloadUiState.value =
+                DemDownloadUiState(
+                    isDownloading = true,
+                    activeMapPath = mapPath,
+                    statusMessage = context.resources.getString(R.string.dem_checking_watch_internet),
+                )
+
+            if (!waitForWatchInternetConnection()) {
+                DemDownloadDiagnostics.record(
+                    event = "start_rejected",
+                    detail = "reason=no_internet path=${mapPath.demDiagValue()}",
+                )
+                _demDownloadUiState.value =
+                    DemDownloadUiState(
+                        isDownloading = false,
+                        activeMapPath = null,
+                        networkUnavailable = true,
+                        statusMessage =
+                            context.getString(
+                                R.string.maps_dem_internet_required,
+                            ),
+                        lastCompletedAtMillis = System.currentTimeMillis(),
+                    )
+                return
+            }
+
+            _demDownloadUiState.value =
+                _demDownloadUiState.value.copy(
+                    statusMessage = context.resources.getString(R.string.dem_reading_map_area),
+                )
+            val source = settingsRepository.demSource.first()
+            acquireDemDownloadKeepAlive(source)
+
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    downloadDemForMapInternal(selectedMapFile, source)
+                }
+            }.onSuccess { result ->
+                _demDownloadUiState.value =
+                    DemDownloadUiState(
+                        isDownloading = false,
+                        activeMapPath = null,
+                        totalTiles = result.totalTiles,
+                        processedTiles = result.processedTiles,
+                        downloadedTiles = result.downloadedTiles,
+                        skippedTiles = result.skippedTiles,
+                        missingTiles = result.missingTiles,
+                        failedTiles = result.failedTiles,
+                        networkUnavailable = result.networkUnavailable,
+                        statusMessage = result.statusMessage,
+                        lastCompletedAtMillis = System.currentTimeMillis(),
+                    )
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                Log.e(TAG, "DEM download failed", error)
+                val networkUnavailable =
+                    classifyDemFailureAsNetworkUnavailable(
+                        throwable = error,
+                        internetAvailableNow = hasWatchInternetConnection(),
+                    )
+                _demDownloadUiState.value =
+                    DemDownloadUiState(
+                        isDownloading = false,
+                        activeMapPath = null,
+                        networkUnavailable = networkUnavailable,
+                        statusMessage =
+                            buildDemFailureMessage(
+                                error,
+                                networkUnavailable,
+                                resources = context.resources,
+                            ),
+                        lastCompletedAtMillis = System.currentTimeMillis(),
+                    )
+            }
+        } catch (error: CancellationException) {
+            publishDemCancellation(error)
+            throw error
+        } finally {
+            activeDemConnection = null
+            releaseDemDownloadKeepAlive()
+            demDownloadNetwork = null
+            demDownloadJob = null
+        }
     }
 
     fun cancelDemDownload() {
-        val job = demDownloadJob ?: return
+        if (!_demDownloadUiState.value.isDownloading) return
         DemDownloadDiagnostics.record(
             event = "cancel_requested",
             detail = "path=${_demDownloadUiState.value.activeMapPath.orEmpty().demDiagValue()}",
         )
+        StandaloneDemDownloadForegroundService.cancel(appContext)
+    }
+
+    internal fun cancelActiveDemDownload(
+        timedOut: Boolean = false,
+        expectedJob: Job? = null,
+    ) {
+        if (expectedJob != null && demDownloadJob !== expectedJob) return
         activeDemConnection?.disconnect()
-        job.cancel(CancellationException("DEM download cancelled"))
+        val reason = if (timedOut) DEM_SERVICE_TIMEOUT else "DEM download cancelled"
+        demDownloadJob?.cancel(CancellationException(reason))
+        if (demDownloadJob == null && _demDownloadUiState.value.isDownloading) {
+            publishDemCancellation(CancellationException(reason))
+        }
+    }
+
+    private fun publishDemCancellation(error: CancellationException) {
+        DemDownloadDiagnostics.record("cancelled", "reason=${error.message.orEmpty().demDiagValue()}")
+        val message =
+            if (error.message == DEM_SERVICE_TIMEOUT) {
+                R.string.dem_dem_download_timed_out_retry_when_the_watch_internet_connection_is_sta
+            } else {
+                R.string.dem_elevation_download_cancelled
+            }
+        _demDownloadUiState.value =
+            DemDownloadUiState(
+                statusMessage = context.getString(message),
+                lastCompletedAtMillis = System.currentTimeMillis(),
+            )
+    }
+
+    internal fun reportDemDownloadServiceFailure(error: Throwable) {
+        Log.e(TAG, "DEM download service failed", error)
+        DemDownloadDiagnostics.record("service_failed", "error=${error.javaClass.simpleName}")
+        _demDownloadUiState.value =
+            DemDownloadUiState(
+                statusMessage = context.getString(R.string.maps_dem_download_failed),
+                lastCompletedAtMillis = System.currentTimeMillis(),
+            )
     }
 
     suspend fun demReadinessForMap(mapPath: String?): DemMapReadiness =
@@ -803,32 +848,24 @@ class ThemeViewModel(
                     timeoutMs = DEM_DOWNLOAD_WAKE_LOCK_TIMEOUT_MS,
                 )
             }.getOrNull()
-        demDownloadWifiLock =
-            runCatching {
-                demDownloadLockManager.acquireWifiLock("GlanceMap:StandaloneDemDownloadWifi")
-            }.getOrNull()
         DemDownloadDiagnostics.record(
             event = "keepalive_acquired",
             detail =
                 "source=${source.id} partialWakeLock=${demDownloadWakeLock?.isHeld == true} " +
-                    "wifiLock=${demDownloadWifiLock?.isHeld == true}",
+                    "networkHeld=${demDownloadNetwork?.currentNetwork != null}",
         )
     }
 
     private fun releaseDemDownloadKeepAlive() {
         val wakeLock = demDownloadWakeLock
-        val wifiLock = demDownloadWifiLock
         val wakeLockWasHeld = wakeLock?.isHeld == true
-        val wifiLockWasHeld = wifiLock?.isHeld == true
         demDownloadWakeLock = null
-        demDownloadWifiLock = null
         wakeLock?.let { runCatching { demDownloadLockManager.releaseWakeLock(it) } }
-        wifiLock?.let { runCatching { demDownloadLockManager.releaseWifiLock(it) } }
-        if (wakeLock != null || wifiLock != null) {
+        if (wakeLock != null) {
             DemDownloadDiagnostics.record(
                 event = "keepalive_released",
                 detail =
-                    "partialWakeLock=$wakeLockWasHeld wifiLock=$wifiLockWasHeld",
+                    "partialWakeLock=$wakeLockWasHeld",
             )
         }
     }
@@ -894,7 +931,8 @@ class ThemeViewModel(
                     )
             }
 
-            if (!hasWatchInternetConnection()) {
+            val network = demDownloadNetwork?.awaitNetwork(DEM_INTERNET_WAIT_TIMEOUT_MS)
+            if (network == null) {
                 return DemTileDownloadOutcome(
                     success = false,
                     missingUpstream = false,
@@ -917,6 +955,7 @@ class ThemeViewModel(
                             activeDemConnection = connection
                         },
                         onProgress = ::publishCurrentDemTileProgress,
+                        openConnection = { url -> network.openConnection(url) as HttpURLConnection },
                     )
                     true
                 }.getOrElse { error ->
@@ -981,24 +1020,11 @@ class ThemeViewModel(
     }
 
     private suspend fun waitForWatchInternetConnection(): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + DEM_INTERNET_WAIT_TIMEOUT_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            if (hasWatchInternetConnection()) {
-                return true
-            }
-            delay(DEM_INTERNET_RECHECK_MS)
-        }
-        return hasWatchInternetConnection()
+        val network = demDownloadNetwork?.awaitNetwork(DEM_INTERNET_WAIT_TIMEOUT_MS)
+        return network != null
     }
 
-    private fun hasWatchInternetConnection(): Boolean {
-        val connectivityManager =
-            appContext.getSystemService(ConnectivityManager::class.java)
-                ?: return false
-        val activeNetwork = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    }
+    private fun hasWatchInternetConnection(): Boolean = demDownloadNetwork?.currentNetwork != null
 }
 
 // Keep the existing UI API; resource-backed defaults and labels do not change its inputs.

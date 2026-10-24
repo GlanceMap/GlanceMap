@@ -6,6 +6,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 
 internal data class DemDownloadContext(
     val sourceId: String,
@@ -34,6 +35,7 @@ internal fun downloadDemFile(
     request: DemDownloadRequest,
     onConnectionOpened: (HttpURLConnection) -> Unit = {},
     onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit = { _, _ -> },
+    openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) {
     val context =
         buildDemDownloadContext(
@@ -42,7 +44,12 @@ internal fun downloadDemFile(
             target = request.target,
         )
     recordResumeAttempt(context)
-    val connection = openDemConnection(context = context, userAgent = request.userAgent)
+    val connection =
+        openDemConnection(
+            context = context,
+            userAgent = request.userAgent,
+            openConnection = openConnection,
+        )
     onConnectionOpened(connection)
     try {
         val response = prepareDemResponse(connection = connection, context = context, demRoot = request.demRoot)
@@ -94,8 +101,9 @@ private fun recordResumeAttempt(context: DemDownloadContext) {
 private fun openDemConnection(
     context: DemDownloadContext,
     userAgent: String,
+    openConnection: (URL) -> HttpURLConnection,
 ): HttpURLConnection =
-    (URI(context.url).toURL().openConnection() as HttpURLConnection).apply {
+    openConnection(URI(context.url).toURL()).apply {
         connectTimeout = DEM_CONNECT_TIMEOUT_MS
         readTimeout = DEM_READ_TIMEOUT_MS
         requestMethod = "GET"

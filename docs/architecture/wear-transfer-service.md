@@ -89,6 +89,25 @@ Key components:
 5. For channel mode, `DataLayerChannelOpenedHandler` receives stream and finalizes ack.
 6. Service always releases locks and clears active transfer state in `finally` paths.
 
+## Standalone DEM and screen-off downloads
+
+Standalone map DEM downloads are owned by `StandaloneDemDownloadForegroundService`
+(`dataSync`), rather than the UI ViewModel scope. The ViewModel still publishes the existing
+progress/readiness state and owns the unchanged tile-selection, validation, and partial-file resume
+logic. The service retains the active map path for a system restart; explicit cancellation and
+foreground-service timeout clear that request. A timeout leaves partial files available for retry.
+
+`DownloadNetworkLease` retains a preferred Wi-Fi request for the operation, including when Wi-Fi
+was already connected, and observes the app default network for fallback. Both standalone and bundle
+metadata/file HTTP connections use the selected Network without binding the entire process.
+Only validated internet networks are eligible; captive Wi-Fi cannot displace working Bluetooth or
+cellular internet. An active default VPN retains routing priority. Closing the lease releases all
+callbacks; late callbacks from an earlier generation cannot repopulate a restarted lease.
+
+Low-latency Wi-Fi locks are not screen-off protection: Android only activates that mode while the
+screen is on. The standalone DEM path uses its foreground owner, bounded CPU wake lock, and retained
+network requests instead. Bluetooth/cellular internet remains usable when Wi-Fi is unavailable.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

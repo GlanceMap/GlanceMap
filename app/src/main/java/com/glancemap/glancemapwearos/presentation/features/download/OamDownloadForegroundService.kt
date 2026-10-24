@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.transfer.runtime.DownloadNetworkLease
 import com.glancemap.glancemapwearos.presentation.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.net.HttpURLConnection
 
 class OamDownloadForegroundService : Service() {
     private val notificationManager by lazy { getSystemService(NotificationManager::class.java) }
@@ -42,9 +45,20 @@ class OamDownloadForegroundService : Service() {
             context = applicationContext,
             mapRepository = container.mapRepository,
             poiRepository = container.poiRepository,
+            connectionFactory = { url ->
+                val network =
+                    downloadNetwork.awaitNetwork(DOWNLOAD_NETWORK_WAIT_TIMEOUT_MS)
+                        ?: throw IOException(resources.getString(R.string.download_no_internet))
+                network.openConnection(url) as HttpURLConnection
+            },
         )
     }
     private val networkMonitor by lazy { OamDownloadNetworkMonitor(applicationContext) }
+    private val downloadNetwork by lazy {
+        DownloadNetworkLease(this) { event, detail ->
+            DebugTelemetry.log("OamDownload", "event=$event $detail")
+        }
+    }
     private val operationGate = OamDownloadOperationGate()
     private var operationJob: Job? = null
     private var stopRequest: OwnedStopRequest? = null
@@ -102,6 +116,7 @@ class OamDownloadForegroundService : Service() {
             runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         }
         releaseLocks()
+        downloadNetwork.close()
         super.onDestroy()
     }
 
@@ -171,6 +186,7 @@ class OamDownloadForegroundService : Service() {
         val networkHandle = watchForWifiRecovery(networkMonitor.currentState())
         val progressThrottler = OamProgressThrottler()
         try {
+            downloadNetwork.start()
             serviceClient.publish(plan.runningState(phase = "STARTING", resources = resources))
             for (index in plan.nextAreaIndex until areas.size) {
                 val area = areas[index]
@@ -230,6 +246,7 @@ class OamDownloadForegroundService : Service() {
                     "suppressed=${progressThrottler.suppressedCount}",
             )
             networkHandle.close()
+            downloadNetwork.close()
             if (operationGate.finish(session)) operationJob = null
         }
     }
@@ -615,6 +632,7 @@ class OamDownloadForegroundService : Service() {
         private const val NOTIFICATION_ID = 42_210
         private const val WAKE_LOCK_TAG = "GlanceMap:OamDownload"
         private const val WIFI_LOCK_TAG = "GlanceMap:OamDownloadWifi"
+        private const val DOWNLOAD_NETWORK_WAIT_TIMEOUT_MS = 8_000L
         private const val WAKE_LOCK_TIMEOUT_MS = 6L * 60L * 60L * 1000L
 
         fun startPersistedDownload(context: Context) {

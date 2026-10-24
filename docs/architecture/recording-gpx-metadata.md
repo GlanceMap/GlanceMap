@@ -54,3 +54,11 @@ algorithms are unchanged.
 
 References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 [Garmin extension schema](https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd).
+
+## Watch heart-rate permission compatibility
+
+Recording heart-rate permissions are selected by device API: `BODY_SENSORS` through API 35,
+`android.permission.health.READ_HEART_RATE` on API 36+. Request, registration, and diagnostic
+grant checks share the same selector. Legacy manifest declarations are capped at API 35, with
+the corresponding granular foreground/background health permissions declared for newer devices.
+Physical-device checks must cover actual permission grants and screen-off sensor callbacks.

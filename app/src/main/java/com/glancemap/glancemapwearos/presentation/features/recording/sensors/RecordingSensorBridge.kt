@@ -240,10 +240,12 @@ fun RecordingSensorBridge(
     val permissionsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             permissionResultVersion += 1
+            val heartRatePermission = recordingHeartRatePermission()
+            val heartRateGranted = result[heartRatePermission] ?: hasPermission(context, heartRatePermission)
             DebugTelemetry.log(
                 "TraceRecordingSensors",
                 "event=permissions_result " +
-                    "body=${result[Manifest.permission.BODY_SENSORS] ?: true} " +
+                    "body=$heartRateGranted heartRatePermission=$heartRatePermission " +
                     "activity=${result[activityRecognitionPermission()] ?: true}",
             )
         }
@@ -705,7 +707,7 @@ private fun logRecordingSensorStatus(
 ) {
     if (!DebugTelemetry.isEnabled()) return
     val available = availableRecordingSensors(sensorManager)
-    val bodySensorsGranted = hasPermission(context, Manifest.permission.BODY_SENSORS)
+    val bodySensorsGranted = hasPermission(context, recordingHeartRatePermission())
     val activityRecognitionGranted = hasActivityRecognitionPermission(context)
     val externalHeartRateBridgeRequested = useExternalHeartRate && !paused
     val externalPowerBridgeRequested = useExternalPower && !paused
@@ -734,7 +736,7 @@ private fun logRecordingSensorStatus(
             "externalPowerBridgeRequested=$externalPowerBridgeRequested " +
             "externalRunPodBridgeRequested=$externalRunPodBridgeRequested " +
             "paused=$paused " +
-            "bodySensorsGranted=$bodySensorsGranted " +
+            "bodySensorsGranted=$bodySensorsGranted heartRatePermission=${recordingHeartRatePermission()} " +
             "activityRecognitionGranted=$activityRecognitionGranted",
     )
 }
@@ -798,7 +800,7 @@ private fun registerRecordingSensors(
 
     if (
         selectedMetricIds.any { it in heartRateSensorMetricIds } &&
-        hasPermission(context, Manifest.permission.BODY_SENSORS)
+        hasPermission(context, recordingHeartRatePermission())
     ) {
         register(Sensor.TYPE_HEART_RATE, "heart_rate")
     }
@@ -825,9 +827,9 @@ private fun recordingSensorPermissionsToRequest(
     buildList {
         if (
             selectedMetricIds.any { it in heartRateSensorMetricIds } &&
-            !hasPermission(context, Manifest.permission.BODY_SENSORS)
+            !hasPermission(context, recordingHeartRatePermission())
         ) {
-            add(Manifest.permission.BODY_SENSORS)
+            add(recordingHeartRatePermission())
         }
         if (
             (
