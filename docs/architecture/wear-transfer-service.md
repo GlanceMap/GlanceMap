@@ -144,6 +144,14 @@ Library refreshes discard snapshots from before a completed deletion, so stale d
 the deleted row. Successful deletion removes just that bundle's cached health without rescanning
 every remaining bundle.
 
+## Files exported from watch to phone
+
+Received GPX and diagnostics files share `WatchFileExportNotifier`: keep an app-owned source,
+try saving to Downloads/GlanceMap, and post Save copy, Open and Share actions with the file's MIME
+type. Diagnostics receipt no longer launches a share/email chooser automatically. Its Share action
+preserves the support address, subject and truncation note. Both file types reuse the existing
+generated-file Save copy activity entry point.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

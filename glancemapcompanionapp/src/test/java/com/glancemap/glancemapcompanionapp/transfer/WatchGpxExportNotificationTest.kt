@@ -9,7 +9,7 @@ class WatchGpxExportNotificationTest {
     @Test
     fun `saved success notification describes storage and keeps explicit actions`() {
         val description =
-            buildWatchGpxSuccessNotificationDescription(
+            buildWatchFileSuccessNotificationDescription(
                 fileName = "tour.gpx",
                 downloadsUriAvailable = true,
             )
@@ -26,7 +26,7 @@ class WatchGpxExportNotificationTest {
     @Test
     fun `fallback success notification stays truthful when downloads copy is unavailable`() {
         val description =
-            buildWatchGpxSuccessNotificationDescription(
+            buildWatchFileSuccessNotificationDescription(
                 fileName = "tour.gpx",
                 downloadsUriAvailable = false,
             )
