@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
 import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalResources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.CompassDeepTraceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
@@ -30,6 +33,7 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
     renderState: CompassRenderState,
     renderedHeadingDeg: Float,
 ): String? {
+    val resources = LocalResources.current
     var markerMotionDebugOverlayLabel by remember { mutableStateOf<String?>(null) }
     val latestRenderState by rememberUpdatedState(renderState)
     val latestRenderedHeadingDeg by rememberUpdatedState(renderedHeadingDeg)
@@ -42,11 +46,12 @@ internal fun rememberMarkerMotionDebugOverlayLabel(
         while (isActive) {
             ScreenOffActivityDiagnostics.recordDebugOverlayTick()
             markerMotionDebugOverlayLabel =
-                MarkerMotionTelemetry.latestSnapshot().overlayLabel() +
+                MarkerMotionTelemetry.latestSnapshot().overlayLabel(resources) +
                 "\n" +
                 compassIntegrityDebugOverlayLabel(
                     renderState = latestRenderState,
                     renderedHeadingDeg = latestRenderedHeadingDeg,
+                    resources = resources,
                 )
             delay(250L)
         }
@@ -68,8 +73,16 @@ internal fun shouldRefreshMarkerMotionDebugOverlay(
 internal fun compassIntegrityDebugOverlayLabel(
     renderState: CompassRenderState,
     renderedHeadingDeg: Float,
+    resources: Resources,
 ): String {
-    val display = compassDisplayedHeadingDebugState(renderState, renderedHeadingDeg)
+    val state = compassDisplayedHeadingDebugState(renderState, renderedHeadingDeg)
+    val display =
+        when (state) {
+            "held/frozen anchor" -> resources.getString(R.string.debug_held_frozen_anchor)
+            "live trusted" -> resources.getString(R.string.debug_live_trusted)
+            "degraded/live" -> resources.getString(R.string.debug_degraded_live)
+            else -> state
+        }
     return "I:${renderState.trackingState.name}(${renderState.trackingReason.telemetryToken})\n" +
         "F:${renderState.magneticFieldUt.formatDebugOrNa(1)}µT M:${renderState.magneticQuality.telemetryToken} " +
         "Q:${if (renderState.quarantineActive) "yes" else "no"}\n" +

@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
@@ -54,6 +55,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +78,7 @@ import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.TURN_BY_TURN_DASHBOARD_PAGE_SLOT_COUNT
 import com.glancemap.glancemapwearos.data.repository.normalizeTurnByTurnDashboardMetricSlots
@@ -120,6 +124,7 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     onAcceptStartDecisionPrompt: () -> Unit,
     onDismissStartDecisionPrompt: () -> Unit,
 ) {
+    val resources = LocalResources.current
     LaunchedEffect(state.active) {
         if (!state.active) {
             onExpandedChange(false)
@@ -335,9 +340,9 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
                         Text(
                             text =
                                 if (paused) {
-                                    "Paused"
+                                    stringResource(R.string.navigate_paused)
                                 } else {
-                                    guidanceCompactText(state, isMetric, guideBackToRouteActive)
+                                    guidanceCompactText(state, isMetric, guideBackToRouteActive, resources = resources)
                                 },
                             color = if (state.offRoute) OFF_ROUTE_AMBER else Color.White,
                             fontWeight = FontWeight.SemiBold,
@@ -354,9 +359,13 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
     selectedDashboardSlot?.let { slotIndex ->
         OptionPickerDialog(
             visible = true,
-            title = "Dashboard measure",
+            title = stringResource(R.string.navigate_dashboard_measure),
             selectedValue = dashboardSlots[slotIndex],
-            options = turnByTurnMetricPickerOptions,
+            options =
+                turnByTurnMetricPickerOptions
+                    .map { (value, labelRes) ->
+                        value to stringResource(labelRes)
+                    }.sortedBy { it.second.lowercase() },
             onDismiss = { selectedDashboardSlot = null },
             onSelect = { metricId ->
                 onDashboardMetricSelected(slotIndex, metricId)
@@ -409,13 +418,16 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
         )
     } else if (showGuideBackPrompt) {
         GuidanceDecisionPromptCard(
-            title = "Off route",
+            title = stringResource(R.string.navigate_off_route),
             detail =
                 state.distanceToRouteMeters?.let {
-                    "${formatLiveDistanceLabel(it, isMetric)} from GPX"
-                } ?: "Guide back?",
-            acceptText = "Guide",
-            dismissText = "Ignore",
+                    stringResource(
+                        R.string.navigate_from_gpx,
+                        formatLiveDistanceLabel(it, isMetric, resources = resources),
+                    )
+                } ?: stringResource(R.string.navigate_guide_back),
+            acceptText = stringResource(R.string.navigate_guide),
+            dismissText = stringResource(R.string.navigate_ignore),
             onAccept = onGuideBackToRoute,
             onDismiss = onDismissGuideBackPrompt,
             modifier =
@@ -425,10 +437,10 @@ internal fun BoxScope.TurnByTurnGuidanceOverlay(
         )
     } else if (state.mode == GuidanceMode.FINISHED && !arrivalPromptDismissed) {
         GuidanceDecisionPromptCard(
-            title = "Route complete",
-            detail = "End turn-by-turn guidance?",
-            acceptText = "End",
-            dismissText = "Keep",
+            title = stringResource(R.string.navigate_route_complete),
+            detail = stringResource(R.string.navigate_end_turn_by_turn_guidance),
+            acceptText = stringResource(R.string.navigate_end),
+            dismissText = stringResource(R.string.navigate_keep),
             onAccept = onStop,
             onDismiss = { arrivalPromptDismissed = true },
             modifier =
@@ -459,6 +471,7 @@ private fun ExpandedGuidanceOverlay(
     onGuideBackToRoute: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val contentWidthFraction =
         when (screenSize) {
             WearScreenSize.LARGE -> 0.78f
@@ -480,8 +493,12 @@ private fun ExpandedGuidanceOverlay(
     val showRouteProgressDetails = !state.offRoute || guideBackToRouteActive
     val combinedManeuverText =
         if (!state.offRoute && !guideBackToRouteActive) {
-            guidanceInstructionDistanceText(state, isMetric)?.let { distance ->
-                "$distance ${guidanceInstructionPrimaryText(state)}"
+            guidanceInstructionDistanceText(state, isMetric, resources = resources)?.let { distance ->
+                resources.getString(
+                    R.string.navigation_instruction_with_distance,
+                    distance,
+                    guidanceInstructionPrimaryText(state, resources = resources),
+                )
             }
         } else {
             null
@@ -558,7 +575,9 @@ private fun ExpandedGuidanceOverlay(
                 }
                 Spacer(modifier = Modifier.size(6.dp))
                 Text(
-                    text = combinedManeuverText ?: guidancePrimaryText(state, guideBackToRouteActive),
+                    text =
+                        combinedManeuverText
+                            ?: guidancePrimaryText(state, guideBackToRouteActive, resources = resources),
                     color = if (state.offRoute) OFF_ROUTE_AMBER else Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 21.sp,
@@ -569,7 +588,7 @@ private fun ExpandedGuidanceOverlay(
                 )
                 if (combinedManeuverText == null) {
                     Text(
-                        text = guidanceSecondaryText(state, isMetric, guideBackToRouteActive),
+                        text = guidanceSecondaryText(state, isMetric, guideBackToRouteActive, resources = resources),
                         color = Color.White.copy(alpha = 0.82f),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
@@ -580,7 +599,7 @@ private fun ExpandedGuidanceOverlay(
                     )
                 }
                 if (showRouteProgressDetails) {
-                    guidanceTerrainPopupPresentation(state, isMetric)?.let { terrain ->
+                    guidanceTerrainPopupPresentation(state, isMetric, resources = resources)?.let { terrain ->
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
                             text = terrain.expandedText,
@@ -595,7 +614,7 @@ private fun ExpandedGuidanceOverlay(
                     }
                 }
                 if (showRouteProgressDetails) {
-                    guidanceFollowingText(state, isMetric)?.let { followingText ->
+                    guidanceFollowingText(state, isMetric, resources = resources)?.let { followingText ->
                         Spacer(modifier = Modifier.size(2.dp))
                         Text(
                             text = followingText,
@@ -613,13 +632,16 @@ private fun ExpandedGuidanceOverlay(
 
         if (showGuideBackShortcutConfirm) {
             GuidanceDecisionPromptCard(
-                title = "Route back?",
+                title = stringResource(R.string.navigate_route_back),
                 detail =
                     state.distanceToRouteMeters?.let {
-                        "${formatLiveDistanceLabel(it, isMetric)} from GPX"
-                    } ?: "Create route to GPX",
-                acceptText = "Guide",
-                dismissText = "Cancel",
+                        stringResource(
+                            R.string.navigate_from_gpx,
+                            formatLiveDistanceLabel(it, isMetric, resources = resources),
+                        )
+                    } ?: stringResource(R.string.navigate_create_route_to_gpx),
+                acceptText = stringResource(R.string.navigate_guide),
+                dismissText = stringResource(R.string.common_cancel),
                 onAccept = {
                     showGuideBackShortcutConfirm = false
                     DebugTelemetry.log("TurnByTurn", "event=guide_back_dashboard_shortcut_confirm")
@@ -654,8 +676,9 @@ internal fun GuidanceRemainingArc(
     isMetric: Boolean,
     layout: GuidanceRemainingArcLayout = GuidanceRemainingArcLayout(),
 ) {
-    val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: return
-    val duration = estimatedRemainingSeconds?.let(::formatGuidanceDuration)
+    val resources = LocalResources.current
+    val distance = remainingMeters?.let { formatLiveDistanceLabel(it, isMetric, resources = resources) } ?: return
+    val duration = estimatedRemainingSeconds?.let { formatGuidanceDuration(it, resources = resources) }
     cappedFontScale(maxFontScale = 1.15f) {
         CurvedLayout(
             modifier = Modifier.fillMaxSize(),
@@ -739,9 +762,7 @@ internal fun BoxScope.GuidanceMapRemainingOverlay(
     )
 }
 
-internal fun shouldShowGuidanceMapRemainingDetails(
-    displayState: GuidanceMapRemainingDisplayState,
-): Boolean =
+internal fun shouldShowGuidanceMapRemainingDetails(displayState: GuidanceMapRemainingDisplayState): Boolean =
     displayState.enabled &&
         (displayState.guidanceActive || displayState.paused) &&
         (!displayState.offRoute || displayState.guideBackToRouteActive) &&
@@ -789,29 +810,50 @@ internal fun fullScreenPopupTransitionOwnsTimeChip(
     targetVisible: Boolean,
 ): Boolean = currentlyVisible || targetVisible
 
+// Keep the existing guard order and presentation thresholds while localizing the result.
+@Suppress("ReturnCount")
 internal fun guidanceFollowingText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
+    resources: Resources,
 ): String? {
     if (guidanceShowsCurrentStraight(state)) {
-        return state.nextInstruction?.let { "Then ${it.message.lowercase()}" }
+        return state.nextInstruction?.let {
+            resources.getString(
+                R.string.navigation_then_2,
+                (
+                    it.message
+                        ?: resources.getString(it.messageRes)
+                ).lowercase(),
+            )
+        }
     }
     val following = state.followingInstruction ?: return null
     val followingDistance = state.distanceToFollowingInstructionMeters ?: return null
     val currentDistance = state.distanceToInstructionMeters ?: return null
     val gapMeters = followingDistance - currentDistance
     if (gapMeters !in 0.0..FOLLOWING_TURN_MAX_GAP_METERS) return null
-    return "Then ${following.message.lowercase()} in ${formatLiveDistanceLabel(gapMeters, isMetric)}"
+    return resources.getString(
+        R.string.navigation_then_in,
+        (
+            following.message
+                ?: resources.getString(following.messageRes)
+        ).lowercase(),
+        formatLiveDistanceLabel(gapMeters, isMetric, resources = resources),
+    )
 }
 
-private fun formatGuidanceDuration(seconds: Long): String {
+private fun formatGuidanceDuration(
+    seconds: Long,
+    resources: Resources,
+): String {
     val totalMinutes = (seconds.coerceAtLeast(0L) + 30L) / 60L
     val hours = totalMinutes / 60L
     val minutes = totalMinutes % 60L
     return when {
-        hours > 0L && minutes > 0L -> "${hours}h ${minutes}m"
-        hours > 0L -> "${hours}h"
-        else -> "${minutes.coerceAtLeast(1L)}m"
+        hours > 0L && minutes > 0L -> resources.getString(R.string.navigation_h_m, hours, minutes)
+        hours > 0L -> resources.getString(R.string.navigation_h, hours)
+        else -> resources.getString(R.string.navigation_m, minutes.coerceAtLeast(1L))
     }
 }
 
@@ -829,7 +871,7 @@ private fun GuidanceGuideBackShortcut(
     ) {
         Icon(
             imageVector = Icons.Default.Route,
-            contentDescription = "Route back to GPX",
+            contentDescription = stringResource(R.string.navigate_route_back_to_gpx),
             tint = OFF_ROUTE_AMBER,
             modifier = Modifier.size(18.dp),
         )
@@ -851,7 +893,14 @@ private fun GuidanceVoiceToggle(
     ) {
         Icon(
             imageVector = if (enabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-            contentDescription = if (enabled) "Turn voice off" else "Turn voice on",
+            contentDescription =
+                if (enabled) {
+                    stringResource(
+                        R.string.navigate_turn_voice_off,
+                    )
+                } else {
+                    stringResource(R.string.navigate_turn_voice_on)
+                },
             tint = if (enabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.62f),
             modifier = Modifier.size(17.dp),
         )
@@ -881,14 +930,21 @@ private fun GuidanceActionPromptCard(
             ) {
                 GuidanceMiniIconButton(
                     icon = Icons.Default.Close,
-                    contentDescription = "Dismiss guidance controls",
+                    contentDescription = stringResource(R.string.navigate_dismiss_guidance_controls),
                     onClick = onCancel,
                     containerColor = Color.White.copy(alpha = 0.14f),
                     contentColor = Color.White,
                 )
                 GuidanceMiniIconButton(
                     icon = if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                    contentDescription = if (paused) "Resume guidance" else "Pause guidance",
+                    contentDescription =
+                        if (paused) {
+                            stringResource(
+                                R.string.navigate_resume_guidance,
+                            )
+                        } else {
+                            stringResource(R.string.navigate_pause_guidance)
+                        },
                     onClick = if (paused) onResume else onPause,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -949,7 +1005,7 @@ private fun GuidanceMiniStopButton(onClick: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Default.Stop,
-                contentDescription = "Stop guidance",
+                contentDescription = stringResource(R.string.navigate_stop_guidance),
                 tint = MaterialTheme.colorScheme.onError,
                 modifier = Modifier.size(17.dp),
             )
@@ -1153,39 +1209,50 @@ private fun RouteProgressRing(
 private fun guidancePrimaryText(
     state: TurnByTurnGuidanceState,
     guideBackToRouteActive: Boolean = false,
+    resources: Resources,
 ): String =
     if (guideBackToRouteActive) {
-        "To route"
+        resources.getString(R.string.navigation_to_route)
     } else if (state.offRoute) {
-        "Off route"
+        resources.getString(R.string.navigate_off_route)
     } else {
         when (state.mode) {
-            GuidanceMode.WAITING_FOR_LOCATION -> "Waiting GPS"
-            GuidanceMode.TO_START -> "To start"
-            GuidanceMode.FOLLOW_ROUTE -> guidanceInstructionPrimaryText(state)
-            GuidanceMode.FINISHED -> "Finished"
+            GuidanceMode.WAITING_FOR_LOCATION -> resources.getString(R.string.navigation_waiting_gps)
+            GuidanceMode.TO_START -> resources.getString(R.string.navigation_to_start)
+            GuidanceMode.FOLLOW_ROUTE -> guidanceInstructionPrimaryText(state, resources = resources)
+            GuidanceMode.FINISHED -> resources.getString(R.string.navigation_finished)
         }
     }
 
+// Keep the existing presentation branches and fallbacks while resolving localized labels.
+@Suppress("CyclomaticComplexMethod")
 private fun guidanceSecondaryText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
     guideBackToRouteActive: Boolean = false,
+    resources: Resources,
 ): String =
     if (guideBackToRouteActive) {
-        state.distanceToRouteMeters?.let { formatLiveDistanceLabel(it, isMetric) } ?: "Find route"
+        state.distanceToRouteMeters?.let { formatLiveDistanceLabel(it, isMetric, resources = resources) }
+            ?: resources.getString(R.string.navigation_find_route)
     } else if (state.offRoute) {
-        state.distanceToRouteMeters?.let { "${formatLiveDistanceLabel(it, isMetric)} from GPX" } ?: "Find route"
+        state.distanceToRouteMeters?.let {
+            resources.getString(
+                R.string.navigate_from_gpx,
+                formatLiveDistanceLabel(it, isMetric, resources = resources),
+            )
+        }
+            ?: resources.getString(R.string.navigation_find_route)
     } else {
         when (state.mode) {
-            GuidanceMode.WAITING_FOR_LOCATION -> state.trackTitle ?: "GPX guidance"
+            GuidanceMode.WAITING_FOR_LOCATION -> state.trackTitle ?: resources.getString(R.string.gpx_gpx_guidance)
             GuidanceMode.TO_START ->
-                state.distanceToStartMeters?.let { formatLiveDistanceLabel(it, isMetric) }
-                    ?: "Find the start"
+                state.distanceToStartMeters?.let { formatLiveDistanceLabel(it, isMetric, resources = resources) }
+                    ?: resources.getString(R.string.navigation_find_the_start)
             GuidanceMode.FOLLOW_ROUTE ->
-                guidanceInstructionDistanceText(state, isMetric)
-                    ?: "On route"
-            GuidanceMode.FINISHED -> state.trackTitle ?: "Route complete"
+                guidanceInstructionDistanceText(state, isMetric, resources = resources)
+                    ?: resources.getString(R.string.navigate_on_route)
+            GuidanceMode.FINISHED -> state.trackTitle ?: resources.getString(R.string.navigate_route_complete)
         }
     }
 
@@ -1193,19 +1260,31 @@ private fun guidanceCompactText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
     guideBackToRouteActive: Boolean = false,
+    resources: Resources,
 ): String =
     if (guideBackToRouteActive) {
-        state.distanceToRouteMeters?.let { "Route ${formatLiveDistanceLabel(it, isMetric)}" } ?: "To route"
+        state.distanceToRouteMeters?.let {
+            resources.getString(R.string.navigation_route, formatLiveDistanceLabel(it, isMetric, resources = resources))
+        }
+            ?: resources.getString(R.string.navigation_to_route)
     } else if (state.offRoute) {
-        state.distanceToRouteMeters?.let { "Off ${formatLiveDistanceLabel(it, isMetric)}" } ?: "Off route"
+        state.distanceToRouteMeters?.let {
+            resources.getString(R.string.navigation_off, formatLiveDistanceLabel(it, isMetric, resources = resources))
+        }
+            ?: resources.getString(R.string.navigate_off_route)
     } else {
         when (state.mode) {
-            GuidanceMode.WAITING_FOR_LOCATION -> "Waiting GPS"
+            GuidanceMode.WAITING_FOR_LOCATION -> resources.getString(R.string.navigation_waiting_gps)
             GuidanceMode.TO_START ->
-                state.distanceToStartMeters?.let { "Start ${formatLiveDistanceLabel(it, isMetric)}" }
-                    ?: "To start"
-            GuidanceMode.FOLLOW_ROUTE -> guidanceCompactInstructionText(state, isMetric)
-            GuidanceMode.FINISHED -> "Finished"
+                state.distanceToStartMeters?.let {
+                    resources.getString(
+                        R.string.navigation_start,
+                        formatLiveDistanceLabel(it, isMetric, resources = resources),
+                    )
+                }
+                    ?: resources.getString(R.string.navigation_to_start)
+            GuidanceMode.FOLLOW_ROUTE -> guidanceCompactInstructionText(state, isMetric, resources = resources)
+            GuidanceMode.FINISHED -> resources.getString(R.string.navigation_finished)
         }
     }
 

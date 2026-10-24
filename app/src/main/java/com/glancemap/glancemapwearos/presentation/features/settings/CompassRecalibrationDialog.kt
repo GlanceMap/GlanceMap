@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import android.os.SystemClock
 import android.os.VibrationEffect
 import androidx.compose.foundation.background
@@ -33,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Dialog
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.domain.sensors.CompassViewModel
@@ -61,6 +65,7 @@ fun CompassRecalibrationDialog(
     onApplyRecalibration: () -> Unit,
     onComplete: (Boolean) -> Unit,
 ) {
+    val resources = LocalResources.current
     KeepScreenOnEffect()
 
     val context = LocalContext.current
@@ -404,7 +409,7 @@ fun CompassRecalibrationDialog(
                         ),
             ) {
                 Text(
-                    text = "Recalibrate Compass",
+                    text = stringResource(R.string.settings_recalibrate_compass),
                     fontSize = tokens.titleFontSize,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -426,6 +431,7 @@ fun CompassRecalibrationDialog(
                                     resultQuality = resultQuality ?: displayedQuality,
                                     qualityImproved = qualityImproved,
                                 ),
+                            resources = resources,
                         ),
                     fontSize = tokens.bodyFontSize,
                     lineHeight = tokens.bodyLineHeight,
@@ -458,6 +464,7 @@ fun CompassRecalibrationDialog(
                                 quality = meterQuality,
                                 providerType = activeProviderType,
                                 headingErrorDeg = null,
+                                resources = resources,
                             ),
                         fontSize = tokens.qualityFontSize,
                         color =
@@ -474,14 +481,20 @@ fun CompassRecalibrationDialog(
                             when (phase) {
                                 CalibrationPhase.MEASURING -> {
                                     if (countdownStarted) {
-                                        "Move: ${(remainingMs / 1000L).coerceAtLeast(0L)}s"
+                                        stringResource(
+                                            R.string.settings_move_s,
+                                            (remainingMs / 1000L).coerceAtLeast(0L),
+                                        )
                                     } else {
-                                        "Checking sensor..."
+                                        stringResource(R.string.settings_checking_sensor)
                                     }
                                 }
 
                                 CalibrationPhase.HOLD_STILL -> {
-                                    "Hold still: ${(holdStillRemainingMs / 1000L).coerceAtLeast(0L)}s"
+                                    stringResource(
+                                        R.string.settings_hold_still_s,
+                                        (holdStillRemainingMs / 1000L).coerceAtLeast(0L),
+                                    )
                                 }
 
                                 else -> ""
@@ -494,7 +507,7 @@ fun CompassRecalibrationDialog(
                 when (phase) {
                     CalibrationPhase.MEASURING -> {
                         SingleActionButton(
-                            label = "Cancel",
+                            label = stringResource(R.string.common_cancel),
                             onClick = {
                                 logCompassCalibrationTelemetry("button_cancel phase=${phase.name}")
                                 finish(false)
@@ -506,7 +519,7 @@ fun CompassRecalibrationDialog(
 
                     CalibrationPhase.HOLD_STILL -> {
                         SingleActionButton(
-                            label = "Cancel",
+                            label = stringResource(R.string.common_cancel),
                             onClick = {
                                 logCompassCalibrationTelemetry("button_cancel phase=${phase.name}")
                                 finish(false)
@@ -521,6 +534,7 @@ fun CompassRecalibrationDialog(
                             label =
                                 recalibrationResultButtonLabel(
                                     succeeded = currentResultSuccess(),
+                                    resources = resources,
                                 ),
                             onClick = {
                                 val succeeded = currentResultSuccess()
@@ -544,7 +558,7 @@ fun CompassRecalibrationDialog(
 
                     CalibrationPhase.UNSUPPORTED -> {
                         SingleActionButton(
-                            label = "Close",
+                            label = stringResource(R.string.common_close),
                             onClick = {
                                 logCompassCalibrationTelemetry("button_close phase=${phase.name}")
                                 finish(false)
@@ -575,42 +589,70 @@ internal data class CompassRecalibrationBodyState(
     val qualityImproved: Boolean,
 )
 
-internal fun compassRecalibrationBodyText(state: CompassRecalibrationBodyState): String =
+internal fun compassRecalibrationBodyText(
+    state: CompassRecalibrationBodyState,
+    resources: Resources,
+): String =
     when (state.phase) {
         CalibrationPhase.MEASURING -> {
-            "Move in a figure-8 for ${CALIBRATION_TIMEOUT_MS / 1000L} seconds. " +
-                "Then hold still for ${HOLD_STILL_TIMEOUT_MS / 1000L} seconds."
+            resources.getString(
+                R.string.compass_calibration_steps,
+                resources.getQuantityString(
+                    R.plurals.compass_calibration_move_instructions,
+                    (
+                        CALIBRATION_TIMEOUT_MS /
+                            1000L
+                    ).toInt(),
+                    CALIBRATION_TIMEOUT_MS / 1000L,
+                ),
+                resources.getQuantityString(
+                    R.plurals.compass_calibration_hold_instructions,
+                    (
+                        HOLD_STILL_TIMEOUT_MS /
+                            1000L
+                    ).toInt(),
+                    HOLD_STILL_TIMEOUT_MS / 1000L,
+                ),
+            )
         }
 
-        CalibrationPhase.HOLD_STILL -> "Hold still while we check the compass."
+        CalibrationPhase.HOLD_STILL -> resources.getString(R.string.settings_hold_still_while_we_check_the_compass)
 
         CalibrationPhase.RESULT -> {
-            val before = compassQualityShortLabel(state.initialQuality)
-            val after = compassQualityShortLabel(state.resultQuality)
+            val before = compassQualityShortLabel(state.initialQuality, resources = resources)
+            val after = compassQualityShortLabel(state.resultQuality, resources = resources)
             val isUsableQuality =
                 compassQualityRank(state.resultQuality) >=
                     compassQualityRank(CompassMarkerQuality.MEDIUM)
             if (state.qualityImproved) {
-                "Compass recalibrated.\nQuality improved: $before -> $after.\nTap Done."
+                resources.getString(R.string.settings_compass_recalibrated_quality_improved_tap_done, before, after)
             } else if (isUsableQuality) {
-                "Compass recalibrated.\nQuality: $after.\nTap Done."
+                resources.getString(R.string.settings_compass_recalibrated_quality_tap_done, after)
             } else {
-                "Compass is still $after.\nMove away from metal, then tap Try Again."
+                resources.getString(R.string.settings_compass_is_still_move_away_from_metal_then_tap_try_again, after)
             }
         }
 
         CalibrationPhase.UNSUPPORTED -> {
             if (state.providerType != CompassProviderType.SENSOR_MANAGER) {
-                "Recalibration needs Orientation provider set to Custom sensors."
+                resources.getString(R.string.settings_recalibration_needs_orientation_provider_set_to_custom_sensors)
             } else if (state.hasAnyHeadingSource) {
-                "Selected compass source unavailable."
+                resources.getString(R.string.settings_selected_compass_source_unavailable)
             } else {
-                "No compass source available."
+                resources.getString(R.string.settings_no_compass_source_available)
             }
         }
     }
 
-internal fun recalibrationResultButtonLabel(succeeded: Boolean): String = if (succeeded) "Done" else "Try Again"
+internal fun recalibrationResultButtonLabel(
+    succeeded: Boolean,
+    resources: Resources,
+): String =
+    if (succeeded) {
+        resources.getString(R.string.common_done)
+    } else {
+        resources.getString(R.string.settings_try_again)
+    }
 
 internal fun didCompleteCompassRecalibration(
     providerType: CompassProviderType,
@@ -664,13 +706,16 @@ private fun compassQualityFromRank(rank: Int): CompassMarkerQuality =
         else -> CompassMarkerQuality.UNRELIABLE
     }
 
-private fun compassQualityShortLabel(quality: CompassMarkerQuality): String =
+private fun compassQualityShortLabel(
+    quality: CompassMarkerQuality,
+    resources: Resources,
+): String =
     when (quality) {
-        CompassMarkerQuality.NEUTRAL -> "Neutral"
-        CompassMarkerQuality.GOOD -> "Good"
-        CompassMarkerQuality.MEDIUM -> "Caution"
-        CompassMarkerQuality.LOW -> "Poor"
-        CompassMarkerQuality.UNRELIABLE -> "Unreliable"
+        CompassMarkerQuality.NEUTRAL -> resources.getString(R.string.settings_neutral)
+        CompassMarkerQuality.GOOD -> resources.getString(R.string.settings_good)
+        CompassMarkerQuality.MEDIUM -> resources.getString(R.string.settings_caution)
+        CompassMarkerQuality.LOW -> resources.getString(R.string.settings_poor)
+        CompassMarkerQuality.UNRELIABLE -> resources.getString(R.string.settings_unreliable)
     }
 
 @Composable
@@ -735,24 +780,27 @@ private fun SingleActionButton(
     }
 }
 
+// Keep the existing guard order and presentation thresholds while localizing the result.
+@Suppress("ReturnCount")
 private fun compassQualityLabel(
     hasQualitySample: Boolean,
     quality: CompassMarkerQuality,
     providerType: CompassProviderType,
     headingErrorDeg: Float?,
+    resources: Resources,
 ): String {
-    if (!hasQualitySample) return "Compass quality: Checking..."
+    if (!hasQualitySample) return resources.getString(R.string.settings_compass_quality_checking)
     val label =
         when (quality) {
-            CompassMarkerQuality.NEUTRAL -> "Compass quality: Neutral"
-            CompassMarkerQuality.GOOD -> "Compass quality: Good"
-            CompassMarkerQuality.MEDIUM -> "Compass quality: Caution"
-            CompassMarkerQuality.LOW -> "Compass quality: Poor"
-            CompassMarkerQuality.UNRELIABLE -> "Compass quality: Unreliable"
+            CompassMarkerQuality.NEUTRAL -> resources.getString(R.string.settings_compass_quality_neutral)
+            CompassMarkerQuality.GOOD -> resources.getString(R.string.settings_compass_quality_good)
+            CompassMarkerQuality.MEDIUM -> resources.getString(R.string.settings_compass_quality_caution)
+            CompassMarkerQuality.LOW -> resources.getString(R.string.settings_compass_quality_poor)
+            CompassMarkerQuality.UNRELIABLE -> resources.getString(R.string.settings_compass_quality_unreliable)
         }
     if (providerType != CompassProviderType.GOOGLE_FUSED) return label
     val safeHeadingErrorDeg = headingErrorDeg?.takeIf { it.isFinite() && it >= 0f } ?: return label
-    return "$label (${safeHeadingErrorDeg.roundToInt()}°)"
+    return resources.getString(R.string.compass_error_with_degrees, safeHeadingErrorDeg.roundToInt(), label)
 }
 
 private fun compassQualityLabelColor(

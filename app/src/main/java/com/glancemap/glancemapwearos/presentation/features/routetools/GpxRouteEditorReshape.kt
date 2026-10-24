@@ -8,6 +8,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.RouteGeometryPoint
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPosition
@@ -121,7 +122,10 @@ internal fun resolveRouteReshapeCandidateBounds(
     fun addEndPosition(position: TrackPosition) {
         if (endPositions.any { comparePositions(it, position) == 0 }) return
         require(comparePositions(window.startPosition, position) < 0) {
-            "Pick a point farther from the route end to reshape it."
+            throw RouteToolArgumentException(
+                R.string.gpx_pick_a_point_farther_from_the_route_end_to_reshape_it,
+                "Pick a point farther from the route end to reshape it.",
+            )
         }
         endPositions += position
     }
@@ -186,6 +190,7 @@ internal fun secondLegRejoinsOriginalPathForward(
             profile = profile,
             thresholdMeters = ROUTE_RESHAPE_SNAP_THRESHOLD_METERS,
             failureMessage = "Move closer to the active GPX to choose where it should bend.",
+            failureMessageRes = R.string.gpx_move_closer_to_the_active_gpx_to_choose_where_it_should_bend,
         )
     val minimumAllowedTrackDistance =
         trackDistanceAt(profile, anchorPosition) -
@@ -372,7 +377,10 @@ internal fun resolveRouteReshapeBounds(
             rejoinHint = rejoinHint,
         )
     require(comparePositions(window.startPosition, endPosition) < 0) {
-        "Pick a point farther from the route end to reshape it."
+        throw RouteToolArgumentException(
+            R.string.gpx_pick_a_point_farther_from_the_route_end_to_reshape_it,
+            "Pick a point farther from the route end to reshape it.",
+        )
     }
 
     return RouteReshapeBounds(
@@ -413,6 +421,7 @@ private fun resolveRouteReshapeWindow(
             profile = profile,
             thresholdMeters = ROUTE_RESHAPE_SNAP_THRESHOLD_METERS,
             failureMessage = "Move closer to the active GPX to choose where it should bend.",
+            failureMessageRes = R.string.gpx_move_closer_to_the_active_gpx_to_choose_where_it_should_bend,
         )
     val anchorDistance = trackDistanceAt(profile, anchorPosition)
     val halfWindow = reshapeHalfWindowMeters(profile)

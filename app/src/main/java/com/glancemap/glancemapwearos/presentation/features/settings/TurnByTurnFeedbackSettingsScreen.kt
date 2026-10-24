@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 
 @Composable
 fun TurnByTurnFeedbackSettingsScreen(
@@ -21,16 +23,30 @@ fun TurnByTurnFeedbackSettingsScreen(
             SettingsToggleChip(
                 checked = hapticsEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnHapticsEnabled,
-                label = "Guidance haptics",
-                secondaryLabel = if (hapticsEnabled) "Vibrate for guidance cues" else "Silent guidance",
+                label = stringResource(R.string.settings_guidance_haptics),
+                secondaryLabel =
+                    if (hapticsEnabled) {
+                        stringResource(
+                            R.string.settings_vibrate_for_guidance_cues,
+                        )
+                    } else {
+                        stringResource(R.string.settings_silent_guidance)
+                    },
             )
         }
         item {
             SettingsToggleChip(
                 checked = voiceGuidanceEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnVoiceGuidanceEnabled,
-                label = "Voice guidance",
-                secondaryLabel = if (voiceGuidanceEnabled) "Speak turn cues" else "Off by default",
+                label = stringResource(R.string.settings_voice_guidance),
+                secondaryLabel =
+                    if (voiceGuidanceEnabled) {
+                        stringResource(
+                            R.string.settings_speak_turn_cues,
+                        )
+                    } else {
+                        stringResource(R.string.settings_off_by_default)
+                    },
             )
         }
     }

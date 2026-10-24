@@ -8,6 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.cache.AppDerivedCacheCleaner
 import com.glancemap.glancemapwearos.core.cache.AppDerivedCacheCleanupResult
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
@@ -1054,7 +1055,12 @@ class MapViewModel(
             true
         } catch (error: com.glancemap.glancemapwearos.data.repository.maps.theme.ThemePackageException) {
             Log.w("CustomThemes", "external_theme_render_failure id=${external.id}", error)
-            Toast.makeText(context, "Theme could not be rendered. Using the default theme.", Toast.LENGTH_LONG).show()
+            Toast
+                .makeText(
+                    context,
+                    context.resources.getString(R.string.gpx_theme_could_not_be_rendered_using_the_default_theme),
+                    Toast.LENGTH_LONG,
+                ).show()
             themeRepository.onExternalRenderFailure(external.id)
             false
         }
@@ -1064,7 +1070,7 @@ class MapViewModel(
         awaitVisibleContent: Boolean,
     ) {
         val timingMarker = MapHotPathDiagnostics.beginAsync("mapViewModel.applyThemeSelection")
-        var timingStatus = "ok"
+        var timingStatus = context.resources.getString(R.string.gpx_ok)
         var themeApplyResult = MapRenderer.ThemeApplyResult()
         Log.d(
             "Theme",

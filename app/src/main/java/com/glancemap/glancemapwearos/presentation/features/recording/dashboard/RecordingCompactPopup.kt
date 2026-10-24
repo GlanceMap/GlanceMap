@@ -21,9 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 
@@ -53,20 +55,27 @@ internal fun CompactRecordingControls(
                     selected = false,
                     onClick = onDismiss,
                     icon = Icons.Default.Close,
-                    contentDescription = "Close recording controls",
+                    contentDescription = stringResource(R.string.recording_close_recording_controls),
                     tint = Color.White.copy(alpha = 0.82f),
                 )
                 CompactControlButton(
                     selected = true,
                     onClick = onPauseResume,
                     icon = if (state.paused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                    contentDescription = if (state.paused) "Resume recording" else "Pause recording",
+                    contentDescription =
+                        if (state.paused) {
+                            stringResource(
+                                R.string.navigate_resume_recording,
+                            )
+                        } else {
+                            stringResource(R.string.navigate_pause_recording)
+                        },
                 )
                 CompactControlButton(
                     selected = false,
                     onClick = onStop,
                     icon = Icons.Default.Stop,
-                    contentDescription = "Stop recording",
+                    contentDescription = stringResource(R.string.navigate_stop_recording),
                     tint = MaterialTheme.colorScheme.error,
                 )
             }

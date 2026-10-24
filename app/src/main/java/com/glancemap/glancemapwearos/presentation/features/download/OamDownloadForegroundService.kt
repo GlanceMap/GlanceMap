@@ -10,6 +10,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Resources
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -69,8 +70,10 @@ class OamDownloadForegroundService : Service() {
             ACTION_PAUSE -> requestOwnedStop(OwnedStopRequest.PAUSE)
             ACTION_CANCEL -> requestOwnedStop(OwnedStopRequest.CANCEL)
             ACTION_PROGRESS -> {
-                val title = intent.getStringExtra(EXTRA_TITLE) ?: "Downloading offline bundle"
-                val detail = intent.getStringExtra(EXTRA_DETAIL) ?: "Preparing"
+                val title =
+                    intent.getStringExtra(EXTRA_TITLE)
+                        ?: resources.getString(R.string.download_downloading_offline_bundle)
+                val detail = intent.getStringExtra(EXTRA_DETAIL) ?: resources.getString(R.string.download_preparing)
                 val bytesDone = intent.getLongExtra(EXTRA_BYTES_DONE, 0L)
                 val totalBytes = intent.getLongExtra(EXTRA_TOTAL_BYTES, -1L).takeIf { it > 0L }
                 startOrUpdateForeground(title, detail, bytesDone, totalBytes)
@@ -132,8 +135,13 @@ class OamDownloadForegroundService : Service() {
         stopRequest = null
         foregroundStartId = startId
         startOrUpdateForeground(
-            title = "Downloading offline bundle",
-            detail = "Preparing ${initialPlan.areaIds.size} area(s)",
+            title = resources.getString(R.string.download_downloading_offline_bundle),
+            detail =
+                resources.getQuantityString(
+                    R.plurals.download_preparing_area_s,
+                    initialPlan.areaIds.size,
+                    initialPlan.areaIds.size,
+                ),
             bytesDone = 0L,
             totalBytes = null,
         )
@@ -152,7 +160,10 @@ class OamDownloadForegroundService : Service() {
         val areas = plan.areaIds.mapNotNull(areasById::get)
         if (areas.size != plan.areaIds.size) {
             if (operationGate.claim(session, OamDownloadOperationEnd.FAILURE) != null) {
-                failOwnedOperation(plan, "One or more download areas are no longer available.")
+                failOwnedOperation(
+                    plan,
+                    resources.getString(R.string.download_one_or_more_download_areas_are_no_longer_available),
+                )
             }
             operationGate.finish(session)
             return
@@ -160,7 +171,7 @@ class OamDownloadForegroundService : Service() {
         val networkHandle = watchForWifiRecovery(networkMonitor.currentState())
         val progressThrottler = OamProgressThrottler()
         try {
-            serviceClient.publish(plan.runningState(phase = "STARTING"))
+            serviceClient.publish(plan.runningState(phase = "STARTING", resources = resources))
             for (index in plan.nextAreaIndex until areas.size) {
                 val area = areas[index]
                 downloader.downloadBundle(
@@ -170,17 +181,25 @@ class OamDownloadForegroundService : Service() {
                 ) { progress ->
                     if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                     if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
-                    val detail = "${index + 1}/${areas.size} ${area.region} - ${progress.detail}"
+                    val detail =
+                        resources.getString(
+                            R.string.download_area_progress_detail,
+                            index + 1,
+                            areas.size,
+                            area.region,
+                            progress.detail,
+                        )
                     val state =
                         plan.runningState(
                             phase = progress.phase,
                             detail = detail,
                             bytesDone = progress.bytesDone,
                             totalBytes = progress.totalBytes,
+                            resources = resources,
                         )
                     serviceClient.publish(state)
                     startOrUpdateForeground(
-                        title = "Downloading offline bundle",
+                        title = resources.getString(R.string.download_downloading_offline_bundle),
                         detail = detail,
                         bytesDone = progress.bytesDone,
                         totalBytes = progress.totalBytes,
@@ -199,7 +218,7 @@ class OamDownloadForegroundService : Service() {
             throw cancelled
         } catch (error: Exception) {
             if (operationGate.claim(session, OamDownloadOperationEnd.FAILURE) != null) {
-                failOwnedOperation(plan, error.message ?: "Download failed")
+                failOwnedOperation(plan, error.message ?: resources.getString(R.string.download_download_failed))
             } else {
                 handleOwnedCancellation(plan, session)
             }
@@ -223,17 +242,17 @@ class OamDownloadForegroundService : Service() {
                 areaCount = areas.size,
                 completedAreaCount = areas.size,
                 phase = "READY",
-                detail = "${areas.size} area(s)",
+                detail = resources.getQuantityString(R.plurals.download_area_s, areas.size, areas.size),
             ),
         )
         val completionDetail =
             if (areas.size == 1) {
-                "${areas.first().region} installed"
+                resources.getString(R.string.download_installed, areas.first().region)
             } else {
-                "${areas.size} bundles installed"
+                resources.getQuantityString(R.plurals.download_bundles_installed_2, areas.size, areas.size)
             }
         showTerminalNotification(
-            title = "Download complete",
+            title = resources.getString(R.string.download_download_complete),
             detail = completionDetail,
             category = NotificationCompat.CATEGORY_STATUS,
             timeoutAfterMs = 10_000L,
@@ -283,6 +302,8 @@ class OamDownloadForegroundService : Service() {
         }
     }
 
+    // Resource-call wrapping increases line count; keep the existing flow together.
+    @Suppress("LongMethod")
     private fun handleOwnedCancellation(
         plan: OamPersistedDownloadPlan,
         session: OamDownloadOperationSession? = null,
@@ -293,11 +314,20 @@ class OamDownloadForegroundService : Service() {
                 val paused = plan.copy(status = OamPersistedDownloadStatus.PAUSED)
                 serviceClient.savePlan(paused)
                 serviceClient.publish(
-                    paused.runningState(phase = "PAUSED").copy(status = OamOwnedDownloadStatus.PAUSED),
+                    paused
+                        .runningState(
+                            phase = "PAUSED",
+                            resources = resources,
+                        ).copy(status = OamOwnedDownloadStatus.PAUSED),
                 )
                 showTerminalNotification(
-                    title = "Download paused",
-                    detail = "${plan.areaIds.size} area(s)",
+                    title = resources.getString(R.string.download_download_paused),
+                    detail =
+                        resources.getQuantityString(
+                            R.plurals.download_area_s,
+                            plan.areaIds.size,
+                            plan.areaIds.size,
+                        ),
                     category = NotificationCompat.CATEGORY_STATUS,
                 )
             }
@@ -305,7 +335,11 @@ class OamDownloadForegroundService : Service() {
                 val paused = plan.copy(status = OamPersistedDownloadStatus.PAUSED)
                 serviceClient.savePlan(paused)
                 serviceClient.publish(
-                    paused.runningState(phase = "PAUSED").copy(status = OamOwnedDownloadStatus.PAUSED),
+                    paused
+                        .runningState(
+                            phase = "PAUSED",
+                            resources = resources,
+                        ).copy(status = OamOwnedDownloadStatus.PAUSED),
                 )
             }
             OwnedStopRequest.CANCEL -> {
@@ -316,7 +350,12 @@ class OamDownloadForegroundService : Service() {
                         areaCount = plan.areaIds.size,
                         completedAreaCount = plan.nextAreaIndex,
                         phase = "CANCELED",
-                        detail = "${plan.areaIds.size} area(s)",
+                        detail =
+                            resources.getQuantityString(
+                                R.plurals.download_area_s,
+                                plan.areaIds.size,
+                                plan.areaIds.size,
+                            ),
                     ),
                 )
                 clearForegroundAndStop()
@@ -324,7 +363,13 @@ class OamDownloadForegroundService : Service() {
             null -> {
                 // Android is stopping the process/service. Keep RUNNING persisted so START_STICKY can recover it.
                 serviceClient.savePlan(plan.copy(status = OamPersistedDownloadStatus.RUNNING))
-                serviceClient.publish(plan.runningState(phase = "STARTING", detail = "Waiting to resume"))
+                serviceClient.publish(
+                    plan.runningState(
+                        phase = "STARTING",
+                        detail = resources.getString(R.string.download_waiting_to_resume),
+                        resources = resources,
+                    ),
+                )
             }
         }
     }
@@ -345,12 +390,12 @@ class OamDownloadForegroundService : Service() {
                 areaCount = plan.areaIds.size,
                 completedAreaCount = plan.nextAreaIndex,
                 phase = "FAILED",
-                detail = "${plan.areaIds.size} area(s)",
+                detail = resources.getQuantityString(R.plurals.download_area_s, plan.areaIds.size, plan.areaIds.size),
                 errorMessage = message,
             ),
         )
         showTerminalNotification(
-            title = "Download failed",
+            title = resources.getString(R.string.download_download_failed),
             detail = message,
             category = NotificationCompat.CATEGORY_ERROR,
         )
@@ -536,7 +581,7 @@ class OamDownloadForegroundService : Service() {
         notificationManager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Map downloads",
+                resources.getString(R.string.download_map_downloads),
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
@@ -681,7 +726,14 @@ internal class OamDownloadOperationGate {
     fun hasActiveSession(): Boolean = activeSession != null
 
     @Synchronized
-    fun terminalEndFor(session: OamDownloadOperationSession): OamDownloadOperationEnd? = if (activeSession == session) terminalEnd else null
+    fun terminalEndFor(session: OamDownloadOperationSession): OamDownloadOperationEnd? =
+        if (activeSession ==
+            session
+        ) {
+            terminalEnd
+        } else {
+            null
+        }
 
     @Synchronized
     fun finish(session: OamDownloadOperationSession): Boolean {
@@ -693,8 +745,9 @@ internal class OamDownloadOperationGate {
 }
 
 private fun OamPersistedDownloadPlan.runningState(
+    resources: Resources,
     phase: String,
-    detail: String = "${areaIds.size} area(s)",
+    detail: String = resources.getQuantityString(R.plurals.download_area_s, areaIds.size, areaIds.size),
     bytesDone: Long = 0L,
     totalBytes: Long? = null,
 ): OamOwnedDownloadState =

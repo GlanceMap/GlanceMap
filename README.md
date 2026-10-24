@@ -88,6 +88,12 @@ or app release.
 
 - [Public privacy policy](https://glancemap.github.io/GlanceMap/privacy-policy/)
 
+## 🌍 Help translate GlanceMap
+
+Use [Weblate (project link pending setup)](TRANSLATING.md#translate-with-weblate--preferred),
+[report a wording correction](https://github.com/GlanceMap/GlanceMap/issues/new?template=translation_correction.yml),
+or read the [translation guide](TRANSLATING.md).
+
 ## Contributing
 
 See [Contributing](CONTRIBUTING.md) for setup, workflow, and PR expectations.

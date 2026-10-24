@@ -1,8 +1,10 @@
 package com.glancemap.glancemapwearos.presentation.features.poi
 
+import android.content.res.Resources
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.GeoBounds
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.PoiCategory
@@ -138,6 +140,7 @@ data class PoiSearchUiState(
 )
 
 class PoiViewModel(
+    private val resources: Resources,
     private val poiRepository: PoiRepository,
     private val userPoiRepository: UserPoiRepository,
     private val settingsRepository: SettingsRepository,
@@ -479,7 +482,9 @@ class PoiViewModel(
                             points.map { point ->
                                 PoiCategoryPreviewPointUiState(
                                     id = point.id,
-                                    name = point.name?.takeIf { it.isNotBlank() } ?: "Unnamed POI",
+                                    name =
+                                        point.name?.takeIf { it.isNotBlank() }
+                                            ?: resources.getString(R.string.gpx_unnamed_poi),
                                     type = point.type,
                                     lat = point.lat,
                                     lon = point.lon,
@@ -491,7 +496,7 @@ class PoiViewModel(
                     PoiCategoryPreviewUiState(
                         isLoading = false,
                         isLoaded = true,
-                        errorMessage = "Unable to load POI.",
+                        errorMessage = resources.getString(R.string.poi_unable_to_load_poi),
                     )
                 }
 
@@ -570,7 +575,7 @@ class PoiViewModel(
                     PoiCategoryCountUiState(
                         isLoading = false,
                         isLoaded = true,
-                        errorMessage = "Unable to load counts.",
+                        errorMessage = resources.getString(R.string.poi_unable_to_load_counts),
                     )
                 }
 
@@ -656,7 +661,7 @@ class PoiViewModel(
             _offlineSearchUiState.value =
                 PoiSearchUiState(
                     query = normalizedQuery,
-                    errorMessage = "Type at least 2 letters.",
+                    errorMessage = resources.getString(R.string.gpx_type_at_least_2_letters),
                 )
             return
         }
@@ -666,7 +671,7 @@ class PoiViewModel(
             _offlineSearchUiState.value =
                 PoiSearchUiState(
                     query = normalizedQuery,
-                    errorMessage = "Enable a POI source first.",
+                    errorMessage = resources.getString(R.string.gpx_enable_a_poi_source_first),
                 )
             return
         }
@@ -735,7 +740,7 @@ class PoiViewModel(
                         PoiSearchUiState(
                             query = normalizedQuery,
                             isLoading = false,
-                            errorMessage = "No offline POI found.",
+                            errorMessage = resources.getString(R.string.gpx_no_offline_poi_found),
                         )
                     } else {
                         PoiSearchUiState(

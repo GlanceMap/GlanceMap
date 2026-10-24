@@ -1,6 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.guidance
 
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
+import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolArgumentException
 import org.mapsforge.core.model.LatLong
 import java.util.Locale
 import kotlin.math.abs
@@ -30,7 +33,8 @@ enum class RouteInstructionSource {
 
 data class RouteInstruction(
     val command: RouteInstructionCommand,
-    val message: String,
+    val message: String? = null,
+    @StringRes val messageRes: Int = command.messageRes,
     val latLong: LatLong,
     val trackPointIndex: Int,
     val distanceFromStartMeters: Double,
@@ -139,9 +143,19 @@ fun buildGpxGuidanceSession(
     tuning: GpxGuidanceTuning = GpxGuidanceTuning(),
     cumulativeDistancesMeters: List<Double>? = null,
 ): GpxGuidanceSession {
-    require(trackPoints.size >= 2) { "The GPX does not contain enough points for guidance." }
+    require(trackPoints.size >= 2) {
+        throw RouteToolArgumentException(
+            R.string.gpx_the_gpx_does_not_contain_enough_points_for_guidance,
+            "The GPX does not contain enough points for guidance.",
+        )
+    }
     val cumulative = cumulativeDistancesMeters ?: buildCumulativeDistances(trackPoints.map { it.latLong })
-    require(cumulative.size == trackPoints.size) { "The cumulative route distances must match the track points." }
+    require(cumulative.size == trackPoints.size) {
+        throw RouteToolArgumentException(
+            R.string.navigation_the_cumulative_route_distances_must_match_the_track_points,
+            "The cumulative route distances must match the track points.",
+        )
+    }
     return GpxGuidanceSession(
         trackId = trackId,
         trackTitle = trackTitle,
@@ -607,7 +621,7 @@ fun deriveGpxRouteInstructions(
         instructions +=
             RouteInstruction(
                 command = command,
-                message = command.message,
+                messageRes = command.messageRes,
                 latLong = points[index],
                 trackPointIndex = index,
                 distanceFromStartMeters = distanceAtPoint,
@@ -619,7 +633,7 @@ fun deriveGpxRouteInstructions(
     instructions +=
         RouteInstruction(
             command = RouteInstructionCommand.FINISH,
-            message = RouteInstructionCommand.FINISH.message,
+            messageRes = RouteInstructionCommand.FINISH.messageRes,
             latLong = points.last(),
             trackPointIndex = points.lastIndex,
             distanceFromStartMeters = cumulativeDistancesMeters.lastOrNull() ?: 0.0,
@@ -655,9 +669,9 @@ fun deriveHintedRouteInstructions(
         }
         val message =
             if (reverseDirection && command != hintedCommand) {
-                command.message
+                null
             } else {
-                hint.message?.toGuidanceMessage() ?: command.message
+                hint.message?.toGuidanceMessage()
             }
         instructions +=
             RouteInstruction(
@@ -680,7 +694,7 @@ fun deriveHintedRouteInstructions(
         instructions +=
             RouteInstruction(
                 command = RouteInstructionCommand.FINISH,
-                message = RouteInstructionCommand.FINISH.message,
+                messageRes = RouteInstructionCommand.FINISH.messageRes,
                 latLong = points.last(),
                 trackPointIndex = points.lastIndex,
                 distanceFromStartMeters = cumulativeDistancesMeters.lastOrNull() ?: 0.0,
@@ -921,17 +935,18 @@ private const val OFF_ROUTE_ENTRY_SAMPLE_COUNT = 2
 private const val OFF_ROUTE_RECOVERY_SAMPLE_COUNT = 2
 private const val OFF_ROUTE_STRONG_RECOVERY_THRESHOLD_FRACTION = 0.5
 
-val RouteInstructionCommand.message: String
+@get:StringRes
+val RouteInstructionCommand.messageRes: Int
     get() =
         when (this) {
-            RouteInstructionCommand.CONTINUE -> "Continue"
-            RouteInstructionCommand.SLIGHT_LEFT -> "Slight left"
-            RouteInstructionCommand.LEFT -> "Left"
-            RouteInstructionCommand.SHARP_LEFT -> "Sharp left"
-            RouteInstructionCommand.SLIGHT_RIGHT -> "Slight right"
-            RouteInstructionCommand.RIGHT -> "Right"
-            RouteInstructionCommand.SHARP_RIGHT -> "Sharp right"
-            RouteInstructionCommand.FINISH -> "Finish"
+            RouteInstructionCommand.CONTINUE -> R.string.common_continue
+            RouteInstructionCommand.SLIGHT_LEFT -> R.string.navigation_slight_left
+            RouteInstructionCommand.LEFT -> R.string.navigation_left
+            RouteInstructionCommand.SHARP_LEFT -> R.string.navigation_sharp_left
+            RouteInstructionCommand.SLIGHT_RIGHT -> R.string.navigation_slight_right
+            RouteInstructionCommand.RIGHT -> R.string.navigation_right
+            RouteInstructionCommand.SHARP_RIGHT -> R.string.navigation_sharp_right
+            RouteInstructionCommand.FINISH -> R.string.navigation_finish
         }
 
 private fun normalizeSignedDegrees(value: Double): Double {

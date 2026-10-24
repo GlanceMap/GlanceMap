@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
+import com.glancemap.glancemapwearos.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -37,7 +38,7 @@ class UserPoiRepository(
         val record =
             UserPoiRecord(
                 id = now,
-                name = "Point $nextNumber",
+                name = context.getString(R.string.poi_point, nextNumber),
                 lat = lat,
                 lon = lon,
                 createdAtEpochMs = now,
@@ -57,13 +58,13 @@ class UserPoiRepository(
         newName: String,
     ) {
         val normalized = newName.trim()
-        require(normalized.isNotBlank()) { "Name cannot be empty." }
+        require(normalized.isNotBlank()) { context.getString(R.string.poi_name_cannot_be_empty) }
         val current = readStore()
         val updated =
             current.points.map { point ->
                 if (point.id == id) point.copy(name = normalized) else point
             }
-        require(updated.any { it.id == id }) { "POI not found." }
+        require(updated.any { it.id == id }) { context.getString(R.string.poi_poi_not_found) }
         writeStore(current.copy(points = updated))
     }
 

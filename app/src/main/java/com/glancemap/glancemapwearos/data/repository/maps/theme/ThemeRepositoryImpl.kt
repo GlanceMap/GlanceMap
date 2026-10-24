@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.data.repository.maps.theme
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.theme.BundledRenderThemeAssetLocator
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds.DEFAULT_STYLE_ID
@@ -863,17 +864,17 @@ class ThemeRepositoryImpl(
         val nightModeEnabled = nightModeEnabledOrDefault()
         val items = mutableListOf<ThemeListItem>()
 
-        items += ThemeListItem.Header("Theme")
+        items += ThemeListItem.Header(context.getString(R.string.map_theme))
         items +=
             ThemeListItem.GlobalToggle(
                 id = NIGHT_MODE,
-                name = "Night mode",
+                name = context.getString(R.string.settings_night_mode),
                 enabled = nightModeEnabled,
             )
         items +=
             ThemeListItem.ThemeOption(
                 id = THEME_ID_ELEVATE,
-                name = "Elevate",
+                name = context.getString(R.string.map_elevate),
                 selected = selectedThemeIdUi == THEME_ID_ELEVATE,
             )
         if (BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, THEME_ID_ELEVATE_WINTER) ||
@@ -882,7 +883,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_ELEVATE_WINTER,
-                    name = "Elevate Winter",
+                    name = context.getString(R.string.map_elevate_winter),
                     selected = selectedThemeIdUi == THEME_ID_ELEVATE_WINTER,
                 )
         }
@@ -890,7 +891,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_HIKE_RIDE_SIGHT,
-                    name = "Hike, Ride & Sight",
+                    name = context.getString(R.string.legal_hike_ride_sight),
                     selected = selectedThemeIdUi == THEME_ID_HIKE_RIDE_SIGHT,
                 )
         }
@@ -898,7 +899,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_VOLUNTARY,
-                    name = "Voluntary",
+                    name = context.getString(R.string.map_voluntary),
                     selected = selectedThemeIdUi == THEME_ID_VOLUNTARY,
                 )
         }
@@ -908,7 +909,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_OS_MAP,
-                    name = "OS Map",
+                    name = context.getString(R.string.map_os_map),
                     selected = selectedThemeIdUi == THEME_ID_OS_MAP,
                 )
         }
@@ -916,7 +917,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_OPENHIKING,
-                    name = "OpenHiking",
+                    name = context.getString(R.string.map_openhiking),
                     selected = selectedThemeIdUi == THEME_ID_OPENHIKING,
                 )
         }
@@ -924,7 +925,7 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_FRENCH_KISS,
-                    name = "French Kiss",
+                    name = context.getString(R.string.map_french_kiss),
                     selected = selectedThemeIdUi == THEME_ID_FRENCH_KISS,
                 )
         }
@@ -932,36 +933,38 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.ThemeOption(
                     id = THEME_ID_TIRAMISU,
-                    name = "Tiramisu",
+                    name = context.getString(R.string.map_tiramisu),
                     selected = selectedThemeIdUi == THEME_ID_TIRAMISU,
                 )
         }
         items +=
             ThemeListItem.ThemeOption(
                 id = THEME_ID_MAPSFORGE,
-                name = "Mapsforge",
+                name = context.getString(R.string.map_mapsforge),
                 selected = selectedThemeIdUi == THEME_ID_MAPSFORGE,
             )
         externalThemes.themes().forEach { external ->
+            val displayName = external.displayName.ifBlank { context.getString(R.string.map_imported_theme) }
             items +=
                 ThemeListItem.ThemeOption(
                     id = external.id,
-                    name = "Custom · ${external.displayName}",
+                    name = context.getString(R.string.map_custom, displayName),
                     selected = selectedThemeIdUi == external.id,
                     packageId = external.packageId,
+                    packageDisplayName = displayName,
                 )
         }
         items +=
             ThemeListItem.GlobalToggle(
                 id = HILL_SHADING,
-                name = "Hill Shading",
+                name = context.getString(R.string.map_hill_shading_title),
                 enabled = hillShadingEnabled,
                 supported = hillShadingSupported,
             )
         items +=
             ThemeListItem.GlobalToggle(
                 id = RELIEF_OVERLAY,
-                name = "Slope Overlay",
+                name = context.getString(R.string.map_slope_overlay_title),
                 enabled = reliefOverlayEnabled,
             )
 
@@ -969,7 +972,7 @@ class ThemeRepositoryImpl(
             return items
         }
 
-        items += ThemeListItem.Header("Theme Style")
+        items += ThemeListItem.Header(context.getString(R.string.map_theme_style))
         if (MapsforgeThemeCatalog.isMapsforgeFamilyTheme(selectedThemeId)) {
             items +=
                 MapsforgeThemeCatalog.options.map { option ->
@@ -983,14 +986,14 @@ class ThemeRepositoryImpl(
             items +=
                 ThemeListItem.Style(
                     id = WINTER_STYLE_ID,
-                    name = "Default",
+                    name = context.getString(R.string.map_default),
                     selected = selectedThemeId != THEME_ID_ELEVATE_WINTER_WHITE,
                 )
             if (BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, THEME_ID_ELEVATE_WINTER_WHITE)) {
                 items +=
                     ThemeListItem.Style(
                         id = WINTER_WHITE_STYLE_ID,
-                        name = "White",
+                        name = context.getString(R.string.map_white),
                         selected = selectedThemeId == THEME_ID_ELEVATE_WINTER_WHITE,
                     )
             }
@@ -1000,7 +1003,8 @@ class ThemeRepositoryImpl(
                     allowedStylesForTheme(THEME_ID_OS_MAP_DAY, parsedForTheme(THEME_ID_OS_MAP_DAY)).map { style ->
                         ThemeListItem.Style(
                             id = osMapSyntheticStyleId(THEME_ID_OS_MAP_DAY, style.id),
-                            name = "Day - ${style.name}",
+                            name = context.getString(R.string.map_day, style.name),
+                            baseName = style.name,
                             selected =
                                 selectedThemeId == THEME_ID_OS_MAP_DAY &&
                                     selectedStyleId == osMapSyntheticStyleId(THEME_ID_OS_MAP_DAY, style.id),
@@ -1012,7 +1016,8 @@ class ThemeRepositoryImpl(
                     allowedStylesForTheme(THEME_ID_OS_MAP_NIGHT, parsedForTheme(THEME_ID_OS_MAP_NIGHT)).map { style ->
                         ThemeListItem.Style(
                             id = osMapSyntheticStyleId(THEME_ID_OS_MAP_NIGHT, style.id),
-                            name = "Night - ${style.name}",
+                            name = context.getString(R.string.map_night, style.name),
+                            baseName = style.name,
                             selected =
                                 selectedThemeId == THEME_ID_OS_MAP_NIGHT &&
                                     selectedStyleId == osMapSyntheticStyleId(THEME_ID_OS_MAP_NIGHT, style.id),
@@ -1024,12 +1029,12 @@ class ThemeRepositoryImpl(
             val defaultStyleName =
                 resolveDefaultStyleId(selectedThemeId, parsed)
                     ?.let { parsed.stylesById[it]?.name }
-                    ?: "Elevate"
+                    ?: context.getString(R.string.map_elevate)
             val defaultStyleLabel =
                 when (selectedThemeId) {
-                    THEME_ID_ELEVATE_WINTER -> "Default (Winter)"
-                    THEME_ID_ELEVATE_WINTER_WHITE -> "Default (White ski)"
-                    else -> "Default ($defaultStyleName)"
+                    THEME_ID_ELEVATE_WINTER -> context.getString(R.string.map_default_winter)
+                    THEME_ID_ELEVATE_WINTER_WHITE -> context.getString(R.string.map_default_white_ski)
+                    else -> context.getString(R.string.map_default_2, defaultStyleName)
                 }
 
             items +=
@@ -1061,7 +1066,7 @@ class ThemeRepositoryImpl(
         val effectiveStyleId = resolveEffectiveStyleId(selectedStyleIdForOverlay, selectedThemeId, parsed)
         val selectedStyle = effectiveStyleId?.let { parsed.stylesById[it] }
         if (selectedStyle != null && selectedStyle.overlayLayerIds.isNotEmpty()) {
-            items += ThemeListItem.Header("Enabled Overlays")
+            items += ThemeListItem.Header(context.getString(R.string.map_enabled_overlays))
             val enabledLayerIds =
                 if (selectedStyleIdForOverlay == DEFAULT_STYLE_ID) {
                     getDefaultEnabledOverlays(selectedStyle, parsed)

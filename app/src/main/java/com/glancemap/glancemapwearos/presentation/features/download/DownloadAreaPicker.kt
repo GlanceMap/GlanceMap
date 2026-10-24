@@ -8,6 +8,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -19,10 +20,12 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 
 internal fun ScalingLazyListScope.downloadAreaPickerItems(
     areaSearchQueryNormalized: String,
@@ -43,15 +46,20 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
     onClearAreaSelection: () -> Unit,
     onSelectedAreaFolderChange: (String?) -> Unit,
     onToggleArea: (String) -> Unit,
+    resources: Resources,
 ) {
     item {
         DownloadChip(
-            label = "Done",
+            label = resources.getString(R.string.common_done),
             secondaryLabel =
                 if (areaSearchQueryNormalized.isBlank()) {
                     selectedAreaLabel
                 } else {
-                    "${visiblePickerAreas.size} result(s)"
+                    resources.getQuantityString(
+                        R.plurals.download_result_s,
+                        visiblePickerAreas.size,
+                        visiblePickerAreas.size,
+                    )
                 },
             icon = Icons.Filled.Check,
             onClick = onDone,
@@ -60,13 +68,13 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
 
     item {
         DownloadChip(
-            label = "Current location",
+            label = resources.getString(R.string.download_current_location),
             secondaryLabel =
                 when {
-                    isFindingCurrentLocation -> "Finding matching bundles…"
+                    isFindingCurrentLocation -> resources.getString(R.string.download_finding_matching_bundles)
                     locationSuggestionMessage != null -> locationSuggestionMessage
-                    suggestedAreas.isEmpty() -> "Find nearby bundles"
-                    else -> "Refresh nearby bundles"
+                    suggestedAreas.isEmpty() -> resources.getString(R.string.download_find_nearby_bundles)
+                    else -> resources.getString(R.string.download_refresh_nearby_bundles)
                 },
             icon = Icons.Filled.MyLocation,
             onClick = onUseCurrentLocation,
@@ -76,7 +84,7 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
     if (suggestedAreas.isNotEmpty()) {
         item {
             Text(
-                text = "Suggested bundles",
+                text = resources.getString(R.string.download_suggested_bundles),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                 textAlign = TextAlign.Center,
@@ -90,9 +98,9 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
                     label = area.region,
                     secondaryLabel =
                         when {
-                            selected -> "Selected"
-                            index == 0 -> "Best match"
-                            else -> "Also covers location"
+                            selected -> resources.getString(R.string.common_selected)
+                            index == 0 -> resources.getString(R.string.download_best_match)
+                            else -> resources.getString(R.string.download_also_covers_location)
                         },
                     icon = if (selected) Icons.Filled.Check else Icons.Filled.MyLocation,
                     selected = selected,
@@ -106,15 +114,19 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
         DownloadChip(
             label =
                 if (selectedAreaIds.isNotEmpty()) {
-                    "Clear selected areas"
+                    resources.getString(R.string.download_clear_selected_areas)
                 } else {
-                    "No areas selected"
+                    resources.getString(R.string.download_no_areas_selected)
                 },
             secondaryLabel =
                 if (selectedAreaIds.isNotEmpty()) {
-                    "${selectedAreaIds.size} selected"
+                    resources.getQuantityString(
+                        R.plurals.download_selected_count,
+                        selectedAreaIds.size,
+                        selectedAreaIds.size,
+                    )
                 } else {
-                    "Pick one or more areas"
+                    resources.getString(R.string.download_pick_one_or_more_areas)
                 },
             icon = if (selectedAreaIds.isNotEmpty()) Icons.Filled.Close else Icons.Filled.Map,
             onClick = {
@@ -129,15 +141,15 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
         DownloadChip(
             label =
                 if (areaSearchQueryNormalized.isBlank()) {
-                    "Search area"
+                    resources.getString(R.string.download_search_area)
                 } else {
-                    "Search: $areaSearchQueryNormalized"
+                    resources.getString(R.string.download_search, areaSearchQueryNormalized)
                 },
             secondaryLabel =
                 if (areaSearchQueryNormalized.isBlank()) {
-                    "Type to filter"
+                    resources.getString(R.string.download_type_to_filter)
                 } else {
-                    "Tap to edit"
+                    resources.getString(R.string.download_tap_to_edit)
                 },
             icon = Icons.Filled.Search,
             onClick = onOpenSearch,
@@ -148,8 +160,13 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
         areaSearchQueryNormalized.isNotBlank() -> {
             item {
                 DownloadChip(
-                    label = "Clear search",
-                    secondaryLabel = "${visiblePickerAreas.size} area(s)",
+                    label = resources.getString(R.string.download_clear_search),
+                    secondaryLabel =
+                        resources.getQuantityString(
+                            R.plurals.download_area_s,
+                            visiblePickerAreas.size,
+                            visiblePickerAreas.size,
+                        ),
                     icon = Icons.Filled.Close,
                     onClick = onClearSearch,
                 )
@@ -159,22 +176,24 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
             val (countryFolders, regionFolders) =
                 areaFolders.partition { (folder, _) -> folder in AREA_PICKER_COUNTRY_FOLDERS }
             downloadAreaFolderGroup(
-                label = "Countries",
+                label = resources.getString(R.string.download_countries),
                 folders = countryFolders.sortedBy { it.first },
                 selectedAreaIds = selectedAreaIds,
                 onSelectedAreaFolderChange = onSelectedAreaFolderChange,
+                resources = resources,
             )
             downloadAreaFolderGroup(
-                label = "Regions",
+                label = resources.getString(R.string.download_regions),
                 folders = regionFolders.sortedBy { it.first },
                 selectedAreaIds = selectedAreaIds,
                 onSelectedAreaFolderChange = onSelectedAreaFolderChange,
+                resources = resources,
             )
         }
         else -> {
             item {
                 DownloadChip(
-                    label = "All regions",
+                    label = resources.getString(R.string.download_all_regions),
                     secondaryLabel = selectedAreaFolder.orEmpty(),
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     onClick = { onSelectedAreaFolderChange(null) },
@@ -189,6 +208,7 @@ internal fun ScalingLazyListScope.downloadAreaPickerItems(
             selectedAreaIds = selectedAreaIds,
             selection = selection,
             onToggleArea = onToggleArea,
+            resources = resources,
         )
     }
 }
@@ -198,6 +218,7 @@ private fun ScalingLazyListScope.downloadAreaFolderGroup(
     folders: List<Pair<String, List<OamDownloadArea>>>,
     selectedAreaIds: Set<String>,
     onSelectedAreaFolderChange: (String?) -> Unit,
+    resources: Resources,
 ) {
     if (folders.isEmpty()) return
     item {
@@ -215,11 +236,24 @@ private fun ScalingLazyListScope.downloadAreaFolderGroup(
             DownloadChip(
                 label = folder,
                 secondaryLabel =
-                    buildString {
-                        append(folderAreas.size).append(" area(s)")
-                        if (selectedCount > 0) {
-                            append(" - ").append(selectedCount).append(" selected")
-                        }
+                    if (selectedCount >
+                        0
+                    ) {
+                        resources.getString(
+                            R.string.download_area_selection_summary,
+                            resources.getQuantityString(
+                                R.plurals.download_areas,
+                                folderAreas.size,
+                                folderAreas.size,
+                            ),
+                            resources.getQuantityString(
+                                R.plurals.download_selected_count,
+                                selectedCount,
+                                selectedCount,
+                            ),
+                        )
+                    } else {
+                        resources.getQuantityString(R.plurals.download_areas, folderAreas.size, folderAreas.size)
                     },
                 icon = Icons.Filled.Folder,
                 selected = selectedCount > 0,
@@ -234,6 +268,7 @@ private fun ScalingLazyListScope.downloadAreaResultItems(
     selectedAreaIds: Set<String>,
     selection: OamDownloadSelection,
     onToggleArea: (String) -> Unit,
+    resources: Resources,
 ) {
     if (visiblePickerAreas.isEmpty()) {
         item {
@@ -245,7 +280,7 @@ private fun ScalingLazyListScope.downloadAreaResultItems(
         item {
             DownloadChip(
                 label = area.region,
-                secondaryLabel = area.areaSizeLabel(selection),
+                secondaryLabel = area.areaSizeLabel(selection, resources = resources),
                 icon = if (selected) Icons.Filled.Check else Icons.Filled.Map,
                 selected = selected,
                 onClick = {
@@ -261,7 +296,7 @@ private val AREA_PICKER_COUNTRY_FOLDERS = setOf("Canada", "Germany", "Russia", "
 @Composable
 private fun NoAreaFoundText() {
     Text(
-        text = "No area found",
+        text = stringResource(R.string.download_no_area_found),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.82f),
         textAlign = TextAlign.Center,

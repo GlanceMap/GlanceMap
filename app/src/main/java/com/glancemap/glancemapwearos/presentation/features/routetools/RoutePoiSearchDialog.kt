@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchResultUiState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchUiState
 import com.glancemap.glancemapwearos.presentation.ui.WearFormDialog
@@ -60,7 +62,7 @@ internal fun RoutePoiSearchDialog(
 
     WearFormDialog(
         visible = visible,
-        title = "Search POI",
+        title = stringResource(R.string.gpx_search_poi),
         onDismiss = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.92f),
     ) { formTokens ->
@@ -84,7 +86,7 @@ internal fun RoutePoiSearchDialog(
             decorationBox = { innerTextField ->
                 if (draftQuery.isBlank()) {
                     Text(
-                        text = "Type a POI name",
+                        text = stringResource(R.string.gpx_type_a_poi_name),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.45f),
                         textAlign = TextAlign.Center,
@@ -101,7 +103,9 @@ internal fun RoutePoiSearchDialog(
                 formTokens.controlModifier
                     .heightIn(min = formTokens.buttonMinHeight),
         ) {
-            Text(if (state.isLoading) "Searching..." else "Search")
+            Text(
+                if (state.isLoading) stringResource(R.string.gpx_searching) else stringResource(R.string.common_search),
+            )
         }
 
         state.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
@@ -161,7 +165,7 @@ internal fun RoutePoiSearchDialog(
                     contentColor = Color.White,
                 ),
         ) {
-            Text("Close")
+            Text(stringResource(R.string.common_close))
         }
     }
 }

@@ -66,7 +66,7 @@ class NotificationHelper(
             val channel =
                 NotificationChannel(
                     CHANNEL_ID,
-                    "File Transfers",
+                    service.resources.getString(R.string.gpx_file_transfers),
                     NotificationManager.IMPORTANCE_LOW,
                 )
             notificationManager.createNotificationChannel(channel)
@@ -141,7 +141,7 @@ class NotificationHelper(
     fun showCompletion(
         notificationId: Int,
         fileName: String,
-        status: String = "Saved ✓",
+        status: String = service.resources.getString(R.string.gpx_saved),
     ) {
         createNotificationChannel()
         notificationManager.notify(notificationId, buildCompletionNotification(fileName, status).build())
@@ -165,7 +165,7 @@ class NotificationHelper(
         val builder =
             NotificationCompat
                 .Builder(service, CHANNEL_ID)
-                .setContentTitle("Receiving: $fileName")
+                .setContentTitle(service.getString(R.string.download_receiving, fileName))
                 .setContentText(status)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setOngoing(true) // <-- this makes it non-swipeable

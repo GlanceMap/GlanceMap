@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -123,27 +125,29 @@ internal fun shouldFetchRemoteMetadataBeforeDownload(
     forceDownload: Boolean = false,
 ): Boolean = !forceDownload && (localFileAvailable || completedArchiveAvailable)
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 internal fun OamDownloadProgress.withDemBatchContext(
     tileIndex: Int,
     tileCount: Int,
     tileId: String,
     sourceLabel: String,
     isLargeDetailedDownload: Boolean,
+    resources: Resources,
 ): OamDownloadProgress =
     copy(
         detail =
-            buildString {
+            resources.getString(
+                R.string.download_dem_tile_progress_detail,
                 if (isLargeDetailedDownload) {
-                    append("Large detailed DEM")
+                    resources.getString(
+                        R.string.download_large_detailed_dem,
+                    )
                 } else {
-                    append(sourceLabel)
-                    append(" DEM")
-                }
-                append(' ')
-                append(tileIndex + 1)
-                append('/')
-                append(tileCount)
-                append(" · ")
-                append(tileId)
-            },
+                    resources.getString(R.string.download_dem, sourceLabel)
+                },
+                tileIndex + 1,
+                tileCount,
+                tileId,
+            ),
     )

@@ -15,10 +15,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearVerticalScrollIndicator
 
 @Composable
@@ -45,7 +47,7 @@ internal fun NavigatePermissionRequiredContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
             ) {
                 Text(
-                    "Location permission required for this screen.",
+                    stringResource(R.string.navigate_location_permission_required_for_this_screen),
                     textAlign = TextAlign.Center,
                 )
                 Button(
@@ -56,7 +58,7 @@ internal fun NavigatePermissionRequiredContent(
                             .heightIn(min = sizing.permissionButtonMinHeight),
                 ) {
                     Text(
-                        "Grant Permission",
+                        stringResource(R.string.navigate_grant_permission),
                         textAlign = TextAlign.Center,
                     )
                 }

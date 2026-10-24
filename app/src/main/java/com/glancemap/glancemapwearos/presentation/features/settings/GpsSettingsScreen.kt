@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -29,6 +30,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -52,6 +54,7 @@ fun GpsSettingsScreen(
     onOpenGeneralSettings: () -> Unit,
     onOpenAdvancedSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
 
     val activityProfile by viewModel.activityProfile.collectAsState()
@@ -69,7 +72,7 @@ fun GpsSettingsScreen(
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             SettingsInfoButton(
-                contentDescription = "GPS settings info",
+                contentDescription = stringResource(R.string.settings_gps_settings_info),
                 onClick = { showInfoDialog = true },
             )
         }
@@ -97,8 +100,12 @@ fun GpsSettingsScreen(
             SettingsOptionPickerRow(
                 label = stringResource(R.string.gps_profile),
                 selectedValue = gpsUsageProfile,
-                options = GPS_USAGE_PROFILE_OPTIONS.map { it to gpsUsageProfileLabel(it, activityProfile) },
-                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile, activityProfile),
+                options =
+                    GPS_USAGE_PROFILE_OPTIONS.map {
+                        it to
+                            gpsUsageProfileLabel(it, activityProfile, resources = resources)
+                    },
+                secondaryLabel = gpsUsageProfileLabel(gpsUsageProfile, activityProfile, resources = resources),
                 onSelect = viewModel::setGpsUsageProfile,
             )
         }
@@ -152,29 +159,35 @@ private fun GpsSettingsInfoDialog(
     turnByTurnScreenOffGpsIntervalSeconds: Int,
     onDismiss: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val adaptiveCadence =
         if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-            "5 → 3 → 1 s"
+            stringResource(R.string.settings_5_3_1_s)
         } else {
-            "10 → 5 → 3 s"
+            stringResource(R.string.settings_10_5_3_s)
         }
     val turnByTurnLine =
         if (turnByTurnScreenOffGpsIntervalSeconds == SettingsRepository.GPS_INTERVAL_ADAPTIVE_SCREEN_OFF_SECONDS) {
-            "Adaptive TBT: $adaptiveCadence near turns."
+            stringResource(R.string.settings_adaptive_tbt_near_turns, adaptiveCadence)
         } else {
-            "TBT off: ${gpsCompactScreenOffIntervalLabel(turnByTurnScreenOffGpsIntervalSeconds)}."
+            stringResource(
+                R.string.settings_tbt_off,
+                gpsCompactScreenOffIntervalLabel(turnByTurnScreenOffGpsIntervalSeconds),
+            )
         }
 
     WearHelpDialog(
         visible = visible,
-        title = "GPS",
+        title = stringResource(R.string.common_gps),
         lines =
             listOf(
-                gpsUsageProfileName(gpsUsageProfile, activityProfile),
-                "Normal map: 3 s awake; GPS pauses in ambient/screen-off (same for hike/bike).",
+                gpsUsageProfileName(gpsUsageProfile, activityProfile, resources = resources),
+                stringResource(
+                    R.string.settings_normal_map_3_s_awake_gps_pauses_in_ambient_screen_off_same_for_hike_bi,
+                ),
                 turnByTurnLine,
-                "Shorter timing means more battery use.",
-                "REC + TBT use the shorter timing.",
+                stringResource(R.string.settings_shorter_timing_means_more_battery_use),
+                stringResource(R.string.settings_rec_tbt_use_the_shorter_timing),
             ),
         onDismiss = onDismiss,
     )
@@ -218,7 +231,7 @@ fun GpsAdvancedSettingsScreen(
         item {
             GpsSettingsShortcutChip(onClick = onOpenGpsSettings)
         }
-        item { GpsSectionTitle(text = "REC") }
+        item { GpsSectionTitle(text = stringResource(R.string.common_rec)) }
         item {
             GpsTimingModePickerRow(
                 label = stringResource(R.string.screen_on),
@@ -251,7 +264,7 @@ fun GpsAdvancedSettingsScreen(
             item { GpsWarningText(text = stringResource(R.string.gps_recording_screen_off_disabled_warning)) }
         }
 
-        item { GpsSectionTitle(text = "TBT") }
+        item { GpsSectionTitle(text = stringResource(R.string.common_tbt)) }
         item {
             GpsTimingModePickerRow(
                 label = stringResource(R.string.screen_on),
@@ -732,18 +745,18 @@ private fun GpsIntervalSummary(
                 ).padding(horizontal = 8.dp, vertical = 7.dp),
     ) {
         GpsIntervalSummaryRow(
-            screenLabel = "Screen",
-            recordingLabel = "REC",
-            turnByTurnLabel = "TBT",
+            screenLabel = stringResource(R.string.settings_screen),
+            recordingLabel = stringResource(R.string.common_rec),
+            turnByTurnLabel = stringResource(R.string.common_tbt),
             header = true,
         )
         GpsIntervalSummaryRow(
-            screenLabel = "On",
+            screenLabel = stringResource(R.string.glancemap_state_on),
             recordingLabel = recordingScreenOn,
             turnByTurnLabel = turnByTurnScreenOn,
         )
         GpsIntervalSummaryRow(
-            screenLabel = "Off",
+            screenLabel = stringResource(R.string.glancemap_state_off),
             recordingLabel = recordingScreenOff,
             turnByTurnLabel = turnByTurnScreenOff,
         )
@@ -837,30 +850,48 @@ private val GPS_USAGE_PROFILE_OPTIONS =
 private fun gpsUsageProfileLabel(
     profile: String,
     activityProfile: String,
+    resources: Resources,
 ): String =
     when (profile) {
-        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace · more battery"
-        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery · less detail"
-        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)} · keep timings"
-        else -> "Balanced · recommended"
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE ->
+            resources.getString(
+                R.string.settings_best_trace_more_battery,
+            )
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY ->
+            resources.getString(
+                R.string.settings_long_battery_less_detail,
+            )
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM ->
+            resources.getString(
+                R.string.settings_custom_keep_timings,
+                gpsActivityLabel(activityProfile, resources = resources),
+            )
+        else -> resources.getString(R.string.settings_balanced_recommended)
     }
 
 private fun gpsUsageProfileName(
     profile: String,
     activityProfile: String,
+    resources: Resources,
 ): String =
     when (profile) {
-        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> "Best trace"
-        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> "Long battery"
-        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM -> "Custom ${gpsActivityLabel(activityProfile)}"
-        else -> "Balanced"
+        SettingsRepository.GPS_USAGE_PROFILE_BEST_TRACE -> resources.getString(R.string.settings_best_trace)
+        SettingsRepository.GPS_USAGE_PROFILE_LONG_BATTERY -> resources.getString(R.string.settings_long_battery)
+        SettingsRepository.GPS_USAGE_PROFILE_CUSTOM ->
+            resources.getString(
+                R.string.settings_custom,
+                gpsActivityLabel(activityProfile, resources = resources),
+            )
+        else -> resources.getString(R.string.settings_balanced)
     }
 
-private fun gpsActivityLabel(activityProfile: String) =
-    when (activityProfile) {
-        SettingsRepository.ACTIVITY_PROFILE_BIKE -> "Bike"
-        else -> "Hike"
-    }
+private fun gpsActivityLabel(
+    activityProfile: String,
+    resources: Resources,
+) = when (activityProfile) {
+    SettingsRepository.ACTIVITY_PROFILE_BIKE -> resources.getString(R.string.common_bike)
+    else -> resources.getString(R.string.common_hike)
+}
 
 @Composable
 private fun gpsScreenOffIntervalLabel(

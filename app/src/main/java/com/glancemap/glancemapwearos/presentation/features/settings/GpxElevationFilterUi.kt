@@ -1,13 +1,21 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import java.util.Locale
 
 internal object GpxElevationFilterUi {
-    const val SMOOTHING_LABEL = "Smoothing distance"
-    const val NOISE_THRESHOLD_LABEL = "Noise threshold"
-    const val TREND_THRESHOLD_LABEL = "Trend threshold"
+    val SMOOTHING_LABEL = R.string.settings_smoothing_distance
+    val NOISE_THRESHOLD_LABEL = R.string.settings_noise_threshold
+    val TREND_THRESHOLD_LABEL = R.string.settings_trend_threshold
 
-    fun formatSmoothingDistance(valueMeters: Float): String = String.format(Locale.getDefault(), "%.0f m", valueMeters)
+    fun formatSmoothingDistance(
+        valueMeters: Float,
+        resources: Resources,
+    ): String = String.format(Locale.getDefault(), resources.getString(R.string.settings_0f_m), valueMeters)
 
-    fun formatThreshold(valueMeters: Float): String = String.format(Locale.getDefault(), "%.1f m", valueMeters)
+    fun formatThreshold(
+        valueMeters: Float,
+        resources: Resources,
+    ): String = String.format(Locale.getDefault(), resources.getString(R.string.settings_1f_m), valueMeters)
 }

@@ -19,12 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import kotlinx.coroutines.CancellationException
 
@@ -51,13 +54,15 @@ internal fun ActivityElevationProfileSection(
         loading = false
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(text = "Elevation profile", style = MaterialTheme.typography.titleSmall)
+        Text(text = stringResource(R.string.gpx_activity_profile_title), style = MaterialTheme.typography.titleSmall)
         val loaded = profile
         when {
-            loading -> Text("Loading elevation profile…", style = MaterialTheme.typography.labelSmall)
-            failed -> Text("Unable to load elevation profile", style = MaterialTheme.typography.labelSmall)
+            loading ->
+                Text(stringResource(R.string.gpx_activity_profile_loading), style = MaterialTheme.typography.labelSmall)
+            failed ->
+                Text(stringResource(R.string.gpx_activity_profile_error), style = MaterialTheme.typography.labelSmall)
             loaded == null || loaded.samples.size < 2 ->
-                Text("No elevation data", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.gpx_activity_profile_empty), style = MaterialTheme.typography.labelSmall)
             else -> ActivityElevationProfileChart(profile = loaded, isMetric = isMetric, trackColor = trackColor)
         }
     }
@@ -72,12 +77,20 @@ private fun ActivityElevationProfileChart(
 ) {
     val bounds = remember(profile) { elevationVisualBounds(profile.samples) }
     val adaptive = rememberWearAdaptiveSpec()
-    val distanceText = formatDistanceScaleText(profile.totalDistance, isMetric)
-    val gapDescription = if (profile.samples.any { it.gapBefore }) "; grey lines indicate gaps" else ""
+    val resources = LocalResources.current
+    val distanceText = formatDistanceScaleText(profile.totalDistance, isMetric, resources)
+    val hasGaps = profile.samples.any { it.gapBefore }
     val description =
-        "Elevation profile, $distanceText, " +
-            "${formatElevationText(profile.samples.minOf { it.elevation }, isMetric)} to " +
-            formatElevationText(profile.samples.maxOf { it.elevation }, isMetric) + gapDescription
+        stringResource(
+            if (hasGaps) {
+                R.string.gpx_activity_profile_description_with_gaps
+            } else {
+                R.string.gpx_activity_profile_description
+            },
+            distanceText,
+            formatElevationText(profile.samples.minOf { it.elevation }, isMetric, resources),
+            formatElevationText(profile.samples.maxOf { it.elevation }, isMetric, resources),
+        )
     Row(
         modifier = Modifier.fillMaxWidth().height(if (adaptive.isCompact) 100.dp else 120.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -107,7 +120,11 @@ private fun ActivityElevationProfileChart(
         }
     }
     if (profile.samples.any { it.gapBefore }) {
-        Text("Grey lines: gaps", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Text(
+            stringResource(R.string.gpx_activity_profile_gaps),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.Gray,
+        )
     }
 }
 

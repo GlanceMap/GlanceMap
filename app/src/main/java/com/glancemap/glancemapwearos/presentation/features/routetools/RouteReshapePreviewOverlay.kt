@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,7 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 
 @Composable
@@ -83,7 +85,7 @@ internal fun BoxScope.RouteReshapePreviewOverlay(
             busy -> {
                 RouteToolBusySpinner(size = 18.dp)
                 Text(
-                    text = busyMessage ?: "Saving GPX...",
+                    text = busyMessage ?: stringResource(R.string.gpx_saving_gpx),
                     style =
                         MaterialTheme.typography.bodySmall.copy(
                             fontSize = popupSpec.instructionFontSize,
@@ -148,7 +150,7 @@ internal fun BoxScope.RouteReshapePreviewOverlay(
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "Discard reroute preview",
+                contentDescription = stringResource(R.string.gpx_discard_reroute_preview),
                 modifier = Modifier.size(iconSize),
             )
         }
@@ -164,7 +166,7 @@ internal fun BoxScope.RouteReshapePreviewOverlay(
         ) {
             Icon(
                 imageVector = Icons.Default.Check,
-                contentDescription = "Save rerouted GPX",
+                contentDescription = stringResource(R.string.gpx_save_rerouted_gpx),
                 modifier = Modifier.size(iconSize),
             )
         }

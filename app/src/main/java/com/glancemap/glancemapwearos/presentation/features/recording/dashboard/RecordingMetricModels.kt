@@ -1,5 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.isRecordingDashboardMetricAllowedForProfile
@@ -27,12 +30,12 @@ internal enum class RecordingMetricSource {
 
 internal data class RecordingMetricDefinition(
     val id: String,
-    val label: String,
+    @StringRes val labelRes: Int,
     val source: RecordingMetricSource = RecordingMetricSource.INTERNAL_GPS,
 )
 
 internal data class RecordingMetricValue(
-    val label: String,
+    @StringRes val labelRes: Int,
     val value: String,
     val unit: String? = null,
     val bluetooth: Boolean = false,
@@ -157,78 +160,81 @@ data class RecordingDashboardSnapshot(
 
 internal val recordingMetricDefinitions =
     listOf(
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_DISTANCE, "Distance"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_TOTAL_TIME, "Time (Total)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_DURATION, "Time (Active)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ELEVATION_GAIN, "Elev +"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ELEVATION_LOSS, "Elev -"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_ELEVATION, "Altitude"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_SPEED, "Speed"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_AVERAGE_SPEED, "Speed (Avg)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_MAX_SPEED, "Speed (Max)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_PACE, "Pace"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_AVERAGE_PACE, "Pace (Avg)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_MAX_PACE, "Pace (Max)"),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_DISTANCE, R.string.common_distance),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_TOTAL_TIME, R.string.recording_time_total),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_DURATION, R.string.recording_time_active),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ELEVATION_GAIN, R.string.recording_elev),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ELEVATION_LOSS, R.string.recording_elev_2),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_ELEVATION, R.string.recording_altitude),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_SPEED, R.string.common_speed),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_AVERAGE_SPEED, R.string.recording_speed_avg),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_MAX_SPEED, R.string.recording_speed_max),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CURRENT_PACE, R.string.recording_pace),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_AVERAGE_PACE, R.string.recording_pace_avg),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_MAX_PACE, R.string.recording_pace_max),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_HEART_RATE,
-            "Heart rate",
+            R.string.common_heart_rate,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_MAX_HEART_RATE,
-            "Heart rate (Max)",
+            R.string.recording_heart_rate_max,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_STEPS,
-            "Steps",
+            R.string.settings_steps,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_CADENCE,
-            "Cadence",
+            R.string.common_cadence,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_AVERAGE_CADENCE,
-            "Cadence (Avg)",
+            R.string.recording_cadence_avg,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_MAX_CADENCE,
-            "Cadence (Max)",
+            R.string.recording_cadence_max,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_POWER,
-            "Power",
+            R.string.recording_power,
             RecordingMetricSource.EXTERNAL,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_AVERAGE_POWER,
-            "Power (Avg)",
+            R.string.recording_power_avg,
             RecordingMetricSource.EXTERNAL,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_MAX_POWER,
-            "Power (Max)",
+            R.string.recording_power_max,
             RecordingMetricSource.EXTERNAL,
         ),
         RecordingMetricDefinition(
             SettingsRepository.RECORDING_METRIC_BAROMETRIC_PRESSURE,
-            "Pressure (hPa)",
+            R.string.recording_pressure_hpa,
             RecordingMetricSource.INTERNAL_SENSOR,
         ),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CALORIES, "Cal (Total)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ACTIVE_CALORIES, "Cal (Active)"),
-        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_RESTING_CALORIES, "Cal (Rest)"),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_CALORIES, R.string.recording_cal_total),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_ACTIVE_CALORIES, R.string.recording_cal_active),
+        RecordingMetricDefinition(SettingsRepository.RECORDING_METRIC_RESTING_CALORIES, R.string.recording_cal_rest),
     )
 
-internal fun recordingMetricPickerOptionsForProfile(profile: String): List<Pair<String, String>> =
+internal fun recordingMetricPickerOptionsForProfile(
+    profile: String,
+    resources: Resources,
+): List<Pair<String, String>> =
     recordingMetricDefinitions
         .filter { definition -> isRecordingDashboardMetricAllowedForProfile(profile, definition.id) }
-        .sortedBy { it.label.lowercase() }
-        .map { it.id to it.label }
+        .map { it.id to resources.getString(it.labelRes) }
+        .sortedBy { it.second.lowercase() }
 
 internal fun metricDefinitionFor(id: String): RecordingMetricDefinition =
     recordingMetricDefinitions.firstOrNull { it.id == id }
@@ -369,45 +375,45 @@ internal fun formattedRecordingMetric(
     return when (definition.id) {
         SettingsRepository.RECORDING_METRIC_DISTANCE -> {
             if (snapshot.distanceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                return RecordingMetricValue(definition.label, "--")
+                return RecordingMetricValue(definition.labelRes, "--")
             }
             val (value, unit) = formatRecordingDistance(snapshot.distanceMeters, isMetric)
             RecordingMetricValue(
-                label = definition.label,
+                labelRes = definition.labelRes,
                 value = value,
                 unit = unit,
                 bluetooth = snapshot.distanceFromBluetooth(),
             )
         }
         SettingsRepository.RECORDING_METRIC_DURATION ->
-            RecordingMetricValue(definition.label, formatRecordingDurationClock(snapshot.durationSeconds))
+            RecordingMetricValue(definition.labelRes, formatRecordingDurationClock(snapshot.durationSeconds))
         SettingsRepository.RECORDING_METRIC_TOTAL_TIME ->
-            RecordingMetricValue(definition.label, formatRecordingDurationClock(snapshot.totalDurationSeconds))
+            RecordingMetricValue(definition.labelRes, formatRecordingDurationClock(snapshot.totalDurationSeconds))
         SettingsRepository.RECORDING_METRIC_ELEVATION_GAIN -> {
-            if (!snapshot.hasElevationData) return RecordingMetricValue(definition.label, "--")
+            if (!snapshot.hasElevationData) return RecordingMetricValue(definition.labelRes, "--")
             val (value, unit) = UnitFormatter.formatElevation(snapshot.elevationGainMeters, isMetric)
-            RecordingMetricValue(definition.label, value, unit)
+            RecordingMetricValue(definition.labelRes, value, unit)
         }
         SettingsRepository.RECORDING_METRIC_ELEVATION_LOSS -> {
-            if (!snapshot.hasElevationData) return RecordingMetricValue(definition.label, "--")
+            if (!snapshot.hasElevationData) return RecordingMetricValue(definition.labelRes, "--")
             val (value, unit) = UnitFormatter.formatElevation(snapshot.elevationLossMeters, isMetric)
-            RecordingMetricValue(definition.label, value, unit)
+            RecordingMetricValue(definition.labelRes, value, unit)
         }
         SettingsRepository.RECORDING_METRIC_CURRENT_ELEVATION -> {
             val elevation = snapshot.currentElevationMeters
             if (elevation == null) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 val (value, unit) = UnitFormatter.formatElevation(elevation, isMetric)
-                RecordingMetricValue(definition.label, value, unit)
+                RecordingMetricValue(definition.labelRes, value, unit)
             }
         }
         SettingsRepository.RECORDING_METRIC_CURRENT_SPEED ->
             if (snapshot.speedSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 speedMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.currentSpeedMps?.toDouble(),
                     isMetric,
                     bluetooth = snapshot.speedFromBluetooth(),
@@ -415,10 +421,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_AVERAGE_SPEED ->
             if (snapshot.distanceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 speedMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.averageSpeedMps,
                     isMetric,
                     bluetooth = snapshot.distanceFromBluetooth(),
@@ -426,10 +432,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_MAX_SPEED ->
             if (snapshot.speedSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 speedMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.fastestSpeedMps,
                     isMetric,
                     bluetooth = snapshot.speedFromBluetooth(),
@@ -437,10 +443,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_CURRENT_PACE ->
             if (snapshot.speedSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 paceMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.currentSpeedMps?.toDouble(),
                     isMetric,
                     bluetooth = snapshot.speedFromBluetooth(),
@@ -448,10 +454,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_AVERAGE_PACE ->
             if (snapshot.distanceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 paceMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.averageSpeedMps,
                     isMetric,
                     bluetooth = snapshot.distanceFromBluetooth(),
@@ -459,10 +465,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_MAX_PACE ->
             if (snapshot.speedSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 paceMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.fastestSpeedMps,
                     isMetric,
                     bluetooth = snapshot.speedFromBluetooth(),
@@ -470,24 +476,24 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_HEART_RATE ->
             sensorIntegerMetricValue(
-                label = definition.label,
+                label = definition.labelRes,
                 value = snapshot.heartRateBpm,
                 unit = "bpm",
                 bluetooth = snapshot.heartRateFromBluetooth,
             )
         SettingsRepository.RECORDING_METRIC_MAX_HEART_RATE ->
             sensorIntegerMetricValue(
-                label = definition.label,
+                label = definition.labelRes,
                 value = snapshot.maxHeartRateBpm,
                 unit = "bpm",
                 bluetooth = snapshot.heartRateFromBluetooth,
             )
         SettingsRepository.RECORDING_METRIC_STEPS ->
             if (snapshot.stepsSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 sensorIntegerMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.stepCount,
                     null,
                     bluetooth = snapshot.stepCountFromBluetooth,
@@ -495,10 +501,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_CADENCE ->
             if (snapshot.cadenceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 sensorIntegerMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.cadenceSpm,
                     snapshot.cadenceUnitLabel(),
                     bluetooth = snapshot.cadenceFromBluetooth,
@@ -506,10 +512,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_AVERAGE_CADENCE ->
             if (snapshot.cadenceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 sensorIntegerMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.averageCadenceSpm,
                     snapshot.cadenceUnitLabel(),
                     bluetooth = snapshot.cadenceFromBluetooth,
@@ -517,10 +523,10 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_MAX_CADENCE ->
             if (snapshot.cadenceSource == SettingsRepository.RECORDING_SOURCE_DISABLED) {
-                RecordingMetricValue(definition.label, "--")
+                RecordingMetricValue(definition.labelRes, "--")
             } else {
                 sensorIntegerMetricValue(
-                    definition.label,
+                    definition.labelRes,
                     snapshot.maxCadenceSpm,
                     snapshot.cadenceUnitLabel(),
                     bluetooth = snapshot.cadenceFromBluetooth,
@@ -528,34 +534,34 @@ internal fun formattedRecordingMetric(
             }
         SettingsRepository.RECORDING_METRIC_POWER ->
             sensorIntegerMetricValue(
-                definition.label,
+                definition.labelRes,
                 snapshot.powerWatts,
                 "W",
                 bluetooth = snapshot.powerFromBluetooth,
             )
         SettingsRepository.RECORDING_METRIC_AVERAGE_POWER ->
             sensorIntegerMetricValue(
-                definition.label,
+                definition.labelRes,
                 snapshot.averagePowerWatts,
                 "W",
                 bluetooth = snapshot.powerFromBluetooth,
             )
         SettingsRepository.RECORDING_METRIC_MAX_POWER ->
             sensorIntegerMetricValue(
-                definition.label,
+                definition.labelRes,
                 snapshot.maxPowerWatts,
                 "W",
                 bluetooth = snapshot.powerFromBluetooth,
             )
         SettingsRepository.RECORDING_METRIC_BAROMETRIC_PRESSURE ->
-            pressureMetricValue(definition.label, snapshot.barometricPressureHpa)
+            pressureMetricValue(definition.labelRes, snapshot.barometricPressureHpa)
         SettingsRepository.RECORDING_METRIC_CALORIES ->
-            caloriesMetricValue(definition.label, snapshot.calorieEstimate.grossKcal)
+            caloriesMetricValue(definition.labelRes, snapshot.calorieEstimate.grossKcal)
         SettingsRepository.RECORDING_METRIC_ACTIVE_CALORIES ->
-            caloriesMetricValue(definition.label, snapshot.calorieEstimate.activeKcal)
+            caloriesMetricValue(definition.labelRes, snapshot.calorieEstimate.activeKcal)
         SettingsRepository.RECORDING_METRIC_RESTING_CALORIES ->
-            caloriesMetricValue(definition.label, snapshot.calorieEstimate.restingKcal)
-        else -> RecordingMetricValue(definition.label, "--")
+            caloriesMetricValue(definition.labelRes, snapshot.calorieEstimate.restingKcal)
+        else -> RecordingMetricValue(definition.labelRes, "--")
     }
 }
 
@@ -587,7 +593,7 @@ private fun formatRecordingDurationClock(seconds: Double?): String {
 private fun Int.twoDigits(): String = toString().padStart(2, '0')
 
 internal fun speedMetricValue(
-    label: String,
+    @StringRes label: Int,
     speedMps: Double?,
     isMetric: Boolean,
     bluetooth: Boolean = false,
@@ -602,7 +608,7 @@ internal fun speedMetricValue(
             speedMps * 2.2369362920544
         }
     return RecordingMetricValue(
-        label = label,
+        labelRes = label,
         value = (value * 10.0).roundToInt().let { (it / 10.0).toString() },
         unit = if (isMetric) "km/h" else "mph",
         bluetooth = bluetooth,
@@ -610,7 +616,7 @@ internal fun speedMetricValue(
 }
 
 private fun sensorIntegerMetricValue(
-    label: String,
+    @StringRes label: Int,
     value: Int?,
     unit: String?,
     bluetooth: Boolean = false,
@@ -622,25 +628,25 @@ private fun sensorIntegerMetricValue(
     }
 
 private fun pressureMetricValue(
-    label: String,
+    @StringRes label: Int,
     pressureHpa: Double?,
 ): RecordingMetricValue =
     if (pressureHpa == null || !pressureHpa.isFinite() || pressureHpa <= 0.0) {
         RecordingMetricValue(label, "--", "hPa")
     } else {
         RecordingMetricValue(
-            label = label,
+            labelRes = label,
             value = (pressureHpa * 10.0).roundToInt().let { (it / 10.0).toString() },
             unit = "hPa",
         )
     }
 
 private fun caloriesMetricValue(
-    label: String,
+    @StringRes label: Int,
     calories: Double,
 ): RecordingMetricValue =
     RecordingMetricValue(
-        label = label,
+        labelRes = label,
         value =
             if (!calories.isFinite() || calories <= 0.0) {
                 "0"
@@ -999,7 +1005,7 @@ private fun lcda2024WeightedLoadWatts(
 }
 
 internal fun paceMetricValue(
-    label: String,
+    @StringRes label: Int,
     speedMps: Double?,
     isMetric: Boolean,
     bluetooth: Boolean = false,
@@ -1017,7 +1023,7 @@ internal fun paceMetricValue(
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return RecordingMetricValue(
-        label = label,
+        labelRes = label,
         value = "$minutes:${seconds.twoDigits()}",
         unit = if (isMetric) "min/km" else "min/mi",
         bluetooth = bluetooth,

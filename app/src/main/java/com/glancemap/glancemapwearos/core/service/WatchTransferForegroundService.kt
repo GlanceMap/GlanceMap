@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStrategy
@@ -495,7 +496,7 @@ class WatchTransferForegroundService :
             notificationHelper.startForeground(
                 request.metadata.notificationId,
                 request.metadata.fileName,
-                "Preparing Download…",
+                this.getString(R.string.download_preparing_download),
             )
             TransferDiagnostics.log(
                 "FgService",

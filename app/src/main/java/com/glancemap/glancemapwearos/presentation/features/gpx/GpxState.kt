@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Resources
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.formatting.DurationFormatter
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
@@ -42,9 +43,13 @@ data class GpxFileState(
 
     fun formattedElevationLoss(isMetric: Boolean): Pair<String, String> = UnitFormatter.formatElevation(elevationLoss, isMetric)
 
-    fun formattedEtaShort(): String = DurationFormatter.formatDurationShort(estimatedDurationSec)
+    fun formattedEtaShort(
+        resources: Resources,
+    ): String = DurationFormatter.formatDurationShort(estimatedDurationSec, resources = resources)
 
-    fun formattedActivityDurationShort(): String = DurationFormatter.formatDurationShort(activityDurationSec)
+    fun formattedActivityDurationShort(
+        resources: Resources,
+    ): String = DurationFormatter.formatDurationShort(activityDurationSec, resources = resources)
 
     fun formattedActivityDurationClock(): String {
         val seconds = activityDurationSec

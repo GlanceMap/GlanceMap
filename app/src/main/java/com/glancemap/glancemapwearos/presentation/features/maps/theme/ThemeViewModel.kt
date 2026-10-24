@@ -3,6 +3,7 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.theme
 
 import android.content.Context
+import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -11,6 +12,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
@@ -185,7 +187,7 @@ class ThemeViewModel(
                 throw error
             } catch (error: Exception) {
                 Log.w(TAG, "theme_delete_failed package=$packageId", error)
-                onComplete("Theme files could not be removed. Try again.")
+                onComplete(context.getString(R.string.map_theme_files_could_not_be_removed_try_again))
             }
         }
     }
@@ -363,7 +365,10 @@ class ThemeViewModel(
                         _demDownloadUiState.value =
                             DemDownloadUiState(
                                 activeMapPath = null,
-                                statusMessage = "No map selected. Select a .map first.",
+                                statusMessage =
+                                    context.resources.getString(
+                                        R.string.dem_no_map_selected_select_a_map_first,
+                                    ),
                                 lastCompletedAtMillis = System.currentTimeMillis(),
                             )
                         return@launch
@@ -378,7 +383,10 @@ class ThemeViewModel(
                         _demDownloadUiState.value =
                             DemDownloadUiState(
                                 activeMapPath = null,
-                                statusMessage = "Selected map not found on watch.",
+                                statusMessage =
+                                    context.resources.getString(
+                                        R.string.dem_selected_map_not_found_on_watch,
+                                    ),
                                 lastCompletedAtMillis = System.currentTimeMillis(),
                             )
                         return@launch
@@ -388,7 +396,7 @@ class ThemeViewModel(
                         DemDownloadUiState(
                             isDownloading = true,
                             activeMapPath = mapPath,
-                            statusMessage = "Checking watch internet...",
+                            statusMessage = context.resources.getString(R.string.dem_checking_watch_internet),
                         )
 
                     if (!waitForWatchInternetConnection()) {
@@ -401,7 +409,10 @@ class ThemeViewModel(
                                 isDownloading = false,
                                 activeMapPath = null,
                                 networkUnavailable = true,
-                                statusMessage = DEM_NO_INTERNET_MESSAGE,
+                                statusMessage =
+                                    context.getString(
+                                        R.string.maps_dem_internet_required,
+                                    ),
                                 lastCompletedAtMillis = System.currentTimeMillis(),
                             )
                         return@launch
@@ -409,7 +420,7 @@ class ThemeViewModel(
 
                     _demDownloadUiState.value =
                         _demDownloadUiState.value.copy(
-                            statusMessage = "Reading map area...",
+                            statusMessage = context.resources.getString(R.string.dem_reading_map_area),
                         )
                     val source = settingsRepository.demSource.first()
                     acquireDemDownloadKeepAlive(source)
@@ -443,7 +454,10 @@ class ThemeViewModel(
                                 DemDownloadUiState(
                                     isDownloading = false,
                                     activeMapPath = null,
-                                    statusMessage = "Elevation download cancelled.",
+                                    statusMessage =
+                                        context.resources.getString(
+                                            R.string.dem_elevation_download_cancelled,
+                                        ),
                                     lastCompletedAtMillis = System.currentTimeMillis(),
                                 )
                             return@onFailure
@@ -459,7 +473,12 @@ class ThemeViewModel(
                                 isDownloading = false,
                                 activeMapPath = null,
                                 networkUnavailable = networkUnavailable,
-                                statusMessage = buildDemFailureMessage(error, networkUnavailable),
+                                statusMessage =
+                                    buildDemFailureMessage(
+                                        error,
+                                        networkUnavailable,
+                                        resources = context.resources,
+                                    ),
                                 lastCompletedAtMillis = System.currentTimeMillis(),
                             )
                     }
@@ -555,7 +574,7 @@ class ThemeViewModel(
                         missingTiles = 0,
                         failedTiles = 0,
                         networkUnavailable = false,
-                        statusMessage = "Failed reading selected map area.",
+                        statusMessage = context.resources.getString(R.string.dem_failed_reading_selected_map_area),
                     )
                 }
 
@@ -581,7 +600,7 @@ class ThemeViewModel(
                 missingTiles = 0,
                 failedTiles = 0,
                 networkUnavailable = false,
-                statusMessage = "No DEM tiles required for this map.",
+                statusMessage = context.resources.getString(R.string.dem_no_dem_tiles_required_for_this_map),
             )
         }
 
@@ -724,13 +743,21 @@ class ThemeViewModel(
                 missing = missing,
                 failed = failed,
                 remaining = remaining,
+                resources = context.resources,
             )
         val finalMessage =
             when {
                 networkUnavailable && remaining > 0 ->
-                    "No internet on watch. $downloaded downloaded, $skipped already on watch, $remaining remaining. Reconnect and retry to finish DEM."
+                    context.resources.getString(
+                        R.string.dem_no_internet_on_watch_downloaded_already_on_watch_remaining_reconnect_a,
+                        context.resources.getQuantityString(R.plurals.dem_downloaded_count, downloaded, downloaded),
+                        context.resources.getQuantityString(R.plurals.dem_already_present_count, skipped, skipped),
+                        context.resources.getQuantityString(R.plurals.dem_remaining_count, remaining, remaining),
+                    )
                 networkUnavailable ->
-                    DEM_NO_INTERNET_MESSAGE
+                    context.getString(
+                        R.string.maps_dem_internet_required,
+                    )
                 else -> summary
             }
         val hasUnfinishedTiles = failed > 0 || remaining > 0
@@ -858,7 +885,12 @@ class ThemeViewModel(
             if (attemptNumber > 1) {
                 _demDownloadUiState.value =
                     _demDownloadUiState.value.copy(
-                        statusMessage = "Retrying download (attempt $attemptNumber/$DEM_TILE_MAX_ATTEMPTS)...",
+                        statusMessage =
+                            context.resources.getString(
+                                R.string.dem_retrying_download_attempt,
+                                attemptNumber,
+                                DEM_TILE_MAX_ATTEMPTS,
+                            ),
                     )
             }
 
@@ -969,26 +1001,37 @@ class ThemeViewModel(
     }
 }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 internal fun buildDemSummaryMessage(
     downloaded: Int,
     skipped: Int,
     missing: Int,
     failed: Int,
     remaining: Int,
+    resources: Resources,
 ): String =
     when {
         remaining > 0 ->
-            "DEM download incomplete. Retry to finish."
+            resources.getString(R.string.dem_dem_download_incomplete_retry_to_finish)
         missing > 0 && failed > 0 ->
-            "DEM download incomplete: $missing unavailable, $failed failed."
+            resources.getString(
+                R.string.dem_dem_download_incomplete_unavailable_failed,
+                resources.getQuantityString(R.plurals.dem_unavailable_count, missing, missing),
+                resources.getQuantityString(R.plurals.dem_failed_count, failed, failed),
+            )
         missing > 0 ->
-            "DEM download complete: $missing upstream tiles unavailable."
+            resources.getQuantityString(
+                R.plurals.dem_dem_download_complete_upstream_tiles_unavailable,
+                missing,
+                missing,
+            )
         failed > 0 ->
-            "DEM download incomplete: $failed failed."
+            resources.getQuantityString(R.plurals.dem_dem_download_incomplete_failed, failed, failed)
         downloaded > 0 || skipped > 0 ->
-            "DEM download successful."
+            resources.getString(R.string.dem_dem_download_successful)
         else ->
-            "DEM download incomplete."
+            resources.getString(R.string.dem_dem_download_incomplete)
     }
 
 internal fun isDemTileMarkedUnavailable(

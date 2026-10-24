@@ -6,7 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.IntSize
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.mapZoomScaleStepsMeters
 import com.glancemap.glancemapwearos.core.maps.nearestMetricScaleStepIndex
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
@@ -50,6 +52,7 @@ internal fun rememberNavigateLiveHudState(
     lastKnownLocation: LatLong?,
     visibleMapSizePx: IntSize,
 ): NavigateLiveHudState {
+    val resources = LocalResources.current
     var scaleIndicator by remember(mapView, isMetric) { mutableStateOf<ScaleIndicatorUi?>(null) }
     var hasSeenInitialZoomState by remember { mutableStateOf(false) }
     var showScaleBar by remember { mutableStateOf(false) }
@@ -74,6 +77,7 @@ internal fun rememberNavigateLiveHudState(
                         mapView = it,
                         isMetric = isMetric,
                         preferredScaleMeters = preferredScaleMeters,
+                        resources = resources,
                     )
                 }
             } else {
@@ -93,6 +97,7 @@ internal fun rememberNavigateLiveHudState(
                     mapView = it,
                     isMetric = isMetric,
                     preferredScaleMeters = preferredScaleMeters,
+                    resources = resources,
                 )
             }
         if (scaleIndicator == null) return@LaunchedEffect
@@ -184,7 +189,7 @@ internal fun rememberNavigateLiveHudState(
                     }
                     liveElevationLabel = sampledMeters?.let { meters ->
                         val (value, unit) = UnitFormatter.formatElevation(meters, isMetric)
-                        "$value $unit"
+                        resources.getString(R.string.common_value_unit, value, unit)
                     } ?: "--"
                     lastElevationSampleCenter = elevationCenter
                 }
@@ -206,7 +211,8 @@ internal fun rememberNavigateLiveHudState(
                             target = target,
                         )
                     }
-                liveDistanceLabel = straightDistanceMeters?.let { formatLiveDistanceLabel(it, isMetric) }
+                liveDistanceLabel =
+                    straightDistanceMeters?.let { formatLiveDistanceLabel(it, isMetric, resources = resources) }
             } else {
                 liveDistanceLabel = null
             }

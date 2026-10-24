@@ -2,6 +2,8 @@
 
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,12 +19,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
@@ -111,7 +116,7 @@ internal object ThemeOverlayGrouping {
 
 private data class OverlayGroupUi(
     val id: String,
-    val title: String,
+    @StringRes val titleRes: Int,
     val overlays: List<ThemeListItem.Overlay>,
 )
 
@@ -119,7 +124,7 @@ private const val OS_MAP_DAY_STYLE_PREFIX = "__OS_MAP_DAY__:"
 private const val OS_MAP_NIGHT_STYLE_PREFIX = "__OS_MAP_NIGHT__:"
 
 private data class OsMapStyleSelection(
-    val modeLabel: String,
+    @StringRes val modeLabelRes: Int,
     val prefix: String,
     val realStyleId: String,
 )
@@ -141,6 +146,7 @@ fun ThemeSettingsScreen(
     onOpenMaps: () -> Unit,
     onOpenGeneralSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val themeItems by themeViewModel.themeItems.collectAsState()
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
@@ -182,6 +188,7 @@ fun ThemeSettingsScreen(
                 selectedThemeId = selectedThemeId,
                 selectedStyleId = selectedStyleId,
                 styles = styleOptions,
+                resources = resources,
             )
         }
 
@@ -216,9 +223,19 @@ fun ThemeSettingsScreen(
 
     WearActionDialog(
         visible = deletingPackage != null,
-        title = "Delete custom theme package?",
-        message = "Removes every theme in this package. Associated maps will use the default theme.",
-        confirmText = if (deleteInProgress) "Deleting…" else "Delete",
+        title = stringResource(R.string.settings_delete_custom_theme_package),
+        message =
+            stringResource(
+                R.string.settings_removes_every_theme_in_this_package_associated_maps_will_use_the_defau,
+            ),
+        confirmText =
+            if (deleteInProgress) {
+                stringResource(
+                    R.string.settings_deleting,
+                )
+            } else {
+                stringResource(R.string.common_delete)
+            },
         confirmEnabled = !deleteInProgress,
         onConfirm = {
             deletingPackage?.let { packageId ->
@@ -234,9 +251,9 @@ fun ThemeSettingsScreen(
     )
     WearActionDialog(
         visible = deleteError != null,
-        title = "Custom themes",
+        title = stringResource(R.string.settings_custom_themes),
         message = deleteError.orEmpty(),
-        confirmText = "OK",
+        confirmText = stringResource(R.string.common_ok),
         onConfirm = { deleteError = null },
         onDismissRequest = { deleteError = null },
     )
@@ -249,7 +266,7 @@ fun ThemeSettingsScreen(
         item {
             Button(onClick = { themeViewModel.resetToDefaults() }) {
                 Text(
-                    text = "Reset defaults",
+                    text = stringResource(R.string.settings_reset_defaults),
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             }
@@ -261,8 +278,15 @@ fun ThemeSettingsScreen(
                 onCheckedChanged = { enabled ->
                     themeViewModel.setGlobalToggle(ThemeUiIds.NIGHT_MODE, enabled)
                 },
-                label = "Night mode",
-                secondaryLabel = if (nightModeToggle?.enabled == true) "On" else "Off",
+                label = stringResource(R.string.settings_night_mode),
+                secondaryLabel =
+                    if (nightModeToggle?.enabled ==
+                        true
+                    ) {
+                        stringResource(R.string.glancemap_state_on)
+                    } else {
+                        stringResource(R.string.glancemap_state_off)
+                    },
             )
         }
 
@@ -270,8 +294,9 @@ fun ThemeSettingsScreen(
             item {
                 Text(
                     text =
-                        "Night mode uses Mapsforge Dark. Your normal theme and overlay choices " +
-                            "are saved and return when it is off.",
+                        stringResource(
+                            R.string.settings_night_mode_uses_mapsforge_dark_your_normal_theme_and_overlay_choices_a,
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.fillMaxWidth(),
@@ -281,7 +306,7 @@ fun ThemeSettingsScreen(
         } else if (themeOptions.isNotEmpty()) {
             item {
                 Text(
-                    text = "Theme",
+                    text = stringResource(R.string.map_theme),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.fillMaxWidth(),
@@ -291,8 +316,8 @@ fun ThemeSettingsScreen(
             item {
                 selectedThemeValue?.let {
                     SettingsOptionPickerRow(
-                        label = "Map theme",
-                        dialogTitle = "Theme",
+                        label = stringResource(R.string.settings_map_theme),
+                        dialogTitle = stringResource(R.string.map_theme),
                         selectedValue = it,
                         options = themePickerOptions,
                         secondaryLabel = selectedTheme?.name?.ifBlank { selectedTheme.id } ?: "-",
@@ -304,13 +329,20 @@ fun ThemeSettingsScreen(
 
         if (customPackages.isNotEmpty()) {
             item {
-                Text("Custom themes", color = MaterialTheme.colorScheme.onBackground)
+                Text(stringResource(R.string.settings_custom_themes), color = MaterialTheme.colorScheme.onBackground)
             }
             customPackages.forEach { (packageId, themes) ->
                 item {
                     Button(onClick = { deletingPackage = packageId }) {
                         Text(
-                            text = "Delete ${themes.joinToString { it.name.removePrefix("Custom · ") }}",
+                            text =
+                                stringResource(
+                                    R.string.maps_delete,
+                                    themes.joinToString {
+                                        it.packageDisplayName
+                                            ?: it.name
+                                    },
+                                ),
                             color = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -322,8 +354,8 @@ fun ThemeSettingsScreen(
             if (osMapStyleUi != null) {
                 item {
                     SettingsOptionPickerRow(
-                        label = "Mode",
-                        dialogTitle = "OS Map mode",
+                        label = stringResource(R.string.settings_mode),
+                        dialogTitle = stringResource(R.string.settings_os_map_mode),
                         selectedValue = osMapStyleUi.selectedModeValue,
                         options = osMapStyleUi.modeOptions,
                         secondaryLabel = osMapStyleUi.selectedModeLabel,
@@ -341,8 +373,8 @@ fun ThemeSettingsScreen(
                 }
                 item {
                     SettingsOptionPickerRow(
-                        label = "Map style",
-                        dialogTitle = "OS Map style",
+                        label = stringResource(R.string.settings_map_style),
+                        dialogTitle = stringResource(R.string.settings_os_map_style),
                         selectedValue = osMapStyleUi.selectedVariantValue,
                         options = osMapStyleUi.variantOptions,
                         secondaryLabel = osMapStyleUi.selectedVariantLabel,
@@ -353,8 +385,8 @@ fun ThemeSettingsScreen(
                 item {
                     selectedStyleValue?.let {
                         SettingsOptionPickerRow(
-                            label = "Style",
-                            dialogTitle = "Theme style",
+                            label = stringResource(R.string.settings_style),
+                            dialogTitle = stringResource(R.string.settings_theme_style),
                             selectedValue = it,
                             options = stylePickerOptions,
                             secondaryLabel = selectedStyle?.name?.ifBlank { selectedStyle.id } ?: "-",
@@ -368,7 +400,10 @@ fun ThemeSettingsScreen(
         if (nightModeToggle?.enabled != true && themeOptions.isNotEmpty()) {
             item {
                 Text(
-                    text = "Themes can misread terrain or paths. Verify with local conditions and other sources.",
+                    text =
+                        stringResource(
+                            R.string.settings_themes_can_misread_terrain_or_paths_verify_with_local_conditions_and_o,
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth(),
@@ -380,7 +415,7 @@ fun ThemeSettingsScreen(
         if (nightModeToggle?.enabled != true && bundledThemeSelected && overlayOptions.isNotEmpty()) {
             item {
                 Text(
-                    text = "Overlays (tap group to open)",
+                    text = stringResource(R.string.settings_overlays_tap_group_to_open),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.fillMaxWidth(),
@@ -393,8 +428,19 @@ fun ThemeSettingsScreen(
                         val enabledCount = row.group.overlays.count { it.enabled }
                         val totalCount = row.group.overlays.size
                         SettingsPickerChip(
-                            label = if (row.expanded) "▾ ${row.group.title}" else "▸ ${row.group.title}",
-                            secondaryLabel = "$enabledCount/$totalCount",
+                            label =
+                                if (row.expanded) {
+                                    stringResource(
+                                        R.string.settings_expanded_section,
+                                        stringResource(row.group.titleRes),
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.settings_collapsed_section,
+                                        stringResource(row.group.titleRes),
+                                    )
+                                },
+                            secondaryLabel = stringResource(R.string.common_count_ratio, enabledCount, totalCount),
                             iconImageVector = null,
                             onClick = {
                                 expandedGroups[row.group.id] = !row.expanded
@@ -465,10 +511,10 @@ private fun buildOverlayGroups(overlays: List<ThemeListItem.Overlay>): List<Over
 
     val titles =
         mapOf(
-            "winter" to "Winter activities",
-            "routes" to "Routes & labels",
-            "poi" to "POI & services",
-            "map" to "Map details",
+            "winter" to R.string.map_winter_activities,
+            "routes" to R.string.map_routes_labels,
+            "poi" to R.string.map_poi_services,
+            "map" to R.string.map_map_details,
         )
 
     return buckets
@@ -476,7 +522,7 @@ private fun buildOverlayGroups(overlays: List<ThemeListItem.Overlay>): List<Over
             if (list.isEmpty()) return@mapNotNull null
             OverlayGroupUi(
                 id = id,
-                title = titles[id] ?: id,
+                titleRes = titles.getValue(id),
                 overlays = list.sortedBy { it.name.lowercase(Locale.ROOT) },
             )
         }
@@ -494,6 +540,7 @@ private fun buildOsMapStyleUi(
     selectedThemeId: String?,
     selectedStyleId: String?,
     styles: List<ThemeListItem.Style>,
+    resources: Resources,
 ): OsMapStyleUi? {
     val options =
         if (selectedThemeId == MapsforgeThemeCatalog.OS_MAP_THEME_ID) {
@@ -501,8 +548,7 @@ private fun buildOsMapStyleUi(
                 .mapNotNull { style ->
                     parseOsMapStyleSelection(style.id)?.let { selection ->
                         val label =
-                            style.name
-                                .removePrefix("${selection.modeLabel} - ")
+                            (style.baseName ?: style.name)
                                 .ifBlank { selection.realStyleId }
                         selection to label
                     }
@@ -528,8 +574,18 @@ private fun buildOsMapStyleUi(
         val hasNight = options.any { (selection, _) -> selection.prefix == OS_MAP_NIGHT_STYLE_PREFIX }
         val modeOptions =
             buildList {
-                if (hasDay) add("${OS_MAP_DAY_STYLE_PREFIX}${selected.realStyleId}" to "Day")
-                if (hasNight) add("${OS_MAP_NIGHT_STYLE_PREFIX}${selected.realStyleId}" to "Night")
+                if (hasDay) {
+                    add(
+                        "${OS_MAP_DAY_STYLE_PREFIX}${selected.realStyleId}" to
+                            resources.getString(R.string.settings_day),
+                    )
+                }
+                if (hasNight) {
+                    add(
+                        "${OS_MAP_NIGHT_STYLE_PREFIX}${selected.realStyleId}" to
+                            resources.getString(R.string.settings_night),
+                    )
+                }
             }
 
         val selectedModeValue = "${selected.prefix}${selected.realStyleId}"
@@ -542,7 +598,7 @@ private fun buildOsMapStyleUi(
                 .toList()
 
         OsMapStyleUi(
-            selectedModeLabel = selected.modeLabel,
+            selectedModeLabel = resources.getString(selected.modeLabelRes),
             selectedModeValue = selectedModeValue,
             modeOptions = modeOptions,
             selectedVariantLabel = selectedVariantLabel,
@@ -556,13 +612,13 @@ private fun parseOsMapStyleSelection(styleId: String): OsMapStyleSelection? =
     when {
         styleId.startsWith(OS_MAP_DAY_STYLE_PREFIX) ->
             OsMapStyleSelection(
-                modeLabel = "Day",
+                modeLabelRes = R.string.settings_day,
                 prefix = OS_MAP_DAY_STYLE_PREFIX,
                 realStyleId = styleId.removePrefix(OS_MAP_DAY_STYLE_PREFIX),
             )
         styleId.startsWith(OS_MAP_NIGHT_STYLE_PREFIX) ->
             OsMapStyleSelection(
-                modeLabel = "Night",
+                modeLabelRes = R.string.settings_night,
                 prefix = OS_MAP_NIGHT_STYLE_PREFIX,
                 realStyleId = styleId.removePrefix(OS_MAP_NIGHT_STYLE_PREFIX),
             )

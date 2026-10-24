@@ -14,11 +14,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiSearchUiState
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsOptionPickerHost
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
@@ -40,14 +43,15 @@ internal fun RouteToolsActionPanel(
     onStartSelection: (RouteToolSession) -> Unit,
     onOpenGpxToolsSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     if (!visible) return
 
     var showCoordinateEditor by remember(visible) { mutableStateOf(false) }
     var showPoiSearchDialog by remember(visible) { mutableStateOf(false) }
     var coordinateStep by remember(visible) { mutableStateOf(CoordinateStep.ONE_THOUSANDTH) }
     val shouldUsePreflightPopup =
-        preflightMessage == "Routing packs missing for selected map" ||
-            preflightMessage == "Routing data missing"
+        preflightMessage == resources.getString(R.string.gpx_routing_packs_missing_for_selected_map) ||
+            preflightMessage == resources.getString(R.string.gpx_routing_data_missing)
     var showPreflightPopup by remember(preflightMessage) { mutableStateOf(shouldUsePreflightPopup) }
     val startSelection: (RouteToolSession) -> Unit = startSelection@{ session ->
         val canStart = !session.options.requiresSingleActiveGpx || canModifyActiveGpx
@@ -63,7 +67,7 @@ internal fun RouteToolsActionPanel(
 
     WearToolPanelDialog(
         visible = true,
-        title = "GPX Tools",
+        title = stringResource(R.string.gpx_gpx_tools),
         onDismiss = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.90f),
     ) {
@@ -95,7 +99,7 @@ internal fun RouteToolsActionPanel(
 
         if (!canModifyActiveGpx && options.requiresSingleActiveGpx) {
             Text(
-                text = "Activate exactly one GPX first to use this tool.",
+                text = stringResource(R.string.gpx_activate_exactly_one_gpx_first_to_use_this_tool),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFFFCC80),
                 textAlign = TextAlign.Center,
@@ -116,8 +120,8 @@ internal fun RouteToolsActionPanel(
             options.createMode == RouteCreateMode.SEARCH
         ) {
             RouteSettingRow(
-                title = "Offline POI",
-                value = poiSearchSummary(poiSearchState),
+                title = stringResource(R.string.gpx_offline_poi),
+                value = poiSearchSummary(poiSearchState, resources = resources),
                 onClick = { showPoiSearchDialog = true },
             )
         }
@@ -192,23 +196,23 @@ internal fun RouteToolsActionPanel(
             ) {
                 Text(
                     if (options.loopStartMode == LoopStartMode.CURRENT_LOCATION) {
-                        "Create loop"
+                        stringResource(R.string.gpx_create_loop)
                     } else {
-                        "Pick start on map"
+                        stringResource(R.string.gpx_pick_start_on_map)
                     },
                 )
             }
         }
 
         Text(
-            text = options.activeSummary,
+            text = stringResource(options.activeSummaryRes),
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = Color.White.copy(alpha = 0.84f),
         )
 
         Text(
-            text = routeToolsHintText(options),
+            text = routeToolsHintText(options, resources = resources),
             style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
             color = Color.White.copy(alpha = 0.68f),
@@ -229,8 +233,8 @@ internal fun RouteToolsActionPanel(
         }
 
         RouteSettingRow(
-            title = "GPX tools settings",
-            value = "Creation defaults",
+            title = stringResource(R.string.gpx_gpx_tools_settings),
+            value = stringResource(R.string.gpx_creation_defaults),
             icon = Icons.Filled.Folder,
             iconTint = Color(0xFFFFD54F),
             onClick = onOpenGpxToolsSettings,
@@ -240,9 +244,9 @@ internal fun RouteToolsActionPanel(
     if (!preflightMessage.isNullOrBlank() && shouldUsePreflightPopup && showPreflightPopup) {
         WearActionDialog(
             visible = true,
-            title = "Routing Missing",
+            title = stringResource(R.string.gpx_routing_missing),
             message = preflightMessage,
-            confirmText = "OK",
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { showPreflightPopup = false },
             onDismissRequest = { showPreflightPopup = false },
         )
@@ -291,19 +295,19 @@ private fun RouteStylePickerRow(
     onSelected: (RouteStylePreset) -> Unit,
 ) {
     SettingsOptionPickerHost(
-        title = "Route type",
+        title = stringResource(R.string.gpx_route_type),
         selectedValue = selected,
-        options = routeStylePickerOptionsFor(selected),
+        options = routeStylePickerOptionsFor(selected).map { (value, labelRes) -> value to stringResource(labelRes) },
         onSelect = onSelected,
     ) { openPicker ->
         RouteSettingRow(
-            title = "Route type",
-            value = selected.title,
+            title = stringResource(R.string.gpx_route_type),
+            value = stringResource(selected.titleRes),
             onClick = openPicker,
         )
     }
     Text(
-        text = selected.summary,
+        text = stringResource(selected.summaryRes),
         style = MaterialTheme.typography.labelSmall,
         textAlign = TextAlign.Center,
         color = Color.White.copy(alpha = 0.72f),

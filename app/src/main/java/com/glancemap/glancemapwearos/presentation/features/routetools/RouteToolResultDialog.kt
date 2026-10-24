@@ -21,12 +21,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.formatting.DurationFormatter
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
@@ -47,6 +50,7 @@ internal fun RouteToolResultDialog(
     onRenameConfirm: (String) -> Unit,
     onStartGuidance: (() -> Unit)? = null,
 ) {
+    val resources = LocalResources.current
     if (!visible || result == null) return
 
     var showRenameDialog by remember(result.filePath) { mutableStateOf(false) }
@@ -54,7 +58,7 @@ internal fun RouteToolResultDialog(
     if (showRenameDialog) {
         RenameValueDialog(
             visible = true,
-            title = "Rename GPX",
+            title = stringResource(R.string.gpx_rename_gpx),
             initialValue = result.displayTitle,
             isSaving = renameInProgress,
             error = renameError,
@@ -71,11 +75,11 @@ internal fun RouteToolResultDialog(
     val (distanceValue, distanceUnit) = UnitFormatter.formatDistance(result.distanceMeters, isMetric)
     val (gainValue, gainUnit) = UnitFormatter.formatElevation(result.elevationGainMeters, isMetric)
     val (lossValue, lossUnit) = UnitFormatter.formatElevation(result.elevationLossMeters, isMetric)
-    val etaValue = DurationFormatter.formatDurationShort(result.estimatedDurationSec)
+    val etaValue = DurationFormatter.formatDurationShort(result.estimatedDurationSec, resources = resources)
 
     WearActionDialog(
         visible = true,
-        title = result.message,
+        title = stringResource(result.messageRes),
         onDismissRequest = onDismiss,
         backgroundColor = Color.Black.copy(alpha = 0.92f),
         buttons =
@@ -83,14 +87,14 @@ internal fun RouteToolResultDialog(
                 if (onStartGuidance != null) {
                     add(
                         WearActionDialogButton(
-                            text = "Start",
+                            text = stringResource(R.string.common_start),
                             onClick = onStartGuidance,
                         ),
                     )
                 }
                 add(
                     WearActionDialogButton(
-                        text = "Done",
+                        text = stringResource(R.string.common_done),
                         onClick = onDismiss,
                     ),
                 )
@@ -118,7 +122,7 @@ internal fun RouteToolResultDialog(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete GPX",
+                    contentDescription = stringResource(R.string.gpx_delete_gpx),
                 )
             }
             CompactIconHitTargetButton(
@@ -133,7 +137,7 @@ internal fun RouteToolResultDialog(
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
-                    contentDescription = "Rename GPX",
+                    contentDescription = stringResource(R.string.gpx_rename_gpx),
                 )
             }
         }
@@ -153,12 +157,12 @@ internal fun RouteToolResultDialog(
         ) {
             RouteStatTile(
                 modifier = Modifier.weight(1f),
-                label = "Dist",
-                value = "$distanceValue $distanceUnit",
+                label = stringResource(R.string.gpx_dist),
+                value = stringResource(R.string.common_value_unit, distanceValue, distanceUnit),
             )
             RouteStatTile(
                 modifier = Modifier.weight(1f),
-                label = "Time",
+                label = stringResource(R.string.common_time),
                 value = etaValue,
             )
         }
@@ -169,12 +173,12 @@ internal fun RouteToolResultDialog(
             RouteStatTile(
                 modifier = Modifier.weight(1f),
                 labelIcon = Icons.Default.ArrowUpward,
-                value = "$gainValue $gainUnit",
+                value = stringResource(R.string.common_value_unit, gainValue, gainUnit),
             )
             RouteStatTile(
                 modifier = Modifier.weight(1f),
                 labelIcon = Icons.Default.ArrowDownward,
-                value = "$lossValue $lossUnit",
+                value = stringResource(R.string.common_value_unit, lossValue, lossUnit),
             )
         }
     }

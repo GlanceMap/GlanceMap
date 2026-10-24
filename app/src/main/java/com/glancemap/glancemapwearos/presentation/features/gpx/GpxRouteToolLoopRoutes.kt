@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import android.content.res.Resources
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterConfig
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerOutput
@@ -17,18 +18,22 @@ private const val LOOP_TIME_TARGET_MIN_DISTANCE_METERS = 2_000
 private const val LOOP_TIME_TARGET_MAX_DISTANCE_METERS = 60_000
 private const val LOOP_TIME_TARGET_MAX_CORRECTION_FACTOR = 1.35
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 internal suspend fun createLoopRoute(
     routePlanner: RoutePlanner,
     elevationFilterConfig: () -> GpxElevationFilterConfig,
     etaModelConfig: () -> GpxEtaModelConfig,
     session: RouteToolSession,
     currentLocation: LatLong?,
+    resources: Resources,
 ): RoutePlannerOutput {
     val etaConfig = etaModelConfig()
     val initialRequest =
         session.toRoundTripPlannerRequest(
             currentLocation = currentLocation,
             etaModelConfig = etaConfig,
+            resources = resources,
         )
     val initialRoute = routePlanner.createLoop(initialRequest)
     val adjustedDistanceMeters =
@@ -57,6 +62,7 @@ internal suspend fun createLoopRoute(
                     currentLocation = currentLocation,
                     etaModelConfig = etaConfig,
                     targetDistanceMetersOverride = targetDistanceMeters,
+                    resources = resources,
                 )
             runCatching { routePlanner.createLoop(adjustedRequest) }
                 .getOrElse { initialRoute }
