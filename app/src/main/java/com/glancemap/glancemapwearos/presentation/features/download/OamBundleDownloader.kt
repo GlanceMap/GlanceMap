@@ -643,7 +643,7 @@ class OamBundleDownloader(
             }
 
             mapExtraction?.let { extraction ->
-                mapFileName = extraction.await()
+                mapFileName = progressArbiter.awaitExtraction(extraction)
                 mapArchive?.delete()
             }
             if (selection.includeMap) {
@@ -783,7 +783,7 @@ class OamBundleDownloader(
                 }
 
             poiExtraction?.let { extraction ->
-                poiFileName = extraction.await()
+                poiFileName = progressArbiter.awaitExtraction(extraction)
                 poiArchive?.delete()
             }
 

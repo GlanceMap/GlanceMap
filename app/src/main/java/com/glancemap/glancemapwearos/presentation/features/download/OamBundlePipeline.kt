@@ -2,8 +2,12 @@ package com.glancemap.glancemapwearos.presentation.features.download
 
 import android.content.res.Resources
 import com.glancemap.glancemapwearos.R
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.job
 import java.io.File
 import java.util.zip.ZipFile
+import kotlin.coroutines.coroutineContext
 
 @Suppress("ReturnCount")
 internal fun reusableBundleArchiveOrNull(
@@ -36,7 +40,8 @@ internal class OamBundleProgressArbiter(
 ) {
     private val lock = Any()
     private var networkOperationCount = 0
-    private var extractionActive = false
+    private var activeExtraction: Job? = null
+    private var awaitedExtraction: Deferred<*>? = null
     private var latestExtractionProgress: OamDownloadProgress? = null
 
     suspend fun <T> runNetwork(block: suspend ((OamDownloadProgress) -> Unit) -> T): T {
@@ -44,45 +49,59 @@ internal class OamBundleProgressArbiter(
         return try {
             block(::onNetworkProgress)
         } finally {
-            val extractionToShow =
-                synchronized(lock) {
-                    networkOperationCount = (networkOperationCount - 1).coerceAtLeast(0)
-                    latestExtractionProgress.takeIf { networkOperationCount == 0 && extractionActive }
-                }
-            extractionToShow?.let(emit)
+            synchronized(lock) {
+                networkOperationCount = (networkOperationCount - 1).coerceAtLeast(0)
+                emitExtractionIfVisible()
+            }
         }
     }
 
     suspend fun <T> runExtraction(block: suspend ((OamDownloadProgress) -> Unit) -> T): T {
+        val extractionJob = coroutineContext.job
         synchronized(lock) {
-            extractionActive = true
+            activeExtraction = extractionJob
             latestExtractionProgress = null
         }
         return try {
             block(::onExtractionProgress)
         } finally {
             synchronized(lock) {
-                extractionActive = false
+                activeExtraction = null
                 latestExtractionProgress = null
             }
         }
     }
 
+    suspend fun <T> awaitExtraction(extraction: Deferred<T>): T =
+        try {
+            synchronized(lock) {
+                awaitedExtraction = extraction
+                emitExtractionIfVisible()
+            }
+            extraction.await()
+        } finally {
+            synchronized(lock) { awaitedExtraction = null }
+        }
+
     fun emitForeground(progress: OamDownloadProgress) {
-        emit(progress)
+        synchronized(lock) { emit(progress) }
     }
 
     private fun onNetworkProgress(progress: OamDownloadProgress) {
-        emit(progress)
+        synchronized(lock) { emit(progress) }
     }
 
     private fun onExtractionProgress(progress: OamDownloadProgress) {
-        val shouldEmit =
-            synchronized(lock) {
-                latestExtractionProgress = progress
-                networkOperationCount == 0
-            }
-        if (shouldEmit) emit(progress)
+        synchronized(lock) {
+            latestExtractionProgress = progress
+            emitExtractionIfVisible()
+        }
+    }
+
+    private fun emitExtractionIfVisible() {
+        if (activeExtraction != null && activeExtraction === awaitedExtraction && networkOperationCount == 0) {
+            latestExtractionProgress?.let(emit)
+        }
     }
 }
 

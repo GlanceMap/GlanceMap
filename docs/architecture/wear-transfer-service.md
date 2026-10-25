@@ -142,6 +142,16 @@ factory-selected Network handle, transport and validation). Existing monitor eve
 logical default network. Refresh connections use the system default; their precise socket Network
 is not established by a monitor snapshot. No URLs, credentials or network names are added.
 
+## Bundle progress presentation
+
+The shared progress arbiter keeps map/POI extraction progress cached while the pipeline continues
+downloading other components, including gaps between individual transfers. Both the download UI
+and foreground notification show network progress during this overlap. At the existing map/POI
+await points, remaining extraction becomes visible immediately at its latest byte count and then
+continues updating. An extraction that already finished is not replayed. Progress selection and
+publication share a short lock so background callbacks cannot publish a stale selection out of order.
+Download/extraction scheduling, cancellation and archive reuse are unchanged.
+
 ## Bundle deletion feedback
 
 Bundle deletion retains the shared destructive confirmation dialog. Confirmation immediately hides
