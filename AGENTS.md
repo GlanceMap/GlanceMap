@@ -49,7 +49,13 @@ Never change algorithms, constants, thresholds, state transitions, or safety che
 
 For code changes intended to be committed or pushed, run `scripts/quality-gate.sh`. It is the canonical local repository gate and mirrors the required Gradle checks plus `git diff --check`.
 
-Run focused tests in addition when changing behavior. Do not report work as complete, ready to merge, or CI-clean unless the applicable checks passed. If the full gate cannot run, state what was not run and why.
+- During implementation, prefer focused checks for affected behavior or files; run focused tests when changing behavior.
+- Before opening or updating a PR with substantive code changes, run the full gate and treat a pass as the main local pre-PR verification. Do not rerun it after every small follow-up edit: use the narrowest applicable checks when unrelated areas cannot be affected. Rerun the full gate before declaring the PR ready if the branch changes materially after its last pass.
+- After a passing gate, run additional APK assembly, Android-test or instrumentation compilation, opt-in builds, benchmarks, or other expensive checks only when required by the changed subsystem, relevant repository documentation, or the task, or to address a concrete unresolved risk outside the gate's coverage. State the specific risk before each additional expensive check.
+- Summarize successful build/test output concisely; inspect or surface verbose output only for relevant failures, warnings, or diagnostics.
+- Real-device validation remains separate and required for GPS, sensors, hardware quirks, battery/runtime, or other device-dependent behavior.
+
+Do not report work as complete, ready to merge, or CI-clean unless the applicable checks passed. If the full gate cannot run, state what was not run and why.
 
 ## Hardware and real-world validation
 
