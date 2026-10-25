@@ -1,5 +1,55 @@
 # Screen-off bundle extraction investigation — 2026-10-25
 
+## Latest watch validation and closure scope
+
+The user's latest capture, `glancemap_diagnostics_20261025_174808_oneplus_opwwe251_s1.txt`,
+records a successful Bayern installation on release 1.3.1/1041, Git `d39d0b7838ba`,
+OnePlus OPWWE251 (Android 14). The user requested that this investigation stop here and the
+changes be committed. The final success validates installation after resume; uninterrupted
+completion with the display continuously off remains a known firmware limitation.
+
+| Attempt | Observed outcome |
+|---|---|
+| 17:25:30 | Map extraction stopped by the system at 17:29:59 with reason 4 (`STOP_REASON_DEVICE_STATE`), followed by `bundle_failed`. Elapsed and uptime both 269,004 ms; sampled screen-off time 239,481 ms. |
+| 17:36:14 | User pause at 17:40:25 cancels the current extraction. A resume request follows at 17:40:28. |
+| 17:40:28 | Full map and POI output promoted atomically; `bundle_complete` at 17:46:37, 368,899 ms (6m08.899s). |
+
+Final map output is 1,048,099,230 bytes, with 282,297 ms elapsed and uptime, zero measured
+suspend, and sampled screen durations of 51,350 ms on / 230,947 ms off. POI output is
+320,462,848 bytes, with 47,987 ms elapsed / 47,986 ms uptime and sampled durations of
+22,997 ms on / 24,990 ms off. These sampled intervals show screen-on time during the successful
+attempt; they do not establish a continuously screen-off success or removal of the device-state
+restriction. The first attempt still reproduces that restriction in this same capture.
+
+Both retained archives were reused (map ZIP 802,259,167 bytes; POI ZIP 112,942,272 bytes), so
+this is a resumed install rather than a fresh archive-download test. DEM completed with all
+28 required tiles ready (24 downloaded, four reused, zero unavailable). Completed extraction
+jobs report `job_finished`; their subsequent reason-1 scheduler cleanup is app cancellation
+after completion, distinct from the reason-4 failure before completion in the first attempt.
+
+Evidence anchors in that capture: lines 849–911 (first attempt and failure), 1237–1260
+(user pause, resume and archive reuse), 1328–1334 (map commit and job completion),
+1372–1376 (POI commit and job completion), and 1508–1511 (DEM, bundle completion and lock release).
+The preceding Manitoba capture also validated an entirely screen-off map extraction of 93,517 ms.
+Neither result establishes a battery improvement. No display hold or permanent power exemption
+has been added.
+
+### Pause and sequencing
+
+Pause cancels and joins the actual extraction writer. Resume opens the retained ZIP again and
+starts extraction of the current file at byte zero; the uncompressed `.part` file does not contain
+the decompressor state needed for direct continuation. Previously completed installed components
+can be reused. This behavior predates the system-job change.
+
+The pipeline already starts map extraction asynchronously while obtaining the next archive, and
+overlaps POI extraction with later bundle work. A single extraction permit serializes the two
+local ZIP writers. Downloading every component first would postpone the start of local processing;
+multiple extractors could contend for watch CPU, memory and storage. No measured benefit justifies
+changing that sequence in this fix. Extraction checkpoints are separate follow-up work.
+
+The historical sections below describe the initial investigation and host validation. Their
+pending-watch statements reflect that earlier stage; the results above supersede them.
+
 ## Initial verdict before live system evidence (superseded)
 
 The capture confirms device suspend during local extraction. It does **not** identify which system
