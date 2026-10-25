@@ -80,6 +80,9 @@ class OamDownloadForegroundService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLockAcquiredAtElapsedMs: Long? = null
     private var wakeLockGeneration = 0
+
+    @Volatile private var foregroundActive = false
+    private val wakeLockDiagnostics = OamWakeLockObserver(this, WAKE_LOCK_TAG)
     private var terminalNotificationPosted = false
 
     override fun onCreate() {
@@ -128,6 +131,7 @@ class OamDownloadForegroundService : Service() {
         if (!terminalNotificationPosted) {
             runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         }
+        foregroundActive = false
         releaseLocks()
         downloadNetwork.close()
         super.onDestroy()
@@ -459,6 +463,7 @@ class OamDownloadForegroundService : Service() {
                 0
             }
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, foregroundServiceType)
+        foregroundActive = true
     }
 
     @SuppressLint("WakelockTimeout")
@@ -474,6 +479,7 @@ class OamDownloadForegroundService : Service() {
                     ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
                     ?.apply {
                         setReferenceCounted(false)
+                        wakeLockDiagnostics.attach(this, wakeLockGeneration + 1)
                         acquire(WAKE_LOCK_TIMEOUT_MS)
                         wakeLockAcquired = isHeld
                         if (wakeLockAcquired) {
@@ -507,6 +513,7 @@ class OamDownloadForegroundService : Service() {
 
     @Synchronized
     private fun releaseLocks() {
+        wakeLockDiagnostics.detach(wakeLock)
         val wakeLockWasHeld = wakeLock?.isHeld == true
         val wifiLockWasHeld = wifiLock?.isHeld == true
         wakeLock?.let { lock ->
@@ -540,6 +547,18 @@ class OamDownloadForegroundService : Service() {
             wakeLockAcquireAgeMs = acquireAgeMs,
             wakeLockTimeoutMs = if (wakeLock != null) WAKE_LOCK_TIMEOUT_MS else null,
             wakeLockGeneration = wakeLockGeneration,
+            wakeLockSystemEnabled = wakeLockDiagnostics.systemEnabled,
+            wakeLockIdentity = wakeLock?.let(System::identityHashCode),
+            wakeLockTag = wakeLock?.let { WAKE_LOCK_TAG },
+            foregroundServiceActive = foregroundActive,
+            foregroundServiceType =
+                when {
+                    !foregroundActive -> null
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    else -> 0
+                },
+            operationActive = operationJob?.isActive,
         )
     }
 
@@ -579,6 +598,7 @@ class OamDownloadForegroundService : Service() {
         timeoutAfterMs: Long? = null,
     ) {
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
+        foregroundActive = false
         releaseLocks()
         foregroundStartId = null
         terminalNotificationPosted = true
@@ -600,6 +620,7 @@ class OamDownloadForegroundService : Service() {
 
     private fun clearForegroundAndStop(startId: Int? = null) {
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
+        foregroundActive = false
         releaseLocks()
         if (startId == null || foregroundStartId == startId) foregroundStartId = null
         runCatching { notificationManager.cancel(NOTIFICATION_ID) }

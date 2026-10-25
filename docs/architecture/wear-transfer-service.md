@@ -152,6 +152,18 @@ type. Diagnostics receipt no longer launches a share/email chooser automatically
 preserves the support address, subject and truncation note. Both file types reuse the existing
 generated-file Save copy activity entry point.
 
+## Screen-off extraction diagnostics
+
+The 2026-10-24 OnePlus capture confirms device suspend during extraction despite Java isHeld=true;
+it does not establish Doze versus Low Power Standby/OEM policy. Extraction execution and the network
+handoff are unchanged. Debug capture adds API-guarded power/process samples (at most once per five
+seconds) and API-33 system wake-lock enabled/disabled callbacks, capped at 16 transition logs per
+generation. Stale/released callbacks cannot repopulate state. Unsupported or failed queries use
+`na`; app-owned foreground/type fields are observations, not proof of system foreground state.
+No new polling job, wake/screen lock, exemption request or execution scheduler is added.
+See [investigation and ADB controls](oam-screen-off-extraction-investigation.md) before choosing a
+production execution change.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

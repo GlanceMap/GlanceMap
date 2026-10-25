@@ -15,6 +15,13 @@ internal data class OamExtractionRuntimeSnapshot(
     val wakeLockAcquireAgeMs: Long? = null,
     val wakeLockTimeoutMs: Long? = null,
     val wakeLockGeneration: Int = 0,
+    val wakeLockSystemEnabled: Boolean? = null,
+    val foregroundServiceActive: Boolean? = null,
+    val power: OamExtractionPowerSnapshot = OamExtractionPowerSnapshot(),
+    val wakeLockIdentity: Int? = null,
+    val wakeLockTag: String? = null,
+    val foregroundServiceType: Int? = null,
+    val operationActive: Boolean? = null,
 ) {
     val screenState: String
         get() = if (interactive) "ON" else "OFF"
@@ -27,6 +34,12 @@ data class OamDownloadKeepAliveState(
     val wakeLockAcquireAgeMs: Long? = null,
     val wakeLockTimeoutMs: Long? = null,
     val wakeLockGeneration: Int = 0,
+    val wakeLockSystemEnabled: Boolean? = null,
+    val wakeLockIdentity: Int? = null,
+    val wakeLockTag: String? = null,
+    val foregroundServiceActive: Boolean? = null,
+    val foregroundServiceType: Int? = null,
+    val operationActive: Boolean? = null,
 )
 
 /**
@@ -105,7 +118,8 @@ internal class OamExtractionTelemetryReporter(
                     "suspendOrSleepDeltaMs=${(wallNoProgressMs - uptimeNoProgressMs).coerceAtLeast(0L)} " +
                     "screenState=${snapshot.screenState} charging=${snapshot.charging} " +
                     "${keepAliveFields(snapshot)} " +
-                    "processCpuDeltaMs=${(currentCpuMs - lastHeartbeatCpuMs).coerceAtLeast(0L)}",
+                    "processCpuDeltaMs=${(currentCpuMs - lastHeartbeatCpuMs).coerceAtLeast(0L)} " +
+                    "elapsedRealtimeMs=$wallNow uptimeMillis=$uptimeNow ${snapshot.power.telemetryFields()}",
             )
             lastHeartbeatAtWallMs = wallNow
             lastHeartbeatCpuMs = currentCpuMs
@@ -116,7 +130,7 @@ internal class OamExtractionTelemetryReporter(
         synchronized(lock) {
             val wallNow = wallNowMs()
             val uptimeNow = uptimeNowMs()
-            observe(wallNow)
+            val snapshot = observe(wallNow)
             if (finalBytes > latestBytes) {
                 maxWallNoProgressMs =
                     maxOf(maxWallNoProgressMs, elapsed(wallNow, lastProgressAtWallMs))
@@ -135,7 +149,9 @@ internal class OamExtractionTelemetryReporter(
                     "screenOnDurationMs=$screenOnDurationMs screenOffDurationMs=$screenOffDurationMs " +
                     "chargingDurationMs=$chargingDurationMs batteryDurationMs=$batteryDurationMs " +
                     "maxWallNoProgressMs=$maxWallNoProgressMs " +
-                    "cpuTimeDeltaMs=${(processCpuMs() - startCpuMs).coerceAtLeast(0L)}",
+                    "cpuTimeDeltaMs=${(processCpuMs() - startCpuMs).coerceAtLeast(0L)} " +
+                    "elapsedRealtimeMs=$wallNow uptimeMillis=$uptimeNow " +
+                    "${keepAliveFields(snapshot)} ${snapshot.power.telemetryFields()}",
             )
         }
 
@@ -164,7 +180,8 @@ internal class OamExtractionTelemetryReporter(
                 "charging=${snapshot.charging} plugged=${snapshot.plugged} " +
                 "batteryPercent=${snapshot.batteryPercent} thermalStatus=${snapshot.thermalStatus} " +
                 "${keepAliveFields(snapshot)} " +
-                "threadName=${Thread.currentThread().name} processCpuMs=${processCpuMs()}",
+                "threadName=${Thread.currentThread().name} processCpuMs=${processCpuMs()} " +
+                "elapsedRealtimeMs=$wallNow uptimeMillis=$uptimeNow ${snapshot.power.telemetryFields()}",
         )
         lastProgressLogAtWallMs = wallNow
         lastProgressLogAtUptimeMs = uptimeNow
@@ -184,7 +201,12 @@ internal class OamExtractionTelemetryReporter(
             "wakeLockAcquireAgeMs=${snapshot.wakeLockAcquireAgeMs ?: "na"} " +
             "wakeLockTimeoutMs=${snapshot.wakeLockTimeoutMs ?: "na"} " +
             "wakeLockGeneration=${snapshot.wakeLockGeneration} " +
-            "wifiLockHeld=${snapshot.wifiLockHeld}"
+            "wifiLockHeld=${snapshot.wifiLockHeld} " +
+            "wakeLockSystemEnabled=${snapshot.wakeLockSystemEnabled ?: "na"} " +
+            "wakeLockIdentity=${snapshot.wakeLockIdentity ?: "na"} wakeLockTag=${snapshot.wakeLockTag ?: "na"} " +
+            "foregroundServiceActive=${snapshot.foregroundServiceActive ?: "na"} " +
+            "foregroundServiceType=${snapshot.foregroundServiceType ?: "na"} " +
+            "operationActive=${snapshot.operationActive ?: "na"}"
 
     private fun elapsed(
         laterMs: Long,

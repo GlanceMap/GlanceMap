@@ -200,6 +200,12 @@ class OamBundleDownloader(
     private val connections = OamDownloadConnections(connectionFactory)
     private val downloadDir: File by lazy { context.getDir("oam_downloads", Context.MODE_PRIVATE) }
     private val activeConnectionRegistry = OamActiveConnectionRegistry()
+    private val extractionPowerSampler by lazy {
+        OamExtractionPowerSampler(
+            read = { captureOamExtractionPowerSnapshot(context) },
+            nowMs = SystemClock::elapsedRealtime,
+        )
+    }
     private val activeConnections: MutableSet<HttpURLConnection>
         get() = activeConnectionRegistry.connections
     private val refugesInfoImporter by lazy {
@@ -1890,6 +1896,13 @@ class OamBundleDownloader(
             wakeLockAcquireAgeMs = keepAliveState.wakeLockAcquireAgeMs,
             wakeLockTimeoutMs = keepAliveState.wakeLockTimeoutMs,
             wakeLockGeneration = keepAliveState.wakeLockGeneration,
+            wakeLockSystemEnabled = keepAliveState.wakeLockSystemEnabled,
+            wakeLockIdentity = keepAliveState.wakeLockIdentity,
+            wakeLockTag = keepAliveState.wakeLockTag,
+            foregroundServiceActive = keepAliveState.foregroundServiceActive,
+            foregroundServiceType = keepAliveState.foregroundServiceType,
+            operationActive = keepAliveState.operationActive,
+            power = if (DebugTelemetry.isEnabled()) extractionPowerSampler.sample() else OamExtractionPowerSnapshot(),
         )
     }
 
