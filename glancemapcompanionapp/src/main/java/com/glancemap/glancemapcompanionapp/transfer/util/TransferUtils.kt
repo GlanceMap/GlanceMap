@@ -5,7 +5,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.SystemClock
-import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.isGpxMimeType
@@ -13,18 +12,16 @@ import com.glancemap.shared.transfer.MapsforgeThemePackage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import java.security.MessageDigest
-import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
@@ -35,6 +32,15 @@ internal data class CopyWithProgressOptions(
     val awaitIfPaused: (suspend () -> Unit)? = null,
     val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
     val currentTimeMs: () -> Long = System::currentTimeMillis,
+)
+
+internal data class Sha256Options(
+    val knownSize: Long? = null,
+    val awaitIfPaused: (suspend () -> Unit)? = null,
+    val onProgress: ((Float, String) -> Unit)? = null,
+    val onBytesHashed: (Long) -> Unit = {},
+    val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
+    val diagnosticContext: String? = null,
 )
 
 object TransferUtils {
@@ -59,16 +65,6 @@ object TransferUtils {
     // ✅ NEW: Detect "stuck" transfers (blocked socket write / stalled network)
     // If no forward progress for this duration -> close output to break the write, then cancel.
     private const val STALL_TIMEOUT_MS = 30_000L // 30s
-
-    private const val SHA_CACHE_MAX_ENTRIES = 32
-    private const val HASH_UPDATE_INTERVAL_MS = 500L
-    private const val HASH_UPDATE_STEP_BYTES = 8L * 1024L * 1024L
-
-    private val shaCacheLock = Any()
-    private val sha256Cache =
-        object : LinkedHashMap<String, String>(SHA_CACHE_MAX_ENTRIES, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > SHA_CACHE_MAX_ENTRIES
-        }
 
     fun getFileDetails(
         context: Context,
@@ -134,99 +130,6 @@ object TransferUtils {
         return name
     }
 
-    suspend fun computeSha256(
-        context: Context,
-        uri: Uri,
-        knownSize: Long? = null,
-        awaitIfPaused: (suspend () -> Unit)? = null,
-        onProgress: ((Float, String) -> Unit)? = null,
-    ): String? {
-        return runCatching {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val coroutineContext = currentCoroutineContext()
-            val totalBytes = knownSize?.takeIf { it > 0L }
-            var copied = 0L
-            var lastUiBytes = 0L
-            var lastUiMs = 0L
-
-            onProgress?.invoke(0f, formatHashProgress(copied, totalBytes))
-
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                val buffer = ByteArray(256 * 1024)
-                while (true) {
-                    coroutineContext.ensureActive()
-                    awaitIfPaused?.invoke()
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    if (read <= 0) continue
-
-                    digest.update(buffer, 0, read)
-                    copied += read
-
-                    val now = SystemClock.elapsedRealtime()
-                    val timeOk = (now - lastUiMs) >= HASH_UPDATE_INTERVAL_MS
-                    val bytesOk = (copied - lastUiBytes) >= HASH_UPDATE_STEP_BYTES
-                    val done = totalBytes != null && copied >= totalBytes
-                    if (timeOk || bytesOk || done) {
-                        lastUiMs = now
-                        lastUiBytes = copied
-                        val progress =
-                            if (totalBytes != null) {
-                                (copied.toDouble() / totalBytes.toDouble()).coerceIn(0.0, 1.0).toFloat()
-                            } else {
-                                0f
-                            }
-                        onProgress?.invoke(progress, formatHashProgress(copied, totalBytes))
-                    }
-                }
-            } ?: return null
-
-            onProgress?.invoke(1f, formatHashProgress(copied, totalBytes))
-            digest.digest().joinToString("") { b -> "%02x".format(b) }
-        }.getOrNull()
-    }
-
-    suspend fun computeSha256Cached(
-        context: Context,
-        uri: Uri,
-        knownDisplayName: String? = null,
-        knownSize: Long? = null,
-        awaitIfPaused: (suspend () -> Unit)? = null,
-        onProgress: ((Float, String) -> Unit)? = null,
-    ): String? {
-        val metadata = queryShaCacheMetadata(context, uri)
-        val effectiveSize = knownSize ?: metadata.size
-        val cacheKey =
-            buildShaCacheKey(
-                uri = uri,
-                displayName = knownDisplayName ?: metadata.displayName,
-                size = effectiveSize,
-                lastModified = metadata.lastModified,
-            )
-
-        synchronized(shaCacheLock) {
-            val cached = sha256Cache[cacheKey]
-            if (cached != null) {
-                onProgress?.invoke(1f, "Checksum ready (cached)")
-                return cached
-            }
-        }
-
-        onProgress?.invoke(0f, "Computing checksum…")
-        val computed =
-            computeSha256(
-                context = context,
-                uri = uri,
-                knownSize = effectiveSize,
-                awaitIfPaused = awaitIfPaused,
-                onProgress = onProgress,
-            ) ?: return null
-        synchronized(shaCacheLock) {
-            sha256Cache[cacheKey] = computed
-        }
-        return computed
-    }
-
     /**
      * High-performance stream copy with progress + speed.
      * Safe for very large files (streaming).
@@ -274,7 +177,7 @@ object TransferUtils {
                     options.awaitIfPaused?.invoke()
 
                     val read = input.read(buffer)
-                    if (read < 0) break
+                    if (shouldStopCopyAfterRead(options.totalBytes, copied.get(), read)) break
 
                     output.write(buffer, 0, read)
 
@@ -326,7 +229,24 @@ object TransferUtils {
             }
         }
 
-    private fun formatBytes(bytes: Long): String {
+    private fun shouldStopCopyAfterRead(
+        expectedBytes: Long,
+        bytesCopied: Long,
+        bytesRead: Int,
+    ): Boolean {
+        if (bytesRead < 0) {
+            if (expectedBytes >= 0L && bytesCopied != expectedBytes) {
+                throw IOException("unexpected_eof expectedBytes=$expectedBytes bytesSent=$bytesCopied")
+            }
+            return true
+        }
+        if (expectedBytes >= 0L && bytesRead.toLong() > expectedBytes - bytesCopied) {
+            throw IOException("unexpected_extra_data expectedBytes=$expectedBytes bytesSent=$bytesCopied")
+        }
+        return false
+    }
+
+    internal fun formatBytes(bytes: Long): String {
         val b = max(bytes, 0L).toDouble()
         val kib = 1024.0
         val mib = kib * 1024.0
@@ -530,76 +450,4 @@ object TransferUtils {
         }
         return false
     }
-
-    private data class ShaCacheMetadata(
-        val displayName: String?,
-        val size: Long?,
-        val lastModified: Long?,
-    )
-
-    private fun queryShaCacheMetadata(
-        context: Context,
-        uri: Uri,
-    ): ShaCacheMetadata {
-        return runCatching {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (!cursor.moveToFirst()) {
-                    return@use ShaCacheMetadata(displayName = null, size = null, lastModified = null)
-                }
-
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
-
-                val displayName =
-                    if (nameIndex != -1 && !cursor.isNull(nameIndex)) {
-                        cursor.getString(nameIndex)
-                    } else {
-                        null
-                    }
-
-                val size =
-                    if (sizeIndex != -1 && !cursor.isNull(sizeIndex)) {
-                        cursor.getLong(sizeIndex)
-                    } else {
-                        null
-                    }
-
-                val lastModified =
-                    if (modifiedIndex != -1 && !cursor.isNull(modifiedIndex)) {
-                        cursor.getLong(modifiedIndex)
-                    } else {
-                        null
-                    }
-
-                ShaCacheMetadata(displayName = displayName, size = size, lastModified = lastModified)
-            } ?: ShaCacheMetadata(displayName = null, size = null, lastModified = null)
-        }.getOrElse { ShaCacheMetadata(displayName = null, size = null, lastModified = null) }
-    }
-
-    private fun buildShaCacheKey(
-        uri: Uri,
-        displayName: String?,
-        size: Long?,
-        lastModified: Long?,
-    ): String =
-        buildString {
-            append(uri.toString())
-            append('|')
-            append(displayName ?: "")
-            append('|')
-            append(size ?: -1L)
-            append('|')
-            append(lastModified ?: -1L)
-        }
-
-    private fun formatHashProgress(
-        copied: Long,
-        total: Long?,
-    ): String =
-        if (total != null && total > 0L) {
-            "Checksum: ${formatBytes(copied)} / ${formatBytes(total)}"
-        } else {
-            "Checksum: ${formatBytes(copied)}"
-        }
 }

@@ -22,44 +22,54 @@ class ChannelClientStrategy {
         channel: ChannelClient.Channel,
         metadata: ReceiverMetadata,
         onProgress: (Long) -> Unit,
-    ) = withContext(Dispatchers.IO) {
-        val channelClient = Wearable.getChannelClient(service)
+    ): String =
+        withContext(Dispatchers.IO) {
+            val channelClient = Wearable.getChannelClient(service)
 
-        try {
-            Log.d(TAG, "📥 Channel opened: file=${metadata.fileName}")
-            TransferDiagnostics.log(
-                "ChannelIO",
-                "Receiving channel payload id=${metadata.transferId} file=${metadata.fileName}",
-            )
-
-            val rawInput = channelClient.getInputStream(channel).await()
-
-            BufferedInputStream(rawInput, INPUT_BUFFER_BYTES).use { inp ->
-                service.saveFile(
-                    fileName = metadata.fileName,
-                    inputStream = inp,
-                    expectedSize = null, // Channel size usually unknown
-                    resumeOffset = 0L,
-                    diagnosticContext = "transferId=${metadata.transferId}",
-                    onProgress = onProgress,
+            try {
+                Log.d(TAG, "📥 Channel opened: file=${metadata.fileName}")
+                TransferDiagnostics.log(
+                    "ChannelIO",
+                    "Receiving channel payload id=${metadata.transferId} file=${metadata.fileName}",
                 )
-            }
 
-            Log.d(TAG, "✅ Channel receive done: file=${metadata.fileName}")
-            TransferDiagnostics.log(
-                "ChannelIO",
-                "Channel payload saved id=${metadata.transferId} file=${metadata.fileName}",
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Channel receive failed: file=${metadata.fileName}", e)
-            TransferDiagnostics.error(
-                "ChannelIO",
-                "Channel payload failed id=${metadata.transferId} file=${metadata.fileName}",
-                e,
-            )
-            throw e
-        } finally {
-            runCatching { channelClient.close(channel).await() }
+                val rawInput = channelClient.getInputStream(channel).await()
+
+                val checksum =
+                    BufferedInputStream(rawInput, INPUT_BUFFER_BYTES).use { inp ->
+                        checkNotNull(
+                            service.saveFile(
+                                fileName = metadata.fileName,
+                                inputStream = inp,
+                                expectedSize = metadata.totalSize.takeIf { it >= 0L },
+                                expectedSha256 = metadata.checksumSha256,
+                                resumeOffset = 0L,
+                                keepPartialOnFailure = false,
+                                keepPartialOnCancel = false,
+                                computeSha256 = true,
+                                diagnosticContext = "transferId=${metadata.transferId}",
+                                onProgress = onProgress,
+                            ),
+                        ) { "checksum_compute_failed" }
+                    }
+
+                Log.d(TAG, "✅ Channel receive done: file=${metadata.fileName}")
+                TransferDiagnostics.log(
+                    "ChannelIO",
+                    "Channel payload saved id=${metadata.transferId} file=${metadata.fileName} " +
+                        "expectedBytes=${metadata.totalSize} receivedChecksumAvailable=yes",
+                )
+                checksum
+            } catch (e: Exception) {
+                val reason = channelTransferFailureReason(e.message)
+                Log.e(TAG, "Channel receive failed: file=${metadata.fileName} reason=$reason")
+                TransferDiagnostics.error(
+                    "ChannelIO",
+                    "Channel payload failed id=${metadata.transferId} file=${metadata.fileName} reason=$reason",
+                )
+                throw e
+            } finally {
+                runCatching { channelClient.close(channel).await() }
+            }
         }
-    }
 }

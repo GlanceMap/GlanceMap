@@ -8,11 +8,157 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicLong
 
 class TransferUtilsProgressTest {
+    @Test
+    fun channelCopyRejectsImmediateEofForKnownPositiveSize() {
+        val output = CountingOutputStream()
+        val error =
+            runCatching {
+                runBlocking {
+                    TransferUtils.copyWithProgress(
+                        input = ByteArrayInputStream(byteArrayOf()),
+                        output = output,
+                        options =
+                            CopyWithProgressOptions(
+                                totalBytes = 4_567_781L,
+                                bufferBytes = 16 * 1024,
+                                elapsedRealtimeMs = { 0L },
+                                currentTimeMs = { 0L },
+                            ),
+                        onProgress = { _, _ -> },
+                    )
+                }
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertEquals(0L, output.bytesWritten)
+    }
+
+    @Test
+    fun channelCopyRejectsTruncatedKnownSize() {
+        val bytes = "short".toByteArray()
+        val output = CountingOutputStream()
+        val error =
+            runCatching {
+                runBlocking {
+                    TransferUtils.copyWithProgress(
+                        input = ByteArrayInputStream(bytes),
+                        output = output,
+                        options =
+                            CopyWithProgressOptions(
+                                totalBytes = 10L,
+                                bufferBytes = 16 * 1024,
+                                elapsedRealtimeMs = { 0L },
+                                currentTimeMs = { 0L },
+                            ),
+                        onProgress = { _, _ -> },
+                    )
+                }
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertEquals(bytes.size.toLong(), output.bytesWritten)
+    }
+
+    @Test
+    fun channelCopyStopsBeforeWritingDataBeyondKnownSize() {
+        val output = CountingOutputStream()
+        val error =
+            runCatching {
+                runBlocking {
+                    TransferUtils.copyWithProgress(
+                        input = ByteArrayInputStream("too-long".toByteArray()),
+                        output = output,
+                        options =
+                            CopyWithProgressOptions(
+                                totalBytes = 4L,
+                                bufferBytes = 16 * 1024,
+                                elapsedRealtimeMs = { 0L },
+                                currentTimeMs = { 0L },
+                            ),
+                        onProgress = { _, _ -> },
+                    )
+                }
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertEquals(0L, output.bytesWritten)
+    }
+
+    @Test
+    fun channelCopyAcceptsExactKnownSize() =
+        runBlocking {
+            val bytes = "complete-file".toByteArray()
+            val output = CountingOutputStream()
+            val copied =
+                TransferUtils.copyWithProgress(
+                    input = ByteArrayInputStream(bytes),
+                    output = output,
+                    options =
+                        CopyWithProgressOptions(
+                            totalBytes = bytes.size.toLong(),
+                            bufferBytes = 16 * 1024,
+                            elapsedRealtimeMs = { 0L },
+                            currentTimeMs = { 0L },
+                        ),
+                    onProgress = { _, _ -> },
+                )
+
+            assertEquals(bytes.size.toLong(), copied)
+            assertEquals(copied, output.bytesWritten)
+        }
+
+    @Test
+    fun channelCopyPropagatesSourceReadFailure() {
+        val output = CountingOutputStream()
+        val input =
+            object : InputStream() {
+                private var firstRead = true
+
+                override fun read(): Int = throw UnsupportedOperationException()
+
+                override fun read(
+                    buffer: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ): Int {
+                    if (firstRead) {
+                        firstRead = false
+                        buffer[offset] = 1
+                        buffer[offset + 1] = 2
+                        return 2
+                    }
+                    throw IOException("source read failed")
+                }
+            }
+        val error =
+            runCatching {
+                runBlocking {
+                    TransferUtils.copyWithProgress(
+                        input = input,
+                        output = output,
+                        options =
+                            CopyWithProgressOptions(
+                                totalBytes = 4L,
+                                bufferBytes = 16 * 1024,
+                                elapsedRealtimeMs = { 0L },
+                                currentTimeMs = { 0L },
+                            ),
+                        onProgress = { _, _ -> },
+                    )
+                }
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertEquals(2L, output.bytesWritten)
+    }
+
     @Test
     fun fastTransferEmitsOncePerProgressStepBeforeSpeedWindowAdvances() {
         val events = mutableListOf<ProgressEvent>()

@@ -39,9 +39,12 @@ class MapRepositoryImpl(
         resumeOffset: Long = 0L,
         computeSha256: Boolean = true,
         diagnosticContext: String? = null,
+        expectedSha256: String? = null,
+        keepPartialOnCancel: Boolean = true,
+        keepPartialOnFailure: Boolean = true,
     ): String? =
         withContext(Dispatchers.IO) {
-            val exp = expectedSize?.takeIf { it > 0L }
+            val exp = expectedSize?.takeIf { it >= 0L }
 
             val options =
                 AtomicStreamWriter.Options(
@@ -51,9 +54,10 @@ class MapRepositoryImpl(
                     failIfExists = false,
                     expectedSize = exp,
                     requireExactSize = (exp != null),
+                    expectedSha256 = expectedSha256,
                     resumeOffset = resumeOffset.coerceAtLeast(0L),
-                    keepPartialOnCancel = true,
-                    keepPartialOnFailure = true,
+                    keepPartialOnCancel = keepPartialOnCancel,
+                    keepPartialOnFailure = keepPartialOnFailure,
                     computeSha256 = computeSha256,
                     diagnosticContext = diagnosticContext,
                 )

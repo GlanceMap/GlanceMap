@@ -89,6 +89,15 @@ Key components:
 5. For channel mode, `DataLayerChannelOpenedHandler` receives stream and finalizes ack.
 6. Service always releases locks and clears active transfer state in `finally` paths.
 
+Channel file integrity is checked at both ends. The phone hashes the source and copies it to the
+channel with exact byte-count checks whenever source size is known. Its prewarm message carries the
+declared size and SHA-256; the watch consumes both with the matching channel handoff. The receiver
+passes them to `AtomicStreamWriter`, which validates the staged byte count and checksum before
+promoting the `.part` file. A missing required checksum, short/long payload, unavailable digest, or
+mismatch fails the transfer, removes the staged file, and leaves any existing destination intact.
+Only after the validated write has been promoted does the channel handler claim `DONE` and send the
+terminal acknowledgement. Channel map transfers also reject absent or non-positive size metadata.
+
 ## Standalone DEM and screen-off downloads
 
 Standalone map DEM downloads are owned by `StandaloneDemDownloadForegroundService`

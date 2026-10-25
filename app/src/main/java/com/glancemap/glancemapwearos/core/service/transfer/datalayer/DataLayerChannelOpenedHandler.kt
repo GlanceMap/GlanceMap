@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import java.io.IOException
 import java.util.Locale
 
 @Suppress("LongParameterList") // Existing transfer seams stay explicit to preserve the handler's behavior.
@@ -34,6 +35,7 @@ internal class DataLayerChannelOpenedHandler(
     private val channelReceiver: ChannelClientStrategy,
     private val sendAck: suspend (sourceNodeId: String, transferId: String, status: String, detail: String) -> Unit,
     private val expectedChecksum: String? = null,
+    private val expectedSize: Long? = null,
     private val admissionOwner: Any? = null,
 ) {
     // Keep channel validation, serialization, and cleanup in one admitted transfer scope.
@@ -56,7 +58,7 @@ internal class DataLayerChannelOpenedHandler(
             ReceiverMetadata(
                 transferId = transferId,
                 fileName = fileName,
-                totalSize = -1L,
+                totalSize = expectedSize ?: -1L,
                 sourceNodeId = channel.nodeId,
                 notificationId = notificationId,
                 checksumSha256 = expectedChecksum,
@@ -96,66 +98,64 @@ internal class DataLayerChannelOpenedHandler(
             service.releasePrewarmWakeLock("channel_transfer_start:$fileName")
             var transferStarted = false
             var receiverStarted = false
+            var payloadPromoted = false
+            var lastBytesCopied = 0L
             var terminalAck: TerminalAck? = null
 
             try {
                 service.onTransferStarted()
                 transferStarted = true
+                val integrityFailure =
+                    channelTransferIntegrityFailureReason(
+                        fileName = metadata.fileName,
+                        expectedSize = expectedSize,
+                        expectedChecksum = expectedChecksum,
+                    )
+                if (integrityFailure != null) throw IOException(integrityFailure)
+
                 val startMs = SystemClock.elapsedRealtime()
-                var lastBytesCopied = 0L
                 receiverStarted = true
-                channelReceiver.receiveFromChannel(service, channel, metadata) { bytesCopied ->
-                    lastBytesCopied = bytesCopied
-                    // Channel progress is optional; keep minimal to avoid overhead
-                    if (bytesCopied > 0L) {
-                        notificationHelper.updateForeground(
-                            metadata.notificationId,
-                            metadata.fileName,
-                            service.getString(R.string.download_receiving_mb, bytesCopied / (1024 * 1024)),
-                            -1, // Indeterminate progress for channel transfers
-                        )
+                val receivedSha =
+                    channelReceiver.receiveFromChannel(service, channel, metadata) { bytesCopied ->
+                        lastBytesCopied = bytesCopied
+                        // Channel progress is optional; keep minimal to avoid overhead
+                        if (bytesCopied > 0L) {
+                            notificationHelper.updateForeground(
+                                metadata.notificationId,
+                                metadata.fileName,
+                                service.getString(R.string.download_receiving_mb, bytesCopied / (1024 * 1024)),
+                                -1, // Indeterminate progress for channel transfers
+                            )
+                        }
                     }
-                }
+                payloadPromoted = true
                 val durationMs = SystemClock.elapsedRealtime() - startMs
+                // Returning from receive means AtomicStreamWriter validated the staged size and
+                // checksum before promotion; do not add a second post-promotion failure point.
+                TransferDiagnostics.log(
+                    "Channel",
+                    "event=staged_validation transferId=${metadata.transferId} " +
+                        "expectedBytes=${expectedSize ?: "na"} receivedBytes=$lastBytesCopied " +
+                        "expectedChecksumAvailable=yes actualChecksumAvailable=${receivedSha.isNotBlank()} " +
+                        "checksumMatch=true " +
+                        "stagedValidation=passed promotionResult=succeeded",
+                )
                 TransferDiagnostics.log(
                     "Channel",
                     "event=write_complete transferId=${metadata.transferId} bytesReceived=$lastBytesCopied " +
-                        "commitSucceeded=true",
+                        "expectedBytes=${expectedSize ?: "na"} commitSucceeded=true",
                 )
 
-                // Verify checksum if available
-                val expectedSha = metadata.checksumSha256?.lowercase()
-                val checksumStartMs = SystemClock.elapsedRealtime()
                 TransferDiagnostics.log(
                     "Channel",
-                    "event=checksum_start transferId=${metadata.transferId}",
+                    "Checksum verified id=${metadata.transferId} file=${metadata.fileName}",
                 )
-                if (!expectedSha.isNullOrBlank()) {
-                    val actualSha = fileOps.computeFinalFileSha256(metadata.fileName)?.lowercase()
-                    if (actualSha != null && actualSha != expectedSha) {
-                        TransferDiagnostics.warn(
-                            "Channel",
-                            "event=checksum_complete transferId=${metadata.transferId} " +
-                                "checksumVerified=false " +
-                                "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
-                        )
-                        TransferDiagnostics.warn(
-                            "Channel",
-                            "Checksum mismatch id=${metadata.transferId} file=${metadata.fileName}",
-                        )
-                        fileOps.deleteLocalFile(metadata.fileName)
-                        throw IllegalStateException("CHECKSUM_MISMATCH")
-                    }
-                    TransferDiagnostics.log(
-                        "Channel",
-                        "Checksum verified id=${metadata.transferId} file=${metadata.fileName}",
-                    )
-                }
                 TransferDiagnostics.log(
                     "Channel",
                     "event=checksum_complete transferId=${metadata.transferId} " +
-                        "checksumVerified=${if (expectedSha.isNullOrBlank()) "na" else "true"} " +
-                        "checksumDurationMs=${SystemClock.elapsedRealtime() - checksumStartMs}",
+                        "expectedChecksumAvailable=yes actualChecksumAvailable=yes checksumMatch=true " +
+                        "checksumVerified=true " +
+                        "checksumDurationMs=na verificationMode=staged_inline",
                 )
                 fileOps.finishReceivedFile(metadata.fileName)
                 TransferDiagnostics.log(
@@ -192,17 +192,29 @@ internal class DataLayerChannelOpenedHandler(
                     "Timeout cancellation handled id=${metadata.transferId} file=${metadata.fileName}",
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Channel transfer failed", e)
                 val detail =
                     if (e.javaClass.name == "android.app.ForegroundServiceStartNotAllowedException") {
                         foregroundStartFailureDetail(e.javaClass.name, Build.VERSION.SDK_INT, e.message)
                     } else {
                         e.message ?: "Unknown error"
                     }
+                val reason = channelTransferFailureReason(detail)
+                Log.e(TAG, "Channel transfer failed id=${metadata.transferId} reason=$reason")
+                val promotionResult = if (payloadPromoted) "succeeded" else "not_succeeded"
                 TransferDiagnostics.error(
                     "Channel",
-                    "Failed id=${metadata.transferId} file=${metadata.fileName} detail=$detail",
-                    e,
+                    "Failed id=${metadata.transferId} file=${metadata.fileName} reason=$reason",
+                )
+                TransferDiagnostics.warn(
+                    "Channel",
+                    "event=staged_validation transferId=${metadata.transferId} " +
+                        "expectedBytes=${expectedSize ?: "na"} receivedBytes=$lastBytesCopied " +
+                        "expectedChecksumAvailable=${!expectedChecksum.isNullOrBlank()} " +
+                        "actualChecksumAvailable=${reason == "checksum_mismatch" || payloadPromoted} " +
+                        "checksumMatch=${if (reason == "checksum_mismatch") "false" else "na"} " +
+                        "checksumVerified=false " +
+                        "stagedValidation=failed promotionResult=$promotionResult " +
+                        "terminalStatus=ERROR reason=$reason",
                 )
                 if (service.claimForegroundTransfer(metadata.transferId, TransferTerminalOutcome.ERROR)) {
                     terminalAck = TerminalAck(status = "ERROR", detail = detail)

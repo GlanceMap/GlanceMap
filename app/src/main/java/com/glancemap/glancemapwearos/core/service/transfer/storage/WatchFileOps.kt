@@ -183,8 +183,10 @@ internal class WatchFileOps(
         expectedSize: Long?,
         resumeOffset: Long = 0L,
         keepPartialOnFailure: Boolean = false,
+        keepPartialOnCancel: Boolean = true,
         computeSha256: Boolean = true,
         diagnosticContext: String? = null,
+        expectedSha256: String? = null,
         onProgress: (Long) -> Unit,
     ): String? {
         try {
@@ -197,6 +199,9 @@ internal class WatchFileOps(
                         resumeOffset,
                         computeSha256,
                         diagnosticContext,
+                        expectedSha256,
+                        keepPartialOnCancel,
+                        keepPartialOnFailure,
                         onProgress,
                     )
                 fileName.endsWith(".gpx", ignoreCase = true) -> {
@@ -208,6 +213,9 @@ internal class WatchFileOps(
                             expectedSize = expectedSize,
                             resumeOffset = resumeOffset,
                             diagnosticContext = diagnosticContext,
+                            expectedSha256 = expectedSha256,
+                            keepPartialOnCancel = keepPartialOnCancel,
+                            keepPartialOnFailure = keepPartialOnFailure,
                         )
                     container.syncManager.requestGpxSync()
                     sha256
@@ -223,6 +231,9 @@ internal class WatchFileOps(
                             resumeOffset = resumeOffset,
                             computeSha256 = computeSha256,
                             diagnosticContext = diagnosticContext,
+                            expectedSha256 = expectedSha256,
+                            keepPartialOnCancel = keepPartialOnCancel,
+                            keepPartialOnFailure = keepPartialOnFailure,
                         )
                     container.syncManager.requestMapSync()
                     sha256
@@ -237,6 +248,9 @@ internal class WatchFileOps(
                             expectedSize = expectedSize,
                             resumeOffset = resumeOffset,
                             diagnosticContext = diagnosticContext,
+                            expectedSha256 = expectedSha256,
+                            keepPartialOnCancel = keepPartialOnCancel,
+                            keepPartialOnFailure = keepPartialOnFailure,
                         )
                     container.syncManager.requestPoiSync()
                     sha256
@@ -250,11 +264,12 @@ internal class WatchFileOps(
                             progressStepBytes = 8L * 1024 * 1024,
                             fsync = true,
                             failIfExists = false,
-                            expectedSize = expectedSize?.takeIf { it > 0L },
-                            requireExactSize = expectedSize != null && expectedSize > 0L,
+                            expectedSize = expectedSize?.takeIf { it >= 0L },
+                            requireExactSize = expectedSize != null && expectedSize >= 0L,
+                            expectedSha256 = expectedSha256,
                             resumeOffset = resumeOffset.coerceAtLeast(0L),
-                            keepPartialOnCancel = true,
-                            keepPartialOnFailure = true,
+                            keepPartialOnCancel = keepPartialOnCancel,
+                            keepPartialOnFailure = keepPartialOnFailure,
                             computeSha256 = computeSha256,
                             diagnosticContext = diagnosticContext,
                         )
@@ -278,11 +293,12 @@ internal class WatchFileOps(
                             progressStepBytes = 8L * 1024 * 1024,
                             fsync = true,
                             failIfExists = false,
-                            expectedSize = expectedSize?.takeIf { it > 0L },
-                            requireExactSize = expectedSize != null && expectedSize > 0L,
+                            expectedSize = expectedSize?.takeIf { it >= 0L },
+                            requireExactSize = expectedSize != null && expectedSize >= 0L,
+                            expectedSha256 = expectedSha256,
                             resumeOffset = resumeOffset.coerceAtLeast(0L),
-                            keepPartialOnCancel = true,
-                            keepPartialOnFailure = true,
+                            keepPartialOnCancel = keepPartialOnCancel,
+                            keepPartialOnFailure = keepPartialOnFailure,
                             computeSha256 = computeSha256,
                             diagnosticContext = diagnosticContext,
                         )
@@ -303,7 +319,7 @@ internal class WatchFileOps(
                 else -> throw IllegalArgumentException("Unsupported file type: $fileName")
             }
         } catch (ce: CancellationException) {
-            // Keep hidden ".part" for resume support.
+            if (!keepPartialOnCancel) deletePartial(fileName)
             throw ce
         } catch (ioe: IOException) {
             if (keepPartialOnFailure) {
@@ -311,11 +327,11 @@ internal class WatchFileOps(
                 throw ioe
             }
             Log.e("WatchFileOps", "IO error saving file. Cleaning up partial: $fileName", ioe)
-            deleteLocalFile(fileName)
+            deletePartial(fileName)
             throw ioe
         } catch (e: Exception) {
             Log.e("WatchFileOps", "Error saving file. Cleaning up partial: $fileName", e)
-            deleteLocalFile(fileName)
+            deletePartial(fileName)
             throw e
         }
     }
@@ -337,6 +353,9 @@ internal class WatchFileOps(
         resumeOffset: Long,
         computeSha256: Boolean,
         diagnosticContext: String?,
+        expectedSha256: String?,
+        keepPartialOnCancel: Boolean,
+        keepPartialOnFailure: Boolean,
         onProgress: (Long) -> Unit,
     ): String? {
         if ((expectedSize ?: 0L) > MapsforgeThemePackage.MAX_ARCHIVE_BYTES ||
@@ -352,11 +371,14 @@ internal class WatchFileOps(
                 onProgress = onProgress,
                 options =
                     AtomicStreamWriter.Options(
-                        expectedSize = expectedSize?.takeIf { it > 0L },
-                        requireExactSize = expectedSize != null && expectedSize > 0L,
+                        expectedSize = expectedSize?.takeIf { it >= 0L },
+                        requireExactSize = expectedSize != null && expectedSize >= 0L,
+                        expectedSha256 = expectedSha256,
                         resumeOffset = resumeOffset,
-                        keepPartialOnCancel = true,
-                        keepPartialOnFailure = true,
+                        keepPartialOnCancel = keepPartialOnCancel,
+                        // Preserve theme-package resume behavior for existing callers; channel
+                        // transfers explicitly disable both partial-retention flags.
+                        keepPartialOnFailure = keepPartialOnFailure || keepPartialOnCancel,
                         computeSha256 = computeSha256,
                         diagnosticContext = diagnosticContext,
                     ),
