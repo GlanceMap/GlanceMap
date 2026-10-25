@@ -1724,7 +1724,7 @@
     <string name="settings_if_custom_compass_drifts">"Gdy własny kompas dryfuje"</string>
     <string name="settings_if_custom_drifts">"Gdy własny dryfuje"</string>
     <string name="settings_if_off_cone_stays_green">"Gdy wył., stożek pozostaje zielony"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Jeśli zamkniesz komunikat na telefonie, dotknij ponownie przycisku 3, by wysłać ponownie."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Jeśli zamkniesz powiadomienie na telefonie, dotknij ponownie przycisku 3, aby wysłać je ponownie."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"W oknie REC przytrzymaj dowolny pomiar, by go zmienić."</string>
     <string name="settings_increase_interval">"Wydłuż interwał: %1$s"</string>
     <string name="settings_increase_timeout">"Wydłuż limit czasu"</string>

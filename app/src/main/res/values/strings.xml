@@ -1640,7 +1640,7 @@
     <string name="settings_if_custom_compass_drifts">"If custom compass drifts"</string>
     <string name="settings_if_custom_drifts">"If custom drifts"</string>
     <string name="settings_if_off_cone_stays_green">"If off, cone stays green"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"If you closed the phone prompt, tap button 3 again to resend."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"If you closed the phone notification, tap button 3 again to resend."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"In the REC popup, long press any metric to change it."</string>
     <string name="settings_increase_interval">"Increase %1$s interval"</string>
     <string name="settings_increase_timeout">"Increase timeout"</string>

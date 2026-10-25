@@ -1670,7 +1670,7 @@
     <string name="settings_if_custom_compass_drifts">"Si deriva la brújula personalizada"</string>
     <string name="settings_if_custom_drifts">"Si deriva el personalizado"</string>
     <string name="settings_if_off_cone_stays_green">"Si está desactivado, el cono sigue verde"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si cerraste el aviso del teléfono, vuelve a tocar el botón 3 para reenviar."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si cerraste la notificación del teléfono, toca el botón 3 otra vez para reenviarla."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"En la ventana REC, mantén pulsada una medida para cambiarla."</string>
     <string name="settings_increase_interval">"Aumentar intervalo de %1$s"</string>
     <string name="settings_increase_timeout">"Aumentar tiempo de espera"</string>

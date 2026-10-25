@@ -1616,7 +1616,7 @@
     <string name="settings_if_custom_compass_drifts">"Bei Drift des eigenen Kompasses"</string>
     <string name="settings_if_custom_drifts">"Bei Drift der eigenen Quelle"</string>
     <string name="settings_if_off_cone_stays_green">"Wenn aus, bleibt der Kegel grün"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Falls du den Hinweis am Telefon geschlossen hast, Taste 3 zum erneuten Senden antippen."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Falls du die Telefonbenachrichtigung geschlossen hast, tippe zum erneuten Senden noch einmal auf Taste 3."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"Im REC-Popup einen Messwert lange drücken, um ihn zu ändern."</string>
     <string name="settings_increase_interval">"%1$s-Intervall erhöhen"</string>
     <string name="settings_increase_timeout">"Zeitlimit erhöhen"</string>

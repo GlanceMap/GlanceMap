@@ -1672,7 +1672,7 @@
     <string name="settings_if_custom_compass_drifts">"Si la boussole personnalisée dérive"</string>
     <string name="settings_if_custom_drifts">"Si le mode personnalisé dérive"</string>
     <string name="settings_if_off_cone_stays_green">"Désactivé : le cône reste vert"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si vous avez fermé la demande sur le téléphone, retouchez le bouton 3 pour renvoyer."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si vous avez fermé la notification sur le téléphone, touchez de nouveau le bouton 3 pour la renvoyer."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"Dans la fenêtre REC, faites un appui long sur une mesure pour la changer."</string>
     <string name="settings_increase_interval">"Augmenter l’intervalle de %1$s"</string>
     <string name="settings_increase_timeout">"Augmenter le délai maximal"</string>
