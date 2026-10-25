@@ -29,6 +29,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentTargetFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.transfer.storage.partialFileUseGuard
 import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
@@ -40,6 +41,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -434,6 +436,7 @@ class OamBundleDownloader(
         onProgress: (OamDownloadProgress) -> Unit,
     ): OamInstalledBundle =
         coroutineScope {
+            partialFileUseGuard.protectUntilComplete(coroutineContext.job)
             require(selection.canDownload) { context.resources.getString(R.string.download_select_at_least_one_download_item) }
 
             val bundleStartedAtMs = System.currentTimeMillis()

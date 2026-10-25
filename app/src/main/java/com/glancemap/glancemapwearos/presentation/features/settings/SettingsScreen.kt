@@ -369,7 +369,9 @@ fun SettingsScreen(
                         Toast
                             .makeText(
                                 context,
-                                if (result.removedFiles > 0) {
+                                if (result.skippedInUseFiles > 0) {
+                                    resources.getString(R.string.settings_partial_files_in_use)
+                                } else if (result.removedFiles > 0) {
                                     resources.getQuantityString(
                                         R.plurals.settings_partial_files_cleared,
                                         result.removedFiles,

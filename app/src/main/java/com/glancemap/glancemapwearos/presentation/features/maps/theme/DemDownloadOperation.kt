@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.theme
 
+import com.glancemap.glancemapwearos.core.service.transfer.storage.partialFileUseGuard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -22,6 +23,7 @@ internal class DemDownloadOperation(
         if (job != null) return false
         val next = scope.launch(start = CoroutineStart.LAZY) { download(mapPath) }
         job = next
+        partialFileUseGuard.protectUntilComplete(next)
         // A cancelled coroutine may never enter its body, so cleanup belongs to completion.
         next.invokeOnCompletion { cause ->
             job = null

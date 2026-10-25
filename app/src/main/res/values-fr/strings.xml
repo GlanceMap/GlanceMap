@@ -1531,12 +1531,12 @@
     <string name="settings_checks_still_turn_response">"Teste la stabilité et les rotations"</string>
     <string name="settings_choose_source">"Choisir la source de %1$s"</string>
     <string name="settings_clear_cache">"Vider le cache"</string>
-    <string name="settings_clear_partial_transfer">"Effacer le transfert partiel"</string>
-    <string name="settings_clear_partial_transfers">"Effacer les transferts partiels"</string>
+    <string name="settings_clear_partial_transfer">"Effacer les fichiers partiels"</string>
+    <string name="settings_clear_partial_transfers">"Effacer les fichiers partiels"</string>
     <string name="settings_cleared_start_capture">"Effacé. Lancez la capture."</string>
     <string name="settings_clearing">"Effacement..."</string>
     <string name="settings_clearing_cache">"Nettoyage du cache..."</string>
-    <string name="settings_clearing_partial_transfer">"Effacement du transfert partiel..."</string>
+    <string name="settings_clearing_partial_transfer">"Suppression des fichiers partiels..."</string>
     <string name="settings_closest_in">"Zoom le plus proche"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Mode couleur"</string>
@@ -1755,7 +1755,7 @@
     <string name="settings_no_compatible_heading_source_found">"Aucune source de cap compatible trouvée."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"Aucun journal à exporter. Lancez d’abord la capture."</string>
     <string name="settings_no_partial_files">"Aucun fichier partiel"</string>
-    <string name="settings_no_partial_transfer_files">"Aucun fichier de transfert partiel"</string>
+    <string name="settings_no_partial_transfer_files">"Aucun fichier partiel"</string>
     <string name="settings_noise_threshold">"Seuil de bruit"</string>
     <string name="settings_normal">"Normal"</string>
     <string name="settings_normal_alert_timing">"Délai d’alerte normal"</string>
@@ -1801,11 +1801,12 @@
         <item quantity="many">"%1$d fichiers · %2$s"</item>
         <item quantity="other">"%1$d fichiers · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"Échec du nettoyage des transferts partiels"</string>
+    <string name="settings_partial_files_in_use">"Certains fichiers sont utilisés. Mettez les téléchargements en pause ou arrêtez-les avant de les effacer."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Échec de la suppression des fichiers partiels"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Supprime %1$d fichier de transfert partiel et libère %2$s. Les fichiers terminés restent sur la montre."</item>
-        <item quantity="many">"Supprime %1$d fichiers de transfert partiel et libère %2$s. Les fichiers terminés restent sur la montre."</item>
-        <item quantity="other">"Supprime %1$d fichiers de transfert partiel et libère %2$s. Les fichiers terminés restent sur la montre."</item>
+        <item quantity="one">"Supprime %1$d fichier partiel, y compris les archives de packs conservées, et libère %2$s. Les fichiers installés restent sur la montre."</item>
+        <item quantity="many">"Supprime %1$d fichiers partiels, y compris les archives de packs conservées, et libère %2$s. Les fichiers installés restent sur la montre."</item>
+        <item quantity="other">"Supprime %1$d fichiers partiels, y compris les archives de packs conservées, et libère %2$s. Les fichiers installés restent sur la montre."</item>
     </plurals>
     <string name="settings_path_preference">"Préférence de chemin"</string>
     <string name="settings_pause_rec_when_still">"Mettre REC en pause à l’arrêt"</string>

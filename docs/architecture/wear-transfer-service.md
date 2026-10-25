@@ -180,6 +180,19 @@ system wake-lock callbacks capped at 16 transition logs per generation. Stale/re
 cannot repopulate state. Unsupported or failed queries use `na`; app-owned foreground/type fields
 are observations, not proof of system state. No screen hold or permanent exemption is requested.
 
+## Manual partial-file cleanup
+
+Settings → Clear partial files counts and deletes hidden `.part` files at the existing transfer,
+map/POI/GPX, routing, DEM and theme staging roots, plus completed `.map.zip`/`.poi.zip` archives
+directly inside private `oam_downloads`. These archives are retained after interrupted bundle installs;
+clearing them forces the next attempt to download again. Installed files and arbitrary ZIPs outside
+that staging directory are excluded. Automatic seven-day cleanup remains hidden-`.part` only.
+
+Bundle operations, standalone DEM jobs and registered phone transfer jobs protect cleanup until
+their worker jobs, including cancellation cleanup/children, complete. Cleanup skips in-use files
+with a user message. Registration and each deletion share a short lock to prevent a new operation
+starting between the in-use check and unlink; directory traversal happens outside that lock.
+
 ## Contributor Rules
 
 - Keep `DataLayerListenerService.kt` orchestration-only. No protocol logic in service callbacks.

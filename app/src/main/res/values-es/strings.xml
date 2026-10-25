@@ -1529,12 +1529,12 @@
     <string name="settings_checks_still_turn_response">"Comprueba reposo y respuesta al giro"</string>
     <string name="settings_choose_source">"Elegir fuente de %1$s"</string>
     <string name="settings_clear_cache">"Vaciar caché"</string>
-    <string name="settings_clear_partial_transfer">"Borrar transferencia parcial"</string>
-    <string name="settings_clear_partial_transfers">"Borrar transferencias parciales"</string>
+    <string name="settings_clear_partial_transfer">"Eliminar archivos parciales"</string>
+    <string name="settings_clear_partial_transfers">"Eliminar archivos parciales"</string>
     <string name="settings_cleared_start_capture">"Borrado. Inicia la captura."</string>
     <string name="settings_clearing">"Borrando..."</string>
     <string name="settings_clearing_cache">"Vaciando caché..."</string>
-    <string name="settings_clearing_partial_transfer">"Borrando transferencia parcial..."</string>
+    <string name="settings_clearing_partial_transfer">"Eliminando archivos parciales..."</string>
     <string name="settings_closest_in">"Más cerca"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Modo de color"</string>
@@ -1753,7 +1753,7 @@
     <string name="settings_no_compatible_heading_source_found">"No hay fuente de rumbo compatible."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"No hay registros para exportar. Inicia primero la captura."</string>
     <string name="settings_no_partial_files">"Sin archivos parciales"</string>
-    <string name="settings_no_partial_transfer_files">"Sin archivos de transferencia parcial"</string>
+    <string name="settings_no_partial_transfer_files">"No hay archivos parciales"</string>
     <string name="settings_noise_threshold">"Umbral de ruido"</string>
     <string name="settings_normal">"Normal"</string>
     <string name="settings_normal_alert_timing">"Intervalo normal de avisos"</string>
@@ -1799,11 +1799,12 @@
         <item quantity="many">"%1$d archivos · %2$s"</item>
         <item quantity="other">"%1$d archivos · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"No se pudo borrar la transferencia parcial"</string>
+    <string name="settings_partial_files_in_use">"Hay archivos en uso. Pausa o detén las descargas antes de eliminarlos."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Error al eliminar archivos parciales"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Elimina %1$d archivo de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
-        <item quantity="many">"Elimina %1$d archivos de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
-        <item quantity="other">"Elimina %1$d archivos de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
+        <item quantity="one">"Elimina %1$d archivo parcial, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
+        <item quantity="many">"Elimina %1$d archivos parciales, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
+        <item quantity="other">"Elimina %1$d archivos parciales, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
     </plurals>
     <string name="settings_path_preference">"Preferencia de ruta"</string>
     <string name="settings_pause_rec_when_still">"Pausar REC en reposo"</string>

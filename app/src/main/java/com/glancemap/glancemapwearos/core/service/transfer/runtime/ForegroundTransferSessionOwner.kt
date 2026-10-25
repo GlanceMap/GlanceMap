@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.transfer.runtime
 
+import com.glancemap.glancemapwearos.core.service.transfer.storage.partialFileUseGuard
 import kotlinx.coroutines.Job
 import java.util.concurrent.ConcurrentHashMap
 
@@ -26,6 +27,7 @@ internal class ForegroundTransferSessionOwner {
         job: Job,
         terminalState: TransferTerminalState = TransferTerminalState(transferId),
     ): Session {
+        partialFileUseGuard.protectUntilComplete(job)
         val session =
             Session(
                 startId = startId,
