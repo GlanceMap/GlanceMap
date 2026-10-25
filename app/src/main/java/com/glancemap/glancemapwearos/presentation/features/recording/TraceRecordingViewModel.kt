@@ -23,7 +23,13 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.parseGpxData
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.buildRecordingDashboardSnapshot
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalSensorConnectionStatus
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthMetric
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthPointAssociation
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthSample
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorMetrics
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingStepCountHandoff
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.freshForRecording
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.recordingStepCountForHandoff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -144,6 +150,72 @@ class TraceRecordingViewModel(
     private var suppressedJitterPointCount = 0
     private var suppressedJitterDistanceMeters = 0.0
     private var latestSensorMetrics = RecordingSensorMetrics()
+    private var latestRawSensorMetrics = RecordingSensorMetrics()
+    private var stepCountHandoff = RecordingStepCountHandoff()
+    private var healthAssociation: RecordingHealthPointAssociation? = null
+    private var healthOwnedKinds = emptySet<RecordingHealthMetric>()
+    internal var prepareHealthDataForSave: suspend () -> Unit = {}
+
+    internal fun beginRecordingHealthSession(startedAtMillis: Long) {
+        healthAssociation = RecordingHealthPointAssociation(startedAtMillis)
+        healthOwnedKinds = emptySet()
+    }
+
+    internal fun beginRecordingHealthBackend(atMillis: Long) {
+        healthAssociation?.beginBackend(currentStepCount() ?: 0, atMillis)
+    }
+
+    internal fun setRecordingHealthOwnership(
+        kinds: Set<RecordingHealthMetric>,
+        atMillis: Long,
+    ) {
+        if (RecordingHealthMetric.STEPS_TOTAL in healthOwnedKinds && RecordingHealthMetric.STEPS_TOTAL !in kinds) {
+            stepCountHandoff.begin(currentStepCount(), atMillis)
+            latestRawSensorMetrics =
+                latestRawSensorMetrics.copy(stepCount = currentStepCount(), stepCountUpdatedAtMillis = 0L)
+        }
+        healthOwnedKinds = kinds
+        healthAssociation?.setOwnership(kinds, atMillis)
+        applyRecordingHealthBackfill()
+        applySensorMetrics(healthAssociation?.overlay(latestRawSensorMetrics) ?: latestRawSensorMetrics)
+    }
+
+    internal fun setRecordingHealthPaused(
+        paused: Boolean,
+        atMillis: Long,
+    ) {
+        healthAssociation?.setPaused(paused, atMillis)
+    }
+
+    internal fun onRecordingHealthSamples(
+        startedAtMillis: Long,
+        samples: List<RecordingHealthSample>,
+    ) {
+        val state = _uiState.value
+        if ((!state.active && !state.saving) || state.startedAtMillis != startedAtMillis) return
+        healthAssociation?.accept(samples, SystemClock.elapsedRealtime())
+        applyRecordingHealthBackfill()
+        applySensorMetrics(healthAssociation?.overlay(latestRawSensorMetrics) ?: latestRawSensorMetrics)
+        DebugTelemetry.log(
+            "TraceRecordingHealth",
+            "event=batch samples=${samples.size} points=${_uiState.value.points.size}",
+        )
+    }
+
+    private fun applyRecordingHealthBackfill() {
+        val state = _uiState.value
+        val points = healthAssociation?.backfill(state.points) ?: return
+        if (points !== state.points) {
+            val firstChanged = points.indices.firstOrNull { points[it] != state.points[it] } ?: 0
+            _uiState.value =
+                state.copy(
+                    points = points,
+                    pointsRevision = state.pointsRevision + 1L,
+                    pointsChangedFromIndex = firstChanged,
+                )
+        }
+    }
+
     private var heartRateSensorEventCount = 0
     private var stepSensorEventCount = 0
     private var cadenceSensorEventCount = 0
@@ -160,7 +232,12 @@ class TraceRecordingViewModel(
     private val recordingMovementConfidenceGate = RecordingMovementConfidenceGate()
     private val recordingFixQualityGate = RecordingFixQualityGate()
 
-    fun currentStepCount(): Int? = latestSensorMetrics.stepCount ?: _uiState.value.stepCount
+    fun currentStepCount(): Int? =
+        recordingStepCountForHandoff(
+            latestSensorMetrics.stepCount,
+            _uiState.value.stepCount,
+            healthAssociation?.knownSteps,
+        )
 
     private val smartTrackTelemetry = RecordingSmartTrackTelemetry()
     private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
@@ -636,7 +713,7 @@ class TraceRecordingViewModel(
                 rawAccuracyMeters = previousRecordedPoint?.accuracyMeters,
                 knownWatchGpsAccuracyFloorActive = watchGpsAccuracyFloorActive,
             )
-        val sensorMetricsAtFix = latestFreshSensorMetrics(nowMillis = System.currentTimeMillis())
+        val sensorMetricsAtFix = latestSensorMetrics.freshForRecording(System.currentTimeMillis())
         val smartTrackStartedAtElapsedMs =
             RecordingScreenOffDiagnostics.start()
         val motionResult =
@@ -1238,6 +1315,12 @@ class TraceRecordingViewModel(
     }
 
     fun onSensorMetrics(metrics: RecordingSensorMetrics) {
+        if (!_uiState.value.active || _uiState.value.saving) return
+        latestRawSensorMetrics = stepCountHandoff.apply(metrics)
+        applySensorMetrics(healthAssociation?.overlay(latestRawSensorMetrics) ?: latestRawSensorMetrics)
+    }
+
+    private fun applySensorMetrics(metrics: RecordingSensorMetrics) {
         val state = _uiState.value
         if (!state.active || state.saving) return
         val previousMetrics = latestSensorMetrics
@@ -1675,7 +1758,18 @@ class TraceRecordingViewModel(
         val locationCallbackCount = recordingPointDensityTelemetry.snapshot().callbackReceivedCount
         val rejectedFixCount = qualityRejectedFixCount
         val countersScope = if (recordingRecoveredFromDraft) "since_recovery" else "session"
+        val healthKindsAtSave = healthOwnedKinds.toSet()
         viewModelScope.launch {
+            prepareHealthDataForSave()
+            if (!_uiState.value.saving || _uiState.value.startedAtMillis != state.startedAtMillis) return@launch
+            val healthMetrics = healthAssociation?.overlay(latestRawSensorMetrics, healthKindsAtSave, forExport = true)
+            val exportState =
+                state.copy(
+                    points = _uiState.value.points,
+                    heartRateBpm = healthMetrics?.heartRateBpm ?: state.heartRateBpm,
+                    stepCount = healthMetrics?.stepCount ?: state.stepCount,
+                    cadenceSpm = healthMetrics?.cadenceSpm ?: state.cadenceSpm,
+                )
             val saveResult =
                 withContext(Dispatchers.IO) {
                     runCatching {
@@ -1699,7 +1793,7 @@ class TraceRecordingViewModel(
                         val summarySnapshot =
                             buildRecordingDashboardSnapshot(
                                 state =
-                                    state.copy(
+                                    exportState.copy(
                                         accumulatedPausedMillis = state.accumulatedPausedMillis + finalPausedMillis,
                                         paused = false,
                                         autoPaused = false,
@@ -1714,7 +1808,7 @@ class TraceRecordingViewModel(
                         val bytes =
                             encodeRecordedTraceAsGpx(
                                 title = title,
-                                points = state.points,
+                                points = exportState.points,
                                 summary =
                                     summarySnapshot
                                         .toRecordedTraceSummary(
@@ -1781,7 +1875,7 @@ class TraceRecordingViewModel(
                 )
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=save_success ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
+                    "event=save_success ${recordingSummaryTokens(exportState, now, finalPausedMillis)} " +
                         "fileName=${saveInfo?.fileName ?: "na"} byteSize=${saveInfo?.byteSize ?: -1} " +
                         "endReason=user_save",
                 )
@@ -1793,7 +1887,7 @@ class TraceRecordingViewModel(
                         ?.takeIf { it.isNotBlank() }
                         ?: resources.getString(R.string.recording_recording_save_failed)
                 _uiState.value =
-                    state.copy(
+                    exportState.copy(
                         active = true,
                         saving = false,
                         message = errorMessage,
@@ -1801,7 +1895,7 @@ class TraceRecordingViewModel(
                 syncRecordingProgressVibrationTimer()
                 DebugTelemetry.log(
                     "TraceRecording",
-                    "event=save_failure ${recordingSummaryTokens(state, now, finalPausedMillis)} " +
+                    "event=save_failure ${recordingSummaryTokens(exportState, now, finalPausedMillis)} " +
                         "error=${sanitizeTelemetryValue(errorMessage)}",
                 )
             }
@@ -2039,6 +2133,10 @@ class TraceRecordingViewModel(
         suppressedJitterPointCount = 0
         suppressedJitterDistanceMeters = 0.0
         latestSensorMetrics = RecordingSensorMetrics()
+        latestRawSensorMetrics = RecordingSensorMetrics()
+        stepCountHandoff = RecordingStepCountHandoff()
+        healthAssociation = null
+        healthOwnedKinds = emptySet()
         externalDistanceBaseMeters = null
         externalSessionDistanceMeters = null
         externalIntegratedDistanceMeters = null
@@ -2338,39 +2436,6 @@ class TraceRecordingViewModel(
             }
         val accuracy = livePoint.accuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return base.toDouble()
         return maxOf(base, accuracy * AUTO_PAUSE_ACCURACY_RESUME_FACTOR).toDouble()
-    }
-
-    private fun latestFreshSensorMetrics(nowMillis: Long): RecordingSensorMetrics? {
-        val heartRateBpm =
-            latestSensorMetrics.heartRateBpm
-                ?.takeIf { latestSensorMetrics.heartRateUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        val stepCount =
-            latestSensorMetrics.stepCount
-                ?.takeIf { latestSensorMetrics.stepCountUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        val cadenceSpm =
-            latestSensorMetrics.cadenceSpm
-                ?.takeIf { latestSensorMetrics.cadenceUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        val powerWatts =
-            latestSensorMetrics.externalPowerWatts
-                ?.takeIf { latestSensorMetrics.externalPowerUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        val pressureHpa =
-            latestSensorMetrics.barometricPressureHpa
-                ?.takeIf { latestSensorMetrics.barometricPressureUpdatedAtMillis.isFreshSensorTime(nowMillis) }
-        if (heartRateBpm == null &&
-            stepCount == null &&
-            cadenceSpm == null &&
-            powerWatts == null &&
-            pressureHpa == null
-        ) {
-            return null
-        }
-        return RecordingSensorMetrics(
-            heartRateBpm = heartRateBpm,
-            stepCount = stepCount,
-            cadenceSpm = cadenceSpm,
-            externalPowerWatts = powerWatts,
-            barometricPressureHpa = pressureHpa,
-        )
     }
 
     private fun rebuildTelemetryFromPoints(points: List<RecordedTracePoint>) {
@@ -2941,7 +3006,6 @@ private const val RECORDING_QUALITY_TELEMETRY_INTERVAL = 5
 private const val RECORDING_SMOOTHING_TELEMETRY_INTERVAL = 25
 private const val RECORDING_DRAFT_PERSIST_INTERVAL_MS = 60_000L
 private const val EXTERNAL_SPEED_INTEGRATION_MAX_GAP_MS = 5_000L
-private const val SENSOR_SNAPSHOT_MAX_AGE_MS = 15_000L
 private const val MAX_RECORDING_TITLE_LENGTH = 64
 private const val AUTO_PAUSE_MIN_POINTS = 2
 private const val AUTO_PAUSE_START_GRACE_MS = 60_000L
@@ -2982,8 +3046,6 @@ private fun livePointFromLocation(location: Location): RecordedTracePoint =
         speedMps = location.speed.takeIf { location.hasSpeed() },
         elevationSource = SettingsRepository.RECORDING_ELEVATION_SOURCE_GPS,
     )
-
-private fun Long.isFreshSensorTime(nowMillis: Long): Boolean = this > 0L && (nowMillis - this).coerceAtLeast(0L) <= SENSOR_SNAPSHOT_MAX_AGE_MS
 
 internal fun haversineMeters(
     a: LatLong,

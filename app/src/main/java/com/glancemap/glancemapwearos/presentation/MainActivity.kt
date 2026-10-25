@@ -58,6 +58,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScre
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
@@ -148,6 +149,7 @@ class MainActivity : ComponentActivity() {
             val navigateTimeFormat by appContainer.settingsViewModel.navigateTimeFormat.collectAsState()
             val isMetric by appContainer.settingsViewModel.isMetric.collectAsState()
             val traceRecordingState by appContainer.traceRecordingViewModel.recordingPresentationState.collectAsState()
+            val healthOwnedKinds by appContainer.recordingHealthRuntime.activeKinds.collectAsState()
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
@@ -238,6 +240,9 @@ class MainActivity : ComponentActivity() {
                     initialStepCount = appContainer.traceRecordingViewModel.currentStepCount(),
                     onMetrics = appContainer.traceRecordingViewModel::onSensorMetrics,
                     onPressureSample = appContainer.traceRecordingViewModel::onPressureSample,
+                    healthHeartRateActive = RecordingHealthMetric.HEART_RATE in healthOwnedKinds,
+                    healthStepsActive = RecordingHealthMetric.STEPS_TOTAL in healthOwnedKinds,
+                    healthCadenceActive = RecordingHealthMetric.CADENCE in healthOwnedKinds,
                 )
                 val locationPermissionGranted =
                     ContextCompat.checkSelfPermission(

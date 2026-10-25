@@ -19,6 +19,8 @@ This folder documents the watch-side architecture and major runtime flows.
 
 - `recording-sensor-pipeline.md`
   - Sensor ownership, freshness, callback/publication diagnostics and SmartTrack motion evidence.
+- `recording-health-services.md`
+  - Experimental capability-gated health metrics, foreground ownership, batching and diagnostic builds.
 
 ## Location Contributor Docs
 

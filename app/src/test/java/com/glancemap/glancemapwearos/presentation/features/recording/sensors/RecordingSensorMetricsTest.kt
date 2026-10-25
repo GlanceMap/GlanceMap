@@ -105,6 +105,55 @@ class RecordingSensorMetricsTest {
     }
 
     @Test
+    fun detectorCannotOverwriteFreshCounterCadence() {
+        val runtime = RecordingSensorRuntimeState()
+        runtime.updateStepCounter(value = 100f, nowMillis = 1_000L)
+        val counter = runtime.updateStepCounter(value = 126f, nowMillis = 13_000L)
+
+        assertEquals(130, counter.cadenceSpm)
+        assertNull(runtime.updateStepDetector(nowMillis = 13_001L))
+        assertNull(runtime.updateStepDetector(nowMillis = 28_000L))
+    }
+
+    @Test
+    fun delayedDetectorCannotOverwriteNewerCounterMeasurement() {
+        val runtime = RecordingSensorRuntimeState()
+        runtime.updateStepCounter(value = 100f, nowMillis = 18_000L)
+        assertEquals(130, runtime.updateStepCounter(value = 126f, nowMillis = 30_000L).cadenceSpm)
+
+        assertNull(runtime.updateStepDetector(nowMillis = 20_000L, value = 1f))
+    }
+
+    @Test
+    fun detectorFallsBackWhenCounterCadenceExpiresWithoutRenewingCounterTime() {
+        val runtime = RecordingSensorRuntimeState()
+        runtime.updateStepCounter(value = 100f, nowMillis = 1_000L)
+        runtime.updateStepCounter(value = 126f, nowMillis = 13_000L)
+        runtime.updateStepDetector(nowMillis = 14_000L)
+
+        assertEquals(4, runtime.updateStepDetector(nowMillis = 28_001L))
+    }
+
+    @Test
+    fun nonUnitDetectorPayloadCannotCreateOrRefreshCadence() {
+        val runtime = RecordingSensorRuntimeState()
+
+        assertNull(runtime.updateStepDetector(nowMillis = 1_000L, value = 438f))
+        assertNull(runtime.updateStepDetector(nowMillis = 2_000L, value = Float.NaN))
+        assertEquals(2, runtime.updateStepDetector(nowMillis = 3_000L, value = 1f))
+    }
+
+    @Test
+    fun duplicateCounterTimestampCannotPoisonNextCadenceEstimate() {
+        val runtime = RecordingSensorRuntimeState()
+        runtime.updateStepCounter(value = 100f, nowMillis = 1_000L)
+        runtime.updateStepCounter(value = 126f, nowMillis = 13_000L)
+        runtime.updateStepCounter(value = 126f, nowMillis = 12_000L)
+
+        assertEquals(130, runtime.updateStepCounter(value = 152f, nowMillis = 25_000L).cadenceSpm)
+    }
+
+    @Test
     fun firstValidWatchHeartRateAfterNoReadingIsNotLostToCoalescing() {
         assertEquals(true, RecordingSensorPublishPolicy.shouldPublishWatchHeartRate(1_100L, 1_000L, 82, null))
     }

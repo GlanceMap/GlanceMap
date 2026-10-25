@@ -31,8 +31,10 @@ ktlintGradle = "14.2.0"
 detekt = "1.23.8"
 benchmarkMacro = "1.5.0"
 uiAutomator = "2.4.0"
+healthServices = "1.1.0"
 
 [libraries]
+androidx-health-services = { module = "androidx.health:health-services-client", version.ref = "healthServices" }
 # AndroidX Core & Lifecycle
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }

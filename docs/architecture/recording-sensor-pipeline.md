@@ -20,10 +20,15 @@ snapshot expires optional metrics after 15 seconds; cached live fields may
 still retain their last value. Silence alone cannot distinguish unchanged HR,
 invalid readings, delayed delivery or sensor loss.
 
-The step counter produces a session total relative to its cumulative baseline;
-the detector contributes only to a 30-second cadence window. Counter deltas
-also derive cadence, sharing the cadence field with detector updates. These
-derivations currently use callback arrival times, not source measurement times.
+The step counter produces a session total relative to its cumulative baseline.
+Counter-derived cadence takes priority for the existing 15-second freshness
+window. Detector cadence is a fallback and never renews the counter timestamp;
+a delayed detector measurement older than the counter cannot overwrite it.
+Only a detector payload of exactly one contributes to the 30-second window.
+Counter/detector derivation and freshness use monotonic source measurement time,
+converted to wall time for recording snapshots. Missing/future timestamps and
+invalid counter values cannot refresh a reading. Duplicate/out-of-order source
+times cannot advance cadence state.
 
 Legacy `TraceRecording` counters have different meanings:
 
@@ -37,7 +42,7 @@ Legacy `TraceRecording` counters have different meanings:
 `TraceRecordingSensors event=pipeline` adds bounded, per-registration, per-source
 diagnostics. `callbacks`, `usable`, `invalid`, `coalesced` and `published` count
 different stages. `usable` means the existing processing path accepted the
-callback (the detector has no value filter), not that the measurement is fresh
+callback (including the detector's unit-value filter), not that the measurement is fresh
 or the hardware accuracy is reliable. Raw values
 and accuracy are diagnostic context, not a new validation policy.
 Source/callback ages, publication age and callback-to-publication delay separate
@@ -65,6 +70,22 @@ HR coalescing issue dates to `f052e4e6` (2026-08-12). Physical validation must
 compare pipeline snapshots across screen off/on and distinguish raw silence,
 invalid values, coalescing, delayed source delivery and main-thread queue delay
 before changing lifecycle, foreground-service, wake-lock or freshness policy.
+The 2026-10-25 capture narrows this to at least 118 seconds without either raw
+step callback while pressure continues. It also contains cumulative-looking
+detector payloads, which cannot be counted as one callback per step. Pressure
+clock growth does not support sustained AP suspension as the full explanation.
+
+An opt-in `-PrecordingWakeLockExperiment=true` build holds an application-owned
+partial lock only while recording is active, unpaused and not saving. It releases
+on pause/end and has a 30-minute diagnostic ceiling per active period, without
+automatic renewal after expiry. Normal builds default to false. Existing pipeline
+snapshots report the build flag and actual `wakeLockHeld` state. This experiment
+does not establish battery or hardware improvements without a comparable A/B walk.
+
+The separate [Health Services experiment](recording-health-services.md) is also
+off by default. Its successfully owned metrics suppress the corresponding raw
+sensor path; unsupported, denied or failed metrics retain raw fallback. GPS,
+pressure and hybrid elevation keep their existing owners and algorithms.
 
 Platform contracts: [on-change reporting](https://source.android.com/docs/core/interaction/sensors/report-modes),
 [sensor types](https://source.android.com/docs/core/interaction/sensors/sensor-types),

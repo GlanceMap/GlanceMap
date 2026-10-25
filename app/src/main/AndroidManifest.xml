@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Health Services is loaded only on API 30+; older watches retain raw recording sensors. -->
+    <uses-sdk tools:overrideLibrary="androidx.health.services.client" />
 
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-feature
@@ -69,6 +73,7 @@
     <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <queries>
@@ -113,6 +118,11 @@
         <service
             android:name=".core.service.location.service.LocationService"
             android:foregroundServiceType="location"
+            android:exported="false" />
+
+        <service
+            android:name=".presentation.features.recording.health.RecordingHealthForegroundService"
+            android:foregroundServiceType="health"
             android:exported="false" />
 
         <service
