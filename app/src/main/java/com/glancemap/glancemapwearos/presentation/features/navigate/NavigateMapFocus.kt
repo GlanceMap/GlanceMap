@@ -34,8 +34,10 @@ import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import kotlinx.coroutines.delay
 
 @Stable
-internal class NavigateMapFocusState {
-    var mapFocusMode by mutableStateOf(false)
+internal class NavigateMapFocusState(
+    initialMapFocusMode: Boolean = false,
+) {
+    var mapFocusMode by mutableStateOf(initialMapFocusMode)
         private set
     var hintVisible by mutableStateOf(false)
         private set
@@ -95,13 +97,7 @@ internal fun mapFocusChromePolicy(
 @Suppress("FunctionNaming")
 internal fun MapFocusModeEffects(
     state: NavigateMapFocusState,
-    dashboardFullscreen: Boolean,
-    onExitMapFocus: (String) -> Unit,
 ) {
-    // Existing dashboards take over normally and return to the ordinary map when closed.
-    LaunchedEffect(dashboardFullscreen, state.mapFocusMode) {
-        if (dashboardFullscreen && state.mapFocusMode) onExitMapFocus("dashboard")
-    }
     LaunchedEffect(state.mapFocusMode) {
         if (state.mapFocusMode) {
             delay(1_000L)

@@ -636,7 +636,7 @@ internal fun NavigateContent(
             ((showScaleBar && mapChrome.shows(MapFocusControl.SCALE)) || routeToolModeActive)
     val shouldSuppressNavigateTime =
         shortcutTrayExpanded || !mapChrome.shows(MapFocusControl.TIME) || suppressNavigateTimeForLayout
-    MapFocusModeEffects(mapFocusState, fullScreenPopupExpanded, onExitMapFocus)
+    MapFocusModeEffects(mapFocusState)
     val overlayOwnsRotary = expandedOverlayState.overlayOwnsRotary
 
     LaunchedEffect(shouldSuppressNavigateTime) {

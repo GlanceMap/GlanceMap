@@ -31,10 +31,12 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.design.theme.GlanceMapTheme
+import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateViewModel
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteShortcutTray
 import com.glancemap.glancemapwearos.test.LargeRoundWatch
 import com.glancemap.glancemapwearos.test.MediumSquareWatch
@@ -208,15 +210,35 @@ class MapFocusModeUiTest {
     }
 
     @Test
-    fun existingDashboardTakesOverAndEndsFocusWithoutChangingDashboardState() {
+    fun existingDashboardTakesOverWithoutEndingFocus() {
         launch()
         enterFocus()
         composeRule.runOnIdle { dashboardFullscreen = true }
         composeRule.runOnIdle {
-            assertFalse(focus.mapFocusMode)
+            assertTrue(focus.mapFocusMode)
             assertTrue(dashboardFullscreen)
         }
         composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
+        composeRule.runOnIdle { dashboardFullscreen = false }
+        composeRule.runOnIdle { assertTrue(focus.mapFocusMode) }
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun navigateViewModelRestoresFocusWhenScreenStateIsRecreated() {
+        var retainedViewModel: NavigateViewModel? = null
+        composeRule.setContent {
+            retainedViewModel = viewModel()
+        }
+        val navigateViewModel = requireNotNull(retainedViewModel)
+
+        navigateViewModel.mapFocusMode.value = true
+        val recreatedState = NavigateMapFocusState(navigateViewModel.mapFocusMode.value)
+
+        assertTrue(recreatedState.mapFocusMode)
+        recreatedState.exit()
+        navigateViewModel.mapFocusMode.value = recreatedState.mapFocusMode
+        assertFalse(navigateViewModel.mapFocusMode.value)
     }
 
     @Test
@@ -384,7 +406,7 @@ class MapFocusModeUiTest {
             withWearDeviceConfig(config) {
                 GlanceMapTheme {
                     TestBackHandler()
-                    MapFocusModeEffects(focus, dashboardFullscreen) { focus.exit() }
+                    MapFocusModeEffects(focus)
                     Box(Modifier.fillMaxSize().testTag("map_focus_test_surface")) {
                         val chrome =
                             mapFocusChromePolicy(focus.mapFocusMode, dashboardFullscreen, visibleControls, toolsAvailable)

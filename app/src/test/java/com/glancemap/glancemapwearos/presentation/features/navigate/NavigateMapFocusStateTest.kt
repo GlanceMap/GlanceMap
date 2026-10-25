@@ -20,6 +20,15 @@ class NavigateMapFocusStateTest {
     }
 
     @Test
+    fun `restored focus remains active until explicit exit`() {
+        val state = NavigateMapFocusState(initialMapFocusMode = true)
+
+        assertTrue(state.mapFocusMode)
+        state.exit()
+        assertFalse(state.mapFocusMode)
+    }
+
+    @Test
     fun `exiting restores normal chrome and clears the hint`() {
         val state = NavigateMapFocusState()
         state.enter {}

@@ -39,6 +39,8 @@ Key files:
 4. `MapOverlays.kt` renders GPX + inspection UI on top of `MapView`.
 5. `NavigateContent.kt` handles user gestures (pan/zoom/recenter/menu/toggles) and sends intent callbacks to viewmodels.
 
+Map focus mode is retained by the Navigate destination's `NavigateViewModel`, so returning from the menu restores the focused map. Full-screen recording and guidance dashboards temporarily take visual precedence without clearing map focus; the mode ends only when the user explicitly exits it.
+
 ## Responsibilities
 
 `NavigateScreen.kt` should remain an orchestrator:
