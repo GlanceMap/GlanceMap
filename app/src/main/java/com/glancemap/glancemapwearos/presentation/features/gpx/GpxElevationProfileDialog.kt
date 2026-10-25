@@ -187,6 +187,7 @@ fun GpxElevationProfileDialog(
     profile: GpxElevationProfileUiState,
     locationMarker: ElevationProfileLocationMarker?,
     isMetric: Boolean,
+    trackColor: Color,
     onDismiss: () -> Unit,
 ) {
     val resources = LocalResources.current
@@ -406,6 +407,7 @@ fun GpxElevationProfileDialog(
 
                         ElevationProfileChart(
                             samples = samples,
+                            trackColor = trackColor,
                             selectedIndex = selectedIndex,
                             locationDistanceMeters = locationMarker?.distance,
                             onSelectIndex = { selectedIndex = it },

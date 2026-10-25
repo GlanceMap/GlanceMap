@@ -23,6 +23,44 @@ class ActivityElevationProfileTest {
     }
 
     @Test
+    fun interactiveProfileSamplesKeepMissingElevationAndSegmentGaps() {
+        val profile =
+            buildProfile(
+                FileSig(1L, 1L),
+                listOf(
+                    point(0, 100.0),
+                    point(1, null),
+                    point(2, 120.0),
+                    point(3, 130.0).copy(startsNewSegment = true),
+                    point(4, 140.0),
+                ),
+            )
+
+        val samples =
+            buildElevationProfileSamples(
+                profile = profile,
+                etaProjection = GpxEtaProjection(doubleArrayOf(0.0, 10.0, 20.0, 30.0, 40.0)),
+            )
+
+        assertEquals(listOf(100.0, 120.0, 130.0, 140.0), samples.map { it.elevation })
+        assertEquals(listOf(false, true, true, false), samples.map { it.gapBefore })
+        assertEquals(listOf(0.0, 20.0, 30.0, 40.0), samples.map { it.cumulativeDurationSec })
+    }
+
+    @Test
+    fun interactiveDownsamplingRetainsUniformSamplesAndBothSidesOfGaps() {
+        val samples = (0 until 400).map { index -> sample(index).copy(gapBefore = index == 203) }
+        val expectedUniformIndices = (0 until 20).map { sampleIndex -> (sampleIndex * 399.0 / 19.0).toInt() }
+
+        val reduced = downsampleElevationSamples(samples, maxSamples = 20)
+
+        assertTrue(reduced.containsAll(expectedUniformIndices.map(samples::get)))
+        assertTrue(reduced.contains(samples[202]))
+        assertTrue(reduced.contains(samples[203]))
+        assertEquals(reduced.sortedBy { it.distance }, reduced)
+    }
+
+    @Test
     fun usesCorrectedGeometryDistanceAndGreyGapWithoutAddingDistance() {
         val points =
             listOf(

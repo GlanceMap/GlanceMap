@@ -1487,18 +1487,7 @@ class GpxViewModel(
                     val totalDescent = profile.totalDescent
                     val etaProjection = getOrBuildEtaProjection(path = path, sig = profile.sig, profile = profile)
                     val totalDurationSec = etaProjection?.totalSeconds
-                    val rawSamples =
-                        profile.points.mapIndexedNotNull { index, point ->
-                            val elevation = point.elevation ?: return@mapIndexedNotNull null
-                            val distance = profile.cumDist.getOrElse(index) { totalDistance }
-                            ElevationSample(
-                                distance = distance,
-                                elevation = elevation,
-                                cumulativeAscent = profile.cumAscent.getOrElse(index) { totalAscent },
-                                cumulativeDescent = profile.cumDescent.getOrElse(index) { totalDescent },
-                                cumulativeDurationSec = etaProjection?.secondsAtPointIndex(index),
-                            )
-                        }
+                    val rawSamples = buildElevationProfileSamples(profile = profile, etaProjection = etaProjection)
                     val samples = downsampleElevationSamples(rawSamples, maxSamples = 120)
                     val trackTitle =
                         _gpxFiles.value.firstOrNull { it.path == path }?.displayTitle
@@ -1687,20 +1676,6 @@ class GpxViewModel(
         val openProfilePath = _elevationProfileUiState.value?.trackPath
         if (openProfilePath != null) {
             showElevationProfile(openProfilePath)
-        }
-    }
-
-    private fun downsampleElevationSamples(
-        samples: List<ElevationSample>,
-        maxSamples: Int,
-    ): List<ElevationSample> {
-        if (samples.size <= maxSamples || maxSamples <= 1) return samples
-
-        val lastIndex = samples.lastIndex
-        val step = lastIndex.toDouble() / (maxSamples - 1).toDouble()
-        return List(maxSamples) { sampleIndex ->
-            val pointIndex = (sampleIndex * step).toInt().coerceIn(0, lastIndex)
-            samples[pointIndex]
         }
     }
 
