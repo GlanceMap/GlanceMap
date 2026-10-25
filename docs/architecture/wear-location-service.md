@@ -46,6 +46,23 @@ The service package is intentionally split into focused helpers:
    - downstream UI-facing state (`currentLocation`) is emitted.
 5. Foreground pinning toggles notification behavior via `LocationNotificationFactory`.
 
+## Recording and guidance protection
+
+`locationKeepAliveNotificationMode` keeps the location foreground service active for recording,
+recording auto-pause GPS monitoring, combined recording/guidance, and standalone guidance
+whenever tracking and the existing interactive/background GPS demand permit location work.
+This session protection is independent of the manual **Stay** preference. Turning Stay off
+cannot demote a location service that an active session still needs. Ending or manually
+pausing a session restores the usual policy unless another session still requires GPS;
+the saved Stay preference is never changed.
+
+The existing location notification provides that foreground protection. No screen-on flag,
+partial wake lock, location interval or GPS acceptance threshold is changed by this policy.
+In the OnePlus OPWWE251 evening test on 2026-10-25, Stay was disabled before 72.519-second
+and 51.400-second stored-point gaps. Reconnection overlapped those gaps, so foreground
+retention fixes a demonstrated policy defect without proving it is their sole cause.
+A comparable screen-off recording with Stay off remains required for physical validation.
+
 ## Global diagnostics capture
 
 The application scope observes the persisted capture enable/mode and owns the global DebugTelemetry

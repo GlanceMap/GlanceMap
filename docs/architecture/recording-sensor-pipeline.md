@@ -30,6 +30,24 @@ converted to wall time for recording snapshots. Missing/future timestamps and
 invalid counter values cannot refresh a reading. Duplicate/out-of-order source
 times cannot advance cadence state.
 
+Counter cadence accumulates cumulative-step changes over at least five seconds of source
+measurement time. Shorter updates retain the window's step baseline instead of dividing a
+burst by a tiny adjacent-event interval. Estimates above 300 spm are withheld while the
+window continues accumulating real elapsed time; the session's cumulative steps remain
+available. A five-second-or-longer observation with unchanged steps rebases the window
+without publishing fresh cadence, and a counter decrease rebases cadence independently
+of session step accounting. Sparse updates still use their actual measurement interval.
+The newest source timestamp is tracked separately from the window anchor, so delayed or
+duplicate measurements cannot replace the accumulated window. Only a newly accepted rate
+updates counter cadence priority/freshness; no timer manufactures readings during silence.
+
+These bounds address the OnePlus OPWWE251 evening capture on 2026-10-25, which exported
+2,667/3,333 spm despite publishing no detector cadence. Five seconds reduces short-update
+timing sensitivity and may delay the initial estimate or a cadence change by that window;
+300 spm is a conservative rejection ceiling, not a clipped substitute reading. The raw
+measurement pairs at those spikes were not logged, so an identical physical walk is still
+needed to establish device behavior. This does not claim to fix screen-off callback loss.
+
 Legacy `TraceRecording` counters have different meanings:
 
 | Counter | Meaning |

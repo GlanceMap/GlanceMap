@@ -95,6 +95,8 @@ internal class RecordingSensorRuntimeState {
     private var stepCounterBase: Float? = null
     private var lastStepCounterValue: Float? = null
     private var lastStepCounterTimeMs = 0L
+    private var counterCadenceAnchorValue: Float? = null
+    private var counterCadenceAnchorTimeMs = 0L
     private var lastCounterCadenceTimeMs = 0L
     private val stepDetectorEventTimes = ArrayDeque<Long>()
 
@@ -104,6 +106,8 @@ internal class RecordingSensorRuntimeState {
         stepCounterBase = null
         lastStepCounterValue = null
         lastStepCounterTimeMs = 0L
+        counterCadenceAnchorValue = null
+        counterCadenceAnchorTimeMs = 0L
         lastCounterCadenceTimeMs = 0L
         stepDetectorEventTimes.clear()
     }
@@ -128,23 +132,41 @@ internal class RecordingSensorRuntimeState {
     ): StepCounterReading {
         val base = stepCounterBase ?: value.also { stepCounterBase = it }
         val steps = stepCountOffset + (value - base).roundToInt().coerceAtLeast(0)
-        val previousValue = lastStepCounterValue
         val previousTimeMs = lastStepCounterTimeMs
         if (previousTimeMs > 0L && nowMillis <= previousTimeMs) {
             return StepCounterReading(steps = steps, cadenceSpm = null)
         }
-        val cadence =
-            if (previousValue != null && previousTimeMs > 0L && nowMillis > previousTimeMs) {
-                val deltaSteps = (value - previousValue).coerceAtLeast(0f)
-                val deltaMinutes = (nowMillis - previousTimeMs) / 60_000.0
-                (deltaSteps / deltaMinutes).roundToInt().takeIf { it > 0 }
-            } else {
-                null
-            }
+        if (lastStepCounterValue?.let { value < it } == true) counterCadenceAnchorValue = null
         lastStepCounterValue = value
         lastStepCounterTimeMs = nowMillis
+        val cadence = updateCounterCadence(value, nowMillis)
         if (cadence != null) lastCounterCadenceTimeMs = nowMillis
         return StepCounterReading(steps = steps, cadenceSpm = cadence)
+    }
+
+    private fun updateCounterCadence(
+        value: Float,
+        nowMillis: Long,
+    ): Int? {
+        val anchorValue = counterCadenceAnchorValue
+        if (anchorValue == null) {
+            counterCadenceAnchorValue = value
+            counterCadenceAnchorTimeMs = nowMillis
+            return null
+        }
+        val elapsedMs = nowMillis - counterCadenceAnchorTimeMs
+        return if (elapsedMs >= COUNTER_CADENCE_MIN_WINDOW_MS) {
+            val cadence = ((value - anchorValue) * 60_000.0 / elapsedMs).roundToInt()
+            val credibleCadence = cadence.takeIf { it in 1..MAX_COUNTER_CADENCE_SPM }
+            // Keep burst steps in the window until real elapsed time supports a credible rate.
+            if (value == anchorValue || credibleCadence != null) {
+                counterCadenceAnchorValue = value
+                counterCadenceAnchorTimeMs = nowMillis
+            }
+            credibleCadence
+        } else {
+            null
+        }
     }
 
     @Synchronized
@@ -1033,6 +1055,8 @@ private val cadenceSensorMetricIds =
     )
 
 private const val CADENCE_WINDOW_MS = 30_000L
+private const val COUNTER_CADENCE_MIN_WINDOW_MS = 5_000L
+private const val MAX_COUNTER_CADENCE_SPM = 300
 private const val RECORDING_SENSOR_STATUS_INTERVAL_MS = 60_000L
 private const val RECORDING_SENSOR_THREAD_NAME = "RecordingSensorThread"
 private const val RECORDING_CONTINUOUS_SENSOR_PERIOD_US = 1_000_000

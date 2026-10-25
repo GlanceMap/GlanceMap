@@ -57,10 +57,12 @@ import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractiv
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
 import com.glancemap.glancemapwearos.core.service.location.notifications.LocationNotificationFactory
 import com.glancemap.glancemapwearos.core.service.location.policy.FixAcceptancePolicy
+import com.glancemap.glancemapwearos.core.service.location.policy.KeepAliveNotificationMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
+import com.glancemap.glancemapwearos.core.service.location.policy.locationKeepAliveNotificationMode
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.google.android.gms.location.LocationServices
@@ -80,12 +82,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class LocationService : Service() {
-    private enum class KeepAliveNotificationMode {
-        OFF,
-        PINNED_NOTIFICATION,
-        LOCATION_FOREGROUND,
-    }
-
     private val binder = LocalBinder()
     private lateinit var fusedLocationGateway: FusedLocationGateway
     private lateinit var passiveExternalLocationGateway: PassiveExternalLocationGateway
@@ -1496,15 +1492,14 @@ class LocationService : Service() {
     }
 
     private fun refreshKeepAliveNotificationState() {
-        val guidanceActive = isGuidanceRuntimeReason(latestRuntimeReason)
         val desiredMode =
-            when {
-                guidanceActive && shouldUseLocationForegroundMode() ->
-                    KeepAliveNotificationMode.LOCATION_FOREGROUND
-                !keepAppOpen.value -> KeepAliveNotificationMode.OFF
-                shouldUseLocationForegroundMode() -> KeepAliveNotificationMode.LOCATION_FOREGROUND
-                else -> KeepAliveNotificationMode.PINNED_NOTIFICATION
-            }
+            locationKeepAliveNotificationMode(
+                keepAppOpen = keepAppOpen.value,
+                trackingEnabled = latestTrackingEnabled,
+                screenState = latestScreenState,
+                backgroundGpsEnabled = effectiveBackgroundGpsEnabled(),
+                runtimeReason = latestRuntimeReason,
+            )
         if (
             desiredMode == keepAliveNotificationMode &&
             keepAliveNotificationRuntimeReason == latestRuntimeReason
@@ -1659,13 +1654,6 @@ class LocationService : Service() {
         fusedLocationGateway.removeLocationUpdatesBestEffort()
         passiveExternalLocationGateway.removeLocationUpdatesBestEffort()
         watchGpsLocationGateway.removeLocationUpdatesBestEffort()
-    }
-
-    private fun shouldUseLocationForegroundMode(): Boolean {
-        val locationAllowedByUiState =
-            latestTrackingEnabled &&
-                (latestScreenState.isInteractive || effectiveBackgroundGpsEnabled())
-        return locationAllowedByUiState
     }
 
     private fun isNonInteractiveScreenState(): Boolean = latestScreenState.isNonInteractive
