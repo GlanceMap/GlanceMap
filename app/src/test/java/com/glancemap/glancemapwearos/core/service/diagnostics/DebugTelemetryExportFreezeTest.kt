@@ -11,31 +11,31 @@ class DebugTelemetryExportFreezeTest {
     @Before
     fun setUp() {
         DebugTelemetry.setTransitionMarkersEnabledForTests(false)
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
     }
 
     @After
     fun tearDown() {
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         DebugTelemetry.setTransitionMarkersEnabledForTests(true)
     }
 
     @Test
     fun exportFreezeIgnoresStaleEnableUntilPersistedDisableArrives() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         val firstSession = DebugTelemetry.captureSessionSnapshot()
 
         DebugTelemetry.freezeForExport()
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
 
         val frozenSession = DebugTelemetry.captureSessionSnapshot()
         assertFalse(frozenSession.active)
         assertEquals(firstSession.sessionId, frozenSession.sessionId)
 
-        DebugTelemetry.setEnabledFromLocationService(false)
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
 
         val nextSession = DebugTelemetry.captureSessionSnapshot()
         assertTrue(nextSession.active)

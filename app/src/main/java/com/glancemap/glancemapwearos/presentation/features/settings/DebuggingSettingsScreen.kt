@@ -517,9 +517,9 @@ fun DebuggingSettingsScreen(
                                     detail = "source=export",
                                 )
                                 CompassHeadingDiagnostics.flush(reason = "capture_export")
-                                viewModel.setGpsDebugTelemetry(false)
                                 DebugTelemetry.freezeForExport()
                                 captureFrozenForExport = true
+                                viewModel.setGpsDebugTelemetry(false)
                                 CompassHeadingDiagnostics.reset()
                                 EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
                                 ScreenStateDiagnostics.configure(captureActive = false)
@@ -699,10 +699,10 @@ fun DebuggingSettingsScreen(
                             exportDialogMessage =
                                 resources.getString(R.string.settings_export_failed_tap_resend_diagnostic_to_try_again)
                         } finally {
-                            viewModel.setGpsDebugTelemetry(false)
                             if (captureWasEnabled && !captureFrozenForExport) {
                                 DebugTelemetry.freezeForExport()
                             }
+                            viewModel.setGpsDebugTelemetry(false)
                             EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
                             ScreenStateDiagnostics.configure(captureActive = false)
                             if (exportDialogMode == DiagnosticsExportDialogMode.GENERATING) {

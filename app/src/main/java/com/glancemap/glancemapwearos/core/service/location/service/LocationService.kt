@@ -1481,7 +1481,6 @@ class LocationService : Service() {
             captureActive && captureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
         latestDiagnosticsCaptureActive = captureActive
         latestGpsDebugTelemetry = fullDiagnostics
-        telemetry.setDebugEnabled(fullDiagnostics)
         ScreenOffActivityDiagnostics.configure(enabled = captureActive)
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = fullDiagnostics)
         RecordingScreenOffDiagnostics.updateRuntimeState(

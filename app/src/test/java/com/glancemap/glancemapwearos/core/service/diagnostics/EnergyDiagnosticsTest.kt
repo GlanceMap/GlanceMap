@@ -12,7 +12,7 @@ import org.junit.Test
 class EnergyDiagnosticsTest {
     @Before
     fun setUp() {
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         EnergyDiagnostics.clear()
         EnergyDiagnostics.setEnabled(false)
@@ -22,7 +22,7 @@ class EnergyDiagnosticsTest {
 
     @After
     fun tearDown() {
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         EnergyDiagnostics.clear()
         EnergyDiagnostics.setEnabled(false)

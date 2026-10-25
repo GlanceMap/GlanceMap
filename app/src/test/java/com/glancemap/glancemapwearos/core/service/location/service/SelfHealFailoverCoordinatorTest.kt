@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.location.service
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.engine.LocationEngine
 import com.glancemap.glancemapwearos.core.service.location.engine.RequestSpec
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
@@ -69,7 +70,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun phoneDisconnectWhileTrackingSwitchesToWatchGpsWithoutScreenWake() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -122,7 +123,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun phoneDisconnectDoesNotFailOverWhenTrackingIsInactiveOrWatchGpsUnavailable() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(interactiveAutoFusedRequestSpec())
         var tracking = false
@@ -170,7 +171,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun backgroundNoFixSwitchesFromPhoneToWatchGpsWithoutImmediateBurst() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -220,7 +221,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun connectedPhoneNoFixDoesNotTriggerWatchGpsFallback() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -368,7 +369,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun passiveExperimentNoFixStaysPassiveWithoutFallback() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -416,7 +417,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun disconnectedInitialAutoFusedNoFixFallsBackToWatchGpsWithoutSecondFusedProbe() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -465,7 +466,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun activeAutoFusedBurstSearchingTooLongForcesRequestRefresh() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.requestImmediateBurst(nowElapsedMs = 1_000L, source = "test_startup")
         engine.markRequestApplied(
@@ -511,7 +512,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun activeWatchGpsBurstWithinFirstCallbackGraceDoesNotRefreshRequest() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.requestImmediateBurst(nowElapsedMs = 1_000L, source = "test_startup")
         engine.markRequestApplied(
@@ -557,7 +558,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun activeWatchGpsBurstAfterFirstCallbackGraceCanRefreshRequest() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.requestImmediateBurst(nowElapsedMs = 1_000L, source = "test_startup")
         engine.markRequestApplied(
@@ -603,7 +604,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun activeBurstWithinStartupWindowDoesNotRefreshRequest() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.requestImmediateBurst(nowElapsedMs = 1_000L, source = "test_startup")
         engine.markRequestApplied(
@@ -649,7 +650,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun phoneReconnectionReturnsFromWatchGpsFallbackToAutoFused() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(
             RequestSpec(
@@ -704,7 +705,7 @@ class SelfHealFailoverCoordinatorTest {
     @Test
     fun watchGpsNoFixRequestsBoundedDirectRecoveryBeforeRestartingTheStream() {
         val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-        telemetry.setDebugEnabled(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         val engine = LocationEngine(telemetry)
         engine.markRequestApplied(interactiveWatchGpsRequestSpec())
         var immediateRequests = 0

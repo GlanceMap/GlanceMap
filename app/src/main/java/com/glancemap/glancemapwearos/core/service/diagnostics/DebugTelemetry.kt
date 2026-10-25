@@ -1,7 +1,11 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
 import android.util.Log
+import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.COMPASS_TELEMETRY_TAG
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -66,7 +70,17 @@ internal object DebugTelemetry {
             .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault())
 
-    fun setEnabledFromLocationService(value: Boolean) {
+    suspend fun observeCaptureSettings(
+        captureActive: Flow<Boolean>,
+        captureMode: Flow<String>,
+    ) {
+        // Battery captures also need the persisted off emission to release the export freeze.
+        combine(captureActive, captureMode) { active, mode ->
+            active && mode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
+        }.collect { setEnabledFromCaptureSettings(it) }
+    }
+
+    fun setEnabledFromCaptureSettings(value: Boolean) {
         val marker =
             synchronized(lock) {
                 if (value && exportFreezeActive) return

@@ -46,6 +46,15 @@ The service package is intentionally split into focused helpers:
    - downstream UI-facing state (`currentLocation`) is emitted.
 5. Foreground pinning toggles notification behavior via `LocationNotificationFactory`.
 
+## Global diagnostics capture
+
+The application scope observes the persisted capture enable/mode and owns the global DebugTelemetry
+buffer. FULL capture works for downloads and settings without creating or binding LocationService;
+BATTERY mode and disabled capture do not enable that event buffer. Export freezes the buffer until
+the persisted disabled setting arrives, then a later capture can start independently of GPS.
+LocationService still owns its location-specific diagnostics, counters and energy sampling, but
+cannot enable or disable the global buffer when its lifecycle or settings collector changes.
+
 ## Contributor Rules
 
 - Keep `LocationService.kt` orchestration-focused.

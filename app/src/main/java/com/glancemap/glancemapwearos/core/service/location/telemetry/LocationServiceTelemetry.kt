@@ -811,10 +811,6 @@ internal class LocationServiceTelemetry(
         }
     }
 
-    fun setDebugEnabled(enabled: Boolean) {
-        DebugTelemetry.setEnabledFromLocationService(enabled)
-    }
-
     private fun recordAcceptedFix(nowElapsedMs: Long): Long? {
         val previousAcceptedAt = lastAcceptedFixAtMs
         var gapMs: Long? = null
