@@ -1,6 +1,6 @@
 # Screen-off bundle extraction investigation — 2026-10-25
 
-## Verdict before implementation
+## Initial verdict before live system evidence (superseded)
 
 The capture confirms device suspend during local extraction. It does **not** identify which system
 power policy suppressed the app's CPU-awake request. Initial candidates were Low Power Standby and
@@ -8,9 +8,8 @@ OnePlus/Wear power policy. A later connected-watch baseline reports standard Low
 unsupported/disabled, so an OEM/other system suspend policy or process-state change is now a stronger
 candidate on this firmware. Plain Android Doze remains unproven; foreground-service process state
 must be captured during the failure. See the live update below.
-No functional changes were made before the initial report; the confirmed live result below now justifies evaluating the phase-only job. A production JobScheduler migration or display
-hold is not yet justified. The smallest justified next change is bounded diagnostic instrumentation,
-followed by a controlled repeat on the watch.
+No functional changes were made before this initial report. Bounded diagnostics and a controlled
+repeat were the first step; the live evidence below now justifies the phase-only job experiment.
 
 ## Confirmed root cause from the connected watch
 
@@ -35,6 +34,66 @@ other power setting has been changed. The user paused the test after this eviden
 This supersedes the initial unproven-LPS lead above. A functional phase-only system-owned JobService
 is now justified for evaluation; its performance and quota/lifecycle behavior still require testing
 on the watch. The application must not reacquire its own ignored lock or request a permanent exemption.
+
+## Phase-only job implementation and remaining acceptance
+
+API 31+ now executes the existing local ZIP extraction body inside an expedited JobService. The
+foreground service still owns the persisted bundle plan, notification, downloads and pause/cancel.
+API 28–30 retains inline extraction because expedited jobs are unavailable. No network constraint,
+WorkManager dependency, display hold, exemption or buffer/writer change is introduced.
+
+Android 14's JobServiceContext acquires the execution lock in system_server with a WorkSource for
+the app. This ownership differs from the app-owned lock that OnePlus forcibly released. Android
+14's QuotaController gives foreground-service UIDs expedited quota availability, but runtime is
+still bounded; current Android 16 documentation removes the FGS quota exemption. This is a reason
+to test the actual firmware, not a universal guarantee of uninterrupted execution.
+[Android 14 job lock source](https://android.googlesource.com/platform/frameworks/base/+/android14-release/apex/jobscheduler/service/java/com/android/server/job/JobServiceContext.java),
+[Android 14 quota source](https://android.googlesource.com/platform/frameworks/base/+/android14-release/apex/jobscheduler/service/java/com/android/server/job/controllers/QuotaController.java),
+[expedited API](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setExpedited(boolean)),
+[Android 16 quota change](https://developer.android.com/about/versions/16/behavior-changes-all#job-runtime-quota).
+
+The in-process coordinator admits one extraction. Its random request token rejects stale starts
+and stops; an orphan scheduled job after process death does no work. The persisted foreground plan
+remains the sole restart authority. A resume reuses the downloaded ZIP but starts extraction from
+the beginning; a `.part` output is not a resumable ZIP offset. Atomic promotion is unchanged.
+
+Admission failure, loss of expedited status, system stop or no start within 60 seconds produces the
+existing localized retry error; there is no silent regular-job downgrade or automatic restart loop.
+The caller waits for the actual worker to cancel and join before closing the request and canceling
+its scheduled job. A new request cannot replace a writer that is still cleaning up. Job callbacks
+stay nonblocking on the main thread, and completed/stopped runs cannot finish a newer job.
+
+The original application lock may still report disabled during a successful job; system-side job
+and power captures, clocks, correct output and lifecycle cleanup are the acceptance evidence.
+Screen-off Bayern timing and pause/cancel validation on the connected watch are still pending.
+No performance or battery improvement is claimed before that measurement.
+
+## Host validation and independent review
+
+- New lifecycle tests: nine cases covering matching/duplicate/orphan starts, quota rejection,
+  start timeout, pause before start, pause waiting for writer cleanup, system stop with no automatic
+  retry, writer failure, canceled service scope before dispatch, and stale callbacks after resume.
+- Focused command: `./gradlew :app:testDebugUnitTest --tests '*OamExtractionJobCoordinatorTest'
+  --tests '*OamExtractionPowerDiagnosticsTest' --tests '*OamBundlePipelineTest'
+  --tests '*AtomicStreamWriterTest' --tests '*OamDownloadForegroundServiceTimeoutTest'`:
+  38 tests passed. Final combined focused test/detekt/debug APK build passed in 1m 12s.
+- `scripts/quality-gate.sh`: passed in 4m 5s, 108 tasks; 2,058 tests (Wear 1,792, phone 266),
+  zero failures/errors/skips. Both lint reports have zero Fatal/Error issues; `git diff --check`
+  passed. Existing lint parser prolog messages and Gradle deprecation warnings remain in the log.
+- No dependency or lint suppression was added. Unrelated translation/lint configuration and other
+  chats' commits were preserved and excluded from the scoped extraction commit.
+- Independent review found that `onStopJob` receives a separately parceled JobParameters object;
+  matching by reference could finish a stopped run. It now matches the unique request token.
+  Stale starts no longer overwrite the active parameters, and destroyed-before-dispatch workers
+  fail the owner promptly with a retryable error. Final independent recheck found no remaining
+  code bug; historical attribution statements in this report were updated after its doc review.
+
+Real-device acceptance remains open. Command-line `:app:assembleRelease` is refused by the existing
+release-signing guard because private signing settings are unavailable. The debug APK's public
+signing certificate differs from the installed app, so no replacement/uninstall was attempted.
+The user explicitly deferred real-watch testing and asked to finish the code first. A signed Wear
+`app` release APK through Android Studio will be needed for that later test. The watch remains
+paused; no allowlist, power setting, forced idle or screen hold has been changed.
 
 ## Evidence from the supplied capture
 
@@ -86,9 +145,9 @@ Standby exemption are separate queries. The existing capture answers neither.
 | Candidate | Assessment |
 |---|---|
 | Device suspend | Confirmed by the two monotonic clocks. Android documents that elapsedRealtime includes deep sleep and uptimeMillis excludes it. [SystemClock](https://developer.android.com/reference/android/os/SystemClock) |
-| Ordinary Doze | Possible but unconfirmed. Generic Doze documentation says locks can be ignored; the API-34 process-state exception above prevents diagnosing this from screen-off alone. [Doze guidance](https://developer.android.com/training/monitoring-device-state/doze-standby) |
-| Low Power Standby / OnePlus policy | Leading category; matches held-lock/non-interactive suspension. No current enablement, exemption or active-state evidence, so no OEM-specific claim is established. |
-| App/process demotion or background restriction | Not ruled out: we lack system process/FGS snapshots during sleep. Record own foreground state and process importance, then compare with dumpsys. |
+| Ordinary Doze | Observed concurrently in the repeat, but the vendor log explicitly attributes forced release to Balance Mode. Ordinary AOSP Doze alone is not the established immediate cause. [Doze guidance](https://developer.android.com/training/monitoring-device-state/doze-standby) |
+| Low Power Standby / OnePlus policy | Standard LPS is unsupported/disabled on the connected firmware. OnePlus Balance Mode is confirmed by its forced-release log naming the app lock. |
+| App/process demotion or background restriction | The repeat captures active UID/process state 4 and dataSync FGS=true during suspend, with no effective app lock. A missing foreground service is not the immediate cause. |
 | dataSync six-hour timeout | Does not explain this API-34 run or 26-minute pause/resume pattern. The Android 15 timeout machinery is not retroactively installed by targetSdk 36. [FGS timeouts](https://developer.android.com/develop/background-work/services/fgs/timeout) |
 | Job/coroutine pause alone | Cannot explain the device-wide elapsed/uptime divergence. No user pause/cancel or lock-release event is present during extraction. A concurrently delayed coroutine is possible as a consequence of sleep. |
 | Slow disk, ZIP buffers, fsync | Can affect awake throughput but cannot generate the measured sleep time. fsync/commit are tiny, bytes advance at ordinary speed while awake, and POI is a useful control. No retuning justified. |
@@ -119,7 +178,7 @@ Standby exemption are separate queries. The existing capture answers neither.
   (September 15) concern progress/metrics. This is not evidence that the recent network fix created
   the suspend policy.
 
-## Smallest next step, candidate fix and tradeoffs
+## Initial recommendation before live evidence (superseded)
 
 Add diagnostics only: power-policy and process snapshots at the existing bounded extraction log
 cadence, foreground/operation state, lock identity/tag, and the public API-33 wake-lock state listener.
@@ -153,9 +212,9 @@ throttle expensive reads; retain wall/uptime accounting and bounded heartbeat be
 pipeline, atomic-file and operation lifecycle tests plus the canonical quality gate. Get an independent
 review of diagnostics and the attribution/ADB plan before claiming that phase complete.
 
-A subsequent execution change would additionally need start/completion/failure/pause/cancel/restart,
-no-duplicate-install, job rejection/rescheduling, final-file atomicity and resource-release coverage.
-No such execution change is present in this evidence phase.
+The execution phase adds start/completion/failure/pause/cancel/restart, duplicate/stale admission,
+quota rejection/start timeout, service destruction and worker cleanup coverage. Existing pipeline,
+foreground-timeout and atomic-writer tests remain required alongside real-device acceptance.
 
 At the initial report boundary no watch was attached (`adb devices -l` was empty); the user
 subsequently connected the watch for the baseline below. Repeat the same Bayern
@@ -165,10 +224,10 @@ future fix remains wall time near awake time (target roughly 5–7 min), dramati
 time, no multi-minute progress gaps, correct final file, working pause/cancel, and unchanged Wi-Fi
 handoff/throughput. Measure battery on comparable runs; host unit tests cannot establish this.
 
-See the accompanying ADB procedure for controls and restoration steps. Until that capture exists,
-the cause is **power-policy suppression likely; exact Doze/LPS/OEM cause unproven**.
+See the accompanying ADB procedure for controls and restoration steps. Attribution is now confirmed
+by the live vendor log above. The remaining capture must validate the job fix on the same watch.
 
-## Live ADB baseline after the initial report
+## Historical idle baseline before the live reproduction
 
 The user connected the actual OPWWE251 over wireless ADB. Read-only package/power/idle/service
 snapshots confirm installed 1.3.1/1041, target 36, last update October 24. No bundle service was running
@@ -187,8 +246,9 @@ during this baseline. It therefore cannot identify the failing extraction state.
 - No package reinstall, forced idle, screen override, job or power-setting mutation was performed.
   The full dumps remain local and are not committed; only these relevant findings are recorded.
 
-The next requested action is a natural screen-off Bayern repeat on the installed build, with Full
-diagnostics enabled before starting, so system-side power and FGS state can be captured under load.
+The subsequent natural screen-off Bayern repeat supplied the vendor forced-release evidence at
+the top of this report. The watch was paused afterward; no allowlist or power setting was changed.
+The next device step is a correctly signed candidate update and a screen-off extraction measurement.
 
 ## ADB isolation procedure — controls not yet executed
 

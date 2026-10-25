@@ -1737,6 +1737,18 @@ class OamBundleDownloader(
             onEntryProgress: (Long) -> Unit,
         ) -> Unit,
     ): String =
+        runOamExtraction(context) {
+            extractFirstEntryInJob(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
+        }
+
+    private suspend fun extractFirstEntryInJob(
+        zipFile: File,
+        extension: String,
+        label: String,
+        extractionKeepAliveState: () -> OamDownloadKeepAliveState,
+        onProgress: (OamDownloadProgress) -> Unit,
+        saveEntry: suspend (String, ZipInputStream, Long?, (Long) -> Unit) -> Unit,
+    ): String =
         withContext(Dispatchers.IO) {
             ZipInputStream(BufferedInputStream(FileInputStream(zipFile), ZIP_READ_BUFFER_SIZE)).use { zip ->
                 while (true) {

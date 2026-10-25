@@ -154,15 +154,22 @@ generated-file Save copy activity entry point.
 
 ## Screen-off extraction diagnostics
 
-The 2026-10-24 OnePlus capture confirms device suspend during extraction despite Java isHeld=true;
-it does not establish Doze versus Low Power Standby/OEM policy. Extraction execution and the network
-handoff are unchanged. Debug capture adds API-guarded power/process samples (at most once per five
-seconds) and API-33 system wake-lock enabled/disabled callbacks, capped at 16 transition logs per
-generation. Stale/released callbacks cannot repopulate state. Unsupported or failed queries use
-`na`; app-owned foreground/type fields are observations, not proof of system foreground state.
-No new polling job, wake/screen lock, exemption request or execution scheduler is added.
-See [investigation and ADB controls](oam-screen-off-extraction-investigation.md) before choosing a
-production execution change.
+The connected OnePlus Watch 3 system log confirms Balance Mode forcibly removes GlanceMap's
+application partial wake lock on screen-off despite dataSync FGS=true. Standard LPS is disabled;
+Doze is concurrent but does not explain the vendor's explicit forced-release action.
+
+On API 31+, local map/POI ZIP extraction now runs inside an expedited OamExtractionJobService,
+whose execution wake lock is owned by JobScheduler. Downloads, network handoff, the foreground
+notification/plan and AtomicStreamWriter remain in their existing paths. API 28–30 stays inline.
+The coordinator permits one extraction, rejects orphan/stale request tokens, and joins the writer
+before owner cleanup. Rejected/downgraded/stopped jobs return the localized retry error without
+automatic rescheduling; foreground plan recovery remains the only restart authority. See
+[investigation, quota tradeoffs and ADB controls](oam-screen-off-extraction-investigation.md).
+
+Debug capture adds API-guarded power/process samples (at most once per five seconds) and API-33
+system wake-lock callbacks capped at 16 transition logs per generation. Stale/released callbacks
+cannot repopulate state. Unsupported or failed queries use `na`; app-owned foreground/type fields
+are observations, not proof of system state. No screen hold or permanent exemption is requested.
 
 ## Contributor Rules
 
