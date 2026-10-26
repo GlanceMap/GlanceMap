@@ -462,6 +462,7 @@
     <string name="download_download_paused">"Pobieranie wstrzymane"</string>
     <string name="download_download_selected_areas">"Pobierz wybrane obszary"</string>
     <string name="download_downloading_offline_bundle">"Pobieranie pakietu offline"</string>
+    <string name="download_installing_offline_bundle">"Instalowanie pakietu offline"</string>
     <string name="download_elevation">"%1$s wysokość"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Dane wysokości dodają wysokość, nachylenie i cieniowanie terenu."</string>
     <string name="download_elevation_quality">"Jakość wysokości"</string>

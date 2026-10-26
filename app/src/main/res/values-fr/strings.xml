@@ -432,6 +432,7 @@
     <string name="download_download_paused">"Téléchargement en pause"</string>
     <string name="download_download_selected_areas">"Télécharger les zones choisies"</string>
     <string name="download_downloading_offline_bundle">"Téléchargement du lot hors ligne"</string>
+    <string name="download_installing_offline_bundle">"Installation du lot hors ligne"</string>
     <string name="download_elevation">"Altitude %1$s"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Le relief ajoute l’altitude, la pente et l’ombrage du terrain."</string>
     <string name="download_elevation_quality">"Qualité du relief"</string>

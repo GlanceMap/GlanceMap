@@ -188,7 +188,16 @@ automatic rescheduling; foreground plan recovery remains the only restart author
 Debug capture adds API-guarded power/process samples (at most once per five seconds) and API-33
 system wake-lock callbacks capped at 16 transition logs per generation. Stale/released callbacks
 cannot repopulate state. Unsupported or failed queries use `na`; app-owned foreground/type fields
-are observations, not proof of system state. No screen hold or permanent exemption is requested.
+are observations, not proof of system state.
+
+For the OnePlus device-state stop, the bounded fallback is a Download-screen-only display hold:
+the service publishes real local-writer state, and a resumed Downloads screen keeps the display on
+at 20% brightness only while that state is true. It restores the prior brightness/flag on writer
+termination, navigation and lifecycle pause. The app neither wakes the screen nor launches an
+Activity when extraction begins in the background; the ongoing installation notification provides a
+user-tapped route back to Downloads. This does not grant an exemption or change background behavior
+for users who do not return, so small jobs can still finish screen-off. Bayern watch validation is
+still required before treating this mitigation as effective on the firmware.
 
 ## Manual partial-file cleanup
 

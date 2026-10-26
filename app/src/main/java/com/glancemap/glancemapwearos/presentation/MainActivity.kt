@@ -95,12 +95,24 @@ import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 
+internal const val ACTION_OPEN_OAM_EXTRACTION =
+    "com.glancemap.glancemapwearos.action.OPEN_OAM_EXTRACTION"
+
+internal fun oamNotificationDestination(
+    action: String?,
+): String? = if (action == ACTION_OPEN_OAM_EXTRACTION) WatchRoutes.DOWNLOAD else null
+
+@OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("LargeClass")
 class MainActivity : ComponentActivity() {
     private val ambientState = WearAmbientState(this, ::logScreenTelemetry)
+    private val oamNotificationRouteRequests = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
 
     @Volatile
     private var activeRoute: String? = null
@@ -126,6 +138,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(this.application)
         ambientState.refreshDeviceInteractive(fallback = true)
+        oamNotificationDestination(intent.action)?.let { destination ->
+            intent.action = null
+            oamNotificationRouteRequests.tryEmit(destination)
+        }
 
         val screenStateFilter =
             IntentFilter().apply {
@@ -218,6 +234,15 @@ class MainActivity : ComponentActivity() {
 
             GlanceMapTheme {
                 val navController = rememberNavController()
+                LaunchedEffect(navController) {
+                    oamNotificationRouteRequests.collect { destination ->
+                        navController.navigate(destination) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        oamNotificationRouteRequests.resetReplayCache()
+                    }
+                }
                 val appScope = rememberCoroutineScope()
                 val backStackEntry by navController.currentBackStackEntryAsState()
                 val route = backStackEntry?.destination?.route
@@ -1214,6 +1239,15 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        oamNotificationDestination(intent.action)?.let { destination ->
+            intent.action = null
+            oamNotificationRouteRequests.tryEmit(destination)
         }
     }
 

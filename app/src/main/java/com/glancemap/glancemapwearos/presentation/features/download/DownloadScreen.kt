@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -73,6 +77,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.rememberSett
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
 import com.glancemap.glancemapwearos.presentation.ui.FeatureListScaffold
+import com.glancemap.glancemapwearos.presentation.ui.KeepScreenOnEffect
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
@@ -97,6 +102,10 @@ fun DownloadScreen(
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
     val uiState by viewModel.uiState.collectAsState()
+    val isInstallationScreenActive = rememberOamInstallationScreenActive()
+    if (shouldKeepOamInstallationScreenOn(uiState.isExtracting, isInstallationScreenActive)) {
+        KeepScreenOnEffect(screenBrightness = OAM_EXTRACTION_SCREEN_BRIGHTNESS)
+    }
     val showAreaPicker = areaPickerOpen
     var bundlePendingDelete by remember { mutableStateOf<OamInstalledBundle?>(null) }
     var showOamInfoDialog by remember { mutableStateOf(false) }
@@ -1251,6 +1260,35 @@ private fun formatBytes(
 
 private fun Double.formatOneDecimal(): String = String.format(java.util.Locale.getDefault(), "%.1f", this)
 
+@Composable
+private fun rememberOamInstallationScreenActive(): Boolean {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isScreenResumed by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                isScreenResumed = oamInstallationScreenActiveAfter(isScreenResumed, event)
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return isScreenResumed
+}
+
+internal fun oamInstallationScreenActiveAfter(
+    isScreenResumed: Boolean,
+    event: Lifecycle.Event,
+): Boolean =
+    when (event) {
+        Lifecycle.Event.ON_RESUME -> true
+        Lifecycle.Event.ON_PAUSE -> false
+        else -> isScreenResumed
+    }
+
 private val ChipBackground = Color(0xFF222A33)
 private val SelectedChipBackground = Color(0xFF1F4656)
 private val ChipContent = Color(0xFFF4F7FB)
@@ -1262,5 +1300,6 @@ private val WarningChipIcon = Color(0xFFFFB95C)
 
 private const val DOWNLOAD_INFO_PREFS = "download_screen_info_prefs"
 private const val DOWNLOAD_INFO_SHOWN_KEY = "oam_info_shown"
+private const val OAM_EXTRACTION_SCREEN_BRIGHTNESS = 0.20f
 private const val DOWNLOAD_MAIN_ACTION_ITEM_INDEX = 2
 private const val DOWNLOAD_FIRST_REFRESH_BUNDLE_ITEM_INDEX = 0

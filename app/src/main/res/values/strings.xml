@@ -408,6 +408,7 @@
     <string name="download_download_paused">"Download paused"</string>
     <string name="download_download_selected_areas">"Download selected areas"</string>
     <string name="download_downloading_offline_bundle">"Downloading offline bundle"</string>
+    <string name="download_installing_offline_bundle">"Installing offline bundle"</string>
     <string name="download_elevation">"%1$s elevation"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading."</string>
     <string name="download_elevation_quality">"Elevation quality"</string>

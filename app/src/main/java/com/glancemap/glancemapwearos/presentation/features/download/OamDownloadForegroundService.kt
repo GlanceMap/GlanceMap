@@ -1,4 +1,4 @@
-@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions")
+@file:Suppress("LargeClass", "TooGenericExceptionCaught", "TooManyFunctions")
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
@@ -24,6 +24,7 @@ import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.DownloadNetworkLease
+import com.glancemap.glancemapwearos.presentation.ACTION_OPEN_OAM_EXTRACTION
 import com.glancemap.glancemapwearos.presentation.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,12 @@ class OamDownloadForegroundService : Service() {
     private val notificationManager by lazy { getSystemService(NotificationManager::class.java) }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val serviceClient by lazy { OamDownloadServiceClient(applicationContext) }
+    private val ownedStatePublisher by lazy {
+        OamOwnedDownloadStatePublisher(
+            currentState = { serviceClient.state.value },
+            publish = serviceClient::publish,
+        )
+    }
     private val downloader: OamBundleDownloader by lazy {
         val container = (application as GlanceMapWearApp).container
         OamBundleDownloader(
@@ -106,7 +113,12 @@ class OamDownloadForegroundService : Service() {
                 val detail = intent.getStringExtra(EXTRA_DETAIL) ?: resources.getString(R.string.download_preparing)
                 val bytesDone = intent.getLongExtra(EXTRA_BYTES_DONE, 0L)
                 val totalBytes = intent.getLongExtra(EXTRA_TOTAL_BYTES, -1L).takeIf { it > 0L }
-                startOrUpdateForeground(title, detail, bytesDone, totalBytes)
+                val isExtracting = intent.getBooleanExtra(EXTRA_IS_EXTRACTING, false)
+                if (foregroundActive) {
+                    updateForegroundNotification(title, detail, bytesDone, totalBytes, isExtracting)
+                } else {
+                    startOrUpdateForeground(title, detail, bytesDone, totalBytes, isExtracting)
+                }
                 foregroundStartId = startId
             }
             ACTION_STOP -> stopSelf()
@@ -128,6 +140,7 @@ class OamDownloadForegroundService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        clearExtractionState()
         if (!terminalNotificationPosted) {
             runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         }
@@ -211,6 +224,7 @@ class OamDownloadForegroundService : Service() {
                     area = area,
                     selection = plan.selection,
                     extractionKeepAliveState = ::currentKeepAliveState,
+                    onExtractionRunningChanged = ::updateExtractionState,
                 ) { progress ->
                     if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                     if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
@@ -222,15 +236,7 @@ class OamDownloadForegroundService : Service() {
                             area.region,
                             progress.detail,
                         )
-                    val state =
-                        plan.runningState(
-                            phase = progress.phase,
-                            detail = detail,
-                            bytesDone = progress.bytesDone,
-                            totalBytes = progress.totalBytes,
-                            resources = resources,
-                        )
-                    serviceClient.publish(state)
+                    publishRunningState(plan, progress, detail)
                     startOrUpdateForeground(
                         title = resources.getString(R.string.download_downloading_offline_bundle),
                         detail = detail,
@@ -315,13 +321,13 @@ class OamDownloadForegroundService : Service() {
             }
             OwnedStopRequest.CANCEL -> serviceClient.clearPlan()
         }
-        val current = serviceClient.state.value
-        serviceClient.publish(
+        ownedStatePublisher.update { current ->
             current.copy(
                 phase = if (request == OwnedStopRequest.CANCEL) "CANCELING" else "PAUSING",
                 errorMessage = null,
-            ),
-        )
+                isExtracting = false,
+            )
+        }
         activeJob?.cancel(CancellationException(request.name.lowercase()))
         downloader.abortActiveDownloads(
             reason =
@@ -435,6 +441,37 @@ class OamDownloadForegroundService : Service() {
         )
     }
 
+    private fun updateExtractionState(isExtracting: Boolean) {
+        val state = ownedStatePublisher.updateExtractionState(isExtracting) ?: return
+        if (foregroundActive) {
+            updateForegroundNotification(
+                title = resources.getString(R.string.download_downloading_offline_bundle),
+                detail = state.detail ?: resources.getString(R.string.download_preparing),
+                bytesDone = state.bytesDone,
+                totalBytes = state.totalBytes,
+                isExtracting = state.isExtracting,
+            )
+        }
+    }
+
+    private fun clearExtractionState() = updateExtractionState(isExtracting = false)
+
+    private fun publishRunningState(
+        plan: OamPersistedDownloadPlan,
+        progress: OamDownloadProgress,
+        detail: String,
+    ) {
+        ownedStatePublisher.publishProgress(
+            plan.runningState(
+                phase = progress.phase,
+                detail = detail,
+                bytesDone = progress.bytesDone,
+                totalBytes = progress.totalBytes,
+                resources = resources,
+            ),
+        )
+    }
+
     private fun watchForWifiRecovery(initialState: OamDownloadNetworkState): AutoCloseable {
         val observer =
             OamDownloadNetworkRecoveryObserver(initialState) { state ->
@@ -453,9 +490,21 @@ class OamDownloadForegroundService : Service() {
         detail: String,
         bytesDone: Long,
         totalBytes: Long?,
+        isExtracting: Boolean? = null,
     ) {
         acquireLocks()
-        val notification = buildProgressNotification(title, detail, bytesDone, totalBytes)
+        updateForegroundNotification(title, detail, bytesDone, totalBytes, isExtracting)
+    }
+
+    @Synchronized
+    private fun updateForegroundNotification(
+        title: String,
+        detail: String,
+        bytesDone: Long,
+        totalBytes: Long?,
+        isExtracting: Boolean? = null,
+    ) {
+        val notification = buildProgressNotification(title, detail, bytesDone, totalBytes, isExtracting)
         val foregroundServiceType =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
@@ -567,14 +616,21 @@ class OamDownloadForegroundService : Service() {
         detail: String,
         bytesDone: Long,
         totalBytes: Long?,
+        isExtracting: Boolean? = null,
     ): android.app.Notification {
+        val extractionInProgress = isExtracting ?: serviceClient.state.value.isExtracting
         val builder =
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle(title)
-                .setContentText(detail)
-                .setContentIntent(contentIntent())
+                .setContentTitle(
+                    if (extractionInProgress) {
+                        resources.getString(R.string.download_installing_offline_bundle)
+                    } else {
+                        title
+                    },
+                ).setContentText(detail)
+                .setContentIntent(contentIntent(openDownloads = extractionInProgress))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -638,14 +694,15 @@ class OamDownloadForegroundService : Service() {
         )
     }
 
-    private fun contentIntent(): PendingIntent {
+    private fun contentIntent(openDownloads: Boolean = false): PendingIntent {
         val intent =
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                if (openDownloads) action = ACTION_OPEN_OAM_EXTRACTION
             }
         return PendingIntent.getActivity(
             this,
-            0,
+            if (openDownloads) OAM_EXTRACTION_REQUEST_CODE else 0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -662,8 +719,10 @@ class OamDownloadForegroundService : Service() {
         private const val EXTRA_DETAIL = "detail"
         private const val EXTRA_BYTES_DONE = "bytes_done"
         private const val EXTRA_TOTAL_BYTES = "total_bytes"
+        private const val EXTRA_IS_EXTRACTING = "is_extracting"
         private const val CHANNEL_ID = "OamDownloadChannel"
         private const val NOTIFICATION_ID = 42_210
+        private const val OAM_EXTRACTION_REQUEST_CODE = 42_211
         private const val WAKE_LOCK_TAG = "GlanceMap:OamDownload"
         private const val WIFI_LOCK_TAG = "GlanceMap:OamDownloadWifi"
         private const val DOWNLOAD_NETWORK_WAIT_TIMEOUT_MS = 8_000L
@@ -684,20 +743,18 @@ class OamDownloadForegroundService : Service() {
             runCatching { context.startService(intent) }
         }
 
-        fun showProgress(
+        internal fun showProgress(
             context: Context,
-            title: String,
-            detail: String,
-            bytesDone: Long,
-            totalBytes: Long?,
+            progress: OamForegroundProgress,
         ) {
             val intent =
                 Intent(context, OamDownloadForegroundService::class.java).apply {
                     action = ACTION_PROGRESS
-                    putExtra(EXTRA_TITLE, title)
-                    putExtra(EXTRA_DETAIL, detail)
-                    putExtra(EXTRA_BYTES_DONE, bytesDone)
-                    putExtra(EXTRA_TOTAL_BYTES, totalBytes ?: -1L)
+                    putExtra(EXTRA_TITLE, progress.title)
+                    putExtra(EXTRA_DETAIL, progress.detail)
+                    putExtra(EXTRA_BYTES_DONE, progress.bytesDone)
+                    putExtra(EXTRA_TOTAL_BYTES, progress.totalBytes ?: -1L)
+                    putExtra(EXTRA_IS_EXTRACTING, progress.isExtracting)
                 }
             ContextCompat.startForegroundService(context, intent)
         }
@@ -709,6 +766,14 @@ class OamDownloadForegroundService : Service() {
         }
     }
 }
+
+internal data class OamForegroundProgress(
+    val title: String,
+    val detail: String,
+    val bytesDone: Long,
+    val totalBytes: Long?,
+    val isExtracting: Boolean = false,
+)
 
 private enum class OwnedStopRequest {
     PAUSE,

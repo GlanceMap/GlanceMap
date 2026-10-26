@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -294,6 +295,99 @@ class OamBundlePipelineTest {
                 extraction.await()
             }
         }
+
+    @Test
+    fun `extraction lifecycle stays active while download progress remains visible`() =
+        runTest {
+            val visibleProgress = mutableListOf<OamDownloadProgress>()
+            val lifecycle = mutableListOf<Boolean>()
+            val arbiter = OamBundleProgressArbiter(visibleProgress::add)
+            val extractionStarted = CompletableDeferred<Unit>()
+            val finishExtraction = CompletableDeferred<Unit>()
+            val extraction =
+                async {
+                    arbiter.runExtraction {
+                        runOamExtractionLifecycle(lifecycle::add) {
+                            extractionStarted.complete(Unit)
+                            finishExtraction.await()
+                        }
+                    }
+                }
+
+            try {
+                extractionStarted.await()
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "POI zip", 50L, 100L))
+                }
+
+                assertEquals(listOf(true), lifecycle)
+                assertEquals(listOf("DOWNLOADING"), visibleProgress.map(OamDownloadProgress::phase))
+            } finally {
+                finishExtraction.complete(Unit)
+                extraction.await()
+            }
+
+            assertEquals(listOf(true, false), lifecycle)
+        }
+
+    @Test
+    fun `extraction lifecycle clears after cancellation or failure`() =
+        runTest {
+            val lifecycle = mutableListOf<Boolean>()
+            val arbiter = OamBundleProgressArbiter(emit = {})
+            val cancellationStarted = CompletableDeferred<Unit>()
+            val cancelled =
+                async {
+                    arbiter.runExtraction {
+                        runOamExtractionLifecycle(
+                            onExtractionRunningChanged = { running ->
+                                lifecycle.add(running)
+                                if (running) cancellationStarted.complete(Unit)
+                            },
+                        ) {
+                            kotlinx.coroutines.awaitCancellation()
+                        }
+                    }
+                }
+
+            cancellationStarted.await()
+            cancelled.cancelAndJoin()
+            assertEquals(listOf(true, false), lifecycle)
+
+            lifecycle.clear()
+            val failure =
+                runCatching {
+                    arbiter.runExtraction {
+                        runOamExtractionLifecycle(lifecycle::add) { error("write failed") }
+                    }
+                }.exceptionOrNull()
+
+            assertTrue(failure is IllegalStateException)
+            assertEquals(listOf(true, false), lifecycle)
+        }
+
+    @Test
+    fun `installation screen hold follows extraction lifecycle instead of visible phase`() {
+        val downloadingWhileExtracting =
+            OamOwnedDownloadState(
+                status = OamOwnedDownloadStatus.RUNNING,
+                phase = "DOWNLOADING",
+                isExtracting = true,
+            )
+        val extracting = downloadingWhileExtracting.copy(isExtracting = false)
+
+        assertTrue(shouldKeepOamInstallationScreenOn(downloadingWhileExtracting.isExtracting))
+        assertFalse(shouldKeepOamInstallationScreenOn(extracting.isExtracting))
+    }
+
+    @Test
+    fun `installation screen hold releases in background and resumes in foreground`() {
+        val paused = oamInstallationScreenActiveAfter(isScreenResumed = true, event = Lifecycle.Event.ON_PAUSE)
+        val resumed = oamInstallationScreenActiveAfter(isScreenResumed = paused, event = Lifecycle.Event.ON_RESUME)
+
+        assertFalse(shouldKeepOamInstallationScreenOn(isExtracting = true, isInstallationScreenActive = paused))
+        assertTrue(shouldKeepOamInstallationScreenOn(isExtracting = true, isInstallationScreenActive = resumed))
+    }
 
     @Test
     fun `progress throttler emits phase changes and periodic updates`() {

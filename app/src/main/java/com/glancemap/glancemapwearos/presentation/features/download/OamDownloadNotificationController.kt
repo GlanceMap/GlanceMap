@@ -27,13 +27,18 @@ class OamDownloadNotificationController(
         detail: String,
         bytesDone: Long,
         totalBytes: Long?,
+        isExtracting: Boolean = false,
     ) {
         OamDownloadForegroundService.showProgress(
             context = appContext,
-            title = title,
-            detail = detail,
-            bytesDone = bytesDone,
-            totalBytes = totalBytes,
+            progress =
+                OamForegroundProgress(
+                    title = title,
+                    detail = detail,
+                    bytesDone = bytesDone,
+                    totalBytes = totalBytes,
+                    isExtracting = isExtracting,
+                ),
         )
     }
 

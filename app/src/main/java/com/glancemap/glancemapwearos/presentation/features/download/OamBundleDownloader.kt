@@ -433,6 +433,7 @@ class OamBundleDownloader(
         forceDemTiles: Boolean = false,
         forceDemTileIds: Set<String> = emptySet(),
         extractionKeepAliveState: () -> OamDownloadKeepAliveState = { OamDownloadKeepAliveState() },
+        onExtractionRunningChanged: (Boolean) -> Unit = {},
         onProgress: (OamDownloadProgress) -> Unit,
     ): OamInstalledBundle =
         coroutineScope {
@@ -528,6 +529,7 @@ class OamBundleDownloader(
                                             extension = ".map",
                                             label = context.resources.getString(R.string.download_map),
                                             extractionKeepAliveState = extractionKeepAliveState,
+                                            onExtractionRunningChanged = onExtractionRunningChanged,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             mapRepository.saveMapFileAtomic(
@@ -622,6 +624,7 @@ class OamBundleDownloader(
                                             extension = ".poi",
                                             label = context.resources.getString(R.string.common_poi),
                                             extractionKeepAliveState = extractionKeepAliveState,
+                                            onExtractionRunningChanged = onExtractionRunningChanged,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             poiRepository.savePoiFileAtomic(
@@ -1732,6 +1735,7 @@ class OamBundleDownloader(
         extension: String,
         label: String,
         extractionKeepAliveState: () -> OamDownloadKeepAliveState,
+        onExtractionRunningChanged: (Boolean) -> Unit,
         onProgress: (OamDownloadProgress) -> Unit,
         saveEntry: suspend (
             fileName: String,
@@ -1741,7 +1745,9 @@ class OamBundleDownloader(
         ) -> Unit,
     ): String =
         runOamExtraction(context) {
-            extractFirstEntryInJob(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
+            runOamExtractionLifecycle(onExtractionRunningChanged) {
+                extractFirstEntryInJob(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
+            }
         }
 
     private suspend fun extractFirstEntryInJob(

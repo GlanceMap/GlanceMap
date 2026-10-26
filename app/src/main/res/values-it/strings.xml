@@ -430,6 +430,7 @@
     <string name="download_download_paused">"Download in pausa"</string>
     <string name="download_download_selected_areas">"Scarica aree selezionate"</string>
     <string name="download_downloading_offline_bundle">"Download pacchetto offline"</string>
+    <string name="download_installing_offline_bundle">"Installazione del pacchetto offline"</string>
     <string name="download_elevation">"%1$s altimetria"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"I dati altimetrici aggiungono quota, pendenza e ombreggiatura del terreno."</string>
     <string name="download_elevation_quality">"Qualità del terreno"</string>

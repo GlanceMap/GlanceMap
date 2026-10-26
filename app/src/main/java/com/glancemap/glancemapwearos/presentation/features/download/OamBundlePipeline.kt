@@ -105,6 +105,19 @@ internal class OamBundleProgressArbiter(
     }
 }
 
+/** Runs only while the system-owned job is executing the local archive writer. */
+internal suspend fun <T> runOamExtractionLifecycle(
+    onExtractionRunningChanged: (Boolean) -> Unit,
+    block: suspend () -> T,
+): T {
+    onExtractionRunningChanged(true)
+    return try {
+        block()
+    } finally {
+        onExtractionRunningChanged(false)
+    }
+}
+
 internal class OamProgressThrottler(
     private val minimumIntervalMs: Long = 1_000L,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },

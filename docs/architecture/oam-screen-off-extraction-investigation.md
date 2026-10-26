@@ -1,6 +1,48 @@
 # Screen-off bundle extraction investigation — 2026-10-25
 
-## Latest watch validation and closure scope
+## Current status — bounded foreground extraction fallback (2026-10-26)
+
+The latest supplied OnePlus OPWWE251 capture (`glancemap_diagnostics_20261025_223550_oneplus_opwwe251_s1.txt`,
+Android 14/API 34, target SDK 36, build `bc6dad98bb80`) changes the conclusion: the API-31+
+expedited `OamExtractionJobService` is the correct supported background mechanism, but it is **not**
+a firmware-reliable guarantee for this long local work. Two Bayern map writers were stopped with
+`JobScheduler STOP_REASON_DEVICE_STATE` (4), at about 180 seconds/62% and 265 seconds/94%; both
+failure summaries report `deviceIdleMode=true`. The same installation completes in about 281 seconds
+when the display stays on for most of the local writer. The smaller POI writer completes in about
+44 seconds almost entirely screen-off. These observations rule out a universal four-minute cap.
+
+Android documents device state as a valid job stop reason; expedited scheduling does not expose an
+API that can override an OEM/device-state stop. [JobParameters stop reasons](https://developer.android.com/reference/android/app/job/JobParameters#STOP_REASON_DEVICE_STATE).
+The earlier OnePlus Balance Mode evidence also confirms that re-acquiring GlanceMap's app-owned
+partial wake lock is not a reliable alternative and must not be attempted.
+
+The bounded fallback in this change is deliberately foreground-only:
+
+- The downloader raises transient `isExtracting` only after the scheduler has actually entered the
+  local archive writer, then clears it in the writer's `finally` path. The foreground service also
+  clears it on pause, cancel, failure and destruction. It does not change the persisted-plan owner,
+  download/network handoff, retained archives, atomic writes or the single extraction lane.
+- While the Downloads installation screen is resumed, that state uses the normal window
+  keep-screen-on flag and temporarily sets brightness to 20%. It restores both values when the
+  writer ends, the screen pauses/backgrounds, the user leaves Downloads, or Compose disposes the
+  screen. The decision does not inspect the visible progress phase: a map writer remains protected
+  even while the progress arbiter displays a POI/network `DOWNLOADING` phase.
+- When extraction becomes ready while the watch is off or the app is backgrounded, nothing wakes
+  the display or starts an Activity. The existing ongoing notification instead says “Installing
+  offline bundle”; a user tap explicitly opens Downloads. If the user does not return, the expedited
+  job keeps its normal background behavior, so smaller files remain eligible to finish without a
+  display hold.
+
+This is a bounded user-facing mitigation, not proof that this firmware has been fixed. It adds no
+battery exemption, wake-lock reacquisition, automatic extraction restart loop, or ZIP/I/O tuning.
+Real-watch acceptance remains required: install this build, begin Bayern, turn the display off
+while downloading, tap the installation notification when local extraction starts, keep Downloads
+visible through the map writer, and confirm completion plus release of the dim display hold after
+map, POI, pause, cancel and failure paths. A screen-off-only Bayern retry must still be expected to
+hit the OEM job stop; do not claim this fallback works on the firmware until the protected Bayern
+run completes.
+
+## Prior watch validation and closure scope (superseded)
 
 The user's latest capture, `glancemap_diagnostics_20261025_174808_oneplus_opwwe251_s1.txt`,
 records a successful Bayern installation on release 1.3.1/1041, Git `d39d0b7838ba`,
@@ -31,8 +73,8 @@ Evidence anchors in that capture: lines 849–911 (first attempt and failure), 1
 (user pause, resume and archive reuse), 1328–1334 (map commit and job completion),
 1372–1376 (POI commit and job completion), and 1508–1511 (DEM, bundle completion and lock release).
 The preceding Manitoba capture also validated an entirely screen-off map extraction of 93,517 ms.
-Neither result establishes a battery improvement. No display hold or permanent power exemption
-has been added.
+Neither result establishes a battery improvement. At that time, no display hold or permanent power
+exemption had been added.
 
 ### Pause and sequencing
 
