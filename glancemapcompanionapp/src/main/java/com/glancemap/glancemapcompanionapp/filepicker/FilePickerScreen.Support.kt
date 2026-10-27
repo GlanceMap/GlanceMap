@@ -8,6 +8,7 @@ import android.os.Build
 import android.text.format.Formatter
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
 import com.glancemap.glancemapcompanionapp.GeneratedPhoneFile
@@ -133,6 +134,28 @@ internal fun markHelpShown(context: Context) {
         .getSharedPreferences(COMPANION_UI_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putBoolean(KEY_AUTO_OPEN_HELP_ON_FIRST_LAUNCH, false)
+        .apply()
+}
+
+internal fun shouldAutoOpenWhatsNew(context: Context): Boolean =
+    shouldAutoShowWhatsNew(
+        lastShownVersionCode =
+            context
+                .getSharedPreferences(COMPANION_UI_PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_LAST_WHATS_NEW_VERSION_SHOWN, 0L),
+        currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+    )
+
+internal fun shouldAutoShowWhatsNew(
+    lastShownVersionCode: Long,
+    currentVersionCode: Long,
+): Boolean = lastShownVersionCode < currentVersionCode
+
+internal fun markWhatsNewShown(context: Context) {
+    context
+        .getSharedPreferences(COMPANION_UI_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putLong(KEY_LAST_WHATS_NEW_VERSION_SHOWN, BuildConfig.VERSION_CODE.toLong())
         .apply()
 }
 
@@ -375,5 +398,6 @@ internal fun formatPhoneStoredFilesSummary(
 
 private const val COMPANION_UI_PREFS = "companion_ui_prefs"
 private const val KEY_AUTO_OPEN_HELP_ON_FIRST_LAUNCH = "auto_open_help_on_first_launch"
+private const val KEY_LAST_WHATS_NEW_VERSION_SHOWN = "last_whats_new_version_shown"
 private const val KEY_AUTO_OPEN_SEND_TO_WATCH_GUIDE = "auto_open_send_to_watch_guide"
 private const val KEY_AUTO_OPEN_LIVE_TRACKING_GUIDE = "auto_open_live_tracking_guide"

@@ -5,6 +5,146 @@
     <string name="home_title">GlanceMap Companion</string>
     <string name="home_debug_capture_start_content_description">Start phone debug capture</string>
     <string name="home_debug_capture_stop_content_description">Stop phone debug capture</string>
+    <string name="whats_new_title">What\'s New</string>
+    <string name="whats_new_open_content_description">Open What\'s New</string>
+    <string name="whats_new_installed_version">Installed version %1$s (%2$d)</string>
+    <string name="whats_new_release_version">Version %1$s</string>
+    <string name="whats_new_phone_section_title">Phone app</string>
+    <string name="whats_new_watch_section_title">Watch app</string>
+    <string name="whats_new_review_message">Enjoying GlanceMap? Leave a quick review on the Play Store — it really helps.</string>
+    <string name="whats_new_review_phone_action">Review phone app</string>
+    <string name="whats_new_review_watch_action">Review watch app</string>
+
+    <string-array name="whats_new_1_2_3_phone">
+        <item>Improved Live Tracking GPS accuracy, especially with longer update intervals.</item>
+        <item>Improved Live Tracking reliability during weak or unavailable network conditions.</item>
+        <item>Improved start, pause, resume and stop recovery after connection loss or app/service restart.</item>
+    </string-array>
+    <string-array name="whats_new_1_2_3_watch">
+        <item>Improved map startup, rendering and navigation performance.</item>
+        <item>Improved compass behavior after wake and during magnetic interference.</item>
+        <item>Smoother compass rotation and navigation response.</item>
+        <item>Preserves map position when returning from the menu.</item>
+        <item>Improved POI, GPX and recording performance.</item>
+        <item>Added clearer startup, location and no-active-map feedback.</item>
+        <item>Added compatibility with older Android 9 and 10 Wear OS watches.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_2_2_phone">
+        <item>More reliable Live Tracking, GPS startup and signal reporting.</item>
+        <item>Better watch–phone transfers, progress updates and reconnects.</item>
+        <item>Less background activity while the screen is off.</item>
+        <item>Stability and performance improvements.</item>
+    </string-array>
+    <string-array name="whats_new_1_2_2_watch">
+        <item>More reliable compass and turn-by-turn guidance, including after pauses.</item>
+        <item>Smoother recording and more consistent distance and speed.</item>
+        <item>Pinch-to-zoom, map long-press actions and clearer route progress.</item>
+        <item>Better terrain handling and elevation profiles with your location shown.</item>
+        <item>More reliable watch–phone transfers and map/GPX loading.</item>
+        <item>Stability and performance improvements.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_2_1_phone">
+        <item>Improved GPX import and transfer naming.</item>
+        <item>Improved Live Tracking reliability.</item>
+        <item>Improved GPX transfer and import handling.</item>
+    </string-array>
+    <string-array name="whats_new_1_2_1_watch">
+        <item>Improved battery performance during navigation and recording.</item>
+        <item>Auto-pause is now enabled by default.</item>
+        <item>More efficient GPS and compass handling.</item>
+        <item>Better behavior when the screen is off or the watch is idle.</item>
+        <item>More reliable track recording, distance and elevation.</item>
+        <item>Improved GPS recovery and Watch GPS fallback when the phone disconnects.</item>
+        <item>Improved offline map downloads and extraction recovery.</item>
+        <item>Improved map zoom, hillshade stability, turn-by-turn navigation and rotary controls.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_2_0_phone">
+        <item>Added Pause and Resume for Live Tracking.</item>
+        <item>Improved Live Tracking start reliability.</item>
+        <item>Made no-movement alerts clearer.</item>
+        <item>Fixed GPX file names with accents.</item>
+        <item>Improved the first-time setup flow.</item>
+    </string-array>
+    <string-array name="whats_new_1_2_0_watch">
+        <item>Added recording activities.</item>
+        <item>Added turn-by-turn navigation.</item>
+        <item>Added support for external sensors, including HR straps and Stryd pods.</item>
+        <item>Added Hike and Bike activity profiles.</item>
+        <item>Improved GPS behavior during recording and navigation.</item>
+        <item>Improved performance and map responsiveness.</item>
+        <item>Improved battery efficiency, especially during long recordings and navigation sessions.</item>
+        <item>Improved the UI layout.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_1_3_phone">
+        <item>Added Pause and Resume for Live Tracking.</item>
+        <item>Improved Live Tracking start reliability.</item>
+        <item>Made no-movement alerts clearer.</item>
+        <item>Fixed GPX file names with accents.</item>
+        <item>Improved the first-time setup flow.</item>
+    </string-array>
+    <string-array name="whats_new_1_1_3_watch">
+        <item>Added creation of recorded activities directly from the watch.</item>
+        <item>Added creation of turn-by-turn navigation directly from the watch.</item>
+        <item>Added support for external sensors, including HR straps and Stryd pods.</item>
+        <item>Added Hike and Bike activity profiles.</item>
+        <item>Improved GPS behavior during recording and navigation.</item>
+        <item>Improved performance and map responsiveness.</item>
+        <item>Improved battery efficiency, especially during long recordings and navigation sessions.</item>
+        <item>Improved the UI layout.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_1_2_phone">
+        <item>Reorganized the Live Tracking screen.</item>
+        <item>Updated the Quick Guide.</item>
+        <item>Updated the map picker for both POI and Routing features.</item>
+    </string-array>
+    <string-array name="whats_new_1_1_2_watch">
+        <item>Added a GPX track direction arrow option.</item>
+        <item>Added back button support on compatible watches.</item>
+        <item>Added adjustable position marker placement.</item>
+        <item>Redesigned POI icons, settings and navigation.</item>
+        <item>Added higher-quality elevation data.</item>
+        <item>Added GPX track export from watch to phone.</item>
+        <item>Updated download bundles with Refuge.info POIs and improved bundle navigation.</item>
+        <item>Added quick guides for POI, GPX and Maps, plus battery, stability and performance improvements.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_1_0_phone">
+        <item>Added a new main screen.</item>
+        <item>Added Live Tracking by Arkluz.</item>
+        <item>Improved the map picker and tiles for POI and Routing, and fixed POI bugs.</item>
+    </string-array>
+    <string-array name="whats_new_1_1_0_watch">
+        <item>Fixed the download cancel button and other minor issues.</item>
+        <item>Added direct download bundles from the watch.</item>
+        <item>Added a new home screen.</item>
+        <item>Fixed marker and POI-creation issues and improved overall stability.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_0_5_phone">
+        <item>Added map-area and tile picking for POI and Routing.</item>
+        <item>Improved Wi-Fi transfer stability.</item>
+    </string-array>
+    <string-array name="whats_new_1_0_5_watch">
+        <item>Fixed compass issues on Samsung watches.</item>
+        <item>Fixed zoom levels on large maps.</item>
+        <item>Fixed theme cache issues.</item>
+        <item>Fixed layouts on small screens.</item>
+        <item>Added the OS Map theme.</item>
+        <item>Added a shortcut to the night-mode theme.</item>
+    </string-array>
+
+    <string-array name="whats_new_1_0_4_phone">
+        <item>Added new explanations for maps and GPX.</item>
+        <item>Fixed the companion app scrolling bug and updated the Quick Guide.</item>
+    </string-array>
+    <string-array name="whats_new_1_0_4_watch">
+        <item>Fixed DEM downloads for some areas.</item>
+    </string-array>
     <string name="transfer_title_send_to_watch">Send to Watch</string>
     <string name="transfer_send_to_watch_description">Maps, GPX, POI and routing files</string>
     <string name="live_tracking_title">Live Tracking</string>

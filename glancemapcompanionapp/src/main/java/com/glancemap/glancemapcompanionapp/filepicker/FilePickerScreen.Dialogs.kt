@@ -9,10 +9,12 @@
 
 package com.glancemap.glancemapcompanionapp.filepicker
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.annotation.ArrayRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
@@ -33,12 +36,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContactMail
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SpatialTracking
 import androidx.compose.material.icons.filled.ViewComfyAlt
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -62,6 +68,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -70,6 +77,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.glancemapcompanionapp.CompanionAdaptiveSpec
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
 import com.glancemap.glancemapcompanionapp.FileTransferViewModel
@@ -602,6 +610,192 @@ internal fun FilePickerQuickGuideDialog(
         )
     }
 }
+
+internal data class WhatsNewReleaseNotes(
+    val versionName: String,
+    @ArrayRes val phoneChangesResId: Int,
+    @ArrayRes val watchChangesResId: Int,
+)
+
+// Add each release here with its Phone and Watch string arrays.
+private val whatsNewReleaseHistory =
+    listOf(
+        WhatsNewReleaseNotes("1.2.3", R.array.whats_new_1_2_3_phone, R.array.whats_new_1_2_3_watch),
+        WhatsNewReleaseNotes("1.2.2", R.array.whats_new_1_2_2_phone, R.array.whats_new_1_2_2_watch),
+        WhatsNewReleaseNotes("1.2.1", R.array.whats_new_1_2_1_phone, R.array.whats_new_1_2_1_watch),
+        WhatsNewReleaseNotes("1.2.0", R.array.whats_new_1_2_0_phone, R.array.whats_new_1_2_0_watch),
+        WhatsNewReleaseNotes("1.1.3", R.array.whats_new_1_1_3_phone, R.array.whats_new_1_1_3_watch),
+        WhatsNewReleaseNotes("1.1.2", R.array.whats_new_1_1_2_phone, R.array.whats_new_1_1_2_watch),
+        WhatsNewReleaseNotes("1.1.0", R.array.whats_new_1_1_0_phone, R.array.whats_new_1_1_0_watch),
+        WhatsNewReleaseNotes("1.0.5", R.array.whats_new_1_0_5_phone, R.array.whats_new_1_0_5_watch),
+        WhatsNewReleaseNotes("1.0.4", R.array.whats_new_1_0_4_phone, R.array.whats_new_1_0_4_watch),
+    )
+
+@Composable
+internal fun WhatsNewDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val releaseHistory = remember { whatsNewReleaseHistory }
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                )
+                Text(
+                    text = stringResource(R.string.whats_new_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text =
+                        stringResource(
+                            R.string.whats_new_installed_version,
+                            BuildConfig.VERSION_NAME,
+                            BuildConfig.VERSION_CODE,
+                        ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                releaseHistory.forEach { release ->
+                    Text(
+                        text = stringResource(R.string.whats_new_release_version, release.versionName),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    WhatsNewReleaseSection(
+                        titleResId = R.string.whats_new_phone_section_title,
+                        icon = Icons.Filled.PhoneAndroid,
+                        changes = stringArrayResource(release.phoneChangesResId).asList(),
+                    )
+                    WhatsNewReleaseSection(
+                        titleResId = R.string.whats_new_watch_section_title,
+                        icon = Icons.Filled.Watch,
+                        changes = stringArrayResource(release.watchChangesResId).asList(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.whats_new_review_message),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { openPhoneAppPlayStore(context) }) {
+                        Text(stringResource(R.string.whats_new_review_phone_action))
+                    }
+                    TextButton(onClick = { openWatchAppPlayStore(context) }) {
+                        Text(stringResource(R.string.whats_new_review_watch_action))
+                    }
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(stringResource(R.string.common_action_close))
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun WhatsNewReleaseSection(
+    @StringRes titleResId: Int,
+    icon: ImageVector,
+    changes: List<String>,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.padding(start = 2.dp),
+            )
+            Text(
+                text = stringResource(titleResId),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
+        changes.forEach { change ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(text = "•")
+                Text(
+                    text = change,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+internal fun companionPlayStoreWebUrl(packageName: String): String = "https://play.google.com/store/apps/details?id=$packageName"
+
+private fun openPhoneAppPlayStore(context: Context) {
+    openAppPlayStore(context, context.packageName)
+}
+
+private fun openWatchAppPlayStore(context: Context) {
+    openAppPlayStore(context, WATCH_APP_PACKAGE_NAME)
+}
+
+private fun openAppPlayStore(
+    context: Context,
+    appPackageName: String,
+) {
+    val appContext = context.applicationContext
+    val marketIntent =
+        Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$appPackageName")).apply {
+            setPackage(PLAY_STORE_PACKAGE_NAME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    val browserIntent =
+        Intent(Intent.ACTION_VIEW, Uri.parse(companionPlayStoreWebUrl(appPackageName))).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+    try {
+        appContext.startActivity(marketIntent)
+    } catch (_: ActivityNotFoundException) {
+        try {
+            appContext.startActivity(browserIntent)
+        } catch (_: ActivityNotFoundException) {
+            // Neither the Play Store nor a browser is available.
+        }
+    }
+}
+
+private const val PLAY_STORE_PACKAGE_NAME = "com.android.vending"
+private const val WATCH_APP_PACKAGE_NAME = "com.glancemap.glancemapwearos"
 
 @Composable
 private fun LiveTrackingPrivacyPolicyDialog(onDismiss: () -> Unit) {
