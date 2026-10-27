@@ -177,27 +177,27 @@ The connected OnePlus Watch 3 system log confirms Balance Mode forcibly removes 
 application partial wake lock on screen-off despite dataSync FGS=true. Standard LPS is disabled;
 Doze is concurrent but does not explain the vendor's explicit forced-release action.
 
-On API 31+, local map/POI ZIP extraction now runs inside an expedited OamExtractionJobService,
-whose execution wake lock is owned by JobScheduler. Downloads, network handoff, the foreground
-notification/plan and AtomicStreamWriter remain in their existing paths. API 28–30 stays inline.
-The coordinator permits one extraction, rejects orphan/stale request tokens, and joins the writer
-before owner cleanup. Rejected/downgraded/stopped jobs return the localized retry error without
-automatic rescheduling; foreground plan recovery remains the only restart authority. See
-[investigation, quota tradeoffs and ADB controls](oam-screen-off-extraction-investigation.md).
+Local map/POI ZIP extraction runs inline in the existing data-sync foreground service on every API
+level. Downloads, network handoff, the foreground notification/plan and AtomicStreamWriter remain
+in their existing paths. On this OnePlus firmware, Balance Mode can suppress the app-owned CPU-awake
+request while the display is off; the inline writer can therefore become slow or wait until the watch
+is active, but it avoids the expedited JobScheduler path that was hard-stopped with
+`STOP_REASON_DEVICE_STATE`. The persisted foreground plan remains the only restart authority; there
+is no automatic rescheduling. See [investigation, historical job tradeoffs and ADB controls](oam-screen-off-extraction-investigation.md).
 
 Debug capture adds API-guarded power/process samples (at most once per five seconds) and API-33
 system wake-lock callbacks capped at 16 transition logs per generation. Stale/released callbacks
 cannot repopulate state. Unsupported or failed queries use `na`; app-owned foreground/type fields
 are observations, not proof of system state.
 
-For the OnePlus device-state stop, the bounded fallback is a Download-screen-only display hold:
+For the OnePlus restriction, the bounded assist is a Download-screen-only display hold:
 the service publishes real local-writer state, and a resumed Downloads screen keeps the display on
 at 20% brightness only while that state is true. It restores the prior brightness/flag on writer
 termination, navigation and lifecycle pause. The app neither wakes the screen nor launches an
 Activity when extraction begins in the background; the ongoing installation notification provides a
 user-tapped route back to Downloads. This does not grant an exemption or change background behavior
-for users who do not return, so small jobs can still finish screen-off. Bayern watch validation is
-still required before treating this mitigation as effective on the firmware.
+for users who do not return, so small bundles can still finish screen-off. Bayern watch validation is
+still required before treating the restored inline path or this assist as effective on the firmware.
 
 ## Manual partial-file cleanup
 

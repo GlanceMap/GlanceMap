@@ -1,25 +1,36 @@
 # Screen-off bundle extraction investigation — 2026-10-25
 
-## Current status — bounded foreground extraction fallback (2026-10-26)
+## Current status — inline foreground extraction with bounded screen assist (2026-10-26)
 
 The latest supplied OnePlus OPWWE251 capture (`glancemap_diagnostics_20261025_223550_oneplus_opwwe251_s1.txt`,
-Android 14/API 34, target SDK 36, build `bc6dad98bb80`) changes the conclusion: the API-31+
-expedited `OamExtractionJobService` is the correct supported background mechanism, but it is **not**
-a firmware-reliable guarantee for this long local work. Two Bayern map writers were stopped with
+Android 14/API 34, target SDK 36, build `bc6dad98bb80`) shows that the API-31+ expedited-job
+experiment is **not** a firmware-reliable solution for this long local work. Two Bayern map writers were stopped with
 `JobScheduler STOP_REASON_DEVICE_STATE` (4), at about 180 seconds/62% and 265 seconds/94%; both
 failure summaries report `deviceIdleMode=true`. The same installation completes in about 281 seconds
 when the display stays on for most of the local writer. The smaller POI writer completes in about
 44 seconds almost entirely screen-off. These observations rule out a universal four-minute cap.
+
+The later bounded-screen-assist test (`glancemap_diagnostics_20261026_144046_oneplus_opwwe251_s1.txt`)
+also left Downloads unresumed and the display off, so the deliberately foreground-only display hold
+did not apply. Its Bayern writer was stopped after 190,989 ms at about 74% with reason 4 even though
+that failure summary reported `deviceIdleMode=false`. This confirms that the expedited-job path can
+be hard-stopped on this firmware without proving a universal time limit or an idle-only cause.
 
 Android documents device state as a valid job stop reason; expedited scheduling does not expose an
 API that can override an OEM/device-state stop. [JobParameters stop reasons](https://developer.android.com/reference/android/app/job/JobParameters#STOP_REASON_DEVICE_STATE).
 The earlier OnePlus Balance Mode evidence also confirms that re-acquiring GlanceMap's app-owned
 partial wake lock is not a reliable alternative and must not be attempted.
 
-The bounded fallback in this change is deliberately foreground-only:
+The extraction writer therefore runs inline in the existing data-sync foreground service on every API
+level. This restores the previous behavior: if OnePlus suppresses the app-owned CPU-awake request
+while the display is off, the writer can be suspended or become slow and later continue when the
+watch becomes active, rather than being hard-stopped by JobScheduler. This is not an automatic
+restart or a claim of uninterrupted screen-off execution.
 
-- The downloader raises transient `isExtracting` only after the scheduler has actually entered the
-  local archive writer, then clears it in the writer's `finally` path. The foreground service also
+The bounded screen assist remains deliberately foreground-only:
+
+- The downloader raises transient `isExtracting` only after it has actually entered the local
+  archive writer, then clears it in the writer's `finally` path. The foreground service also
   clears it on pause, cancel, failure and destruction. It does not change the persisted-plan owner,
   download/network handoff, retained archives, atomic writes or the single extraction lane.
 - While the Downloads installation screen is resumed, that state uses the normal window
@@ -29,18 +40,18 @@ The bounded fallback in this change is deliberately foreground-only:
   even while the progress arbiter displays a POI/network `DOWNLOADING` phase.
 - When extraction becomes ready while the watch is off or the app is backgrounded, nothing wakes
   the display or starts an Activity. The existing ongoing notification instead says “Installing
-  offline bundle”; a user tap explicitly opens Downloads. If the user does not return, the expedited
-  job keeps its normal background behavior, so smaller files remain eligible to finish without a
-  display hold.
+  offline bundle”; a user tap explicitly opens Downloads. If the user does not return, the inline
+  writer can retain the slower/suspend-and-continue behavior and smaller files remain eligible to
+  finish without a display hold.
 
 This is a bounded user-facing mitigation, not proof that this firmware has been fixed. It adds no
 battery exemption, wake-lock reacquisition, automatic extraction restart loop, or ZIP/I/O tuning.
 Real-watch acceptance remains required: install this build, begin Bayern, turn the display off
-while downloading, tap the installation notification when local extraction starts, keep Downloads
-visible through the map writer, and confirm completion plus release of the dim display hold after
-map, POI, pause, cancel and failure paths. A screen-off-only Bayern retry must still be expected to
-hit the OEM job stop; do not claim this fallback works on the firmware until the protected Bayern
-run completes.
+while downloading, and confirm that the local map writer is not terminated with JobScheduler
+reason 4. It may still slow or wait for the watch to become active. Then tap the installation
+notification when local extraction starts, keep Downloads visible through the map writer, and
+confirm completion plus release of the dim display hold after map, POI, pause, cancel and failure
+paths. Do not claim this fallback works on the firmware until those Bayern runs complete.
 
 ## Prior watch validation and closure scope (superseded)
 
@@ -123,16 +134,16 @@ partial wake lock on screen-off**. Doze is observed concurrently, but ordinary A
 not a sufficient explanation; the vendor log explicitly names its policy. No idle allowlist or
 other power setting has been changed. The user paused the test after this evidence was collected.
 
-This supersedes the initial unproven-LPS lead above. A functional phase-only system-owned JobService
-is now justified for evaluation; its performance and quota/lifecycle behavior still require testing
-on the watch. The application must not reacquire its own ignored lock or request a permanent exemption.
+This supersedes the initial unproven-LPS lead above. The following phase-only system-owned JobService
+experiment was evaluated and later removed after the device-state stops described above. The
+application must not reacquire its own ignored lock or request a permanent exemption.
 
-## Phase-only job implementation and remaining acceptance
+## Historical expedited-job experiment (superseded)
 
-API 31+ now executes the existing local ZIP extraction body inside an expedited JobService. The
-foreground service still owns the persisted bundle plan, notification, downloads and pause/cancel.
-API 28–30 retains inline extraction because expedited jobs are unavailable. No network constraint,
-WorkManager dependency, display hold, exemption or buffer/writer change is introduced.
+The earlier API-31+ experiment executed the existing local ZIP extraction body inside an expedited
+JobService. The foreground service retained the persisted bundle plan, notification, downloads and
+pause/cancel; API 28–30 retained inline extraction. No network constraint, WorkManager dependency,
+exemption or buffer/writer change was introduced.
 
 Android 14's JobServiceContext acquires the execution lock in system_server with a WorkSource for
 the app. This ownership differs from the app-owned lock that OnePlus forcibly released. Android
@@ -144,23 +155,23 @@ to test the actual firmware, not a universal guarantee of uninterrupted executio
 [expedited API](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setExpedited(boolean)),
 [Android 16 quota change](https://developer.android.com/about/versions/16/behavior-changes-all#job-runtime-quota).
 
-The in-process coordinator admits one extraction. Its random request token rejects stale starts
+The experiment's in-process coordinator admitted one extraction. Its random request token rejected stale starts
 and stops; an orphan scheduled job after process death does no work. The persisted foreground plan
 remains the sole restart authority. A resume reuses the downloaded ZIP but starts extraction from
 the beginning; a `.part` output is not a resumable ZIP offset. Atomic promotion is unchanged.
 
-Admission failure, loss of expedited status, system stop or no start within 60 seconds produces the
-existing localized retry error; there is no silent regular-job downgrade or automatic restart loop.
-The caller waits for the actual worker to cancel and join before closing the request and canceling
-its scheduled job. A new request cannot replace a writer that is still cleaning up. Job callbacks
-stay nonblocking on the main thread, and completed/stopped runs cannot finish a newer job.
+Admission failure, loss of expedited status, system stop or no start within 60 seconds produced the
+existing localized retry error; there was no silent regular-job downgrade or automatic restart loop.
+The caller waited for the actual worker to cancel and join before closing the request and canceling
+its scheduled job. A new request could not replace a writer that was still cleaning up. Job callbacks
+stayed nonblocking on the main thread, and completed/stopped runs could not finish a newer job.
 
-The original application lock may still report disabled during a successful job; system-side job
-and power captures, clocks, correct output and lifecycle cleanup are the acceptance evidence.
-Screen-off Bayern timing and pause/cancel validation on the connected watch are still pending.
-No performance or battery improvement is claimed before that measurement.
+The original application lock could still report disabled during a successful job; system-side job
+and power captures, clocks, correct output and lifecycle cleanup were the acceptance evidence.
+The observed `STOP_REASON_DEVICE_STATE` failures invalidated that experiment for this firmware.
+No performance or battery improvement is claimed.
 
-## Host validation and independent review
+## Historical expedited-job validation and review
 
 - New lifecycle tests: nine cases covering matching/duplicate/orphan starts, quota rejection,
   start timeout, pause before start, pause waiting for writer cleanup, system stop with no automatic

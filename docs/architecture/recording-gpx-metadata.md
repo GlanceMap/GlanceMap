@@ -46,11 +46,35 @@ quality-gate rejections, not every callback that failed to become a point.
 counters reset after draft recovery. These counters are not a complete raw track.
 Detailed lifecycle, provider and rejected-point events stay in diagnostic telemetry.
 
+While automatically paused, recording retains a bounded window of fixes that satisfy
+the existing resume-motion test. On confirmation it can replay a credible restart
+through the normal motion and quality gates, preserving measurement times and the
+auto-pause boundary; distance starts at the recovered segment, not at the pre-pause
+point. Manual pauses and unconfirmed or abandoned starts are not replayed. Sensor
+values without suitable historical measurements remain unknown. Auto-pause thresholds
+and active-time backdating are unchanged.
+
+Pressure fusion currently checks its latest pressure snapshot against the GPS
+measurement time. For delayed GPS batches, a newer pressure sample cannot be used
+as a fresh historical sample; timestamp-matched pressure history is a separate
+investigation and is not changed by restart recovery.
+
 Valid heart rates (1–255 bpm) are also written as Garmin TrackPointExtension v1
 `gpxtpx:hr`, retaining `gmap:heartRateBpm` for existing readers. Steps/minute remain
 `gmap:cadenceSpm`; they are not copied into Garmin's revolutions/minute field.
 Activity timing, pause bridging, segmentation, filtering, distance and elevation
 algorithms are unchanged.
+
+New recording summaries derive watch walking average cadence from recording steps
+and Time (Active); a known zero is exported as zero. Their HR mean is weighted by
+covered active sensor time, independent of GPS points. `heartRateCoveredSeconds`
+reports coverage and `heartRateAverageMethod=active_time_weighted_v1` identifies
+this method. Missing HR intervals are excluded, never replaced with zero or an
+indefinitely carried reading. Legacy recovered drafts without a sensor checkpoint
+retain their older point-based HR mean and omit these coverage/method tags.
+`cadenceAverageMethod=active_time_steps_v1` marks the watch step/time mean. Readers
+preserve an explicitly unknown session mean rather than deriving a substitute
+from sparse GPX point sensor values; unmarked older files retain their fallback.
 
 References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 [Garmin extension schema](https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd).

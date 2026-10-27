@@ -308,31 +308,18 @@ class OamBundleDownloader(
             val unknownFileNames = mutableListOf<String>()
             var checkedFileCount = 0
 
-            requests.forEach { request ->
-                coroutineContext.ensureActive()
-                val previous = previousByUrl[request.url]
-                if (previous == null || !previous.isComparable()) {
-                    unknownFileNames += request.fileName
-                    return@forEach
-                }
-                val current =
-                    runCatching { fetchRemoteMetadata(request) }
-                        .getOrNull()
-                if (current == null || !current.isComparable()) {
-                    unknownFileNames += request.fileName
-                    return@forEach
-                }
-                checkedFileCount += 1
-                when (previous.compareWith(current)) {
+            checkRemoteMetadata(requests, previousByUrl, ::fetchRemoteMetadata).forEach { result ->
+                if (result.checked) checkedFileCount += 1
+                when (result.comparison) {
                     RemoteMetadataComparison.CHANGED -> {
-                        changedFileNames += request.fileName
+                        changedFileNames += result.fileName
                         DebugTelemetry.log(
                             OAM_DOWNLOAD_TELEMETRY_TAG,
-                            "event=remote_metadata_changed file=${request.fileName} " +
-                                "previous=${previous.telemetrySummary()} current=${current.telemetrySummary()}",
+                            "event=remote_metadata_changed file=${result.fileName} " +
+                                "previous=${result.previous?.telemetrySummary()} current=${result.current?.telemetrySummary()}",
                         )
                     }
-                    RemoteMetadataComparison.UNKNOWN -> unknownFileNames += request.fileName
+                    RemoteMetadataComparison.UNKNOWN -> unknownFileNames += result.fileName
                     RemoteMetadataComparison.SAME -> Unit
                 }
             }
@@ -340,13 +327,13 @@ class OamBundleDownloader(
             val distinctChangedFileNames = changedFileNames.distinct()
             val distinctUnknownFileNames = unknownFileNames.distinct()
             val status =
-                when {
-                    localHealth.needsRepair -> OamBundleUpdateStatus.REPAIR_NEEDED
-                    distinctChangedFileNames.isNotEmpty() -> OamBundleUpdateStatus.UPDATE_AVAILABLE
-                    requests.isEmpty() -> OamBundleUpdateStatus.UP_TO_DATE
-                    distinctUnknownFileNames.isNotEmpty() || checkedFileCount == 0 -> OamBundleUpdateStatus.UNKNOWN
-                    else -> OamBundleUpdateStatus.UP_TO_DATE
-                }
+                resolveOamBundleUpdateStatus(
+                    repairFileNames = localHealth.repairFileNames,
+                    changedFileNames = distinctChangedFileNames,
+                    requestCount = requests.size,
+                    unknownFileNames = distinctUnknownFileNames,
+                    checkedFileCount = checkedFileCount,
+                )
             DebugTelemetry.log(
                 OAM_DOWNLOAD_TELEMETRY_TAG,
                 "event=update_check_result area=${bundle.areaId} status=$status checked=$checkedFileCount " +
@@ -1394,7 +1381,7 @@ class OamBundleDownloader(
             try {
                 val code = connection.responseCode
                 if (code !in 200..399) {
-                    throw IOException(context.resources.getString(R.string.download_http_for, request.url, code.toString()))
+                    throw OamMetadataHttpException(context.resources.getString(R.string.download_http_for, request.url, code.toString()))
                 }
                 OamRemoteFileMetadata(
                     url = request.url,
@@ -1744,13 +1731,11 @@ class OamBundleDownloader(
             onEntryProgress: (Long) -> Unit,
         ) -> Unit,
     ): String =
-        runOamExtraction(context) {
-            runOamExtractionLifecycle(onExtractionRunningChanged) {
-                extractFirstEntryInJob(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
-            }
+        runInlineOamExtraction(onExtractionRunningChanged) {
+            extractFirstEntryInline(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
         }
 
-    private suspend fun extractFirstEntryInJob(
+    private suspend fun extractFirstEntryInline(
         zipFile: File,
         extension: String,
         label: String,
@@ -1976,7 +1961,7 @@ internal enum class RemoteMetadataComparison {
 private val OamRemoteFileMetadata.metadataValues: List<Any?>
     get() = listOf(entityTag, lastModifiedMillis, contentLengthBytes)
 
-private fun OamRemoteFileMetadata.isComparable(): Boolean = metadataValues.any { it != null }
+internal fun OamRemoteFileMetadata.isComparable(): Boolean = metadataValues.any { it != null }
 
 internal fun OamRemoteFileMetadata.compareWith(other: OamRemoteFileMetadata): RemoteMetadataComparison =
     when {

@@ -11,7 +11,10 @@ internal fun selectWatchHealthRequest(
     activityGranted: Boolean,
 ): RecordingHealthRequest {
     val bike = state.activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE
-    val steps = !bike && activityGranted && state.stepsSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS
+    val steps =
+        !bike &&
+            activityGranted &&
+            state.stepsSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS
     val heartRate =
         heartRateGranted &&
             heartRateSource == SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH &&
@@ -28,8 +31,13 @@ internal fun selectWatchHealthRequest(
                 activityGranted &&
                 state.cadenceSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS &&
                 (steps || selectedMetricIds.any { it in cadenceMetrics }),
-        preferFrequentHeartRate = heartRate,
+        preferFrequentHeartRate = false,
     )
+}
+
+internal fun RecordingHealthRequest.withNativeStepMetrics(enabled: Boolean): RecordingHealthRequest {
+    val includeSteps = steps && enabled
+    return copy(steps = includeSteps, cadence = cadence && enabled)
 }
 
 private val cadenceMetrics =

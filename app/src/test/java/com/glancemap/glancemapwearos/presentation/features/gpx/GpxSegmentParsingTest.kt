@@ -9,6 +9,15 @@ import org.mapsforge.core.model.LatLong
 
 class GpxSegmentParsingTest {
     @Test
+    fun importedSessionAveragesPreserveUnknownAndZeroInsteadOfUsingPointMeans() {
+        assertNull(resolveImportedSensorAverage(null, "active_time_weighted_v1", 160))
+        assertNull(resolveImportedSensorAverage(null, "active_time_steps_v1", 120))
+        assertEquals(0, resolveImportedSensorAverage(0, "active_time_steps_v1", 120))
+        assertEquals(140, resolveImportedSensorAverage(140, "active_time_weighted_v1", 160))
+        assertEquals(160, resolveImportedSensorAverage(null, null, 160))
+    }
+
+    @Test
     fun profilePreservesTrackSegmentBoundaryAndExcludesGapDistance() {
         val points =
             listOf(

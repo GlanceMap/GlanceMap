@@ -1,10 +1,12 @@
-# Recording Health Services experiment
+# Recording Health Services
 
-This backend is opt-in with `-PrecordingHealthServicesExperiment=true`; normal
-builds retain raw sensors with the cadence fix. Physical capability, screen-off,
-pause/resume, failure and battery validation is required before enabling it by
-default. The wake-lock experiment is independent and must remain false when
-evaluating Health Services. Do not change both variables in a raw-sensor A/B test.
+Normal API 30+ builds request supported watch HR through this backend when watch
+HR is selected, its dashboard metric is requested and permission is granted.
+Native Health Services steps/cadence remain opt-in with
+`-PrecordingHealthServicesExperiment=true`; normal builds retain raw steps.
+Physical capability, screen-off, pause/resume, failure and battery validation of
+the HR path is pending. The wake-lock experiment is independent and remains false
+when evaluating Health Services. Do not change both variables in a raw-sensor A/B test.
 
 ## Ownership and capabilities
 
@@ -12,7 +14,7 @@ evaluating Health Services. Do not change both variables in a raw-sensor A/B tes
 selected watch/strap/pod sources and granted permissions, and starts an
 unexported health foreground service. The service owns the SDK controller and
 serialized session lifecycle; Activity destruction does not own that session.
-The experimental service has its own REC notification, leaving the validated
+The health service has its own REC notification, leaving the validated
 location service and its notification ownership unchanged.
 
 At session startup the controller checks current exercise ownership and queries
@@ -56,9 +58,10 @@ step carry-forward.
 The platform can batch screen-off deliveries for approximately 150 seconds.
 Arrival time never refreshes measurement freshness. `RecordingHealthTimeline`
 deduplicates kind/source-time pairs and admits only newer samples within the
-existing 15-second window to live metrics. If supported, selected watch HR requests
-`HEART_RATE_5_SECONDS`; that override does not force steps or cadence into the same
-delivery schedule. There is no periodic flush loop.
+existing 15-second window to live metrics. Normal recordings allow the platform's
+default batching rather than requesting `HEART_RATE_5_SECONDS`; saved HR statistics
+consume valid measurement timestamps independently of live publication. There is
+no periodic flush loop.
 
 Late valid measurements can fill missing sensor fields in existing points using
 their measurement time, with a maximum 15-second carry into a point. Ownership
@@ -68,6 +71,23 @@ populated point fields, coordinates, timing, pressure and elevation are preserve
 Historical association retains ten minutes of samples after backfilling, while
 the recording's populated points/draft carry older data. Unknown data remains
 absent rather than being interpolated or marked stationary.
+
+New recordings maintain a separate HR accumulator over active recording and
+selected-source windows, independent of GPS point density. Each valid sample holds
+until the next sample or at most 15 seconds; uncovered intervals are excluded from
+the mean. Delayed and out-of-order readings can revise the most recent ten minutes;
+older integrals are committed to bound memory and draft size. Duplicate source/time
+pairs are idempotent. Effective manual/automatic pause boundaries and source changes
+clip coverage. JSON drafts persist both the committed prefix and recent history;
+legacy drafts without that checkpoint retain their existing point-based HR mean.
+The final batch is included before export. Coverage accompanies the GPX average
+and diagnostic summary, so an average of partial coverage is identifiable.
+
+Walking cadence with watch steps uses recording steps divided by the dashboard's
+Time (Active), including its manual/automatic pause exclusions. It does not use GPS
+coverage duration or the arithmetic mean of point cadence. Pausing rebases the raw
+counter so steps taken while paused are excluded. Bike/pod cadence retains the
+existing measured-source average; unknown steps or zero active time has no mean.
 
 Before GPX encoding, save preparation ends the owned session and consumes its
 final delivered batch. Calls are bounded; timeout/failure is logged and does not

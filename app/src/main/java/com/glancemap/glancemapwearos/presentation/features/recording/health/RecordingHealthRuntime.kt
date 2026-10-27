@@ -44,7 +44,7 @@ internal class RecordingHealthRuntime(
         settings: SettingsRepository,
         scope: CoroutineScope,
     ) {
-        if (!BuildConfig.RECORDING_HEALTH_SERVICES_EXPERIMENT || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         target = viewModel
         viewModel.prepareHealthDataForSave = { finishBeforeSave() }
         scope.launch(Dispatchers.Main.immediate) {
@@ -66,7 +66,7 @@ internal class RecordingHealthRuntime(
                         activityGranted =
                             ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
                                 PackageManager.PERMISSION_GRANTED,
-                    )
+                    ).withNativeStepMetrics(BuildConfig.RECORDING_HEALTH_SERVICES_EXPERIMENT)
             }.collect { (state, request) -> updateDesired(state, request) }
         }
     }
@@ -79,7 +79,11 @@ internal class RecordingHealthRuntime(
         if (state.active && state.startedAtMillis != sessionId) {
             sessionId = state.startedAtMillis
             state.startedAtMillis?.let { target?.beginRecordingHealthSession(it) }
-            DebugTelemetry.log("TraceRecordingHealth", "event=experiment_start enabled=true gpsOwned=false")
+            DebugTelemetry.log(
+                "TraceRecordingHealth",
+                "event=session_start enabled=true gpsOwned=false " +
+                    "nativeStepExperiment=${BuildConfig.RECORDING_HEALTH_SERVICES_EXPERIMENT}",
+            )
         }
         target?.setRecordingHealthPaused(state.paused || !state.active, state.pausedAtMillis ?: now)
         if (state.saving) return

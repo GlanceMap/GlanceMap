@@ -380,7 +380,7 @@
     <string name="download_clear_selected_areas">"Clear selected areas"</string>
     <string name="download_combined_summary">"%1$s\n\n%2$s"</string>
     <string name="download_components_available">"Components available"</string>
-    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Connect the watch to Wi-Fi and keep it on the charger."</string>
+    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Connect the watch to Wi-Fi and keep it on the charger. Without charger keep the screen on for large maps."</string>
     <string name="download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app">"%1$s. Connect the watch to Wi-Fi for large downloads, or continue and the app will reconnect automatically if Wi-Fi appears."</string>
     <string name="download_connecting_to_phone_http">"Connecting to Phone (HTTP)…"</string>
     <string name="download_connection_interrupted_waiting_to_resume">"Connection interrupted. Waiting to resume…"</string>
@@ -410,7 +410,7 @@
     <string name="download_downloading_offline_bundle">"Downloading offline bundle"</string>
     <string name="download_installing_offline_bundle">"Installing offline bundle"</string>
     <string name="download_elevation">"%1$s elevation"</string>
-    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading."</string>
+    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading capability."</string>
     <string name="download_elevation_quality">"Elevation quality"</string>
     <string name="download_enable_maps_poi_routing_dem_or_refuges_info_in_bundle_settings">"Enable Maps, POI, Routing, DEM, or Refuges.info in Bundle settings."</string>
     <string name="download_enter_delete_mode">"Enter delete mode"</string>

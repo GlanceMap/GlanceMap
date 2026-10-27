@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.MainActivity
@@ -30,7 +29,7 @@ internal class RecordingHealthForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !BuildConfig.RECORDING_HEALTH_SERVICES_EXPERIMENT) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             stopSelf()
             return
         }

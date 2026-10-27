@@ -620,6 +620,7 @@ internal data class WhatsNewReleaseNotes(
 // Add each release here with its Phone and Watch string arrays.
 private val whatsNewReleaseHistory =
     listOf(
+        WhatsNewReleaseNotes("1.3.0", R.array.whats_new_1_3_0_phone, R.array.whats_new_1_3_0_watch),
         WhatsNewReleaseNotes("1.2.3", R.array.whats_new_1_2_3_phone, R.array.whats_new_1_2_3_watch),
         WhatsNewReleaseNotes("1.2.2", R.array.whats_new_1_2_2_phone, R.array.whats_new_1_2_2_watch),
         WhatsNewReleaseNotes("1.2.1", R.array.whats_new_1_2_1_phone, R.array.whats_new_1_2_1_watch),
@@ -669,7 +670,6 @@ internal fun WhatsNewDialog(onDismiss: () -> Unit) {
                         stringResource(
                             R.string.whats_new_installed_version,
                             BuildConfig.VERSION_NAME,
-                            BuildConfig.VERSION_CODE,
                         ),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -701,13 +701,8 @@ internal fun WhatsNewDialog(onDismiss: () -> Unit) {
                     text = stringResource(R.string.whats_new_review_message),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { openPhoneAppPlayStore(context) }) {
-                        Text(stringResource(R.string.whats_new_review_phone_action))
-                    }
-                    TextButton(onClick = { openWatchAppPlayStore(context) }) {
-                        Text(stringResource(R.string.whats_new_review_watch_action))
-                    }
+                TextButton(onClick = { openPhoneAppPlayStore(context) }) {
+                    Text(stringResource(R.string.whats_new_review_action))
                 }
                 TextButton(
                     onClick = onDismiss,
@@ -764,10 +759,6 @@ private fun openPhoneAppPlayStore(context: Context) {
     openAppPlayStore(context, context.packageName)
 }
 
-private fun openWatchAppPlayStore(context: Context) {
-    openAppPlayStore(context, WATCH_APP_PACKAGE_NAME)
-}
-
 private fun openAppPlayStore(
     context: Context,
     appPackageName: String,
@@ -795,7 +786,6 @@ private fun openAppPlayStore(
 }
 
 private const val PLAY_STORE_PACKAGE_NAME = "com.android.vending"
-private const val WATCH_APP_PACKAGE_NAME = "com.glancemap.glancemapwearos"
 
 @Composable
 private fun LiveTrackingPrivacyPolicyDialog(onDismiss: () -> Unit) {

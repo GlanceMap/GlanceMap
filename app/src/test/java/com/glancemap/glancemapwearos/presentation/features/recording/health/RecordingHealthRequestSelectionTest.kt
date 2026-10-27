@@ -7,6 +7,38 @@ import org.junit.Test
 
 class RecordingHealthRequestSelectionTest {
     @Test
+    fun summaryCollectionAllowsNormalHeartRateBatching() {
+        val request =
+            selectWatchHealthRequest(
+                state = TraceRecordingUiState(),
+                heartRateSource = SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH,
+                selectedMetricIds = listOf(SettingsRepository.RECORDING_METRIC_HEART_RATE),
+                heartRateGranted = true,
+                activityGranted = true,
+            )
+
+        assertEquals(true, request.heartRate)
+        assertEquals(false, request.preferFrequentHeartRate)
+    }
+
+    @Test
+    fun normalBuildRequestsWatchHeartRateWithoutTakingOverStepsOrCadence() {
+        val request =
+            selectWatchHealthRequest(
+                state = TraceRecordingUiState(),
+                heartRateSource = SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH,
+                selectedMetricIds = listOf(SettingsRepository.RECORDING_METRIC_HEART_RATE),
+                heartRateGranted = true,
+                activityGranted = true,
+            ).withNativeStepMetrics(false)
+
+        assertEquals(true, request.heartRate)
+        assertEquals(false, request.steps)
+        assertEquals(false, request.cadence)
+        assertEquals(false, request.preferFrequentHeartRate)
+    }
+
+    @Test
     fun strapAndPodSelectionsRemainOutsideHealthServices() {
         val request =
             selectWatchHealthRequest(

@@ -13,6 +13,7 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.totalAscent
 import com.glancemap.glancemapwearos.presentation.features.gpx.totalDescent
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingHeartRateStatistics
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.features.recording.fastestContinuousSegmentSpeedMps
 import com.glancemap.glancemapwearos.presentation.features.recording.recordingDisplayDistanceMeters
@@ -137,6 +138,7 @@ data class RecordingDashboardSnapshot(
     val heartRateBpm: Int? = null,
     val heartRateFromBluetooth: Boolean = false,
     val averageHeartRateBpm: Int? = null,
+    val heartRateCoveredSeconds: Double? = null,
     val stepCount: Int? = null,
     val stepCountFromBluetooth: Boolean = false,
     val cadenceSpm: Int? = null,
@@ -268,6 +270,8 @@ internal fun buildRecordingDashboardSnapshot(
     val activeDurationMillis =
         (nowMillis - startedAt - state.accumulatedPausedMillis - currentPausedMillis).coerceAtLeast(0L)
     val activeDurationSeconds = activeDurationMillis / 1000.0
+    val heartRateSummary =
+        state.heartRateStatistics?.let { RecordingHeartRateStatistics(it).summary(nowMillis) }
     val totalDurationSeconds = ((nowMillis - startedAt).coerceAtLeast(0L)) / 1000.0
     val lastRecordedPoint = state.points.lastOrNull()
     val livePoint =
@@ -309,12 +313,24 @@ internal fun buildRecordingDashboardSnapshot(
         calorieEstimate = recordedStatistics.calorieEstimate,
         heartRateBpm = state.heartRateBpm,
         heartRateFromBluetooth = state.heartRateFromBluetooth,
-        averageHeartRateBpm = recordedStatistics.averageHeartRateBpm,
-        maxHeartRateBpm = recordedStatistics.maxRecordedHeartRateBpm ?: state.heartRateBpm?.takeIf { it > 0 },
+        averageHeartRateBpm =
+            if (state.heartRateStatistics != null) {
+                heartRateSummary?.averageBpm
+            } else {
+                recordedStatistics.averageHeartRateBpm
+            },
+        heartRateCoveredSeconds = heartRateSummary?.coveredMillis?.div(1000.0),
+        maxHeartRateBpm =
+            if (state.heartRateStatistics != null) {
+                heartRateSummary?.maxBpm
+            } else {
+                recordedStatistics.maxRecordedHeartRateBpm ?: state.heartRateBpm?.takeIf { it > 0 }
+            },
         stepCount = state.stepCount,
         stepCountFromBluetooth = state.stepCountFromBluetooth,
         cadenceSpm = state.cadenceSpm,
-        averageCadenceSpm = recordedStatistics.averageCadenceSpm,
+        averageCadenceSpm =
+            state.averageCadenceForActiveTime(activeDurationSeconds, recordedStatistics.averageCadenceSpm),
         maxCadenceSpm = recordedStatistics.maxRecordedCadenceSpm ?: state.cadenceSpm?.takeIf { it > 0 },
         cadenceFromBluetooth = state.cadenceFromBluetooth,
         powerWatts = state.externalPowerWatts,
@@ -332,6 +348,25 @@ internal fun buildRecordingDashboardSnapshot(
         stepsSource = state.stepsSource,
     )
 }
+
+private fun TraceRecordingUiState.averageCadenceForActiveTime(
+    activeSeconds: Double,
+    measuredAverage: Int?,
+): Int? =
+    if (
+        activityProfile != SettingsRepository.ACTIVITY_PROFILE_BIKE &&
+        cadenceSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS
+    ) {
+        stepCount
+            ?.takeIf {
+                it >= 0 &&
+                    activeSeconds > 0.0 &&
+                    stepsSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS &&
+                    !stepCountFromBluetooth
+            }?.let { (it * 60.0 / activeSeconds).roundToInt() }
+    } else {
+        measuredAverage
+    }
 
 internal fun buildRecordingDashboardStatistics(
     points: List<RecordedTracePoint>,

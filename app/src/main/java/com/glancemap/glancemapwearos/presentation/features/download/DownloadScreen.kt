@@ -577,7 +577,6 @@ fun DownloadScreen(
                             item {
                                 InstalledBundleRow(
                                     bundle = bundle,
-                                    needsRepair = uiState.bundleHealthByAreaId[bundle.areaId]?.needsRepair == true,
                                     refreshMode = effectiveRefreshMode,
                                     refreshSelected = bundle.areaId in uiState.selectedRefreshBundleIds,
                                     deleteMode = deleteMode,
@@ -1024,7 +1023,6 @@ private fun DownloadProgress(uiState: DownloadUiState) {
 @Composable
 private fun InstalledBundleRow(
     bundle: OamInstalledBundle,
-    needsRepair: Boolean,
     refreshMode: Boolean,
     refreshSelected: Boolean,
     deleteMode: Boolean,
@@ -1036,15 +1034,7 @@ private fun InstalledBundleRow(
     DownloadChip(
         label = bundle.areaLabel,
         enabled = enabled,
-        secondaryLabel =
-            if (needsRepair) {
-                stringResource(
-                    R.string.download_repair_needed_2,
-                    installedBundleSubtitle(bundle, resources = resources),
-                )
-            } else {
-                installedBundleSubtitle(bundle, resources = resources)
-            },
+        secondaryLabel = installedBundleSubtitle(bundle, resources = resources),
         secondaryMarquee = true,
         icon =
             when {
@@ -1054,7 +1044,7 @@ private fun InstalledBundleRow(
                 else -> Icons.Filled.Check
             },
         selected = (refreshMode && refreshSelected) || (!deleteMode && !refreshMode),
-        warning = needsRepair,
+        warning = false,
         onClick =
             when {
                 refreshMode -> onRefresh

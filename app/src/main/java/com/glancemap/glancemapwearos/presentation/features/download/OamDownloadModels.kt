@@ -91,11 +91,24 @@ data class OamRemoteFileMetadata(
 )
 
 enum class OamBundleUpdateStatus {
-    REPAIR_NEEDED,
     UPDATE_AVAILABLE,
     UP_TO_DATE,
     UNKNOWN,
 }
+
+internal fun resolveOamBundleUpdateStatus(
+    repairFileNames: List<String>,
+    changedFileNames: List<String>,
+    requestCount: Int,
+    unknownFileNames: List<String>,
+    checkedFileCount: Int,
+): OamBundleUpdateStatus =
+    when {
+        repairFileNames.isNotEmpty() || changedFileNames.isNotEmpty() -> OamBundleUpdateStatus.UPDATE_AVAILABLE
+        requestCount == 0 -> OamBundleUpdateStatus.UP_TO_DATE
+        unknownFileNames.isNotEmpty() || checkedFileCount == 0 -> OamBundleUpdateStatus.UNKNOWN
+        else -> OamBundleUpdateStatus.UP_TO_DATE
+    }
 
 data class OamBundleLocalHealth(
     val repairFileNames: List<String> = emptyList(),
@@ -126,9 +139,6 @@ data class OamBundleRefreshSummary(
     val updateAvailableCount: Int
         get() = checks.count { it.status == OamBundleUpdateStatus.UPDATE_AVAILABLE }
 
-    val repairNeededCount: Int
-        get() = checks.count { it.status == OamBundleUpdateStatus.REPAIR_NEEDED }
-
     val unknownCount: Int
         get() = checks.count { it.status == OamBundleUpdateStatus.UNKNOWN }
 
@@ -147,7 +157,6 @@ data class OamBundleRefreshSummary(
     fun checksToRefresh(currentSelection: OamDownloadSelection): List<OamBundleUpdateCheck> =
         checks.filter { check ->
             check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE ||
-                check.status == OamBundleUpdateStatus.REPAIR_NEEDED ||
                 (check.status == OamBundleUpdateStatus.UP_TO_DATE && check.hasSelectedAdditions(currentSelection))
         }
 
@@ -156,8 +165,7 @@ data class OamBundleRefreshSummary(
 
     private fun checksToRefreshOrUpdates(currentSelection: OamDownloadSelection?): List<OamBundleUpdateCheck> =
         currentSelection?.let(::checksToRefresh) ?: checks.filter { check ->
-            check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE ||
-                check.status == OamBundleUpdateStatus.REPAIR_NEEDED
+            check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE
         }
 }
 

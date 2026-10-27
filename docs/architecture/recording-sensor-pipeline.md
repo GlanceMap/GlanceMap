@@ -100,8 +100,9 @@ automatic renewal after expiry. Normal builds default to false. Existing pipelin
 snapshots report the build flag and actual `wakeLockHeld` state. This experiment
 does not establish battery or hardware improvements without a comparable A/B walk.
 
-The separate [Health Services experiment](recording-health-services.md) is also
-off by default. Its successfully owned metrics suppress the corresponding raw
+The separate [Health Services backend](recording-health-services.md) requests
+supported selected watch HR in normal API 30+ builds. Native steps/cadence remain
+opt-in. Successfully owned metrics suppress the corresponding raw
 sensor path; unsupported, denied or failed metrics retain raw fallback. GPS,
 pressure and hybrid elevation keep their existing owners and algorithms.
 

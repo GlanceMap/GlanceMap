@@ -307,7 +307,7 @@ class OamBundlePipelineTest {
             val extraction =
                 async {
                     arbiter.runExtraction {
-                        runOamExtractionLifecycle(lifecycle::add) {
+                        runInlineOamExtraction(lifecycle::add) {
                             extractionStarted.complete(Unit)
                             finishExtraction.await()
                         }
@@ -339,7 +339,7 @@ class OamBundlePipelineTest {
             val cancelled =
                 async {
                     arbiter.runExtraction {
-                        runOamExtractionLifecycle(
+                        runInlineOamExtraction(
                             onExtractionRunningChanged = { running ->
                                 lifecycle.add(running)
                                 if (running) cancellationStarted.complete(Unit)
@@ -358,7 +358,7 @@ class OamBundlePipelineTest {
             val failure =
                 runCatching {
                     arbiter.runExtraction {
-                        runOamExtractionLifecycle(lifecycle::add) { error("write failed") }
+                        runInlineOamExtraction(lifecycle::add) { error("write failed") }
                     }
                 }.exceptionOrNull()
 

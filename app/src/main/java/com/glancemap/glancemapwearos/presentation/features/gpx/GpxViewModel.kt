@@ -924,11 +924,27 @@ class GpxViewModel(
                         cyclingPhysicsSegments = cyclingPhysicsSegments ?: 0,
                     ),
             heartRateBpm = fallbackPoints.lastMappedNotNull { it.heartRateBpm },
-            averageHeartRateBpm = averageHeartRateBpm ?: heartRateBpm ?: fallbackPoints.averageHeartRateBpm(),
-            maxHeartRateBpm = maxHeartRateBpm ?: fallbackPoints.maxHeartRateBpm() ?: heartRateBpm,
+            averageHeartRateBpm =
+                resolveImportedSensorAverage(
+                    averageHeartRateBpm,
+                    heartRateAverageMethod,
+                    heartRateBpm ?: fallbackPoints.averageHeartRateBpm(),
+                ),
+            heartRateCoveredSeconds = heartRateCoveredSeconds,
+            maxHeartRateBpm =
+                resolveImportedSensorAverage(
+                    maxHeartRateBpm,
+                    heartRateAverageMethod,
+                    fallbackPoints.maxHeartRateBpm() ?: heartRateBpm,
+                ),
             stepCount = stepCount ?: fallbackPoints.lastMappedNotNull { it.stepCount },
             cadenceSpm = cadenceSpm ?: fallbackPoints.lastMappedNotNull { it.cadenceSpm },
-            averageCadenceSpm = averageCadenceSpm ?: fallbackPoints.averageCadenceSpm(),
+            averageCadenceSpm =
+                resolveImportedSensorAverage(
+                    averageCadenceSpm,
+                    cadenceAverageMethod,
+                    fallbackPoints.averageCadenceSpm(),
+                ),
             maxCadenceSpm = maxCadenceSpm ?: fallbackPoints.maxCadenceSpm() ?: cadenceSpm,
             powerWatts = powerWatts ?: fallbackPoints.lastMappedNotNull { it.powerWatts },
             averagePowerWatts = averagePowerWatts ?: fallbackPoints.averagePowerWatts(),

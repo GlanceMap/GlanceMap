@@ -444,15 +444,6 @@ class DownloadViewModel(
                     it.bundleHealthByAreaId +
                         (bundle.areaId to OamBundleLocalHealth(check.repairFileNames))
                 when (check.status) {
-                    OamBundleUpdateStatus.REPAIR_NEEDED ->
-                        it.copy(
-                            bundleHealthByAreaId = updatedHealth,
-                            isCheckingUpdates = false,
-                            statusMessage = resources.getString(R.string.download_repair_needed),
-                            errorMessage = null,
-                            refreshPrompt = check,
-                            networkWarningMessage = null,
-                        )
                     OamBundleUpdateStatus.UP_TO_DATE ->
                         it.copy(
                             bundleHealthByAreaId = updatedHealth,
@@ -594,12 +585,6 @@ class DownloadViewModel(
                     refreshSummaryPrompt = summary,
                     statusMessage =
                         when {
-                            summary.repairNeededCount > 0 ->
-                                resources.getQuantityString(
-                                    R.plurals.download_bundle_s_need_repair,
-                                    summary.repairNeededCount,
-                                    summary.repairNeededCount,
-                                )
                             summary.updateAvailableCount > 0 ->
                                 resources.getQuantityString(
                                     R.plurals.download_bundle_s_need_refresh,

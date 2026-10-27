@@ -214,7 +214,6 @@ internal fun RefreshBundleDialog(
     val resources = LocalResources.current
     if (check == null) return
 
-    val repairNeeded = check.status == OamBundleUpdateStatus.REPAIR_NEEDED
     val updateAvailable = check.status == OamBundleUpdateStatus.UPDATE_AVAILABLE
     val upToDate = check.status == OamBundleUpdateStatus.UP_TO_DATE
     val hasSelectedAdditions = check.hasSelectedAdditions(selection)
@@ -222,7 +221,6 @@ internal fun RefreshBundleDialog(
         visible = true,
         title =
             when {
-                repairNeeded -> stringResource(R.string.download_repair_needed)
                 updateAvailable -> stringResource(R.string.download_update_available)
                 upToDate && hasSelectedAdditions -> stringResource(R.string.download_components_available)
                 upToDate -> stringResource(R.string.download_already_up_to_date)
@@ -254,14 +252,13 @@ internal fun RefreshBundleSummaryDialog(
     if (summary == null) return
 
     val refreshCount = summary.bundlesToRefresh.size
-    val hasRemoteRefresh = summary.updateAvailableCount > 0 || summary.repairNeededCount > 0
+    val hasRemoteRefresh = summary.updateAvailableCount > 0
     val hasSelectedAdditions = summary.selectedAdditionCount > 0
     val hasRefreshWork = refreshCount > 0
     WearActionDialog(
         visible = true,
         title =
             when {
-                summary.repairNeededCount > 0 -> stringResource(R.string.download_repair_bundles)
                 hasRemoteRefresh -> stringResource(R.string.download_refresh_bundles)
                 hasSelectedAdditions -> stringResource(R.string.download_add_selected_components_title)
                 summary.unknownCount > 0 -> stringResource(R.string.download_check_incomplete)
@@ -286,22 +283,6 @@ private fun refreshBundleDialogText(
     resources: Resources,
 ): String =
     when (check.status) {
-        OamBundleUpdateStatus.REPAIR_NEEDED ->
-            buildString {
-                append(
-                    resources.getString(R.string.download_some_files_in_are_missing_or_damaged, check.bundle.areaLabel),
-                )
-                if (check.repairFileNames.isNotEmpty()) {
-                    append(
-                        resources.getString(
-                            R.string.download_repair_files,
-                            dialogFileNames(check.repairFileNames, resources),
-                        ),
-                    )
-                }
-                append(resources.getString(R.string.download_refresh_will_download_only_the_affected_parts))
-                appendSelectedAdditions(check, selection, resources = resources)
-            }
         OamBundleUpdateStatus.UPDATE_AVAILABLE ->
             buildString {
                 append(resources.getString(R.string.download_newer_files_available, check.bundle.areaLabel))
@@ -319,17 +300,10 @@ private fun refreshBundleDialogText(
                 appendSelectedAdditions(check, selection, resources = resources)
             }
         OamBundleUpdateStatus.UNKNOWN ->
-            if (check.checkedFileCount == 0) {
-                resources.getString(
-                    R.string.download_has_no_saved_update_info_yet_refresh_once_to_enable_future_checks,
-                    check.bundle.areaLabel,
-                )
-            } else {
-                resources.getString(
-                    R.string.download_some_files_for_could_not_be_checked_refresh_anyway,
-                    check.bundle.areaLabel,
-                )
-            }
+            resources.getString(
+                R.string.download_some_files_for_could_not_be_checked_refresh_anyway,
+                check.bundle.areaLabel,
+            )
         OamBundleUpdateStatus.UP_TO_DATE ->
             if (check.hasSelectedAdditions(selection)) {
                 resources.getString(
@@ -365,15 +339,6 @@ private fun refreshSummaryDialogText(
         summary.bundlesToRefresh.isNotEmpty() ->
             buildString {
                 append(resources.getQuantityString(R.plurals.download_checked, summary.totalCount, summary.totalCount))
-                if (summary.repairNeededCount > 0) {
-                    append(
-                        resources.getQuantityString(
-                            R.plurals.download_repair_needed_3,
-                            summary.repairNeededCount,
-                            summary.repairNeededCount,
-                        ),
-                    )
-                }
                 if (summary.updateAvailableCount > 0) {
                     append(
                         resources.getQuantityString(

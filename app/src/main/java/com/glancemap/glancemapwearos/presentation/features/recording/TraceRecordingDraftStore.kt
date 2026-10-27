@@ -69,7 +69,11 @@ class TraceRecordingDraftStore(
                 .put("externalDistanceMeters", state.externalDistanceMeters ?: JSONObject.NULL)
                 .put("externalIntegratedDistanceMeters", state.externalIntegratedDistanceMeters ?: JSONObject.NULL)
                 .put("stepCount", state.stepCount ?: JSONObject.NULL)
-                .put("lastUiAction", lastUiAction ?: JSONObject.NULL)
+                .put(
+                    "heartRateStatistics",
+                    state.heartRateStatistics?.let { JSONObject(encodeRecordingHeartRateStatistics(it)) }
+                        ?: JSONObject.NULL,
+                ).put("lastUiAction", lastUiAction ?: JSONObject.NULL)
                 .put(
                     "points",
                     JSONArray().also { array ->
@@ -127,6 +131,7 @@ private object TraceRecordingDraftJson {
             lastUiAction = optionalString("lastUiAction"),
             points = (optJSONArray("points") ?: JSONArray()).toRecordedTracePoints(),
             recordingMetadata = optJSONObject("recordingMetadata")?.toRecordingCaptureMetadata(),
+            heartRateStatistics = decodeRecordingHeartRateStatistics(optJSONObject("heartRateStatistics")?.toString()),
         )
 
     private fun JSONArray.toRecordedTracePoints(): List<RecordedTracePoint> =
@@ -199,6 +204,7 @@ data class TraceRecordingDraft(
     val lastUiAction: String?,
     val points: List<RecordedTracePoint>,
     val recordingMetadata: RecordingCaptureMetadata? = null,
+    val heartRateStatistics: RecordingHeartRateStatisticsState? = null,
 )
 
 private fun RecordedTracePoint.toJson(): JSONObject =

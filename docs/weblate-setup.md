@@ -217,6 +217,21 @@ Community translator → Hosted Weblate → translation checks → GitHub transl
 → GlanceMap localization CI → maintainer review → merge into main
 ```
 
+### Ongoing source updates and English fallback
+
+New source strings on `main` are imported into Weblate for translators to complete.
+Missing localized UI entries are warnings, with English fallback and per-locale
+coverage/missing-key reports; Android lint `MissingTranslation` is also a warning.
+Do not generate blank translations or copy English to make percentages look complete.
+Present translations still require valid placeholders, full target-language plural
+structure, ICU patterns, XML/annotations, newlines and whitespace. English formats
+and ICU patterns are checked even when no target translation exists yet.
+
+The exact-base preservation check rejects removal of existing locale files and
+active translated keys; retiring an English key allows its translated copies to
+be removed. An initial new-language release still requires maintainer review of
+coverage and critical strings. Legal/raw bundle requirements remain unchanged.
+
 The `translation` label identifies wording/localization contributions. The issue
 form has all current languages plus Other / new language; that fallback also
 accepts newly added locales before its convenience dropdown is refreshed.
@@ -242,9 +257,10 @@ The localization workflow runs for PRs to `main` and the current setup branch,
 including fork PRs. It uses `pull_request`, read-only repository permissions and
 no credentials from PR authors. There is no `pull_request_target` execution,
 write-token job, automatic merge, or secret-bearing callback script.
-It compares locale file paths against the exact PR/push base commit to reject
-silent removal of existing UI or raw/legal translations, while allowing a new
-UI language to use English legal fallback until its reviewed bundle is ready.
+It compares locale file paths and active translated keys against the exact
+PR/push base commit to reject silent removal of existing UI or raw/legal
+translations. New UI entries may use English fallback until translated; a new
+UI language may also use English legal fallback until its reviewed bundle is ready.
 
 Whitespace checking compares the exact PR base SHA or push `before` SHA with the
 checked-out `HEAD`. A new-branch push has no reliable before commit, so it checks

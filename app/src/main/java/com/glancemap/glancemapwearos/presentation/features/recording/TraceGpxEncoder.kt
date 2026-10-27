@@ -152,6 +152,8 @@ data class RecordedTraceSummary(
     val recordingLocationCallbackCount: Int? = null,
     val recordingQualityRejectedFixCount: Int? = null,
     val recordingCountersScope: String? = null,
+    val heartRateCoveredSeconds: Double? = null,
+    val cadenceAverageMethod: String? = null,
 )
 
 private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceSummary) {
@@ -254,6 +256,7 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     summary.averageHeartRateBpm?.takeIf { it > 0 }?.let {
         textTag("gmap:averageHeartRateBpm", it.toString())
     }
+    writeHeartRateCoverage(summary.heartRateCoveredSeconds)
     summary.maxHeartRateBpm?.takeIf { it > 0 }?.let {
         textTag("gmap:maxHeartRateBpm", it.toString())
     }
@@ -263,9 +266,10 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     summary.cadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:cadenceSpm", it.toString())
     }
-    summary.averageCadenceSpm?.takeIf { it > 0 }?.let {
+    summary.averageCadenceSpm?.takeIf { it >= 0 }?.let {
         textTag("gmap:averageCadenceSpm", it.toString())
     }
+    summary.cadenceAverageMethod?.let { textTag("gmap:cadenceAverageMethod", it) }
     summary.maxCadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:maxCadenceSpm", it.toString())
     }
@@ -280,6 +284,13 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     }
     summary.barometricPressureHpa?.takeIf { it.isFinite() && it > 0.0 }?.let {
         textTag("gmap:pressureHpa", formatDouble(it))
+    }
+}
+
+private fun StringWriter.writeHeartRateCoverage(coveredSeconds: Double?) {
+    coveredSeconds?.takeIf { it.isFinite() && it >= 0.0 }?.let {
+        textTag("gmap:heartRateCoveredSeconds", formatDouble(it))
+        textTag("gmap:heartRateAverageMethod", "active_time_weighted_v1")
     }
 }
 

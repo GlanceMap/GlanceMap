@@ -6,6 +6,17 @@ import org.junit.Test
 
 class RecordingCounterCadenceTest {
     @Test
+    fun pauseRebasesCounterWithoutCountingStepsWalkedDuringPause() {
+        val runtime = RecordingSensorRuntimeState()
+        runtime.updateStepCounter(100f, 1_000L)
+        assertEquals(26, runtime.updateStepCounter(126f, 13_000L).steps)
+        runtime.beginStepSegment(26)
+
+        assertEquals(26, runtime.updateStepCounter(160f, 20_000L).steps)
+        assertEquals(39, runtime.updateStepCounter(173f, 26_000L).steps)
+    }
+
+    @Test
     fun compressedCounterUpdatesCannotPublishThousandsOfStepsPerMinute() {
         val runtime = RecordingSensorRuntimeState()
         runtime.updateStepCounter(100f, 1_000L)

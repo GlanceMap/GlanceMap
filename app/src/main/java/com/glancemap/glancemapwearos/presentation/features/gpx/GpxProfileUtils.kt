@@ -74,7 +74,17 @@ internal data class GpxActivitySummary(
     val averagePowerWatts: Int?,
     val maxPowerWatts: Int?,
     val barometricPressureHpa: Double?,
+    val heartRateCoveredSeconds: Double? = null,
+    val heartRateAverageMethod: String? = null,
+    val cadenceAverageMethod: String? = null,
 )
+
+// An explicitly computed session mean can be unknown; point sampling must not replace it.
+internal fun resolveImportedSensorAverage(
+    savedAverage: Int?,
+    method: String?,
+    legacyAverage: Int?,
+): Int? = if (method != null) savedAverage else savedAverage ?: legacyAverage
 
 internal fun resolveGpxDisplayDistance(
     profileDistance: Double,
@@ -220,6 +230,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var summaryCyclingPhysicsSegments: Int? = null
     var summaryHeartRateBpm: Int? = null
     var summaryAverageHeartRateBpm: Int? = null
+    var summaryHeartRateCoveredSeconds: Double? = null
+    var summaryHeartRateAverageMethod: String? = null
+    var summaryCadenceAverageMethod: String? = null
     var summaryMaxHeartRateBpm: Int? = null
     var summaryStepCount: Int? = null
     var summaryCadenceSpm: Int? = null
@@ -492,6 +505,22 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                             "averageHeartRateBpm" -> {
                                 if (inMetadataExtensions) summaryAverageHeartRateBpm = parser.nextTextInt()
                             }
+                            "heartRateCoveredSeconds" -> {
+                                if (inMetadataExtensions) {
+                                    summaryHeartRateCoveredSeconds = parser.nextTextDouble()?.takeIf { it >= 0.0 }
+                                }
+                            }
+                            "heartRateAverageMethod" -> {
+                                if (inMetadataExtensions) {
+                                    summaryHeartRateAverageMethod =
+                                        parser.nextText()?.trim()?.takeIf(String::isNotBlank)
+                                }
+                            }
+                            "cadenceAverageMethod" -> {
+                                if (inMetadataExtensions) {
+                                    summaryCadenceAverageMethod = parser.nextText()?.trim()?.takeIf(String::isNotBlank)
+                                }
+                            }
                             "maxHeartRateBpm" -> {
                                 if (inMetadataExtensions) summaryMaxHeartRateBpm = parser.nextTextInt()
                             }
@@ -684,6 +713,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                     cyclingPhysicsSegments = summaryCyclingPhysicsSegments,
                     heartRateBpm = summaryHeartRateBpm,
                     averageHeartRateBpm = summaryAverageHeartRateBpm,
+                    heartRateCoveredSeconds = summaryHeartRateCoveredSeconds,
+                    heartRateAverageMethod = summaryHeartRateAverageMethod,
+                    cadenceAverageMethod = summaryCadenceAverageMethod,
                     maxHeartRateBpm = summaryMaxHeartRateBpm,
                     stepCount = summaryStepCount,
                     cadenceSpm = summaryCadenceSpm,
@@ -734,6 +766,9 @@ private fun buildGpxActivitySummary(
     cyclingPhysicsSegments: Int?,
     heartRateBpm: Int?,
     averageHeartRateBpm: Int?,
+    heartRateCoveredSeconds: Double?,
+    heartRateAverageMethod: String?,
+    cadenceAverageMethod: String?,
     maxHeartRateBpm: Int?,
     stepCount: Int?,
     cadenceSpm: Int?,
@@ -779,6 +814,9 @@ private fun buildGpxActivitySummary(
         cyclingPhysicsSegments = cyclingPhysicsSegments,
         heartRateBpm = heartRateBpm,
         averageHeartRateBpm = averageHeartRateBpm,
+        heartRateCoveredSeconds = heartRateCoveredSeconds,
+        heartRateAverageMethod = heartRateAverageMethod,
+        cadenceAverageMethod = cadenceAverageMethod,
         maxHeartRateBpm = maxHeartRateBpm,
         stepCount = stepCount,
         cadenceSpm = cadenceSpm,

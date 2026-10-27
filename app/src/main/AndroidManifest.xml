@@ -136,11 +136,6 @@
             android:exported="false" />
 
         <service
-            android:name=".presentation.features.download.OamExtractionJobService"
-            android:exported="false"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <service
             android:name=".presentation.features.download.OamDownloadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />

@@ -105,8 +105,8 @@ internal class OamBundleProgressArbiter(
     }
 }
 
-/** Runs only while the system-owned job is executing the local archive writer. */
-internal suspend fun <T> runOamExtractionLifecycle(
+/** Runs only while the foreground-service-owned local archive writer is executing. */
+internal suspend fun <T> runInlineOamExtraction(
     onExtractionRunningChanged: (Boolean) -> Unit,
     block: suspend () -> T,
 ): T {

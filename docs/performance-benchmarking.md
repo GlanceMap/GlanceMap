@@ -219,3 +219,15 @@ not around coroutine suspension. `reload_complete` also reports uptime for the w
 
 Real-watch cold/warm timings, correctness after import/selection changes, and battery impact still
 require device validation; unit tests do not establish those results.
+
+## Offline bundle update checks
+
+Update checks retain the local integrity checks and compare remote metadata in batches of up to
+four requests. A network I/O failure is retried once after 250 ms; HTTP errors, missing saved
+metadata, and incomparable metadata still leave the affected file unchecked. Bundles remain
+sequential, and a known local repair or remote change still takes precedence over an incomplete check.
+
+On a watch, compare before and after using the same installed bundles, network, and selection.
+Check a bundle with many elevation tiles, multiple selected bundles, an interrupted connection,
+and a bundle without saved metadata. Confirm the results and repair actions remain correct, and
+record elapsed time separately from battery impact. Real-device measurements are pending.

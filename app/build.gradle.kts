@@ -193,6 +193,8 @@ kotlin {
 }
 
 dependencies {
+    // JVM counterpart of Android's built-in JSON classes for draft checkpoint regression tests.
+    testImplementation("org.json:json:20240303")
     implementation(platform(libs.compose.bom))
 
     // Compose / Wear

@@ -113,6 +113,12 @@ internal class RecordingSensorRuntimeState {
     }
 
     @Synchronized
+    fun beginStepSegment(stepCount: Int?) {
+        reset()
+        prepareRecoveredStepCount(stepCount)
+    }
+
+    @Synchronized
     fun prepareRecoveredStepCount(stepCount: Int?): Boolean {
         val recovered = stepCount?.coerceAtLeast(0)
         val shouldUpdate =
@@ -415,13 +421,15 @@ fun RecordingSensorBridge(
         },
     )
 
-    LaunchedEffect(active) {
+    LaunchedEffect(active, paused) {
         if (!active) {
             metrics = RecordingSensorMetrics()
             sensorRuntimeState.reset()
             heartRateSensorEventCount.set(0L)
             pressureSensorEventCount.set(0L)
             onMetrics(metrics)
+        } else if (paused) {
+            sensorRuntimeState.beginStepSegment(initialStepCount)
         }
     }
 

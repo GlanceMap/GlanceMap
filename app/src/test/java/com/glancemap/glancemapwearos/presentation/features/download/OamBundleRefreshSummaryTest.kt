@@ -52,26 +52,35 @@ class OamBundleRefreshSummaryTest {
     }
 
     @Test
-    fun repairChecksAreIncludedAndForceOnlyDamagedFiles() {
+    fun locallyDamagedFilesAreNormalUpdatesAndForceOnlyAffectedFiles() {
         val bundle =
             installedBundle(
                 areaId = "area",
                 routingFileNames = listOf("E5_N45.rd5", "E5_N46.rd5"),
                 demTileIds = listOf("N45E006", "N45E007"),
             )
+        val repairFileNames = listOf("Area.zip", "E5_N45.rd5", "N45E006.hgt.zip")
         val check =
             OamBundleUpdateCheck(
                 bundle = bundle,
-                status = OamBundleUpdateStatus.REPAIR_NEEDED,
+                status =
+                    resolveOamBundleUpdateStatus(
+                        repairFileNames = repairFileNames,
+                        changedFileNames = emptyList(),
+                        requestCount = 4,
+                        unknownFileNames = emptyList(),
+                        checkedFileCount = 4,
+                    ),
                 checkedFileCount = 4,
-                repairFileNames = listOf("Area.zip", "E5_N45.rd5", "N45E006.hgt.zip"),
+                repairFileNames = repairFileNames,
             )
         val summary = OamBundleRefreshSummary(listOf(check))
 
         val forces = check.refreshForces(area())
 
         assertEquals(listOf(bundle), summary.bundlesToRefresh)
-        assertEquals(1, summary.repairNeededCount)
+        assertEquals(OamBundleUpdateStatus.UPDATE_AVAILABLE, check.status)
+        assertEquals(1, summary.updateAvailableCount)
         assertEquals(true, forces.forceMap)
         assertEquals(false, forces.forcePoi)
         assertEquals(setOf("E5_N45.rd5"), forces.forceRoutingFileNames)

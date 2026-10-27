@@ -60,6 +60,7 @@ data class TraceRecordingUiState(
     val recordingMaxGapMillis: Long = 0L,
     val heartRateBpm: Int? = null,
     val heartRateFromBluetooth: Boolean = false,
+    val heartRateStatistics: RecordingHeartRateStatisticsState? = null,
     val externalSpeedMps: Float? = null,
     val externalRawDistanceUnits: Long? = null,
     val externalDistanceMeters: Double? = null,
@@ -108,6 +109,7 @@ internal fun TraceRecordingUiState.toRecordingPresentationState(): TraceRecordin
     copy(
         heartRateBpm = null,
         heartRateFromBluetooth = false,
+        heartRateStatistics = null,
         externalSpeedMps = null,
         externalRawDistanceUnits = null,
         externalDistanceMeters = null,

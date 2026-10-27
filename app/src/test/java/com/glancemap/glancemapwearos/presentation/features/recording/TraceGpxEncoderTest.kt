@@ -245,6 +245,26 @@ class TraceGpxEncoderTest {
     }
 
     @Test
+    fun sensorSummaryPreservesZeroCadenceAndHeartRateCoverage() {
+        val xml =
+            encodeRecordedTraceAsGpx(
+                title = "Sensor summary",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary =
+                    recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS).copy(
+                        averageCadenceSpm = 0,
+                        averageHeartRateBpm = 140,
+                        heartRateCoveredSeconds = 30.5,
+                    ),
+            ).toString(Charsets.UTF_8)
+
+        assertTrue(xml.contains("<gmap:averageCadenceSpm>0</gmap:averageCadenceSpm>"))
+        assertTrue(xml.contains("<gmap:averageHeartRateBpm>140</gmap:averageHeartRateBpm>"))
+        assertTrue(xml.contains("<gmap:heartRateCoveredSeconds>30.50</gmap:heartRateCoveredSeconds>"))
+        assertTrue(xml.contains("<gmap:heartRateAverageMethod>active_time_weighted_v1</gmap:heartRateAverageMethod>"))
+    }
+
+    @Test
     fun encodeRecordedTraceAsGpxWritesExtensionsForSensorOnlyPointData() {
         val bytes =
             encodeRecordedTraceAsGpx(
