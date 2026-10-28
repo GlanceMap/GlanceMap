@@ -1197,6 +1197,9 @@
     <string name="navigate_s">"S"</string>
     <string name="navigate_saving_poi">"Guardando POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Dibujando pendientes"</string>
+    <string name="navigate_3d_terrain_loading">Cargando terreno 3D</string>
+    <string name="maps_3d_terrain_dem_required">El terreno 3D necesita datos de elevación para este mapa. Abre Mapas y toca DEM para descargarlos.</string>
+    <string name="maps_terrain_features_disabled_no_dem">No hay datos de elevación para este mapa. Se desactivaron el terreno 3D, el sombreado y la capa de pendiente. Toca DEM para descargarlos.</string>
     <string name="navigate_start_from_nearest_point">"¿Iniciar desde el punto más cercano?"</string>
     <string name="navigate_stay_open">"Mantener abierto"</string>
     <string name="navigate_stay_uses_notifications_while_glancemap_remains_active">"Mantener activo usa notificaciones mientras GlanceMap está activo."</string>
@@ -2037,4 +2040,8 @@
     <string name="gpx_activity_profile_description_with_gaps">"Perfil de altitud, %1$s, de %2$s a %3$s; las líneas grises indican huecos"</string>
     <string name="settings_back_closes_app">"Atrás cierra la app"</string>
     <string name="settings_close_directly_from_navigate">"Cerrar directamente desde Navegar"</string>
+    <string name="map_terrain_3d_experimental">Terreno 3D (experimental)</string>
+    <string name="map_3d_viewing_angle">Ángulo de vista 3D</string>
+    <string name="map_3d_orbit_mode">Modo de rotación 3D</string>
+    <string name="map_3d_viewing_angle_value">%1$d°</string>
 </resources>

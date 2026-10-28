@@ -9,6 +9,27 @@ import org.junit.Test
 
 class MapSettingsLiveElevationDiagnosticsTest {
     @Test
+    fun terrain3dRequiresCompleteKnownDemCoverage() {
+        val readiness =
+            DemMapReadiness(
+                isReady = true,
+                hasAnyTerrain = true,
+                selectedSource = DemSource.DEFAULT,
+                usesFallbackTerrain = true,
+                requiredTiles = 2,
+                availableTiles = 2,
+                isCoverageKnown = true,
+                selectedAvailableTiles = 1,
+                selectedCoverageKnown = true,
+                fallbackAvailableTiles = 1,
+            )
+        assertTrue(canEnableTerrain3d(readiness))
+        assertFalse(canEnableTerrain3d(readiness.copy(isReady = false, availableTiles = 1)))
+        assertFalse(canEnableTerrain3d(readiness.copy(hasAnyTerrain = false, availableTiles = 0)))
+        assertFalse(canEnableTerrain3d(readiness.copy(isCoverageKnown = false, isReady = false)))
+    }
+
+    @Test
     fun gateDetailAllowsPartialTerrainAndReportsCompleteCoverageState() {
         val detail =
             buildLiveElevationGateDiagnosticsDetail(

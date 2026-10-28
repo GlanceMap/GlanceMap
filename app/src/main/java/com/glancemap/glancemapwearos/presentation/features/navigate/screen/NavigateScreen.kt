@@ -187,6 +187,8 @@ fun NavigateScreen(
     with<NavigateSettingsState, Unit>(navigateSettings) {
         // ---- VMS ----
         val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
+        val terrain3dEnabled by settingsViewModel.terrain3dEnabled.collectAsState()
+        val terrain3dViewingAngle by settingsViewModel.terrain3dViewingAngle.collectAsState()
         val installedMapBounds by mapViewModel.installedMapBounds.collectAsState()
         val missingMapPromptDisabled by mapViewModel.missingMapPromptDisabled.collectAsState()
         val missingMapPromptDismissed by mapViewModel.missingMapPromptDismissed.collectAsState()
@@ -1075,6 +1077,11 @@ fun NavigateScreen(
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
+            terrain3dEnabled = terrain3dEnabled,
+            onTerrain3dDemUnavailable = { settingsViewModel.setTerrain3dEnabled(false) },
+            terrain3dViewingAngle = terrain3dViewingAngle,
+            terrainMapPath = selectedMapPath,
+            terrainInteractive = isScreenResumed && screenState.isInteractive,
             onMapViewReadyForRendering = { mapViewModel.onMapViewReadyForRendering() },
             onNavigateTimeSuppressedChange = onNavigateTimeSuppressedChange,
             showNavigateTime = showNavigateTime,
@@ -1218,6 +1225,9 @@ fun NavigateScreen(
             onDismissStartDecisionPrompt = guidanceRuntime.onDismissStartDecisionPrompt,
             activeGpxDetails = activeGpxDetails,
             gpxTrackColor = gpxTrackColor,
+            gpxTrackColorMode = gpxTrackColorMode,
+            gpxTrackWidth = gpxTrackWidth,
+            gpxTrackOpacityPercent = gpxTrackOpacityPercent,
             routeToolSession = routeToolSession,
             crosshairSelectionActive = poiCreationSelectionActive,
             crosshairSelectionTitle = stringResource(R.string.navigate_poi),

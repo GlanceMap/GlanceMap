@@ -1,5 +1,17 @@
 # Performance Benchmarking
 
+## Experimental 3D terrain
+
+Use Full diagnostics for the same map, DEM, track, pitch and pan/zoom sequence
+on each watch run. `Terrain3D` records preparation and DEM times, texture time,
+extent, Java heap use, first-frame and window-swap times, and cancellations or
+refresh failures. Every 120 drawn frames it summarizes CPU time spent submitting
+draw calls; this is not GPU frame time or a smoothness measurement. Exported
+diagnostics include the existing memory snapshot. Use a frame trace to assess
+smoothness and a separate matched Battery Benchmark capture for battery and
+thermal comparisons. Capture modes and diagnostic overhead must match between
+runs. Physical-watch measurements are still required.
+
 Use these benchmarks before and after performance changes so improvements are measured on the same device and data set.
 
 ## Device Setup

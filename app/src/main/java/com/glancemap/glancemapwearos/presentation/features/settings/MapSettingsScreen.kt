@@ -16,6 +16,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.maps.TERRAIN_3D_VIEWING_ANGLES
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
@@ -38,6 +39,8 @@ fun MapSettingsScreen(
     val listTokens = rememberSettingsListTokens()
     val autoRecenterEnabled by viewModel.autoRecenterEnabled.collectAsState()
     val autoRecenterDelay by viewModel.autoRecenterDelay.collectAsState(initial = 5)
+    val terrain3dEnabled by viewModel.terrain3dEnabled.collectAsState()
+    val terrain3dViewingAngle by viewModel.terrain3dViewingAngle.collectAsState()
     val liveElevation by viewModel.liveElevation.collectAsState()
     val liveDistance by viewModel.liveDistance.collectAsState()
     val navigationMarkerAnchorMode by viewModel.navigationMarkerAnchorMode.collectAsState()
@@ -149,6 +152,46 @@ fun MapSettingsScreen(
                 RecenterDelaySetting(autoRecenterDelay) { newDelay ->
                     viewModel.setAutoRecenterDelay(newDelay)
                 }
+            }
+        }
+        item {
+            SettingsToggleChip(
+                checked = terrain3dEnabled,
+                onCheckedChanged = { enabled ->
+                    if (!enabled) {
+                        viewModel.setTerrain3dEnabled(false)
+                    } else {
+                        scope.launch {
+                            val readiness = themeViewModel.demReadinessForMap(selectedMapPath)
+                            if (canEnableTerrain3d(readiness)) {
+                                viewModel.setTerrain3dEnabled(true)
+                            } else {
+                                viewModel.setTerrain3dEnabled(false)
+                                demSetupReason =
+                                    if (selectedMapPath.isNullOrBlank()) {
+                                        DemSetupReason.HILL_SHADING_MAP_REQUIRED
+                                    } else {
+                                        DemSetupReason.TERRAIN_3D
+                                    }
+                                showDemSetupDialog = true
+                            }
+                        }
+                    }
+                },
+                label = stringResource(R.string.map_terrain_3d_experimental),
+            )
+        }
+        if (terrain3dEnabled) {
+            item {
+                SettingsOptionPickerRow(
+                    label = stringResource(R.string.map_3d_viewing_angle),
+                    selectedValue = terrain3dViewingAngle,
+                    options =
+                        TERRAIN_3D_VIEWING_ANGLES.map { angle ->
+                            angle to stringResource(R.string.map_3d_viewing_angle_value, angle)
+                        },
+                    onSelect = viewModel::setTerrain3dViewingAngle,
+                )
             }
         }
         item {
@@ -300,6 +343,8 @@ internal fun buildLiveElevationGateDiagnosticsDetail(
     }
 
 internal fun canEnableLiveElevation(readiness: DemMapReadiness): Boolean = readiness.hasAnyTerrain
+
+internal fun canEnableTerrain3d(readiness: DemMapReadiness): Boolean = readiness.isReady && readiness.hasAnyTerrain
 
 @Composable
 private fun RecenterDelaySetting(

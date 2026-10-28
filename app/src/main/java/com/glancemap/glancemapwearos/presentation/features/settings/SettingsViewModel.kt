@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.RecordingProgressVibrationSettings
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -795,6 +796,24 @@ class SettingsViewModel(
     fun setNavigationMarkerAnchorMode(mode: String) =
         viewModelScope.launch {
             settingsRepository.setNavigationMarkerAnchorMode(mode)
+        }
+
+    val terrain3dEnabled: StateFlow<Boolean> =
+        settingsRepository.terrain3dEnabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setTerrain3dEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setTerrain3dEnabled(enabled)
+        }
+
+    val terrain3dViewingAngle: StateFlow<Int> =
+        settingsRepository.terrain3dViewingAngle
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DEFAULT_TERRAIN_3D_VIEWING_ANGLE)
+
+    fun setTerrain3dViewingAngle(angle: Int) =
+        viewModelScope.launch {
+            settingsRepository.setTerrain3dViewingAngle(angle)
         }
 
     val liveElevation: StateFlow<Boolean> =

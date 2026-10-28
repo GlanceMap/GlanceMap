@@ -443,6 +443,21 @@ class MapRenderer(
             ).also { configurationInterrupted = false }
         } ?: ThemeApplyResult()
 
+    internal suspend fun terrainSource(): TerrainSource? =
+        runRendererWork {
+            val path = currentMapPath ?: return@runRendererWork null
+            TerrainSource(
+                mapFile = File(path),
+                themeFile = currentThemeFile,
+                externalTheme = currentExternalTheme,
+                mapsforgeThemeName = currentMapsforgeThemeName,
+                bundledThemeId = currentBundledThemeId,
+                demSource = currentDemSource,
+                textScale = currentMapLabelTextScale,
+                hillShadingEnabled = currentHillShadingEnabled,
+            )
+        }
+
     suspend fun setElevationLabelUnitsMetric(isMetric: Boolean) {
         runRendererWork { setElevationLabelUnitsMetricLocked(isMetric) }
     }

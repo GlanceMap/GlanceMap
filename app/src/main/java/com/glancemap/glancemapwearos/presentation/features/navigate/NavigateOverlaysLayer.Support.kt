@@ -1,7 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,6 +40,7 @@ import androidx.compose.material.icons.filled.LocationDisabled
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled._3dRotation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +66,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -111,6 +117,8 @@ internal fun BoxScope.PanningDistanceGuide(
     }
 }
 
+// Reuse the slope indicator layout and preserve its existing rendering behavior.
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.SlopeOverlayStatusIndicator(
     visible: Boolean,
@@ -121,6 +129,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     sideButtonEdgePadding: Dp,
     sideButtonSize: Dp,
     modifier: Modifier = Modifier,
+    terrain3d: Boolean = false,
 ) {
     val slopeIndicatorButtonSize =
         when (screenSize) {
@@ -157,6 +166,19 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             animationSpec = tween(durationMillis = 220),
             label = "slope_render_progress_sweep",
         )
+        val startAngle =
+            if (terrain3d) {
+                val transition = rememberInfiniteTransition(label = "terrain_loading")
+                val angle by transition.animateFloat(
+                    initialValue = -90f,
+                    targetValue = 270f,
+                    animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing)),
+                    label = "terrain_loading_angle",
+                )
+                angle
+            } else {
+                -90f
+            }
 
         Box(
             modifier =
@@ -181,18 +203,29 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
                 )
                 drawArc(
                     color = Color(0xFFFFB300),
-                    startAngle = -90f,
-                    sweepAngle = sweepDeg,
+                    startAngle = startAngle,
+                    sweepAngle = if (terrain3d) 100f else sweepDeg,
                     useCenter = false,
                     style = Stroke(width = ringStroke, cap = StrokeCap.Round),
                 )
             }
-            Icon(
-                imageVector = Icons.Default.Landscape,
-                contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
-                modifier = Modifier.size(slopeIndicatorIconSize),
-                tint = Color(0xFFFFB300),
-            )
+            if (terrain3d) {
+                val description = stringResource(R.string.navigate_3d_terrain_loading)
+                Text(
+                    text = "3D",
+                    modifier = Modifier.semantics { contentDescription = description },
+                    color = Color(0xFFFFB300),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Landscape,
+                    contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
+                    modifier = Modifier.size(slopeIndicatorIconSize),
+                    tint = Color(0xFFFFB300),
+                )
+            }
         }
     }
 }
@@ -718,6 +751,26 @@ private enum class NavButtonTrustState {
     UNAVAILABLE,
 }
 
+internal enum class TerrainModeAction {
+    RECENTER,
+    TOGGLE_ORIENTATION,
+    ENTER_ORBIT,
+    EXIT_ORBIT,
+}
+
+internal fun terrainModeButtonAction(
+    navMode: NavMode,
+    orbit: Boolean,
+    offline: Boolean,
+): TerrainModeAction =
+    when {
+        orbit -> TerrainModeAction.EXIT_ORBIT
+        offline -> TerrainModeAction.ENTER_ORBIT
+        navMode == NavMode.PANNING -> TerrainModeAction.RECENTER
+        navMode == NavMode.NORTH_UP_FOLLOW -> TerrainModeAction.ENTER_ORBIT
+        else -> TerrainModeAction.TOGGLE_ORIENTATION
+    }
+
 @Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.NavModeButtonOverlay(
@@ -740,10 +793,14 @@ internal fun BoxScope.NavModeButtonOverlay(
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
+    terrainOrbitMode: Boolean? = null,
+    onTerrainOrbitChange: (Boolean) -> Unit = {},
+    onTerrainRecenter: (LatLong) -> Unit = {},
 ) {
     if (!visible) return
     val navIcon =
         when {
+            terrainOrbitMode == true -> Icons.Default._3dRotation
             isOfflineMode -> Icons.Default.LocationDisabled
             navMode == NavMode.PANNING -> Icons.Default.MyLocation
             navMode == NavMode.COMPASS_FOLLOW -> Icons.Default.Explore
@@ -751,6 +808,7 @@ internal fun BoxScope.NavModeButtonOverlay(
         }
     val navTint =
         when {
+            terrainOrbitMode == true -> MaterialTheme.colorScheme.primary
             isOfflineMode -> Color(0xFFE53935)
             navMode != NavMode.PANNING -> MaterialTheme.colorScheme.primary
             else -> Color.White
@@ -827,20 +885,32 @@ internal fun BoxScope.NavModeButtonOverlay(
                 .combinedClickable(
                     interactionSource = null,
                     indication = null,
-                    enabled = !isOfflineMode,
+                    enabled = !isOfflineMode || terrainOrbitMode != null,
                     role = Role.Button,
                     onLongClickLabel = toggleAutoRecenterLabel,
                     hapticFeedbackEnabled = false,
                     onLongClick = {
-                        triggerHaptic()
-                        autoRecenterFeedback = !autoRecenterEnabled
-                        onToggleAutoRecenter()
+                        if (!isOfflineMode) {
+                            triggerHaptic()
+                            autoRecenterFeedback = !autoRecenterEnabled
+                            onToggleAutoRecenter()
+                        }
                     },
                     onClick = {
                         triggerHaptic()
-                        if (navMode == NavMode.PANNING) {
+                        val action = terrainOrbitMode?.let { terrainModeButtonAction(navMode, it, isOfflineMode) }
+                        if (action == TerrainModeAction.ENTER_ORBIT) {
+                            onTerrainOrbitChange(true)
+                        } else if (action == TerrainModeAction.EXIT_ORBIT) {
+                            onTerrainOrbitChange(false)
+                            if (!isOfflineMode) onToggleOrientation()
+                        } else if (navMode == NavMode.PANNING) {
                             lastKnownLocation?.let {
-                                mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
+                                if (terrainOrbitMode != null) {
+                                    onTerrainRecenter(it)
+                                } else {
+                                    mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
+                                }
                             }
                             onRecenter()
                             onRecenterRequested()
@@ -886,7 +956,7 @@ internal fun BoxScope.NavModeButtonOverlay(
                         ),
                 contentAlignment = Alignment.Center,
             ) {
-                if (navMode == NavMode.NORTH_UP_FOLLOW) {
+                if (navMode == NavMode.NORTH_UP_FOLLOW && terrainOrbitMode != true) {
                     NorthUpLockedModeIcon(
                         iconSize = navButtonIconSize,
                         tint = navTint,
@@ -894,7 +964,14 @@ internal fun BoxScope.NavModeButtonOverlay(
                 } else {
                     Icon(
                         imageVector = navIcon,
-                        contentDescription = stringResource(R.string.navigate_nav_mode),
+                        contentDescription =
+                            stringResource(
+                                if (terrainOrbitMode == true) {
+                                    R.string.map_3d_orbit_mode
+                                } else {
+                                    R.string.navigate_nav_mode
+                                },
+                            ),
                         modifier = Modifier.size(navButtonIconSize),
                         tint = navTint,
                     )
