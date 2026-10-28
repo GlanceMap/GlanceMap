@@ -248,9 +248,23 @@ class MainActivity : ComponentActivity() {
                 val route = backStackEntry?.destination?.route
                 val routeLabel = route ?: WatchRoutes.NAVIGATE
                 val compositionContext = LocalContext.current
+                com.glancemap.glancemapwearos.presentation.features.recording.sensors.AutoPauseStepMonitor(
+                    enabled =
+                        traceRecordingState.active &&
+                            traceRecordingState.paused &&
+                            traceRecordingState.autoPaused &&
+                            traceRecordingState.recordingAutoPauseEnabled &&
+                            !traceRecordingState.saving &&
+                            traceRecordingState.activityProfile != SettingsRepository.ACTIVITY_PROFILE_BIKE,
+                    onStepCounter = appContainer.traceRecordingViewModel::onAutoPauseStepCounter,
+                )
                 RecordingSensorBridge(
                     active = traceRecordingState.active,
                     paused = traceRecordingState.paused,
+                    autoPaused = traceRecordingState.autoPaused,
+                    onAutoPauseCyclingMeasurement = appContainer.traceRecordingViewModel::onAutoPauseCyclingMeasurement,
+                    onAutoPauseCyclingSensorUnavailable =
+                        appContainer.traceRecordingViewModel::onAutoPauseCyclingSensorUnavailable,
                     selectedMetricIds = recordingDashboardMetricSlots,
                     elevationSource = recordingElevationSource,
                     heartRateSource = recordingHeartRateSource,
@@ -844,8 +858,13 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 RecordingExternalSensorsScreen(
                                     viewModel = appContainer.settingsViewModel,
-                                    connectLinkedSensors =
-                                        !traceRecordingState.active || traceRecordingState.paused,
+                                    connectLinkedSensors = !traceRecordingState.active || traceRecordingState.paused,
+                                    connectLinkedRunPod =
+                                        !(
+                                            traceRecordingState.autoPaused &&
+                                                traceRecordingState.activityProfile ==
+                                                SettingsRepository.ACTIVITY_PROFILE_BIKE
+                                        ),
                                     onOpenRecordingSettings = {
                                         navController.navigate(WatchRoutes.RECORDING_SETTINGS) {
                                             popUpTo(WatchRoutes.RECORDING_SETTINGS) { inclusive = false }

@@ -61,11 +61,13 @@ import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 
+@Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
 @Composable
 fun RecordingExternalSensorsScreen(
     viewModel: SettingsViewModel,
     onOpenRecordingSettings: () -> Unit,
     connectLinkedSensors: Boolean = true,
+    connectLinkedRunPod: Boolean = true,
 ) {
     val listTokens = rememberSettingsListTokens()
     val context = LocalContext.current
@@ -138,7 +140,7 @@ fun RecordingExternalSensorsScreen(
         onHeartRate = { _, _ -> },
     )
     ExternalRunPodSensorBridge(
-        active = connectLinkedSensors && !linkedRunPodAddress.isNullOrBlank(),
+        active = connectLinkedSensors && connectLinkedRunPod && !linkedRunPodAddress.isNullOrBlank(),
         paused = false,
         address = linkedRunPodAddress,
         onMeasurement = {},

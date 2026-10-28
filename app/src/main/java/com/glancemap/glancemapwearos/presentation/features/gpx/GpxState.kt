@@ -110,6 +110,7 @@ data class GpxTrackDetails(
     val elevationGain: Double,
     val startPoint: LatLong?,
     val endPoint: LatLong?,
+    val isActivity: Boolean = false,
 )
 
 data class TrackPosition(

@@ -134,6 +134,14 @@ class RecordingAutoPauseTimingTest {
     }
 
     @Test
+    fun delayedBatchBackdatesFromMeasurementRatherThanDelivery() {
+        val confirmation = recordingMeasurementWallTimeMillis(120_000, 20_000, 12_000)
+        assertEquals(112_000L, confirmation)
+        val state = TraceRecordingUiState(active = true, paused = true, autoPaused = true, pausedAtMillis = 100_000)
+        assertEquals(4_000L, autoPauseAddedMillisAtResume(state, confirmation, 8_000))
+    }
+
+    @Test
     fun invalidRestoredPauseTimeCannotProduceNegativePausedDuration() {
         val restored =
             TraceRecordingUiState(paused = true, autoPaused = true, pausedAtMillis = 120_000L)

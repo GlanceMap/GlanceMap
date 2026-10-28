@@ -198,17 +198,17 @@ class AppContainer(
                 recordingWakeLockExperiment.update(active = state.active && !state.saving, paused = state.paused)
             }
         }
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.recordingLocations.collect { location ->
                 traceRecordingViewModel.onLocation(location)?.join()
             }
         }
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.gpsSignalSnapshot.collectLatest { snapshot ->
                 traceRecordingViewModel.onGpsSignalSnapshot(snapshot)
             }
         }
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.effectiveGpsIntervalMs.collect { intervalMs ->
                 traceRecordingViewModel.onEffectiveRecordingSamplingIntervalChanged(intervalMs)
             }

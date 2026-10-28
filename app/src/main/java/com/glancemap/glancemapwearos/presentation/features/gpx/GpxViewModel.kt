@@ -1605,6 +1605,7 @@ class GpxViewModel(
                         elevationGain = profile.totalAscent,
                         startPoint = start,
                         endPoint = end,
+                        isActivity = fileState.isActivity,
                     )
                 }
             }

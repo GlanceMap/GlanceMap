@@ -110,3 +110,59 @@ Platform contracts: [on-change reporting](https://source.android.com/docs/core/i
 [sensor types](https://source.android.com/docs/core/interaction/sensors/sensor-types),
 [non-wakeup sensors](https://source.android.com/docs/core/interaction/sensors/suspend-mode),
 [health foreground services](https://developer.android.com/develop/background-work/services/fgs/service-types#health).
+
+
+Automatic-pause confirmation uses consecutive GPS measurement timestamps. A gap
+longer than two expected sampling intervals (limited to 15–20 seconds) starts
+confirmation again; delivery batches retain their original times. During automatic
+pause a separate non-wakeup step-counter listener can confirm a walking restart
+from fresh increasing readings. It does not contribute to recorded step totals.
+A linked cycling speed/cadence sensor remains connected during bike auto-pause;
+only new valid wheel-speed measurements can confirm a restart. Cadence, power,
+and sensor silence do not establish that a bicycle stopped. Bluetooth timestamps
+are receipt times, so delayed delivery and reconnect behavior still need physical
+validation. On resume, external distance is rebased on the next fresh distance
+reading so unconfirmed paused movement is not added; this can conservatively omit
+some restart distance. No sensor creates GPS coordinates. Recovered GPS candidates
+must still pass the existing quality gates and, for sensor-triggered resume, fall
+within the sensor confirmation window. Screen-off delivery and battery use must
+be measured on actual watches; no wake lock is added.
+
+Historical pressure matching remains a separate concern: replayed GPS fixes do not
+have a timestamp-matched pressure history, and the hybrid elevation filter may use
+its current pressure state. This change does not modify elevation behavior.
+
+Walking auto-pause keeps the existing 45-second confirmation, GPS accuracy and
+stationary-radius thresholds. A speed between the stop and resume thresholds
+can support an otherwise stationary fix only when valid speed uncertainty
+includes the stop threshold. A sustained stationary area is anchored to the
+first candidate fix so accepted points cannot move the area along with a slow
+walk. A fresh, forward step-counter increase from the same source interrupts the
+stop window even after a long quiet period. The increase does not attribute its
+cumulative delta to the current time: a delayed hardware report may conservatively
+delay a stop. Stale, unavailable, reset or source-changed counts do not prove
+either movement or stillness. Cycling's stop logic is unchanged. The cadence and age bounds still reset the window
+across missing GPS observations. GPS-only confirmation cannot complete when
+regular fix intervals exceed 20 seconds; allowing intentionally sparse fixes
+requires a separate evidence policy so a blackout is not mistaken for continuous
+motion or stillness. Very slow movement with uncertain GPS and no
+fresh steps can still be mistaken for a stop; watch testing is required.
+
+Full diagnostic capture emits bounded `auto_pause_evidence` summaries. They
+include the stop decision and reason counts, duration and required duration,
+reset/gap/out-of-order counts, GPS source/provider and screen state, fix age,
+requested evidence interval and prior-fix gap, speed and speed uncertainty,
+raw/effective horizontal accuracy and the active decision thresholds,
+distance from the saved point and the maximum distance used by the stationary
+anchor check, stationary radius, and step evidence/source/age. Coordinates and raw step totals are not logged by
+this summary. Summaries are emitted at most every 30 seconds in steady state,
+with resets rate-limited to 10 seconds and confirmation reported immediately;
+normal recording thresholds and sampling rates are unchanged. Automatic-pause
+step monitoring also logs support/permission and sensor reporting characteristics,
+plus callback, pre-registration, invalid-value and last-event age totals when
+the listener stops; it does not log raw cumulative step counts.
+
+Recording location decisions and location-setting updates run on the main
+recording dispatcher alongside manual pause and sensor state updates. A GPS
+point awaiting elevation is discarded if pause, resume, save or session reset
+changed the recording generation before its result could be committed.

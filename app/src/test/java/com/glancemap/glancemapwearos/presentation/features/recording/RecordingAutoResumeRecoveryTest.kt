@@ -21,6 +21,20 @@ class RecordingAutoResumeRecoveryTest {
     }
 
     @Test
+    fun sensorConfirmationOnlyReplaysFixesFromItsOwnEvidenceWindow() {
+        val buffer = RecordingAutoResumeRecoveryBuffer<Int>()
+        buffer.offer(fix(0, 10_000, 0.0), eligible = true)
+        buffer.offer(fix(1, 15_000, 20.0), eligible = true)
+        buffer.offer(fix(2, 20_000, 40.0), eligible = true)
+        assertTrue(buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE, 16_000, 20_000).isEmpty())
+        assertEquals(
+            listOf(1, 2),
+            buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE, 15_000, 20_000).map { it.value },
+        )
+        assertTrue(buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE, 21_000, 30_000).isEmpty())
+    }
+
+    @Test
     fun stationaryDriftAndAbandonedFalseStartAreNotRecovered() {
         val buffer = RecordingAutoResumeRecoveryBuffer<Int>()
         buffer.offer(fix(0, 10_000, 0.0), eligible = true)

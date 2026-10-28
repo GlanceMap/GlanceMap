@@ -13,6 +13,10 @@
     <string name="whats_new_watch_section_title">Watch app</string>
     <string name="whats_new_review_message">Enjoying GlanceMap? Leave a quick review on the Play Store — it really helps.</string>
     <string name="whats_new_review_action">Leave a review</string>
+    <string name="whats_new_feature_request_message">Have an idea? Tell us what you’d like to see next.</string>
+    <string name="whats_new_feature_request_action">Suggest a feature</string>
+    <string name="whats_new_feature_request_subject">GlanceMap feature request</string>
+    <string name="whats_new_feature_request_body">Hi GlanceMap team,\n\nI’d like to suggest:\n\n\nWhy it would help:\n</string>
 
     <string-array name="whats_new_1_3_0_phone">
         <item>Added a What’s New screen to keep you informed about each release.</item>

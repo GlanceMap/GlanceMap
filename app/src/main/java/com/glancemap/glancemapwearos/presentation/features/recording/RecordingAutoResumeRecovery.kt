@@ -51,12 +51,17 @@ internal class RecordingAutoResumeRecoveryBuffer<T> {
         return validTime && validCoordinates && validAccuracy
     }
 
-    fun recover(activityProfile: String): List<RecordingAutoResumeFix<T>> {
-        for (index in 0 until fixes.lastIndex) {
-            val first = fixes[index]
-            for (nextIndex in index + 1..fixes.lastIndex) {
-                val next = fixes[nextIndex]
-                if (isCredibleRestart(first, next, activityProfile)) return fixes.drop(index)
+    fun recover(
+        activityProfile: String,
+        earliestElapsedMillis: Long = Long.MIN_VALUE,
+        latestElapsedMillis: Long = Long.MAX_VALUE,
+    ): List<RecordingAutoResumeFix<T>> {
+        val candidates = fixes.filter { it.elapsedMillis in earliestElapsedMillis..latestElapsedMillis }
+        for (index in 0 until candidates.lastIndex) {
+            val first = candidates[index]
+            for (nextIndex in index + 1..candidates.lastIndex) {
+                val next = candidates[nextIndex]
+                if (isCredibleRestart(first, next, activityProfile)) return candidates.drop(index)
             }
         }
         return emptyList()

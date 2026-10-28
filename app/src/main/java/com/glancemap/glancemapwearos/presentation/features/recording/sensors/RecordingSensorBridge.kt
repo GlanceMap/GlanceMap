@@ -33,6 +33,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOff
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
+import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodMeasurementSource
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.usesHybridRecordingElevation
 import kotlinx.coroutines.delay
@@ -204,6 +205,9 @@ internal class RecordingSensorRuntimeState {
 fun RecordingSensorBridge(
     active: Boolean,
     paused: Boolean,
+    autoPaused: Boolean,
+    onAutoPauseCyclingMeasurement: (Float?, Long) -> Unit,
+    onAutoPauseCyclingSensorUnavailable: () -> Unit,
     selectedMetricIds: List<String>,
     elevationSource: String,
     heartRateSource: String,
@@ -346,78 +350,95 @@ fun RecordingSensorBridge(
         },
     )
     ExternalRunPodSensorBridge(
-        active = active && useExternalRunPod,
-        paused = paused,
+        active = active && (useExternalRunPod || (autoPaused && isBikeProfile && externalRunPodLinked)),
+        paused = paused && !(autoPaused && isBikeProfile),
         address = externalRunPodAddress,
         wheelCircumferenceMeters = cyclingWheelCircumferenceMeters,
         onMeasurement = { measurement ->
-            metrics =
-                metrics.copy(
-                    cadenceSpm =
-                        if (useExternalCadence) {
-                            measurement.cadenceSpm ?: metrics.cadenceSpm
-                        } else {
-                            metrics.cadenceSpm
+            if (paused) {
+                if (autoPaused &&
+                    isBikeProfile &&
+                    measurement.source == ExternalRunPodMeasurementSource.CYCLING_SPEED_CADENCE
+                ) {
+                    onAutoPauseCyclingMeasurement(
+                        measurement.speedMps.takeIf {
+                            measurement.wheelIntervalSeconds?.let { interval -> interval in 0.0..15.0 } == true
                         },
-                    cadenceUpdatedAtMillis =
-                        if (useExternalCadence && measurement.cadenceSpm != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.cadenceUpdatedAtMillis
-                        },
-                    cadenceFromBluetooth =
-                        if (useExternalCadence && measurement.cadenceSpm != null) {
-                            true
-                        } else {
-                            metrics.cadenceFromBluetooth
-                        },
-                    externalSpeedMps = measurement.speedMps ?: metrics.externalSpeedMps,
-                    externalSpeedUpdatedAtMillis =
-                        if (measurement.speedMps != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalSpeedUpdatedAtMillis
-                        },
-                    externalDistanceMeters = measurement.totalDistanceMeters ?: metrics.externalDistanceMeters,
-                    externalDistanceRawUnits =
-                        measurement.rawTotalDistanceUnits ?: metrics.externalDistanceRawUnits,
-                    externalDistanceUpdatedAtMillis =
-                        if (measurement.totalDistanceMeters != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalDistanceUpdatedAtMillis
-                        },
-                    externalPowerWatts =
-                        if (useExternalPower) {
-                            measurement.powerWatts ?: metrics.externalPowerWatts
-                        } else {
-                            metrics.externalPowerWatts
-                        },
-                    externalPowerUpdatedAtMillis =
-                        if (useExternalPower && measurement.powerWatts != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalPowerUpdatedAtMillis
-                        },
-                    externalBatteryLevelPercent =
-                        measurement.batteryLevelPercent ?: metrics.externalBatteryLevelPercent,
-                    externalBatteryUpdatedAtMillis =
-                        if (measurement.batteryLevelPercent != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalBatteryUpdatedAtMillis
-                        },
-                )
-            onMetrics(metrics)
+                        SystemClock.elapsedRealtime(),
+                    )
+                }
+            } else {
+                metrics =
+                    metrics.copy(
+                        cadenceSpm =
+                            if (useExternalCadence) {
+                                measurement.cadenceSpm ?: metrics.cadenceSpm
+                            } else {
+                                metrics.cadenceSpm
+                            },
+                        cadenceUpdatedAtMillis =
+                            if (useExternalCadence && measurement.cadenceSpm != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.cadenceUpdatedAtMillis
+                            },
+                        cadenceFromBluetooth =
+                            if (useExternalCadence && measurement.cadenceSpm != null) {
+                                true
+                            } else {
+                                metrics.cadenceFromBluetooth
+                            },
+                        externalSpeedMps = measurement.speedMps ?: metrics.externalSpeedMps,
+                        externalSpeedUpdatedAtMillis =
+                            if (measurement.speedMps != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalSpeedUpdatedAtMillis
+                            },
+                        externalDistanceMeters = measurement.totalDistanceMeters ?: metrics.externalDistanceMeters,
+                        externalDistanceRawUnits =
+                            measurement.rawTotalDistanceUnits ?: metrics.externalDistanceRawUnits,
+                        externalDistanceUpdatedAtMillis =
+                            if (measurement.totalDistanceMeters != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalDistanceUpdatedAtMillis
+                            },
+                        externalPowerWatts =
+                            if (useExternalPower) {
+                                measurement.powerWatts ?: metrics.externalPowerWatts
+                            } else {
+                                metrics.externalPowerWatts
+                            },
+                        externalPowerUpdatedAtMillis =
+                            if (useExternalPower && measurement.powerWatts != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalPowerUpdatedAtMillis
+                            },
+                        externalBatteryLevelPercent =
+                            measurement.batteryLevelPercent ?: metrics.externalBatteryLevelPercent,
+                        externalBatteryUpdatedAtMillis =
+                            if (measurement.batteryLevelPercent != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalBatteryUpdatedAtMillis
+                            },
+                    )
+                onMetrics(metrics)
+            }
         },
         onUnavailable = {
-            DebugTelemetry.log("TraceRecordingSensors", "event=external_run_pod_unavailable")
-            metrics =
-                metrics.withExternalRunPodUnavailable(
-                    clearCadence = useExternalCadence,
-                    clearPower = useExternalPower,
-                )
-            onMetrics(metrics)
+            if (paused && autoPaused && isBikeProfile) onAutoPauseCyclingSensorUnavailable()
+            if (!paused) {
+                DebugTelemetry.log("TraceRecordingSensors", "event=external_run_pod_unavailable")
+                metrics =
+                    metrics.withExternalRunPodUnavailable(
+                        clearCadence = useExternalCadence,
+                        clearPower = useExternalPower,
+                    )
+                onMetrics(metrics)
+            }
         },
     )
 

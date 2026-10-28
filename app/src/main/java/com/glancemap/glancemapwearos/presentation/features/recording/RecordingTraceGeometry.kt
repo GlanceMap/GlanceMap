@@ -87,3 +87,11 @@ private fun recordingTraceSegmentStarts(
             }
         }
     }
+
+/** Display-only straight connectors between independently recorded segments. */
+internal fun recordingGapConnectors(segments: List<List<LatLong>>): List<List<LatLong>> =
+    segments.zipWithNext().mapNotNull { (before, after) ->
+        val end = before.lastOrNull()
+        val start = after.firstOrNull()
+        if (end == null || start == null || end == start) null else listOf(end, start)
+    }

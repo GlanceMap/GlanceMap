@@ -701,8 +701,17 @@ internal fun WhatsNewDialog(onDismiss: () -> Unit) {
                     text = stringResource(R.string.whats_new_review_message),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                TextButton(onClick = { openPhoneAppPlayStore(context) }) {
-                    Text(stringResource(R.string.whats_new_review_action))
+                Text(
+                    text = stringResource(R.string.whats_new_feature_request_message),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { openPhoneAppPlayStore(context) }) {
+                        Text(stringResource(R.string.whats_new_review_action))
+                    }
+                    TextButton(onClick = { openFeatureRequestEmail(context) }) {
+                        Text(stringResource(R.string.whats_new_feature_request_action))
+                    }
                 }
                 TextButton(
                     onClick = onDismiss,
@@ -757,6 +766,24 @@ internal fun companionPlayStoreWebUrl(packageName: String): String = "https://pl
 
 private fun openPhoneAppPlayStore(context: Context) {
     openAppPlayStore(context, context.packageName)
+}
+
+private fun openFeatureRequestEmail(context: Context) {
+    val emailIntent =
+        Intent(
+            Intent.ACTION_SENDTO,
+            Uri.parse("mailto:${TransferDataLayerContract.DIAGNOSTICS_SUPPORT_EMAIL}"),
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.whats_new_feature_request_subject))
+            putExtra(Intent.EXTRA_TEXT, context.getString(R.string.whats_new_feature_request_body))
+        }
+
+    try {
+        context.applicationContext.startActivity(emailIntent)
+    } catch (_: ActivityNotFoundException) {
+        // No email app is available.
+    }
 }
 
 private fun openAppPlayStore(

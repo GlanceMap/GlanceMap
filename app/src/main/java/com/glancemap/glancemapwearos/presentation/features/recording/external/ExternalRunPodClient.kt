@@ -6,6 +6,8 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import java.util.UUID
 
+enum class ExternalRunPodMeasurementSource { RUNNING, CYCLING_SPEED_CADENCE, CYCLING_POWER }
+
 data class ExternalRunPodMeasurement(
     val speedMps: Float?,
     val cadenceSpm: Int?,
@@ -14,6 +16,8 @@ data class ExternalRunPodMeasurement(
     val powerWatts: Int? = null,
     val batteryLevelPercent: Int? = null,
     val timeMillis: Long,
+    val source: ExternalRunPodMeasurementSource = ExternalRunPodMeasurementSource.RUNNING,
+    val wheelIntervalSeconds: Double? = null,
 )
 
 class ExternalRunPodClient(
@@ -339,6 +343,7 @@ class ExternalRunPodClient(
                 rawTotalDistanceUnits = null,
                 totalDistanceMeters = null,
                 powerWatts = powerWatts.takeIf { it in 0..2500 },
+                source = ExternalRunPodMeasurementSource.CYCLING_POWER,
                 timeMillis = System.currentTimeMillis(),
             )
         }
@@ -353,6 +358,7 @@ internal class CyclingSpeedCadenceDecoder(
     private var previousCrankRevolutions: Int? = null
     private var previousCrankEventTime: Int? = null
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     fun decode(
         value: ByteArray,
         timeMillis: Long = System.currentTimeMillis(),
@@ -386,6 +392,13 @@ internal class CyclingSpeedCadenceDecoder(
             } else {
                 null
             }
+        val wheelIntervalSeconds =
+            if (speedMps != null && wheelEventTime != null && previousWheelEventTime != null) {
+                unsignedDelta(wheelEventTime.toLong(), previousWheelEventTime!!.toLong(), UINT16_ROLLOVER) /
+                    BLE_EVENT_TIME_TICKS_PER_SECOND
+            } else {
+                null
+            }
         val distanceMeters =
             wheelRevolutions
                 ?.takeIf { it >= 0L }
@@ -408,6 +421,8 @@ internal class CyclingSpeedCadenceDecoder(
             cadenceSpm = cadenceRpm?.takeIf { it in 1..CYCLING_CADENCE_MAX_RPM },
             rawTotalDistanceUnits = wheelRevolutions,
             totalDistanceMeters = distanceMeters,
+            source = ExternalRunPodMeasurementSource.CYCLING_SPEED_CADENCE,
+            wheelIntervalSeconds = wheelIntervalSeconds,
             timeMillis = timeMillis,
         )
     }

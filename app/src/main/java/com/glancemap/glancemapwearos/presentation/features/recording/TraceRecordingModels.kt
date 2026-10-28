@@ -127,6 +127,17 @@ internal fun TraceRecordingUiState.toRecordingPresentationState(): TraceRecordin
         barometricPressureHpa = null,
     )
 
+internal fun recordingMeasurementWallTimeMillis(
+    nowWallMillis: Long,
+    nowElapsedMillis: Long,
+    measurementElapsedMillis: Long,
+): Long = (nowWallMillis - (nowElapsedMillis - measurementElapsedMillis).coerceAtLeast(0L)).coerceAtLeast(0L)
+
+internal fun TraceRecordingUiState.canCommitRecordingPoint(
+    capturedGeneration: Long,
+    currentGeneration: Long,
+): Boolean = active && !paused && !saving && capturedGeneration == currentGeneration
+
 internal fun effectiveAutoPauseStartMillis(
     state: TraceRecordingUiState,
     confirmationMillis: Long,

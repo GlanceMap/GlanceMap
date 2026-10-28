@@ -139,6 +139,7 @@ class ExternalRunPodClientTest {
             )
         requireNotNull(first)
         assertNull(first.speedMps)
+        assertNull(first.wheelIntervalSeconds)
         assertNull(first.cadenceSpm)
         assertEquals(2_105.0, first.totalDistanceMeters!!, 0.01)
 
@@ -155,6 +156,7 @@ class ExternalRunPodClientTest {
 
         requireNotNull(second)
         assertEquals(21.05f, second.speedMps!!, 0.01f)
+        assertEquals(1.0, second.wheelIntervalSeconds!!, 0.001)
         assertEquals(60, second.cadenceSpm)
         assertEquals(2_126.05, second.totalDistanceMeters!!, 0.01)
         assertEquals(1_010L, second.rawTotalDistanceUnits)
