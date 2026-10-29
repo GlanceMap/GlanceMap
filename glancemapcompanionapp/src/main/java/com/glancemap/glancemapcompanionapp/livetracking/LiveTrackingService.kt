@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
+import com.glancemap.glancemapcompanionapp.map.PhoneSharedLocationStore
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -41,7 +42,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
@@ -114,6 +119,10 @@ class LiveTrackingService : Service() {
     private var controlRetryJob: Job? = null
     private var stopRetryJob: Job? = null
     private var deliveryWatchJob: Job? = null
+    private var sharedLocationJob: Job? = null
+
+    @Volatile private var sharedRejectedUntilElapsedMillis = 0L
+    private val sharedRejectionSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     @Volatile
     private var retryNotBeforeElapsedMillis = 0L
@@ -447,6 +456,7 @@ class LiveTrackingService : Service() {
         source: LiveTrackingFixSource,
         generation: LiveTrackingGeneration,
         cadenceTicket: LiveTrackingCadenceTicket,
+        fromSharedSource: Boolean = false,
     ) {
         val context = trackingContext(generation, cadenceWindow = cadenceTicket.windowIndex)
         if (!orchestration.isCurrent(generation)) {
@@ -469,6 +479,10 @@ class LiveTrackingService : Service() {
                         prepareScheduledCycleLocked(locations, source, generation, cycleId)
                     } ?: return
                 val cycleContext = context.copy(cycleId = prepared.id)
+                if (fromSharedSource && prepared.initialDecision?.result != LiveTrackingLocationQualityResult.ACCEPT) {
+                    sharedRejectedUntilElapsedMillis = SystemClock.elapsedRealtime() + updateIntervalMs()
+                    sharedRejectionSignal.tryEmit(Unit)
+                }
                 recordLiveTrackingEvent(cycleContext, "cycle_prepared")
                 if (prepared.allObservationsRejected && prepared.acquisition == null) {
                     if (orchestration.releaseRejectedStartup(generation, cadenceTicket)) {
@@ -525,6 +539,10 @@ class LiveTrackingService : Service() {
                         }
                     }
 
+                if (fromSharedSource && sendOutcome == "no_candidate") {
+                    sharedRejectedUntilElapsedMillis = SystemClock.elapsedRealtime() + updateIntervalMs()
+                    sharedRejectionSignal.tryEmit(Unit)
+                }
                 recoverAfterCycle = sendOutcome != "queued"
                 recordLiveTrackingDelivery(
                     LiveTrackingDeliveryDiagnostic(
@@ -1754,54 +1772,128 @@ class LiveTrackingService : Service() {
         intervalMillis: Long,
     ) {
         val deliveryWatch = LiveTrackingDeliveryWatch(SystemClock.elapsedRealtime(), intervalMillis)
-        val request =
-            LocationRequest
-                .Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis)
-                .setMinUpdateIntervalMillis(intervalMillis)
-                .setMaxUpdateDelayMillis(intervalMillis)
-                .build()
-        val callback =
-            object : LocationCallback() {
-                override fun onLocationResult(result: LocationResult) {
-                    val locations = result.locations.toList()
-                    if (locations.isEmpty()) {
-                        orchestration.withGeneration(generation) {
-                            deliveryWatch.delivered(SystemClock.elapsedRealtime())
-                            recordLiveTrackingEvent(trackingContext(generation), "empty_periodic_result")
+        orchestration.withGeneration(generation) {
+            periodicDiagnosticContext = trackingContext(generation)
+            recordLiveTrackingEvent(trackingContext(generation), "generation_started")
+            startDeliveryWatch(generation, deliveryWatch, intervalMillis)
+        }
+        sharedRejectedUntilElapsedMillis = 0L
+        sharedLocationJob =
+            serviceScope.launch {
+                var lastSharedFixNanos = 0L
+                val expiryChecks =
+                    flow {
+                        while (orchestration.isCurrent(generation)) {
+                            emit(Unit)
+                            val checkInterval = PhoneSharedLocationStore.state.value?.intervalMillis ?: 30_000L
+                            delay(checkInterval.coerceIn(3_000L, 30_000L))
                         }
-                        return
                     }
-                    val ticket =
-                        orchestration.withGeneration(generation) {
-                            deliveryWatch.delivered(SystemClock.elapsedRealtime())
-                            recordLiveTrackingDelivery(
-                                LiveTrackingDeliveryDiagnostic(
-                                    "periodic_callback",
-                                    count = locations.size,
-                                    fixTimestampEpochMillis = locations.lastOrNull()?.time,
-                                    context = trackingContext(generation),
-                                ),
+                merge(PhoneSharedLocationStore.state.map { Unit }, expiryChecks, sharedRejectionSignal).collect {
+                    val shared = PhoneSharedLocationStore.state.value
+                    val location = shared?.location
+                    val age = location?.let { SystemClock.elapsedRealtime() - it.elapsedRealtimeNanos / 1_000_000L }
+                    val usable =
+                        shared != null &&
+                            location != null &&
+                            hasLocationPermission() &&
+                            SystemClock.elapsedRealtime() >= sharedRejectedUntilElapsedMillis &&
+                            shouldUseSharedLocation(
+                                true,
+                                shared.intervalMillis,
+                                intervalMillis,
+                                age ?: -1L,
+                                if (location.hasAccuracy()) location.accuracy else Float.NaN,
                             )
-                            generation.admission.observe(SystemClock.elapsedRealtime())
-                        } ?: run {
-                            recordLiveTrackingEvent(trackingContext(generation), "late_normal_callback_ignored")
-                            return
+                    if (usable) {
+                        disablePeriodicFallback(generation)
+                        if (location.elapsedRealtimeNanos > lastSharedFixNanos) {
+                            lastSharedFixNanos = location.elapsedRealtimeNanos
+                            handlePeriodicLocations(
+                                generation,
+                                deliveryWatch,
+                                listOf(location),
+                                fromSharedSource = true,
+                            )
                         }
-                    serviceScope.launch {
-                        sendLocations(locations, LiveTrackingFixSource.CALLBACK, generation, ticket)
+                    } else {
+                        enablePeriodicFallback(generation, deliveryWatch, intervalMillis)
                     }
                 }
             }
+    }
+
+    private fun handlePeriodicLocations(
+        generation: LiveTrackingGeneration,
+        deliveryWatch: LiveTrackingDeliveryWatch,
+        locations: List<Location>,
+        fromSharedSource: Boolean,
+    ) {
+        if (locations.isEmpty()) {
+            orchestration.withGeneration(generation) {
+                deliveryWatch.delivered(SystemClock.elapsedRealtime())
+                recordLiveTrackingEvent(trackingContext(generation), "empty_periodic_result")
+            }
+            return
+        }
+        val ticket =
+            orchestration.withGeneration(generation) {
+                deliveryWatch.delivered(SystemClock.elapsedRealtime())
+                recordLiveTrackingDelivery(
+                    LiveTrackingDeliveryDiagnostic(
+                        if (fromSharedSource) "shared_periodic_callback" else "periodic_callback",
+                        count = locations.size,
+                        fixTimestampEpochMillis = locations.lastOrNull()?.time,
+                        context = trackingContext(generation),
+                    ),
+                )
+                generation.admission.observe(SystemClock.elapsedRealtime())
+            } ?: return
+        serviceScope.launch {
+            sendLocations(locations, LiveTrackingFixSource.CALLBACK, generation, ticket, fromSharedSource)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun enablePeriodicFallback(
+        generation: LiveTrackingGeneration,
+        deliveryWatch: LiveTrackingDeliveryWatch,
+        intervalMillis: Long,
+    ) {
         orchestration.withGeneration(generation) {
-            if (canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)) {
-                val context = trackingContext(generation)
-                periodicDiagnosticContext = context
-                recordLiveTrackingEvent(context, "generation_started")
-                locationCallback = callback
-                recordLiveTrackingEvent(context, "periodic_registration_requested")
+            if (locationCallback != null ||
+                !hasLocationPermission() ||
+                !canContinueLiveTrackingSend(isPaused, isStopping, stop = false, isPauseRequested = pauseRequested)
+            ) {
+                return@withGeneration
+            }
+            val request =
+                LocationRequest
+                    .Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis)
+                    .setMinUpdateIntervalMillis(intervalMillis)
+                    .setMaxUpdateDelayMillis(intervalMillis)
+                    .build()
+            val callback =
+                object : LocationCallback() {
+                    override fun onLocationResult(result: LocationResult) {
+                        val current = orchestration.withGeneration(generation) { locationCallback === this } ?: false
+                        if (current) {
+                            handlePeriodicLocations(generation, deliveryWatch, result.locations.toList(), false)
+                        }
+                    }
+                }
+            locationCallback = callback
+            val context = trackingContext(generation)
+            recordLiveTrackingEvent(context, "periodic_registration_requested")
+            try {
                 locationClient.requestLocationUpdates(request, callback, mainLooper).addOnCompleteListener { task ->
-                    val handled =
+                    val owned =
                         orchestration.withGeneration(generation) {
+                            if (locationCallback !== callback) return@withGeneration false
+                            if (!task.isSuccessful) {
+                                locationCallback = null
+                                LiveTrackingSessionStore.setError("Unable to register GPS updates")
+                            }
                             recordLiveTrackingDelivery(
                                 LiveTrackingDeliveryDiagnostic(
                                     if (task.isSuccessful) {
@@ -1813,19 +1905,22 @@ class LiveTrackingService : Service() {
                                     context = context,
                                 ),
                             )
-                            if (task.isSuccessful) {
-                                startDeliveryWatch(generation, deliveryWatch, intervalMillis)
-                            } else {
-                                LiveTrackingSessionStore.setError("Unable to register GPS updates")
-                            }
                             true
-                        }
-                    if (handled == null) {
-                        recordLiveTrackingEvent(context, "late_periodic_registration_cleanup_only")
-                        locationClient.removeLocationUpdates(callback)
-                    }
+                        } ?: false
+                    if (!owned) locationClient.removeLocationUpdates(callback)
                 }
+            } catch (_: SecurityException) {
+                locationCallback = null
+                LiveTrackingSessionStore.setError("Location permission is required")
             }
+        }
+    }
+
+    private fun disablePeriodicFallback(generation: LiveTrackingGeneration) {
+        orchestration.withGeneration(generation) {
+            val callback = locationCallback ?: return@withGeneration
+            locationCallback = null
+            runCatching { locationClient.removeLocationUpdates(callback) }
         }
     }
 
@@ -1835,6 +1930,8 @@ class LiveTrackingService : Service() {
             stopPeriodicUpdates = {
                 deliveryWatchJob?.cancel()
                 deliveryWatchJob = null
+                sharedLocationJob?.cancel()
+                sharedLocationJob = null
                 periodicDiagnosticContext?.let { recordLiveTrackingEvent(it, "generation_invalidated_$reason") }
                 periodicDiagnosticContext = null
                 val callback = locationCallback

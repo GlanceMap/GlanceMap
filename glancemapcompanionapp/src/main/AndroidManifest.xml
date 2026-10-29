@@ -46,7 +46,8 @@
         android:roundIcon="@mipmap/ic_launcher_companionapp_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.GlanceMap"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        tools:replace="android:usesCleartextTraffic">
 
         <meta-data
             android:name="com.google.android.gms.wearable.CHANNEL_BUFFER_SIZE"

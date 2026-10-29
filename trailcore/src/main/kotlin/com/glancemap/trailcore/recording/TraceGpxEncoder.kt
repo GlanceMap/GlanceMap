@@ -12,22 +12,38 @@ fun encodeRecordedTraceAsGpx(
     title: String,
     points: List<RecordingPoint>,
     summary: RecordedTraceSummary? = null,
+    captureMetadata: RecordingCaptureMetadata? = null,
+    exporterVersion: String? = captureMetadata?.appVersion,
 ): ByteArray {
     val writer = StringWriter()
     writer.append("""<?xml version="1.0" encoding="UTF-8"?>""")
+    val creator = exporterVersion?.takeIf { it.isNotBlank() }?.let { "GlanceMap $it" } ?: "GlanceMap"
     writer.append(
-        """<gpx version="1.1" creator="GlanceMap" xmlns="http://www.topografix.com/GPX/1/1" """ +
-            """xmlns:gmap="$GLANCEMAP_GPX_EXTENSION_NAMESPACE">""",
+        """<gpx version="1.1" creator="${escapeXmlText(creator)}" xmlns="http://www.topografix.com/GPX/1/1" """ +
+            """xmlns:gmap="$GLANCEMAP_GPX_EXTENSION_NAMESPACE" """ +
+            """xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">""",
     )
     writer.textTag("metadata") {
         textTag("name", title)
         textTag("extensions") {
             textTag("gmap:activityType", "recording")
+            textTag("gmap:exportedPointCount", points.size.toString())
+            textTag("gmap:exportedSegmentCount", recordedTraceSegments(points).size.toString())
+            textTag("gmap:recordingGeometry", "canonical_processed")
             summary?.let { writeRecordingSummaryExtensions(it) }
+            captureMetadata?.extensionValues()?.forEach { (key, value) -> textTag("gmap:$key", value) }
         }
     }
     writer.textTag("trk") {
         textTag("name", title)
+        captureMetadata?.let { metadata ->
+            listOfNotNull(metadata.deviceManufacturer, metadata.deviceModel)
+                .filter { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+                .joinToString(" ")
+                .takeIf { it.isNotBlank() }
+                ?.let { textTag("src", it) }
+        }
+        summary?.activityProfile?.takeIf { it.isNotBlank() }?.let { textTag("type", it) }
         recordedTraceSegments(points).forEach { segment ->
             textTag("trkseg") {
                 segment.forEach { point ->
@@ -134,12 +150,23 @@ data class RecordedTraceSummary(
     val smartElevationPressurePointCount: Long? = null,
     val smartElevationDemAnchorPointCount: Long? = null,
     val smartElevationGpsFallbackPointCount: Long? = null,
+    val cadenceAverageMethod: String? = null,
+    val recordingLocationCallbackCount: Int? = null,
+    val recordingQualityRejectedFixCount: Int? = null,
+    val recordingCountersScope: String? = null,
 )
 
 private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceSummary) {
     writeRecordingMotionSummary(summary)
     writeRecordingEnergySummary(summary)
     writeRecordingSensorSummary(summary)
+    summary.recordingLocationCallbackCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingLocationCallbackCount", it.toString())
+    }
+    summary.recordingQualityRejectedFixCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingQualityRejectedFixCount", it.toString())
+    }
+    summary.recordingCountersScope?.takeIf { it.isNotBlank() }?.let { textTag("gmap:recordingCountersScope", it) }
 }
 
 // Optional fields directly mirror the stable GPX summary schema; extracting them risks omissions.
@@ -236,8 +263,11 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     summary.cadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:cadenceSpm", it.toString())
     }
-    summary.averageCadenceSpm?.takeIf { it > 0 }?.let {
+    summary.averageCadenceSpm?.takeIf { it >= 0 }?.let {
         textTag("gmap:averageCadenceSpm", it.toString())
+    }
+    summary.cadenceAverageMethod?.takeIf { it.isNotBlank() }?.let {
+        textTag("gmap:cadenceAverageMethod", it)
     }
     summary.maxCadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:maxCadenceSpm", it.toString())
@@ -288,6 +318,11 @@ private fun StringWriter.writePointExtensions(point: RecordingPoint) {
             powerWatts,
             pressureHpa,
             segmentStartReason,
+            point.locationProvider,
+            point.locationSourceMode,
+            point.gpsVerticalAccuracyMeters,
+            point.gpsSpeedAccuracyMps,
+            point.locationAgeMillis,
         )
     if (extensionValues.all { it == null }) {
         return
@@ -311,6 +346,7 @@ private fun StringWriter.writePointExtensions(point: RecordingPoint) {
         }
         heartRateBpm?.let {
             textTag("gmap:heartRateBpm", it.toString())
+            if (it in 1..255) textTag("gpxtpx:TrackPointExtension") { textTag("gpxtpx:hr", it.toString()) }
         }
         stepCount?.let {
             textTag("gmap:stepCount", it.toString())
@@ -327,6 +363,15 @@ private fun StringWriter.writePointExtensions(point: RecordingPoint) {
         segmentStartReason?.let {
             textTag("gmap:segmentStartReason", it)
         }
+        point.locationProvider?.takeIf { it.isNotBlank() }?.let { textTag("gmap:locationProvider", it) }
+        point.locationSourceMode?.takeIf { it.isNotBlank() }?.let { textTag("gmap:locationSourceMode", it) }
+        point.gpsVerticalAccuracyMeters
+            ?.takeIf { it.isFinite() && it >= 0f }
+            ?.let { textTag("gmap:gpsVerticalAccuracyMeters", formatFloat(it)) }
+        point.gpsSpeedAccuracyMps
+            ?.takeIf { it.isFinite() && it >= 0f }
+            ?.let { textTag("gmap:gpsSpeedAccuracyMps", formatFloat(it)) }
+        point.locationAgeMillis?.takeIf { it >= 0L }?.let { textTag("gmap:locationAgeMillis", it.toString()) }
     }
 }
 

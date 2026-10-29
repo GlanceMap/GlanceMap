@@ -145,6 +145,8 @@ internal class PhoneElevationRepository(
         logTileFailures: Boolean = true,
     ) : this({ PhoneElevationStore(context).readDirectories() }, logTileFailures)
 
+    @Volatile internal var onTileAccess: ((Boolean, PhoneDemTile?) -> Unit)? = null
+
     private val demRootDirs: List<File>
         get() = demRootDirsProvider()
 
@@ -186,7 +188,11 @@ internal class PhoneElevationRepository(
     ): PhoneDemTile? {
         val tileId = phoneDemTileId(latitudeTile, longitudeTile)
         synchronized(tileCache) {
-            if (tileCache.containsKey(tileId)) return tileCache[tileId]
+            if (tileCache.containsKey(tileId)) {
+                val cached = tileCache[tileId]
+                onTileAccess?.invoke(true, cached)
+                return cached
+            }
         }
         val loaded =
             runCatching {
@@ -197,6 +203,7 @@ internal class PhoneElevationRepository(
                 if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not read DEM $tileId", error)
             }.getOrNull()
         synchronized(tileCache) { tileCache[tileId] = loaded }
+        onTileAccess?.invoke(false, loaded)
         return loaded
     }
 

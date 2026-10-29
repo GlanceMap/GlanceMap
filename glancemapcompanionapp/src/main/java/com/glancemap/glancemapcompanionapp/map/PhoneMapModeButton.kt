@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -22,6 +23,8 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
@@ -29,9 +32,14 @@ import com.glancemap.glancemapcompanionapp.R
 internal fun PhoneMapModeButton(
     mode: PhoneMapMode,
     onClick: () -> Unit,
-    onToggleOffline: () -> Unit,
+    autoRecenterEnabled: Boolean,
+    onToggleAutoRecenter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val autoCenterStatus =
+        stringResource(
+            if (autoRecenterEnabled) R.string.map_auto_center_enabled else R.string.map_auto_center_disabled,
+        )
     Surface(
         modifier =
             modifier
@@ -41,12 +49,12 @@ internal fun PhoneMapModeButton(
                 .combinedClickable(
                     role = Role.Button,
                     onClick = onClick,
-                    onLongClick = onToggleOffline,
+                    onLongClick = onToggleAutoRecenter,
                     onLongClickLabel =
                         stringResource(
-                            if (mode.isOffline) R.string.map_mode_offline_exit else R.string.map_mode_offline_enter,
+                            if (autoRecenterEnabled) R.string.map_auto_center_turn_off else R.string.map_auto_center_turn_on,
                         ),
-                ),
+                ).semantics { stateDescription = autoCenterStatus },
         shape = CircleShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -63,6 +71,15 @@ internal fun PhoneMapModeButton(
                 contentDescription = stringResource(R.string.map_mode_content_description, stringResource(mode.labelResource())),
                 tint = if (mode.isOffline) Color(0xFFE53935) else LocalContentColor.current,
             )
+            if (autoRecenterEnabled) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
         }
     }
 }

@@ -200,6 +200,7 @@ internal fun FilePickerScreen(
     var quickGuideMode by remember { mutableStateOf(QuickGuideMode.GENERAL) }
     var showHowToDialog by remember(autoOpenHelpOnFirstLaunch) { mutableStateOf(autoOpenHelpOnFirstLaunch) }
     var showDebugDialog by remember { mutableStateOf(false) }
+    var mapGpsOff by rememberSaveable { mutableStateOf(false) }
     var activeHomeArea by rememberSaveable {
         mutableStateOf(
             initialCompanionHomeArea(openLiveTrackingToken, openSendToWatchToken),
@@ -774,6 +775,7 @@ internal fun FilePickerScreen(
                     activeArea = activeHomeArea,
                     debugCaptureActive = debugCaptureState.active,
                     liveHikeSyncEnabled = liveHikeSyncEnabled,
+                    mapGpsOff = mapGpsOff,
                 ),
             actions =
                 CompanionMenuActions(
@@ -805,6 +807,7 @@ internal fun FilePickerScreen(
                         context.startActivity(PrivacyPolicyActivity.creditsAndLegalIntent(context))
                     },
                     onLiveHikeSyncChanged = { enabled -> viewModel.setLiveHikeSyncEnabled(context, enabled) },
+                    onMapGpsOffChanged = { enabled -> mapGpsOff = enabled },
                 ),
         ) {
             RetainedMapDestination(
@@ -812,6 +815,7 @@ internal fun FilePickerScreen(
                 mapContent = { mapVisible ->
                     mapSaveableState.SaveableStateProvider("phone-map") {
                         CompanionMapScreen(
+                            mapGpsOff = mapGpsOff,
                             isVisible = mapVisible,
                             weatherPointSelection = weatherPointSelection && mapVisible,
                             onWeatherPointSelected = { point, label ->

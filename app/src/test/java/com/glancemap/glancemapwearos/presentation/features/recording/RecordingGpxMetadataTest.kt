@@ -58,13 +58,10 @@ class RecordingGpxMetadataTest {
                     ),
                 point =
                     point().copy(
-                        locationQuality =
-                            RecordedLocationQuality(
-                                provider = "",
-                                verticalAccuracyMeters = Float.NaN,
-                                speedAccuracyMps = -1f,
-                                ageMillis = -1L,
-                            ),
+                        locationProvider = "",
+                        gpsVerticalAccuracyMeters = Float.NaN,
+                        gpsSpeedAccuracyMps = -1f,
+                        locationAgeMillis = -1L,
                     ),
             )
 
@@ -92,7 +89,11 @@ class RecordingGpxMetadataTest {
                     point().copy(
                         heartRateBpm = 142,
                         cadenceSpm = 164,
-                        locationQuality = RecordedLocationQuality("gps", "WATCH_GPS", 4.5f, 0.25f, 120L),
+                        locationProvider = "gps",
+                        locationSourceMode = "WATCH_GPS",
+                        gpsVerticalAccuracyMeters = 4.5f,
+                        gpsSpeedAccuracyMps = 0.25f,
+                        locationAgeMillis = 120L,
                     ),
             )
 

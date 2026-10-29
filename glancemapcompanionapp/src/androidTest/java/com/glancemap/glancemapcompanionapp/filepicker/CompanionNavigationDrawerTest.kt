@@ -42,6 +42,34 @@ class CompanionNavigationDrawerTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun gpsOffControlAtBottomTogglesMapBrowsingMode() {
+        val gpsOff = mutableStateOf(false)
+        composeRule.setContent {
+            val drawer = rememberDrawerState(DrawerValue.Open)
+            MaterialTheme {
+                companionNavigationDrawer(
+                    drawerState = drawer,
+                    state = CompanionMenuState(CompanionHomeArea.MAP, debugCaptureActive = false, mapGpsOff = gpsOff.value),
+                    actions =
+                        CompanionMenuActions(
+                            onNavigate = {},
+                            onDebug = {},
+                            onQuickGuide = {},
+                            onCreditsLegal = {},
+                            onMapGpsOffChanged = { gpsOff.value = it },
+                        ),
+                ) { Box(Modifier.fillMaxSize()) }
+            }
+        }
+        composeRule
+            .onNodeWithTag("map_gps_off", useUnmergedTree = true)
+            .assertIsOff()
+            .performClick()
+            .assertIsOn()
+        composeRule.onNodeWithTag("map_gps_off", useUnmergedTree = true).performClick().assertIsOff()
+    }
+
+    @Test
     fun menuUsesHalfTheWidthKeepsFooterVisibleAndBackPreservesMap() {
         lateinit var drawer: DrawerState
         var mapMounts = 0

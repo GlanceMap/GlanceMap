@@ -105,7 +105,7 @@ similar connection information.
 
 With online place/address search enabled, submitted place searches use Photon. French postal addresses are first tried with IGN Géoplateforme (Base Adresse Nationale), with Photon as a fallback. Photon receives the submitted text and map-centre coordinates to bias results; IGN receives the submitted address and postcode. Turn off online search to search downloaded POI files only. Search text and addresses are excluded from GlanceMap search diagnostic logs.
 
-The optional 3D terrain preview displays a snapshot of visible tracks, loaded POIs and the last location fix locally. It requests map and terrain tiles for the viewed area; it does not upload those tracks or POIs to a rendering service. The preview is unavailable while offline mode is enabled.
+The experimental 3D terrain view renders local elevation data, visible tracks and the last location fix on the device. Offline maps are rendered locally; when an online raster map is selected, the map provider receives requests for imagery tiles covering the viewed area. If online elevation is enabled and local elevation is missing, requests for terrain tiles also go to the existing Mapzen terrain service on AWS. Tracks and the location fix are not uploaded to a 3D rendering service.
 
 Providers used by the current app configuration include:
 
@@ -114,7 +114,7 @@ Providers used by the current app configuration include:
 - `refuges.info`
 - `overpass-api.de`
 - `tile.openstreetmap.org`
-- `tiles.mapterhorn.com` (hillshade and optional online 3D terrain preview)
+- `tiles.mapterhorn.com` (online hillshade)
 - `styles.maptoolkit.org`, `tiles.maptoolkit.org`, `fonts.maptoolkit.org`,
   `icons.maptoolkit.org` (when a Maptoolkit online map is selected)
 - `brouter.de`

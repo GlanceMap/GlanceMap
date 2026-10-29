@@ -9,6 +9,7 @@ import com.glancemap.trailcore.guidance.TrailGuidanceAlertSample
 import com.glancemap.trailcore.guidance.TrailGuidanceAlertTracker
 import com.glancemap.trailcore.guidance.TrailGuidanceInstruction
 import com.glancemap.trailcore.guidance.TrailGuidanceObservationSnapshot
+import com.glancemap.trailcore.guidance.message
 import org.mapsforge.core.model.LatLong
 import java.util.Locale
 import com.glancemap.trailcore.guidance.shouldAlertForTurn as trailShouldAlertForTurn
@@ -113,7 +114,7 @@ private fun TurnHapticAlertSample.toTrailSample(): TrailGuidanceAlertSample =
 private fun RouteInstruction.toTrailInstruction(): TrailGuidanceInstruction =
     TrailGuidanceInstruction(
         command = command,
-        message = message,
+        message = message ?: command.message,
         location = GeoPoint(latLong.latitude, latLong.longitude),
         trackPointIndex = trackPointIndex,
         distanceFromStartMeters = distanceFromStartMeters,

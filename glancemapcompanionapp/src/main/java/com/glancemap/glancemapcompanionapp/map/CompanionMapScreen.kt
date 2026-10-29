@@ -10,6 +10,7 @@ import android.graphics.PointF
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -772,6 +773,7 @@ internal fun CompanionMapScreen(
     onPlannedRouteFinished: ((String?) -> Unit)? = null,
     onPlanAcrossDays: ((String?) -> Unit)? = null,
     onOpenMenu: () -> Unit,
+    mapGpsOff: Boolean = false,
     isVisible: Boolean = true,
     initialTool: MapTool? = null,
     initialToolSettings: Boolean = false,
@@ -1028,7 +1030,9 @@ internal fun CompanionMapScreen(
         mutableStateOf(PhoneMapCameraState(defaultPhoneMapCamera))
     }
     val mapCamera = cameraState.camera
-    var terrainPreview by remember { mutableStateOf<PhoneTerrainPreviewData?>(null) }
+    var terrainPreview by remember { mutableStateOf<PhoneWorldWindPreview?>(null) }
+    val terrainCenter = remember { arrayOfNulls<GeoPoint>(1) }
+    val terrainTilt = remember { doubleArrayOf(PHONE_WORLDWIND_DEFAULT_TILT_DEGREES) }
     val storageMigration = remember(context) { PhoneOfflineStorageMigration(context.applicationContext) }
     var storageMigrationState by remember(storageMigration) {
         mutableStateOf(
@@ -1899,6 +1903,21 @@ internal fun CompanionMapScreen(
         if (!mode.isOffline && !hasLocationPermission) locationPermissionLauncher.launch(phoneMapLocationPermissions)
     }
 
+    LaunchedEffect(mapGpsOff) {
+        if (mapUiState.mapMode.isOffline != mapGpsOff) onToggleOfflineMode()
+    }
+
+    val onToggleAutoRecenter = {
+        val enabled = !mapSettings.autoRecenterEnabled
+        mapSettings = mapSettingsPreferences.save(mapSettings.copy(autoRecenterEnabled = enabled))
+        Toast
+            .makeText(
+                context,
+                if (enabled) R.string.map_auto_center_enabled else R.string.map_auto_center_disabled,
+                Toast.LENGTH_SHORT,
+            ).show()
+    }
+
     val onStorageChangeRequested: (PhoneOfflineStorageLocation) -> Unit = onStorageChangeRequested@{ target ->
         val current = offlineStorage.location()
         val pendingMigration = storageMigration.pending()
@@ -2189,6 +2208,7 @@ internal fun CompanionMapScreen(
                     comparisonThemeConfig = comparisonThemeConfig,
                     hasElevationData = hasElevationData,
                     mapSettings = mapSettings,
+                    terrain3dEnabled = terrainPreview != null,
                 ),
             general =
                 MapToolsGeneralState(
@@ -2832,6 +2852,26 @@ internal fun CompanionMapScreen(
         }
     }
     val baseOfflineMap = (mapUiState.source as? PhoneMapSource.Offline)?.map
+    LaunchedEffect(mapUiState.source, selectedOnlineSource, offlineThemeConfig, mapSettings.onlineElevationEnabled, mapSettings.demSource, terrainDataVersion) {
+        terrainPreview?.let { current ->
+            val center = terrainCenter[0]
+            terrainPreview =
+                current.copy(
+                    map = baseOfflineMap,
+                    onlineProvider = selectedOnlineProvider.takeIf { mapUiState.source == PhoneMapSource.Online },
+                    onlineElevationEnabled = mapSettings.onlineElevationEnabled,
+                    theme = offlineThemeConfig,
+                    demSource = mapSettings.demSource,
+                    terrainDataVersion = terrainDataVersion,
+                    tiltDegrees = terrainTilt[0],
+                    camera =
+                        mapCamera.copy(
+                            latitude = center?.latitude ?: mapCamera.latitude,
+                            longitude = center?.longitude ?: mapCamera.longitude,
+                        ),
+                )
+        }
+    }
     val requestedBaseSourceId =
         if (missingStartupOfflineMap) {
             "offline-preferred"
@@ -3045,6 +3085,58 @@ internal fun CompanionMapScreen(
         }
     }
 
+    val mapSearchActions =
+        PhoneMapSearchActions(
+            onFocus = { searchOpen = true },
+            onQueryChanged = searchViewModel.controller::edit,
+            onOnlineChanged = { enabled ->
+                generalSettingsPreferences.setOnlineSearchEnabled(enabled)
+                onlinePlaceSearchEnabled = enabled
+                searchViewModel.controller.setContext(enabled, poiSources.enabledFileNames())
+            },
+            onSearch = {
+                searchViewModel.controller.submit(
+                    PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
+                )
+            },
+            onResultSelected = { result ->
+                if (searchViewModel.controller.state.value.reply.results
+                        .any { it.id == result.id }
+                ) {
+                    searchViewModel.controller.cancel()
+                    searchOpen = false
+                    selectedPoi = null
+                    searchSelection = result
+                    if (weatherPointSelection) {
+                        onWeatherPointSelected(result.point, result.label)
+                    } else if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
+                        discoveryPickingPoint = false
+                        discoveryNearMePending = false
+                        discoverySearchPoint = result.point
+                        discoveryViewModel.controller.submit(
+                            TrailDiscoveryQuery(
+                                GeoPoint(result.point.latitude, result.point.longitude),
+                            ),
+                            discoveryViewModel.settings.value.enabled,
+                        )
+                    }
+                    shouldCenterOnInitialLocation = false
+                    hasFittedGpxOverlay = true
+                    if (terrainPreview == null && comparisonOwnsFollowAndCommands) {
+                        onComparisonCameraInput()
+                    } else {
+                        onBaseCameraInput()
+                    }
+                    mapUiState =
+                        mapUiState.requestSearchTarget(result.point, mapCamera.bearingDegrees)
+                }
+            },
+            onDismiss = {
+                searchOpen = false
+                searchViewModel.controller.cancel()
+            },
+        )
+
     MapToolScaffold(
         headerContent = header@{ tool ->
             if (!isVisible) return@header
@@ -3121,11 +3213,12 @@ internal fun CompanionMapScreen(
                 fullScreenPage = settingsPage,
                 toolbarVisible = mapToolbarVisible,
                 layersActive =
-                    mapSettings.hasActiveMapLayer(
-                        offlineBase = mapUiState.source is PhoneMapSource.Offline,
-                        hasElevationData = hasElevationData,
-                        comparisonActive = offlineComparisonActive || onlineComparisonActive,
-                    ),
+                    terrainPreview != null ||
+                        mapSettings.hasActiveMapLayer(
+                            offlineBase = mapUiState.source is PhoneMapSource.Offline,
+                            hasElevationData = hasElevationData,
+                            comparisonActive = offlineComparisonActive || onlineComparisonActive,
+                        ),
                 maptoolkitAttributionVisible =
                     maptoolkitAttributionRequired(activeOnlineBaseSource, activeOnlineComparisonSource),
             ),
@@ -3151,7 +3244,122 @@ internal fun CompanionMapScreen(
                 },
                 onFeatureSettings = { mapUiState = mapUiState.showFeatureSettings() },
             ),
-        mapContent = {
+        mapContent = map@{
+            val preview = terrainPreview?.takeIf { isVisible }
+            if (preview != null) {
+                Box(Modifier.fillMaxSize()) {
+                    val worldWindLocation =
+                        locationState.location
+                            ?.takeIf { locationState.hasPermission }
+                            ?.let { GeoPoint(it.latitude, it.longitude) }
+                    phoneWorldWindSurface(
+                        preview = preview,
+                        onlineElevation = onlineElevationRepository,
+                        live =
+                            PhoneWorldWindLiveState(
+                                tracks = gpxOverlayState.segments.takeIf { gpxOverlayState.isVisible }.orEmpty(),
+                                trackColor = gpxOverlayState.settings.trackColorArgb,
+                                location = worldWindLocation,
+                                locationFresh = locationMarkerFresh,
+                                mode = mapUiState.mapMode,
+                                compassBearingDegrees = compassPresentation.mapBearingDegrees,
+                                cameraCommand = mapUiState.cameraCommand,
+                                mapSettings = mapSettings,
+                            ),
+                        callbacks =
+                            PhoneWorldWindCallbacks(
+                                onCameraChanged = { camera, tilt ->
+                                    terrainCenter[0] = GeoPoint(camera.latitude, camera.longitude)
+                                    terrainTilt[0] = tilt
+                                    cameraState = PhoneMapCameraState(camera)
+                                    liveMapPosition =
+                                        PhoneMapLiveMetricsPosition(
+                                            target = PhoneMapCoordinate(camera.latitude, camera.longitude),
+                                            userScreenPoint = null,
+                                            origin = worldWindLocation?.let { PhoneMapCoordinate(it.latitude, it.longitude) },
+                                        )
+                                },
+                                onUserPan = {
+                                    mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation(mapCamera.bearingDegrees))
+                                },
+                                onUserRotation = { bearing ->
+                                    mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachAfterManualRotation(bearing))
+                                },
+                                onCommandHandled = { commandId -> mapUiState = mapUiState.consumeCommand(commandId) },
+                            ),
+                    )
+                    mapControls(
+                        onOpenMenu = onOpenMenu,
+                        onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
+                        onZoomOut = { mapUiState = mapUiState.requestZoom(-1) },
+                        camera = mapCamera,
+                        compassHeadingDegrees = compassState.headingDegrees.takeIf { compassState.isRenderable && !mapUiState.mapMode.isOffline },
+                        mapMode = mapUiState.mapMode,
+                        mapSettings = mapSettings,
+                        onCycleMapMode = onMapModePressed,
+                        onToggleAutoRecenter = onToggleAutoRecenter,
+                        northIndicatorVisible = mapSettings.northIndicatorMode.isVisibleFor(mapUiState.mapMode, compassState.isRenderable),
+                        showModeControl = true,
+                        toolbarVisible = mapToolbarVisible,
+                    )
+                    Column(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        phoneMapSearchControl(
+                            presentation =
+                                PhoneMapSearchControlState(
+                                    search = searchState,
+                                    expanded = searchOpen,
+                                    camera = mapCamera,
+                                    isMetric = generalSettings.isMetric,
+                                ),
+                            actions = mapSearchActions,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp),
+                        )
+                        if (isVisible && searchOpen) PhoneMapSearchPanel(state = searchState, actions = mapSearchActions)
+                    }
+                    searchSelection?.takeUnless { searchOpen }?.let { result ->
+                        PhoneMapPopupCard(
+                            title = result.label,
+                            onDismiss = { searchSelection = null },
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 128.dp),
+                        ) {
+                            if (result.detail.isNotBlank()) {
+                                Text(
+                                    result.detail,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                    phoneMapLiveMetrics(
+                        location = mapLocation,
+                        elevationMeters = liveMapElevation,
+                        position = liveMapPosition,
+                        mapMode = mapUiState.mapMode,
+                        mapSettings = mapSettings,
+                        isMetric = generalSettings.isMetric,
+                    )
+                    mapLocationMessage?.let { messageResource ->
+                        PhoneMapPopupCard(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp),
+                            onDismiss = { mapLocationMessage = null },
+                        ) { Text(stringResource(messageResource)) }
+                    }
+                }
+                return@map
+            }
             Box(modifier = Modifier.fillMaxSize().onSizeChanged { hikeMapViewport = it }) {
                 if (
                     storageMigrationState.phase.isPhoneStorageMigrationActive() ||
@@ -4186,57 +4394,6 @@ internal fun CompanionMapScreen(
                         mapUiState.mapMode,
                         compassState.isRenderable,
                     )
-                val mapSearchActions =
-                    PhoneMapSearchActions(
-                        onFocus = { searchOpen = true },
-                        onQueryChanged = searchViewModel.controller::edit,
-                        onOnlineChanged = { enabled ->
-                            generalSettingsPreferences.setOnlineSearchEnabled(enabled)
-                            onlinePlaceSearchEnabled = enabled
-                            searchViewModel.controller.setContext(enabled, poiSources.enabledFileNames())
-                        },
-                        onSearch = {
-                            searchViewModel.controller.submit(
-                                PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
-                            )
-                        },
-                        onResultSelected = { result ->
-                            if (searchViewModel.controller.state.value.reply.results
-                                    .any { it.id == result.id }
-                            ) {
-                                searchViewModel.controller.cancel()
-                                searchOpen = false
-                                selectedPoi = null
-                                searchSelection = result
-                                if (weatherPointSelection) {
-                                    onWeatherPointSelected(result.point, result.label)
-                                } else if (discoveryOpen && mapUiState.toolPanel.activeTool == MapTool.GPX) {
-                                    discoveryPickingPoint = false
-                                    discoveryNearMePending = false
-                                    discoverySearchPoint = result.point
-                                    discoveryViewModel.controller.submit(
-                                        TrailDiscoveryQuery(
-                                            GeoPoint(result.point.latitude, result.point.longitude),
-                                        ),
-                                        discoveryViewModel.settings.value.enabled,
-                                    )
-                                }
-                                shouldCenterOnInitialLocation = false
-                                hasFittedGpxOverlay = true
-                                if (comparisonOwnsFollowAndCommands) {
-                                    onComparisonCameraInput()
-                                } else {
-                                    onBaseCameraInput()
-                                }
-                                mapUiState =
-                                    mapUiState.requestSearchTarget(result.point, mapCamera.bearingDegrees)
-                            }
-                        },
-                        onDismiss = {
-                            searchOpen = false
-                            searchViewModel.controller.cancel()
-                        },
-                    )
                 mapControls(
                     onOpenMenu = onOpenMenu,
                     onZoomIn = { mapUiState = mapUiState.requestZoom(1) },
@@ -4246,7 +4403,7 @@ internal fun CompanionMapScreen(
                     mapMode = mapUiState.mapMode,
                     mapSettings = mapSettings,
                     onCycleMapMode = onMapModePressed,
-                    onToggleOfflineMode = onToggleOfflineMode,
+                    onToggleAutoRecenter = onToggleAutoRecenter,
                     northIndicatorVisible = northIndicatorVisible,
                     showModeControl = !routeCreationControlsVisible,
                     toolbarVisible = mapToolbarVisible,
@@ -4728,27 +4885,24 @@ internal fun CompanionMapScreen(
                         onComparisonTransparencyChanged = { percent ->
                             mapUiState = mapUiState.setComparisonTransparency(percent)
                         },
-                        onOpenTerrainPreview =
-                            if (mapUiState.mapMode.isOffline) {
-                                null
+                        onOpenTerrainPreview = {
+                            if (terrainPreview != null) {
+                                terrainPreview = null
                             } else {
-                                {
-                                    terrainPreview =
-                                        PhoneTerrainPreviewData(
-                                            camera = mapCamera,
-                                            source = selectedOnlineSource,
-                                            tracks =
-                                                gpxOverlayState.segments
-                                                    .takeIf { gpxOverlayState.isVisible }
-                                                    .orEmpty(),
-                                            pois = pois.takeIf { mapUiState.contentVisibility.pois }.orEmpty(),
-                                            location =
-                                                locationState.location
-                                                    .takeIf { locationState.hasPermission }
-                                                    ?.let { GeoPoint(it.latitude, it.longitude) },
-                                        )
-                                }
-                            },
+                                terrainCenter[0] = GeoPoint(mapCamera.latitude, mapCamera.longitude)
+                                terrainTilt[0] = PHONE_WORLDWIND_DEFAULT_TILT_DEGREES
+                                terrainPreview =
+                                    PhoneWorldWindPreview(
+                                        map = baseOfflineMap,
+                                        onlineProvider = selectedOnlineProvider.takeIf { mapUiState.source == PhoneMapSource.Online },
+                                        onlineElevationEnabled = mapSettings.onlineElevationEnabled,
+                                        theme = offlineThemeConfig,
+                                        demSource = mapSettings.demSource,
+                                        terrainDataVersion = terrainDataVersion,
+                                        camera = mapCamera,
+                                    )
+                            }
+                        },
                         onLayerMapSettingsChanged = { settings ->
                             mapSettings = mapSettingsPreferences.save(settings)
                         },
@@ -4791,10 +4945,6 @@ internal fun CompanionMapScreen(
         },
     )
 
-    terrainPreview?.takeIf { isVisible && !mapUiState.mapMode.isOffline }?.let { preview ->
-        phoneTerrainPreviewDialog(preview, onDismiss = { terrainPreview = null })
-    }
-
     recordingState.completedRecording?.takeIf { mapActive }?.let { completed ->
         phoneRecordingCompletedDialog(
             recording = completed,
@@ -4806,7 +4956,7 @@ internal fun CompanionMapScreen(
     selectedGpxAnalysis?.takeIf { isVisible }?.let { item ->
         PhoneMapGpxAnalysisDialog(
             item = item,
-            settings = gpxSettings,
+            settings = gpxCustomization.settingsForFile(item.libraryKey, gpxSettings, libraryOrganization),
             generalSettings = generalSettings,
             onDismiss = { selectedGpxAnalysisId = null },
         )
@@ -5867,7 +6017,7 @@ private fun mapControls(
     mapMode: PhoneMapMode,
     mapSettings: PhoneMapSettings,
     onCycleMapMode: () -> Unit,
-    onToggleOfflineMode: () -> Unit,
+    onToggleAutoRecenter: () -> Unit,
     northIndicatorVisible: Boolean,
     showModeControl: Boolean,
     toolbarVisible: Boolean,
@@ -5929,7 +6079,8 @@ private fun mapControls(
             PhoneMapModeButton(
                 mode = mapMode,
                 onClick = onCycleMapMode,
-                onToggleOffline = onToggleOfflineMode,
+                autoRecenterEnabled = mapSettings.autoRecenterEnabled,
+                onToggleAutoRecenter = onToggleAutoRecenter,
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)

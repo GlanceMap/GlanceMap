@@ -567,6 +567,11 @@
     <string name="map_mode_offline">Offline mode (tap for north up)</string>
     <string name="map_mode_offline_enter">Enable offline map browsing</string>
     <string name="map_mode_offline_exit">Return to GPS follow</string>
+    <string name="map_gps_off">Map GPS off</string>
+    <string name="map_auto_center_enabled">Auto-center on</string>
+    <string name="map_auto_center_disabled">Auto-center off</string>
+    <string name="map_auto_center_turn_on">Turn auto-center on</string>
+    <string name="map_auto_center_turn_off">Turn auto-center off</string>
     <string name="map_mode_heading_up">Heading up</string>
     <string name="map_mode_follow">Follow / recenter</string>
     <string name="map_mode_recenter">Recenter</string>
@@ -1865,4 +1870,10 @@
     <string name="hike_elevation_ft">%1$d ft</string>
     <string name="hike_duration_min">%1$d min</string>
     <string name="hike_duration_hours">%1$d h %2$d min</string>
+    <string name="phone_worldwind_vector_unavailable">3D terrain is not yet available for this online map style. Choose a raster map or turn off the 3D terrain layer.</string>
+    <string name="phone_worldwind_unavailable">3D terrain could not start. Turn off the 3D terrain layer and try again.</string>
+    <string name="phone_worldwind_online_dem_disabled">No local elevation data. Enable online elevation to show terrain.</string>
+    <string name="phone_worldwind_online_dem_unavailable">Online elevation is unavailable here. Terrain may be flat.</string>
+    <string name="phone_worldwind_missing_dem">No local elevation data. Terrain is flat.</string>
+    <string name="phone_worldwind_no_dem_here">No valid elevation at this location. Terrain may be flat.</string>
 </resources>

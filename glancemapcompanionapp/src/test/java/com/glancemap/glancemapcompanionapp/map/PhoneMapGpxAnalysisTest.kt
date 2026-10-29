@@ -8,6 +8,22 @@ import org.junit.Test
 
 class PhoneMapGpxAnalysisTest {
     @Test
+    fun elevationProfileRetainsGapEvenWhenBoundaryPointIsDownsampled() {
+        val points =
+            (0..9).map { index ->
+                TrailPoint(
+                    location = GeoPoint(46.0, 6.0 + index * 0.001),
+                    elevationMeters = index.toDouble(),
+                    startsNewSegment = index == 4,
+                )
+            }
+        val item = PhoneMapGpxItem("route", "Route", PhoneMapGpxTrack("route", points), enabled = true)
+        val analysis = buildPhoneMapGpxAnalysis(item, PhoneMapGpxSettings(), PhoneGeneralSettings(), maxSamples = 4)
+
+        assertEquals(listOf(false, false, true, false), analysis.samples.map { it.startsNewSegment })
+    }
+
+    @Test
     fun statisticsUseCurrentSpeedAndElevationSettings() {
         val item =
             PhoneMapGpxItem(

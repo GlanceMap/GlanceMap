@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.core.routing
 
 import android.content.Context
+import android.content.res.Resources
 import btools.router.OsmNodeNamed
 import btools.router.RoutingContext
 import btools.router.RoutingEngine

@@ -206,6 +206,12 @@ android {
         buildConfigField("String", "TRACESTRACK_API_KEY", "\"$tracestrackApiKey\"")
     }
 
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     signingConfigs {
         create("release") {
             if (hasReleaseSigning) {
@@ -286,6 +292,7 @@ kotlin {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
@@ -323,6 +330,10 @@ dependencies {
     // Native map picker
     implementation(libs.maplibre.android)
     implementation(libs.okhttp)
+    implementation("earth.worldwind:worldwind:2.1.1") {
+        // Mapsforge already supplies the identical AndroidSVG 1.4 classes.
+        exclude(group = "com.caverock", module = "androidsvg-aar")
+    }
     implementation(libs.mapsforge.map)
     implementation(libs.mapsforge.map.android)
     implementation(libs.mapsforge.themes)

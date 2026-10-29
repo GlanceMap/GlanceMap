@@ -84,7 +84,15 @@ class RecordingTrackSmoothingParityTest {
         }
         val flushed = flushCanonicalRecordingTail(points, options)
         operationHash = mixAppend(operationHash, flushed)
-        val gpx = encodeRecordedTraceAsGpx(title = "Equivalence", points = flushed.points)
+        // Main adds export metadata and a Garmin namespace; compare the original geometry and point content.
+        val gpx =
+            encodeRecordedTraceAsGpx(title = "Equivalence", points = flushed.points)
+                .toString(Charsets.UTF_8)
+                .replace(" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\"", "")
+                .replace(Regex("<gmap:exportedPointCount>.*?</gmap:exportedPointCount>"), "")
+                .replace(Regex("<gmap:exportedSegmentCount>.*?</gmap:exportedSegmentCount>"), "")
+                .replace("<gmap:recordingGeometry>canonical_processed</gmap:recordingGeometry>", "")
+                .toByteArray(Charsets.UTF_8)
         return ReplaySignature(
             pointsHash = hashPoints(flushed.points),
             operationHash = operationHash.toULong().toString(16),

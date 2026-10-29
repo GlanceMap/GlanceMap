@@ -150,6 +150,7 @@ internal data class MapToolsLayerState(
     val mapSettings: PhoneMapSettings,
     val baseThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
     val comparisonThemeConfig: PhoneOfflineThemeConfig = PhoneOfflineThemeCatalog.defaultConfig,
+    val terrain3dEnabled: Boolean = false,
 )
 
 internal data class MapToolsPanelState(

@@ -17,6 +17,27 @@ typealias RecordedTracePoint = RecordingPoint
 /** Mapsforge conversion stays at the watch adapter boundary. */
 val RecordingPoint.latLong: LatLong get() = LatLong(location.latitude, location.longitude)
 
+val RecordingPoint.locationQuality: RecordedLocationQuality?
+    get() =
+        if (listOf(
+                locationProvider,
+                locationSourceMode,
+                gpsVerticalAccuracyMeters,
+                gpsSpeedAccuracyMps,
+                locationAgeMillis,
+            ).all { it == null }
+        ) {
+            null
+        } else {
+            RecordedLocationQuality(
+                locationProvider,
+                locationSourceMode,
+                gpsVerticalAccuracyMeters,
+                gpsSpeedAccuracyMps,
+                locationAgeMillis,
+            )
+        }
+
 @Suppress("LongParameterList")
 fun RecordedTracePoint(
     latLong: LatLong,
@@ -35,6 +56,7 @@ fun RecordedTracePoint(
     startsNewSegment: Boolean = false,
     segmentStartReason: String? = null,
     trajectoryFinalized: Boolean = false,
+    locationQuality: RecordedLocationQuality? = null,
 ): RecordedTracePoint =
     RecordingPoint(
         location = GeoPoint(latLong.latitude, latLong.longitude),
@@ -53,6 +75,11 @@ fun RecordedTracePoint(
         startsNewSegment = startsNewSegment,
         segmentStartReason = segmentStartReason,
         trajectoryFinalized = trajectoryFinalized,
+        locationProvider = locationQuality?.provider,
+        locationSourceMode = locationQuality?.sourceMode,
+        gpsVerticalAccuracyMeters = locationQuality?.verticalAccuracyMeters,
+        gpsSpeedAccuracyMps = locationQuality?.speedAccuracyMps,
+        locationAgeMillis = locationQuality?.ageMillis,
     )
 
 internal const val RECORDING_ACCURACY_INTERPRETATION_RAW = RAW_ACCURACY

@@ -28,6 +28,7 @@ import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
@@ -57,12 +58,16 @@ import com.glancemap.trailcore.guidance.updateGuidanceOffRouteConfirmation
 import com.glancemap.trailcore.profile.TrailPoint
 import com.glancemap.trailcore.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1
 import com.glancemap.trailcore.recording.RecordedTraceSummary
+import com.glancemap.trailcore.recording.RecordingAutoResumeFix
+import com.glancemap.trailcore.recording.RecordingAutoResumeRecoveryBuffer
 import com.glancemap.trailcore.recording.RecordingCallbackGapTracker
+import com.glancemap.trailcore.recording.RecordingCaptureMetadata
 import com.glancemap.trailcore.recording.RecordingDelayedDeliveryEvidence
 import com.glancemap.trailcore.recording.RecordingDistanceInput
 import com.glancemap.trailcore.recording.RecordingElevationProfilePoint
 import com.glancemap.trailcore.recording.RecordingFixQualityGate
 import com.glancemap.trailcore.recording.RecordingFixSample
+import com.glancemap.trailcore.recording.RecordingGpsConfirmationWindow
 import com.glancemap.trailcore.recording.RecordingHybridElevationFilter
 import com.glancemap.trailcore.recording.RecordingHybridElevationInput
 import com.glancemap.trailcore.recording.RecordingMotionSample
@@ -77,9 +82,11 @@ import com.glancemap.trailcore.recording.RecordingSessionLifecycle
 import com.glancemap.trailcore.recording.RecordingSessionLifecycleState
 import com.glancemap.trailcore.recording.RecordingSessionPhase
 import com.glancemap.trailcore.recording.RecordingSettings
+import com.glancemap.trailcore.recording.RecordingStepResumeEvidence
 import com.glancemap.trailcore.recording.RecordingTerminalLocationRefreshInput
 import com.glancemap.trailcore.recording.RecordingWatchGpsDistanceGeometry
 import com.glancemap.trailcore.recording.appendRecordingSessionPoint
+import com.glancemap.trailcore.recording.averageWalkingCadence
 import com.glancemap.trailcore.recording.buildRecordingElevationProfileCumulative
 import com.glancemap.trailcore.recording.effectiveRecordingAutoPauseGpsIntervalMillis
 import com.glancemap.trailcore.recording.effectiveRecordingAutoPauseStartMillis
@@ -199,6 +206,7 @@ private data class PhoneRecordingDraft(
     val autoPauseStartedAtElapsedRealtimeMillis: Long? = null,
     val gpsActiveDurationMillis: Long = 0L,
     val sessionStepCount: Int? = null,
+    val captureMetadata: RecordingCaptureMetadata? = null,
 )
 
 private fun safeRecordingId(value: String?): String =
@@ -211,6 +219,11 @@ private data class PhoneRecordingLocationBatch(
     val intervalMillis: Long,
     val deliveryIntervalMillis: Long,
     val locations: List<Location>,
+)
+
+private data class BufferedPhoneRecordingLocation(
+    val location: Location,
+    val receivedElapsedMillis: Long,
 )
 
 private class PhoneRecordingDraftStore(
@@ -263,6 +276,7 @@ internal class PhoneRecordingService :
     private val elevationFilter = RecordingHybridElevationFilter()
     private val vibrationTracker = RecordingProgressVibrationTracker()
     private val callbackGeneration = AtomicLong(0L)
+    private val sharedLocationOwner = Any()
     private val libraryRepository by lazy { RouteLibraryRepository(applicationContext) }
     private val draftStore by lazy { PhoneRecordingDraftStore(applicationContext) }
     private val guidanceDraftStore by lazy { PhoneGuidanceDraftStore(applicationContext) }
@@ -296,13 +310,15 @@ internal class PhoneRecordingService :
 
     @Volatile private var activeLocationGeneration = 0L
     private var lastAcceptedElapsedRealtimeMillis: Long? = null
+    private val autoResumeRecovery = RecordingAutoResumeRecoveryBuffer<BufferedPhoneRecordingLocation>()
     private var autoPauseStartedAtElapsedRealtimeMillis: Long? = null
     private var autoPauseCadenceJob: Job? = null
 
     @Volatile private var latestStepCount: Int? = null
 
     @Volatile private var sessionStepCount: Int? = null
-    private var lastSensorStepCount: Int? = null
+
+    @Volatile private var lastSensorStepCount: Int? = null
     private var gpsActiveDurationMillis = 0L
     private var effectiveIntervalMillis = 0L
     private var timeVibrationJob: Job? = null
@@ -313,6 +329,7 @@ internal class PhoneRecordingService :
     private var screenReceiverRegistered = false
     private var profile = PhoneActivityProfile.HIKE
     private var recordingId = UUID.randomUUID().toString()
+    private var captureMetadata: RecordingCaptureMetadata? = null
     private var settings = PhoneRecordingSettings()
     private var counters = PhoneRecordingCounters()
 
@@ -485,6 +502,13 @@ internal class PhoneRecordingService :
                         }
                         latestStepCount = count
                         lastSensorStepCount = count
+                        val measured = event.timestamp / NANOS_PER_MILLISECOND
+                        val advanced = previous != null && count > previous
+                        serviceScope.launch {
+                            locationLock.withLock {
+                                processAutoResumeStep(rawCount, measured, SystemClock.elapsedRealtime(), advanced)
+                            }
+                        }
                     }
         }
     }
@@ -527,6 +551,21 @@ internal class PhoneRecordingService :
         registerRecordingSensors()
         registerScreenReceiver()
         startLocationUpdates()
+        captureMetadata =
+            RecordingCaptureMetadata(
+                appVersion = BuildConfig.VERSION_NAME,
+                appBuild = BuildConfig.VERSION_CODE,
+                deviceManufacturer = Build.MANUFACTURER,
+                deviceModel = Build.MODEL,
+                androidVersion = Build.VERSION.RELEASE,
+                androidApiLevel = Build.VERSION.SDK_INT,
+                androidBuild = Build.DISPLAY,
+                locationSourceModeAtStart = "PHONE_FUSED",
+                sampleIntervalSecondsAtStart = settings.sampleIntervalSeconds,
+                effectiveLocationIntervalMillisAtStart = effectiveIntervalMillis.takeIf { it > 0L },
+                elevationSourceAtStart = settings.elevationSource,
+                powerSaveModeAtStart = getSystemService(PowerManager::class.java)?.isPowerSaveMode,
+            )
         persistDraftNow()
         logEvent("session_started generation=${lifecycleState.generation} profile=${profile.storageValue}")
         startSummaryTimer()
@@ -550,6 +589,7 @@ internal class PhoneRecordingService :
         val configuredProfile = generalSettingsPreferences.load().activityProfile
         profile = PhoneActivityProfile.fromStorageValue(draft.activityProfile ?: configuredProfile.storageValue)
         recordingId = safeRecordingId(draft.recordingId)
+        captureMetadata = draft.captureMetadata
         val state =
             sessionLifecycle.recover(
                 startedAtMillis = draft.startedAtMillis,
@@ -675,8 +715,10 @@ internal class PhoneRecordingService :
         val current = PhoneRecordingSessionStore.state.value
         if (!current.session.acceptsFixes) return
         clearAutoPauseCadence()
-        stationarySinceElapsedMillis = null
-        movingSinceElapsedMillis = null
+        autoResumeRecovery.clear()
+        stationaryWindow.reset()
+        movingWindow.reset()
+        stationaryAnchor = null
         val state = sessionLifecycle.pause(System.currentTimeMillis())
         val finalized = flushTrackTail(current.copy(session = state))
         publish(finalized.copy(session = state, message = PhoneRecordingMessage.PAUSED))
@@ -695,14 +737,17 @@ internal class PhoneRecordingService :
         val current = PhoneRecordingSessionStore.state.value
         if (current.session.phase != RecordingSessionPhase.PAUSED) return
         clearAutoPauseCadence()
+        autoResumeRecovery.clear()
+        lastSensorStepCount = null
         val state = sessionLifecycle.resume(System.currentTimeMillis())
         fixQualityGate.reset()
         movementGate.reset()
         distanceGeometry.reset()
         lastAcceptedElapsedRealtimeMillis = null
         callbackGapTracker.reset()
-        stationarySinceElapsedMillis = null
-        movingSinceElapsedMillis = null
+        stationaryWindow.reset()
+        movingWindow.reset()
+        stationaryAnchor = null
         publish(current.copy(session = state, message = PhoneRecordingMessage.RECORDING))
         startForegroundNotification()
         startLocationUpdates()
@@ -771,6 +816,8 @@ internal class PhoneRecordingService :
                             title = getString(R.string.phone_rec_activity_name),
                             points = immutablePoints,
                             summary = summary,
+                            captureMetadata = captureMetadata,
+                            exporterVersion = BuildConfig.VERSION_NAME,
                         )
                 }
             } catch (cancelled: CancellationException) {
@@ -915,12 +962,14 @@ internal class PhoneRecordingService :
         callbackGapTracker.updateEffectiveInterval(intervalMillis)
         val oldGeneration = callbackGeneration.incrementAndGet()
         activeLocationGeneration = oldGeneration
+        PhoneSharedLocationStore.start(sharedLocationOwner, oldGeneration, intervalMillis)
         locationCallback?.let(locationClient::removeLocationUpdates)
         val callback =
             object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
                     val locations =
                         orderRecordingFixBatch(result.locations) { location -> location.elapsedRealtimeNanos }
+                    locations.lastOrNull()?.let { PhoneSharedLocationStore.offer(sharedLocationOwner, oldGeneration, it) }
                     locationBatchQueue.trySend(
                         PhoneRecordingLocationBatch(
                             generation = oldGeneration,
@@ -1654,16 +1703,18 @@ internal class PhoneRecordingService :
     }
 
     // Keep the established acceptance order intact; these early exits correspond to distinct fix gates.
-    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "LongParameterList", "ReturnCount")
     private suspend fun processLocation(
         location: Location,
         generation: Long,
         requestedIntervalMillis: Long,
         deliveryIntervalMillis: Long = requestedIntervalMillis,
         terminalRefresh: Boolean = false,
+        replaying: Boolean = false,
+        receivedElapsedMillis: Long = SystemClock.elapsedRealtime(),
     ) {
         if (generation != activeLocationGeneration) return
-        processGuidanceLocation(location, generation, deliveryIntervalMillis)
+        if (!replaying) processGuidanceLocation(location, generation, deliveryIntervalMillis)
         val phase = sessionLifecycle.state
         val canMonitorAutoPause = canMonitorAutoResume(phase)
         if ((!phase.acceptsFixes && !canMonitorAutoPause) || requestedIntervalMillis == Long.MAX_VALUE) return
@@ -1710,14 +1761,57 @@ internal class PhoneRecordingService :
                 speedMps = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it >= 0f },
                 effectiveAccuracyMeters = accuracyProvenance.effectiveAccuracyMeters,
                 accuracyInterpretation = accuracyProvenance.interpretation,
+                locationProvider = location.provider,
+                locationSourceMode = "PHONE_FUSED",
+                gpsVerticalAccuracyMeters =
+                    location.verticalAccuracyMeters.takeIf {
+                        location.hasVerticalAccuracy() && it.isFinite() && it >= 0f
+                    },
+                gpsSpeedAccuracyMps =
+                    location.speedAccuracyMetersPerSecond.takeIf {
+                        location.hasSpeedAccuracy() && it.isFinite() && it >= 0f
+                    },
+                locationAgeMillis = (receivedElapsedMillis - elapsedMillis).takeIf { it >= 0L },
             )
         val priorPoint = current.points.lastOrNull()
         if (current.session.phase == RecordingSessionPhase.PAUSED) {
+            if (movingWindow.crossesGap(elapsedMillis, effectiveIntervalMillis)) autoResumeRecovery.clear()
+            val eligible =
+                current.session.autoPaused &&
+                    settings.autoPauseMode(profile) != RecordingSettings.RECORDING_AUTO_PAUSE_OFF &&
+                    priorPoint != null &&
+                    timeMillis > priorPoint.timeMillis &&
+                    isAutoResumeMoving(preliminary, priorPoint)
+            autoResumeRecovery.offer(
+                RecordingAutoResumeFix(
+                    value = BufferedPhoneRecordingLocation(Location(location), receivedElapsedMillis),
+                    point = preliminary,
+                    elapsedMillis = elapsedMillis,
+                    speedAccuracyMps = if (location.hasSpeedAccuracy()) location.speedAccuracyMetersPerSecond else null,
+                    source = location.provider.orEmpty(),
+                ),
+                eligible = eligible,
+            )
+            val restart = autoResumeRecovery.recover(profileId)
             if (!tryAutoResume(current, preliminary, elapsedMillis)) return
+            autoResumeRecovery.clear()
+            if (restart.isNotEmpty()) {
+                restart.forEach { recovered ->
+                    processLocation(
+                        recovered.value.location,
+                        activeLocationGeneration,
+                        requestedIntervalMillis,
+                        deliveryIntervalMillis,
+                        replaying = true,
+                        receivedElapsedMillis = recovered.value.receivedElapsedMillis,
+                    )
+                }
+                return
+            }
             current = PhoneRecordingSessionStore.state.value
             previousElapsed = null
         }
-        if (shouldAutoPause(current, preliminary, elapsedMillis)) return
+        if (!replaying && shouldAutoPause(current, preliminary, elapsedMillis)) return
 
         val motion =
             movementGate.evaluate(
@@ -1890,7 +1984,7 @@ internal class PhoneRecordingService :
             }
     }
 
-    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     private suspend fun shouldAutoPause(
         current: PhoneRecordingUiState,
         point: RecordingPoint,
@@ -1904,13 +1998,20 @@ internal class PhoneRecordingService :
         val started = current.session.startedAtMillis ?: return false
         if (System.currentTimeMillis() - started < AUTO_PAUSE_GRACE_MILLIS || current.points.size < 2) return false
         val bike = profile == PhoneActivityProfile.BIKE
+        if (!bike && elapsedMillis - lastStepMotionElapsedMillis in 0L..15_000L) {
+            stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
+            stationaryAnchor = null
+            return false
+        }
         val accuracy =
             point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: run {
-                stationarySinceElapsedMillis = null
+                stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
+                stationaryAnchor = null
                 return false
             }
         if (accuracy > (if (bike) BIKE_AUTO_PAUSE_MAX_ACCURACY else HIKE_AUTO_PAUSE_MAX_ACCURACY)) {
-            stationarySinceElapsedMillis = null
+            stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
+            stationaryAnchor = null
             return false
         }
         val previous = current.points.lastOrNull() ?: return false
@@ -1921,17 +2022,23 @@ internal class PhoneRecordingService :
                 accuracy.toDouble() * AUTO_PAUSE_RADIUS_FACTOR,
             )
         val speed = point.speedMps
+        if (stationaryWindow.crossesGap(elapsedMillis, effectiveIntervalMillis)) stationaryAnchor = null
+        val anchor = stationaryAnchor ?: point.location
         val stationary =
-            distance <= radius && (speed == null || speed <= if (bike) BIKE_STOP_SPEED else HIKE_STOP_SPEED)
+            distance <= radius &&
+                (bike || recordingHaversineMeters(anchor, point.location) <= radius) &&
+                (speed == null || speed <= if (bike) BIKE_STOP_SPEED else HIKE_STOP_SPEED)
         if (!stationary) {
-            stationarySinceElapsedMillis = null
+            stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
+            stationaryAnchor = null
             return false
         }
-        val stationarySince = stationarySinceElapsedMillis ?: elapsedMillis.also { stationarySinceElapsedMillis = it }
+        stationaryAnchor = anchor
+        val stationaryDurationMillis =
+            stationaryWindow.observe(elapsedMillis, true, effectiveIntervalMillis) ?: return false
         val required = if (bike) BIKE_AUTO_PAUSE_DURATION else HIKE_AUTO_PAUSE_DURATION
-        if (elapsedMillis - stationarySince < required) return false
+        if (stationaryDurationMillis < required) return false
         val wallNow = System.currentTimeMillis()
-        val stationaryDurationMillis = (elapsedMillis - stationarySince).coerceAtLeast(0L)
         val effectivePauseStart =
             effectiveRecordingAutoPauseStartMillis(
                 startedAtMillis = current.session.startedAtMillis,
@@ -1966,39 +2073,49 @@ internal class PhoneRecordingService :
         val bike = profile == PhoneActivityProfile.BIKE
         val accuracy =
             point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: run {
-                movingSinceElapsedMillis = null
+                movingWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
                 return false
             }
         if (accuracy > (if (bike) BIKE_AUTO_PAUSE_MAX_ACCURACY else HIKE_AUTO_PAUSE_MAX_ACCURACY)) {
-            movingSinceElapsedMillis = null
+            movingWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
             return false
         }
-        val moving =
-            (point.speedMps ?: 0f) >= (if (bike) BIKE_RESUME_SPEED else HIKE_RESUME_SPEED) ||
-                recordingHaversineMeters(previous.location, point.location) >=
-                max(
-                    if (bike) BIKE_RESUME_DISTANCE else HIKE_RESUME_DISTANCE,
-                    accuracy.toDouble() * AUTO_PAUSE_RESUME_RADIUS_FACTOR,
-                )
+        val moving = isAutoResumeMoving(point, previous)
         if (!moving) {
-            movingSinceElapsedMillis = null
+            movingWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
             return false
         }
-        val movingSince = movingSinceElapsedMillis ?: elapsedMillis.also { movingSinceElapsedMillis = it }
-        if (elapsedMillis - movingSince < if (bike) BIKE_AUTO_RESUME_DURATION else HIKE_AUTO_RESUME_DURATION) {
+        val movingDurationMillis = movingWindow.observe(elapsedMillis, true, effectiveIntervalMillis) ?: return false
+        if (movingDurationMillis < if (bike) BIKE_AUTO_RESUME_DURATION else HIKE_AUTO_RESUME_DURATION) {
             return false
         }
-        val movingDurationMillis = (elapsedMillis - movingSince).coerceAtLeast(0L)
         autoResumeRecording(current, movingDurationMillis)
-        movingSinceElapsedMillis = null
+        movingWindow.reset()
         return true
+    }
+
+    @Suppress("ReturnCount")
+    private fun isAutoResumeMoving(
+        point: RecordingPoint,
+        previous: RecordingPoint,
+    ): Boolean {
+        val bike = profile == PhoneActivityProfile.BIKE
+        val accuracy = point.accuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: return false
+        if (accuracy > if (bike) BIKE_AUTO_PAUSE_MAX_ACCURACY else HIKE_AUTO_PAUSE_MAX_ACCURACY) return false
+        return (point.speedMps ?: 0f) >= (if (bike) BIKE_RESUME_SPEED else HIKE_RESUME_SPEED) ||
+            recordingHaversineMeters(previous.location, point.location) >=
+            max(
+                if (bike) BIKE_RESUME_DISTANCE else HIKE_RESUME_DISTANCE,
+                accuracy.toDouble() * AUTO_PAUSE_RESUME_RADIUS_FACTOR,
+            )
     }
 
     private fun autoResumeRecording(
         current: PhoneRecordingUiState,
         movingDurationMillis: Long,
+        confirmationMillis: Long = System.currentTimeMillis(),
     ) {
-        val nowMillis = System.currentTimeMillis()
+        val nowMillis = confirmationMillis
         val addedPausedMillis =
             recordingAutoPauseAddedMillisAtResume(
                 pausedAtMillis = current.session.pausedAtMillis,
@@ -2007,6 +2124,7 @@ internal class PhoneRecordingService :
             )
         val resumeAtMillis = (current.session.pausedAtMillis ?: nowMillis) + addedPausedMillis
         val state = sessionLifecycle.resume(resumeAtMillis, automatic = true)
+        lastSensorStepCount = null
         clearAutoPauseCadence()
         fixQualityGate.reset()
         movementGate.reset()
@@ -2020,8 +2138,45 @@ internal class PhoneRecordingService :
         logEvent("session_auto_resumed generation=${state.generation}")
     }
 
-    private var stationarySinceElapsedMillis: Long? = null
-    private var movingSinceElapsedMillis: Long? = null
+    private val stationaryWindow = RecordingGpsConfirmationWindow()
+    private val movingWindow = RecordingGpsConfirmationWindow()
+    private val stepResumeEvidence = RecordingStepResumeEvidence()
+    private var stationaryAnchor: GeoPoint? = null
+    private var lastStepMotionElapsedMillis = Long.MIN_VALUE
+
+    private suspend fun processAutoResumeStep(
+        value: Float,
+        measured: Long,
+        arrived: Long,
+        advanced: Boolean,
+    ) {
+        if (advanced && measured > lastStepMotionElapsedMillis && arrived - measured in 0L..15_000L) {
+            lastStepMotionElapsedMillis = measured
+        }
+        val current = PhoneRecordingSessionStore.state.value
+        val eligible =
+            current.session.autoPaused && canMonitorAutoResume(current.session) && profile != PhoneActivityProfile.BIKE
+        val duration =
+            stepResumeEvidence.observe(value, measured, arrived, eligible, HIKE_AUTO_RESUME_DURATION) ?: return
+        val restart = autoResumeRecovery.recover(profile.storageValue, measured - duration, measured)
+        val interval = effectiveIntervalMillis
+        val confirmation = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - measured).coerceAtLeast(0L)
+        autoResumeRecording(current, duration, confirmation)
+        stepResumeEvidence.reset()
+        lastStepMotionElapsedMillis = Long.MIN_VALUE
+        movingWindow.reset()
+        autoResumeRecovery.clear()
+        restart.forEach { fix ->
+            processLocation(
+                fix.value.location,
+                activeLocationGeneration,
+                interval,
+                interval,
+                replaying = true,
+                receivedElapsedMillis = fix.value.receivedElapsedMillis,
+            )
+        }
+    }
 
     // Keep local DEM/GPS fallback precedence explicit so missing sensors remain an offline-safe path.
     @Suppress("CyclomaticComplexMethod")
@@ -2207,7 +2362,13 @@ internal class PhoneRecordingService :
             maxHeartRateBpm = null,
             stepCount = sessionStepCount,
             cadenceSpm = null,
-            averageCadenceSpm = null,
+            averageCadenceSpm =
+                if (profile != PhoneActivityProfile.BIKE) {
+                    averageWalkingCadence(sessionStepCount, activeDurationMillis)
+                } else {
+                    null
+                },
+            cadenceAverageMethod = if (profile != PhoneActivityProfile.BIKE) "active_time_steps_v1" else null,
             maxCadenceSpm = null,
             powerWatts = null,
             averagePowerWatts = null,
@@ -2269,8 +2430,10 @@ internal class PhoneRecordingService :
     private fun stopLocationUpdates(reason: String) {
         guidanceLocationExpiryJob?.cancel()
         guidanceLocationExpiryJob = null
+        val previousGeneration = activeLocationGeneration
         val generation = callbackGeneration.incrementAndGet()
         activeLocationGeneration = generation
+        PhoneSharedLocationStore.stop(sharedLocationOwner, previousGeneration)
         locationCallback?.let { callback -> runCatching { locationClient.removeLocationUpdates(callback) } }
         locationCallback = null
         publish(PhoneRecordingSessionStore.state.value)
@@ -2317,6 +2480,7 @@ internal class PhoneRecordingService :
                     autoPauseStartedAtElapsedRealtimeMillis = autoPauseStartedAtElapsedRealtimeMillis,
                     gpsActiveDurationMillis = gpsActiveDurationMillis,
                     sessionStepCount = sessionStepCount,
+                    captureMetadata = captureMetadata,
                 )
             try {
                 withContext(Dispatchers.IO) { draftStore.save(draft) }
@@ -2330,14 +2494,19 @@ internal class PhoneRecordingService :
 
     private fun resetProcessingState() {
         clearAutoPauseCadence()
+        captureMetadata = null
+        autoResumeRecovery.clear()
+        stepResumeEvidence.reset()
+        lastStepMotionElapsedMillis = Long.MIN_VALUE
         fixQualityGate.reset()
         movementGate.reset()
         callbackGapTracker.reset()
         distanceGeometry.reset()
         elevationFilter.reset()
         lastAcceptedElapsedRealtimeMillis = null
-        stationarySinceElapsedMillis = null
-        movingSinceElapsedMillis = null
+        stationaryWindow.reset()
+        movingWindow.reset()
+        stationaryAnchor = null
         counters = PhoneRecordingCounters()
         gpsActiveDurationMillis = 0L
         sessionStepCount = null

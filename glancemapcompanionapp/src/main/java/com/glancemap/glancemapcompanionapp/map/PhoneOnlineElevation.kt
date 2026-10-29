@@ -39,14 +39,18 @@ internal data class PhoneOnlineDemPoint(
     val pixelY: Double,
 )
 
-internal fun phoneOnlineDemPoint(point: PhoneMapCoordinate): PhoneOnlineDemPoint? {
+internal fun phoneOnlineDemPoint(
+    point: PhoneMapCoordinate,
+    zoom: Int = ONLINE_DEM_READING_ZOOM,
+): PhoneOnlineDemPoint? {
     if (!point.latitude.isFinite() ||
         !point.longitude.isFinite() ||
         point.latitude !in -ONLINE_DEM_MERCATOR_LIMIT..ONLINE_DEM_MERCATOR_LIMIT
     ) {
         return null
     }
-    val tileCount = 1 shl ONLINE_DEM_READING_ZOOM
+    val safeZoom = zoom.coerceIn(0, ONLINE_DEM_READING_ZOOM)
+    val tileCount = 1 shl safeZoom
     val longitude = ((point.longitude + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
     val worldX = (longitude + 180.0) / 360.0 * tileCount
     val latitudeRadians = point.latitude * PI / 180.0
@@ -54,7 +58,7 @@ internal fun phoneOnlineDemPoint(point: PhoneMapCoordinate): PhoneOnlineDemPoint
     val tileX = floor(worldX).toInt().coerceIn(0, tileCount - 1)
     val tileY = floor(worldY).toInt().coerceIn(0, tileCount - 1)
     return PhoneOnlineDemPoint(
-        tile = PhoneOnlineDemTileId(ONLINE_DEM_READING_ZOOM, tileX, tileY),
+        tile = PhoneOnlineDemTileId(safeZoom, tileX, tileY),
         pixelX = (worldX - tileX) * PHONE_ONLINE_DEM_TILE_SIZE - 0.5,
         pixelY = (worldY - tileY) * PHONE_ONLINE_DEM_TILE_SIZE - 0.5,
     )
@@ -127,8 +131,11 @@ internal class PhoneOnlineElevationRepository(
             ): Boolean = size > ONLINE_DEM_CACHE_ENTRIES
         }
 
-    suspend fun elevationAt(point: PhoneMapCoordinate): Double? {
-        val sample = phoneOnlineDemPoint(point) ?: return null
+    suspend fun elevationAt(
+        point: PhoneMapCoordinate,
+        zoom: Int = ONLINE_DEM_READING_ZOOM,
+    ): Double? {
+        val sample = phoneOnlineDemPoint(point, zoom) ?: return null
         return mutex.withLock {
             val cached = tiles[sample.tile]
             val now = clockMillis()

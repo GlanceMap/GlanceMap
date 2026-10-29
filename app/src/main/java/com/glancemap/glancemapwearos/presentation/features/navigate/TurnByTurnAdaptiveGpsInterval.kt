@@ -5,6 +5,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Tur
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.guidance.TrailGuidanceInstruction
 import com.glancemap.trailcore.guidance.TrailGuidanceState
+import com.glancemap.trailcore.guidance.message
 import com.glancemap.trailcore.guidance.resolveAdaptiveTrailGuidanceGpsIntervalMs
 import com.glancemap.trailcore.guidance.ADAPTIVE_TBT_APPROACH_INTERVAL_MS as CORE_ADAPTIVE_TBT_APPROACH_INTERVAL_MS
 import com.glancemap.trailcore.guidance.ADAPTIVE_TBT_CRUISE_INTERVAL_MS as CORE_ADAPTIVE_TBT_CRUISE_INTERVAL_MS
@@ -41,7 +42,7 @@ private fun TurnByTurnGuidanceState.toTrailState(): TrailGuidanceState =
 private fun RouteInstruction.toTrailInstruction(): TrailGuidanceInstruction =
     TrailGuidanceInstruction(
         command = command,
-        message = message,
+        message = message ?: command.message,
         location = GeoPoint(latLong.latitude, latLong.longitude),
         trackPointIndex = trackPointIndex,
         distanceFromStartMeters = distanceFromStartMeters,

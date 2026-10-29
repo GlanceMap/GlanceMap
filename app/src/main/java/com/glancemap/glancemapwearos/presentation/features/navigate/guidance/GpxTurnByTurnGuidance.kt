@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.guidance
 
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHintSource
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
 import com.glancemap.trailcore.geo.GeoPoint
@@ -45,7 +47,8 @@ val TrailGuidanceCommand.message: String
 
 data class RouteInstruction(
     val command: TrailGuidanceCommand,
-    val message: String,
+    val message: String? = null,
+    @StringRes val messageRes: Int = command.messageRes,
     val latLong: LatLong,
     val trackPointIndex: Int,
     val distanceFromStartMeters: Double,
@@ -139,7 +142,7 @@ fun computeTurnByTurnGuidanceState(
         currentLocation = currentLocation?.toGeoPoint(),
         tuning = tuning,
         previousDistanceFromStartMeters = previousDistanceFromStartMeters,
-    ).toWatchState()
+    ).toWatchState(session)
 
 fun isGuidanceStartReached(
     session: GpxGuidanceSession?,
@@ -161,7 +164,7 @@ fun deriveGpxRouteInstructions(
         trackPoints.map(TrackPoint::toTrailPoint),
         cumulativeDistancesMeters,
         tuning,
-    ).map(TrailGuidanceInstruction::toWatchInstruction)
+    ).map { it.toWatchInstruction() }
 
 fun deriveHintedRouteInstructions(
     trackPoints: List<TrackPoint>,
@@ -174,7 +177,7 @@ fun deriveHintedRouteInstructions(
         cumulativeDistancesMeters,
         tuning,
         reverseDirection,
-    ).map(TrailGuidanceInstruction::toWatchInstruction)
+    ).map { it.toWatchInstruction(trackPoints, reverseDirection) }
 
 fun projectLocationToRoute(
     points: List<LatLong>,
@@ -256,7 +259,7 @@ private fun TrailGuidanceSession.toWatchSession(originalPoints: List<TrackPoint>
         trackPoints = originalPoints,
         cumulativeDistancesMeters = cumulativeDistancesMeters,
         totalDistanceMeters = totalDistanceMeters,
-        instructions = instructions.map(TrailGuidanceInstruction::toWatchInstruction),
+        instructions = instructions.map { it.toWatchInstruction(originalPoints, reversed) },
         startReached = startReached,
         reversed = reversed,
         routeOffsetMeters = routeOffsetMeters,
@@ -283,10 +286,18 @@ private fun TrackPoint.toTrailPoint(): TrailPoint =
             },
     )
 
-private fun TrailGuidanceInstruction.toWatchInstruction(): RouteInstruction =
+private fun TrailGuidanceInstruction.toWatchInstruction(
+    points: List<TrackPoint>? = null,
+    reversed: Boolean = false,
+): RouteInstruction =
     RouteInstruction(
         command = command,
-        message = message,
+        message =
+            message.takeIf {
+                source == TrailGuidanceInstructionSource.BROUTER_HINT &&
+                    points?.getOrNull(trackPointIndex)?.guidanceHint?.message != null &&
+                    !(reversed && command != TrailGuidanceCommand.CONTINUE && command != TrailGuidanceCommand.FINISH)
+            },
         latLong = location.toLatLong(),
         trackPointIndex = trackPointIndex,
         distanceFromStartMeters = distanceFromStartMeters,
@@ -297,7 +308,7 @@ private fun TrailGuidanceInstruction.toWatchInstruction(): RouteInstruction =
 private fun RouteInstruction.toTrailInstruction(): TrailGuidanceInstruction =
     TrailGuidanceInstruction(
         command = command,
-        message = message,
+        message = message ?: command.message,
         location = latLong.toGeoPoint(),
         trackPointIndex = trackPointIndex,
         distanceFromStartMeters = distanceFromStartMeters,
@@ -305,12 +316,12 @@ private fun RouteInstruction.toTrailInstruction(): TrailGuidanceInstruction =
         source = source,
     )
 
-private fun TrailGuidanceState.toWatchState(): TurnByTurnGuidanceState =
+private fun TrailGuidanceState.toWatchState(session: GpxGuidanceSession?): TurnByTurnGuidanceState =
     TurnByTurnGuidanceState(
         active = active,
         mode = mode,
         trackTitle = trackTitle,
-        nextInstruction = nextInstruction?.toWatchInstruction(),
+        nextInstruction = nextInstruction?.toWatchInstruction(session?.trackPoints, session?.reversed == true),
         distanceToInstructionMeters = distanceToInstructionMeters,
         distanceToStartMeters = distanceToStartMeters,
         bearingToStartDegrees = bearingToStartDegrees,
@@ -320,7 +331,8 @@ private fun TrailGuidanceState.toWatchState(): TurnByTurnGuidanceState =
         routeProgressFraction = routeProgressFraction,
         offRoute = offRoute,
         distanceFromStartMeters = distanceFromStartMeters,
-        followingInstruction = followingInstruction?.toWatchInstruction(),
+        followingInstruction =
+            followingInstruction?.toWatchInstruction(session?.trackPoints, session?.reversed == true),
         distanceToFollowingInstructionMeters = distanceToFollowingInstructionMeters,
         estimatedRemainingSeconds = estimatedRemainingSeconds,
         remainingAscentMeters = remainingAscentMeters,
@@ -337,3 +349,17 @@ private fun TrailGuidanceState.toWatchState(): TurnByTurnGuidanceState =
 private fun LatLong.toGeoPoint(): GeoPoint = GeoPoint(latitude, longitude)
 
 private fun GeoPoint.toLatLong(): LatLong = LatLong(latitude, longitude)
+
+@get:StringRes
+val RouteInstructionCommand.messageRes: Int
+    get() =
+        when (this) {
+            RouteInstructionCommand.CONTINUE -> R.string.common_continue
+            RouteInstructionCommand.SLIGHT_LEFT -> R.string.navigation_slight_left
+            RouteInstructionCommand.LEFT -> R.string.navigation_left
+            RouteInstructionCommand.SHARP_LEFT -> R.string.navigation_sharp_left
+            RouteInstructionCommand.SLIGHT_RIGHT -> R.string.navigation_slight_right
+            RouteInstructionCommand.RIGHT -> R.string.navigation_right
+            RouteInstructionCommand.SHARP_RIGHT -> R.string.navigation_sharp_right
+            RouteInstructionCommand.FINISH -> R.string.navigation_finish
+        }

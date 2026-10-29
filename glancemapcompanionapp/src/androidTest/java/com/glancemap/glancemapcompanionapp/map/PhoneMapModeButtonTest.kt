@@ -30,7 +30,8 @@ class PhoneMapModeButtonTest {
                 PhoneMapModeButton(
                     mode = mode.value,
                     onClick = { mode.value = mode.value.recenterOnLocation() },
-                    onToggleOffline = { mode.value = mode.value.toggleOfflineMode() },
+                    autoRecenterEnabled = false,
+                    onToggleAutoRecenter = {},
                 )
             }
         }
@@ -48,8 +49,9 @@ class PhoneMapModeButtonTest {
     }
 
     @Test
-    fun longPressTogglesOfflineWithoutAlsoPerformingTheNormalTapAction() {
+    fun longPressTogglesAutoRecenterWithoutAlsoPerformingTheNormalTapAction() {
         val mode = mutableStateOf(PhoneMapMode())
+        val autoRecenter = mutableStateOf(false)
         var taps = 0
         composeRule.setContent {
             MaterialTheme {
@@ -59,7 +61,8 @@ class PhoneMapModeButtonTest {
                         taps += 1
                         mode.value = mode.value.toggleOrientation()
                     },
-                    onToggleOffline = { mode.value = mode.value.toggleOfflineMode() },
+                    autoRecenterEnabled = autoRecenter.value,
+                    onToggleAutoRecenter = { autoRecenter.value = !autoRecenter.value },
                 )
             }
         }
@@ -71,25 +74,23 @@ class PhoneMapModeButtonTest {
                 description(R.string.map_mode_north_up),
             ).performTouchInput { longClick() }
         composeRule.runOnIdle {
-            assertTrue(mode.value.isOffline)
+            assertTrue(autoRecenter.value)
+            assertEquals(PhoneMapMode(), mode.value)
             assertEquals(0, taps)
-            mode.value = mode.value.withManualBearing(125f)
         }
         composeRule
             .onNodeWithContentDescription(
-                description(R.string.map_mode_offline),
+                description(R.string.map_mode_north_up),
             ).assertHasClickAction()
             .performClick()
         composeRule.runOnIdle {
-            assertEquals(PhoneMapMode().toggleOfflineMode(), mode.value)
+            assertEquals(PhoneMapOrientation.HEADING_UP, mode.value.orientation)
             assertEquals(1, taps)
         }
         composeRule
             .onNodeWithContentDescription(
-                description(R.string.map_mode_offline),
+                description(R.string.map_mode_heading_up),
             ).performTouchInput { longClick() }
-        composeRule.runOnIdle { assertEquals(PhoneMapMode(), mode.value) }
-        composeRule.onNodeWithContentDescription(description(R.string.map_mode_north_up)).performClick()
-        composeRule.runOnIdle { assertEquals(PhoneMapOrientation.HEADING_UP, mode.value.orientation) }
+        composeRule.runOnIdle { assertEquals(false, autoRecenter.value) }
     }
 }

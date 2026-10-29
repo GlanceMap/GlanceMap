@@ -154,7 +154,8 @@ class PhoneMapCombinedGesturesTest {
                             PhoneMapModeButton(
                                 mode = currentMode.value,
                                 onClick = { currentMode.value = currentMode.value.toggleOrientation() },
-                                onToggleOffline = { currentMode.value = currentMode.value.toggleOfflineMode() },
+                                autoRecenterEnabled = false,
+                                onToggleAutoRecenter = {},
                                 modifier = Modifier.align(Alignment.BottomCenter),
                             )
                         }

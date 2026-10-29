@@ -53,7 +53,14 @@ internal fun layerQuickDisplay(
             enabled = tiltAvailable,
         )
     }
-    terrainPreviewLaunchButton(onTerrainPreview)
+    layerChip(
+        R.string.terrain_preview_open,
+        R.string.terrain_preview_open,
+        state.terrain3dEnabled,
+        { onTerrainPreview?.invoke() },
+        Modifier.fillMaxWidth(),
+        enabled = onTerrainPreview != null,
+    )
     if (state.base is PhoneMapSource.Offline) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val slopeReliefAvailable = state.hasElevationData

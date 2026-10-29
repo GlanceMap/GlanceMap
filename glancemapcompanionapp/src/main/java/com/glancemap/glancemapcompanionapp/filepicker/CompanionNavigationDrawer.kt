@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.LocationDisabled
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -24,12 +25,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -43,6 +48,7 @@ internal fun companionNavigationDrawer(
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val gpsOffLabel = stringResource(R.string.map_gps_off)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val menuWidth = maxWidth / 2
         ModalNavigationDrawer(
@@ -76,6 +82,20 @@ internal fun companionNavigationDrawer(
                         }
                     }
                     HorizontalDivider()
+                    NavigationDrawerItem(
+                        label = { Text(stringResource(R.string.map_gps_off)) },
+                        icon = { Icon(Icons.Filled.LocationDisabled, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        selected = state.mapGpsOff,
+                        onClick = { actions.onMapGpsOffChanged(!state.mapGpsOff) },
+                        badge = {
+                            Switch(
+                                checked = state.mapGpsOff,
+                                onCheckedChange = actions.onMapGpsOffChanged,
+                                modifier = Modifier.testTag("map_gps_off").semantics { contentDescription = gpsOffLabel },
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
                     companionMenuFooter(state.debugCaptureActive, actions)
                 }
             },

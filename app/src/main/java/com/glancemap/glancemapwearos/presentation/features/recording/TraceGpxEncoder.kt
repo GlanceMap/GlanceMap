@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.trailcore.recording.RecordedTraceSummary as SharedRecordedTraceSummary
+import com.glancemap.trailcore.recording.RecordingCaptureMetadata as SharedCaptureMetadata
 import com.glancemap.trailcore.recording.buildRecordingFileName as sharedBuildRecordingFileName
 import com.glancemap.trailcore.recording.buildRecordingFileNameFromTitle as sharedBuildRecordingFileNameFromTitle
 import com.glancemap.trailcore.recording.buildRecordingTitle as sharedBuildRecordingTitle
@@ -14,7 +16,31 @@ internal fun encodeRecordedTraceAsGpx(
     title: String,
     points: List<RecordedTracePoint>,
     summary: RecordedTraceSummary? = null,
-): ByteArray = sharedEncodeRecordedTraceAsGpx(title, points, summary)
+    recordingMetadata: RecordingCaptureMetadata? = null,
+    exporterVersion: String = BuildConfig.VERSION_NAME,
+): ByteArray =
+    sharedEncodeRecordedTraceAsGpx(
+        title,
+        points,
+        summary,
+        recordingMetadata?.let {
+            SharedCaptureMetadata(
+                it.appVersion,
+                it.appBuild,
+                it.deviceManufacturer,
+                it.deviceModel,
+                it.androidVersion,
+                it.androidApiLevel,
+                it.androidBuild,
+                it.locationSourceModeAtStart,
+                it.sampleIntervalSecondsAtStart,
+                it.effectiveLocationIntervalMillisAtStart,
+                it.elevationSourceAtStart,
+                it.powerSaveModeAtStart,
+            )
+        },
+        exporterVersion,
+    )
 
 internal fun recordedTraceSegments(points: List<RecordedTracePoint>): List<List<RecordedTracePoint>> = segments(points)
 

@@ -110,11 +110,15 @@ internal fun recordedActivityStatistics(
 
 private fun RecordedActivityStatistics.withRecordedSensors(values: Map<String, String>): RecordedActivityStatistics =
     copy(
-        averageHeartRateBpm = values.count("averageHeartRateBpm") ?: values.count("heartRateBpm"),
+        averageHeartRateBpm =
+            values.count("averageHeartRateBpm")
+                ?: values.count("heartRateBpm").takeIf { "heartRateAverageMethod" !in values },
         maxHeartRateBpm = values.count("maxHeartRateBpm") ?: values.count("heartRateBpm"),
         averagePowerWatts = values.count("averagePowerWatts") ?: values.count("powerWatts"),
         maxPowerWatts = values.count("maxPowerWatts") ?: values.count("powerWatts"),
-        averageCadenceSpm = values.count("averageCadenceSpm") ?: values.count("cadenceSpm"),
+        averageCadenceSpm =
+            values.count("averageCadenceSpm")
+                ?: values.count("cadenceSpm").takeIf { "cadenceAverageMethod" !in values },
         maxCadenceSpm = values.count("maxCadenceSpm") ?: values.count("cadenceSpm"),
         stepCount = values.count("stepCount"),
     )

@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,6 +60,8 @@ internal data class PhoneMapGpxElevationSample(
     val cumulativeAscentMeters: Double,
     val cumulativeDescentMeters: Double,
     val cumulativeDurationSeconds: Double,
+    val segmentIndex: Int = 0,
+    val startsNewSegment: Boolean = false,
 )
 
 internal data class PhoneMapGpxAnalysis(
@@ -84,8 +87,10 @@ internal fun buildPhoneMapGpxAnalysis(
     val points = item.track.points
     val pacing = settings.toTrailPacingConfig(points, generalSettings)
     val profile = buildTrailRouteProfile(points, pacing)
+    var segmentIndex = 0
     val rawSamples =
         profile.points.mapIndexedNotNull { index, point ->
+            if (index > 0 && point.startsNewSegment) segmentIndex += 1
             val elevation = point.elevationMeters ?: return@mapIndexedNotNull null
             PhoneMapGpxElevationSample(
                 distanceMeters = profile.cumulativeDistanceMeters[index],
@@ -93,9 +98,14 @@ internal fun buildPhoneMapGpxAnalysis(
                 cumulativeAscentMeters = profile.cumulativeAscentMeters[index],
                 cumulativeDescentMeters = profile.cumulativeDescentMeters[index],
                 cumulativeDurationSeconds = profile.cumulativeEstimatedDurationSeconds[index],
+                segmentIndex = segmentIndex,
             )
         }
-    val samples = rawSamples.downsamplePhoneMapGpxAnalysis(maxSamples)
+    val sampled = rawSamples.downsamplePhoneMapGpxAnalysis(maxSamples)
+    val samples =
+        sampled.mapIndexed { index, sample ->
+            sample.copy(startsNewSegment = index > 0 && sample.segmentIndex != sampled[index - 1].segmentIndex)
+        }
     return PhoneMapGpxAnalysis(
         pointCount = points.size,
         totalDistanceMeters = profile.totalDistanceMeters,
@@ -190,6 +200,7 @@ internal fun PhoneMapGpxAnalysisDialog(
                     PhoneMapGpxAnalysisContent(
                         analysis = requireNotNull(analysis),
                         isMetric = generalSettings.isMetric,
+                        trackColor = Color(settings.trackColorArgb),
                     )
                 }
             }
@@ -202,6 +213,7 @@ internal fun PhoneMapGpxAnalysisDialog(
 private fun ColumnScope.PhoneMapGpxAnalysisContent(
     analysis: PhoneMapGpxAnalysis,
     isMetric: Boolean,
+    trackColor: Color,
 ) {
     Column(
         modifier =
@@ -267,6 +279,7 @@ private fun ColumnScope.PhoneMapGpxAnalysisContent(
             minElevationMeters = analysis.minElevationMeters,
             maxElevationMeters = analysis.maxElevationMeters,
             isMetric = isMetric,
+            trackColor = trackColor,
         )
     }
 }
@@ -296,6 +309,7 @@ private fun PhoneMapGpxElevationGraph(
     minElevationMeters: Double?,
     maxElevationMeters: Double?,
     isMetric: Boolean,
+    trackColor: Color,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -315,6 +329,7 @@ private fun PhoneMapGpxElevationGraph(
                         samples = samples,
                         minElevationMeters = minElevationMeters,
                         maxElevationMeters = maxElevationMeters,
+                        trackColor = trackColor,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Text(
@@ -340,9 +355,10 @@ private fun PhoneMapGpxElevationCanvas(
     samples: List<PhoneMapGpxElevationSample>,
     minElevationMeters: Double,
     maxElevationMeters: Double,
+    trackColor: Color,
     modifier: Modifier,
 ) {
-    val lineColor = MaterialTheme.colorScheme.primary
+    val gapColor = MaterialTheme.colorScheme.outline
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     Canvas(modifier = modifier) {
         val horizontalPadding = 34f
@@ -355,6 +371,7 @@ private fun PhoneMapGpxElevationCanvas(
             (samples.last().distanceMeters - firstDistance).takeIf { it > 0.0 }
                 ?: (samples.lastIndex).toDouble().coerceAtLeast(1.0)
         val path = Path()
+        val gaps = Path()
 
         repeat(4) { index ->
             val y = verticalPadding + plotHeight * index.toFloat() / 3f
@@ -374,13 +391,28 @@ private fun PhoneMapGpxElevationCanvas(
                 verticalPadding +
                     plotHeight *
                     (1f - ((sample.elevationMeters - minElevationMeters) / elevationSpan).toFloat().coerceIn(0f, 1f))
-            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else if (sample.startsNewSegment) {
+                val previous = samples[index - 1]
+                val previousX =
+                    horizontalPadding + plotWidth * ((previous.distanceMeters - firstDistance) / distanceSpan).toFloat()
+                val previousElevation =
+                    ((previous.elevationMeters - minElevationMeters) / elevationSpan).toFloat().coerceIn(0f, 1f)
+                val previousY = verticalPadding + plotHeight * (1f - previousElevation)
+                gaps.moveTo(previousX, previousY)
+                gaps.lineTo(x, y)
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
         }
         drawPath(
             path = path,
-            color = lineColor,
+            color = trackColor,
             style = Stroke(width = 4f, cap = StrokeCap.Round),
         )
+        drawPath(path = gaps, color = gapColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
     }
 }
 

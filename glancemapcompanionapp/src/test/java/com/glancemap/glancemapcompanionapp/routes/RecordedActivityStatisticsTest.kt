@@ -12,6 +12,22 @@ import org.junit.Test
 
 class RecordedActivityStatisticsTest {
     @Test
+    fun markedUnknownSessionAveragesAreNotReplacedByCurrentValues() {
+        val stats =
+            requireNotNull(
+                parse(
+                    "<x:activityType>recording</x:activityType>" +
+                        "<x:heartRateAverageMethod>active_time_weighted_v1</x:heartRateAverageMethod>" +
+                        "<x:heartRateBpm>120</x:heartRateBpm>" +
+                        "<x:cadenceAverageMethod>active_time_steps_v1</x:cadenceAverageMethod>" +
+                        "<x:cadenceSpm>90</x:cadenceSpm>",
+                ).activityStatistics,
+            )
+        assertNull(stats.averageHeartRateBpm)
+        assertNull(stats.averageCadenceSpm)
+    }
+
+    @Test
     fun savedGpxReopensWithTheSameStatisticsAsTheCompletionRecap() {
         val summary = summary()
         val points =

@@ -46,6 +46,7 @@ internal data class CompanionMenuState(
     val activeArea: CompanionHomeArea,
     val debugCaptureActive: Boolean,
     val liveHikeSyncEnabled: Boolean = false,
+    val mapGpsOff: Boolean = false,
 )
 
 internal data class CompanionMenuActions(
@@ -54,6 +55,7 @@ internal data class CompanionMenuActions(
     val onQuickGuide: () -> Unit,
     val onCreditsLegal: () -> Unit,
     val onLiveHikeSyncChanged: (Boolean) -> Unit = {},
+    val onMapGpsOffChanged: (Boolean) -> Unit = {},
 )
 
 internal fun initialCompanionHomeArea(

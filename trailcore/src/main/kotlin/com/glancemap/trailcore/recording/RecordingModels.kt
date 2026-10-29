@@ -25,6 +25,11 @@ data class RecordingPoint(
     val segmentStartReason: String? = null,
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
+    val locationProvider: String? = null,
+    val locationSourceMode: String? = null,
+    val gpsVerticalAccuracyMeters: Float? = null,
+    val gpsSpeedAccuracyMps: Float? = null,
+    val locationAgeMillis: Long? = null,
 )
 
 object RecordingSegmentStartReason {

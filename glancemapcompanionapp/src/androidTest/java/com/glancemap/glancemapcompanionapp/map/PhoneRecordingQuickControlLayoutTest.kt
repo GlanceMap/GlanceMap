@@ -200,7 +200,8 @@ class PhoneRecordingQuickControlLayoutTest {
                                 PhoneMapModeButton(
                                     mode = PhoneMapMode(),
                                     onClick = onRecenter,
-                                    onToggleOffline = {},
+                                    autoRecenterEnabled = false,
+                                    onToggleAutoRecenter = {},
                                     modifier =
                                         Modifier
                                             .align(Alignment.BottomCenter)
