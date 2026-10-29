@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.diagnostics
 
+import android.os.Build
 import android.os.Trace
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -28,12 +29,16 @@ internal object BenchmarkTrace {
     fun beginAsync(sectionName: String): AsyncMarker {
         val safeName = sectionName.safeTraceName()
         val cookie = nextAsyncCookie.updateAndGet { current -> if (current == Int.MAX_VALUE) 1 else current + 1 }
-        Trace.beginAsyncSection(safeName, cookie)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Trace.beginAsyncSection(safeName, cookie)
+        }
         return AsyncMarker(sectionName = safeName, cookie = cookie)
     }
 
     fun endAsync(marker: AsyncMarker) {
-        Trace.endAsyncSection(marker.sectionName, marker.cookie)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Trace.endAsyncSection(marker.sectionName, marker.cookie)
+        }
     }
 
     inline fun <T> section(

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -11,17 +12,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.HikeRouteProfileParams
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.routetools.routeStyleSettingsOptionsForActivityProfile
 import com.glancemap.glancemapwearos.presentation.features.routetools.routeStyleTitleForSettingsValue
 
 @Composable
+// Resource-call wrapping increases line count; keep the existing flow together.
+@Suppress("LongMethod", "FunctionNaming")
 fun GpxToolsSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenGpxSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val activityProfile by viewModel.activityProfile.collectAsState()
     val routeStyle by viewModel.gpxToolRouteStyle.collectAsState()
@@ -40,11 +47,15 @@ fun GpxToolsSettingsScreen(
 
         item {
             SettingsOptionPickerRow(
-                label = "Route type",
+                label = stringResource(R.string.gpx_route_type),
                 selectedValue = routeStyle,
-                options = routeStyleSettingsOptionsForActivityProfile(activityProfile),
+                options =
+                    routeStyleSettingsOptionsForActivityProfile(activityProfile).map { (value, labelRes) ->
+                        value to
+                            stringResource(labelRes)
+                    },
                 onSelect = viewModel::setGpxToolRouteStyle,
-                secondaryLabel = routeStyleTitleForSettingsValue(routeStyle),
+                secondaryLabel = stringResource(routeStyleTitleForSettingsValue(routeStyle)),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -63,6 +74,7 @@ fun GpxToolsSettingsScreen(
                     onAllowFerriesChanged = viewModel::setGpxToolAllowFerries,
                     onPreferForestPathsChanged = viewModel::setGpxToolHikeConsiderForest,
                 ),
+            resources = resources,
         )
 
         if (!isBikeProfile) {
@@ -80,6 +92,7 @@ fun GpxToolsSettingsScreen(
                         considerForest = params.considerForest,
                     )
                 },
+                resources = resources,
             )
         }
     }
@@ -117,17 +130,18 @@ private data class GpxRouteToggleActions(
 private fun ScalingLazyListScope.gpxRouteToggles(
     state: GpxRouteToggleState,
     actions: GpxRouteToggleActions,
+    resources: Resources,
 ) {
     item {
         SettingsToggleChip(
             checked = state.useElevation,
             onCheckedChanged = actions.onUseElevationChanged,
-            label = "Flatter routes",
+            label = resources.getString(R.string.settings_flatter_routes),
             secondaryLabel =
                 if (state.useElevation) {
-                    "Prioritize flatter routes"
+                    resources.getString(R.string.settings_prioritize_flatter_routes)
                 } else {
-                    "Use standard routing"
+                    resources.getString(R.string.settings_use_standard_routing)
                 },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -138,8 +152,15 @@ private fun ScalingLazyListScope.gpxRouteToggles(
             SettingsToggleChip(
                 checked = state.preferForestPaths,
                 onCheckedChanged = actions.onPreferForestPathsChanged,
-                label = "Prefer forest paths",
-                secondaryLabel = if (state.preferForestPaths) "On" else "Off",
+                label = resources.getString(R.string.settings_prefer_forest_paths),
+                secondaryLabel =
+                    if (state.preferForestPaths) {
+                        resources.getString(
+                            R.string.glancemap_state_on,
+                        )
+                    } else {
+                        resources.getString(R.string.glancemap_state_off)
+                    },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -149,24 +170,41 @@ private fun ScalingLazyListScope.gpxRouteToggles(
         SettingsToggleChip(
             checked = state.allowFerries,
             onCheckedChanged = actions.onAllowFerriesChanged,
-            label = "Allow ferries",
-            secondaryLabel = if (state.allowFerries) "Ferry routes allowed" else "Avoid ferries",
+            label = resources.getString(R.string.settings_allow_ferries),
+            secondaryLabel =
+                if (state.allowFerries) {
+                    resources.getString(
+                        R.string.settings_ferry_routes_allowed,
+                    )
+                } else {
+                    resources.getString(R.string.settings_avoid_ferries)
+                },
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 private fun ScalingLazyListScope.hikeAdvancedRoutingSection(
     routeStyle: String,
     customHikeParams: HikeRouteProfileParams,
     expanded: Boolean,
     onToggle: () -> Unit,
     onCustomHikeParamsChanged: (HikeRouteProfileParams) -> Unit,
+    resources: Resources,
 ) {
     item {
         SettingsPickerChip(
-            label = if (expanded) "▾ Advanced hike routing" else "▸ Advanced hike routing",
-            secondaryLabel = "Edit hike route profile",
+            label =
+                if (expanded) {
+                    resources.getString(
+                        R.string.settings_advanced_hike_routing,
+                    )
+                } else {
+                    resources.getString(R.string.settings_advanced_hike_routing_2)
+                },
+            secondaryLabel = resources.getString(R.string.settings_edit_hike_route_profile),
             iconImageVector = null,
             onClick = onToggle,
         )
@@ -176,6 +214,7 @@ private fun ScalingLazyListScope.hikeAdvancedRoutingSection(
         editableHikeAdvancedRows(
             params = effectiveHikeParams(routeStyle, customHikeParams),
             onParamsChanged = onCustomHikeParamsChanged,
+            resources = resources,
         )
     }
 }
@@ -183,39 +222,40 @@ private fun ScalingLazyListScope.hikeAdvancedRoutingSection(
 private fun ScalingLazyListScope.editableHikeAdvancedRows(
     params: HikeRouteProfileParams,
     onParamsChanged: (HikeRouteProfileParams) -> Unit,
+    resources: Resources,
 ) {
     item {
         SettingsOptionPickerRow(
-            label = "Marked hiking routes",
+            label = resources.getString(R.string.settings_marked_hiking_routes),
             selectedValue = params.hikingRoutesPreference,
-            options = hikingRoutePreferenceOptions,
+            options = hikingRoutePreferenceOptions.map { (value, labelRes) -> value to resources.getString(labelRes) },
             onSelect = { onParamsChanged(params.copy(hikingRoutesPreference = it)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
     item {
         SettingsOptionPickerRow(
-            label = "Path preference",
+            label = resources.getString(R.string.settings_path_preference),
             selectedValue = params.pathPreference,
-            options = pathPreferenceOptions,
+            options = pathPreferenceOptions.map { (value, labelRes) -> value to resources.getString(labelRes) },
             onSelect = { onParamsChanged(params.copy(pathPreference = it)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
     item {
         SettingsOptionPickerRow(
-            label = "Max difficulty",
+            label = resources.getString(R.string.settings_max_difficulty),
             selectedValue = params.sacScaleLimit,
-            options = sacScaleOptions,
+            options = sacScaleOptions.map { (value, labelRes) -> value to resources.getString(labelRes) },
             onSelect = { onParamsChanged(params.copy(sacScaleLimit = it)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
     item {
         SettingsOptionPickerRow(
-            label = "Preferred difficulty",
+            label = resources.getString(R.string.settings_preferred_difficulty),
             selectedValue = params.sacScalePreferred,
-            options = sacScaleOptions,
+            options = sacScaleOptions.map { (value, labelRes) -> value to resources.getString(labelRes) },
             onSelect = { onParamsChanged(params.copy(sacScalePreferred = it)) },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -258,37 +298,35 @@ private fun effectiveHikeParams(
 
 private val hikingRoutePreferenceOptions =
     listOf(
-        0f to "Off",
-        0.20f to "Moderate",
-        0.60f to "High",
-        1f to "Very high",
+        0f to R.string.glancemap_state_off,
+        0.20f to R.string.gpx_moderate,
+        0.60f to R.string.settings_high,
+        1f to R.string.gpx_very_high,
     )
 
 private val pathPreferenceOptions =
     listOf(
-        0f to "Neutral",
-        10f to "Prefer paths",
-        20f to "Strong",
+        0f to R.string.settings_neutral,
+        10f to R.string.gpx_prefer_paths,
+        20f to R.string.gpx_strong,
     )
 
 private val sacScaleOptions =
     listOf(
-        1 to "T1 easy",
-        2 to "T2 mountain",
-        3 to "T3 mountain path",
-        4 to "T4 alpine",
+        1 to R.string.gpx_t1_easy,
+        2 to R.string.gpx_t2_mountain,
+        3 to R.string.gpx_t3_mountain_path,
+        4 to R.string.gpx_t4_alpine,
     )
 
 @Suppress("FunctionName")
 @Composable
-internal fun GpxSettingsShortcutChip(
-    onClick: () -> Unit,
-) {
+internal fun GpxSettingsShortcutChip(onClick: () -> Unit) {
     AdaptiveSettingsShortcutChip(
-        standardLabel = "GPX settings",
-        compactLabel = "GPX",
-        standardSecondaryLabel = "Back to GPX settings",
-        compactSecondaryLabel = "Back",
+        standardLabel = stringResource(R.string.settings_gpx_settings),
+        compactLabel = stringResource(R.string.common_gpx),
+        standardSecondaryLabel = stringResource(R.string.settings_back_to_gpx_settings),
+        compactSecondaryLabel = stringResource(R.string.common_back),
         iconImageVector = Icons.Filled.Folder,
         applyTopPadding = true,
         compactRoundWidthFraction = 0.78f,

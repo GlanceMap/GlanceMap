@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.buildRecordingDashboardSnapshot
 import org.junit.Assert.assertEquals
@@ -131,7 +132,7 @@ class TraceGpxEncoderTest {
 
         val xml = bytes.toString(Charsets.UTF_8)
 
-        assertTrue(xml.contains("creator=\"GlanceMap\""))
+        assertTrue(xml.contains("creator=\"GlanceMap ${BuildConfig.VERSION_NAME}\""))
         assertTrue(xml.contains("xmlns:gmap=\"https://glancemap.app/gpx/extensions/1\""))
         assertTrue(xml.contains("lat=\"45.12345679\""))
         assertTrue(xml.contains("lon=\"6.98765432\""))

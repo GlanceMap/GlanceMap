@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
 import android.net.Uri
+import com.glancemap.glancemapwearos.R
 import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
@@ -34,13 +35,13 @@ class GpxExportRepositoryImpl(
     ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                require(file.exists() && file.isFile) { "GPX file not found." }
+                require(file.exists() && file.isFile) { appContext.getString(R.string.gpx_gpx_file_not_found) }
                 val targetNode =
                     nodeClient.connectedNodes
                         .await()
                         .sortedByDescending { it.isNearby }
                         .firstOrNull()
-                        ?: error("No phone connected.")
+                        ?: error(appContext.getString(R.string.gpx_no_phone_connected))
 
                 sendFileToNode(
                     nodeId = targetNode.id,

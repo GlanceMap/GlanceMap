@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_START_PENDING_MESSAGE
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
@@ -52,11 +54,15 @@ internal fun rememberRecordingStatusMessage(
             }
         }
     }
-    return recordingStatusMessage
+    return if (recordingStatusMessage ==
+        RECORDING_START_PENDING_MESSAGE
+    ) {
+        stringResource(R.string.recording_start_pending)
+    } else {
+        recordingStatusMessage
+    }
 }
 
-internal fun isPersistentRecordingStatusMessage(
-    message: String,
-): Boolean = message == RECORDING_START_PENDING_MESSAGE
+internal fun isPersistentRecordingStatusMessage(message: String): Boolean = message == RECORDING_START_PENDING_MESSAGE
 
 private const val RECORDING_STATUS_MESSAGE_DURATION_MS = 1_200L

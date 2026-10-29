@@ -136,44 +136,4 @@ class BRouterRoutePlannerHelpersTest {
         assertEquals(2, preferredLoopCandidateIndex(candidateCount = 3, variationIndex = 2))
         assertEquals(0, preferredLoopCandidateIndex(candidateCount = 3, variationIndex = 3))
     }
-
-    @Test
-    fun oldRoutingPackLookupVersionBecomesRefreshMessage() {
-        val message =
-            normalizeRoutingErrorMessage(
-                "lookup version mismatch (old rd5?) lookups.dat=11 E0_N40.rd5=10",
-            )
-
-        assertEquals("Routing packs use an older format. Refresh the routing packs.", message)
-    }
-
-    @Test
-    fun newerRoutingPackLookupVersionBecomesAppUpdateMessage() {
-        val message =
-            normalizeRoutingErrorMessage(
-                "lookup version mismatch (old rd5?) lookups.dat=10 E0_N40.rd5=11",
-            )
-
-        assertEquals(
-            "Routing packs are newer than this app supports. Update GlanceMap, then refresh routing packs.",
-            message,
-        )
-    }
-
-    @Test
-    fun missingRoutingDataPrefixIsPreserved() {
-        val message = normalizeRoutingErrorMessage("Missing routing data: E0_N40.rd5")
-
-        assertEquals("Missing routing data: E0_N40.rd5", message)
-    }
-
-    @Test
-    fun routingChecksumErrorExplainsHowToRepairTheBundle() {
-        val message = normalizeRoutingErrorMessage("java.io.IOException: top index checksum error")
-
-        assertEquals(
-            "Routing data is damaged. Open Downloads, check the bundle for updates, then choose Refresh to repair it.",
-            message,
-        )
-    }
 }

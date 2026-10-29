@@ -10,6 +10,7 @@ import android.os.PowerManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelClientStrategy
 import com.glancemap.glancemapwearos.core.service.transfer.datalayer.ChannelTransferAckOutcome
@@ -223,7 +224,11 @@ class ChannelTransferForegroundService : Service() {
                 "event=fgs_start_attempt id=${request.transferId} file=${request.fileName} " +
                     "size=-1 fgsType=dataSync",
             )
-            notificationHelper.startForeground(request.notificationId, request.fileName, "Receiving (Bluetooth)…")
+            notificationHelper.startForeground(
+                request.notificationId,
+                request.fileName,
+                this.getString(R.string.download_receiving_bluetooth),
+            )
             TransferDiagnostics.log(
                 "Channel",
                 "event=fgs_start_success id=${request.transferId} file=${request.fileName}",

@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
 import btools.util.Crc32
+import com.glancemap.glancemapwearos.R
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -11,10 +13,15 @@ import kotlin.math.sqrt
 /**
  * Performs the lightweight index validation BRouter runs when opening an RD5 file.
  * It reads only the fixed header and trailing index metadata, not the complete segment.
+ * Keep every existing validation guard while localizing its failure.
  */
-internal fun validateRoutingSegmentIndex(file: File) {
+@Suppress("ThrowsCount")
+internal fun validateRoutingSegmentIndex(
+    file: File,
+    resources: Resources,
+) {
     if (!file.exists() || !file.isFile || file.length() <= 0L) {
-        throw IOException("Routing segment is missing or empty.")
+        throw IOException(resources.getString(R.string.download_routing_segment_is_missing_or_empty))
     }
 
     RandomAccessFile(file, "r").use { input ->
@@ -34,7 +41,7 @@ internal fun validateRoutingSegmentIndex(file: File) {
         var extraLength = ROUTING_TRAILING_INDEX_BYTES
         if (file.length() - trailingIndexPosition > extraLength) extraLength += 1
         if (file.length() < trailingIndexPosition + extraLength) {
-            throw IOException("Routing segment is truncated.")
+            throw IOException(resources.getString(R.string.download_routing_segment_is_truncated))
         }
 
         val trailer = ByteArray(extraLength)
@@ -44,18 +51,23 @@ internal fun validateRoutingSegmentIndex(file: File) {
         trailerReader.long // creation time
         val storedIndexCrc = trailerReader.int
         if (storedIndexCrc != indexCrc && (storedIndexCrc xor 2) != indexCrc) {
-            throw IOException("Routing segment index checksum failed.")
+            throw IOException(resources.getString(R.string.download_routing_segment_index_checksum_failed))
         }
     }
 }
 
-internal fun validateGzipDemStructure(file: File) {
+// Keep every existing validation guard and its typed, localizable failure.
+@Suppress("ThrowsCount")
+internal fun validateGzipDemStructure(
+    file: File,
+    resources: Resources,
+) {
     if (!file.exists() || !file.isFile || file.length() < GZIP_MINIMUM_BYTES) {
-        throw IOException("DEM tile is missing, empty, or truncated.")
+        throw IOException(resources.getString(R.string.download_dem_tile_is_missing_empty_or_truncated))
     }
     RandomAccessFile(file, "r").use { input ->
         if (input.readUnsignedByte() != GZIP_MAGIC_FIRST || input.readUnsignedByte() != GZIP_MAGIC_SECOND) {
-            throw IOException("DEM tile has an invalid GZIP header.")
+            throw IOException(resources.getString(R.string.download_dem_tile_has_an_invalid_gzip_header))
         }
         input.seek(file.length() - Int.SIZE_BYTES)
         val sizeBytes = ByteArray(Int.SIZE_BYTES)
@@ -67,7 +79,7 @@ internal fun validateGzipDemStructure(file: File) {
                 .int
                 .toLong() and 0xFFFFFFFFL
         if (!isPlausibleHgtByteSize(uncompressedSize)) {
-            throw IOException("DEM tile has an invalid uncompressed size.")
+            throw IOException(resources.getString(R.string.download_dem_tile_has_an_invalid_uncompressed_size))
         }
     }
 }

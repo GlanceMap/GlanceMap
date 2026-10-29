@@ -2,6 +2,7 @@ package com.glancemap.glancemapwearos.presentation.features.routetools
 
 import android.content.Context
 import android.os.SystemClock
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.RoutingCoverageUtils
 import com.glancemap.glancemapwearos.core.routing.isRoutingSegmentFileName
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
@@ -26,7 +27,7 @@ internal fun RouteToolSession.preflightStart(
     if (options.requiresSingleActiveGpx && !hasSingleActiveGpx) {
         return RouteToolPreflightResult(
             canStart = false,
-            message = "Activate exactly one GPX first",
+            message = context.resources.getString(R.string.gpx_activate_exactly_one_gpx_first),
         )
     }
 
@@ -42,7 +43,7 @@ internal fun RouteToolSession.preflightStart(
     }
 
     if (options.toolKind == RouteToolKind.CREATE && options.createMode == RouteCreateMode.COORDINATES) {
-        options.coordinateEndpointValidationMessage(currentLocation)?.let { message ->
+        options.coordinateEndpointValidationMessage(currentLocation, resources = context.resources)?.let { message ->
             return RouteToolPreflightResult(
                 canStart = false,
                 message = message,
@@ -61,12 +62,12 @@ internal fun RouteToolSession.preflightStart(
             canStart = false,
             message =
                 when (options.createMode) {
-                    RouteCreateMode.CURRENT_TO_HERE -> "To here needs GPS"
-                    RouteCreateMode.MULTI_POINT_CHAIN -> "This action needs GPS"
-                    RouteCreateMode.SEARCH -> "Search needs GPS"
-                    RouteCreateMode.COORDINATES -> "Current endpoint needs GPS"
-                    RouteCreateMode.LOOP_AROUND_HERE -> "Loop route needs GPS"
-                    else -> "This action needs GPS"
+                    RouteCreateMode.CURRENT_TO_HERE -> context.resources.getString(R.string.gpx_to_here_needs_gps)
+                    RouteCreateMode.MULTI_POINT_CHAIN -> context.resources.getString(R.string.gpx_this_action_needs_gps)
+                    RouteCreateMode.SEARCH -> context.resources.getString(R.string.gpx_search_needs_gps)
+                    RouteCreateMode.COORDINATES -> context.resources.getString(R.string.gpx_current_endpoint_needs_gps)
+                    RouteCreateMode.LOOP_AROUND_HERE -> context.resources.getString(R.string.gpx_loop_route_needs_gps)
+                    else -> context.resources.getString(R.string.gpx_this_action_needs_gps)
                 },
         )
     }
@@ -83,7 +84,7 @@ internal fun RouteToolSession.preflightStart(
 
     return RouteToolPreflightResult(
         canStart = false,
-        message = "Waiting for GPS",
+        message = context.resources.getString(R.string.navigation_waiting_for_gps),
         shouldRequestFreshLocation = true,
     )
 }
@@ -129,7 +130,7 @@ private fun routingCoveragePreflight(
             return if (coverage.availableSegments == 0) {
                 RouteToolPreflightResult(
                     canStart = false,
-                    message = "Routing packs missing for selected map",
+                    message = context.resources.getString(R.string.gpx_routing_packs_missing_for_selected_map),
                 )
             } else {
                 null
@@ -140,7 +141,7 @@ private fun routingCoveragePreflight(
     return if (!hasInstalledRoutingData(context)) {
         RouteToolPreflightResult(
             canStart = false,
-            message = "Routing data missing",
+            message = context.resources.getString(R.string.gpx_routing_data_missing),
         )
     } else {
         null

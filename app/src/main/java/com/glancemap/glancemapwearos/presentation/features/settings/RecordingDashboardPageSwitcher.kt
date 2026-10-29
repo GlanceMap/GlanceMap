@@ -15,10 +15,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 
 @Suppress("FunctionNaming") // Compose functions use PascalCase by convention.
 @Composable
@@ -41,13 +43,15 @@ internal fun RecordingDashboardPageSwitcher(
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(
-            text = dashboardLabel.takeIf(String::isNotBlank)?.let { "$it dashboard" } ?: "Dashboard page",
+            text =
+                dashboardLabel.takeIf(String::isNotBlank)?.let { stringResource(R.string.settings_dashboard, it) }
+                    ?: stringResource(R.string.settings_dashboard_page),
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.72f),
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "Page ${pageIndex + 1} of $pageCount",
+            text = stringResource(R.string.settings_page_of, pageIndex + 1, pageCount),
             style = MaterialTheme.typography.titleMedium,
             color = Color.White,
             textAlign = TextAlign.Center,
@@ -59,9 +63,9 @@ internal fun RecordingDashboardPageSwitcher(
         Text(
             text =
                 if (pageCount > 1) {
-                    "Tap for page ${nextPageIndex + 1}"
+                    stringResource(R.string.settings_tap_for_page, nextPageIndex + 1)
                 } else {
-                    "Add another page below"
+                    stringResource(R.string.settings_add_another_page_below)
                 },
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.72f),

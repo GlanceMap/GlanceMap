@@ -50,12 +50,19 @@ internal class LocationNotificationFactory(
                     runtimeReason == NavigationRuntimeDemandReason.GUIDANCE_BACKGROUND ||
                     runtimeReason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
             builder
-                .setContentTitle(if (guidanceActive) "Turn-by-turn guidance" else "App kept open")
-                .setContentText(
+                .setContentTitle(
                     if (guidanceActive) {
-                        "Guidance active · Tap to return"
+                        service.getString(
+                            R.string.navigation_turn_by_turn_guidance,
+                        )
                     } else {
-                        "Tap to return to navigation"
+                        service.getString(R.string.navigation_app_kept_open)
+                    },
+                ).setContentText(
+                    if (guidanceActive) {
+                        service.getString(R.string.navigation_guidance_active_tap_to_return)
+                    } else {
+                        service.getString(R.string.navigation_tap_to_return_to_navigation)
                     },
                 ).setCategory(NotificationCompat.CATEGORY_NAVIGATION)
                 .setOngoing(true)
@@ -70,8 +77,8 @@ internal class LocationNotificationFactory(
             ongoingActivity.apply(service.applicationContext)
         } else {
             builder
-                .setContentTitle("Location Service")
-                .setContentText("Ready")
+                .setContentTitle(service.getString(R.string.gpx_location_service))
+                .setContentText(service.getString(R.string.navigation_ready))
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setOngoing(false)
         }
@@ -101,7 +108,7 @@ internal class LocationNotificationFactory(
         val channel =
             NotificationChannel(
                 channelId,
-                "Location Service",
+                service.resources.getString(R.string.gpx_location_service),
                 NotificationManager.IMPORTANCE_LOW,
             )
         manager.createNotificationChannel(channel)

@@ -7,6 +7,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalResources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.LoopRouteSuggestionException
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
@@ -27,6 +29,7 @@ import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolS
 import com.glancemap.glancemapwearos.presentation.features.routetools.buildLoopRetryOptions
 import com.glancemap.glancemapwearos.presentation.features.routetools.preflightStart
 import com.glancemap.glancemapwearos.presentation.features.routetools.previewBeforeSaving
+import com.glancemap.glancemapwearos.presentation.features.routetools.routeToolFailureMessage
 import com.glancemap.glancemapwearos.presentation.features.routetools.withVisibleLoopDefaults
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -172,6 +175,7 @@ internal fun rememberNavigateRouteToolActions(
     setCreatedPoiRenameError: (String?) -> Unit,
     setShowCreatedPoiRenameDialog: (Boolean) -> Unit,
 ): NavigateRouteToolActions {
+    val resources = LocalResources.current
     val pendingDirectPoiRoute = remember { mutableStateOf<RouteToolSession?>(null) }
     // POI popups can outlive the composition that opened them. Route actions therefore read
     // these values when invoked rather than using the GPS state captured when the popup opened.
@@ -222,7 +226,7 @@ internal fun rememberNavigateRouteToolActions(
         @Suppress("UNUSED_PARAMETER") showProgressToast: Boolean,
     ) {
         if (routeToolExecutionInProgress) return
-        beginRouteToolExecution("Previewing...")
+        beginRouteToolExecution(resources.getString(R.string.navigation_previewing))
         setRouteToolExecutionMessage(null)
         setRouteToolPreview(null)
         gpxViewModel.previewRouteToolModification(draft) { result ->
@@ -234,8 +238,8 @@ internal fun rememberNavigateRouteToolActions(
                     setCompletedRouteToolDraft(draft)
                 }.onFailure { error ->
                     val message =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to preview the edited GPX."
+                        error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                            ?: resources.getString(R.string.navigation_failed_to_preview_the_edited_gpx)
                     setRouteToolExecutionMessage(message)
                     setRouteToolPreview(null)
                     setCompletedRouteToolDraft(draft)
@@ -266,8 +270,8 @@ internal fun rememberNavigateRouteToolActions(
                     setRouteToolSession(draft)
                 }.onFailure { error ->
                     val message =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Could not update the route."
+                        error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                            ?: resources.getString(R.string.navigation_could_not_update_the_route)
                     if (draft.options.createMode == RouteCreateMode.LOOP_AROUND_HERE) {
                         if (previousPreview != null) {
                             setRouteToolCreatePreview(previousPreview)
@@ -279,7 +283,7 @@ internal fun rememberNavigateRouteToolActions(
                             setRouteToolExecutionMessage(message)
                             setRouteToolLoopRetryOptions(
                                 if (error is LoopRouteSuggestionException) {
-                                    buildLoopRetryOptions(draft.options, error)
+                                    buildLoopRetryOptions(draft.options, error, resources = resources)
                                 } else {
                                     emptyList()
                                 },
@@ -372,7 +376,7 @@ internal fun rememberNavigateRouteToolActions(
                 setCreatedPoiCreateInProgress(false)
                 val message =
                     error.localizedMessage?.takeIf { it.isNotBlank() }
-                        ?: "Failed to save the POI."
+                        ?: resources.getString(R.string.navigation_failed_to_save_the_poi)
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
         }
@@ -414,14 +418,16 @@ internal fun rememberNavigateRouteToolActions(
         result
             .onSuccess(::showRouteToolSaveSuccess)
             .onFailure { error ->
-                val message = error.localizedMessage?.takeIf { it.isNotBlank() } ?: "Failed to create the GPX."
+                val message =
+                    error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                        ?: resources.getString(R.string.navigation_failed_to_create_the_gpx)
                 setRouteToolExecutionMessage(message)
                 setRouteToolLoopRetryOptions(
                     if (
                         session.options.createMode == RouteCreateMode.LOOP_AROUND_HERE &&
                         error is LoopRouteSuggestionException
                     ) {
-                        buildLoopRetryOptions(session.options, error)
+                        buildLoopRetryOptions(session.options, error, resources = resources)
                     } else {
                         emptyList()
                     },
@@ -440,8 +446,8 @@ internal fun rememberNavigateRouteToolActions(
             .onSuccess(::showRouteToolSaveSuccess)
             .onFailure { error ->
                 val message =
-                    error.localizedMessage?.takeIf { it.isNotBlank() }
-                        ?: "Failed to save the edited GPX."
+                    error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                        ?: resources.getString(R.string.navigation_failed_to_save_the_edited_gpx)
                 setRouteToolExecutionMessage(message)
                 setRouteToolResult(null)
                 setCompletedRouteToolDraft(session)
@@ -463,7 +469,7 @@ internal fun rememberNavigateRouteToolActions(
             }
         } else if (!routeToolExecutionInProgress) {
             setRouteToolSession(null)
-            beginRouteToolExecution("Finding route...")
+            beginRouteToolExecution(resources.getString(R.string.navigation_finding_route))
             gpxViewModel.applyRouteToolCreation(
                 session = session,
                 currentLocation = currentLocation,
@@ -479,7 +485,7 @@ internal fun rememberNavigateRouteToolActions(
         if (session.options.modifyMode.previewBeforeSaving) {
             previewModifyDraft(session, true)
         } else if (!routeToolExecutionInProgress) {
-            beginRouteToolExecution("Saving GPX...")
+            beginRouteToolExecution(resources.getString(R.string.gpx_saving_gpx))
             gpxViewModel.applyRouteToolModification(
                 session = session,
                 onProgress = setRouteToolExecutionStatus,
@@ -587,7 +593,7 @@ internal fun rememberNavigateRouteToolActions(
         Toast
             .makeText(
                 context,
-                "Could not get a fresh GPS fix.",
+                resources.getString(R.string.navigation_could_not_get_a_fresh_gps_fix),
                 Toast.LENGTH_SHORT,
             ).show()
     }
@@ -686,7 +692,12 @@ internal fun rememberNavigateRouteToolActions(
             preflight.shouldRequestFreshLocation -> {
                 pendingDirectPoiRoute.value = session
                 locationViewModel.requestImmediateLocation(source = freshLocationSource)
-                Toast.makeText(context, "Waiting for GPS", Toast.LENGTH_SHORT).show()
+                Toast
+                    .makeText(
+                        context,
+                        resources.getString(R.string.navigation_waiting_for_gps),
+                        Toast.LENGTH_SHORT,
+                    ).show()
             }
             else -> {
                 setRouteToolPreflightMessage(preflight.message)
@@ -715,7 +726,15 @@ internal fun rememberNavigateRouteToolActions(
         preview: RouteToolCreatePreview? = null,
     ) {
         if (routeToolExecutionInProgress) return
-        beginRouteToolExecution(if (preview != null) "Saving GPX..." else "Finding route...")
+        beginRouteToolExecution(
+            if (preview !=
+                null
+            ) {
+                resources.getString(R.string.gpx_saving_gpx)
+            } else {
+                resources.getString(R.string.navigation_finding_route)
+            },
+        )
         gpxViewModel.applyRouteToolCreation(
             session = draft,
             currentLocation = latestRecenterTarget.value,
@@ -736,15 +755,15 @@ internal fun rememberNavigateRouteToolActions(
                     setRouteToolResult(saveResult)
                 }.onFailure { error ->
                     val message =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to create the GPX."
+                        error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                            ?: resources.getString(R.string.navigation_failed_to_create_the_gpx)
                     setRouteToolExecutionMessage(message)
                     setRouteToolLoopRetryOptions(
                         if (
                             draft.options.createMode == RouteCreateMode.LOOP_AROUND_HERE &&
                             error is LoopRouteSuggestionException
                         ) {
-                            buildLoopRetryOptions(draft.options, error)
+                            buildLoopRetryOptions(draft.options, error, resources = resources)
                         } else {
                             emptyList()
                         },
@@ -794,7 +813,7 @@ internal fun rememberNavigateRouteToolActions(
         @Suppress("UNUSED_PARAMETER") showProgressToast: Boolean,
     ) {
         if (routeToolExecutionInProgress) return
-        beginRouteToolExecution("Saving GPX...")
+        beginRouteToolExecution(resources.getString(R.string.gpx_saving_gpx))
         gpxViewModel.applyRouteToolModification(
             session = draft,
             onProgress = setRouteToolExecutionStatus,
@@ -813,8 +832,8 @@ internal fun rememberNavigateRouteToolActions(
                     setRouteToolResult(saveResult)
                 }.onFailure { error ->
                     val message =
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: "Failed to save the edited GPX."
+                        error.routeToolFailureMessage(resources)?.takeIf { it.isNotBlank() }
+                            ?: resources.getString(R.string.navigation_failed_to_save_the_edited_gpx)
                     setRouteToolExecutionMessage(message)
                     setRouteToolResult(null)
                     setCompletedRouteToolDraft(draft)

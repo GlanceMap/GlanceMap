@@ -31,6 +31,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -41,6 +42,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 
 @Composable
 fun RenameValueDialog(
@@ -148,7 +150,7 @@ fun RenameValueDialog(
                 decorationBox = { innerTextField ->
                     if (draftValue.isBlank()) {
                         Text(
-                            text = "Enter name",
+                            text = stringResource(R.string.common_enter_name),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.45f),
                             textAlign = TextAlign.Center,
@@ -176,7 +178,7 @@ fun RenameValueDialog(
                         .heightIn(min = 48.dp),
                 enabled = !isSaving,
             ) {
-                Text(if (isSaving) "Saving..." else "Save")
+                Text(if (isSaving) stringResource(R.string.common_saving) else stringResource(R.string.common_save))
             }
 
             Button(
@@ -192,7 +194,7 @@ fun RenameValueDialog(
                         contentColor = Color.White,
                     ),
             ) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     }
@@ -231,7 +233,7 @@ private fun RenameValueFormContent(
         decorationBox = { innerTextField ->
             if (draftValue.isBlank()) {
                 Text(
-                    text = "Enter name",
+                    text = stringResource(R.string.common_enter_name),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.45f),
                     textAlign = TextAlign.Center,
@@ -259,7 +261,7 @@ private fun RenameValueFormContent(
                 .heightIn(min = buttonMinHeight),
         enabled = !isSaving,
     ) {
-        Text(if (isSaving) "Saving..." else "Save")
+        Text(if (isSaving) stringResource(R.string.common_saving) else stringResource(R.string.common_save))
     }
 
     Button(
@@ -274,6 +276,6 @@ private fun RenameValueFormContent(
                 contentColor = Color.White,
             ),
     ) {
-        Text("Cancel")
+        Text(stringResource(R.string.common_cancel))
     }
 }

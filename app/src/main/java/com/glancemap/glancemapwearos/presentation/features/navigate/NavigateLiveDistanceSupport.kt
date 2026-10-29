@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.view.MapView
 import java.util.Locale
@@ -85,9 +87,10 @@ internal fun formatLiveDistance(
 internal fun formatLiveDistanceLabel(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val (value, unit) = formatLiveDistance(meters = meters, isMetric = isMetric)
-    return if (unit.isBlank()) value else "$value $unit"
+    return if (unit.isBlank()) value else resources.getString(R.string.common_value_unit, value, unit)
 }
 
 private fun formatMetricLiveDistance(

@@ -1,7 +1,9 @@
 package com.glancemap.glancemapwearos.data.repository
 
 import android.content.Context
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
+import com.glancemap.glancemapwearos.data.repository.maps.theme.MapThemePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -74,6 +76,8 @@ class MapRepositoryImpl(
             val isInsideDir = file.canonicalFile.parentFile?.canonicalPath == mapDir.canonicalPath
             val ok = if (file.exists() && isInsideDir) file.delete() else false
 
+            if (ok) mapThemePreferences().deleteMap(path)
+
             // delete hidden part too
             File(mapDir, ".${file.name}.part").delete()
 
@@ -86,28 +90,30 @@ class MapRepositoryImpl(
     ): File =
         withContext(Dispatchers.IO) {
             val sourceFile = File(path)
-            require(sourceFile.exists()) { "The map could not be found." }
+            require(sourceFile.exists()) { context.getString(R.string.map_the_map_could_not_be_found) }
 
             val isInsideDir = sourceFile.canonicalFile.parentFile?.canonicalPath == mapDir.canonicalPath
-            require(isInsideDir) { "The map is outside the app storage." }
+            require(isInsideDir) { context.getString(R.string.map_the_map_is_outside_the_app_storage) }
 
             val normalizedTitle =
                 newName
                     .trim()
                     .replace(Regex("\\s+"), " ")
-            require(normalizedTitle.isNotBlank()) { "Enter a map name first." }
+            require(normalizedTitle.isNotBlank()) { context.getString(R.string.map_enter_a_map_name_first) }
 
             val targetFileName = buildRenamedMapFileName(normalizedTitle)
             val targetMatchesSource = targetFileName.equals(sourceFile.name, ignoreCase = true)
             if (!targetMatchesSource && fileExists(targetFileName)) {
-                error("A map with that name already exists.")
+                error(context.getString(R.string.map_a_map_with_that_name_already_exists))
             }
 
             val targetFile = File(mapDir, targetFileName)
             if (!targetMatchesSource) {
                 if (!sourceFile.renameTo(targetFile)) {
                     sourceFile.copyTo(targetFile, overwrite = true)
-                    require(sourceFile.delete()) { "The original map could not be removed after renaming." }
+                    require(
+                        sourceFile.delete(),
+                    ) { context.getString(R.string.map_the_original_map_could_not_be_removed_after_renaming) }
                 }
 
                 val sourcePartial = File(mapDir, ".${sourceFile.name}.part")
@@ -120,8 +126,17 @@ class MapRepositoryImpl(
                 }
             }
 
+            mapThemePreferences().renameMap(sourceFile.absolutePath, targetFile.absolutePath)
             targetFile
         }
+
+    private fun mapThemePreferences() =
+        MapThemePreferences(
+            context.getSharedPreferences(
+                MapThemePreferences.PREFERENCES_NAME,
+                Context.MODE_PRIVATE,
+            ),
+        )
 
     private fun buildRenamedMapFileName(name: String): String {
         val sanitized = File(name).name.removeSuffix(".map").trim()

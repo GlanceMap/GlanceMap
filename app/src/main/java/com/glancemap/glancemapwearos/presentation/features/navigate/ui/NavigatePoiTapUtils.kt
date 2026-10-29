@@ -1,7 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.PoiType
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
+import com.glancemap.glancemapwearos.presentation.features.poi.poiCategoryNameRes
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import org.mapsforge.core.model.LatLong
 import java.net.URI
@@ -74,14 +78,25 @@ internal data class PoiTapPopupContent(
         get() = !expandedText.isNullOrBlank() && expandedText != compactText
 }
 
+// Keep the existing presentation branches and fallbacks while resolving localized labels.
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 internal fun buildPoiTapPopupContent(
     marker: PoiOverlayMarker,
     isMetric: Boolean,
+    resources: Resources,
 ): PoiTapPopupContent {
     val name = marker.label?.trim().orEmpty()
     val details = marker.details
     val typeLabel = details?.typeLabel?.trim().orEmpty()
-    val displayType = if (typeLabel.isNotBlank()) typeLabel else marker.type.displayName
+    val displayType =
+        if (marker.type ==
+            PoiType.CUSTOM
+        ) {
+            resources.getString(marker.type.displayNameRes)
+        } else {
+            poiCategoryNameRes(typeLabel)?.let { resources.getString(it) }
+                ?: typeLabel.ifBlank { resources.getString(marker.type.displayNameRes) }
+        }
 
     val title =
         if (name.isBlank()) {
@@ -89,17 +104,17 @@ internal fun buildPoiTapPopupContent(
         } else if (name.equals(displayType, ignoreCase = true)) {
             name
         } else {
-            "$name ($displayType)"
+            resources.getString(R.string.poi_name_with_type, name, displayType)
         }
 
     val detailBits = mutableListOf<String>()
     details?.elevationMeters?.takeIf { it > 0 }?.let { meters ->
         val (value, unit) = UnitFormatter.formatElevation(meters.toDouble(), isMetric)
-        detailBits += "$value $unit"
+        detailBits += resources.getString(R.string.common_value_unit, value, unit)
     }
     if (marker.type == PoiType.HUT || marker.type == PoiType.CAMP) {
         details?.sleepingPlaces?.takeIf { it >= 0 }?.let { places ->
-            detailBits += if (places == 1) "1 place" else "$places places"
+            detailBits += resources.getQuantityString(R.plurals.navigation_places, places, places)
         }
     }
     details
@@ -178,22 +193,23 @@ private fun websiteHost(url: String): String? {
     return host.takeIf { it.isNotBlank() }
 }
 
-private val PoiType.displayName: String
+@get:StringRes
+private val PoiType.displayNameRes: Int
     get() =
         when (this) {
-            PoiType.PEAK -> "Peak"
-            PoiType.WATER -> "Water"
-            PoiType.HUT -> "Hut"
-            PoiType.CAMP -> "Camp"
-            PoiType.FOOD -> "Food"
-            PoiType.TOILET -> "Toilets"
-            PoiType.TRANSPORT -> "Transport"
-            PoiType.BIKE -> "Bike"
-            PoiType.VIEWPOINT -> "Viewpoint"
-            PoiType.PARKING -> "Parking"
-            PoiType.SHOP -> "Shop"
-            PoiType.GENERIC -> "POI"
-            PoiType.CUSTOM -> "My creation"
+            PoiType.PEAK -> R.string.poi_peak
+            PoiType.WATER -> R.string.poi_water
+            PoiType.HUT -> R.string.poi_hut
+            PoiType.CAMP -> R.string.poi_camp
+            PoiType.FOOD -> R.string.poi_food
+            PoiType.TOILET -> R.string.poi_toilets
+            PoiType.TRANSPORT -> R.string.poi_transport
+            PoiType.BIKE -> R.string.common_bike
+            PoiType.VIEWPOINT -> R.string.poi_viewpoint
+            PoiType.PARKING -> R.string.poi_parking
+            PoiType.SHOP -> R.string.poi_shop
+            PoiType.GENERIC -> R.string.common_poi
+            PoiType.CUSTOM -> R.string.poi_my_creation
         }
 
 private fun haversineMeters(

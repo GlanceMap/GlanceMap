@@ -29,12 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -44,12 +42,14 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionABUiState
 import com.glancemap.glancemapwearos.presentation.features.gpx.InspectionAUiState
 import com.glancemap.glancemapwearos.presentation.formatting.DurationFormatter
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import com.glancemap.glancemapwearos.presentation.ui.WearWindowClass
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
+import com.glancemap.glancemapwearos.presentation.ui.superscriptResourceText
 import kotlin.math.abs
 
 private const val DragDismissPx = 55f
@@ -224,6 +224,7 @@ fun GpxInspectionPopupA(
     onSelectB: () -> Unit,
     isMetric: Boolean,
 ) {
+    val resources = LocalResources.current
     val sizing = rememberInspectionPopupSizing()
     val tableScrollState = rememberScrollState()
     val distFromStart =
@@ -254,11 +255,11 @@ fun GpxInspectionPopupA(
         }
     val etaFromStart =
         remember(state.a.durationFromStartSec) {
-            DurationFormatter.formatDurationShort(state.a.durationFromStartSec)
+            DurationFormatter.formatDurationShort(state.a.durationFromStartSec, resources = resources)
         }
     val etaToEnd =
         remember(state.a.durationToEndSec) {
-            DurationFormatter.formatDurationShort(state.a.durationToEndSec)
+            DurationFormatter.formatDurationShort(state.a.durationToEndSec, resources = resources)
         }
     val tableWidthMultiplier =
         remember(
@@ -351,26 +352,16 @@ fun GpxInspectionPopupA(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.AddLocation,
-                        contentDescription = "Add second point B",
+                        contentDescription = stringResource(R.string.maps_add_second_point_b),
                         modifier = Modifier.size(sizing.actionIconSize),
                     )
                     Spacer(Modifier.width(sizing.actionSpacerWidth))
                     Text(
                         text =
-                            buildAnnotatedString {
-                                append("Add 2")
-                                withStyle(
-                                    SpanStyle(
-                                        baselineShift = BaselineShift.Superscript,
-                                        fontSize =
-                                            sizing.buttonTextSize
-                                                ?: MaterialTheme.typography.labelSmall.fontSize,
-                                    ),
-                                ) {
-                                    append("nd")
-                                }
-                                append(" point (B)")
-                            },
+                            superscriptResourceText(
+                                R.string.gpx_add_second_point_label,
+                                sizing.buttonTextSize ?: MaterialTheme.typography.labelSmall.fontSize,
+                            ),
                         style =
                             MaterialTheme.typography.labelMedium
                                 .withSize(sizing.buttonTextSize),
@@ -389,6 +380,7 @@ fun GpxInspectionPopupAB(
     onDismiss: () -> Unit,
     isMetric: Boolean,
 ) {
+    val resources = LocalResources.current
     val sizing = rememberInspectionPopupSizing()
     val tableScrollState = rememberScrollState()
     val sToADist =
@@ -431,15 +423,15 @@ fun GpxInspectionPopupAB(
         }
     val sToAEta =
         remember(state.sToA.durationSec) {
-            DurationFormatter.formatDurationShort(state.sToA.durationSec)
+            DurationFormatter.formatDurationShort(state.sToA.durationSec, resources = resources)
         }
     val aToBEta =
         remember(state.aToB.durationSec) {
-            DurationFormatter.formatDurationShort(state.aToB.durationSec)
+            DurationFormatter.formatDurationShort(state.aToB.durationSec, resources = resources)
         }
     val bToEEta =
         remember(state.bToE.durationSec) {
-            DurationFormatter.formatDurationShort(state.bToE.durationSec)
+            DurationFormatter.formatDurationShort(state.bToE.durationSec, resources = resources)
         }
     val tableWidthMultiplier =
         remember(
@@ -588,21 +580,21 @@ private fun MetricTableCompact(
             )
             HeaderCellOneLine(
                 modifier = Modifier.weight(metricW),
-                text = "Dist $distUnit",
+                text = stringResource(R.string.maps_dist, distUnit),
                 color = headerColor,
                 alignEnd = true,
                 fontSize = headerTextSize,
             )
             HeaderCellOneLine(
                 modifier = Modifier.weight(metricW),
-                text = "↑ $upUnit",
+                text = stringResource(R.string.map_ascent_value, upUnit),
                 color = headerColor,
                 alignEnd = true,
                 fontSize = headerTextSize,
             )
             HeaderCellOneLine(
                 modifier = Modifier.weight(metricW),
-                text = "↓ $downUnit",
+                text = stringResource(R.string.map_descent_value, downUnit),
                 color = headerColor,
                 alignEnd = true,
                 fontSize = headerTextSize,
@@ -637,7 +629,11 @@ private fun MetricTableCompact(
             }
         }
         if (!hasInlineEta && etaHeader != null) {
-            EtaSecondaryLine(text = "$etaHeader $row1Eta", compact = compact, fontSize = etaTextSize)
+            EtaSecondaryLine(
+                text = stringResource(R.string.map_eta_row, etaHeader, row1Eta),
+                compact = compact,
+                fontSize = etaTextSize,
+            )
         }
 
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -657,7 +653,11 @@ private fun MetricTableCompact(
             }
         }
         if (!hasInlineEta && etaHeader != null) {
-            EtaSecondaryLine(text = "$etaHeader $row2Eta", compact = compact, fontSize = etaTextSize)
+            EtaSecondaryLine(
+                text = stringResource(R.string.map_eta_row, etaHeader, row2Eta),
+                compact = compact,
+                fontSize = etaTextSize,
+            )
         }
 
         if (row3Label != null) {
@@ -678,7 +678,11 @@ private fun MetricTableCompact(
                 }
             }
             if (!hasInlineEta && etaHeader != null) {
-                EtaSecondaryLine(text = "$etaHeader $row3Eta", compact = compact, fontSize = etaTextSize)
+                EtaSecondaryLine(
+                    text = stringResource(R.string.map_eta_row, etaHeader, row3Eta),
+                    compact = compact,
+                    fontSize = etaTextSize,
+                )
             }
         }
     }
@@ -886,9 +890,7 @@ private fun DialogSurface(
  * Swipe hint bar to signal downward swipe for dismiss.
  */
 @Composable
-private fun SwipeHandleHint(
-    sizing: InspectionPopupSizing,
-) {
+private fun SwipeHandleHint(sizing: InspectionPopupSizing) {
     Box(
         modifier =
             Modifier

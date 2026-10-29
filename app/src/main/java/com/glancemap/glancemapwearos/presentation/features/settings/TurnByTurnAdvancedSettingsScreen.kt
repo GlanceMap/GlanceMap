@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import com.glancemap.glancemapwearos.R
 
 @Composable
 @Suppress("FunctionNaming", "LongMethod")
@@ -11,6 +14,7 @@ fun TurnByTurnAdvancedSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenTurnByTurnSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val routeStartBehavior by viewModel.turnByTurnRouteStartBehavior.collectAsState()
     val reverseSuggestionMode by viewModel.turnByTurnReverseSuggestionMode.collectAsState()
     val turnAlertsMode by viewModel.turnByTurnTurnAlertsMode.collectAsState()
@@ -25,46 +29,50 @@ fun TurnByTurnAdvancedSettingsScreen(
         }
         item {
             SettingsOptionPickerRow(
-                label = "Route start behavior",
+                label = stringResource(R.string.settings_route_start_behavior),
                 selectedValue = routeStartBehavior,
-                options = TurnByTurnRouteStartOptions,
-                secondaryLabel = routeStartBehaviorLabel(routeStartBehavior),
+                options = TurnByTurnRouteStartOptions.map { (value, labelRes) -> value to stringResource(labelRes) },
+                secondaryLabel = routeStartBehaviorLabel(routeStartBehavior, resources = resources),
                 onSelect = viewModel::setTurnByTurnRouteStartBehavior,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "Suggest reverse route",
+                label = stringResource(R.string.settings_suggest_reverse_route),
                 selectedValue = reverseSuggestionMode,
-                options = TurnByTurnReverseSuggestionOptions,
-                secondaryLabel = reverseSuggestionLabel(reverseSuggestionMode),
+                options =
+                    TurnByTurnReverseSuggestionOptions.map { (value, labelRes) ->
+                        value to
+                            stringResource(labelRes)
+                    },
+                secondaryLabel = reverseSuggestionLabel(reverseSuggestionMode, resources = resources),
                 onSelect = viewModel::setTurnByTurnReverseSuggestionMode,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "Turn alerts",
+                label = stringResource(R.string.settings_turn_alerts),
                 selectedValue = turnAlertsMode,
-                options = TurnByTurnAlertsOptions,
-                secondaryLabel = turnAlertsLabel(turnAlertsMode),
+                options = TurnByTurnAlertsOptions.map { (value, labelRes) -> value to stringResource(labelRes) },
+                secondaryLabel = turnAlertsLabel(turnAlertsMode, resources = resources),
                 onSelect = viewModel::setTurnByTurnTurnAlertsMode,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "Off-route distance",
+                label = stringResource(R.string.settings_off_route_distance),
                 selectedValue = offRouteThresholdMeters,
-                options = TurnByTurnOffRouteThresholdOptions,
-                secondaryLabel = "$offRouteThresholdMeters m",
+                options = TurnByTurnOffRouteThresholdOptions.map { it to stringResource(R.string.settings_m, it) },
+                secondaryLabel = stringResource(R.string.settings_m, offRouteThresholdMeters),
                 onSelect = viewModel::setTurnByTurnOffRouteAlertThresholdMeters,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "Repeat off-route",
+                label = stringResource(R.string.settings_repeat_off_route),
                 selectedValue = offRouteRepeatSeconds,
-                options = TurnByTurnOffRouteRepeatOptions,
-                secondaryLabel = "${offRouteRepeatSeconds}s",
+                options = TurnByTurnOffRouteRepeatOptions.map { it to stringResource(R.string.settings_s, it) },
+                secondaryLabel = stringResource(R.string.settings_s, offRouteRepeatSeconds),
                 onSelect = viewModel::setTurnByTurnOffRouteRepeatSeconds,
             )
         }
@@ -72,12 +80,12 @@ fun TurnByTurnAdvancedSettingsScreen(
             SettingsToggleChip(
                 checked = screenOffBatchingEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnScreenOffBatchingEnabled,
-                label = "Screen-off saver",
+                label = stringResource(R.string.settings_screen_off_saver),
                 secondaryLabel =
                     if (screenOffBatchingEnabled) {
-                        "Save battery, later alerts"
+                        stringResource(R.string.settings_save_battery_later_alerts)
                     } else {
-                        "Normal alert timing"
+                        stringResource(R.string.settings_normal_alert_timing)
                     },
             )
         }
@@ -85,8 +93,8 @@ fun TurnByTurnAdvancedSettingsScreen(
             SettingsToggleChip(
                 checked = elevationProgressRingEnabled,
                 onCheckedChanged = viewModel::setTurnByTurnElevationProgressRingEnabled,
-                label = "Elevation ring",
-                secondaryLabel = "▲ uphill · ▼ downhill",
+                label = stringResource(R.string.settings_elevation_ring),
+                secondaryLabel = stringResource(R.string.settings_uphill_downhill),
             )
         }
     }

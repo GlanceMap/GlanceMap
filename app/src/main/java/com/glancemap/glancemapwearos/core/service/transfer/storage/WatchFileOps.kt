@@ -12,7 +12,13 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentTargetFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
+import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemePackageException
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import org.mapsforge.map.reader.MapFile
 import java.io.File
 import java.io.IOException
@@ -55,7 +61,8 @@ internal class WatchFileOps(
             fileName.endsWith(".map", ignoreCase = true) ||
             fileName.endsWith(".poi", ignoreCase = true) ||
             isRoutingSegmentFileName(fileName) ||
-            isDemFileName(fileName)
+            isDemFileName(fileName) ||
+            MapsforgeThemePackage.isTransferName(fileName)
 
     suspend fun fileExistsOnWatch(fileName: String): Boolean =
         when {
@@ -64,6 +71,8 @@ internal class WatchFileOps(
             fileName.endsWith(".poi", ignoreCase = true) -> container.poiRepository.fileExists(fileName)
             isRoutingSegmentFileName(fileName) -> routingSegmentTargetFile(app.applicationContext, fileName).exists()
             isDemFileName(fileName) -> demTargetFileForName(fileName).exists()
+            // Packages are always atomically replaceable.
+            MapsforgeThemePackage.isTransferName(fileName) -> false
             else -> false
         }
 
@@ -71,11 +80,14 @@ internal class WatchFileOps(
 
     fun isReplaceableTransferFileName(fileName: String): Boolean = isReplaceable(fileName)
 
-    private fun isReplaceable(fileName: String): Boolean = isRoutingSegmentFileName(fileName)
+    private fun isReplaceable(fileName: String): Boolean =
+        isRoutingSegmentFileName(fileName) ||
+            MapsforgeThemePackage.isTransferName(fileName)
 
     suspend fun deleteLocalFile(fileName: String) {
         runCatching {
             when {
+                MapsforgeThemePackage.isTransferName(fileName) -> deleteThemeTransfer(fileName)
                 fileName.endsWith(".gpx", ignoreCase = true) -> container.gpxRepository.deleteGpxFile(fileName)
                 fileName.endsWith(".map", ignoreCase = true) -> {
                     val safeName = sanitizeFileName(fileName)
@@ -177,6 +189,16 @@ internal class WatchFileOps(
     ): String? {
         try {
             return when {
+                MapsforgeThemePackage.isTransferName(fileName) ->
+                    saveThemeArchive(
+                        fileName,
+                        inputStream,
+                        expectedSize,
+                        resumeOffset,
+                        computeSha256,
+                        diagnosticContext,
+                        onProgress,
+                    )
                 fileName.endsWith(".gpx", ignoreCase = true) -> {
                     val sha256 =
                         container.gpxRepository.saveGpxFileAtomic(
@@ -298,6 +320,55 @@ internal class WatchFileOps(
         }
     }
 
+    suspend fun finishReceivedFile(fileName: String) {
+        if (!MapsforgeThemePackage.isTransferName(fileName)) return
+        withContext(Dispatchers.IO) {
+            val jobContext = currentCoroutineContext()
+            container.externalThemeStore.finishTransfer(sanitizeFileName(fileName)) { jobContext.ensureActive() }
+        }
+    }
+
+    // Mirrors the existing resumable transfer storage arguments.
+    @Suppress("LongParameterList")
+    private suspend fun saveThemeArchive(
+        fileName: String,
+        input: InputStream,
+        expectedSize: Long?,
+        resumeOffset: Long,
+        computeSha256: Boolean,
+        diagnosticContext: String?,
+        onProgress: (Long) -> Unit,
+    ): String? {
+        if ((expectedSize ?: 0L) > MapsforgeThemePackage.MAX_ARCHIVE_BYTES ||
+            resumeOffset > MapsforgeThemePackage.MAX_ARCHIVE_BYTES
+        ) {
+            throw ThemePackageException("Theme package is too large")
+        }
+        val result =
+            AtomicStreamWriter.writeAtomic(
+                dir = container.externalThemeStore.transferDirectory,
+                fileName = sanitizeFileName(fileName),
+                inputStream = MapsforgeThemePackage.boundedArchiveStream(input, resumeOffset),
+                onProgress = onProgress,
+                options =
+                    AtomicStreamWriter.Options(
+                        expectedSize = expectedSize?.takeIf { it > 0L },
+                        requireExactSize = expectedSize != null && expectedSize > 0L,
+                        resumeOffset = resumeOffset,
+                        keepPartialOnCancel = true,
+                        keepPartialOnFailure = true,
+                        computeSha256 = computeSha256,
+                        diagnosticContext = diagnosticContext,
+                    ),
+            )
+        return result.sha256
+    }
+
+    private fun deleteThemeTransfer(fileName: String) {
+        targetFileForName(fileName)?.delete()
+        partFileForName(fileName)?.delete()
+    }
+
     fun getPartialSize(fileName: String): Long {
         val safeName = sanitizeFileName(fileName)
         val part = partFileForName(safeName) ?: return 0L
@@ -365,6 +436,7 @@ internal class WatchFileOps(
     suspend fun deleteByName(fileName: String) {
         val safeName = sanitizeFileName(fileName)
         when {
+            MapsforgeThemePackage.isTransferName(safeName) -> deleteThemeTransfer(safeName)
             safeName.endsWith(".gpx", ignoreCase = true) -> {
                 val dir = app.getDir("gpx", Context.MODE_PRIVATE)
                 container.gpxRepository.deleteGpxFile(File(dir, safeName).absolutePath)
@@ -439,6 +511,9 @@ internal class WatchFileOps(
 
     private fun targetFileForName(fileName: String): File? =
         when {
+            MapsforgeThemePackage.isTransferName(
+                fileName,
+            ) -> File(container.externalThemeStore.transferDirectory, sanitizeFileName(fileName))
             fileName.endsWith(".gpx", ignoreCase = true) -> File(app.getDir("gpx", Context.MODE_PRIVATE), fileName)
             fileName.endsWith(".map", ignoreCase = true) -> File(app.getDir("maps", Context.MODE_PRIVATE), fileName)
             fileName.endsWith(".poi", ignoreCase = true) -> File(app.getDir("poi", Context.MODE_PRIVATE), fileName)
@@ -449,6 +524,9 @@ internal class WatchFileOps(
 
     private fun partFileForName(fileName: String): File? =
         when {
+            MapsforgeThemePackage.isTransferName(
+                fileName,
+            ) -> File(container.externalThemeStore.transferDirectory, ".${sanitizeFileName(fileName)}.part")
             fileName.endsWith(".gpx", ignoreCase = true) -> {
                 val dir = app.getDir("gpx", Context.MODE_PRIVATE)
                 File(dir, ".$fileName.part")

@@ -12,12 +12,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.SplitSwitchButton
 import androidx.wear.compose.material3.SwitchButtonDefaults
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.presentation.features.settings.GeneralSettingsShortcutChip
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsOptionPickerHost
@@ -40,31 +42,31 @@ fun DownloadSettingsScreen(
             SettingsToggleChip(
                 checked = uiState.selection.includeMap,
                 onCheckedChanged = viewModel::setIncludeMap,
-                label = "Maps",
-                secondaryLabel = "OpenAndroMaps",
+                label = stringResource(R.string.download_maps),
+                secondaryLabel = stringResource(R.string.download_openandromaps),
             )
         }
         item {
             SettingsToggleChip(
                 checked = uiState.selection.includePoi,
                 onCheckedChanged = viewModel::setIncludePoi,
-                label = "POI",
-                secondaryLabel = "Mapsforge POI",
+                label = stringResource(R.string.common_poi),
+                secondaryLabel = stringResource(R.string.download_mapsforge_poi),
             )
         }
         item {
             SettingsToggleChip(
                 checked = uiState.selection.includeRouting,
                 onCheckedChanged = viewModel::setIncludeRouting,
-                label = "Routing",
-                secondaryLabel = "BRouter RD5",
+                label = stringResource(R.string.download_routing),
+                secondaryLabel = stringResource(R.string.download_brouter_rd5),
             )
         }
         item {
             SettingsOptionPickerHost(
-                title = "Elevation quality",
+                title = stringResource(R.string.download_elevation_quality),
                 selectedValue = uiState.selection.demSource,
-                options = DemSource.entries.map { source -> source to source.displayName },
+                options = DemSource.entries.map { source -> source to stringResource(source.displayNameRes) },
                 onSelect = viewModel::setDemSource,
             ) { openPicker ->
                 ElevationDownloadSetting(
@@ -79,8 +81,8 @@ fun DownloadSettingsScreen(
             SettingsToggleChip(
                 checked = uiState.selection.includeRefugesInfo,
                 onCheckedChanged = viewModel::setIncludeRefugesInfo,
-                label = "Refuges.info",
-                secondaryLabel = "All refuge POIs",
+                label = stringResource(R.string.download_refuges_info),
+                secondaryLabel = stringResource(R.string.download_all_refuge_pois),
             )
         }
     }
@@ -96,9 +98,9 @@ private fun ElevationDownloadSetting(
     SplitSwitchButton(
         checked = checked,
         onCheckedChange = onCheckedChanged,
-        toggleContentDescription = "Include elevation",
+        toggleContentDescription = stringResource(R.string.download_include_elevation),
         onContainerClick = onPickSource,
-        containerClickLabel = "Choose elevation quality",
+        containerClickLabel = stringResource(R.string.download_choose_elevation_quality),
         modifier = Modifier.fillMaxWidth(),
         colors =
             SwitchButtonDefaults.splitSwitchButtonColors(
@@ -113,20 +115,20 @@ private fun ElevationDownloadSetting(
             ),
         label = {
             Text(
-                text = "Elevation",
+                text = stringResource(R.string.common_elevation),
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Icon(
                 imageVector = Icons.Filled.UnfoldMore,
-                contentDescription = "Choose elevation quality",
+                contentDescription = stringResource(R.string.download_choose_elevation_quality),
                 modifier = Modifier.size(18.dp),
             )
         },
         secondaryLabel = {
             Text(
-                text = source.shortLabel,
+                text = stringResource(source.shortLabelRes),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

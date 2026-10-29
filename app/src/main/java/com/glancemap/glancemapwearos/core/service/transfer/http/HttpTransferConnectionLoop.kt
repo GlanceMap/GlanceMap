@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.core.service.transfer.http
 import android.net.Network
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferRuntimeHost
@@ -13,6 +14,7 @@ import kotlinx.coroutines.ensureActive
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import kotlin.coroutines.coroutineContext
 
 @Suppress("LargeClass")
@@ -220,7 +222,12 @@ internal class HttpTransferConnectionLoop(
                                     requireNotNull(startupDeadlineElapsedMs),
                                     SystemClock.elapsedRealtime(),
                                 ),
-                            ) ?: throw IOException("HTTP startup budget exhausted before the first request")
+                            )
+                                ?: throw IOException(
+                                    host.context.getString(
+                                        R.string.download_http_startup_budget_exhausted_before_the_first_request,
+                                    ),
+                                )
                     }
                     val code = connection.responseCode
                     Log.d(TAG, "HTTP Response: $code")
@@ -283,10 +290,18 @@ internal class HttpTransferConnectionLoop(
                                 }
                             }
 
-                            else -> throw IOException("Server Error $code: ${connection.responseMessage}")
+                            else -> throw IOException(
+                                host.context.getString(
+                                    R.string.download_server_error,
+                                    code,
+                                    connection.responseMessage,
+                                ),
+                            )
                         }
                     } else if (code != HttpURLConnection.HTTP_OK) {
-                        throw IOException("Server Error $code: ${connection.responseMessage}")
+                        throw IOException(
+                            host.context.getString(R.string.download_server_error, code, connection.responseMessage),
+                        )
                     }
 
                     if (networkPaused) {
@@ -297,7 +312,10 @@ internal class HttpTransferConnectionLoop(
                             "HttpConn",
                             "Connection restored id=${metadata.transferId} file=${metadata.fileName} resumeOffset=$desiredOffset",
                         )
-                        onTransferState("RESUMED", "Connection restored. Resuming transfer…")
+                        onTransferState(
+                            "RESUMED",
+                            host.context.getString(R.string.download_connection_restored_resuming_transfer),
+                        )
                     }
 
                     val dataTransferStartMs = SystemClock.elapsedRealtime()
@@ -381,9 +399,9 @@ internal class HttpTransferConnectionLoop(
                         reconnectCount++
                         val detail =
                             if (currentWifi == null) {
-                                "Network lost. Waiting for Wi-Fi…"
+                                host.context.getString(R.string.download_network_lost_waiting_for_wi_fi)
                             } else {
-                                "Connection interrupted. Waiting to resume…"
+                                host.context.getString(R.string.download_connection_interrupted_waiting_to_resume)
                             }
                         Log.w(
                             TAG,
@@ -426,7 +444,10 @@ internal class HttpTransferConnectionLoop(
                         )
                         if (pausedForMs > pauseBudgetMs) {
                             throw IOException(
-                                "Transfer paused for more than ${pauseBudgetMs / 1000}s",
+                                host.context.getString(
+                                    R.string.download_transfer_paused_for_more_than_s,
+                                    pauseBudgetMs / 1000,
+                                ),
                                 e,
                             )
                         }
@@ -440,7 +461,12 @@ internal class HttpTransferConnectionLoop(
                                 nowElapsedMs = SystemClock.elapsedRealtime(),
                             )
                         if (startupRemainingMs != null && startupRemainingMs <= 0L) {
-                            throw IOException("HTTP startup budget exhausted before the first request", e)
+                            throw IOException(
+                                host.context.getString(
+                                    R.string.download_http_startup_budget_exhausted_before_the_first_request,
+                                ),
+                                e,
+                            )
                         }
                         val remainingPauseBudgetMs =
                             (networkPauseTimeoutMs - (nowMs - pausedSinceMs))
@@ -453,7 +479,10 @@ internal class HttpTransferConnectionLoop(
                                 timeoutMs = boundedPauseBudgetMs,
                                 recheckMs = networkRecheckMs,
                             ) ?: throw IOException(
-                                "No Wi-Fi network after ${networkPauseTimeoutMs / 1000}s",
+                                host.context.getString(
+                                    R.string.download_no_wi_fi_network_after_s,
+                                    networkPauseTimeoutMs / 1000,
+                                ),
                                 e,
                             )
 
@@ -604,9 +633,16 @@ internal class HttpTransferConnectionLoop(
             )
             val failureMessage =
                 if (!startupComplete) {
-                    "HTTP startup budget exhausted before the first request. Last error: ${lastError?.message}"
+                    host.context.getString(
+                        R.string.download_http_startup_budget_exhausted_before_the_first_request_last_error,
+                        lastError?.message,
+                    )
                 } else {
-                    "HTTP recovery window exhausted after ${currentRetryBudgetMs}ms. Last error: ${lastError?.message}"
+                    host.context.getString(
+                        R.string.download_http_recovery_window_exhausted_after_ms_last_error,
+                        currentRetryBudgetMs,
+                        lastError?.message,
+                    )
                 }
             throw IOException(failureMessage, lastError)
         } finally {
@@ -636,7 +672,7 @@ internal class HttpTransferConnectionLoop(
                 "HttpConn",
                 "Oversized partial id=${metadata.transferId} file=${metadata.fileName} partialBytes=$desiredOffset expectedBytes=$expectedSize",
             )
-            onTransferState("VERIFYING", "Repairing partial file…")
+            onTransferState("VERIFYING", host.context.getString(R.string.download_repairing_partial_file))
             val truncated = host.truncatePartial(metadata.fileName, expectedSize)
             if (!truncated) {
                 host.deletePartial(metadata.fileName)
@@ -646,7 +682,7 @@ internal class HttpTransferConnectionLoop(
         }
 
         if (desiredOffset == expectedSize && !expectedSha.isNullOrBlank()) {
-            onTransferState("VERIFYING", "Checking partial file…")
+            onTransferState("VERIFYING", host.context.getString(R.string.download_checking_partial_file))
             val partialSha = host.computePartialFileSha256(metadata.fileName)?.lowercase()
             if (partialSha == expectedSha && host.promotePartialToFinal(metadata.fileName)) {
                 return ResumePreparation.Completed(partialSha)
@@ -680,14 +716,6 @@ internal class HttpTransferConnectionLoop(
             "Server rejected range id=${metadata.transferId} file=${metadata.fileName}; repairing partial",
         )
         return prepareResumeOffset(metadata, 0L, onTransferState)
-    }
-
-    private fun shouldRefreshBinding(
-        attempt: Int,
-        error: IOException,
-    ): Boolean {
-        val message = error.message?.lowercase().orEmpty()
-        return attempt % 4 == 0 || "timeout" in message || "timed out" in message
     }
 
     private fun probeServer(
@@ -728,7 +756,7 @@ internal class HttpTransferConnectionLoop(
                 "event=http_probe_failure transferId=${metadata.transferId} file=${metadata.fileName} " +
                     "probeDurationMs=${SystemClock.elapsedRealtime() - probeStartMs} reason=${e.javaClass.simpleName}",
             )
-            throw IOException("Cannot reach phone HTTP server (${e.message})", e)
+            throw IOException(host.context.getString(R.string.download_cannot_reach_phone_http_server, e.message), e)
         } finally {
             runCatching { c?.disconnect() }
         }
@@ -741,6 +769,17 @@ internal class HttpTransferConnectionLoop(
         const val HTTP_REQUESTED_RANGE_NOT_SATISFIABLE = 416
     }
 }
+
+// Diagnostic matching stays independent of translated UI text.
+internal fun shouldRefreshBinding(
+    attempt: Int,
+    error: IOException,
+): Boolean {
+    val message = error.message?.lowercase(Locale.ROOT).orEmpty()
+    return attempt % 4 == 0 || "timeout" in message || HTTP_TIMED_OUT_DIAGNOSTIC in message
+}
+
+private const val HTTP_TIMED_OUT_DIAGNOSTIC = "timed out"
 
 internal fun shouldComputeInlineChecksumForHttp(resumeOffset: Long): Boolean = resumeOffset <= 0L
 

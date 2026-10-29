@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapwearos.GlanceMapWearApp
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStrategy
@@ -124,6 +125,8 @@ class WatchTransferForegroundService :
         return START_NOT_STICKY
     }
 
+    // Keep admission, terminal delivery and cleanup in the established transfer scope.
+    @Suppress("LongMethod")
     private fun launchTransfer(
         request: TransferRequest,
         startId: Int,
@@ -155,7 +158,11 @@ class WatchTransferForegroundService :
                                     "Already exists",
                                     -1,
                                 )
-                                notificationHelper.showError(request.metadata.notificationId, request.metadata.fileName, "Already exists")
+                                notificationHelper.showError(
+                                    request.metadata.notificationId,
+                                    request.metadata.fileName,
+                                    "Already exists",
+                                )
                                 request.terminalResult.record(
                                     HttpTransferTerminalResult(
                                         phase = "ERROR",
@@ -290,6 +297,8 @@ class WatchTransferForegroundService :
             diagnosticContext = diagnosticContext,
             onProgress = onProgress,
         )
+
+    override suspend fun finishReceivedFile(fileName: String) = fileOps.finishReceivedFile(fileName)
 
     override fun getPartialSize(fileName: String): Long = fileOps.getPartialSize(fileName)
 
@@ -477,9 +486,7 @@ class WatchTransferForegroundService :
 
     // Platform foreground promotion failures are runtime exceptions on supported API levels.
     @Suppress("TooGenericExceptionCaught")
-    private fun startForegroundForRequest(
-        request: TransferRequest,
-    ): String? {
+    private fun startForegroundForRequest(request: TransferRequest): String? {
         try {
             TransferDiagnostics.log(
                 "FgService",
@@ -489,7 +496,7 @@ class WatchTransferForegroundService :
             notificationHelper.startForeground(
                 request.metadata.notificationId,
                 request.metadata.fileName,
-                "Preparing Download…",
+                this.getString(R.string.download_preparing_download),
             )
             TransferDiagnostics.log(
                 "FgService",

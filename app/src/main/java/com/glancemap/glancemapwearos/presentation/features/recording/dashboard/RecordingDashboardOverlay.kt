@@ -19,9 +19,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.SwipeToDismissBox
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
 import com.glancemap.glancemapwearos.data.repository.RECORDING_DASHBOARD_PAGE_SLOT_COUNT
@@ -62,6 +65,7 @@ internal fun BoxScope.RecordingDashboardOverlay(
     actionPromptRequestToken: Long,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    val resources = LocalResources.current
     val state by traceRecordingViewModel.uiState.collectAsState()
     if (!state.active && !state.saving) return
 
@@ -297,12 +301,12 @@ internal fun BoxScope.RecordingDashboardOverlay(
     if (showRouteCompletePrompt && !showStopPrompt) {
         WearActionDialog(
             visible = true,
-            title = "Route complete",
+            title = stringResource(R.string.navigate_route_complete),
             onDismissRequest = onRouteCompletePromptDismiss,
             buttons =
                 listOf(
                     WearActionDialogButton(
-                        text = "Finish recording",
+                        text = stringResource(R.string.recording_finish_recording),
                         role = WearActionButtonRole.Primary,
                         onClick = {
                             onRouteCompletePromptDismiss()
@@ -319,14 +323,14 @@ internal fun BoxScope.RecordingDashboardOverlay(
                         },
                     ),
                     WearActionDialogButton(
-                        text = "Continue recording",
+                        text = stringResource(R.string.recording_continue_recording),
                         role = WearActionButtonRole.Secondary,
                         onClick = onRouteCompletePromptDismiss,
                     ),
                 ),
         ) {
             androidx.wear.compose.material3.Text(
-                text = "Guidance ended. Recording is still active.",
+                text = stringResource(R.string.recording_guidance_ended_recording_is_still_active),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = androidx.wear.compose.material3.MaterialTheme.typography.bodyMedium,
             )
@@ -337,9 +341,9 @@ internal fun BoxScope.RecordingDashboardOverlay(
         val currentMetric = slots.getOrElse(metricPickerSlot) { SettingsRepository.RECORDING_METRIC_DISTANCE }
         OptionPickerDialog(
             visible = true,
-            title = "Choose measure",
+            title = stringResource(R.string.navigate_choose_measure),
             selectedValue = currentMetric,
-            options = recordingMetricPickerOptionsForProfile(sessionProfile),
+            options = recordingMetricPickerOptionsForProfile(sessionProfile, resources = resources),
             onDismiss = { metricPickerSlot = NO_SELECTED_SLOT },
             onSelect = { metricId ->
                 onMetricSelected(metricPickerSlot, metricId)

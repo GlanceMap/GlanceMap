@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
 import android.content.Context
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,9 +125,12 @@ private object OamOwnedDownloadRuntime {
     private val mutableState = MutableStateFlow(OamOwnedDownloadState())
     val state: StateFlow<OamOwnedDownloadState> = mutableState.asStateFlow()
 
-    fun initialize(plan: OamPersistedDownloadPlan?) {
+    fun initialize(
+        plan: OamPersistedDownloadPlan?,
+        resources: Resources,
+    ) {
         if (mutableState.value.status != OamOwnedDownloadStatus.IDLE || plan == null) return
-        mutableState.value = plan.toRuntimeState()
+        mutableState.value = plan.toRuntimeState(resources = resources)
     }
 
     fun publish(state: OamOwnedDownloadState) {
@@ -142,7 +147,7 @@ class OamDownloadServiceClient(
     val state: StateFlow<OamOwnedDownloadState> = OamOwnedDownloadRuntime.state
 
     init {
-        OamOwnedDownloadRuntime.initialize(store.load())
+        OamOwnedDownloadRuntime.initialize(store.load(), resources = appContext.resources)
     }
 
     fun start(
@@ -152,7 +157,7 @@ class OamDownloadServiceClient(
         val areaIds = areas.map(OamDownloadArea::id).distinct()
         val plan = resumedOrNewDownloadPlan(store.load(), areaIds, selection)
         store.save(plan)
-        publish(plan.toRuntimeState())
+        publish(plan.toRuntimeState(resources = appContext.resources))
         OamDownloadForegroundService.startPersistedDownload(appContext)
     }
 
@@ -209,7 +214,7 @@ internal fun resumedOrNewDownloadPlan(
         )
     }
 
-private fun OamPersistedDownloadPlan.toRuntimeState(): OamOwnedDownloadState =
+private fun OamPersistedDownloadPlan.toRuntimeState(resources: Resources): OamOwnedDownloadState =
     OamOwnedDownloadState(
         status =
             when (status) {
@@ -221,5 +226,5 @@ private fun OamPersistedDownloadPlan.toRuntimeState(): OamOwnedDownloadState =
         areaCount = areaIds.size,
         completedAreaCount = nextAreaIndex,
         phase = if (status == OamPersistedDownloadStatus.PAUSED) "PAUSED" else "STARTING",
-        detail = "${areaIds.size} area(s)",
+        detail = resources.getQuantityString(R.plurals.download_runtime_area_count, areaIds.size, areaIds.size),
     )

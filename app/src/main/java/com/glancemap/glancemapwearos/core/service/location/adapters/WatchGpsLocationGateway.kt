@@ -3,10 +3,11 @@ package com.glancemap.glancemapwearos.core.service.location.adapters
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.CancellationSignal
 import android.os.SystemClock
+import androidx.core.location.LocationListenerCompat
+import androidx.core.location.LocationManagerCompat
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -63,7 +64,8 @@ internal class WatchGpsLocationGateway(
                 suspendCancellableCoroutine { continuation ->
                     val cancellationSignal = CancellationSignal()
                     continuation.invokeOnCancellation { cancellationSignal.cancel() }
-                    locationManager.getCurrentLocation(
+                    LocationManagerCompat.getCurrentLocation(
+                        locationManager,
                         LocationManager.GPS_PROVIDER,
                         cancellationSignal,
                         callbackExecutor,
@@ -110,10 +112,9 @@ internal class WatchGpsLocationGateway(
                 if (isNewListener) {
                     startRawCallbackTelemetrySession()
                 }
-                locationManager.requestLocationUpdates(
+                locationManager.requestLocationUpdatesCompat(
                     LocationManager.GPS_PROVIDER,
-                    request.intervalMs,
-                    request.minDistanceMeters,
+                    request,
                     callbackExecutor,
                     listener,
                 )
@@ -122,7 +123,7 @@ internal class WatchGpsLocationGateway(
                 }
             } catch (error: Exception) {
                 // Request registration may have succeeded before a cancellation/exception surfaced.
-                runCatching { locationManager.removeUpdates(listener) }
+                runCatching { locationManager.removeLocationUpdatesCompat(listener) }
                 synchronized(activeListeners) {
                     activeListeners.remove(listener)
                 }
@@ -150,7 +151,7 @@ internal class WatchGpsLocationGateway(
         var firstError: Exception? = null
         listeners.forEach { listener ->
             try {
-                locationManager.removeUpdates(listener)
+                locationManager.removeLocationUpdatesCompat(listener)
             } catch (error: Exception) {
                 if (firstError == null) {
                     firstError = error
@@ -167,7 +168,7 @@ internal class WatchGpsLocationGateway(
         listeners.forEach { listener ->
             val removed =
                 runCatching {
-                    locationManager.removeUpdates(listener)
+                    locationManager.removeLocationUpdatesCompat(listener)
                 }.isSuccess
             if (removed) {
                 synchronized(activeListeners) {
@@ -187,7 +188,7 @@ internal class WatchGpsLocationGateway(
 
     private inner class WatchGpsLocationListener(
         @Volatile var sink: LocationUpdateSink,
-    ) : LocationListener {
+    ) : LocationListenerCompat {
         override fun onLocationChanged(location: Location) {
             sink.onLocationAvailability(true)
             recordRawCallback(rawLocationCount = 1)
@@ -244,7 +245,7 @@ internal class WatchGpsLocationGateway(
         }
     }
 
-    private fun drainListeners(includeRegisteringListener: Boolean): List<LocationListener> {
+    private fun drainListeners(includeRegisteringListener: Boolean): List<LocationListenerCompat> {
         synchronized(activeListeners) {
             val listeners = LinkedHashSet<WatchGpsLocationListener>()
             if (activeListeners.isNotEmpty()) {

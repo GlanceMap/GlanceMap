@@ -9,6 +9,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.isGpxMimeType
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
@@ -104,7 +105,21 @@ object TransferUtils {
         uri: Uri,
     ): Pair<String, Long>? {
         val (rawName, size) = getFileDetails(context, uri) ?: return null
-        return resolveTransferDisplayName(rawName, context.contentResolver.getType(uri)) to size
+        val name = resolveTransferDisplayName(rawName, context.contentResolver.getType(uri))
+        val transferName =
+            if (MapsforgeThemePackage.isThemeZipCandidate(name)) {
+                check(size <= MapsforgeThemePackage.MAX_ARCHIVE_BYTES) { "Theme package is too large" }
+                val valid =
+                    context.contentResolver
+                        .openInputStream(uri)
+                        ?.use { input -> MapsforgeThemePackage.probe(input) } == true
+                check(valid) { "Not a valid Mapsforge theme package" }
+                Log.i(TAG, "theme_import_requested")
+                MapsforgeThemePackage.transferName(name)
+            } else {
+                name
+            }
+        return transferName to size
     }
 
     internal fun resolveTransferDisplayName(
@@ -246,7 +261,9 @@ object TransferUtils {
                         val since = now - lastProgressAt.get()
                         if (since > STALL_TIMEOUT_MS) {
                             runCatching { output.close() } // breaks blocked write
-                            this@coroutineScope.cancel(CancellationException("Transfer stalled for ${STALL_TIMEOUT_MS}ms"))
+                            this@coroutineScope.cancel(
+                                CancellationException("Transfer stalled for ${STALL_TIMEOUT_MS}ms"),
+                            )
                         }
                     }
                 }

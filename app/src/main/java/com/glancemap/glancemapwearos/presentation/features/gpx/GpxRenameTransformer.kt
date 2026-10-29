@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolArgumentException
 import java.util.ArrayDeque
 
 /**
@@ -88,7 +90,12 @@ private fun nextXmlMarkup(
             XmlMarkup(tagStart, specialMarkupEnd, rawTag = null)
         } else {
             val tagEnd = findTagEnd(sourceXml, tagStart)
-            require(tagEnd != null) { "The GPX contains an incomplete XML tag." }
+            require(tagEnd != null) {
+                throw RouteToolArgumentException(
+                    R.string.gpx_the_gpx_contains_an_incomplete_xml_tag,
+                    "The GPX contains an incomplete XML tag.",
+                )
+            }
             XmlMarkup(
                 start = tagStart,
                 endExclusive = tagEnd + 1,
@@ -115,7 +122,10 @@ private fun XmlMarkup.directTitleClosingTagStart(
     if (!isDirectTitleTag) return null
 
     return requireNotNull(findMatchingClosingTag(sourceXml, endExclusive, tagName)) {
-        "The GPX contains an incomplete name tag."
+        throw RouteToolArgumentException(
+            R.string.gpx_the_gpx_contains_an_incomplete_name_tag,
+            "The GPX contains an incomplete name tag.",
+        )
     }
 }
 

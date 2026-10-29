@@ -40,7 +40,7 @@ class OamDownloadNotificationController(
     fun showPaused(detail: String) {
         OamDownloadForegroundService.stop(appContext)
         notify(
-            buildBase("Download paused", detail)
+            buildBase(context.resources.getString(R.string.download_download_paused), detail)
                 .setOngoing(false)
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_STATUS),
@@ -50,7 +50,7 @@ class OamDownloadNotificationController(
     fun showComplete(detail: String) {
         OamDownloadForegroundService.stop(appContext)
         notify(
-            buildBase("Download complete", detail)
+            buildBase(context.resources.getString(R.string.download_download_complete), detail)
                 .setOngoing(false)
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -61,7 +61,7 @@ class OamDownloadNotificationController(
     fun showError(detail: String) {
         OamDownloadForegroundService.stop(appContext)
         notify(
-            buildBase("Download failed", detail)
+            buildBase(context.resources.getString(R.string.download_download_failed), detail)
                 .setOngoing(false)
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_ERROR),
@@ -114,7 +114,7 @@ class OamDownloadNotificationController(
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Map downloads",
+                context.resources.getString(R.string.download_map_downloads),
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )

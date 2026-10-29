@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -15,15 +16,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.mapZoomScaleStepsMeters
 import com.glancemap.glancemapwearos.core.maps.nearestMetricScaleStepIndex
 import com.glancemap.glancemapwearos.core.maps.sanitizeMapZoomScaleMeters
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -48,33 +51,58 @@ fun MapZoomSettingsScreen(
             SettingsToggleChip(
                 checked = crownZoomEnabled,
                 onCheckedChanged = { viewModel.setCrownZoomEnabled(it) },
-                label = "Crown zoom",
-                secondaryLabel = if (crownZoomEnabled) "Enabled" else "Disabled",
+                label = stringResource(R.string.settings_crown_zoom),
+                secondaryLabel =
+                    if (crownZoomEnabled) {
+                        stringResource(
+                            R.string.settings_enabled,
+                        )
+                    } else {
+                        stringResource(R.string.settings_disabled)
+                    },
             )
         }
         item {
             SettingsToggleChip(
                 checked = mapPinchZoomEnabled,
                 onCheckedChanged = { viewModel.setMapPinchZoomEnabled(it) },
-                label = "Pinch to zoom",
-                secondaryLabel = if (mapPinchZoomEnabled) "Enabled" else "Disabled",
+                label = stringResource(R.string.settings_pinch_to_zoom),
+                secondaryLabel =
+                    if (mapPinchZoomEnabled) {
+                        stringResource(
+                            R.string.settings_enabled,
+                        )
+                    } else {
+                        stringResource(R.string.settings_disabled)
+                    },
             )
         }
         if (crownZoomEnabled) {
             item {
                 SettingsOptionPickerRow(
                     modifier = Modifier.fillMaxWidth(),
-                    label = "Crown direction",
+                    label = stringResource(R.string.settings_crown_direction),
                     selectedValue = crownZoomInverted,
-                    options = listOf(false to "Normal", true to "Inverted"),
-                    secondaryLabel = if (crownZoomInverted) "Inverted" else "Normal",
+                    options =
+                        listOf(
+                            false to stringResource(R.string.settings_normal),
+                            true to stringResource(R.string.settings_inverted),
+                        ),
+                    secondaryLabel =
+                        if (crownZoomInverted) {
+                            stringResource(
+                                R.string.settings_inverted,
+                            )
+                        } else {
+                            stringResource(R.string.settings_normal)
+                        },
                     onSelect = viewModel::setCrownZoomInverted,
                 )
             }
         }
         item {
             ScaleDistanceSetting(
-                label = "Default scale",
+                label = stringResource(R.string.settings_default_scale),
                 value = zoomDefaultScaleMeters,
                 isMetric = isMetric,
                 onValueChange = viewModel::setMapZoomDefaultScaleMeters,
@@ -82,7 +110,7 @@ fun MapZoomSettingsScreen(
         }
         item {
             ScaleDistanceSetting(
-                label = "Farthest out",
+                label = stringResource(R.string.settings_farthest_out),
                 value = zoomMinScaleMeters,
                 isMetric = isMetric,
                 onValueChange = viewModel::setMapZoomMinScaleMeters,
@@ -90,7 +118,7 @@ fun MapZoomSettingsScreen(
         }
         item {
             ScaleDistanceSetting(
-                label = "Closest in",
+                label = stringResource(R.string.settings_closest_in),
                 value = zoomMaxScaleMeters,
                 isMetric = isMetric,
                 onValueChange = viewModel::setMapZoomMaxScaleMeters,
@@ -107,6 +135,7 @@ private fun ScaleDistanceSetting(
     isMetric: Boolean,
     onValueChange: (Int) -> Unit,
 ) {
+    val resources = LocalResources.current
     val sanitizedValue = sanitizeMapZoomScaleMeters(value)
     var internalValue by remember(sanitizedValue) {
         mutableStateOf(nearestMetricScaleStepIndex(sanitizedValue).toFloat())
@@ -118,7 +147,7 @@ private fun ScaleDistanceSetting(
     val selectedScaleMeters = mapZoomScaleStepsMeters[selectedIndex]
     val scaleText =
         remember(selectedScaleMeters, isMetric) {
-            formatScaleDistance(selectedScaleMeters.toDouble(), isMetric)
+            formatScaleDistance(selectedScaleMeters.toDouble(), isMetric, resources = resources)
         }
 
     Column(
@@ -126,7 +155,7 @@ private fun ScaleDistanceSetting(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "$label: $scaleText",
+            stringResource(R.string.settings_label_value, label, scaleText),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -143,8 +172,8 @@ private fun ScaleDistanceSetting(
             },
             valueRange = 0f..mapZoomScaleStepsMeters.lastIndex.toFloat(),
             steps = (mapZoomScaleStepsMeters.size - 2).coerceAtLeast(0),
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease") },
+            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_increase)) },
+            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.action_decrease)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -196,30 +225,31 @@ private val ImperialScaleStepsMiles =
 private fun formatScaleDistance(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val roundedMeters = chooseScaleDistanceMeters(meters, isMetric)
     if (isMetric) {
         return if (roundedMeters >= 1000.0) {
             val km = roundedMeters / 1000.0
             if (km >= 10.0) {
-                "${km.toInt()} km"
+                resources.getString(R.string.gpx_km, km.toInt())
             } else {
-                String.format(Locale.getDefault(), "%.1f km", km)
+                resources.getString(R.string.settings_km, km)
             }
         } else {
-            "${roundedMeters.toInt()} m"
+            resources.getString(R.string.settings_m, roundedMeters.toInt())
         }
     }
 
     val feet = roundedMeters * 3.28084
     return if (feet < 2640.0) {
-        "${feet.toInt()} ft"
+        resources.getString(R.string.settings_ft, feet.toInt())
     } else {
         val miles = roundedMeters * 0.000621371
         if (miles >= 10.0) {
-            "${miles.toInt()} mi"
+            resources.getString(R.string.settings_mi, miles.toInt())
         } else {
-            String.format(Locale.getDefault(), "%.1f mi", miles)
+            resources.getString(R.string.settings_mi_2, miles)
         }
     }
 }

@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.Lifecycle
@@ -23,6 +25,7 @@ import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingSourceMode
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
@@ -42,6 +45,7 @@ fun CompassSettingsScreen(
     compassViewModel: CompassViewModel,
     onOpenGeneralSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val adaptive = rememberWearAdaptiveSpec()
     var showCalibrationDialog by remember { mutableStateOf(false) }
@@ -107,35 +111,55 @@ fun CompassSettingsScreen(
     val compassModeOptions =
         remember {
             listOf(
-                SettingsRepository.COMPASS_SETTINGS_MODE_AUTOMATIC to "Automatic (recommended)",
-                SettingsRepository.COMPASS_SETTINGS_MODE_ADVANCED to "Advanced...",
+                SettingsRepository.COMPASS_SETTINGS_MODE_AUTOMATIC to
+                    resources.getString(R.string.settings_automatic_recommended),
+                SettingsRepository.COMPASS_SETTINGS_MODE_ADVANCED to resources.getString(R.string.settings_advanced),
             )
         }
     val compassProviderOptions =
         remember {
             listOf(
-                SettingsRepository.COMPASS_PROVIDER_GOOGLE_FUSED to "Google Fused (default)",
-                SettingsRepository.COMPASS_PROVIDER_SENSOR_MANAGER to "Custom sensors",
+                SettingsRepository.COMPASS_PROVIDER_GOOGLE_FUSED to
+                    resources.getString(R.string.settings_google_fused_default),
+                SettingsRepository.COMPASS_PROVIDER_SENSOR_MANAGER to
+                    resources.getString(R.string.settings_custom_sensors),
             )
         }
     val northReferenceOptions =
         remember {
             listOf(
-                SettingsRepository.NORTH_REFERENCE_TRUE to "True north",
-                SettingsRepository.NORTH_REFERENCE_MAGNETIC to "Magnetic north",
+                SettingsRepository.NORTH_REFERENCE_TRUE to resources.getString(R.string.settings_true_north),
+                SettingsRepository.NORTH_REFERENCE_MAGNETIC to resources.getString(R.string.settings_magnetic_north),
             )
         }
     val headingSourceOptions =
         remember {
             listOf(
-                SettingsRepository.COMPASS_HEADING_SOURCE_AUTO to "Auto (recommended)",
+                SettingsRepository.COMPASS_HEADING_SOURCE_AUTO to
+                    resources.getString(R.string.settings_auto_recommended),
                 SettingsRepository.COMPASS_HEADING_SOURCE_TYPE_HEADING to "TYPE_HEADING",
-                SettingsRepository.COMPASS_HEADING_SOURCE_ROTATION_VECTOR to "Rotation vector",
-                SettingsRepository.COMPASS_HEADING_SOURCE_MAGNETOMETER to "Magnetometer",
+                SettingsRepository.COMPASS_HEADING_SOURCE_ROTATION_VECTOR to
+                    resources.getString(R.string.settings_rotation_vector_2),
+                SettingsRepository.COMPASS_HEADING_SOURCE_MAGNETOMETER to
+                    resources.getString(R.string.settings_magnetometer_2),
             )
         }
-    val calibrationAlertsLabel = if (adaptive.isCompact) "Custom alerts" else "Custom compass alerts"
-    val calibrationAlertsSecondary = if (adaptive.isCompact) "If custom drifts" else "If custom compass drifts"
+    val calibrationAlertsLabel =
+        if (adaptive.isCompact) {
+            stringResource(
+                R.string.settings_custom_alerts,
+            )
+        } else {
+            stringResource(R.string.settings_custom_compass_alerts)
+        }
+    val calibrationAlertsSecondary =
+        if (adaptive.isCompact) {
+            stringResource(
+                R.string.settings_if_custom_drifts,
+            )
+        } else {
+            stringResource(R.string.settings_if_custom_compass_drifts)
+        }
     val isCompatibilityRunning = compatibilityState.running
 
     LaunchedEffect(compassSettingsMode, headingSourceModeSetting) {
@@ -213,7 +237,7 @@ fun CompassSettingsScreen(
         compatibilityState =
             CompatibilityTestUiState(
                 running = true,
-                progressLabel = "Preparing sensors...",
+                progressLabel = resources.getString(R.string.settings_preparing_sensors),
                 stepIndex = 0,
                 totalSteps = COMPATIBILITY_CANDIDATES.size * COMPATIBILITY_PHASE_COUNT,
             )
@@ -227,7 +251,11 @@ fun CompassSettingsScreen(
             COMPATIBILITY_CANDIDATES.forEachIndexed { index, candidate ->
                 compatibilityState =
                     compatibilityState.copy(
-                        progressLabel = "Testing ${headingSourceModeLabel(candidate)}",
+                        progressLabel =
+                            resources.getString(
+                                R.string.settings_testing,
+                                headingSourceModeLabel(candidate, resources = resources),
+                            ),
                         stepIndex = index * COMPATIBILITY_PHASE_COUNT,
                     )
                 val candidateScore =
@@ -246,6 +274,7 @@ fun CompassSettingsScreen(
                                     stepIndex = (index * COMPATIBILITY_PHASE_COUNT) + phaseIndex,
                                 )
                         },
+                        resources = resources,
                     )
                 candidateScores += candidateScore
             }
@@ -255,15 +284,15 @@ fun CompassSettingsScreen(
                 compatibilityState =
                     CompatibilityTestUiState(
                         running = false,
-                        progressLabel = "Test unavailable",
+                        progressLabel = resources.getString(R.string.settings_test_unavailable),
                         result = null,
-                        errorMessage = "No compatible heading source found.",
+                        errorMessage = resources.getString(R.string.settings_no_compatible_heading_source_found),
                     )
             } else {
                 compatibilityState =
                     CompatibilityTestUiState(
                         running = false,
-                        progressLabel = "Test complete",
+                        progressLabel = resources.getString(R.string.settings_test_complete),
                         result =
                             CompatibilityTestResult(
                                 recommendedMode =
@@ -284,9 +313,9 @@ fun CompassSettingsScreen(
             compatibilityState =
                 CompatibilityTestUiState(
                     running = false,
-                    progressLabel = "Test failed",
+                    progressLabel = resources.getString(R.string.settings_test_failed),
                     result = null,
-                    errorMessage = "Could not finish compatibility test.",
+                    errorMessage = resources.getString(R.string.settings_could_not_finish_compatibility_test),
                 )
         } finally {
             // Restore persisted runtime preference after probing candidates.
@@ -314,14 +343,15 @@ fun CompassSettingsScreen(
         item { GeneralSettingsShortcutChip(onClick = onOpenGeneralSettings) }
         item {
             SettingsOptionPickerRow(
-                label = "Orientation provider",
-                dialogTitle = "Orientation\nprovider",
+                label = stringResource(R.string.settings_orientation_provider),
+                dialogTitle = stringResource(R.string.settings_orientation_provider_2),
                 selectedValue = compassProviderModeSetting,
                 options = compassProviderOptions,
                 secondaryLabel =
                     compassProviderStatusLabel(
                         requestedMode = compassProviderModeSetting,
                         activeProviderType = activeProviderType,
+                        resources = resources,
                     ),
                 onSelect = viewModel::setCompassProviderMode,
             )
@@ -332,7 +362,7 @@ fun CompassSettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = {
                         WearText(
-                            text = "North reference",
+                            text = stringResource(R.string.settings_north_reference),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Start,
                             overflow = TextOverflow.Ellipsis,
@@ -341,7 +371,7 @@ fun CompassSettingsScreen(
                     },
                     secondaryLabel = {
                         WearText(
-                            text = automaticNorthReferenceStatusLabel(activeProviderType),
+                            text = automaticNorthReferenceStatusLabel(activeProviderType, resources = resources),
                             overflow = TextOverflow.Ellipsis,
                             maxLines = 1,
                         )
@@ -356,13 +386,14 @@ fun CompassSettingsScreen(
                 )
             } else {
                 SettingsOptionPickerRow(
-                    label = "North mode",
+                    label = stringResource(R.string.settings_north_mode),
                     selectedValue = northReferenceMode,
                     options = northReferenceOptions,
                     secondaryLabel =
                         northReferenceStatusSecondaryLabel(
                             requestedMode = northReferenceMode,
                             status = northReferenceStatus,
+                            resources = resources,
                         ),
                     onSelect = viewModel::setNorthReferenceMode,
                 )
@@ -371,16 +402,16 @@ fun CompassSettingsScreen(
         if (showSensorControls) {
             item {
                 Text(
-                    "Setup",
+                    stringResource(R.string.settings_setup),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
             item {
                 SettingsOptionPickerRow(
-                    label = "Compass mode",
+                    label = stringResource(R.string.settings_compass_mode),
                     selectedValue = compassSettingsMode,
                     options = compassModeOptions,
-                    secondaryLabel = compassSettingsModeLabel(compassSettingsMode),
+                    secondaryLabel = compassSettingsModeLabel(compassSettingsMode, resources = resources),
                     onSelect = { selected ->
                         viewModel.setCompassSettingsMode(selected)
                         if (selected == SettingsRepository.COMPASS_SETTINGS_MODE_AUTOMATIC) {
@@ -394,20 +425,20 @@ fun CompassSettingsScreen(
                     SettingsToggleChip(
                         checked = compassConeAccuracyColorsEnabled,
                         onCheckedChanged = { viewModel.setCompassConeAccuracyColorsEnabled(it) },
-                        label = "▽ Accuracy colors",
-                        secondaryLabel = "If off, cone stays green",
+                        label = stringResource(R.string.settings_accuracy_colors),
+                        secondaryLabel = stringResource(R.string.settings_if_off_cone_stays_green),
                     )
                 }
             }
             item {
-                Text("Custom compass", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_custom_compass), style = MaterialTheme.typography.titleMedium)
             }
             item {
                 Chip(
                     modifier = Modifier.fillMaxWidth(),
                     label = {
                         WearText(
-                            text = "Recalibrate Compass",
+                            text = stringResource(R.string.settings_recalibrate_compass),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center,
                             overflow = TextOverflow.Ellipsis,
@@ -430,7 +461,7 @@ fun CompassSettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = {
                         WearText(
-                            text = "Run source test",
+                            text = stringResource(R.string.settings_run_source_test),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Start,
                             overflow = TextOverflow.Ellipsis,
@@ -439,7 +470,7 @@ fun CompassSettingsScreen(
                     },
                     secondaryLabel = {
                         WearText(
-                            text = "Checks still + turn response",
+                            text = stringResource(R.string.settings_checks_still_turn_response),
                             overflow = TextOverflow.Ellipsis,
                             maxLines = 1,
                         )
@@ -452,11 +483,11 @@ fun CompassSettingsScreen(
                 )
             }
             item {
-                Text("Advanced", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.gps_advanced), style = MaterialTheme.typography.titleMedium)
             }
             item {
                 SettingsSectionChip(
-                    label = "Advanced options",
+                    label = stringResource(R.string.settings_advanced_options),
                     onClick = { showAdvancedSection = !showAdvancedSection },
                 )
             }
@@ -469,10 +500,10 @@ fun CompassSettingsScreen(
                 }
                 item {
                     SettingsOptionPickerRow(
-                        label = "Heading source",
+                        label = stringResource(R.string.settings_heading_source),
                         selectedValue = headingSourceModeSetting,
                         options = headingSourceOptions,
-                        secondaryLabel = headingSourceModeLabel(headingSourceModeSetting),
+                        secondaryLabel = headingSourceModeLabel(headingSourceModeSetting, resources = resources),
                         onSelect = { selected ->
                             viewModel.setCompassSettingsMode(SettingsRepository.COMPASS_SETTINGS_MODE_ADVANCED)
                             viewModel.setCompassHeadingSourceMode(selected)
@@ -482,14 +513,14 @@ fun CompassSettingsScreen(
             }
         }
         item {
-            Text("Help", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.common_help), style = MaterialTheme.typography.titleMedium)
         }
         item {
             Chip(
                 modifier = Modifier.fillMaxWidth(),
                 label = {
                     WearText(
-                        text = "Compass help",
+                        text = stringResource(R.string.settings_compass_help),
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Start,
                         overflow = TextOverflow.Ellipsis,
@@ -498,7 +529,7 @@ fun CompassSettingsScreen(
                 },
                 secondaryLabel = {
                     WearText(
-                        text = "How to test compass",
+                        text = stringResource(R.string.settings_how_to_test_compass),
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
                     )
@@ -515,22 +546,21 @@ fun CompassSettingsScreen(
         val compatibilityMessage =
             when {
                 isCompatibilityRunning ->
-                    "${compatibilityState.progressLabel}\n" +
-                        "Step ${compatibilityState.stepIndex}/${compatibilityState.totalSteps}\n" +
-                        "Follow the on-screen step for best result."
+                    stringResource(
+                        R.string.settings_step_follow_the_on_screen_step_for_best_result,
+                        compatibilityState.progressLabel,
+                        compatibilityState.stepIndex,
+                        compatibilityState.totalSteps,
+                    )
                 error != null -> error
                 result != null ->
-                    "Recommended custom settings:\n" +
-                        "Compass mode: ${result.recommendedCompassModeLabel()}\n" +
-                        result.recommendedHeadingSourceLine() +
-                        "North mode: Keep True north for maps\n" +
-                        "Magnetic north only if you want to match a magnetic compass.\n\n" +
-                        "This test checks source availability, still-watch stability,\n" +
-                        "and slow turn response.\n" +
-                        "It does not detect true vs magnetic north.\n\n" +
-                        "Results:\n" +
-                        result.candidateSummaryLines()
-                else -> "Preparing test..."
+                    stringResource(
+                        R.string.compass_compatibility_results,
+                        result.recommendedCompassModeLabel(resources = resources),
+                        result.recommendedHeadingSourceLine(resources = resources),
+                        result.candidateSummaryLines(resources = resources),
+                    )
+                else -> stringResource(R.string.settings_preparing_test)
             }
         val closeCompatibilityDialog = {
             showCompatibilityDialog = false
@@ -538,7 +568,7 @@ fun CompassSettingsScreen(
         }
         WearActionDialog(
             visible = true,
-            title = "Custom sensor test",
+            title = stringResource(R.string.settings_custom_sensor_test),
             onDismissRequest = {
                 if (!isCompatibilityRunning) {
                     closeCompatibilityDialog()
@@ -549,7 +579,7 @@ fun CompassSettingsScreen(
                     if (!isCompatibilityRunning && result != null) {
                         add(
                             WearActionDialogButton(
-                                text = "Apply",
+                                text = stringResource(R.string.download_apply),
                                 onClick = {
                                     when (result.recommendedMode) {
                                         CompassHeadingSourceMode.AUTO -> {
@@ -576,7 +606,14 @@ fun CompassSettingsScreen(
                     }
                     add(
                         WearActionDialogButton(
-                            text = if (isCompatibilityRunning) "Cancel" else "Close",
+                            text =
+                                if (isCompatibilityRunning) {
+                                    stringResource(
+                                        R.string.common_cancel,
+                                    )
+                                } else {
+                                    stringResource(R.string.common_close)
+                                },
                             onClick = closeCompatibilityDialog,
                             role = WearActionButtonRole.Secondary,
                         ),
@@ -592,22 +629,13 @@ fun CompassSettingsScreen(
 
     WearHelpDialog(
         visible = showInfoDialog,
-        title = "Compass help",
+        title = stringResource(R.string.settings_compass_help),
         onDismiss = { showInfoDialog = false },
         lines =
             listOf(
-                "Recommended setup: Google Fused.\n\n" +
-                    "Quick test: stand still, face a clear landmark, then switch North-up / Compass.\n" +
-                    "The map should keep the same direction and should not jump after open or wake.\n\n" +
-                    "North reference:\n" +
-                    "Google Fused chooses it automatically.\n" +
-                    "With Custom sensors, use True north for maps,\n" +
-                    "or Magnetic north to match a magnetic compass.\n\n" +
-                    "If Google Fused still feels wrong on your watch,\n" +
-                    "switch Orientation provider to Custom sensors.\n" +
-                    "Custom mode prefers Rotation vector when available,\n" +
-                    "and gives you Recalibrate Compass, source test,\n" +
-                    "heading source selection, and accuracy-color options.",
+                stringResource(
+                    R.string.settings_recommended_setup_google_fused_quick_test_stand_still_face_a_clear_lan,
+                ),
             ),
     )
 }

@@ -1,0 +1,85 @@
+name: GlanceMap localization CI
+
+on:
+  push:
+    branches: [main, codex/watch-localization-readiness]
+  pull_request:
+    branches: [main, codex/watch-localization-readiness]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: localization-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  localization:
+    name: Localization checks
+    runs-on: ubuntu-latest
+    env:
+      ICU4J_JAR: build/translation-checks/icu4j-79.1.jar
+      TRANSLATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Validate every discovered locale, CLDR plurals and ICU patterns
+        run: |
+          args=(--report-dir build/reports/translations)
+          if [[ -n "$TRANSLATION_BASE_SHA" && ! "$TRANSLATION_BASE_SHA" =~ ^0+$ ]]; then
+            args+=(--preserve-from "$TRANSLATION_BASE_SHA")
+          fi
+          bash scripts/check-watch-translations.sh "${args[@]}"
+
+      - name: Test the validator, including future regional and script locales
+        run: python3 -m unittest discover -s scripts/tests -p 'test_watch_translations.py' -v
+
+      - name: Preserve the existing French editorial checks
+        run: python3 scripts/check-watch-french.py --report-dir build/reports/translations/french-editorial
+
+      - name: Check submitted whitespace
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) base="$TRANSLATION_BASE_SHA" ;;
+            push)
+              if [[ -z "$TRANSLATION_BASE_SHA" || "$TRANSLATION_BASE_SHA" =~ ^0+$ ]]; then
+                base="$(git mktree </dev/null)"
+              else
+                base="$TRANSLATION_BASE_SHA"
+              fi
+              ;;
+            workflow_dispatch)
+              base="$(git rev-parse --verify HEAD^ 2>/dev/null || git mktree </dev/null)"
+              ;;
+            *) echo "Unsupported whitespace-check event" >&2; exit 1 ;;
+          esac
+          if [[ ! "$base" =~ ^[0-9a-f]{40,64}$ || "$base" =~ ^0+$ ]]; then
+            echo "Missing or invalid whitespace base commit" >&2
+            exit 1
+          fi
+          git diff --check "$base" HEAD --
+
+      - name: Publish inventory and watch-length audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-translation-audit
+          path: build/reports/translations/
+          if-no-files-found: warn

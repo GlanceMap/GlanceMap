@@ -1,7 +1,9 @@
 package com.glancemap.glancemapwearos.core.service.transfer.runtime
 
+import android.content.res.Resources
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.TransferDiagnostics
 import com.glancemap.glancemapwearos.core.service.transfer.contract.ReceiverMetadata
 import com.glancemap.glancemapwearos.core.service.transfer.contract.TransferConstants
@@ -12,6 +14,7 @@ import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferStra
 import com.glancemap.glancemapwearos.core.service.transfer.http.HttpTransferTerminalResult
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.FGS_DATA_SYNC_TIMEOUT
 import com.glancemap.glancemapwearos.core.service.transfer.notifications.NotificationHelper
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -47,6 +50,7 @@ internal class TransferRunner(
             )
         val resultNotifier =
             HttpTransferResultNotifier(
+                resources = host.context.resources,
                 notificationHelper = notificationHelper,
                 claimTerminal = claimTerminal,
             )
@@ -68,7 +72,12 @@ internal class TransferRunner(
         var checksumVerified = false
         var checksumDurationMs: Long? = null
         try {
-            sendStatus(metadata.sourceNodeId, metadata.transferId, "REQUEST_RECEIVED", "Connecting to Phone (HTTP)…")
+            sendStatus(
+                metadata.sourceNodeId,
+                metadata.transferId,
+                "REQUEST_RECEIVED",
+                host.context.getString(R.string.download_connecting_to_phone_http),
+            )
 
             if (metadata.checksumSha256.isNullOrBlank()) {
                 TransferDiagnostics.warn(
@@ -125,6 +134,15 @@ internal class TransferRunner(
                         "checksumVerified=$checksumVerified checksumDurationMs=$checksumDurationMs",
                 )
             }
+            if (MapsforgeThemePackage.isTransferName(metadata.fileName)) {
+                sendStatus(
+                    metadata.sourceNodeId,
+                    metadata.transferId,
+                    "VERIFYING",
+                    host.context.getString(R.string.download_installing_mapsforge_theme),
+                )
+            }
+            host.finishReceivedFile(metadata.fileName)
             TransferDiagnostics.log(
                 "Runner",
                 "event=commit_complete transferId=${metadata.transferId} commitSucceeded=true",
@@ -228,7 +246,7 @@ internal class TransferRunner(
         val expectedSha = metadata.checksumSha256?.lowercase()
         if (expectedSha.isNullOrBlank()) return
 
-        val initialDetail = "Validating checksum…"
+        val initialDetail = host.context.getString(R.string.download_validating_checksum)
         sendStatus(metadata.sourceNodeId, metadata.transferId, "VERIFYING", initialDetail)
         notificationHelper.updateForeground(metadata.notificationId, metadata.fileName, initialDetail, -1)
 
@@ -251,7 +269,7 @@ internal class TransferRunner(
 
                         lastVerifyProgressPercent = progressPercent
                         lastVerifyProgressUpdateMs = nowMs
-                        val detail = buildVerificationDetail(progressPercent)
+                        val detail = buildVerificationDetail(progressPercent, resources = host.context.resources)
                         notificationHelper.updateForeground(metadata.notificationId, metadata.fileName, detail, -1)
                         host.appScope.launch {
                             runCatching {
@@ -290,4 +308,7 @@ internal fun computeVerificationPercent(
         .coerceIn(0, 100)
 }
 
-internal fun buildVerificationDetail(progressPercent: Int): String = "Validating checksum… ${progressPercent.coerceIn(0, 100)}%"
+internal fun buildVerificationDetail(
+    progressPercent: Int,
+    resources: Resources,
+): String = resources.getString(R.string.download_validating_checksum_progress, progressPercent.coerceIn(0, 100))

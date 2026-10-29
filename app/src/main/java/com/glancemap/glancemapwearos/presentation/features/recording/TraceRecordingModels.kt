@@ -76,6 +76,7 @@ data class TraceRecordingUiState(
     val saving: Boolean = false,
     val activityProfile: String = SettingsRepository.DEFAULT_ACTIVITY_PROFILE,
     val trackSmoothingMode: String = SettingsRepository.DEFAULT_RECORDING_TRACK_SMOOTHING_MODE,
+    val recordingMetadata: RecordingCaptureMetadata? = null,
     val points: List<RecordedTracePoint> = emptyList(),
     /** Display-only invalidation; neither field is persisted or exported. */
     val pointsRevision: Long = 0L,

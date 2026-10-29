@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 
 data class OamDownloadNetworkState(
@@ -31,14 +33,14 @@ data class OamDownloadNetworkState(
                 else -> "none"
             }
 
-    val userLabel: String
+    @get:StringRes val userLabelRes: Int
         get() =
             when {
-                isValidatedWifi -> "Wi-Fi ready"
-                isWifi && hasInternet -> "Wi-Fi connecting"
-                isWifi -> "Wi-Fi unavailable"
-                hasInternet -> "Not on Wi-Fi"
-                else -> "No internet"
+                isValidatedWifi -> R.string.download_wi_fi_ready
+                isWifi && hasInternet -> R.string.download_wi_fi_connecting
+                isWifi -> R.string.download_wi_fi_unavailable
+                hasInternet -> R.string.download_not_on_wi_fi
+                else -> R.string.download_no_internet
             }
 
     val telemetryFields: String

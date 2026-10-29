@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.recording.dashboard
 
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ELEVATION_SOURCE_HYBRID
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
@@ -225,10 +226,10 @@ class RecordingDashboardModelsTest {
                 isMetric = true,
             )
 
-        assertEquals("Heart rate", heartRate.label)
+        assertEquals(R.string.common_heart_rate, heartRate.labelRes)
         assertEquals("--", heartRate.value)
         assertEquals("bpm", heartRate.unit)
-        assertEquals("Pressure (hPa)", pressure.label)
+        assertEquals(R.string.recording_pressure_hpa, pressure.labelRes)
         assertEquals("--", pressure.value)
         assertEquals("hPa", pressure.unit)
         assertEquals(
@@ -262,7 +263,7 @@ class RecordingDashboardModelsTest {
                 isMetric = true,
             )
 
-        assertEquals("Pace", pace.label)
+        assertEquals(R.string.recording_pace, pace.labelRes)
         assertEquals("6:40", pace.value)
         assertEquals("min/km", pace.unit)
     }
@@ -301,7 +302,7 @@ class RecordingDashboardModelsTest {
                 isMetric = true,
             )
 
-        assertEquals("Power (Avg)", metric.label)
+        assertEquals(R.string.recording_power_avg, metric.labelRes)
         assertEquals("200", metric.value)
         assertEquals("W", metric.unit)
     }
@@ -366,20 +367,20 @@ class RecordingDashboardModelsTest {
                 isMetric = true,
             )
 
-        assertEquals("Speed (Max)", maxSpeed.label)
+        assertEquals(R.string.recording_speed_max, maxSpeed.labelRes)
         assertEquals("14.4", maxSpeed.value)
         assertEquals("km/h", maxSpeed.unit)
-        assertEquals("Pace (Max)", maxPace.label)
+        assertEquals(R.string.recording_pace_max, maxPace.labelRes)
         assertEquals("4:10", maxPace.value)
         assertEquals("min/km", maxPace.unit)
-        assertEquals("Heart rate (Max)", maxHeartRate.label)
+        assertEquals(R.string.recording_heart_rate_max, maxHeartRate.labelRes)
         assertEquals("165", maxHeartRate.value)
         assertEquals("bpm", maxHeartRate.unit)
-        assertEquals("Cadence (Avg)", averageCadence.label)
+        assertEquals(R.string.recording_cadence_avg, averageCadence.labelRes)
         assertEquals("155", averageCadence.value)
-        assertEquals("Cadence (Max)", maxCadence.label)
+        assertEquals(R.string.recording_cadence_max, maxCadence.labelRes)
         assertEquals("172", maxCadence.value)
-        assertEquals("Power (Max)", maxPower.label)
+        assertEquals(R.string.recording_power_max, maxPower.labelRes)
         assertEquals("260", maxPower.value)
         assertEquals("W", maxPower.unit)
     }
@@ -422,29 +423,29 @@ class RecordingDashboardModelsTest {
 
         val labels =
             recordingRecapMetricsForSnapshot(snapshot, isMetric = true)
-                .map { metric -> metric.label }
+                .map { metric -> metric.labelRes }
 
         assertEquals(
             listOf(
-                "Distance",
-                "Steps",
-                "Time (Total)",
-                "Time (Active)",
-                "Elev +",
-                "Elev -",
-                "Speed (Avg)",
-                "Max speed",
-                "Pace (Avg)",
-                "Max pace",
-                "HR (Avg)",
-                "Max HR",
-                "Power (Avg)",
-                "Max Power",
-                "Cadence (Avg)",
-                "Max cad",
-                "Cal (Total)",
-                "Cal (Active)",
-                "Cal (Rest)",
+                R.string.common_distance,
+                R.string.settings_steps,
+                R.string.recording_time_total,
+                R.string.recording_time_active,
+                R.string.recording_elev,
+                R.string.recording_elev_2,
+                R.string.recording_speed_avg,
+                R.string.recording_max_speed,
+                R.string.recording_pace_avg,
+                R.string.recording_max_pace,
+                R.string.gpx_hr_avg,
+                R.string.gpx_max_hr,
+                R.string.recording_power_avg,
+                R.string.recording_max_power,
+                R.string.recording_cadence_avg,
+                R.string.recording_max_cad,
+                R.string.recording_cal_total,
+                R.string.recording_cal_active,
+                R.string.recording_cal_rest,
             ),
             labels,
         )
@@ -469,57 +470,27 @@ class RecordingDashboardModelsTest {
                 recordingMaxGapSeconds = 0.0,
             )
 
-        val labels = recordingRecapMetricsForSnapshot(snapshot, isMetric = true).map { it.label }
+        val labels = recordingRecapMetricsForSnapshot(snapshot, isMetric = true).map { it.labelRes }
 
         assertEquals(
             listOf(
-                "Distance",
-                "Cal (Total)",
-                "Cal (Active)",
-                "Cal (Rest)",
-                "Time (Active)",
-                "Time (Total)",
-                "Elev +",
-                "Elev -",
-                "HR (Avg)",
-                "Max HR",
-                "Speed (Avg)",
-                "Max speed",
-                "Power (Avg)",
-                "Max Power",
+                R.string.common_distance,
+                R.string.recording_cal_total,
+                R.string.recording_cal_active,
+                R.string.recording_cal_rest,
+                R.string.recording_time_active,
+                R.string.recording_time_total,
+                R.string.recording_elev,
+                R.string.recording_elev_2,
+                R.string.gpx_hr_avg,
+                R.string.gpx_max_hr,
+                R.string.recording_speed_avg,
+                R.string.recording_max_speed,
+                R.string.recording_power_avg,
+                R.string.recording_max_power,
             ),
             labels,
         )
-    }
-
-    @Test
-    fun metricPickerOptionsAreAlphabetical() {
-        val labels =
-            recordingMetricPickerOptionsForProfile(SettingsRepository.ACTIVITY_PROFILE_HIKE)
-                .map { it.second }
-        assertEquals(labels.sortedBy { it.lowercase() }, labels)
-        assertTrue(labels.contains("Cadence (Avg)"))
-        assertTrue(labels.contains("Cadence (Max)"))
-        assertTrue(labels.contains("Heart rate (Max)"))
-        assertTrue(labels.contains("Power (Avg)"))
-        assertTrue(labels.contains("Power (Max)"))
-        assertTrue(labels.contains("Speed (Max)"))
-        assertTrue(labels.contains("Pace (Max)"))
-    }
-
-    @Test
-    fun bikeMetricPickerExcludesStepsAndPace() {
-        val options = recordingMetricPickerOptionsForProfile(SettingsRepository.ACTIVITY_PROFILE_BIKE)
-        val metricIds = options.map { it.first }
-        val labels = options.map { it.second }
-
-        assertEquals(labels.sortedBy { it.lowercase() }, labels)
-        assertTrue(SettingsRepository.RECORDING_METRIC_CADENCE in metricIds)
-        assertTrue(SettingsRepository.RECORDING_METRIC_POWER in metricIds)
-        assertTrue(SettingsRepository.RECORDING_METRIC_STEPS !in metricIds)
-        assertTrue(SettingsRepository.RECORDING_METRIC_CURRENT_PACE !in metricIds)
-        assertTrue(SettingsRepository.RECORDING_METRIC_AVERAGE_PACE !in metricIds)
-        assertTrue(SettingsRepository.RECORDING_METRIC_MAX_PACE !in metricIds)
     }
 
     @Test
@@ -740,7 +711,7 @@ class RecordingDashboardModelsTest {
                 snapshot = recordingSnapshot(calorieEstimate = estimate),
                 isMetric = true,
             )
-        assertEquals("Cal (Total)", calories.label)
+        assertEquals(R.string.recording_cal_total, calories.labelRes)
         assertEquals("286", calories.value)
         assertEquals("kcal", calories.unit)
         assertEquals(75.0, estimate.restingKcal, 0.1)

@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPosition
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackProfile
@@ -55,7 +57,11 @@ internal fun resolveRouteToolTrackMatch(
             tracks = listOf(sourceTrack),
             profileProvider = { profile },
             allowedTrackId = sourceTrack.id,
-        ) ?: error("Could not match the selected point to the active GPX.")
+        )
+            ?: throw RouteToolStateException(
+                R.string.gpx_could_not_match_the_selected_point_to_the_active_gpx,
+                "Could not match the selected point to the active GPX.",
+            )
 
     return RouteToolTrackMatch(
         position = pick.pos,
@@ -66,12 +72,15 @@ internal fun resolveRouteToolTrackMatch(
 
 internal fun routeToolSnapThresholdMeters(): Double = ROUTE_TOOL_SNAP_THRESHOLD_METERS
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 internal fun snapToTrackPosition(
     target: LatLong,
     sourceTrack: GpxTrackDetails,
     profile: TrackProfile,
     thresholdMeters: Double = ROUTE_TOOL_SNAP_THRESHOLD_METERS,
     failureMessage: String = "Move the crosshair closer to the active GPX before saving.",
+    @StringRes failureMessageRes: Int = R.string.gpx_move_the_crosshair_closer_to_the_active_gpx_before_saving,
 ): TrackPosition {
     val pick =
         findClosestTrackPosition(
@@ -79,10 +88,14 @@ internal fun snapToTrackPosition(
             tracks = listOf(sourceTrack),
             profileProvider = { profile },
             allowedTrackId = sourceTrack.id,
-        ) ?: error("Could not match the selected point to the active GPX.")
+        )
+            ?: throw RouteToolStateException(
+                R.string.gpx_could_not_match_the_selected_point_to_the_active_gpx,
+                "Could not match the selected point to the active GPX.",
+            )
 
     require(pick.distanceToLineMeters <= thresholdMeters) {
-        failureMessage
+        throw RouteToolArgumentException(failureMessageRes, failureMessage)
     }
 
     return pick.pos

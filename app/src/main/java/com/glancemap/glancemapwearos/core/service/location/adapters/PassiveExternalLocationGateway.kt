@@ -2,9 +2,9 @@ package com.glancemap.glancemapwearos.core.service.location.adapters
 
 import android.annotation.SuppressLint
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.SystemClock
+import androidx.core.location.LocationListenerCompat
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import kotlinx.coroutines.sync.Mutex
@@ -16,9 +16,9 @@ internal class PassiveExternalLocationGateway(
     private val callbackExecutor: Executor,
 ) : LocationGateway {
     private val requestMutex = Mutex()
-    private val activeListeners = LinkedHashSet<LocationListener>()
+    private val activeListeners = LinkedHashSet<LocationListenerCompat>()
 
-    @Volatile private var registeringListener: LocationListener? = null
+    @Volatile private var registeringListener: LocationListenerCompat? = null
 
     @SuppressLint("MissingPermission")
     override suspend fun getCurrentLocation(request: CurrentLocationRequestParams): Location? {
@@ -43,7 +43,7 @@ internal class PassiveExternalLocationGateway(
             ensurePassiveProviderPresent()
             removeLocationUpdatesLocked()
             val listener =
-                object : LocationListener {
+                object : LocationListenerCompat {
                     override fun onLocationChanged(location: Location) {
                         sink.onLocationAvailability(true)
                         sink.onLocations(
@@ -69,10 +69,9 @@ internal class PassiveExternalLocationGateway(
 
             registeringListener = listener
             try {
-                locationManager.requestLocationUpdates(
+                locationManager.requestLocationUpdatesCompat(
                     LocationManager.PASSIVE_PROVIDER,
-                    request.intervalMs,
-                    request.minDistanceMeters,
+                    request,
                     callbackExecutor,
                     listener,
                 )
@@ -80,7 +79,7 @@ internal class PassiveExternalLocationGateway(
                     activeListeners += listener
                 }
             } catch (error: RuntimeException) {
-                runCatching { locationManager.removeUpdates(listener) }
+                runCatching { locationManager.removeLocationUpdatesCompat(listener) }
                 synchronized(activeListeners) {
                     activeListeners.remove(listener)
                 }
@@ -101,7 +100,7 @@ internal class PassiveExternalLocationGateway(
 
     override fun removeLocationUpdatesBestEffort() {
         drainListeners(includeRegisteringListener = true).forEach { listener ->
-            val removed = runCatching { locationManager.removeUpdates(listener) }.isSuccess
+            val removed = runCatching { locationManager.removeLocationUpdatesCompat(listener) }.isSuccess
             if (removed) {
                 synchronized(activeListeners) {
                     activeListeners.remove(listener)
@@ -121,7 +120,7 @@ internal class PassiveExternalLocationGateway(
         var firstError: RuntimeException? = null
         listeners.forEach { listener ->
             try {
-                locationManager.removeUpdates(listener)
+                locationManager.removeLocationUpdatesCompat(listener)
             } catch (error: RuntimeException) {
                 if (firstError == null) {
                     firstError = error
@@ -131,9 +130,9 @@ internal class PassiveExternalLocationGateway(
         firstError?.let { throw it }
     }
 
-    private fun drainListeners(includeRegisteringListener: Boolean): List<LocationListener> {
+    private fun drainListeners(includeRegisteringListener: Boolean): List<LocationListenerCompat> {
         synchronized(activeListeners) {
-            val listeners = LinkedHashSet<LocationListener>()
+            val listeners = LinkedHashSet<LocationListenerCompat>()
             if (activeListeners.isNotEmpty()) {
                 listeners += activeListeners
                 activeListeners.clear()

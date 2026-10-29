@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import android.content.Context
+import androidx.annotation.RawRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -20,6 +23,7 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 import androidx.wear.compose.material.Text as WearText
 
@@ -43,14 +47,17 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
         }
         item {
             Text(
-                text = "Credits & Legal",
+                text = stringResource(R.string.settings_credits_legal),
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )
         }
         item {
             Text(
-                text = "Thanks to OpenAndroMaps, Elevate, OpenHiking, Tiramisu, Hike, Ride & Sight, OpenStreetMap, Refuges.info, Overpass, Mapsforge and BRouter.",
+                text =
+                    stringResource(
+                        R.string.settings_thanks_to_openandromaps_elevate_openhiking_tiramisu_hike_ride_sight_op,
+                    ),
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
             )
@@ -67,7 +74,7 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 label = {
                     WearText(
-                        text = document.label,
+                        text = stringResource(document.labelRes),
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Start,
                         overflow = TextOverflow.Ellipsis,
@@ -76,7 +83,7 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
                 },
                 secondaryLabel = {
                     WearText(
-                        text = document.secondaryLabel,
+                        text = stringResource(document.secondaryLabelRes),
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
                     )
@@ -98,97 +105,97 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
 }
 
 private data class LicenseDocument(
-    val label: String,
-    val secondaryLabel: String,
-    val title: String,
-    val assetPath: String,
+    @StringRes val labelRes: Int,
+    @StringRes val secondaryLabelRes: Int,
+    @StringRes val titleRes: Int,
+    @RawRes val bodyRes: Int,
 )
 
 private val LICENSE_DOCUMENTS =
     listOf(
         LicenseDocument(
-            label = "Privacy Policy",
-            secondaryLabel = "Data access, sharing and retention",
-            title = "Privacy Policy",
-            assetPath = "licenses/PRIVACY_POLICY.md",
+            labelRes = R.string.legal_privacy_policy,
+            secondaryLabelRes = R.string.legal_data_access_sharing_and_retention,
+            titleRes = R.string.legal_privacy_policy,
+            bodyRes = R.raw.legal_privacy_policy,
         ),
         LicenseDocument(
-            label = "Safety & Limits",
-            secondaryLabel = "Map/theme errors and personal responsibility",
-            title = "Safety & Limitations",
-            assetPath = "licenses/SAFETY_AND_LIMITATIONS.md",
+            labelRes = R.string.legal_safety_limits,
+            secondaryLabelRes = R.string.legal_map_theme_errors_and_personal_responsibility,
+            titleRes = R.string.legal_safety_limitations,
+            bodyRes = R.raw.legal_safety_and_limitations,
         ),
         LicenseDocument(
-            label = "Credits & Thanks",
-            secondaryLabel = "Main contributors and projects",
-            title = "Credits & Thanks",
-            assetPath = "licenses/CREDITS_AND_THANKS.md",
+            labelRes = R.string.legal_credits_thanks,
+            secondaryLabelRes = R.string.legal_main_contributors_and_projects,
+            titleRes = R.string.legal_credits_thanks,
+            bodyRes = R.raw.legal_credits_and_thanks,
         ),
         LicenseDocument(
-            label = "AI Acknowledgment",
-            secondaryLabel = "Human creators and transparency",
-            title = "AI & Creator Acknowledgment",
-            assetPath = "licenses/AI_ACKNOWLEDGEMENT.md",
+            labelRes = R.string.legal_ai_acknowledgment,
+            secondaryLabelRes = R.string.legal_human_creators_and_transparency,
+            titleRes = R.string.legal_ai_creator_acknowledgment,
+            bodyRes = R.raw.legal_ai_acknowledgement,
         ),
         LicenseDocument(
-            label = "Companion Sources",
-            secondaryLabel = "Map, GPX and refuge websites",
-            title = "Companion External Sources",
-            assetPath = "licenses/COMPANION_EXTERNAL_SOURCES.md",
+            labelRes = R.string.legal_companion_sources,
+            secondaryLabelRes = R.string.legal_map_gpx_and_refuge_websites,
+            titleRes = R.string.legal_companion_external_sources,
+            bodyRes = R.raw.legal_companion_external_sources,
         ),
         LicenseDocument(
-            label = "Compliance Status",
-            secondaryLabel = "Release checklist and pending items",
-            title = "Compliance Status",
-            assetPath = "licenses/COMPLIANCE_STATUS.md",
+            labelRes = R.string.legal_compliance_status,
+            secondaryLabelRes = R.string.legal_release_checklist_and_pending_items,
+            titleRes = R.string.legal_compliance_status,
+            bodyRes = R.raw.legal_compliance_status,
         ),
         LicenseDocument(
-            label = "Open Source Notices",
-            secondaryLabel = "Libraries and OSS licenses",
-            title = "Open Source Notices",
-            assetPath = "licenses/THIRD_PARTY_NOTICES.md",
+            labelRes = R.string.legal_open_source_notices,
+            secondaryLabelRes = R.string.legal_libraries_and_oss_licenses,
+            titleRes = R.string.legal_open_source_notices,
+            bodyRes = R.raw.legal_third_party_notices,
         ),
         LicenseDocument(
-            label = "OpenHiking Theme",
-            secondaryLabel = "Bundled hiking theme details",
-            title = "OpenHiking Theme",
-            assetPath = "licenses/OPENHIKING_THEME.md",
+            labelRes = R.string.legal_openhiking_theme,
+            secondaryLabelRes = R.string.legal_bundled_hiking_theme_details,
+            titleRes = R.string.legal_openhiking_theme,
+            bodyRes = R.raw.legal_openhiking_theme,
         ),
         LicenseDocument(
-            label = "French Kiss Theme",
-            secondaryLabel = "Bundled IGN-style theme details",
-            title = "French Kiss Theme",
-            assetPath = "licenses/FRENCH_KISS_THEME.md",
+            labelRes = R.string.legal_french_kiss_theme,
+            secondaryLabelRes = R.string.legal_bundled_ign_style_theme_details,
+            titleRes = R.string.legal_french_kiss_theme,
+            bodyRes = R.raw.legal_french_kiss_theme,
         ),
         LicenseDocument(
-            label = "Tiramisu Theme",
-            secondaryLabel = "Bundled cycle/hike theme details",
-            title = "Tiramisu Theme",
-            assetPath = "licenses/TIRAMISU_THEME.md",
+            labelRes = R.string.legal_tiramisu_theme,
+            secondaryLabelRes = R.string.legal_bundled_cycle_hike_theme_details,
+            titleRes = R.string.legal_tiramisu_theme,
+            bodyRes = R.raw.legal_tiramisu_theme,
         ),
         LicenseDocument(
-            label = "Hike, Ride & Sight",
-            secondaryLabel = "Bundled overlay-rich theme details",
-            title = "Hike, Ride & Sight Theme",
-            assetPath = "licenses/HIKE_RIDE_SIGHT_THEME.md",
+            labelRes = R.string.legal_hike_ride_sight,
+            secondaryLabelRes = R.string.legal_bundled_overlay_rich_theme_details,
+            titleRes = R.string.legal_hike_ride_sight_theme,
+            bodyRes = R.raw.legal_hike_ride_sight_theme,
         ),
         LicenseDocument(
-            label = "Voluntary Theme",
-            secondaryLabel = "Bundled OS-inspired theme details",
-            title = "Voluntary Theme",
-            assetPath = "licenses/VOLUNTARY_THEME.md",
+            labelRes = R.string.legal_voluntary_theme,
+            secondaryLabelRes = R.string.legal_bundled_os_inspired_theme_details,
+            titleRes = R.string.legal_voluntary_theme,
+            bodyRes = R.raw.legal_voluntary_theme,
         ),
         LicenseDocument(
-            label = "Data & Asset Attribution",
-            secondaryLabel = "OSM, Elevate, bundled themes, DEM, icons",
-            title = "Data & Asset Attribution",
-            assetPath = "licenses/DATA_AND_ASSET_ATTRIBUTION.md",
+            labelRes = R.string.legal_data_asset_attribution,
+            secondaryLabelRes = R.string.legal_osm_elevate_bundled_themes_dem_icons,
+            titleRes = R.string.legal_data_asset_attribution,
+            bodyRes = R.raw.legal_data_and_asset_attribution,
         ),
         LicenseDocument(
-            label = "Service Terms & API Usage",
-            secondaryLabel = "Provider terms and usage limits",
-            title = "Service Terms & API Usage",
-            assetPath = "licenses/SERVICE_TERMS_AND_API_USAGE.md",
+            labelRes = R.string.legal_service_terms_api_usage,
+            secondaryLabelRes = R.string.legal_provider_terms_and_usage_limits,
+            titleRes = R.string.legal_service_terms_api_usage,
+            bodyRes = R.raw.legal_service_terms_and_api_usage,
         ),
     )
 
@@ -199,13 +206,13 @@ private fun LicenseDocumentDialog(
 ) {
     val context = LocalContext.current
     val documentText =
-        remember(document.assetPath) {
-            loadTextAsset(context, document.assetPath)
+        remember(document.bodyRes, androidx.compose.ui.platform.LocalConfiguration.current) {
+            loadTextResource(context, document.bodyRes)
         }
 
     WearInfoDialog(
         visible = true,
-        title = document.title,
+        title = stringResource(document.titleRes),
         onDismiss = onDismiss,
     ) {
         item {
@@ -234,22 +241,22 @@ private fun buildAppVersionLabel(context: Context): String =
                 context.packageName,
                 0,
             )
-        val versionName = packageInfo.versionName ?: "unknown"
+        val versionName = packageInfo.versionName ?: context.resources.getString(R.string.settings_unknown)
         val versionCode = PackageInfoCompat.getLongVersionCode(packageInfo)
-        "Version $versionName ($versionCode)"
+        context.resources.getString(R.string.settings_version, versionName, versionCode)
     }.getOrElse {
-        "Version unknown"
+        context.resources.getString(R.string.settings_version_unknown)
     }
 
-private fun loadTextAsset(
+private fun loadTextResource(
     context: Context,
-    assetPath: String,
+    @RawRes bodyRes: Int,
 ): String =
     runCatching {
-        context.assets
-            .open(assetPath)
+        context.resources
+            .openRawResource(bodyRes)
             .bufferedReader()
             .use { it.readText() }
     }.getOrElse {
-        "Unable to load: $assetPath"
+        context.getString(R.string.legal_unable_to_load, context.resources.getResourceEntryName(bodyRes))
     }

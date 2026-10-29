@@ -30,6 +30,30 @@ val datatourismeKey =
 require(datatourismeKey.none(Char::isISOControl)) { "Invalid DATATOURISME_API_KEY format" }
 val datatourismeKeyLiteral = "\"" + datatourismeKey.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+val gitSha =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short=12", "HEAD")
+        }.standardOutput
+        .asText
+        .map { it.trim().ifBlank { "unknown" } }
+        .orElse("unknown")
+val gitBranch =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--abbrev-ref", "HEAD")
+        }.standardOutput
+        .asText
+        .map { it.trim().ifBlank { "unknown" } }
+        .orElse("unknown")
+val gitDirty =
+    providers
+        .exec {
+            commandLine("git", "status", "--porcelain")
+        }.standardOutput
+        .asText
+        .map { it.isNotBlank() }
+        .orElse(false)
 val arkluzSmsApiKeyProperty = "ARKLUZ_SMS_API_KEY"
 val mapTilerApiKeyProperty = "MAPTILER_API_KEY"
 val tracestrackApiKeyProperty = "TRACESTRACK_API_KEY"
@@ -173,6 +197,9 @@ android {
         }
         manifestPlaceholders["channelBufferSize"] = "8388608" // 8MB buffer
         buildConfigField("String", "DATATOURISME_API_KEY", datatourismeKeyLiteral)
+        buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
+        buildConfigField("String", "GIT_BRANCH", "\"${gitBranch.get()}\"")
+        buildConfigField("boolean", "GIT_DIRTY", gitDirty.get().toString())
         buildConfigField("String", "ARKLUZ_TRACKING_URL", "\"https://arkluz.com/trk\"")
         buildConfigField("String", "ARKLUZ_SMS_API_KEY", "\"$arkluzSmsApiKey\"")
         buildConfigField("String", "MAPTILER_API_KEY", "\"$mapTilerApiKey\"")

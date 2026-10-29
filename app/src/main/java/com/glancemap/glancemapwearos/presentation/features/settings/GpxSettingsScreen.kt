@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -36,6 +39,7 @@ import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.gpx.GpxElevationFilterDefaults
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
@@ -59,6 +63,7 @@ fun GpxSettingsScreen(
     onOpenGpxToolsSettings: () -> Unit,
     onOpenGpxAppearanceSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val isGpxInspectionEnabled by viewModel.isGpxInspectionEnabled.collectAsState()
     val gpxFlatSpeedMps by viewModel.gpxFlatSpeedMps.collectAsState()
@@ -68,7 +73,8 @@ fun GpxSettingsScreen(
     val gpxDownhillVerticalMetersPerHour by viewModel.gpxDownhillVerticalMetersPerHour.collectAsState()
     val gpxElevationSmoothingDistanceMeters by viewModel.gpxElevationSmoothingDistanceMeters.collectAsState()
     val gpxElevationNeutralDiffThresholdMeters by viewModel.gpxElevationNeutralDiffThresholdMeters.collectAsState()
-    val gpxElevationTrendActivationThresholdMeters by viewModel.gpxElevationTrendActivationThresholdMeters.collectAsState()
+    val gpxElevationTrendActivationThresholdMeters by viewModel.gpxElevationTrendActivationThresholdMeters
+        .collectAsState()
     val gpxElevationAutoAdjustPerGpx by viewModel.gpxElevationAutoAdjustPerGpx.collectAsState()
     val isMetric by viewModel.isMetric.collectAsState()
     var showAdvancedElevationFilter by remember { mutableStateOf(false) }
@@ -79,24 +85,24 @@ fun GpxSettingsScreen(
 
         item {
             SettingsSectionChip(
-                label = "Turn-by-turn settings",
-                secondaryLabel = "Guidance alerts and dashboard",
+                label = stringResource(R.string.settings_turn_by_turn_settings),
+                secondaryLabel = stringResource(R.string.settings_guidance_alerts_and_dashboard),
                 onClick = onOpenTurnByTurnSettings,
             )
         }
 
         item {
             SettingsSectionChip(
-                label = "GPX tools settings",
-                secondaryLabel = "Route creation defaults",
+                label = stringResource(R.string.gpx_gpx_tools_settings),
+                secondaryLabel = stringResource(R.string.settings_route_creation_defaults),
                 onClick = onOpenGpxToolsSettings,
             )
         }
 
         item {
             SettingsSectionChip(
-                label = "GPX appearance",
-                secondaryLabel = "Track color and width",
+                label = stringResource(R.string.settings_gpx_appearance),
+                secondaryLabel = stringResource(R.string.settings_track_color_and_width),
                 onClick = onOpenGpxAppearanceSettings,
             )
         }
@@ -105,8 +111,8 @@ fun GpxSettingsScreen(
             SettingsToggleChip(
                 checked = isGpxInspectionEnabled,
                 onCheckedChanged = { viewModel.setGpxInspectionEnabled(it) },
-                label = "Route Analyzer",
-                secondaryLabel = "Long press on track",
+                label = stringResource(R.string.settings_route_analyzer),
+                secondaryLabel = stringResource(R.string.settings_long_press_on_track),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -121,12 +127,12 @@ fun GpxSettingsScreen(
             SettingsToggleChip(
                 checked = gpxStaminaAdjustmentEnabled,
                 onCheckedChanged = viewModel::setGpxStaminaAdjustmentEnabled,
-                label = "Long route adjustment",
+                label = stringResource(R.string.settings_long_route_adjustment),
                 secondaryLabel =
                     if (gpxStaminaAdjustmentEnabled) {
-                        "Reduce speed on long routes"
+                        stringResource(R.string.settings_reduce_speed_on_long_routes)
                     } else {
-                        "Use the same flat speed"
+                        stringResource(R.string.settings_use_the_same_flat_speed)
                     },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -135,12 +141,12 @@ fun GpxSettingsScreen(
             SettingsToggleChip(
                 checked = gpxAdvancedEtaEnabled,
                 onCheckedChanged = viewModel::setGpxAdvancedEtaEnabled,
-                label = "Advanced ETA",
+                label = stringResource(R.string.settings_advanced_eta),
                 secondaryLabel =
                     if (gpxAdvancedEtaEnabled) {
-                        "Use uphill/downhill rates"
+                        stringResource(R.string.settings_use_uphill_downhill_rates)
                     } else {
-                        "Flat speed only"
+                        stringResource(R.string.settings_flat_speed_only)
                     },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -148,11 +154,12 @@ fun GpxSettingsScreen(
         if (gpxAdvancedEtaEnabled) {
             item {
                 AdjustableElevationFilterSetting(
-                    label = "Uphill Rate",
+                    label = stringResource(R.string.settings_uphill_rate),
                     valueText =
                         formatVerticalRate(
                             metersPerHour = gpxUphillVerticalMetersPerHour,
                             isMetric = isMetric,
+                            resources = resources,
                         ),
                     canDecrease =
                         gpxUphillVerticalMetersPerHour >
@@ -186,11 +193,12 @@ fun GpxSettingsScreen(
             }
             item {
                 AdjustableElevationFilterSetting(
-                    label = "Downhill Rate",
+                    label = stringResource(R.string.settings_downhill_rate),
                     valueText =
                         formatVerticalRate(
                             metersPerHour = gpxDownhillVerticalMetersPerHour,
                             isMetric = isMetric,
+                            resources = resources,
                         ),
                     canDecrease =
                         gpxDownhillVerticalMetersPerHour >
@@ -224,7 +232,10 @@ fun GpxSettingsScreen(
             }
             item {
                 Text(
-                    text = "Flat speed still drives easy terrain. Uphill and downhill rates only limit steeper climbs and descents.",
+                    text =
+                        stringResource(
+                            R.string.settings_flat_speed_still_drives_easy_terrain_uphill_and_downhill_rates_only_li,
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                     modifier =
                         Modifier
@@ -235,7 +246,10 @@ fun GpxSettingsScreen(
         }
         item {
             Text(
-                text = "Fine-tune how GPX ascent and descent are calculated. Most tracks can stay on the defaults.",
+                text =
+                    stringResource(
+                        R.string.settings_fine_tune_how_gpx_ascent_and_descent_are_calculated_most_tracks_can_st,
+                    ),
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 modifier =
@@ -248,8 +262,8 @@ fun GpxSettingsScreen(
             SettingsToggleChip(
                 checked = showAdvancedElevationFilter,
                 onCheckedChanged = { showAdvancedElevationFilter = it },
-                label = "Advanced Filter",
-                secondaryLabel = "Tune GPX elevation totals",
+                label = stringResource(R.string.settings_advanced_filter),
+                secondaryLabel = stringResource(R.string.settings_tune_gpx_elevation_totals),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -258,22 +272,23 @@ fun GpxSettingsScreen(
                 SettingsToggleChip(
                     checked = gpxElevationAutoAdjustPerGpx,
                     onCheckedChanged = viewModel::setGpxElevationAutoAdjustPerGpx,
-                    label = "Auto-adjust per GPX",
+                    label = stringResource(R.string.settings_auto_adjust_per_gpx),
                     secondaryLabel =
                         if (gpxElevationAutoAdjustPerGpx) {
-                            "Use sliders as baseline"
+                            stringResource(R.string.settings_use_sliders_as_baseline)
                         } else {
-                            "Apply sliders exactly"
+                            stringResource(R.string.settings_apply_sliders_exactly)
                         },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             item {
                 AdjustableElevationFilterSetting(
-                    label = GpxElevationFilterUi.SMOOTHING_LABEL,
+                    label = stringResource(GpxElevationFilterUi.SMOOTHING_LABEL),
                     valueText =
                         GpxElevationFilterUi.formatSmoothingDistance(
                             gpxElevationSmoothingDistanceMeters,
+                            resources = resources,
                         ),
                     canDecrease =
                         gpxElevationSmoothingDistanceMeters >
@@ -297,10 +312,11 @@ fun GpxSettingsScreen(
             }
             item {
                 AdjustableElevationFilterSetting(
-                    label = GpxElevationFilterUi.NOISE_THRESHOLD_LABEL,
+                    label = stringResource(GpxElevationFilterUi.NOISE_THRESHOLD_LABEL),
                     valueText =
                         GpxElevationFilterUi.formatThreshold(
                             gpxElevationNeutralDiffThresholdMeters,
+                            resources = resources,
                         ),
                     canDecrease =
                         gpxElevationNeutralDiffThresholdMeters >
@@ -324,10 +340,11 @@ fun GpxSettingsScreen(
             }
             item {
                 AdjustableElevationFilterSetting(
-                    label = GpxElevationFilterUi.TREND_THRESHOLD_LABEL,
+                    label = stringResource(GpxElevationFilterUi.TREND_THRESHOLD_LABEL),
                     valueText =
                         GpxElevationFilterUi.formatThreshold(
                             gpxElevationTrendActivationThresholdMeters,
+                            resources = resources,
                         ),
                     canDecrease =
                         gpxElevationTrendActivationThresholdMeters >
@@ -353,9 +370,9 @@ fun GpxSettingsScreen(
                 Text(
                     text =
                         if (gpxElevationAutoAdjustPerGpx) {
-                            "Auto-adjust can nudge these values depending on the GPX."
+                            stringResource(R.string.settings_auto_adjust_can_nudge_these_values_depending_on_the_gpx)
                         } else {
-                            "These values are applied exactly to every GPX."
+                            stringResource(R.string.settings_these_values_are_applied_exactly_to_every_gpx)
                         },
                     style = MaterialTheme.typography.bodySmall,
                     modifier =
@@ -382,8 +399,8 @@ fun GpxAppearanceSettingsScreen(
     val trackDirectionArrowsEnabled by viewModel.gpxTrackDirectionArrowsEnabled.collectAsState()
     val trackColorModeOptions =
         listOf(
-            SettingsRepository.GPX_TRACK_COLOR_MODE_SOLID to "Solid color",
-            SettingsRepository.GPX_TRACK_COLOR_MODE_ELEVATION to "Elevation",
+            SettingsRepository.GPX_TRACK_COLOR_MODE_SOLID to stringResource(R.string.settings_solid_color),
+            SettingsRepository.GPX_TRACK_COLOR_MODE_ELEVATION to stringResource(R.string.common_elevation),
         )
 
     val colorPalette =
@@ -434,13 +451,13 @@ fun GpxAppearanceSettingsScreen(
 
         item {
             SettingsOptionPickerRow(
-                label = "Color Mode",
+                label = stringResource(R.string.settings_color_mode),
                 selectedValue = trackColorMode,
                 options = trackColorModeOptions,
                 secondaryLabel =
                     when (trackColorMode) {
-                        SettingsRepository.GPX_TRACK_COLOR_MODE_ELEVATION -> "Elevation"
-                        else -> "Solid color"
+                        SettingsRepository.GPX_TRACK_COLOR_MODE_ELEVATION -> stringResource(R.string.common_elevation)
+                        else -> stringResource(R.string.settings_solid_color)
                     },
                 onSelect = viewModel::setGpxTrackColorMode,
                 modifier = Modifier.fillMaxWidth(),
@@ -454,7 +471,7 @@ fun GpxAppearanceSettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(groupSpacing),
                 ) {
                     Text(
-                        text = "Track Color",
+                        text = stringResource(R.string.settings_track_color),
                         style = MaterialTheme.typography.titleMedium,
                     )
 
@@ -475,14 +492,21 @@ fun GpxAppearanceSettingsScreen(
             SettingsToggleChip(
                 checked = trackDirectionArrowsEnabled,
                 onCheckedChanged = viewModel::setGpxTrackDirectionArrowsEnabled,
-                label = "Track direction",
-                secondaryLabel = if (trackDirectionArrowsEnabled) "Hide arrows" else "Show arrows",
+                label = stringResource(R.string.settings_track_direction),
+                secondaryLabel =
+                    if (trackDirectionArrowsEnabled) {
+                        stringResource(
+                            R.string.settings_hide_arrows,
+                        )
+                    } else {
+                        stringResource(R.string.settings_show_arrows)
+                    },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         item {
             TrackWidthSetting(
-                label = "Track Width",
+                label = stringResource(R.string.settings_track_width),
                 value = trackWidth,
                 onValueChange = viewModel::setGpxTrackWidth,
                 spacing = trackWidthSpacing,
@@ -490,7 +514,7 @@ fun GpxAppearanceSettingsScreen(
         }
         item {
             TrackOpacitySetting(
-                label = "Track Opacity",
+                label = stringResource(R.string.settings_track_opacity),
                 valuePercent = trackOpacityPercent,
                 onValueChange = viewModel::setGpxTrackOpacityPercent,
                 spacing = trackWidthSpacing,
@@ -542,7 +566,7 @@ private fun SimpleColorPicker(
                 if (isSelected) {
                     Icon(
                         Icons.Filled.Check,
-                        contentDescription = "Selected",
+                        contentDescription = stringResource(R.string.common_selected),
                         modifier = Modifier.size(selectedIconSize),
                         tint = MaterialTheme.colorScheme.onPrimary,
                     )
@@ -565,7 +589,7 @@ private fun FlatSpeedSetting(
         } else {
             SettingsRepository.MAX_GPX_FLAT_SPEED_MPS * MPS_TO_MPH
         }
-    val displayUnit = if (isMetric) "km/h" else "mph"
+    val displayUnit = if (isMetric) stringResource(R.string.settings_km_h) else stringResource(R.string.settings_mph)
     val displaySpeed =
         if (isMetric) {
             speedMps * MPS_TO_KMPH
@@ -586,7 +610,7 @@ private fun FlatSpeedSetting(
             text =
                 String.format(
                     currentLocale,
-                    "Avg flat speed: %.1f %s",
+                    stringResource(R.string.settings_avg_flat_speed),
                     sliderValue,
                     displayUnit,
                 ),
@@ -609,8 +633,8 @@ private fun FlatSpeedSetting(
             },
             valueRange = 0f..maxDisplaySpeed,
             steps = steps,
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease") },
+            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_increase)) },
+            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.action_decrease)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -631,7 +655,7 @@ private fun TrackWidthSetting(
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         Text(
-            text = "$label: ${internalValue.toInt()} dp",
+            text = stringResource(R.string.settings_dp, internalValue.toInt(), label),
             style = MaterialTheme.typography.titleMedium,
         )
         Slider(
@@ -642,8 +666,8 @@ private fun TrackWidthSetting(
             },
             valueRange = 1f..15f,
             steps = 13,
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease") },
+            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_increase)) },
+            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.action_decrease)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -664,7 +688,7 @@ private fun TrackOpacitySetting(
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         Text(
-            text = "$label: ${internalValue.roundToInt()}%",
+            text = stringResource(R.string.settings_label_percent, label, internalValue.roundToInt()),
             style = MaterialTheme.typography.titleMedium,
         )
         Slider(
@@ -685,8 +709,8 @@ private fun TrackOpacitySetting(
                     SettingsRepository.MAX_GPX_TRACK_OPACITY_PERCENT -
                         SettingsRepository.MIN_GPX_TRACK_OPACITY_PERCENT - 1
                 ).coerceAtLeast(0),
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease") },
+            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_increase)) },
+            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.action_decrease)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -725,7 +749,7 @@ private fun AdjustableElevationFilterSetting(
                         disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                     ),
             ) {
-                Icon(Icons.Filled.Remove, contentDescription = "Decrease")
+                Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.action_decrease))
             }
             Text(
                 text = valueText,
@@ -742,7 +766,7 @@ private fun AdjustableElevationFilterSetting(
                         disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                     ),
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Increase")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_increase))
             }
         }
     }
@@ -751,11 +775,12 @@ private fun AdjustableElevationFilterSetting(
 private fun formatVerticalRate(
     metersPerHour: Float,
     isMetric: Boolean,
+    resources: Resources,
 ): String =
     if (isMetric) {
-        "${metersPerHour.roundToInt()} m/h"
+        resources.getString(R.string.settings_m_h, metersPerHour.roundToInt())
     } else {
-        "${(metersPerHour * METER_TO_FOOT).roundToInt()} ft/h"
+        resources.getString(R.string.settings_ft_h, (metersPerHour * METER_TO_FOOT).roundToInt())
     }
 
 private fun stepVerticalRateMetersPerHour(

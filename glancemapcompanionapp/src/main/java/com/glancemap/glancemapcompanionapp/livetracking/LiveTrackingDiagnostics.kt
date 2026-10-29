@@ -88,6 +88,8 @@ internal data class LiveTrackingDiagnosticRequest(
     val locationQualityReason: String? = null,
     val gsmSignalPercent: Int? = null,
     val isCatchUp: Boolean = false,
+    val pointId: String? = null,
+    val fixTimestampEpochMillis: Long? = null,
 )
 
 internal data class LiveTrackingDiagnosticEvent(
@@ -106,6 +108,50 @@ internal data class LiveTrackingRescueDiagnostic(
     val resultAgeMillis: Long? = null,
     val accuracyMeters: Float? = null,
     val speedMetersPerSecond: Float? = null,
+    val context: LiveTrackingDiagnosticContext? = null,
+    val cooldownRemainingMillis: Long? = null,
+)
+
+internal data class LiveTrackingDiagnosticContext(
+    val serviceId: Long,
+    val generationId: Long,
+    val cycleId: Long? = null,
+    val cadenceWindow: Long? = null,
+)
+
+internal fun StringBuilder.appendTrackingContext(context: LiveTrackingDiagnosticContext?) {
+    if (context == null) return
+    append(" serviceId=").append(context.serviceId)
+    append(" generationId=").append(context.generationId)
+    append(" cycleId=").append(context.cycleId ?: "na")
+    append(" cadenceWindow=").append(context.cadenceWindow ?: "na")
+}
+
+internal data class LiveTrackingAcquisitionDiagnostic(
+    val cycleId: Long,
+    val intervalMillis: Long,
+    val reason: LiveTrackingAcquisitionReason,
+    val initialAccuracyMeters: Float?,
+    val initialQualityResult: LiveTrackingLocationQualityResult?,
+    val extraFixesDelivered: Int,
+    val extraFixesAccepted: Int,
+    val extraFixesRejected: Int,
+    val extraFixesSuspect: Int,
+    val durationMillis: Long,
+    val selectedCandidateAccuracyMeters: Float?,
+    val selectedCandidateAgeMillis: Long?,
+    val selectionReason: String,
+    val usedScheduledFallback: Boolean,
+    val earlyTargetReached: Boolean,
+    val timedOut: Boolean,
+    val registrationFailed: Boolean,
+    val cancellation: String? = null,
+    val staleFixesIgnored: Int = 0,
+    val duplicateFixesIgnored: Int = 0,
+    val cleanupTimedOut: Boolean = false,
+    val cleanupFailed: Boolean = false,
+    val outcome: String,
+    val context: LiveTrackingDiagnosticContext? = null,
 )
 
 internal object LiveTrackingDiagnostics {
@@ -167,6 +213,8 @@ internal object LiveTrackingDiagnostics {
         cachedLocationExists: Boolean,
         cachedLocationAgeMillis: Long?,
         cachedLocationAccepted: Boolean?,
+        context: LiveTrackingDiagnosticContext? = null,
+        fineLocationGranted: Boolean? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val line =
@@ -183,6 +231,8 @@ internal object LiveTrackingDiagnostics {
                     append(" cacheAgeMs=").append(cachedLocationAgeMillis ?: "na")
                     append(" cacheFreshness=")
                         .append(cachedLocationAccepted?.let { if (it) "accepted" else "rejected" } ?: "na")
+                    append(" fineLocationGranted=").append(fineLocationGranted ?: "na")
+                    appendTrackingContext(context)
                 }
             }
         line?.let { PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, it) }
@@ -196,6 +246,8 @@ internal object LiveTrackingDiagnostics {
         isMockLocation: Boolean?,
         gsmSignalPercent: Int,
         queueSize: Int?,
+        context: LiveTrackingDiagnosticContext? = null,
+        fixTimestampEpochMillis: Long? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val captureSessionId = PhoneDebugCapture.state.value.sessionId
@@ -236,6 +288,8 @@ internal object LiveTrackingDiagnostics {
                     append(" gsm=").append(gsmSignalPercent)
                     append(" queue=").append(queueSize ?: "na")
                     append(" mock=").append(isMockLocation ?: "na")
+                    append(" fixTsMs=").append(fixTimestampEpochMillis ?: "na")
+                    appendTrackingContext(context)
                 }
             PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
         }
@@ -250,6 +304,7 @@ internal object LiveTrackingDiagnostics {
         queueSizeBefore: Int?,
         queueSizeAfter: Int?,
         outcome: String,
+        context: LiveTrackingDiagnosticContext? = null,
     ) {
         if (!PhoneDebugCapture.isActive()) return
         val captureSessionId = PhoneDebugCapture.state.value.sessionId
@@ -270,6 +325,7 @@ internal object LiveTrackingDiagnostics {
                     append(" queueBefore=").append(queueSizeBefore ?: "na")
                     append(" queueAfter=").append(queueSizeAfter ?: "na")
                     append(" outcome=").append(outcome)
+                    appendTrackingContext(context)
                 }
             }
         PhoneDebugCapture.log(LIVE_TRACKING_CAPTURE_TAG, line)
@@ -429,6 +485,62 @@ internal fun recordLiveTrackingRescue(diagnostic: LiveTrackingRescueDiagnostic) 
             append(" accuracyM=").append(diagnostic.accuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
             append(" speedMps=").append(diagnostic.speedMetersPerSecond?.let(::formatDiagnosticDecimal) ?: "na")
             append(" outcome=").append(diagnostic.outcome ?: "pending")
+            append(" cooldownRemainingMs=").append(diagnostic.cooldownRemainingMillis ?: "na")
+            appendTrackingContext(diagnostic.context)
+        },
+    )
+}
+
+internal fun recordLiveTrackingAcquisition(diagnostic: LiveTrackingAcquisitionDiagnostic) {
+    if (!PhoneDebugCapture.isActive()) return
+    PhoneDebugCapture.log(
+        LIVE_TRACKING_CAPTURE_TAG,
+        buildString {
+            append("acquisition id=").append(diagnostic.cycleId)
+            append(" intervalMs=").append(diagnostic.intervalMillis)
+            append(" reason=").append(diagnostic.reason.name.lowercase(Locale.US))
+            append(" initialAccM=")
+                .append(diagnostic.initialAccuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" initialQuality=").append(diagnostic.initialQualityResult ?: "na")
+            append(" extraDelivered=").append(diagnostic.extraFixesDelivered)
+            append(" extraAccepted=").append(diagnostic.extraFixesAccepted)
+            append(" extraRejected=").append(diagnostic.extraFixesRejected)
+            append(" extraSuspect=").append(diagnostic.extraFixesSuspect)
+            append(" durationMs=").append(diagnostic.durationMillis.coerceAtLeast(0L))
+            append(" selectedAccM=")
+                .append(diagnostic.selectedCandidateAccuracyMeters?.let(::formatDiagnosticDecimal) ?: "na")
+            append(" selectedAgeMs=").append(diagnostic.selectedCandidateAgeMillis ?: "na")
+            append(" selection=").append(diagnostic.selectionReason)
+            append(" fallback=").append(diagnostic.usedScheduledFallback)
+            append(" earlyTarget=").append(diagnostic.earlyTargetReached)
+            append(" timeout=").append(diagnostic.timedOut)
+            append(" registrationFailure=").append(diagnostic.registrationFailed)
+            append(" cancellation=").append(diagnostic.cancellation ?: "none")
+            append(" staleIgnored=").append(diagnostic.staleFixesIgnored)
+            append(" duplicateIgnored=").append(diagnostic.duplicateFixesIgnored)
+            append(" cleanupTimeout=").append(diagnostic.cleanupTimedOut)
+            append(" cleanupFailure=").append(diagnostic.cleanupFailed)
+            append(" outcome=").append(diagnostic.outcome)
+            append(" selectedAgeMeasuredAt=summary")
+            appendTrackingContext(diagnostic.context)
+        },
+    )
+}
+
+internal fun recordLiveTrackingEvent(
+    context: LiveTrackingDiagnosticContext,
+    event: String,
+    cooldownRemainingMillis: Long? = null,
+    fixTimestampEpochMillis: Long? = null,
+) {
+    if (!PhoneDebugCapture.isActive()) return
+    PhoneDebugCapture.log(
+        LIVE_TRACKING_CAPTURE_TAG,
+        buildString {
+            append("tracking_event event=").append(event)
+            cooldownRemainingMillis?.let { append(" cooldownRemainingMs=").append(it) }
+            fixTimestampEpochMillis?.let { append(" fixTsMs=").append(it) }
+            appendTrackingContext(context)
         },
     )
 }
@@ -525,6 +637,8 @@ internal fun LiveTrackingDiagnosticEvent.toDisplayText(): String {
             add("quality ${result.lowercase()}${request.locationQualityReason?.let { ":$it" }.orEmpty()}")
         }
         request.gsmSignalPercent?.let { add(if (it < 0) "gsm unknown" else "gsm $it%") }
+        request.pointId?.let { add("pointId=$it") }
+        request.fixTimestampEpochMillis?.let { add("fixTsMs=$it") }
         if (request.operation == LiveTrackingDiagnosticOperation.LOCATION_UPDATE) {
             add(if (request.isCatchUp) "catch-up" else "real-time")
         }
@@ -554,10 +668,12 @@ private fun LiveTrackingDiagnosticResult.toDisplayText(httpCode: Int?): String =
     when (this) {
         LiveTrackingDiagnosticResult.SUCCESS -> httpCode?.let { "HTTP $it" } ?: "Success"
         LiveTrackingDiagnosticResult.HTTP_ERROR -> httpCode?.let { "HTTP $it" } ?: "HTTP error"
-        LiveTrackingDiagnosticResult.SERVER_REJECTED -> "Server rejected"
+        LiveTrackingDiagnosticResult.SERVER_REJECTED ->
+            httpCode?.let { "Server rejected (HTTP $it)" } ?: "Server rejected"
         LiveTrackingDiagnosticResult.SMS_SUPPORTED -> "Supported"
         LiveTrackingDiagnosticResult.SMS_UNSUPPORTED -> "Unsupported"
-        LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE -> "Unexpected response"
+        LiveTrackingDiagnosticResult.UNEXPECTED_RESPONSE ->
+            httpCode?.let { "Unexpected response (HTTP $it)" } ?: "Unexpected response"
         LiveTrackingDiagnosticResult.TIMEOUT -> "Timeout"
         LiveTrackingDiagnosticResult.OFFLINE -> "Offline"
         LiveTrackingDiagnosticResult.NETWORK_ERROR -> "Network error"

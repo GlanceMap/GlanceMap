@@ -9,6 +9,8 @@ sealed class ThemeListItem {
         val id: String,
         val name: String,
         val selected: Boolean,
+        val packageId: String? = null,
+        val packageDisplayName: String? = null,
     ) : ThemeListItem()
 
     data class GlobalToggle(
@@ -22,6 +24,7 @@ sealed class ThemeListItem {
         val id: String,
         val name: String,
         val selected: Boolean,
+        val baseName: String? = null,
     ) : ThemeListItem()
 
     data class Overlay(

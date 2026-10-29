@@ -31,3 +31,6 @@ google-services.json
 *.pfx
 *.pem
 *.key
+
+# Python translation-validator bytecode caches
+scripts/**/__pycache__/

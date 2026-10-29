@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainDirection
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceTerrainPreview
@@ -17,31 +19,37 @@ internal fun guidanceShowsCurrentStraight(state: TurnByTurnGuidanceState): Boole
         distanceMeters > MANEUVER_PREPARATION_DISTANCE_METERS
 }
 
-internal fun guidanceInstructionPrimaryText(state: TurnByTurnGuidanceState): String =
+internal fun guidanceInstructionPrimaryText(
+    state: TurnByTurnGuidanceState,
+    resources: Resources,
+): String =
     if (guidanceShowsCurrentStraight(state)) {
-        "Go straight"
+        resources.getString(R.string.navigation_go_straight)
     } else {
-        state.nextInstruction?.message ?: "Continue"
+        state.nextInstruction?.let { it.message ?: resources.getString(it.messageRes) }
+            ?: resources.getString(R.string.common_continue)
     }
 
 internal fun guidanceInstructionDistanceText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
+    resources: Resources,
 ): String? =
     state.distanceToInstructionMeters?.let { distanceMeters ->
         if (distanceMeters < MANEUVER_NOW_DISTANCE_METERS) {
-            "Now"
+            resources.getString(R.string.navigation_now)
         } else {
-            formatLiveDistanceLabel(distanceMeters, isMetric)
+            formatLiveDistanceLabel(distanceMeters, isMetric, resources = resources)
         }
     }
 
 internal fun guidanceCompactInstructionText(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
-    val distanceText = guidanceInstructionDistanceText(state, isMetric)
-    val instruction = distanceText ?: guidanceInstructionPrimaryText(state)
+    val distanceText = guidanceInstructionDistanceText(state, isMetric, resources = resources)
+    val instruction = distanceText ?: guidanceInstructionPrimaryText(state, resources = resources)
     val terrainSymbol =
         when (state.nextSegmentTerrain?.direction) {
             GuidanceTerrainDirection.UPHILL -> "+▲"
@@ -51,7 +59,7 @@ internal fun guidanceCompactInstructionText(
         }
     return terrainSymbol?.let {
         val compactInstruction = distanceText?.replace(" ", "") ?: instruction
-        "$compactInstruction $it"
+        resources.getString(R.string.navigation_instruction_terrain, compactInstruction, it)
     } ?: instruction
 }
 
@@ -78,31 +86,42 @@ internal fun pausedGuidanceDisplayState(
 internal fun guidanceTerrainPopupPresentation(
     state: TurnByTurnGuidanceState,
     isMetric: Boolean,
+    resources: Resources,
 ): GuidanceTerrainPopupPresentation? {
     val terrain = state.recentManeuverTerrain?.terrain ?: state.nextSegmentTerrain ?: return null
     return GuidanceTerrainPopupPresentation(
         direction = terrain.direction,
-        expandedText = guidanceTerrainPopupExpandedText(terrain, isMetric),
+        expandedText = guidanceTerrainPopupExpandedText(terrain, isMetric, resources = resources),
     )
 }
 
 private fun guidanceTerrainPopupExpandedText(
     terrain: GuidanceTerrainPreview,
     isMetric: Boolean,
+    resources: Resources,
 ): String =
     when (terrain.direction) {
-        GuidanceTerrainDirection.UPHILL -> "▲ Uphill ${guidanceTerrainElevationText(terrain, isMetric)}"
-        GuidanceTerrainDirection.DOWNHILL -> "▼ Downhill ${guidanceTerrainElevationText(terrain, isMetric)}"
-        GuidanceTerrainDirection.FLAT -> "— Flat"
+        GuidanceTerrainDirection.UPHILL ->
+            resources.getString(
+                R.string.navigation_uphill,
+                guidanceTerrainElevationText(terrain, isMetric, resources = resources),
+            )
+        GuidanceTerrainDirection.DOWNHILL ->
+            resources.getString(
+                R.string.navigation_downhill,
+                guidanceTerrainElevationText(terrain, isMetric, resources = resources),
+            )
+        GuidanceTerrainDirection.FLAT -> resources.getString(R.string.navigation_flat)
     }
 
 private fun guidanceTerrainElevationText(
     terrain: GuidanceTerrainPreview,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val (value, unit) = UnitFormatter.formatElevation(abs(terrain.elevationChangeMeters), isMetric)
     val sign = if (terrain.direction == GuidanceTerrainDirection.UPHILL) "+" else "−"
-    return "$sign$value $unit"
+    return resources.getString(R.string.navigation_signed_value_unit, sign, value, unit)
 }
 
 internal const val MANEUVER_PREPARATION_DISTANCE_METERS = 60.0

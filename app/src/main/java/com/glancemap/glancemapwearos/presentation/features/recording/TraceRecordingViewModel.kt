@@ -1,10 +1,12 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import android.content.res.Resources
 import android.location.Location
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
@@ -62,7 +64,10 @@ private data class RecordingGapTelemetryContext(
     val continuityRecoveryGapMillis: Long?,
 )
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 class TraceRecordingViewModel(
+    private val resources: Resources,
     private val gpxRepository: GpxRepositoryImpl,
     private val settingsRepository: SettingsRepository,
     private val syncManager: SyncManager,
@@ -167,6 +172,7 @@ class TraceRecordingViewModel(
     private val recordingPointDensityTelemetry = RecordingPointDensityTelemetry()
     private var qualityHeldFixCount = 0
     private var qualityRejectedFixCount = 0
+    private var recordingRecoveredFromDraft = false
     private var qualityRelocationCount = 0
     private var smoothedPointCount = 0
     private var smoothedAdjustmentMeters = 0.0
@@ -477,6 +483,7 @@ class TraceRecordingViewModel(
         val now = System.currentTimeMillis()
         sharedSessionLifecycle.start(now)
         lastAppendedFixElapsedRealtimeMillis = null
+        val powerManager = runtimeDependencies.applicationContext?.getSystemService(PowerManager::class.java)
         lastAcceptedElapsedMs = Long.MIN_VALUE
         resetSessionTelemetry()
         recordingPointCaptureExpectation.start(
@@ -495,11 +502,23 @@ class TraceRecordingViewModel(
                 activityProfile = activityProfile,
                 trackSmoothingMode = recordingTrackSmoothingMode,
                 startedAtMillis = now,
+                recordingMetadata =
+                    captureRecordingMetadata(
+                        locationSourceMode = latestGpsSignalSnapshot.activeSourceModeValue,
+                        sampleIntervalSeconds = sampleIntervalSeconds,
+                        effectiveLocationIntervalMillis = latestEffectiveRecordingSamplingIntervalMs,
+                        elevationSource = recordingElevationSource,
+                        powerSaveMode = powerManager?.isPowerSaveMode,
+                    ),
                 cadenceSource = recordingCadenceSource,
                 speedSource = recordingSpeedSource,
                 distanceSource = recordingDistanceSource,
                 stepsSource = recordingStepsSource,
-                message = "REC on · ${recordingProfileLabel(activityProfile)}",
+                message =
+                    resources.getString(
+                        R.string.recording_rec_on,
+                        recordingProfileLabel(activityProfile, resources = resources),
+                    ),
             )
         recordingProgressVibrationTracker.start(recordingProgressVibrationSettings)
         syncRecordingProgressVibrationTimer()
@@ -562,6 +581,11 @@ class TraceRecordingViewModel(
         // Batches retain each fix's monotonic timestamp. Using delivery time here would make
         // every point in the batch look simultaneous and discard all but the first one.
         val sampleElapsedMs = callbackElapsedMs
+        val locationQuality =
+            location.recordingLocationQuality(
+                sourceMode = latestGpsSignalSnapshot.activeSourceModeValue,
+                nowElapsedMillis = SystemClock.elapsedRealtime(),
+            )
         if (pausedForAutoResumeMonitoring) {
             if (!maybeAutoResumeRecording(livePoint = livePoint, nowElapsedMs = sampleElapsedMs)) {
                 skippedPausedCount += 1
@@ -940,6 +964,7 @@ class TraceRecordingViewModel(
                         barometricPressureHpa = sensorMetrics?.barometricPressureHpa,
                         startsNewSegment = startsNewSegment,
                         segmentStartReason = segmentStartReason,
+                        locationQuality = locationQuality,
                     )
                 val currentState = _uiState.value
                 if (!currentState.active || currentState.saving) {
@@ -1504,7 +1529,7 @@ class TraceRecordingViewModel(
                 paused = true,
                 autoPaused = false,
                 pausedAtMillis = System.currentTimeMillis(),
-                message = "REC paused",
+                message = resources.getString(R.string.recording_rec_paused),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1548,7 +1573,7 @@ class TraceRecordingViewModel(
                 autoPaused = false,
                 pausedAtMillis = null,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
-                message = "REC on",
+                message = resources.getString(R.string.recording_rec_on_2),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1639,7 +1664,7 @@ class TraceRecordingViewModel(
         lastUiAction = "save"
         if (state.points.size < 2) {
             sharedSessionLifecycle.discard()
-            _uiState.value = TraceRecordingUiState(message = "Too few points")
+            _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_too_few_points))
             syncRecordingProgressVibrationTimer()
             DebugTelemetry.log(
                 "TraceRecording",
@@ -1665,7 +1690,7 @@ class TraceRecordingViewModel(
                 autoPaused = false,
                 saving = true,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + finalPausedMillis,
-                message = "Saving REC",
+                message = resources.getString(R.string.recording_saving_rec),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -1673,6 +1698,9 @@ class TraceRecordingViewModel(
             "event=save_start ${recordingSummaryTokens(state, now, finalPausedMillis)}",
         )
         val smartElevationDiagnostics = hybridElevationFilter.diagnostics()
+        val locationCallbackCount = recordingPointDensityTelemetry.snapshot().callbackReceivedCount
+        val rejectedFixCount = qualityRejectedFixCount
+        val countersScope = if (recordingRecoveredFromDraft) "since_recovery" else "session"
         viewModelScope.launch {
             val saveResult =
                 withContext(Dispatchers.IO) {
@@ -1714,12 +1742,18 @@ class TraceRecordingViewModel(
                                 title = title,
                                 points = state.points,
                                 summary =
-                                    summarySnapshot.toRecordedTraceSummary(
-                                        activityProfile = state.activityProfile,
-                                        trackSmoothingMode = state.trackSmoothingMode,
-                                        distanceSource = state.distanceSource,
-                                        smartElevationDiagnostics = smartElevationDiagnostics,
-                                    ),
+                                    summarySnapshot
+                                        .toRecordedTraceSummary(
+                                            activityProfile = state.activityProfile,
+                                            trackSmoothingMode = state.trackSmoothingMode,
+                                            distanceSource = state.distanceSource,
+                                            smartElevationDiagnostics = smartElevationDiagnostics,
+                                        ).copy(
+                                            recordingLocationCallbackCount = locationCallbackCount,
+                                            recordingQualityRejectedFixCount = rejectedFixCount,
+                                            recordingCountersScope = countersScope,
+                                        ),
+                                recordingMetadata = state.recordingMetadata,
                             )
                         val gpxPersistStartedAtElapsedMs =
                             RecordingScreenOffDiagnostics.start()
@@ -1762,7 +1796,7 @@ class TraceRecordingViewModel(
                 sharedSessionLifecycle.saveSucceeded(saveGeneration)
                 val saveInfo = saveResult.getOrNull()
                 syncManager.requestGpxSync()
-                _uiState.value = TraceRecordingUiState(message = "REC saved")
+                _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_rec_saved))
                 syncRecordingProgressVibrationTimer()
                 draftPersistMutex.withLock { draftStore.clear() }
                 DebugTelemetry.log(
@@ -1787,7 +1821,7 @@ class TraceRecordingViewModel(
                         .exceptionOrNull()
                         ?.localizedMessage
                         ?.takeIf { it.isNotBlank() }
-                        ?: "Recording save failed"
+                        ?: resources.getString(R.string.recording_recording_save_failed)
                 _uiState.value =
                     state.copy(
                         active = true,
@@ -1813,7 +1847,7 @@ class TraceRecordingViewModel(
         pendingTerminalLocationRefreshTimeout?.cancel()
         pendingTerminalLocationRefreshTimeout = null
         lastUiAction = "discard"
-        _uiState.value = TraceRecordingUiState(message = "Discarded")
+        _uiState.value = TraceRecordingUiState(message = resources.getString(R.string.recording_discarded))
         syncRecordingProgressVibrationTimer()
         clearDraftAsync(reason = "user_discard")
         DebugTelemetry.log(
@@ -1846,6 +1880,7 @@ class TraceRecordingViewModel(
                 autoPaused = draft.autoPaused,
             )
             lastAppendedFixElapsedRealtimeMillis = null
+            recordingRecoveredFromDraft = true
             lastAcceptedElapsedMs = Long.MIN_VALUE
             lastUiAction = draft.lastUiAction ?: "restore"
             gpsActiveDurationMillis = draft.gpsActiveDurationMillis
@@ -1877,6 +1912,7 @@ class TraceRecordingViewModel(
                     saving = false,
                     activityProfile = draft.activityProfile.toRecordingActivityProfile(activityProfile),
                     trackSmoothingMode = draft.trackSmoothingMode.toRecordingTrackSmoothingMode(),
+                    recordingMetadata = draft.recordingMetadata,
                     distanceSource = recordingDistanceSource,
                     points = draft.points,
                     latestLivePoint = draft.points.lastOrNull(),
@@ -1891,7 +1927,7 @@ class TraceRecordingViewModel(
                     externalDistanceMeters = draft.externalDistanceMeters,
                     externalIntegratedDistanceMeters = draft.externalIntegratedDistanceMeters,
                     stepCount = recoveredStepCount,
-                    message = "REC recovered",
+                    message = resources.getString(R.string.recording_rec_recovered),
                 )
             recordingDistanceDiagnostics.markPostRecoveryPartial()
             rebaseRecordingProgressVibration(_uiState.value, System.currentTimeMillis())
@@ -2008,6 +2044,7 @@ class TraceRecordingViewModel(
     }
 
     private fun resetSessionTelemetry() {
+        recordingRecoveredFromDraft = false
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
         lastDraftPersistElapsedMs = Long.MIN_VALUE
@@ -2125,7 +2162,7 @@ class TraceRecordingViewModel(
                 autoPaused = true,
                 pausedAtMillis = effectivePauseMillis,
                 latestLivePoint = livePoint,
-                message = "REC auto-paused",
+                message = resources.getString(R.string.recording_rec_auto_paused),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -2224,7 +2261,7 @@ class TraceRecordingViewModel(
                 pausedAtMillis = null,
                 latestLivePoint = livePoint,
                 accumulatedPausedMillis = state.accumulatedPausedMillis + addedPausedMillis,
-                message = "REC on",
+                message = resources.getString(R.string.recording_rec_on_2),
             )
         syncRecordingProgressVibrationTimer()
         DebugTelemetry.log(
@@ -3003,11 +3040,14 @@ private fun sanitizeTelemetryValue(value: String): String =
         .replace(Regex("\\s+"), "_")
         .take(80)
 
-private fun recordingProfileLabel(activityProfile: String): String =
+private fun recordingProfileLabel(
+    activityProfile: String,
+    resources: Resources,
+): String =
     if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-        "Bike"
+        resources.getString(R.string.common_bike)
     } else {
-        "Hike"
+        resources.getString(R.string.common_hike)
     }
 
 private fun String?.toRecordingActivityProfile(fallback: String): String =

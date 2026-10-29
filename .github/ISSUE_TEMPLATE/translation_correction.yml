@@ -1,0 +1,62 @@
+name: Translation / wording correction
+description: Suggest clearer wording in any GlanceMap language.
+title: "[Translation] "
+labels:
+  - translation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us what should read better. No resource ID, debug logs, XML, or developer tools are needed.
+        For legal, safety, licensing, or attribution text, a maintainer must review the change.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      description: If your language is not listed, choose Other / new language and name it below.
+      options:
+        - English
+        - Deutsch (German)
+        - Español (Spanish)
+        - Français (French)
+        - Italiano (Italian)
+        - Polski (Polish)
+        - Other / new language
+    validations:
+      required: true
+  - type: input
+    id: other_language
+    attributes:
+      label: Other language or regional variant
+      placeholder: "For example: Brazilian Portuguese"
+  - type: input
+    id: location
+    attributes:
+      label: Where did you see it?
+      placeholder: "Settings → Map, navigation screen, download dialog, or spoken guidance"
+    validations:
+      required: true
+  - type: textarea
+    id: current_wording
+    attributes:
+      label: Current wording
+      description: Copy the text, or write what you heard in spoken guidance.
+    validations:
+      required: true
+  - type: textarea
+    id: suggested_wording
+    attributes:
+      label: Suggested wording
+      description: Keep the meaning clear. If two wordings are equally natural, prefer the shorter one for a watch.
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why should it change?
+      description: Optional context, meaning, grammar, or readability notes.
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Drag a screenshot into this box if it helps show the wording or limited watch space.

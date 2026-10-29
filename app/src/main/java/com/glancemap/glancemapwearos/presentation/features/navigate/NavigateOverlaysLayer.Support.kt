@@ -8,7 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -54,16 +54,18 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +80,7 @@ import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
+import com.glancemap.glancemapwearos.presentation.ui.superscriptResourceText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import org.mapsforge.core.model.LatLong
@@ -186,7 +189,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             }
             Icon(
                 imageVector = Icons.Default.Landscape,
-                contentDescription = "Slope rendering in progress",
+                contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
                 modifier = Modifier.size(slopeIndicatorIconSize),
                 tint = Color(0xFFFFB300),
             )
@@ -243,12 +246,12 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_live_elevation_altitude),
-                    contentDescription = "live_elevation",
+                    contentDescription = stringResource(R.string.navigate_live_elevation),
                     modifier = Modifier.size(liveMetricIconSize),
                     tint = Color(0xFF34D399),
                 )
                 Text(
-                    text = " ${liveElevationLabel ?: "--"}",
+                    text = stringResource(R.string.navigation_spaced_elevation, liveElevationLabel ?: "--"),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = liveMetricFontSize,
@@ -274,7 +277,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Adjust,
-                        contentDescription = "live_elevation_center",
+                        contentDescription = stringResource(R.string.navigate_live_elevation_center),
                         modifier = Modifier.size(9.dp),
                         tint = Color(0xFF8B5CF6),
                     )
@@ -295,7 +298,7 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_live_distance_step_out),
-                    contentDescription = "live_distance",
+                    contentDescription = stringResource(R.string.navigate_live_distance),
                     modifier =
                         Modifier
                             .size(liveMetricIconSize)
@@ -542,7 +545,14 @@ internal fun BoxScope.PoiTapMessageOverlay(
             ) {
                 if (poiTapCanExpand) {
                     Text(
-                        text = if (poiTapExpanded) "Less" else "More",
+                        text =
+                            if (poiTapExpanded) {
+                                stringResource(
+                                    R.string.navigate_less,
+                                )
+                            } else {
+                                stringResource(R.string.navigate_more)
+                            },
                         modifier =
                             Modifier
                                 .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(10.dp))
@@ -578,7 +588,7 @@ internal fun BoxScope.PoiTapMessageOverlay(
                             tint = Color.White,
                         )
                         Text(
-                            text = "To here",
+                            text = stringResource(R.string.navigate_to_here),
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = popupPrimaryActionFontSize,
@@ -597,7 +607,7 @@ internal fun BoxScope.PoiTapMessageOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close POI details",
+                        contentDescription = stringResource(R.string.navigate_close_poi_details),
                         modifier = Modifier.size(popupCloseIconSize),
                     )
                 }
@@ -674,18 +684,7 @@ internal fun BoxScope.GpxInspectionBSelectionPromptOverlay(
         ) {
             Text(
                 text =
-                    buildAnnotatedString {
-                        append("Select 2")
-                        withStyle(
-                            SpanStyle(
-                                baselineShift = BaselineShift.Superscript,
-                                fontSize = textSize * 0.72f,
-                            ),
-                        ) {
-                            append("nd")
-                        }
-                        append(" point")
-                    },
+                    superscriptResourceText(R.string.navigation_select_second_point_label, textSize * 0.72f),
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = textSize,
@@ -703,7 +702,7 @@ internal fun BoxScope.GpxInspectionBSelectionPromptOverlay(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Cancel point B selection",
+                    contentDescription = stringResource(R.string.navigate_cancel_point_b_selection),
                     modifier = Modifier.size(closeIconSize),
                 )
             }
@@ -722,6 +721,7 @@ private enum class NavButtonTrustState {
 @Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.NavModeButtonOverlay(
+    visible: Boolean,
     mapView: MapView,
     navMode: NavMode,
     isOfflineMode: Boolean,
@@ -734,10 +734,14 @@ internal fun BoxScope.NavModeButtonOverlay(
     navButtonIconSize: Dp,
     onRecenter: () -> Unit,
     onRecenterRequested: () -> Unit,
+    autoRecenterEnabled: Boolean,
+    autoRecenterDelay: Int,
+    onToggleAutoRecenter: () -> Unit,
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
 ) {
+    if (!visible) return
     val navIcon =
         when {
             isOfflineMode -> Icons.Default.LocationDisabled
@@ -799,78 +803,142 @@ internal fun BoxScope.NavModeButtonOverlay(
             NavButtonTrustState.GOOD -> Color.Transparent
         }
     val trustRingStroke = 2.dp
+    val autoRecenterDescription =
+        if (autoRecenterEnabled) {
+            stringResource(R.string.navigation_auto_recenter_on, autoRecenterDelay)
+        } else {
+            stringResource(R.string.navigation_auto_recenter_off)
+        }
+    val toggleAutoRecenterLabel = stringResource(R.string.navigation_toggle_auto_recenter)
+    var autoRecenterFeedback by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(autoRecenterFeedback) {
+        if (autoRecenterFeedback != null) {
+            delay(2_000L)
+            autoRecenterFeedback = null
+        }
+    }
 
     Box(
         modifier =
             Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = navButtonBottomPadding)
-                .size(trustContainerSize)
-                .pointerInput(navMode, lastKnownLocation, isOfflineMode) {
-                    detectTapGestures(
-                        onTap = {
-                            if (isOfflineMode) return@detectTapGestures
-                            triggerHaptic()
-                            if (navMode == NavMode.PANNING) {
-                                lastKnownLocation?.let {
-                                    mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
-                                }
-                                onRecenter()
-                                onRecenterRequested()
-                            } else {
-                                onToggleOrientation()
+                .size(maxOf(48.dp, trustContainerSize))
+                .combinedClickable(
+                    interactionSource = null,
+                    indication = null,
+                    enabled = !isOfflineMode,
+                    role = Role.Button,
+                    onLongClickLabel = toggleAutoRecenterLabel,
+                    hapticFeedbackEnabled = false,
+                    onLongClick = {
+                        triggerHaptic()
+                        autoRecenterFeedback = !autoRecenterEnabled
+                        onToggleAutoRecenter()
+                    },
+                    onClick = {
+                        triggerHaptic()
+                        if (navMode == NavMode.PANNING) {
+                            lastKnownLocation?.let {
+                                mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
                             }
-                        },
-                    )
-                },
-        contentAlignment = Alignment.Center,
+                            onRecenter()
+                            onRecenterRequested()
+                        } else {
+                            onToggleOrientation()
+                        }
+                    },
+                ).semantics { stateDescription = autoRecenterDescription },
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        if (trustState != NavButtonTrustState.GOOD) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokePx = trustRingStroke.toPx()
-                val radius = size.minDimension / 2f
-                drawCircle(
-                    color = trustGlowColor,
-                    radius = radius,
-                )
-                drawCircle(
-                    color = trustRingColor,
-                    radius = radius - strokePx / 2f,
-                    style = Stroke(width = strokePx),
-                )
+        // Reserve real hit bounds above the native map without moving the visible button.
+        Box(Modifier.size(trustContainerSize), contentAlignment = Alignment.Center) {
+            if (trustState != NavButtonTrustState.GOOD) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokePx = trustRingStroke.toPx()
+                    val radius = size.minDimension / 2f
+                    drawCircle(
+                        color = trustGlowColor,
+                        radius = radius,
+                    )
+                    drawCircle(
+                        color = trustRingColor,
+                        radius = radius - strokePx / 2f,
+                        style = Stroke(width = strokePx),
+                    )
+                }
+            }
+
+            Box(
+                modifier =
+                    Modifier
+                        .size(navButtonSize)
+                        .background(
+                            Color.Black.copy(
+                                alpha =
+                                    if (trustState == NavButtonTrustState.SEARCHING && pulseOn) {
+                                        0.78f
+                                    } else {
+                                        0.7f
+                                    },
+                            ),
+                            CircleShape,
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (navMode == NavMode.NORTH_UP_FOLLOW) {
+                    NorthUpLockedModeIcon(
+                        iconSize = navButtonIconSize,
+                        tint = navTint,
+                    )
+                } else {
+                    Icon(
+                        imageVector = navIcon,
+                        contentDescription = stringResource(R.string.navigate_nav_mode),
+                        modifier = Modifier.size(navButtonIconSize),
+                        tint = navTint,
+                    )
+                }
+            }
+            if (autoRecenterEnabled) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(10.dp)
+                            .background(Color.Black.copy(alpha = 0.88f), CircleShape)
+                            .clearAndSetSemantics {},
+                    contentAlignment = Alignment.Center,
+                ) {
+                    cappedFontScale(maxFontScale = 1f) {
+                        Text(
+                            text = stringResource(R.string.navigation_auto_recenter_badge),
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            lineHeight = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
         }
-
-        Box(
-            modifier =
-                Modifier
-                    .size(navButtonSize)
-                    .background(
-                        Color.Black.copy(
-                            alpha =
-                                if (trustState == NavButtonTrustState.SEARCHING && pulseOn) {
-                                    0.78f
-                                } else {
-                                    0.7f
-                                },
-                        ),
-                        CircleShape,
-                    ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (navMode == NavMode.NORTH_UP_FOLLOW) {
-                NorthUpLockedModeIcon(
-                    iconSize = navButtonIconSize,
-                    tint = navTint,
-                )
-            } else {
-                Icon(
-                    imageVector = navIcon,
-                    contentDescription = "Nav mode",
-                    modifier = Modifier.size(navButtonIconSize),
-                    tint = navTint,
-                )
-            }
+    }
+    autoRecenterFeedback?.let { enabled ->
+        cappedFontScale(maxFontScale = 1f) {
+            RecordingStatusMessageChip(
+                message =
+                    if (enabled) {
+                        stringResource(R.string.navigation_auto_recenter_on, autoRecenterDelay)
+                    } else {
+                        stringResource(R.string.navigation_auto_recenter_off)
+                    },
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 12.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
     }
 }
@@ -956,7 +1024,7 @@ internal fun NorthUpLockedModeIcon(
             )
         }
         Text(
-            text = "N",
+            text = stringResource(R.string.navigate_n),
             color = tint.copy(alpha = 0.98f),
             fontWeight = FontWeight.ExtraBold,
             fontSize = 10.sp,
@@ -1081,7 +1149,7 @@ internal fun BoxScope.NorthIndicatorOverlay(
             ) {
                 Icon(
                     imageVector = Icons.Default.Navigation,
-                    contentDescription = "North",
+                    contentDescription = stringResource(R.string.navigate_north),
                     modifier = Modifier.size(indicatorIconSize),
                     tint = Color.Red,
                 )

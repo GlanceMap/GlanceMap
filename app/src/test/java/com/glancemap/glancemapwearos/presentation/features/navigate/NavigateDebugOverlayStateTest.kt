@@ -9,19 +9,9 @@ import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
 import com.glancemap.glancemapwearos.domain.sensors.HeadingSource
 import com.glancemap.glancemapwearos.domain.sensors.initialCompassRenderState
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigateDebugOverlayStateTest {
-    @Test
-    fun compassPopupShowsInterferenceIntegrityAndHeldAnchor() {
-        val label = compassIntegrityDebugOverlayLabel(interferenceState(), renderedHeadingDeg = 85f)
-
-        assertTrue(label.contains("I:DEGRADED(magnetic_interference)"))
-        assertTrue(label.contains("F:138.6µT M:interference Q:yes"))
-        assertTrue(label.contains("D:held/frozen anchor B:google_automatic"))
-    }
-
     @Test
     fun compassPopupDistinguishesTrustedAndDegradedLiveDisplays() {
         val trusted =

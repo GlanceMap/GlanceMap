@@ -15,7 +15,7 @@ internal class HttpTransferProgressCallbacks(
     private val sendStatus: suspend (sourceNodeId: String, transferId: String, phase: String, detail: String) -> Unit,
 ) {
     private val appScope get() = host.appScope
-    private val tracker = ProgressTracker(metadata.totalSize)
+    private val tracker = ProgressTracker(metadata.totalSize, host.context.resources)
     private val uiThrottler =
         UiUpdateThrottler(
             minIntervalMs = 500L,

@@ -57,6 +57,7 @@ class TraceRecordingDraftStore(
                 .put("activityProfile", state.activityProfile)
                 .put("trackSmoothingMode", state.trackSmoothingMode)
                 .put("distanceSource", state.distanceSource)
+                .put("recordingMetadata", state.recordingMetadata?.toJson() ?: JSONObject.NULL)
                 .put("startedAtMillis", state.startedAtMillis ?: 0L)
                 .put("pausedAtMillis", state.pausedAtMillis ?: 0L)
                 .put("accumulatedPausedMillis", state.accumulatedPausedMillis)
@@ -125,6 +126,7 @@ private object TraceRecordingDraftJson {
             stepCount = optionalInt("stepCount"),
             lastUiAction = optionalString("lastUiAction"),
             points = (optJSONArray("points") ?: JSONArray()).toRecordedTracePoints(),
+            recordingMetadata = optJSONObject("recordingMetadata")?.toRecordingCaptureMetadata(),
         )
 
     private fun JSONArray.toRecordedTracePoints(): List<RecordedTracePoint> =
@@ -161,6 +163,7 @@ private object TraceRecordingDraftJson {
             startsNewSegment = optBoolean("startsNewSegment", false),
             segmentStartReason = optionalString("segmentStartReason"),
             trajectoryFinalized = optBoolean("trajectoryFinalized", false),
+            locationQuality = optJSONObject("locationQuality")?.toRecordedLocationQuality(),
         )
     }
 }
@@ -195,6 +198,7 @@ data class TraceRecordingDraft(
     val stepCount: Int?,
     val lastUiAction: String?,
     val points: List<RecordedTracePoint>,
+    val recordingMetadata: RecordingCaptureMetadata? = null,
 )
 
 private fun RecordedTracePoint.toJson(): JSONObject =
@@ -216,6 +220,7 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("startsNewSegment", startsNewSegment)
         .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
         .put("trajectoryFinalized", trajectoryFinalized)
+        .put("locationQuality", locationQuality?.toJson() ?: JSONObject.NULL)
 
 private fun JSONObject.optionalDouble(key: String): Double? =
     if (isNull(key)) {

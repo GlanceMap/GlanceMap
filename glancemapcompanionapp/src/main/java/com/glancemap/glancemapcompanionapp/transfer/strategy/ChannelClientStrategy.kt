@@ -7,6 +7,7 @@ import android.util.Log
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.util.CopyWithProgressOptions
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
+import com.glancemap.shared.transfer.MapsforgeThemePackage
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CancellationException
@@ -175,7 +176,17 @@ class ChannelClientStrategy :
                 // 4) Wait ACK
                 onProgress(1f, "Waiting for watch confirmation…")
                 val ackStartMs = SystemClock.elapsedRealtime()
-                val ack = withTimeoutOrNull(WATCH_ACK_TIMEOUT_MS) { ackDeferred.await() }
+                val ack =
+                    withTimeoutOrNull(
+                        if (MapsforgeThemePackage.isTransferName(
+                                metadata.safeFileName,
+                            )
+                        ) {
+                            MapsforgeThemePackage.INSTALL_ACK_TIMEOUT_MS
+                        } else {
+                            WATCH_ACK_TIMEOUT_MS
+                        },
+                    ) { ackDeferred.await() }
                 val ackWaitMs = SystemClock.elapsedRealtime() - ackStartMs
                 Log.d(
                     TAG,

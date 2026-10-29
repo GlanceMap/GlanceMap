@@ -11,6 +11,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -61,6 +65,7 @@ import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.navigate.rememberLocationPermissionState
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAnchorType
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsListAutoCentering
@@ -87,6 +92,7 @@ fun DownloadScreen(
     onLibraryChanged: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
 ) {
+    val resources = LocalResources.current
     val context = LocalContext.current
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
@@ -113,7 +119,7 @@ fun DownloadScreen(
         rememberLocationPermissionState(context) { granted ->
             if (!granted && useCurrentLocationAfterPermission) {
                 useCurrentLocationAfterPermission = false
-                locationSuggestionMessage = "Location permission is needed"
+                locationSuggestionMessage = resources.getString(R.string.download_location_permission_is_needed)
             }
         }
     val findSuggestedAreasFromCurrentLocation: () -> Unit = {
@@ -124,7 +130,7 @@ fun DownloadScreen(
                 val location = runCatching { requestDownloadCurrentLocation(context) }.getOrNull()
                 isFindingCurrentLocation = false
                 if (location == null) {
-                    locationSuggestionMessage = "Current location unavailable"
+                    locationSuggestionMessage = resources.getString(R.string.download_current_location_unavailable)
                 } else {
                     val suggestedAreas =
                         viewModel.suggestAreasForLocation(
@@ -133,7 +139,7 @@ fun DownloadScreen(
                         )
                     locationSuggestionMessage =
                         if (suggestedAreas.isEmpty()) {
-                            "No matching map bundle"
+                            resources.getString(R.string.download_no_matching_map_bundle)
                         } else {
                             null
                         }
@@ -150,9 +156,9 @@ fun DownloadScreen(
     var wasAreaPickerOpen by remember { mutableStateOf(showAreaPicker) }
     val selectedAreas = uiState.selectedAreas
     val estimatedSize =
-        selectedAreas.estimatedSizeLabel(uiState.selection)
-    val selectedAreaLabel = selectedAreas.selectedAreaLabel()
-    val selectedAreaSecondaryLabel = selectedAreas.selectedAreaSecondaryLabel()
+        selectedAreas.estimatedSizeLabel(uiState.selection, resources = resources)
+    val selectedAreaLabel = selectedAreas.selectedAreaLabel(resources = resources)
+    val selectedAreaSecondaryLabel = selectedAreas.selectedAreaSecondaryLabel(resources = resources)
     val listHorizontalPadding =
         when (screenSize) {
             WearScreenSize.LARGE -> 16.dp
@@ -342,8 +348,12 @@ fun DownloadScreen(
 
     DeleteConfirmationDialog(
         visible = bundlePendingDelete != null,
-        title = "Delete bundle?",
-        message = "This will remove the downloaded files for ${bundlePendingDelete?.areaLabel.orEmpty()}.",
+        title = stringResource(R.string.download_delete_bundle),
+        message =
+            stringResource(
+                R.string.download_this_will_remove_the_downloaded_files_for,
+                bundlePendingDelete?.areaLabel.orEmpty(),
+            ),
         onConfirm = {
             bundlePendingDelete?.let(viewModel::deleteBundle)
             bundlePendingDelete = null
@@ -460,6 +470,7 @@ fun DownloadScreen(
                         onClearAreaSelection = viewModel::clearAreaSelection,
                         onSelectedAreaFolderChange = onSelectedAreaFolderChange,
                         onToggleArea = viewModel::toggleArea,
+                        resources = resources,
                     )
                 } else {
                     if (!effectiveRefreshMode) {
@@ -490,7 +501,7 @@ fun DownloadScreen(
                             }
                             item {
                                 DownloadActionButton(
-                                    label = "Pause",
+                                    label = stringResource(R.string.common_pause),
                                     icon = Icons.Filled.Pause,
                                     enabled = true,
                                     height = actionButtonHeight,
@@ -500,7 +511,7 @@ fun DownloadScreen(
                             }
                             item {
                                 DownloadActionButton(
-                                    label = "Cancel",
+                                    label = stringResource(R.string.common_cancel),
                                     icon = Icons.Filled.Close,
                                     enabled = true,
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -513,7 +524,14 @@ fun DownloadScreen(
                         } else {
                             item {
                                 DownloadActionButton(
-                                    label = if (uiState.isPausedDownload) "Resume" else "Download",
+                                    label =
+                                        if (uiState.isPausedDownload) {
+                                            stringResource(
+                                                R.string.common_resume,
+                                            )
+                                        } else {
+                                            stringResource(R.string.common_download)
+                                        },
                                     icon = Icons.Filled.Download,
                                     enabled = uiState.canStartOrResumeDownload,
                                     height = actionButtonHeight,
@@ -527,7 +545,7 @@ fun DownloadScreen(
                     if (!effectiveRefreshMode) {
                         item {
                             Text(
-                                text = "Installed bundles",
+                                text = stringResource(R.string.download_installed_bundles),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                                 maxLines = 1,
@@ -538,7 +556,7 @@ fun DownloadScreen(
                     if (uiState.installedBundles.isEmpty()) {
                         item {
                             Text(
-                                text = "No bundles installed",
+                                text = stringResource(R.string.download_no_bundles_installed),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.82f),
                                 textAlign = TextAlign.Center,
@@ -617,7 +635,7 @@ fun DownloadScreen(
                         ) {
                             Material3Icon(
                                 imageVector = Icons.Filled.Download,
-                                contentDescription = "Download selected areas",
+                                contentDescription = stringResource(R.string.download_download_selected_areas),
                                 modifier = Modifier.size(pickerDownloadIconSize),
                             )
                         }
@@ -636,9 +654,12 @@ fun DownloadScreen(
                         DownloadActionButton(
                             label =
                                 if (uiState.isCheckingUpdates) {
-                                    "Checking…"
+                                    stringResource(R.string.download_checking)
                                 } else {
-                                    refreshSelectionButtonLabel(uiState.selectedRefreshBundleIds.size)
+                                    refreshSelectionButtonLabel(
+                                        uiState.selectedRefreshBundleIds.size,
+                                        resources = resources,
+                                    )
                                 },
                             icon = Icons.Filled.Update,
                             enabled =
@@ -674,7 +695,7 @@ fun DownloadScreen(
                             ) {
                                 Material3Icon(
                                     imageVector = Icons.Filled.Settings,
-                                    contentDescription = "Bundle settings",
+                                    contentDescription = stringResource(R.string.download_bundle_settings),
                                 )
                             }
                             if (uiState.installedBundles.isNotEmpty()) {
@@ -709,9 +730,9 @@ fun DownloadScreen(
                                         imageVector = if (deleteMode) Icons.Filled.Close else Icons.Filled.Delete,
                                         contentDescription =
                                             if (deleteMode) {
-                                                "Exit delete mode"
+                                                stringResource(R.string.download_exit_delete_mode)
                                             } else {
-                                                "Enter delete mode"
+                                                stringResource(R.string.download_enter_delete_mode)
                                             },
                                         modifier = Modifier.size(headerActionIconSize),
                                     )
@@ -760,7 +781,7 @@ private fun DownloadHeader(
             if (useLargeFontHeader) {
                 cappedFontScale(maxFontScale = 1f) {
                     Text(
-                        text = "Download",
+                        text = stringResource(R.string.common_download),
                         style = MaterialTheme.typography.titleSmall,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
@@ -769,7 +790,7 @@ private fun DownloadHeader(
                 }
             } else {
                 Text(
-                    text = "Download",
+                    text = stringResource(R.string.common_download),
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -782,7 +803,7 @@ private fun DownloadHeader(
             ) {
                 HeaderActionButton(
                     icon = Icons.Filled.Info,
-                    contentDescription = "OpenAndroMaps info",
+                    contentDescription = stringResource(R.string.download_openandromaps_info),
                     buttonSize = actionButtonSize,
                     iconSize = actionIconSize,
                     visualOffsetY = actionVisualOffsetY,
@@ -790,7 +811,14 @@ private fun DownloadHeader(
                 )
                 HeaderActionButton(
                     icon = Icons.Filled.Update,
-                    contentDescription = if (refreshMode) "Exit refresh mode" else "Enter refresh mode",
+                    contentDescription =
+                        if (refreshMode) {
+                            stringResource(
+                                R.string.download_exit_refresh_mode,
+                            )
+                        } else {
+                            stringResource(R.string.download_enter_refresh_mode)
+                        },
                     buttonSize = actionButtonSize,
                     iconSize = actionIconSize,
                     visualOffsetY = actionVisualOffsetY,
@@ -802,11 +830,19 @@ private fun DownloadHeader(
             if (refreshMode) {
                 val refreshInstruction =
                     when {
-                        isCheckingUpdates && useLargeFontHeader -> "Checking"
-                        isCheckingUpdates -> "Checking selected"
-                        selectedRefreshBundleCount == 0 && useLargeFontHeader -> "Select"
-                        selectedRefreshBundleCount == 0 -> "Select bundles to update"
-                        else -> "$selectedRefreshBundleCount selected"
+                        isCheckingUpdates && useLargeFontHeader -> stringResource(R.string.download_checking_2)
+                        isCheckingUpdates -> stringResource(R.string.download_checking_selected)
+                        selectedRefreshBundleCount == 0 && useLargeFontHeader ->
+                            stringResource(
+                                R.string.download_select,
+                            )
+                        selectedRefreshBundleCount == 0 -> stringResource(R.string.download_select_bundles_to_update)
+                        else ->
+                            pluralStringResource(
+                                R.plurals.download_selected_count,
+                                selectedRefreshBundleCount,
+                                selectedRefreshBundleCount,
+                            )
                     }
                 if (useLargeFontHeader) {
                     cappedFontScale(maxFontScale = 1f) {
@@ -831,7 +867,7 @@ private fun DownloadHeader(
                 }
             } else if (deleteMode) {
                 Text(
-                    text = "Delete mode",
+                    text = stringResource(R.string.download_delete_mode),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
@@ -929,15 +965,16 @@ private fun DownloadSummary(
     selection: OamDownloadSelection,
     estimatedSize: String,
 ) {
+    val resources = LocalResources.current
     val fileCountLine =
         if (areas.size > 1) {
-            "\nFiles: ${areas.fileCountLabel(selection)}"
+            stringResource(R.string.download_files, areas.fileCountLabel(selection, resources = resources))
         } else {
             ""
         }
 
     Text(
-        text = "Size: $estimatedSize$fileCountLine",
+        text = stringResource(R.string.download_size, estimatedSize, fileCountLine),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.86f),
         textAlign = TextAlign.Center,
@@ -947,12 +984,17 @@ private fun DownloadSummary(
 
 @Composable
 private fun DownloadProgress(uiState: DownloadUiState) {
+    val resources = LocalResources.current
     val totalBytes = uiState.totalBytes
     val progressText =
         if (totalBytes != null && totalBytes > 0L) {
-            "${formatBytes(uiState.bytesDone)} / ${formatBytes(totalBytes)}"
+            stringResource(
+                R.string.navigation_value,
+                formatBytes(uiState.bytesDone, resources = resources),
+                formatBytes(totalBytes, resources = resources),
+            )
         } else {
-            formatBytes(uiState.bytesDone)
+            formatBytes(uiState.bytesDone, resources = resources)
         }
     Text(
         text =
@@ -978,13 +1020,17 @@ private fun InstalledBundleRow(
     onRefresh: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val resources = LocalResources.current
     DownloadChip(
         label = bundle.areaLabel,
         secondaryLabel =
             if (needsRepair) {
-                "Repair needed · ${installedBundleSubtitle(bundle)}"
+                stringResource(
+                    R.string.download_repair_needed_2,
+                    installedBundleSubtitle(bundle, resources = resources),
+                )
             } else {
-                installedBundleSubtitle(bundle)
+                installedBundleSubtitle(bundle, resources = resources)
             },
         secondaryMarquee = true,
         icon =
@@ -1005,42 +1051,49 @@ private fun InstalledBundleRow(
     )
 }
 
-private fun refreshSelectionButtonLabel(selectedCount: Int): String =
+private fun refreshSelectionButtonLabel(
+    selectedCount: Int,
+    resources: Resources,
+): String =
     if (selectedCount > 0) {
-        "Check ($selectedCount)"
+        resources.getString(R.string.download_check, selectedCount)
     } else {
-        "Check"
+        resources.getString(R.string.download_check_2)
     }
 
-private fun installedBundleSubtitle(bundle: OamInstalledBundle): String =
+private fun installedBundleSubtitle(
+    bundle: OamInstalledBundle,
+    resources: Resources,
+): String =
     listOfNotNull(
-        "Map".takeIf { bundle.mapFileName != null },
-        "POI".takeIf { bundle.poiFileName != null },
-        "Refuges.info".takeIf { bundle.refugesInfoFileName != null },
-        "Routing".takeIf { bundle.routingFileNames.isNotEmpty() },
-        "${bundle.demSource.shortLabel} elevation".takeIf { bundle.demTileIds.isNotEmpty() },
-    ).joinToString(" + ").ifBlank { bundle.bundleChoice.label }
+        resources.getString(R.string.download_map).takeIf { bundle.mapFileName != null },
+        resources.getString(R.string.common_poi).takeIf { bundle.poiFileName != null },
+        resources.getString(R.string.download_refuges_info).takeIf { bundle.refugesInfoFileName != null },
+        resources.getString(R.string.download_routing).takeIf { bundle.routingFileNames.isNotEmpty() },
+        resources.getString(R.string.download_elevation, resources.getString(bundle.demSource.shortLabelRes)).takeIf {
+            bundle.demTileIds.isNotEmpty()
+        },
+    ).joinToString(" + ").ifBlank { resources.getString(bundle.bundleChoice.labelRes) }
 
-private fun OamDownloadSelection.itemCountLabel(): String {
-    val itemCount =
-        listOf(
-            includeMap,
-            includePoi,
-            includeRouting,
-            includeDem,
-            includeRefugesInfo,
-        ).count { it }
-    val noun = if (itemCount == 1) "item" else "items"
-    return "$itemCount $noun"
-}
+internal fun itemCountLabel(
+    itemCount: Int,
+    resources: Resources,
+): String = resources.getQuantityString(R.plurals.download_items, itemCount, itemCount)
 
 private fun List<OamDownloadArea>.estimatedSizeLabel(
     selection: OamDownloadSelection,
-): String = estimatedBytes(selection).toSizeLabel(selection)
+    resources: Resources,
+): String = estimatedBytes(selection).toSizeLabel(selection, resources = resources)
 
 internal fun OamDownloadArea.areaSizeLabel(
     selection: OamDownloadSelection,
-): String = "$continent - ${estimatedBytes(selection).toSizeLabel(selection)}"
+    resources: Resources,
+): String =
+    resources.getString(
+        R.string.download_area_size,
+        estimatedBytes(selection).toSizeLabel(selection, resources = resources),
+        continent,
+    )
 
 private fun List<OamDownloadArea>.estimatedBytes(
     selection: OamDownloadSelection,
@@ -1050,7 +1103,10 @@ private fun OamDownloadArea.estimatedBytes(selection: OamDownloadSelection): Lon
     (if (selection.includeMap) mapSizeBytes else 0L) +
         (if (selection.includePoi) poiSizeBytes else 0L)
 
-private fun List<OamDownloadArea>.fileCountLabel(selection: OamDownloadSelection): String {
+private fun List<OamDownloadArea>.fileCountLabel(
+    selection: OamDownloadSelection,
+    resources: Resources,
+): String {
     val knownCount =
         size *
             (
@@ -1059,35 +1115,45 @@ private fun List<OamDownloadArea>.fileCountLabel(selection: OamDownloadSelection
             )
     val hasUnknownCount = selection.includeRouting || selection.includeDem || selection.includeRefugesInfo
     return when {
-        hasUnknownCount && knownCount == 0 -> "bundle files"
-        hasUnknownCount -> "$knownCount+"
+        hasUnknownCount && knownCount == 0 -> resources.getString(R.string.download_bundle_files)
+        hasUnknownCount -> resources.getString(R.string.download_at_least_file_count, knownCount)
         else -> knownCount.toString()
     }
 }
 
-private fun Long.toSizeLabel(selection: OamDownloadSelection): String =
+private fun Long.toSizeLabel(
+    selection: OamDownloadSelection,
+    resources: Resources,
+): String =
     buildList {
-        if (this@toSizeLabel > 0L) add(formatBytes(this@toSizeLabel))
-        if (selection.includeRouting) add("routing")
-        if (selection.includeDem) add("${selection.demSource.shortLabel} elevation")
-        if (selection.includeRefugesInfo) add("Refuges.info")
+        if (this@toSizeLabel > 0L) add(formatBytes(this@toSizeLabel, resources = resources))
+        if (selection.includeRouting) add(resources.getString(R.string.download_routing_2))
+        if (selection.includeDem) {
+            add(
+                resources.getString(
+                    R.string.download_elevation,
+                    resources.getString(selection.demSource.shortLabelRes),
+                ),
+            )
+        }
+        if (selection.includeRefugesInfo) add(resources.getString(R.string.download_refuges_info))
     }.joinToString(" + ").ifBlank {
-        formatBytes(this)
+        formatBytes(this, resources = resources)
     }
 
-private fun List<OamDownloadArea>.selectedAreaLabel(): String =
+private fun List<OamDownloadArea>.selectedAreaLabel(resources: Resources): String =
     when (size) {
-        0 -> "Pick area"
+        0 -> resources.getString(R.string.download_pick_area)
         1 -> first().region
         2 -> joinToString(" + ") { it.region }
-        else -> "$size areas selected"
+        else -> resources.getQuantityString(R.plurals.download_areas_selected, size, size)
     }
 
-private fun List<OamDownloadArea>.selectedAreaSecondaryLabel(): String =
+private fun List<OamDownloadArea>.selectedAreaSecondaryLabel(resources: Resources): String =
     when (size) {
-        0 -> "No area selected"
-        1 -> "1 area selected"
-        else -> "$size areas selected"
+        0 -> resources.getString(R.string.download_no_area_selected)
+
+        else -> resources.getQuantityString(R.plurals.download_areas_selected, size, size)
     }
 
 @Composable
@@ -1164,17 +1230,20 @@ internal fun DownloadChip(
     )
 }
 
-private fun formatBytes(bytes: Long): String {
+private fun formatBytes(
+    bytes: Long,
+    resources: Resources,
+): String {
     val safeBytes = bytes.coerceAtLeast(0L)
-    if (safeBytes < 1024L) return "$safeBytes B"
+    if (safeBytes < 1024L) return resources.getString(R.string.download_b, safeBytes)
     val kib = safeBytes / 1024.0
-    if (kib < 1024.0) return "${kib.formatOneDecimal()} KB"
+    if (kib < 1024.0) return resources.getString(R.string.download_kb, kib.formatOneDecimal())
     val mib = kib / 1024.0
-    if (mib < 1024.0) return "${mib.formatOneDecimal()} MB"
-    return "${(mib / 1024.0).formatOneDecimal()} GB"
+    if (mib < 1024.0) return resources.getString(R.string.download_mb, mib.formatOneDecimal())
+    return resources.getString(R.string.download_gb, (mib / 1024.0).formatOneDecimal())
 }
 
-private fun Double.formatOneDecimal(): String = String.format(java.util.Locale.US, "%.1f", this)
+private fun Double.formatOneDecimal(): String = String.format(java.util.Locale.getDefault(), "%.1f", this)
 
 private val ChipBackground = Color(0xFF222A33)
 private val SelectedChipBackground = Color(0xFF1F4656)

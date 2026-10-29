@@ -13,12 +13,14 @@ package com.glancemap.glancemapwearos.presentation.features.download
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Resources
 import android.database.sqlite.SQLiteDatabase
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
@@ -230,7 +232,7 @@ class OamBundleDownloader(
                 val file = poiFiles.firstOrNull { it.name.equals(fileName, ignoreCase = true) }
                 val healthy =
                     file.isHealthyLocalFile() &&
-                        (!thorough || runCatching { validatePoiFile(file!!) }.isSuccess)
+                        (!thorough || runCatching { validatePoiFile(file!!, resources = context.resources) }.isSuccess)
                 if (!healthy) {
                     repairFileNames += area?.let { oamRemoteFileName(it.poiZipUrl) } ?: File(fileName).name
                 }
@@ -239,14 +241,14 @@ class OamBundleDownloader(
                 val file = poiFiles.firstOrNull { it.name.equals(fileName, ignoreCase = true) }
                 val healthy =
                     file.isHealthyLocalFile() &&
-                        (!thorough || runCatching { validatePoiFile(file!!) }.isSuccess)
+                        (!thorough || runCatching { validatePoiFile(file!!, resources = context.resources) }.isSuccess)
                 if (!healthy) repairFileNames += File(fileName).name
             }
             bundle.routingFileNames.forEach { fileName ->
                 val file = routingSegmentTargetFile(context, fileName)
                 val healthy =
                     file.isHealthyLocalFile() &&
-                        (!thorough || runCatching { validateRoutingSegmentIndex(file) }.isSuccess)
+                        (!thorough || runCatching { validateRoutingSegmentIndex(file, resources = context.resources) }.isSuccess)
                 if (!healthy) repairFileNames += File(fileName).name
             }
             bundle.demTileIds.forEach { tileId ->
@@ -258,7 +260,7 @@ class OamBundleDownloader(
                             !thorough ||
                                 runCatching {
                                     if (file.name.endsWith(".gz", ignoreCase = true)) {
-                                        validateGzipDemStructure(file)
+                                        validateGzipDemStructure(file, resources = context.resources)
                                     } else {
                                         validateDemTileFile(file)
                                     }
@@ -414,7 +416,7 @@ class OamBundleDownloader(
         onProgress: (OamDownloadProgress) -> Unit,
     ): OamInstalledBundle =
         coroutineScope {
-            require(selection.canDownload) { "Select at least one download item." }
+            require(selection.canDownload) { context.resources.getString(R.string.download_select_at_least_one_download_item) }
 
             val bundleStartedAtMs = System.currentTimeMillis()
             DebugTelemetry.log(
@@ -466,7 +468,7 @@ class OamBundleDownloader(
                 if (existingMapFile != null) {
                     mapFileName = existingMapFile.name
                     reportExistingFile(
-                        label = "Map",
+                        label = context.resources.getString(R.string.download_map),
                         file = existingMapFile,
                         onProgress = progressArbiter::emitForeground,
                     )
@@ -479,14 +481,14 @@ class OamBundleDownloader(
                             entryExtension = ".map",
                             expectedSize = mapMetadata?.contentLengthBytes,
                         )?.also { archive ->
-                            reportReusableArchive("Map", archive, progressArbiter::emitForeground)
+                            reportReusableArchive(context.resources.getString(R.string.download_map), archive, progressArbiter::emitForeground)
                         } ?: progressArbiter.runNetwork { networkProgress ->
                             downloadFile(
                                 url = area.mapZipUrl,
                                 dir = downloadDir,
                                 fileName = archiveName,
-                                label = "Map",
-                                progressDetail = "Map zip",
+                                label = context.resources.getString(R.string.download_map),
+                                progressDetail = context.resources.getString(R.string.download_map_zip),
                                 bufferSize = OAM_ZIP_DOWNLOAD_BUFFER_SIZE,
                                 progressStepBytes = 2L * 1024 * 1024,
                                 fsync = false,
@@ -503,7 +505,7 @@ class OamBundleDownloader(
                                         extractFirstEntry(
                                             zipFile = archive,
                                             extension = ".map",
-                                            label = "Map",
+                                            label = context.resources.getString(R.string.download_map),
                                             extractionKeepAliveState = extractionKeepAliveState,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
@@ -560,7 +562,7 @@ class OamBundleDownloader(
                 if (existingPoiFile != null) {
                     poiFileName = existingPoiFile.name
                     reportExistingFile(
-                        label = "POI",
+                        label = context.resources.getString(R.string.common_poi),
                         file = existingPoiFile,
                         onProgress = progressArbiter::emitForeground,
                     )
@@ -573,14 +575,14 @@ class OamBundleDownloader(
                             entryExtension = ".poi",
                             expectedSize = poiMetadata?.contentLengthBytes,
                         )?.also { archive ->
-                            reportReusableArchive("POI", archive, progressArbiter::emitForeground)
+                            reportReusableArchive(context.resources.getString(R.string.common_poi), archive, progressArbiter::emitForeground)
                         } ?: progressArbiter.runNetwork { networkProgress ->
                             downloadFile(
                                 url = area.poiZipUrl,
                                 dir = downloadDir,
                                 fileName = archiveName,
-                                label = "POI",
-                                progressDetail = "POI zip",
+                                label = context.resources.getString(R.string.common_poi),
+                                progressDetail = context.resources.getString(R.string.download_poi_zip),
                                 bufferSize = OAM_ZIP_DOWNLOAD_BUFFER_SIZE,
                                 progressStepBytes = 2L * 1024 * 1024,
                                 fsync = false,
@@ -597,7 +599,7 @@ class OamBundleDownloader(
                                         extractFirstEntry(
                                             zipFile = archive,
                                             extension = ".poi",
-                                            label = "POI",
+                                            label = context.resources.getString(R.string.common_poi),
                                             extractionKeepAliveState = extractionKeepAliveState,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
@@ -696,9 +698,9 @@ class OamBundleDownloader(
                             phase = "PREPARING",
                             detail =
                                 if (isLargeDetailedDownload) {
-                                    "Large detailed DEM · ${requiredTiles.size} tiles"
+                                    context.resources.getQuantityString(R.plurals.download_large_detailed_dem_tiles, requiredTiles.size, requiredTiles.size)
                                 } else {
-                                    "${selection.demSource.shortLabel} DEM · ${requiredTiles.size} tiles"
+                                    context.resources.getQuantityString(R.plurals.download_dem_tiles, requiredTiles.size, context.resources.getString(selection.demSource.shortLabelRes), requiredTiles.size)
                                 },
                         ),
                     )
@@ -730,8 +732,9 @@ class OamBundleDownloader(
                                                 tileIndex = tileIndex,
                                                 tileCount = requiredTiles.size,
                                                 tileId = safeTileId,
-                                                sourceLabel = selection.demSource.shortLabel,
+                                                sourceLabel = context.resources.getString(selection.demSource.shortLabelRes),
                                                 isLargeDetailedDownload = isLargeDetailedDownload,
+                                                resources = context.resources,
                                             ),
                                         )
                                     },
@@ -777,7 +780,7 @@ class OamBundleDownloader(
                 if (existingRefugesInfoFile != null) {
                     refugesInfoFileName = existingRefugesInfoFile.name
                     reportExistingFile(
-                        label = "Refuges.info",
+                        label = context.resources.getString(R.string.download_refuges_info),
                         file = existingRefugesInfoFile,
                         onProgress = progressArbiter::emitForeground,
                     )
@@ -785,7 +788,7 @@ class OamBundleDownloader(
                     val mapFile =
                         mapFileForArea(area = area, mapFileName = mapFileName)
                             ?: throw IOException(
-                                "Refuges.info needs the map in this bundle or an installed map for ${area.region}.",
+                                context.resources.getString(R.string.download_refuges_info_needs_the_map_in_this_bundle_or_an_installed_map_for, area.region),
                             )
                     refugesInfoFileName =
                         refugesInfoImporter.importForMap(
@@ -919,11 +922,11 @@ class OamBundleDownloader(
     ): List<String> {
         val mapFile =
             mapFileForArea(area = area, mapFileName = mapFileName)
-                ?: throw IOException("Routing needs the map in this bundle or an installed map for ${area.region}.")
+                ?: throw IOException(context.resources.getString(R.string.download_routing_needs_the_map_in_this_bundle_or_an_installed_map_for, area.region))
         return RoutingCoverageUtils
             .requiredSegmentNamesForMapFile(mapFile)
             ?.sorted()
-            ?: throw IOException("Cannot read map bounds for routing.")
+            ?: throw IOException(context.resources.getString(R.string.download_cannot_read_map_bounds_for_routing))
     }
 
     private suspend fun demTileIdsForArea(
@@ -944,11 +947,11 @@ class OamBundleDownloader(
     ): List<String> {
         val mapFile =
             mapFileForArea(area = area, mapFileName = mapFileName)
-                ?: throw IOException("DEM needs the map in this bundle or an installed map for ${area.region}.")
+                ?: throw IOException(context.resources.getString(R.string.download_dem_needs_the_map_in_this_bundle_or_an_installed_map_for, area.region))
         return Dem3CoverageUtils
             .requiredTileIdsForMap(mapFile)
             ?.sorted()
-            ?: throw IOException("Cannot read map bounds for DEM.")
+            ?: throw IOException(context.resources.getString(R.string.download_cannot_read_map_bounds_for_dem))
     }
 
     private suspend fun mapFileForArea(
@@ -1064,7 +1067,7 @@ class OamBundleDownloader(
         onProgress(
             OamDownloadProgress(
                 phase = "READY",
-                detail = "${file.name} already on watch",
+                detail = context.resources.getString(R.string.download_already_on_watch, file.name),
                 bytesDone = file.length().coerceAtLeast(0L),
                 totalBytes = file.length().takeIf { it > 0L },
             ),
@@ -1083,7 +1086,7 @@ class OamBundleDownloader(
         onProgress(
             OamDownloadProgress(
                 phase = "READY",
-                detail = "$label archive ready",
+                detail = context.resources.getString(R.string.download_archive_ready, label),
                 bytesDone = archive.length().coerceAtLeast(0L),
                 totalBytes = archive.length().takeIf { it > 0L },
             ),
@@ -1119,7 +1122,7 @@ class OamBundleDownloader(
                     url = url,
                     dir = routingSegmentsDir(context),
                     fileName = safeName,
-                    label = "Routing",
+                    label = context.resources.getString(R.string.download_routing),
                     progressDetail = safeName,
                     bufferSize = 512 * 1024,
                     progressStepBytes = 1L * 1024 * 1024,
@@ -1127,7 +1130,7 @@ class OamBundleDownloader(
                     onResponseMetadata = onResponseMetadata,
                     onProgress = onProgress,
                 ).let { downloadedFile ->
-                    runCatching { validateRoutingSegmentIndex(downloadedFile) }
+                    runCatching { validateRoutingSegmentIndex(downloadedFile, resources = context.resources) }
                         .onFailure { error ->
                             DebugTelemetry.log(
                                 OAM_DOWNLOAD_TELEMETRY_TAG,
@@ -1148,7 +1151,7 @@ class OamBundleDownloader(
                     onProgress(
                         OamDownloadProgress(
                             phase = "SKIPPED",
-                            detail = "$safeName unavailable",
+                            detail = context.resources.getString(R.string.download_unavailable, safeName),
                         ),
                     )
                     RoutingSegmentDownloadResult(
@@ -1182,7 +1185,7 @@ class OamBundleDownloader(
                 onProgress(
                     OamDownloadProgress(
                         phase = "READY",
-                        detail = "$safeTileId DEM",
+                        detail = context.resources.getString(R.string.download_dem, safeTileId),
                         bytesDone = targetFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L,
                         totalBytes = targetFile.takeIf { it.exists() }?.length()?.takeIf { it > 0L },
                     ),
@@ -1205,8 +1208,8 @@ class OamBundleDownloader(
                         url = request.url,
                         dir = targetFile.parentFile ?: Dem3CoverageUtils.demRootDir(context, source),
                         fileName = targetFile.name,
-                        label = "DEM",
-                        progressDetail = "$safeTileId DEM",
+                        label = context.resources.getString(R.string.maps_dem),
+                        progressDetail = context.resources.getString(R.string.download_dem, safeTileId),
                         bufferSize = 512 * 1024,
                         progressStepBytes = 512L * 1024,
                         fsync = true,
@@ -1243,7 +1246,7 @@ class OamBundleDownloader(
                     onProgress(
                         OamDownloadProgress(
                             phase = "SKIPPED",
-                            detail = "$safeTileId DEM unavailable",
+                            detail = context.resources.getString(R.string.download_dem_unavailable, safeTileId),
                         ),
                     )
                     DemTileDownloadResult(
@@ -1379,7 +1382,7 @@ class OamBundleDownloader(
             try {
                 val code = connection.responseCode
                 if (code !in 200..399) {
-                    throw IOException("HTTP $code for ${request.url}")
+                    throw IOException(context.resources.getString(R.string.download_http_for, request.url, code.toString()))
                 }
                 OamRemoteFileMetadata(
                     url = request.url,
@@ -1411,7 +1414,7 @@ class OamBundleDownloader(
     ): File =
         withContext(Dispatchers.IO) {
             if (!dir.exists() && !dir.mkdirs()) {
-                throw IOException("Cannot create download directory")
+                throw IOException(context.resources.getString(R.string.download_cannot_create_download_directory))
             }
             val safeName = File(fileName).name
             val finalFile = File(dir, safeName)
@@ -1452,11 +1455,11 @@ class OamBundleDownloader(
                                 continue
                             }
                             code == HttpURLConnection.HTTP_OK -> false
-                            else -> throw IOException("HTTP $code for $url")
+                            else -> throw IOException(context.resources.getString(R.string.download_http_for_2, code.toString(), url))
                         }
 
                     if (restartCount > MAX_RANGE_RESTARTS) {
-                        throw IOException("Server rejected resume too many times")
+                        throw IOException(context.resources.getString(R.string.download_server_rejected_resume_too_many_times))
                     }
 
                     val expectedTotalBytes =
@@ -1602,6 +1605,7 @@ class OamBundleDownloader(
                                 maxRetries = MAX_IO_RETRIES,
                                 offset = resumeOffsetAfterFailure,
                                 error = error,
+                                resources = context.resources,
                             ),
                             error,
                         )
@@ -1610,7 +1614,7 @@ class OamBundleDownloader(
                     onProgress(
                         OamDownloadProgress(
                             phase = "RECONNECTING",
-                            detail = "$progressDetail reconnecting",
+                            detail = context.resources.getString(R.string.download_reconnecting, progressDetail),
                             bytesDone = resumeOffset,
                         ),
                     )
@@ -1798,7 +1802,7 @@ class OamBundleDownloader(
                     return@withContext entryFileName
                 }
             }
-            throw IOException("$label ZIP did not contain a $extension file")
+            throw IOException(context.resources.getString(R.string.download_zip_did_not_contain_a_file, label, extension))
         }
 
     private fun logExtraction(
@@ -1902,11 +1906,14 @@ private fun validateMapFile(file: File) {
     }
 }
 
-private fun validatePoiFile(file: File) {
+private fun validatePoiFile(
+    file: File,
+    resources: Resources,
+) {
     SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { database ->
         database.rawQuery("PRAGMA quick_check(1)", emptyArray()).use { cursor ->
             check(cursor.moveToFirst() && cursor.getString(0).equals("ok", ignoreCase = true)) {
-                "POI database integrity check failed."
+                resources.getString(R.string.download_poi_database_integrity_check_failed)
             }
         }
     }

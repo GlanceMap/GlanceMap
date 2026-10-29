@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.routing.RoundTripPlannerRequest
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerPreset
 import com.glancemap.glancemapwearos.core.routing.RoutePlannerRequest
@@ -7,12 +9,15 @@ import com.glancemap.glancemapwearos.presentation.features.gpx.GpxEtaModelConfig
 import org.mapsforge.core.model.LatLong
 import kotlin.math.roundToInt
 
+// Resource-call wrapping increases line count; keep the existing flow together.
+@Suppress("LongMethod")
 internal fun RouteToolSession.toRoutePlannerRequest(
     currentLocation: LatLong?,
     activeGpxEnd: LatLong? = null,
+    resources: Resources,
 ): RoutePlannerRequest {
     require(options.toolKind == RouteToolKind.CREATE) {
-        "Only create actions can be mapped to the route planner."
+        resources.getString(R.string.gpx_only_create_actions_can_be_mapped_to_the_route_planner)
     }
 
     return when (options.createMode) {
@@ -20,11 +25,13 @@ internal fun RouteToolSession.toRoutePlannerRequest(
             RoutePlannerRequest(
                 origin =
                     requireNotNull(currentLocation) {
-                        "Wait for a fresh GPS fix before creating a route from current location."
+                        resources.getString(
+                            R.string.gpx_wait_for_a_fresh_gps_fix_before_creating_a_route_from_current_location,
+                        )
                     },
                 destination =
                     requireNotNull(destination) {
-                        "Pick a destination first."
+                        resources.getString(R.string.gpx_pick_a_destination_first)
                     },
                 preset = options.routeStyle.toPlannerPreset(),
                 useElevation = options.useElevation,
@@ -34,7 +41,7 @@ internal fun RouteToolSession.toRoutePlannerRequest(
 
         RouteCreateMode.MULTI_POINT_CHAIN -> {
             require(chainPoints.size >= 2) {
-                "Pick at least two points first."
+                resources.getString(R.string.gpx_pick_at_least_two_points_first)
             }
             RoutePlannerRequest(
                 origin = chainPoints.first(),
@@ -51,11 +58,11 @@ internal fun RouteToolSession.toRoutePlannerRequest(
             RoutePlannerRequest(
                 origin =
                     requireNotNull(activeGpxEnd) {
-                        "Activate exactly one GPX before extending it."
+                        resources.getString(R.string.gpx_activate_exactly_one_gpx_before_extending_it)
                     },
                 destination =
                     requireNotNull(destination) {
-                        "Pick a destination first."
+                        resources.getString(R.string.gpx_pick_a_destination_first)
                     },
                 preset = options.routeStyle.toPlannerPreset(),
                 useElevation = options.useElevation,
@@ -67,11 +74,11 @@ internal fun RouteToolSession.toRoutePlannerRequest(
             RoutePlannerRequest(
                 origin =
                     requireNotNull(pointA) {
-                        "Pick point A first."
+                        resources.getString(R.string.gpx_pick_point_a_first)
                     },
                 destination =
                     requireNotNull(pointB) {
-                        "Pick point B first."
+                        resources.getString(R.string.gpx_pick_point_b_first)
                     },
                 preset = options.routeStyle.toPlannerPreset(),
                 useElevation = options.useElevation,
@@ -83,11 +90,13 @@ internal fun RouteToolSession.toRoutePlannerRequest(
             RoutePlannerRequest(
                 origin =
                     requireNotNull(currentLocation) {
-                        "Wait for a fresh GPS fix before creating a route from current location."
+                        resources.getString(
+                            R.string.gpx_wait_for_a_fresh_gps_fix_before_creating_a_route_from_current_location,
+                        )
                     },
                 destination =
                     requireNotNull(destination) {
-                        "Pick a POI first."
+                        resources.getString(R.string.gpx_pick_a_poi_first)
                     },
                 preset = options.routeStyle.toPlannerPreset(),
                 useElevation = options.useElevation,
@@ -96,7 +105,7 @@ internal fun RouteToolSession.toRoutePlannerRequest(
             )
 
         RouteCreateMode.COORDINATES -> {
-            val endpoints = options.resolveCoordinateEndpoints(currentLocation)
+            val endpoints = options.resolveCoordinateEndpoints(currentLocation, resources = resources)
             RoutePlannerRequest(
                 origin = endpoints.origin,
                 destination = endpoints.destination,
@@ -108,7 +117,7 @@ internal fun RouteToolSession.toRoutePlannerRequest(
         }
 
         RouteCreateMode.LOOP_AROUND_HERE -> {
-            throw IllegalArgumentException("Loop creation uses the round-trip planner.")
+            throw IllegalArgumentException(resources.getString(R.string.gpx_loop_creation_uses_the_round_trip_planner))
         }
     }
 }
@@ -117,24 +126,27 @@ internal fun RouteToolSession.toRoundTripPlannerRequest(
     currentLocation: LatLong?,
     etaModelConfig: GpxEtaModelConfig? = null,
     targetDistanceMetersOverride: Int? = null,
+    resources: Resources,
 ): RoundTripPlannerRequest {
     require(options.toolKind == RouteToolKind.CREATE) {
-        "Only create actions can be mapped to the route planner."
+        resources.getString(R.string.gpx_only_create_actions_can_be_mapped_to_the_route_planner)
     }
     require(options.createMode == RouteCreateMode.LOOP_AROUND_HERE) {
-        "Only loop creation uses the round-trip planner."
+        resources.getString(R.string.gpx_only_loop_creation_uses_the_round_trip_planner)
     }
 
     val start =
         when (options.loopStartMode) {
             LoopStartMode.CURRENT_LOCATION ->
                 requireNotNull(currentLocation) {
-                    "Wait for a fresh GPS fix before creating a loop from current location."
+                    resources.getString(
+                        R.string.gpx_wait_for_a_fresh_gps_fix_before_creating_a_loop_from_current_location,
+                    )
                 }
 
             LoopStartMode.PICK_ON_MAP ->
                 requireNotNull(pointA) {
-                    "Pick a start point first."
+                    resources.getString(R.string.gpx_pick_a_start_point_first)
                 }
         }
 
@@ -143,7 +155,7 @@ internal fun RouteToolSession.toRoundTripPlannerRequest(
         targetDistanceMeters =
             targetDistanceMetersOverride
                 ?: options.resolvedLoopDistanceMeters(etaModelConfig),
-        targetLabel = options.loopTargetLabel(),
+        targetLabel = options.loopTargetLabel(resources = resources),
         preset = options.routeStyle.toPlannerPreset(),
         useElevation = options.useElevation,
         allowFerries = options.allowFerries,
@@ -181,10 +193,10 @@ private fun RouteToolOptions.resolvedLoopDistanceMeters(etaModelConfig: GpxEtaMo
         .coerceIn(minimumValue = 2_000, maximumValue = 60_000)
 }
 
-private fun RouteToolOptions.loopTargetLabel(): String =
+private fun RouteToolOptions.loopTargetLabel(resources: Resources): String =
     when (loopTargetMode) {
-        LoopTargetMode.DISTANCE -> "$loopDistanceKm km"
-        LoopTargetMode.TIME -> formatLoopDuration(loopDurationMinutes)
+        LoopTargetMode.DISTANCE -> resources.getString(R.string.gpx_km, loopDistanceKm)
+        LoopTargetMode.TIME -> formatLoopDuration(loopDurationMinutes, resources = resources)
     }
 
 private fun RouteToolOptions.loopPointCount(): Int =

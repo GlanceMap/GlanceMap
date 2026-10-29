@@ -8,9 +8,7 @@ import org.mapsforge.core.model.LatLong
 class RecordingTrackSmoothingEquivalenceTest {
     @Test
     fun boundedImplementationMatchesPreRefactorSignatures() {
-        FIXTURES.forEach { fixture ->
-            assertEquals(fixture.name, BASELINES.getValue(fixture.name), replay(fixture))
-        }
+        assertEquals(BASELINES, FIXTURES.associate { it.name to replay(it) })
     }
 
     @Test
@@ -85,7 +83,12 @@ class RecordingTrackSmoothingEquivalenceTest {
         }
         val flushed = flushCanonicalRecordingTail(points, options)
         operationHash = mixAppend(operationHash, flushed)
-        val gpx = encodeRecordedTraceAsGpx(title = "Equivalence", points = flushed.points)
+        val gpx =
+            encodeRecordedTraceAsGpx(
+                title = "Equivalence",
+                points = flushed.points,
+                exporterVersion = "equivalence-test",
+            )
         return ReplaySignature(
             pointsHash = hashPoints(flushed.points),
             operationHash = operationHash.toULong().toString(16),
@@ -240,13 +243,13 @@ class RecordingTrackSmoothingEquivalenceTest {
         val BASELINES =
             mapOf(
                 "hike_adaptive_straight_1000" to
-                    ReplaySignature("223685eb8e7c93a5", "830cca25f10576d6", "9c79ee8da490c872"),
+                    ReplaySignature("223685eb8e7c93a5", "830cca25f10576d6", "753ebca1109ed15a"),
                 "hike_strong_turn_heavy_1000" to
-                    ReplaySignature("d9adaef54fd66e81", "29563e763bb591ca", "9a80034f25c81e0d"),
+                    ReplaySignature("d9adaef54fd66e81", "29563e763bb591ca", "e04bc3546be4c15a"),
                 "bike_adaptive_straight_10000" to
-                    ReplaySignature("a895451a9a7aed03", "ab7bd226284784be", "d8b9efcde911d702"),
+                    ReplaySignature("a895451a9a7aed03", "ab7bd226284784be", "e3dc43263dd1a71b"),
                 "bike_strong_turn_heavy_10000" to
-                    ReplaySignature("f9662edb2dc5ce3a", "5159039011e6244a", "d7925817169ccbf"),
+                    ReplaySignature("f9662edb2dc5ce3a", "5159039011e6244a", "f77a90f3184f93e9"),
             )
         const val HIKE = SettingsRepository.ACTIVITY_PROFILE_HIKE
         const val BIKE = SettingsRepository.ACTIVITY_PROFILE_BIKE

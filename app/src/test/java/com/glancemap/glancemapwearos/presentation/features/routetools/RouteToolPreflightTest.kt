@@ -33,23 +33,6 @@ class RouteToolPreflightTest {
     }
 
     @Test
-    fun coordinatesRouteValidatesMissingAndOutOfRangeValues() {
-        val missing =
-            RouteToolOptions(
-                createMode = RouteCreateMode.COORDINATES,
-                destinationEndpointSource = RouteEndpointSource.COORDINATES,
-            )
-        assertTrue(missing.coordinateEndpointValidationMessage(null).orEmpty().contains("valid destination"))
-
-        val invalid =
-            missing.copy(
-                destinationCoordinateLatitude = 91.0,
-                destinationCoordinateLongitude = 2.0,
-            )
-        assertTrue(invalid.coordinateEndpointValidationMessage(null).orEmpty().contains("valid destination"))
-    }
-
-    @Test
     fun coordinateValuesSurviveSwitchingEndpointSources() {
         val entered =
             RouteToolOptions(

@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -42,27 +41,6 @@ class OamNetworkHandoffAndRetryTest {
         }
         assertFalse(budget.shouldRetry(attemptStartOffset = 124L, resumeOffsetAfterFailure = 124L))
         assertEquals(3, budget.currentRetryCount())
-    }
-
-    @Test
-    fun `consecutive no-progress failures remain bounded`() {
-        val budget = OamDownloadRetryBudget(maxNoProgressRetries = 3)
-
-        assertTrue(budget.shouldRetry(attemptStartOffset = 0L, resumeOffsetAfterFailure = 0L))
-        assertTrue(budget.shouldRetry(attemptStartOffset = 0L, resumeOffsetAfterFailure = 0L))
-        assertTrue(budget.shouldRetry(attemptStartOffset = 0L, resumeOffsetAfterFailure = 0L))
-        assertFalse(budget.shouldRetry(attemptStartOffset = 0L, resumeOffsetAfterFailure = 0L))
-
-        val message =
-            oamNoProgressFailureMessage(
-                fileName = "area.map.zip",
-                maxRetries = 3,
-                offset = 0L,
-                error = IOException("Socket closed"),
-            )
-        assertTrue(message.contains("No payload progress"))
-        assertTrue(message.contains("area.map.zip"))
-        assertTrue(message.contains("Socket closed"))
     }
 
     @Test

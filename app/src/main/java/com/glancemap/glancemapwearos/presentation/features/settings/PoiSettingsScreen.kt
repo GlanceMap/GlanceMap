@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import android.content.res.Resources
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,12 +15,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 
 @Composable
@@ -27,6 +31,7 @@ fun PoiSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenGeneralSettings: () -> Unit,
 ) {
+    val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val poiIconSizePx by viewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by viewModel.poiMarkerStyle.collectAsState()
@@ -38,23 +43,23 @@ fun PoiSettingsScreen(
     val iconSizeOptions =
         remember {
             listOf(
-                SettingsRepository.POI_ICON_SIZE_SMALL_PX to "Small",
-                SettingsRepository.POI_ICON_SIZE_MEDIUM_PX to "Medium",
-                SettingsRepository.POI_ICON_SIZE_LARGE_PX to "Big",
+                SettingsRepository.POI_ICON_SIZE_SMALL_PX to resources.getString(R.string.settings_small),
+                SettingsRepository.POI_ICON_SIZE_MEDIUM_PX to resources.getString(R.string.settings_medium),
+                SettingsRepository.POI_ICON_SIZE_LARGE_PX to resources.getString(R.string.settings_big),
             )
         }
     val markerStyleOptions =
         remember {
             listOf(
-                SettingsRepository.POI_MARKER_STYLE_BADGE to "Colored circle",
-                SettingsRepository.POI_MARKER_STYLE_THEME_ICON to "Theme icon",
+                SettingsRepository.POI_MARKER_STYLE_BADGE to resources.getString(R.string.settings_colored_circle),
+                SettingsRepository.POI_MARKER_STYLE_THEME_ICON to resources.getString(R.string.settings_theme_icon),
             )
         }
     val tapActionOptions =
         remember {
             listOf(
-                true to "Open Navigate at POI",
-                false to "Disabled",
+                true to resources.getString(R.string.settings_open_navigate_at_poi),
+                false to resources.getString(R.string.settings_disabled),
             )
         }
 
@@ -64,32 +69,32 @@ fun PoiSettingsScreen(
         }
         item {
             SettingsOptionPickerRow(
-                label = "POI icon size",
+                label = stringResource(R.string.settings_poi_icon_size),
                 selectedValue = poiIconSizePx,
                 options = iconSizeOptions,
-                secondaryLabel = poiIconSizeLabel(poiIconSizePx),
+                secondaryLabel = poiIconSizeLabel(poiIconSizePx, resources = resources),
                 onSelect = viewModel::setPoiIconSizePx,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "POI marker style",
+                label = stringResource(R.string.settings_poi_marker_style),
                 selectedValue = poiMarkerStyle,
                 options = markerStyleOptions,
-                secondaryLabel = poiMarkerStyleLabel(poiMarkerStyle),
+                secondaryLabel = poiMarkerStyleLabel(poiMarkerStyle, resources = resources),
                 onSelect = viewModel::setPoiMarkerStyle,
             )
         }
         item {
             SettingsOptionPickerRow(
-                label = "POI list tap action",
+                label = stringResource(R.string.settings_poi_list_tap_action),
                 selectedValue = poiTapToCenterEnabled,
                 options = tapActionOptions,
                 secondaryLabel =
                     if (poiTapToCenterEnabled) {
-                        "Open Navigate at POI"
+                        stringResource(R.string.settings_open_navigate_at_poi)
                     } else {
-                        "Disabled"
+                        stringResource(R.string.settings_disabled)
                     },
                 onSelect = viewModel::setPoiTapToCenterEnabled,
             )
@@ -98,12 +103,12 @@ fun PoiSettingsScreen(
             SettingsToggleChip(
                 checked = poiMapLongPressActionsEnabled,
                 onCheckedChanged = viewModel::setPoiMapLongPressActionsEnabled,
-                label = "Long press action",
+                label = stringResource(R.string.settings_long_press_action),
                 secondaryLabel =
                     if (poiMapLongPressActionsEnabled) {
-                        "Create POI or route"
+                        stringResource(R.string.settings_create_poi_or_route)
                     } else {
-                        "Disabled"
+                        stringResource(R.string.settings_disabled)
                     },
             )
         }
@@ -111,7 +116,7 @@ fun PoiSettingsScreen(
             SettingsToggleChip(
                 checked = linkGpxWaypointPoiFolders,
                 onCheckedChanged = viewModel::setLinkGpxWaypointPoiFolders,
-                label = "Link GPX waypoint folders",
+                label = stringResource(R.string.settings_link_gpx_waypoint_folders),
             )
         }
         item {
@@ -135,18 +140,24 @@ fun PoiSettingsScreen(
     }
 }
 
-private fun poiIconSizeLabel(sizePx: Int): String =
+private fun poiIconSizeLabel(
+    sizePx: Int,
+    resources: Resources,
+): String =
     when (sizePx) {
-        SettingsRepository.POI_ICON_SIZE_SMALL_PX -> "Small"
-        SettingsRepository.POI_ICON_SIZE_MEDIUM_PX -> "Medium"
-        SettingsRepository.POI_ICON_SIZE_LARGE_PX -> "Big"
-        else -> "Medium"
+        SettingsRepository.POI_ICON_SIZE_SMALL_PX -> resources.getString(R.string.settings_small)
+        SettingsRepository.POI_ICON_SIZE_MEDIUM_PX -> resources.getString(R.string.settings_medium)
+        SettingsRepository.POI_ICON_SIZE_LARGE_PX -> resources.getString(R.string.settings_big)
+        else -> resources.getString(R.string.settings_medium)
     }
 
-private fun poiMarkerStyleLabel(style: String): String =
+private fun poiMarkerStyleLabel(
+    style: String,
+    resources: Resources,
+): String =
     when (style) {
-        SettingsRepository.POI_MARKER_STYLE_THEME_ICON -> "Theme icon"
-        else -> "Colored circle"
+        SettingsRepository.POI_MARKER_STYLE_THEME_ICON -> resources.getString(R.string.settings_theme_icon)
+        else -> resources.getString(R.string.settings_colored_circle)
     }
 
 @Composable
@@ -163,7 +174,7 @@ private fun PoiPopupTimeoutSettings(
         SettingsToggleChip(
             checked = autoTimeoutEnabled,
             onCheckedChanged = onAutoTimeoutToggle,
-            label = "POI popup timeout",
+            label = stringResource(R.string.settings_poi_popup_timeout),
         )
 
         if (autoTimeoutEnabled) {
@@ -191,7 +202,7 @@ private fun PoiPopupTimeoutSlider(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Popup timeout: ${internalValue.toInt()}s",
+            stringResource(R.string.settings_popup_timeout_s, internalValue.toInt()),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -205,8 +216,18 @@ private fun PoiPopupTimeoutSlider(
             },
             valueRange = minSeconds.toFloat()..maxSeconds.toFloat(),
             steps = (maxSeconds - minSeconds - 1).coerceAtLeast(0),
-            increaseIcon = { Icon(Icons.Filled.Add, contentDescription = "Increase timeout") },
-            decreaseIcon = { Icon(Icons.Filled.Remove, contentDescription = "Decrease timeout") },
+            increaseIcon = {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.settings_increase_timeout),
+                )
+            },
+            decreaseIcon = {
+                Icon(
+                    Icons.Filled.Remove,
+                    contentDescription = stringResource(R.string.settings_decrease_timeout),
+                )
+            },
             modifier = Modifier.fillMaxWidth(),
         )
     }

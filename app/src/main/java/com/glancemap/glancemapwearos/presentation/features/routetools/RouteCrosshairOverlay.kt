@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import android.content.res.Resources
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +27,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -34,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.formatting.DurationFormatter
 import com.glancemap.glancemapwearos.presentation.formatting.UnitFormatter
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
@@ -60,6 +64,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
     onSaveCreatePreview: (() -> Unit)? = null,
     onRefreshCreatePreview: (() -> Unit)? = null,
 ) {
+    val resources = LocalResources.current
     val multiPointMode = session.isMultiPointCreate
     val loopPreviewMode =
         session.options.toolKind == RouteToolKind.CREATE &&
@@ -199,9 +204,13 @@ internal fun BoxScope.RouteCrosshairOverlay(
             Text(
                 text =
                     titleOverride ?: if (multiPointMode) {
-                        "${session.modeTitle} • ${session.chainPoints.size}"
+                        stringResource(
+                            R.string.gpx_crosshair_summary,
+                            stringResource(session.modeTitleRes),
+                            session.chainPoints.size,
+                        )
                     } else {
-                        session.modeTitle
+                        stringResource(session.modeTitleRes)
                     },
                 style =
                     MaterialTheme.typography.labelMedium.copy(
@@ -214,7 +223,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
             if (multiPointMode) {
                 val previewLines =
                     createPreview?.let {
-                        formatCreatePreviewLines(preview = it, isMetric = isMetric)
+                        formatCreatePreviewLines(preview = it, isMetric = isMetric, resources = resources)
                     }
                 if (previewLines != null && createPreviewMessage == null && !createPreviewInProgress) {
                     Text(
@@ -244,6 +253,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                                 createPreviewInProgress = createPreviewInProgress,
                                 createPreviewMessage = createPreviewMessage,
                                 isMetric = isMetric,
+                                resources = resources,
                             ),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = multiPointStatusFontSize),
                         textAlign = TextAlign.Center,
@@ -267,7 +277,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                     )
                 ) {
                     Text(
-                        text = "Save GPX",
+                        text = stringResource(R.string.gpx_save_gpx),
                         modifier =
                             Modifier
                                 .background(
@@ -282,12 +292,12 @@ internal fun BoxScope.RouteCrosshairOverlay(
             } else if (loopPreviewMode) {
                 val previewLines =
                     createPreview?.let {
-                        formatCreatePreviewLines(preview = it, isMetric = isMetric)
+                        formatCreatePreviewLines(preview = it, isMetric = isMetric, resources = resources)
                     }
                 when {
                     createPreviewInProgress -> {
                         Text(
-                            text = "Finding loop...",
+                            text = stringResource(R.string.gpx_finding_loop),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = popupSpec.instructionFontSize),
                             textAlign = TextAlign.Center,
                             lineHeight = popupSpec.instructionLineHeight,
@@ -330,7 +340,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
 
                     else -> {
                         Text(
-                            text = "Check loop data, save it, or try another.",
+                            text = stringResource(R.string.gpx_check_loop_data_save_it_or_try_another),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = popupSpec.instructionFontSize),
                             textAlign = TextAlign.Center,
                             lineHeight = popupSpec.instructionLineHeight,
@@ -342,7 +352,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                 }
             } else {
                 Text(
-                    text = busyMessage ?: instructionOverride ?: session.instructionText,
+                    text = busyMessage ?: instructionOverride ?: stringResource(session.instructionTextRes),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = popupSpec.instructionFontSize),
                     textAlign = TextAlign.Center,
                     lineHeight = popupSpec.instructionLineHeight,
@@ -375,7 +385,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Close route tool",
+                    contentDescription = stringResource(R.string.gpx_close_route_tool),
                     modifier = Modifier.size(actionIconSize),
                 )
             }
@@ -390,7 +400,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Remove last point",
+                        contentDescription = stringResource(R.string.gpx_remove_last_point),
                         modifier = Modifier.size(actionIconSize),
                     )
                 }
@@ -405,7 +415,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Loop,
-                        contentDescription = "Find another loop",
+                        contentDescription = stringResource(R.string.gpx_find_another_loop),
                         modifier = Modifier.size(actionIconSize),
                     )
                 }
@@ -422,7 +432,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "Save loop GPX",
+                            contentDescription = stringResource(R.string.gpx_save_loop_gpx),
                             modifier = Modifier.size(actionIconSize),
                         )
                     }
@@ -438,7 +448,7 @@ internal fun BoxScope.RouteCrosshairOverlay(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
-                        contentDescription = "Select position",
+                        contentDescription = stringResource(R.string.gpx_select_position),
                         modifier = Modifier.size(actionIconSize),
                     )
                 }
@@ -465,45 +475,50 @@ private fun canShowCreatePreviewSaveChip(
     return canShow
 }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 private fun compactMultiPointBannerText(
     session: RouteToolSession,
     preview: RouteToolCreatePreview?,
     createPreviewInProgress: Boolean,
     createPreviewMessage: String?,
     isMetric: Boolean,
+    resources: Resources,
 ): String =
     when {
-        createPreviewInProgress -> "Updating route..."
+        createPreviewInProgress -> resources.getString(R.string.gpx_updating_route)
         createPreviewMessage != null -> createPreviewMessage
-        preview != null -> formatCreatePreviewLines(preview, isMetric).primary
-        session.chainPoints.isEmpty() -> "Start point"
-        session.chainPoints.size == 1 -> "Next point"
-        else -> "Add point"
+        preview != null -> formatCreatePreviewLines(preview, isMetric, resources = resources).primary
+        session.chainPoints.isEmpty() -> resources.getString(R.string.gpx_start_point)
+        session.chainPoints.size == 1 -> resources.getString(R.string.gpx_next_point)
+        else -> resources.getString(R.string.gpx_add_point)
     }
 
 private fun formatCreatePreviewLines(
     preview: RouteToolCreatePreview,
     isMetric: Boolean,
+    resources: Resources,
 ): CreatePreviewLines {
     val (distanceValue, distanceUnit) = UnitFormatter.formatDistance(preview.distanceMeters, isMetric)
-    val etaText = DurationFormatter.formatDurationShort(preview.estimatedDurationSec)
-    val gainText = compactElevationValue(preview.elevationGainMeters, isMetric)
-    val lossText = compactElevationValue(preview.elevationLossMeters, isMetric)
+    val etaText = DurationFormatter.formatDurationShort(preview.estimatedDurationSec, resources = resources)
+    val gainText = compactElevationValue(preview.elevationGainMeters, isMetric, resources = resources)
+    val lossText = compactElevationValue(preview.elevationLossMeters, isMetric, resources = resources)
     return CreatePreviewLines(
-        primary = "$distanceValue $distanceUnit • $etaText",
-        secondary = "↑$gainText  ↓$lossText",
+        primary = resources.getString(R.string.gpx_route_distance_eta, distanceValue, distanceUnit, etaText),
+        secondary = resources.getString(R.string.gpx_route_ascent_descent, gainText, lossText),
     )
 }
 
 private fun compactElevationValue(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     val (value, unit) = UnitFormatter.formatElevation(meters, isMetric)
     return if (isMetric) {
         value
     } else {
-        "$value$unit"
+        resources.getString(R.string.common_compact_value_unit, value, unit)
     }
 }
 
@@ -585,6 +600,8 @@ private val RouteToolSession.hasCapturedPoints: Boolean
         }
 
 @Composable
+// Resource-call wrapping increases line count; keep the existing flow together.
+@Suppress("LongMethod", "CyclomaticComplexMethod", "FunctionNaming")
 private fun RouteCapturedPointsSummary(session: RouteToolSession) {
     if (
         session.options.toolKind == RouteToolKind.CREATE &&
@@ -604,22 +621,29 @@ private fun RouteCapturedPointsSummary(session: RouteToolSession) {
                         session.options.toolKind == RouteToolKind.MODIFY &&
                         session.options.modifyMode == RouteModifyMode.RESHAPE_ROUTE
                     ) {
-                        "Route"
+                        stringResource(R.string.gpx_route)
                     } else if (
                         session.options.toolKind == RouteToolKind.CREATE &&
                         session.options.createMode == RouteCreateMode.LOOP_AROUND_HERE
                     ) {
-                        "Start"
+                        stringResource(R.string.common_start)
                     } else if (session.options.toolKind == RouteToolKind.CREATE) {
-                        "Start"
+                        stringResource(R.string.common_start)
                     } else {
-                        "A"
+                        stringResource(R.string.navigate_a)
                     },
             )
         }
         session.pointB?.let {
             CapturedPointBadge(
-                label = if (session.options.toolKind == RouteToolKind.CREATE) "End" else "B",
+                label =
+                    if (session.options.toolKind ==
+                        RouteToolKind.CREATE
+                    ) {
+                        stringResource(R.string.navigate_end)
+                    } else {
+                        stringResource(R.string.navigate_b)
+                    },
             )
         }
         session.destination?.let {
@@ -629,14 +653,14 @@ private fun RouteCapturedPointsSummary(session: RouteToolSession) {
                         session.options.toolKind == RouteToolKind.MODIFY &&
                         session.options.modifyMode == RouteModifyMode.RESHAPE_ROUTE
                     ) {
-                        "Bend"
+                        stringResource(R.string.gpx_bend)
                     } else {
-                        "Dest"
+                        stringResource(R.string.gpx_dest)
                     },
             )
         }
         session.loopCenter?.let {
-            CapturedPointBadge(label = "Loop")
+            CapturedPointBadge(label = stringResource(R.string.gpx_loop))
         }
     }
 }

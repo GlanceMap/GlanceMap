@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.mapZoomScaleStepsMeters
 import com.glancemap.glancemapwearos.core.maps.scaleMetersForZoomLevel
 import org.mapsforge.map.android.view.MapView
@@ -61,6 +63,7 @@ internal fun calculateScaleIndicator(
     mapView: MapView,
     isMetric: Boolean,
     preferredScaleMeters: Int? = null,
+    resources: Resources,
 ): ScaleIndicatorUi? {
     val widthPx = mapView.width
     val zoomLevel =
@@ -76,15 +79,19 @@ internal fun calculateScaleIndicator(
         latitudeDegrees = centerLat,
         isMetric = isMetric,
         preferredScaleMeters = preferredScaleMeters,
+        resources = resources,
     )
 }
 
+// Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
+@Suppress("LongParameterList")
 internal fun calculateScaleIndicatorForZoom(
     zoomLevel: Int,
     viewportWidthPx: Double,
     latitudeDegrees: Double,
     isMetric: Boolean,
     preferredScaleMeters: Int? = null,
+    resources: Resources,
 ): ScaleIndicatorUi? {
     val targetMeters =
         scaleMetersForZoomLevel(
@@ -112,7 +119,7 @@ internal fun calculateScaleIndicatorForZoom(
     val hasValidWidth = widthRatio.isFinite() && widthRatio > 0f
     return if (hasValidTarget && hasValidScale && hasValidWidth) {
         ScaleIndicatorUi(
-            label = formatScaleDistance(meters = scaleMeters, isMetric = isMetric),
+            label = formatScaleDistance(meters = scaleMeters, isMetric = isMetric, resources = resources),
             widthRatio = widthRatio,
         )
     } else {
@@ -155,34 +162,35 @@ private fun pickLargestNotExceeding(
 private fun formatScaleDistance(
     meters: Double,
     isMetric: Boolean,
+    resources: Resources,
 ): String {
     if (isMetric) {
         return if (meters >= 1000.0) {
             val km = meters / 1000.0
             if (km >= 10.0) {
-                "${km.roundToInt()} km"
+                resources.getString(R.string.gpx_km, km.roundToInt())
             } else {
-                String.format(Locale.getDefault(), "%.1f km", km)
+                String.format(Locale.getDefault(), resources.getString(R.string.navigation_1f_km), km)
             }
         } else {
             val roundedMeters = meters.roundToInt()
             if (meters < 10.0 && abs(meters - roundedMeters) >= SCALE_DISTANCE_INTEGER_EPSILON) {
-                String.format(Locale.getDefault(), "%.1f m", meters)
+                String.format(Locale.getDefault(), resources.getString(R.string.settings_1f_m), meters)
             } else {
-                "$roundedMeters m"
+                resources.getString(R.string.settings_m, roundedMeters)
             }
         }
     }
 
     val feet = meters * 3.28084
     return if (feet < 2640.0) {
-        "${feet.roundToInt()} ft"
+        resources.getString(R.string.settings_ft, feet.roundToInt())
     } else {
         val miles = meters * 0.000621371
         if (miles >= 10.0) {
-            "${miles.roundToInt()} mi"
+            resources.getString(R.string.settings_mi, miles.roundToInt())
         } else {
-            String.format(Locale.getDefault(), "%.1f mi", miles)
+            String.format(Locale.getDefault(), resources.getString(R.string.navigation_1f_mi), miles)
         }
     }
 }

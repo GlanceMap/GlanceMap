@@ -2,9 +2,12 @@ package com.glancemap.glancemapwearos
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
+import com.glancemap.glancemapwearos.core.maps.theme.validateExternalRenderTheme
 import com.glancemap.glancemapwearos.core.routing.BRouterRoutePlanner
 import com.glancemap.glancemapwearos.core.routing.RoutePlanner
 import com.glancemap.glancemapwearos.data.repository.*
+import com.glancemap.glancemapwearos.data.repository.maps.theme.ExternalThemeStore
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepositoryImpl
 import com.glancemap.glancemapwearos.domain.sensors.CompassViewModel
@@ -29,6 +32,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AppContainer(
     private val applicationContext: Context,
@@ -60,8 +64,16 @@ class AppContainer(
         UserPoiRepository(applicationContext)
     }
 
+    val externalThemeStore: ExternalThemeStore by lazy {
+        ExternalThemeStore(
+            root = File(applicationContext.filesDir, "mapsforge-themes"),
+            validateTheme = { validateExternalRenderTheme(applicationContext, it) },
+            diagnostic = { event, id -> Log.i("CustomThemes", "event=$event id=$id") },
+        )
+    }
+
     val themeRepository: ThemeRepository by lazy {
-        ThemeRepositoryImpl(applicationContext)
+        ThemeRepositoryImpl(applicationContext, settingsRepository.selectedMapPath, externalThemeStore)
     }
 
     val compassViewModel: CompassViewModel by lazy {
@@ -74,6 +86,7 @@ class AppContainer(
 
     val gpxViewModel: GpxViewModel by lazy {
         GpxViewModel(
+            resources = applicationContext.resources,
             gpxRepository = gpxRepository,
             gpxExportRepository = gpxExportRepository,
             syncManager = syncManager,
@@ -100,6 +113,7 @@ class AppContainer(
 
     val poiViewModel: PoiViewModel by lazy {
         PoiViewModel(
+            resources = applicationContext.resources,
             poiRepository = poiRepository,
             userPoiRepository = userPoiRepository,
             settingsRepository = settingsRepository,
@@ -109,6 +123,7 @@ class AppContainer(
 
     val downloadViewModel: DownloadViewModel by lazy {
         DownloadViewModel(
+            resources = applicationContext.resources,
             downloader =
                 OamBundleDownloader(
                     context = applicationContext,
@@ -144,6 +159,7 @@ class AppContainer(
     val traceRecordingViewModel: TraceRecordingViewModel by lazy {
         val viewModel =
             TraceRecordingViewModel(
+                resources = applicationContext.resources,
                 gpxRepository = gpxRepository,
                 settingsRepository = settingsRepository,
                 syncManager = syncManager,

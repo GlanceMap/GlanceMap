@@ -1,5 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import java.io.File
 import java.net.URI
@@ -7,14 +10,14 @@ import java.util.Locale
 import com.glancemap.trailcore.oam.OamDownloadCatalog as SharedOamDownloadCatalog
 
 enum class OamBundleChoice(
-    val label: String,
-    val secondaryLabel: String,
+    @StringRes val labelRes: Int,
+    @StringRes val secondaryLabelRes: Int,
     val includeMap: Boolean,
     val includePoi: Boolean,
 ) {
-    MAP_ONLY("Map only", "OAM map with contours", includeMap = true, includePoi = false),
-    POI_ONLY("POI only", "Mapsforge POI", includeMap = false, includePoi = true),
-    MAP_AND_POI("Map + POI", "Map and Mapsforge POI", includeMap = true, includePoi = true),
+    MAP_ONLY(R.string.gpx_map_only, R.string.gpx_oam_map_with_contours, includeMap = true, includePoi = false),
+    POI_ONLY(R.string.gpx_poi_only, R.string.download_mapsforge_poi, includeMap = false, includePoi = true),
+    MAP_AND_POI(R.string.gpx_map_poi, R.string.gpx_map_and_mapsforge_poi, includeMap = true, includePoi = true),
 }
 
 data class OamDownloadSelection(
@@ -36,14 +39,18 @@ data class OamDownloadSelection(
             else -> OamBundleChoice.MAP_AND_POI
         }
 
-    fun label(): String =
+    fun label(resources: Resources): String =
         listOfNotNull(
-            "Map".takeIf { includeMap },
-            "POI".takeIf { includePoi },
-            "Routing".takeIf { includeRouting },
-            "${demSource.shortLabel} elevation".takeIf { includeDem },
-            "Refuges.info".takeIf { includeRefugesInfo },
-        ).joinToString(" + ").ifBlank { "Nothing selected" }
+            resources.getString(R.string.download_map).takeIf { includeMap },
+            resources.getString(R.string.common_poi).takeIf { includePoi },
+            resources.getString(R.string.download_routing).takeIf { includeRouting },
+            resources
+                .getString(
+                    R.string.download_elevation,
+                    resources.getString(demSource.shortLabelRes),
+                ).takeIf { includeDem },
+            resources.getString(R.string.download_refuges_info).takeIf { includeRefugesInfo },
+        ).joinToString(" + ").ifBlank { resources.getString(R.string.download_nothing_selected) }
 }
 
 data class OamInstalledBundle(

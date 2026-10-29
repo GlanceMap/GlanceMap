@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
+import android.content.res.Resources
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Navigation
@@ -19,7 +20,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.wear.compose.material3.Icon
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.GuidanceMode
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.RouteInstructionCommand
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
@@ -44,14 +48,21 @@ internal fun GuidanceManeuverIcon(
         state.mode == GuidanceMode.FINISHED ->
             Icon(
                 imageVector = Icons.Default.CheckCircle,
-                contentDescription = "Route complete",
+                contentDescription = stringResource(R.string.navigate_route_complete),
                 tint = tint,
                 modifier = modifier,
             )
         bearingRotation != null ->
             Icon(
                 imageVector = Icons.Default.Navigation,
-                contentDescription = if (state.mode == GuidanceMode.TO_START) "Direction to route start" else "Direction to route",
+                contentDescription =
+                    if (state.mode ==
+                        GuidanceMode.TO_START
+                    ) {
+                        stringResource(R.string.navigate_direction_to_route_start)
+                    } else {
+                        stringResource(R.string.navigate_direction_to_route)
+                    },
                 tint = tint,
                 modifier = modifier.rotate(bearingRotation),
             )
@@ -75,9 +86,10 @@ private fun ManeuverArrow(
     tint: Color,
     modifier: Modifier,
 ) {
+    val resources = LocalResources.current
     Icon(
         imageVector = command.maneuverIcon(),
-        contentDescription = command.maneuverContentDescription(),
+        contentDescription = command.maneuverContentDescription(resources = resources),
         tint = tint,
         modifier = modifier,
     )
@@ -141,16 +153,16 @@ private val SharpDogLegRight: ImageVector by lazy {
     }
 }
 
-private fun RouteInstructionCommand?.maneuverContentDescription(): String =
+private fun RouteInstructionCommand?.maneuverContentDescription(resources: Resources): String =
     when (this) {
-        RouteInstructionCommand.SLIGHT_LEFT -> "Slight left"
-        RouteInstructionCommand.LEFT -> "Turn left"
-        RouteInstructionCommand.SHARP_LEFT -> "Sharp left"
-        RouteInstructionCommand.SLIGHT_RIGHT -> "Slight right"
-        RouteInstructionCommand.RIGHT -> "Turn right"
-        RouteInstructionCommand.SHARP_RIGHT -> "Sharp right"
+        RouteInstructionCommand.SLIGHT_LEFT -> resources.getString(R.string.navigation_slight_left)
+        RouteInstructionCommand.LEFT -> resources.getString(R.string.navigation_turn_left_2)
+        RouteInstructionCommand.SHARP_LEFT -> resources.getString(R.string.navigation_sharp_left)
+        RouteInstructionCommand.SLIGHT_RIGHT -> resources.getString(R.string.navigation_slight_right)
+        RouteInstructionCommand.RIGHT -> resources.getString(R.string.navigation_turn_right_2)
+        RouteInstructionCommand.SHARP_RIGHT -> resources.getString(R.string.navigation_sharp_right)
         RouteInstructionCommand.CONTINUE,
         RouteInstructionCommand.FINISH,
         null,
-        -> "Continue straight"
+        -> resources.getString(R.string.navigation_continue_straight_2)
     }

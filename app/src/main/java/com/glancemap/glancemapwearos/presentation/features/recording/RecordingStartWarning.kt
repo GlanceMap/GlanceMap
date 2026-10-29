@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
+import android.content.res.Resources
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.effectiveAccuracyMeters
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -60,23 +62,38 @@ internal fun recordingLocationStartWarning(
     )
 
 data class RecordingStartWarning(
-    val unlinkedDevices: List<String>,
-    val disconnectedDevices: List<String>,
+    val unlinkedDevices: List<Int>,
+    val disconnectedDevices: List<Int>,
 ) {
-    val message: String
-        get() =
-            buildList {
-                if (unlinkedDevices.isNotEmpty()) {
-                    add("No linked device: ${unlinkedDevices.joinToString()}.")
-                }
-                if (disconnectedDevices.isNotEmpty()) {
-                    add("Not connected yet: ${disconnectedDevices.joinToString()}.")
-                }
-                if (disconnectedDevices.isNotEmpty()) {
-                    add("Recording will try to connect linked sensors after it starts.")
-                }
-                add("Choose how to start recording.")
-            }.joinToString(separator = "\n\n")
+    fun message(resources: Resources): String =
+        buildList {
+            if (unlinkedDevices.isNotEmpty()) {
+                add(
+                    resources.getString(
+                        R.string.recording_no_linked_device,
+                        unlinkedDevices.joinToString { resources.getString(it) },
+                    ),
+                )
+            }
+            if (disconnectedDevices.isNotEmpty()) {
+                add(
+                    resources.getString(
+                        R.string.recording_not_connected_yet,
+                        disconnectedDevices.joinToString {
+                            resources.getString(it)
+                        },
+                    ),
+                )
+            }
+            if (disconnectedDevices.isNotEmpty()) {
+                add(
+                    resources.getString(
+                        R.string.recording_recording_will_try_to_connect_linked_sensors_after_it_starts,
+                    ),
+                )
+            }
+            add(resources.getString(R.string.recording_choose_how_to_start_recording))
+        }.joinToString(separator = "\n\n")
 }
 
 internal fun resolveRecordingStartWarning(
@@ -100,10 +117,10 @@ internal fun resolveRecordingStartWarning(
     val unlinkedDevices =
         buildList {
             if (heartRateStrapSelected && externalHeartRateAddress.isNullOrBlank()) {
-                add("heart-rate strap")
+                add(R.string.recording_heart_rate_strap)
             }
             if (runPodSelected && externalRunPodAddress.isNullOrBlank()) {
-                add("external sensor")
+                add(R.string.recording_external_sensor)
             }
         }
     val disconnectedDevices =
@@ -113,14 +130,14 @@ internal fun resolveRecordingStartWarning(
                 !externalHeartRateAddress.isNullOrBlank() &&
                 externalHeartRateAddress.normalizedBluetoothAddress() !in connectedExternalAddresses
             ) {
-                add("heart-rate strap")
+                add(R.string.recording_heart_rate_strap)
             }
             if (
                 runPodSelected &&
                 !externalRunPodAddress.isNullOrBlank() &&
                 externalRunPodAddress.normalizedBluetoothAddress() !in connectedExternalAddresses
             ) {
-                add("external sensor")
+                add(R.string.recording_external_sensor)
             }
         }
 

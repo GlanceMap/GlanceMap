@@ -49,6 +49,14 @@ at the watch rather than trying to behave like a full-time tracking recorder.
 - `:glancemapcompanionapp` - Android companion app
 - `:transfercontract` - Shared phone/watch transfer protocol module
 
+## Older Wear OS Watches
+
+The watch APK's minimum Android version is Android 9 (API 28), with compatibility
+paths for GPS requests and tracing on older devices. This support adapts the changes from
+[VicioNovicio's Suunto 7 fork](https://github.com/VicioNovicio/GlanceMap-Suunto7/tree/suunto7-api28).
+Suunto 7 GPS, recording, map rendering, and phone transfers still require
+validation on the watch.
+
 ## License And Third-Party Assets
 
 The root `LICENSE` covers GlanceMap project code unless another file says
@@ -80,6 +88,14 @@ or app release.
 
 - [Public privacy policy](https://glancemap.github.io/GlanceMap/privacy-policy/)
 
+## 🌍 Help translate GlanceMap
+
+Use [Weblate (project link pending setup)](TRANSLATING.md#translate-with-weblate--preferred),
+[report a wording correction](https://github.com/GlanceMap/GlanceMap/issues/new?template=translation_correction.yml),
+or read the [translation guide](TRANSLATING.md).
+
 ## Contributing
 
 See [Contributing](CONTRIBUTING.md) for setup, workflow, and PR expectations.
+
+For specialist offline maps that require a provider theme, see [Custom Mapsforge themes](docs/custom-mapsforge-themes.md).

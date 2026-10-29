@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.core.service.transfer.runtime
+import android.content.res.Resources
 import android.os.SystemClock
-import java.util.Locale
+import com.glancemap.glancemapwearos.R
 
 internal class UiUpdateThrottler(
     private val minIntervalMs: Long,
@@ -31,6 +32,7 @@ internal class UiUpdateThrottler(
 
 internal class ProgressTracker(
     private val totalSize: Long,
+    private val resources: Resources,
 ) {
     private var lastTime = 0L
     private var lastBytes = 0L
@@ -65,13 +67,14 @@ internal class ProgressTracker(
     ): String {
         val mib = bytesCopied / 1_048_576f
         val totalStr =
-            if (totalSize > 0) "/${String.format(Locale.US, "%.1f", totalSize / 1_048_576f)} MiB" else ""
-        val speedStr =
-            if (speedMiBps != null) {
-                " (${String.format(Locale.US, "%.2f", speedMiBps)} MiB/s)"
+            if (totalSize >
+                0
+            ) {
+                resources.getString(R.string.download_transfer_total_mib, totalSize / 1_048_576f)
             } else {
                 ""
             }
-        return "${String.format(Locale.US, "%.1f", mib)}$totalStr$speedStr"
+        val speedStr = speedMiBps?.let { resources.getString(R.string.download_transfer_speed_mib, it) }.orEmpty()
+        return resources.getString(R.string.download_transfer_progress, mib, totalStr, speedStr)
     }
 }

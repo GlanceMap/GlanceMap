@@ -4,6 +4,8 @@ import android.content.Context
 import android.hardware.GeomagneticField
 import android.location.Location
 import android.os.SystemClock
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.domain.sensors.CompassHeadingProvenance
 import com.glancemap.glancemapwearos.domain.sensors.CompassNorthBasis
 import com.glancemap.glancemapwearos.domain.sensors.CompassTrackingState
@@ -290,51 +292,51 @@ internal data class CompassHeadingReferenceProviderSample(
 
 internal enum class CompassHeadingReferenceMarkResult(
     val telemetryToken: String,
-    val userMessage: String,
+    @StringRes val userMessageRes: Int,
 ) {
     RECORDED(
         telemetryToken = "recorded",
-        userMessage = "Heading marked",
+        userMessageRes = R.string.debug_heading_marked,
     ),
     TEST_INACTIVE(
         telemetryToken = "test_inactive",
-        userMessage = "Start heading test first",
+        userMessageRes = R.string.debug_start_heading_test_first,
     ),
     NAVIGATE_UNAVAILABLE(
         telemetryToken = "navigate_unavailable",
-        userMessage = "Open Navigate before marking",
+        userMessageRes = R.string.debug_open_navigate_before_marking,
     ),
     PROVIDER_UNAVAILABLE(
         telemetryToken = "provider_unavailable",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
     PROVIDER_UNUSABLE(
         telemetryToken = "provider_unusable",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
     PROVIDER_STALE(
         telemetryToken = "provider_stale",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
     PROVENANCE_UNAVAILABLE(
         telemetryToken = "provenance_unavailable",
-        userMessage = "Waiting for a matching compass stream",
+        userMessageRes = R.string.debug_waiting_for_a_matching_compass_stream,
     ),
     PROVENANCE_MISMATCHED(
         telemetryToken = "provenance_mismatched",
-        userMessage = "Waiting for a matching compass stream",
+        userMessageRes = R.string.debug_waiting_for_a_matching_compass_stream,
     ),
     TARGET_UNAVAILABLE(
         telemetryToken = "target_unavailable",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
     RENDER_UNAVAILABLE(
         telemetryToken = "render_unavailable",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
     RENDER_STALE(
         telemetryToken = "render_stale",
-        userMessage = "Waiting for compass — keep Navigate open",
+        userMessageRes = R.string.debug_waiting_for_compass_keep_navigate_open,
     ),
 }
 

@@ -1,0 +1,30 @@
+source,target,developer_comments
+Map,Carte,Map; existing resource: download_map; inflect naturally for context
+Route,Itinéraire,Route; existing resource: gpx_route; inflect naturally for context
+Routing,Itinéraires,Routing; existing resource: download_routing; inflect naturally for context
+Navigate,Naviguer,Navigation (Navigate menu); existing resource: navigation_navigate; inflect naturally for context
+Recording,Enregistrement,Recording; existing resource: common_recording; inflect naturally for context
+Elevation,Altitude,Elevation; existing resource: common_elevation; inflect naturally for context
+Standard terrain,Relief standard,Terrain (Standard terrain); existing resource: dem_standard_terrain; inflect naturally for context
+Download,Télécharger,Download; existing resource: common_download; inflect naturally for context
+Refresh,Actualiser,Refresh; existing resource: download_refresh; inflect naturally for context
+Settings,Paramètres,Settings; existing resource: common_settings; inflect naturally for context
+GPS,GPS,GPS; existing resource: common_gps; inflect naturally for context
+POI,POI,POI; existing resource: common_poi; inflect naturally for context
+GPX,GPX,GPX; existing resource: common_gpx; inflect naturally for context
+Watch,Montre,Watch; existing resource: settings_watch; inflect naturally for context
+Shelter,Abri,Shelter; existing resource: poi_shelter; inflect naturally for context
+Landmarks,Repères,Landmark; existing resource: poi_landmarks; inflect naturally for context
+Sports/Leisure,Sports/Loisirs,Sports/Leisure; existing resource: poi_sports_leisure; inflect naturally for context
+Pause,Pause,Pause; existing resource: common_pause; inflect naturally for context
+Resume,Reprendre,Resume; existing resource: common_resume; inflect naturally for context
+Retry,Réessayer,Retry; existing resource: common_retry; inflect naturally for context
+Cancel,Annuler,Cancel; existing resource: common_cancel; inflect naturally for context
+Close,Fermer,Close; existing resource: common_close; inflect naturally for context
+Save,Enregistrer,Save; existing resource: common_save; inflect naturally for context
+Start,Démarrer,Start; existing resource: common_start; inflect naturally for context
+Track,trace,Track; existing resource: settings_track_color; inflect naturally for context
+Compass,Boussole,Compass; existing resource: common_compass_not_available_on_this_watch; inflect naturally for context
+Cache,cache,Cache; existing resource: settings_clear_cache; inflect naturally for context
+Transfer,Transfert,Transfer; existing resource: download_transfer_paused_for_more_than_s; inflect naturally for context
+Phone,téléphone,Phone; existing resource: gpx_no_phone_connected; inflect naturally for context

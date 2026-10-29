@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate.guidance
 
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.FileSig
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHint
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxGuidanceHintSource
@@ -91,7 +92,8 @@ class GpxTurnByTurnGuidanceTest {
 
         assertEquals(RouteInstructionSource.BROUTER_HINT, session.instructions.first().source)
         assertEquals(RouteInstructionCommand.LEFT, session.instructions.first().command)
-        assertEquals("Left", session.instructions.first().message)
+        assertNull(session.instructions.first().message)
+        assertEquals(R.string.navigation_left, session.instructions.first().messageRes)
     }
 
     @Test

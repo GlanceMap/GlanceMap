@@ -103,11 +103,14 @@ fun MapSettingsScreen(
                 .first { source -> source != readiness.selectedSource }
         WearActionDialog(
             visible = true,
-            title = "Live elevation",
+            title = stringResource(R.string.map_live_elevation),
             message =
-                "${readiness.selectedSource.displayName} is not available for all of this map.\n" +
-                    "Using ${fallbackSource.displayName} instead.",
-            confirmText = "OK",
+                stringResource(
+                    R.string.settings_is_not_available_for_all_of_this_map_using_instead,
+                    stringResource(readiness.selectedSource.displayNameRes),
+                    stringResource(fallbackSource.displayNameRes),
+                ),
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { fallbackTerrainNotice = null },
             onDismissRequest = { fallbackTerrainNotice = null },
         )
@@ -258,6 +261,13 @@ fun MapSettingsScreen(
                 label = stringResource(R.string.map_display),
                 secondaryLabel = stringResource(R.string.map_open_display_settings),
                 onClick = { navController.navigate(WatchRoutes.MAP_DISPLAY_SETTINGS) },
+            )
+        }
+        item {
+            SettingsSectionChip(
+                label = stringResource(R.string.settings_fullscreen_mode),
+                secondaryLabel = stringResource(R.string.settings_choose_visible_controls),
+                onClick = { navController.navigate(WatchRoutes.MAP_FOCUS_SETTINGS) },
             )
         }
         item {

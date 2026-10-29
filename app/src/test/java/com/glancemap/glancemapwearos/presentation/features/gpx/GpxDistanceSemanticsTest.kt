@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.gpx
 
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingCalorieEstimate
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.RecordingDashboardSnapshot
@@ -40,17 +41,17 @@ class GpxDistanceSemanticsTest {
                 fallbackElevationUnit = "m",
                 fallbackElevationLossValue = "90",
                 fallbackElevationLossUnit = "m",
-            ).associateBy { it.label }
+            ).associateBy { it.labelRes }
 
-        assertEquals("10.00 km", metrics.getValue("Distance").valueText)
-        assertEquals("10.0 km/h", metrics.getValue("Speed (Avg)").valueText)
-        assertEquals("6:00 min/km", metrics.getValue("Pace (Avg)").valueText)
+        assertEquals("10.00 km", metrics.getValue(R.string.common_distance).valueText)
+        assertEquals("10.0 km/h", metrics.getValue(R.string.recording_speed_avg).valueText)
+        assertEquals("6:00 min/km", metrics.getValue(R.string.recording_pace_avg).valueText)
 
         val recordingMetrics =
-            recordingRecapMetricsForSnapshot(requireNotNull(file.activitySummary), true).associateBy { it.label }
-        assertEquals("10.50 km", recordingMetrics.getValue("Distance").valueText)
-        assertEquals("10.5 km/h", recordingMetrics.getValue("Speed (Avg)").valueText)
-        assertEquals("5:43 min/km", recordingMetrics.getValue("Pace (Avg)").valueText)
+            recordingRecapMetricsForSnapshot(requireNotNull(file.activitySummary), true).associateBy { it.labelRes }
+        assertEquals("10.50 km", recordingMetrics.getValue(R.string.common_distance).valueText)
+        assertEquals("10.5 km/h", recordingMetrics.getValue(R.string.recording_speed_avg).valueText)
+        assertEquals("5:43 min/km", recordingMetrics.getValue(R.string.recording_pace_avg).valueText)
     }
 
     @Test

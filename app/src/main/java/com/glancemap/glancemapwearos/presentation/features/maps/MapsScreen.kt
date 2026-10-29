@@ -10,6 +10,8 @@
 
 package com.glancemap.glancemapwearos.presentation.features.maps
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -82,7 +85,6 @@ import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
 import kotlinx.coroutines.delay
-import java.util.Locale
 import androidx.compose.foundation.lazy.items as foundationItems
 import androidx.compose.foundation.lazy.itemsIndexed as foundationItemsIndexed
 
@@ -127,6 +129,7 @@ fun MapsScreen(
     mapViewModel: MapViewModel,
     themeViewModel: ThemeViewModel,
 ) {
+    val resources = LocalResources.current
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
     val mapFiles by mapViewModel.mapFiles.collectAsState()
@@ -295,7 +298,9 @@ fun MapsScreen(
         if (demDownloadState.networkUnavailable) {
             demNetworkErrorMessage =
                 if (message.isBlank()) {
-                    "No internet on watch. Connect Wi-Fi or phone internet, then retry DEM download."
+                    resources.getString(
+                        R.string.maps_dem_internet_required,
+                    )
                 } else {
                     message
                 }
@@ -319,8 +324,8 @@ fun MapsScreen(
 
         DeleteConfirmationDialog(
             visible = showDeleteDialog && mapToDelete != null,
-            title = "Delete Map?",
-            message = "Delete '${mapToDelete?.name.orEmpty()}'?",
+            title = stringResource(R.string.maps_delete_map),
+            message = stringResource(R.string.gpx_delete, mapToDelete?.name.orEmpty()),
             onConfirm = {
                 mapToDelete?.path?.let {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -337,7 +342,7 @@ fun MapsScreen(
 
         RenameValueDialog(
             visible = showRenameDialog && mapToRename != null,
-            title = "Rename map",
+            title = stringResource(R.string.maps_rename_map),
             initialValue = mapToRename?.name?.substringBeforeLast(".map") ?: "",
             isSaving = renameInProgress,
             error = renameError,
@@ -366,7 +371,7 @@ fun MapsScreen(
                             renameError = null
                         }.onFailure { error ->
                             renameError = error.localizedMessage?.takeIf { it.isNotBlank() }
-                                ?: "Failed to rename the map."
+                                ?: resources.getString(R.string.maps_failed_to_rename_the_map)
                         }
                 }
             },
@@ -374,19 +379,19 @@ fun MapsScreen(
 
         WearActionDialog(
             visible = showDemNetworkErrorDialog,
-            title = "DEM download failed",
+            title = stringResource(R.string.maps_dem_download_failed),
             message =
                 demNetworkErrorMessage.ifBlank {
-                    "No internet on watch. Connect Wi-Fi or phone internet, then retry DEM download."
+                    stringResource(R.string.maps_dem_internet_required)
                 },
-            confirmText = "OK",
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { showDemNetworkErrorDialog = false },
             onDismissRequest = { showDemNetworkErrorDialog = false },
         )
 
         DeleteConfirmationDialog(
             visible = routingPackToDelete != null,
-            title = "Delete routing pack?",
+            title = stringResource(R.string.maps_delete_routing_pack),
             message = routingPackToDelete?.name ?: "",
             onConfirm = {
                 routingPackToDelete?.let { mapViewModel.deleteRoutingPackFile(it.path) }
@@ -397,7 +402,7 @@ fun MapsScreen(
 
         DeleteConfirmationDialog(
             visible = demTileToDelete != null,
-            title = "Delete DEM tile?",
+            title = stringResource(R.string.maps_delete_dem_tile),
             message = demTileToDelete?.name ?: "",
             onConfirm = {
                 demTileToDelete?.let { mapViewModel.deleteDemTileFile(it.path) }
@@ -408,10 +413,13 @@ fun MapsScreen(
 
         DeleteConfirmationDialog(
             visible = demSourceToDeleteAll != null,
-            title = "Delete DEM source?",
+            title = stringResource(R.string.maps_delete_dem_source),
             message =
                 demSourceToDeleteAll?.let { source ->
-                    "Delete all ${source.displayName} DEM files from the watch?"
+                    stringResource(
+                        R.string.maps_delete_all_dem_files_from_the_watch,
+                        stringResource(source.displayNameRes),
+                    )
                 } ?: "",
             onConfirm = {
                 demSourceToDeleteAll?.let { mapViewModel.deleteAllDemTileFiles(it) }
@@ -422,8 +430,8 @@ fun MapsScreen(
 
         DeleteConfirmationDialog(
             visible = showDeleteAllRoutingDialog,
-            title = "Delete all routing data?",
-            message = routingDeleteAllMessage(routingPackFiles),
+            title = stringResource(R.string.maps_delete_all_routing_data),
+            message = routingDeleteAllMessage(routingPackFiles, resources = resources),
             onConfirm = {
                 mapViewModel.deleteAllRoutingPackFiles()
                 showDeleteAllRoutingDialog = false
@@ -433,7 +441,7 @@ fun MapsScreen(
 
         WearDataDialog(
             visible = showRoutingDataDialog,
-            title = "Routing data",
+            title = stringResource(R.string.maps_routing_data),
             onDismiss = { showRoutingDataDialog = false },
             bottomAction =
                 if (routingPackFiles.isNotEmpty()) {
@@ -462,7 +470,7 @@ fun MapsScreen(
                                 )
                                 Spacer(modifier = Modifier.size(4.dp))
                                 Text(
-                                    text = "Delete all",
+                                    text = stringResource(R.string.maps_delete_all),
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             }
@@ -474,7 +482,7 @@ fun MapsScreen(
         ) {
             item {
                 Text(
-                    text = routingPackSummary(routingPackFiles),
+                    text = routingPackSummary(routingPackFiles, resources = resources),
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
@@ -498,7 +506,7 @@ fun MapsScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = formatRoutingStorageSize(pack.sizeBytes),
+                                text = formatRoutingStorageSize(pack.sizeBytes, resources = resources),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.68f),
                             )
@@ -511,7 +519,7 @@ fun MapsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete routing pack",
+                                contentDescription = stringResource(R.string.maps_delete_routing_pack_2),
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -523,7 +531,7 @@ fun MapsScreen(
         val demDataHighFont = adaptive.fontScale > 1f
         WearDataDialog(
             visible = showDemDataDialog,
-            title = "Elevation data",
+            title = stringResource(R.string.maps_elevation_data),
             onDismiss = { showDemDataDialog = false },
             viewportPadding =
                 if (demDataHighFont) {
@@ -544,13 +552,13 @@ fun MapsScreen(
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         Text(
-                            text = "For shading, slope and altitude.",
+                            text = stringResource(R.string.maps_for_shading_slope_and_altitude),
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Text(
-                            text = "Quality for new downloads.",
+                            text = stringResource(R.string.maps_quality_for_new_downloads),
                             style = MaterialTheme.typography.labelMedium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
@@ -590,7 +598,7 @@ fun MapsScreen(
                 item {
                     DemDialogDenseContent(highFont = demDataHighFont) {
                         Text(
-                            text = "Map coverage",
+                            text = stringResource(R.string.maps_map_coverage),
                             style = MaterialTheme.typography.labelMedium,
                             textAlign = TextAlign.Center,
                             modifier =
@@ -619,12 +627,12 @@ fun MapsScreen(
 
         WearInfoDialog(
             visible = showHelpDialog,
-            title = "Map Actions",
+            title = stringResource(R.string.maps_map_actions),
             onDismiss = { dismissHelpDialog() },
         ) {
             item {
                 Text(
-                    "Toggle a map to use it on Navigate.",
+                    stringResource(R.string.maps_toggle_a_map_to_use_it_on_navigate),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -641,8 +649,9 @@ fun MapsScreen(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        "Use the download bundle or the phone app to send .map and " +
-                            "routing to the watch.",
+                        stringResource(
+                            R.string.maps_use_the_download_bundle_or_the_phone_app_to_send_map_and_routing_to_th,
+                        ),
                     )
                 }
             }
@@ -658,8 +667,9 @@ fun MapsScreen(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        "Click on Elevation icon to download elevation that adds " +
-                            "altitude, slope, and terrain shading.",
+                        stringResource(
+                            R.string.maps_click_on_elevation_icon_to_download_elevation_that_adds_altitude_slope,
+                        ),
                     )
                 }
             }
@@ -674,12 +684,12 @@ fun MapsScreen(
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                     )
-                    Text("Routing enables offline route calculation.")
+                    Text(stringResource(R.string.download_routing_enables_offline_route_calculation))
                 }
             }
             item {
                 Text(
-                    "Grey means missing, amber partial, green ready.",
+                    stringResource(R.string.maps_grey_means_missing_amber_partial_green_ready),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -687,15 +697,15 @@ fun MapsScreen(
         }
         FeatureListScaffold(horizontalAlignment = Alignment.Start) {
             FeatureListHeader(
-                title = "Maps",
+                title = stringResource(R.string.download_maps),
                 topPadding = headerTopSafePadding,
                 bottomPadding = headerBottomPadding,
                 actionSpacing = headerActionSpacing,
                 verticalSpacing = headerVerticalSpacing,
                 statusText =
                     when {
-                        isRenameMode -> "Rename mode"
-                        isDeleteMode -> "Delete mode"
+                        isRenameMode -> stringResource(R.string.gpx_rename_mode)
+                        isDeleteMode -> stringResource(R.string.download_delete_mode)
                         else -> null
                     },
                 statusColor =
@@ -717,7 +727,7 @@ fun MapsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "Map actions help",
+                        contentDescription = stringResource(R.string.maps_map_actions_help),
                         modifier = Modifier.size(headerActionIconSize),
                     )
                 }
@@ -734,7 +744,7 @@ fun MapsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Landscape,
-                        contentDescription = "DEM data",
+                        contentDescription = stringResource(R.string.maps_dem_data),
                         modifier = Modifier.size(headerActionIconSize),
                     )
                 }
@@ -751,7 +761,7 @@ fun MapsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.CallSplit,
-                        contentDescription = "Routing data",
+                        contentDescription = stringResource(R.string.maps_routing_data),
                         modifier = Modifier.size(headerActionIconSize),
                     )
                 }
@@ -780,7 +790,10 @@ fun MapsScreen(
                     if (mapFiles.isEmpty()) {
                         item {
                             Text(
-                                text = "Download maps on the watch or add .map files from the companion phone app.",
+                                text =
+                                    stringResource(
+                                        R.string.maps_empty_state_help,
+                                    ),
                                 modifier = Modifier.padding(emptyStatePadding),
                                 textAlign = TextAlign.Center,
                             )
@@ -914,9 +927,9 @@ fun MapsScreen(
                                 imageVector = if (isRenameMode) Icons.Default.Close else Icons.Default.Edit,
                                 contentDescription =
                                     if (isRenameMode) {
-                                        "Exit rename mode"
+                                        stringResource(R.string.gpx_exit_rename_mode)
                                     } else {
-                                        "Enter rename mode"
+                                        stringResource(R.string.gpx_enter_rename_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -929,7 +942,7 @@ fun MapsScreen(
                         containerColor = Color.Black.copy(alpha = 0.8f),
                         contentColor = Color.White,
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Map Settings")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.maps_map_settings))
                     }
                     if (demDownloadState.isDownloading) {
                         CompactIconHitTargetButton(
@@ -941,7 +954,7 @@ fun MapsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Cancel elevation download",
+                                contentDescription = stringResource(R.string.maps_cancel_elevation_download),
                                 modifier = Modifier.size(headerActionIconSize),
                             )
                         }
@@ -975,9 +988,9 @@ fun MapsScreen(
                                 imageVector = if (isDeleteMode) Icons.Default.Close else Icons.Default.Delete,
                                 contentDescription =
                                     if (isDeleteMode) {
-                                        "Exit delete mode"
+                                        stringResource(R.string.download_exit_delete_mode)
                                     } else {
-                                        "Enter delete mode"
+                                        stringResource(R.string.download_enter_delete_mode)
                                     },
                                 modifier = Modifier.size(headerActionIconSize),
                             )
@@ -1039,7 +1052,7 @@ private fun MapItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
-                    contentDescription = "Rename",
+                    contentDescription = stringResource(R.string.gpx_rename),
                 )
             }
         } else if (showDelete) {
@@ -1052,7 +1065,7 @@ private fun MapItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = stringResource(R.string.common_delete),
                 )
             }
         } else {
@@ -1112,7 +1125,7 @@ private fun MapItem(
                             DemMapBadgeState.DOWNLOADING -> {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Cancel elevation download",
+                                    contentDescription = stringResource(R.string.maps_cancel_elevation_download),
                                     modifier = Modifier.size(MAP_DATA_ICON_SIZE),
                                 )
                             }
@@ -1120,7 +1133,7 @@ private fun MapItem(
                             DemMapBadgeState.READY -> {
                                 Icon(
                                     imageVector = Icons.Default.Landscape,
-                                    contentDescription = "DEM downloaded",
+                                    contentDescription = stringResource(R.string.maps_dem_downloaded),
                                     modifier = Modifier.size(MAP_DATA_ICON_SIZE),
                                 )
                             }
@@ -1132,9 +1145,9 @@ private fun MapItem(
                                     painter = painterResource(R.drawable.ic_dem_download),
                                     contentDescription =
                                         if (demBadgeState == DemMapBadgeState.PARTIAL) {
-                                            "Download remaining DEM"
+                                            stringResource(R.string.maps_download_remaining_dem)
                                         } else {
-                                            "Download DEM"
+                                            stringResource(R.string.maps_download_dem)
                                         },
                                     modifier = Modifier.size(MAP_DATA_ICON_SIZE),
                                 )
@@ -1153,7 +1166,7 @@ private fun MapItem(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.CallSplit,
-                        contentDescription = routingIconContentDescription(mapFile),
+                        contentDescription = stringResource(routingIconContentDescriptionRes(mapFile)),
                         modifier = Modifier.size(MAP_DATA_ICON_SIZE),
                         tint = routingIconTint,
                     )
@@ -1163,27 +1176,36 @@ private fun MapItem(
     }
 }
 
-private fun routingIconContentDescription(mapFile: MapFileState): String =
+@StringRes
+private fun routingIconContentDescriptionRes(mapFile: MapFileState): Int =
     when {
-        !mapFile.routingCoverageKnown -> "Routing coverage unavailable"
-        mapFile.routingRequiredSegments == 0 -> "No routing packs required"
-        mapFile.routingReady -> "Routing ready"
-        mapFile.routingAvailableSegments > 0 -> "Routing partially available"
-        else -> "Routing unavailable"
+        !mapFile.routingCoverageKnown -> R.string.map_routing_coverage_unavailable
+        mapFile.routingRequiredSegments == 0 -> R.string.map_no_routing_packs_required
+        mapFile.routingReady -> R.string.map_routing_ready
+        mapFile.routingAvailableSegments > 0 -> R.string.map_routing_partially_available
+        else -> R.string.map_routing_unavailable
     }
 
-private fun routingPackSummary(packs: List<RoutingPackFileState>): String {
-    if (packs.isEmpty()) return "No routing packs"
+private fun routingPackSummary(
+    packs: List<RoutingPackFileState>,
+    resources: Resources,
+): String {
+    if (packs.isEmpty()) return resources.getString(R.string.map_no_routing_packs)
     val totalBytes = packs.sumOf { it.sizeBytes }
-    return when (packs.size) {
-        1 -> "1 pack · ${formatRoutingStorageSize(totalBytes)}"
-        else -> "${packs.size} packs · ${formatRoutingStorageSize(totalBytes)}"
-    }
+    return resources.getQuantityString(
+        R.plurals.map_routing_pack_summary,
+        packs.size,
+        packs.size,
+        formatRoutingStorageSize(totalBytes, resources),
+    )
 }
 
-private fun routingDeleteAllMessage(packs: List<RoutingPackFileState>): String {
-    if (packs.isEmpty()) return "No routing packs installed."
-    return "Deletes ${routingPackSummary(packs)} from the watch."
+private fun routingDeleteAllMessage(
+    packs: List<RoutingPackFileState>,
+    resources: Resources,
+): String {
+    if (packs.isEmpty()) return resources.getString(R.string.map_no_routing_packs_installed)
+    return resources.getString(R.string.map_deletes_from_the_watch, routingPackSummary(packs, resources = resources))
 }
 
 @Composable
@@ -1221,13 +1243,13 @@ private fun DemQualityChoiceRow(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = source.displayName,
+                    text = stringResource(source.displayNameRes),
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = source.detailLabel,
+                    text = stringResource(source.detailLabelRes),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1236,7 +1258,7 @@ private fun DemQualityChoiceRow(
             if (selected) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "Selected",
+                    contentDescription = stringResource(R.string.common_selected),
                     modifier = Modifier.size(15.dp),
                 )
             }
@@ -1251,6 +1273,7 @@ private fun DemStorageSummaryRow(
     onDeleteAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val resources = LocalResources.current
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1258,13 +1281,13 @@ private fun DemStorageSummaryRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = source.displayName,
+                text = stringResource(source.displayNameRes),
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = demTileSummary(files),
+                text = demTileSummary(files, resources = resources),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.68f),
                 maxLines = 1,
@@ -1280,7 +1303,7 @@ private fun DemStorageSummaryRow(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete ${source.displayName}",
+                    contentDescription = stringResource(R.string.maps_delete, stringResource(source.displayNameRes)),
                     modifier = Modifier.size(13.dp),
                 )
             }
@@ -1293,6 +1316,7 @@ private fun DemMapCoverageRow(
     mapFile: MapFileState,
     modifier: Modifier = Modifier,
 ) {
+    val resources = LocalResources.current
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1306,7 +1330,7 @@ private fun DemMapCoverageRow(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = demMapCoverageLabel(mapFile),
+            text = demMapCoverageLabel(mapFile, resources = resources),
             style = MaterialTheme.typography.bodySmall,
             color = demMapCoverageColor(mapFile),
             maxLines = 1,
@@ -1327,21 +1351,32 @@ private fun DemDialogDenseContent(
     }
 }
 
-private fun demMapCoverageLabel(mapFile: MapFileState): String {
-    if (!mapFile.demCombinedCoverageKnown) return "Unknown"
-    if (mapFile.demCombinedRequiredTiles == 0) return "No elevation"
-    if (mapFile.demDetailedAvailableTiles >= mapFile.demCombinedRequiredTiles) return "Detailed ready"
+private fun demMapCoverageLabel(
+    mapFile: MapFileState,
+    resources: Resources,
+): String {
+    if (!mapFile.demCombinedCoverageKnown) return resources.getString(R.string.map_unknown)
+    if (mapFile.demCombinedRequiredTiles == 0) return resources.getString(R.string.map_no_elevation)
+    if (mapFile.demDetailedAvailableTiles >=
+        mapFile.demCombinedRequiredTiles
+    ) {
+        return resources.getString(R.string.map_detailed_ready)
+    }
     if (mapFile.demCombinedAvailableTiles >= mapFile.demCombinedRequiredTiles) {
         return if (mapFile.demDetailedAvailableTiles > 0) {
-            "Mixed ready"
+            resources.getString(R.string.map_mixed_ready)
         } else {
-            "Standard ready"
+            resources.getString(R.string.map_standard_ready)
         }
     }
     if (mapFile.demCombinedAvailableTiles > 0) {
-        return "${mapFile.demCombinedAvailableTiles}/${mapFile.demCombinedRequiredTiles}"
+        return resources.getString(
+            R.string.common_count_ratio,
+            mapFile.demCombinedAvailableTiles,
+            mapFile.demCombinedRequiredTiles,
+        )
     }
-    return "Missing"
+    return resources.getString(R.string.map_missing)
 }
 
 private fun demMapCoverageColor(mapFile: MapFileState): Color =
@@ -1353,23 +1388,31 @@ private fun demMapCoverageColor(mapFile: MapFileState): Color =
         else -> Color.White.copy(alpha = 0.68f)
     }
 
-private fun demTileSummary(files: List<DemTileFileState>): String {
-    if (files.isEmpty()) return "none installed"
+private fun demTileSummary(
+    files: List<DemTileFileState>,
+    resources: Resources,
+): String {
+    if (files.isEmpty()) return resources.getString(R.string.map_none_installed)
     val totalBytes = files.sumOf { it.sizeBytes }
-    return when (files.size) {
-        1 -> "1 tile · ${formatRoutingStorageSize(totalBytes)}"
-        else -> "${files.size} tiles · ${formatRoutingStorageSize(totalBytes)}"
-    }
+    return resources.getQuantityString(
+        R.plurals.dem_tile_storage_summary,
+        files.size,
+        files.size,
+        formatRoutingStorageSize(totalBytes, resources),
+    )
 }
 
-private fun formatRoutingStorageSize(bytes: Long): String {
+private fun formatRoutingStorageSize(
+    bytes: Long,
+    resources: Resources,
+): String {
     val safeBytes = bytes.coerceAtLeast(0L).toDouble()
     val kb = 1024.0
     val mb = kb * 1024.0
     return when {
-        safeBytes >= mb -> String.format(Locale.US, "%.1f MB", safeBytes / mb)
-        safeBytes >= kb -> String.format(Locale.US, "%.0f KB", safeBytes / kb)
-        else -> "${safeBytes.toLong()} B"
+        safeBytes >= mb -> resources.getString(R.string.settings_mb_2, safeBytes / mb)
+        safeBytes >= kb -> resources.getString(R.string.settings_kb, safeBytes / kb)
+        else -> resources.getString(R.string.download_b, safeBytes.toLong())
     }
 }
 

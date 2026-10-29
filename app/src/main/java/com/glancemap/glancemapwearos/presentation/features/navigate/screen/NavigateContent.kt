@@ -43,6 +43,8 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +52,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
@@ -58,6 +61,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityD
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
+import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
@@ -90,6 +94,10 @@ import kotlin.math.log2
 )
 @Composable
 internal fun NavigateContent(
+    mapFocusState: NavigateMapFocusState,
+    mapFocusVisibleControls: Set<MapFocusControl>,
+    onEnterMapFocus: () -> Unit,
+    onExitMapFocus: (String) -> Unit,
     hasLocationPermission: Boolean,
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
@@ -98,6 +106,8 @@ internal fun NavigateContent(
     showNavigateTime: Boolean,
     navigateTimeFormat: String,
     mapAppearanceApplyInProgress: Boolean,
+    hasActiveMap: Boolean,
+    startupLocationWaitMessage: StartupLocationWaitUiState,
     slopeOverlayToggleEnabled: Boolean,
     slopeOverlayEnabled: Boolean,
     slopeOverlayProcessing: Boolean,
@@ -124,6 +134,9 @@ internal fun NavigateContent(
     onUserPanStarted: () -> Unit,
     onRecenter: () -> Unit,
     onRecenterRequested: () -> Unit,
+    autoRecenterEnabled: Boolean,
+    autoRecenterDelay: Int,
+    onToggleAutoRecenter: () -> Unit,
     triggerHaptic: () -> Unit,
     onMenuClick: () -> Unit,
     onPermissionLaunch: () -> Unit,
@@ -223,6 +236,7 @@ internal fun NavigateContent(
     markerMotionDebugOverlayLabel: String?,
     onCompassIssueNow: (() -> Unit)?,
 ) {
+    val resources = LocalResources.current
     SideEffect {
         BenchmarkTrace.mark("recompose.NavigateContent")
     }
@@ -328,7 +342,7 @@ internal fun NavigateContent(
                 details = target.details,
             )
         poiTapMarker = marker
-        poiTapPopup = buildPoiTapPopupContent(marker, isMetric = isMetric)
+        poiTapPopup = buildPoiTapPopupContent(marker, isMetric = isMetric, resources = resources)
         poiTapPopupExpanded = false
         poiTapPopupScrollInProgress = false
         onPoiFocusTargetConsumed()
@@ -534,7 +548,7 @@ internal fun NavigateContent(
 
                         triggerHaptic()
                         poiTapMarker = tappedPoi
-                        poiTapPopup = buildPoiTapPopupContent(tappedPoi, isMetric = isMetric)
+                        poiTapPopup = buildPoiTapPopupContent(tappedPoi, isMetric = isMetric, resources = resources)
                         poiTapPopupExpanded = false
                         poiTapPopupScrollInProgress = false
                         return true
@@ -608,10 +622,21 @@ internal fun NavigateContent(
         turnByTurnFullScreenExpanded ||
             recordingDashboardFullScreenExpanded ||
             combinedGuidanceRecordingFullScreenExpanded
-    val shouldSuppressNavigateTime =
+    val showNoActiveMapNotice = rememberNoActiveMapNotice(hasActiveMap, mapAppearanceApplyInProgress)
+    val mapChrome =
+        mapFocusChromePolicy(
+            mapFocusMode = mapFocusState.mapFocusMode,
+            dashboardFullscreen = fullScreenPopupExpanded,
+            visibleControls = mapFocusVisibleControls,
+            toolsAvailable = hasLocationPermission && mapView != null && !routeToolModeActive,
+        )
+    val suppressNavigateTimeForLayout =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
-            (showScaleBar || routeToolModeActive)
+            ((showScaleBar && mapChrome.shows(MapFocusControl.SCALE)) || routeToolModeActive)
+    val shouldSuppressNavigateTime =
+        shortcutTrayExpanded || !mapChrome.shows(MapFocusControl.TIME) || suppressNavigateTimeForLayout
+    MapFocusModeEffects(mapFocusState, fullScreenPopupExpanded, onExitMapFocus)
     val overlayOwnsRotary = expandedOverlayState.overlayOwnsRotary
 
     LaunchedEffect(shouldSuppressNavigateTime) {
@@ -1022,9 +1047,13 @@ internal fun NavigateContent(
 
             CompositionLocalProvider(LocalFullscreenPopupTimeFormat provides navigateTimeFormat) {
                 NavigateOverlaysLayer(
+                    mapFocusMode = mapFocusState.mapFocusMode,
+                    mapFocusVisibleControls = mapFocusVisibleControls,
+                    onEnterMapFocus = onEnterMapFocus,
+                    onExitMapFocus = { onExitMapFocus("button") },
                     mapView = mapView,
                     traceRecordingViewModel = traceRecordingViewModel,
-                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress,
+                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
                     slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
                     slopeOverlayEnabled = slopeOverlayEnabled,
                     slopeOverlayProcessing = slopeOverlayProcessing,
@@ -1122,6 +1151,9 @@ internal fun NavigateContent(
                     lastKnownLocation = lastKnownLocation,
                     onRecenter = onRecenter,
                     onRecenterRequested = onRecenterRequested,
+                    autoRecenterEnabled = autoRecenterEnabled,
+                    autoRecenterDelay = autoRecenterDelay,
+                    onToggleAutoRecenter = onToggleAutoRecenter,
                     onToggleOrientation = onToggleOrientation,
                     isOfflineMode = isOfflineMode,
                     selectingGpxPointB = selectingGpxPointB,
@@ -1155,12 +1187,18 @@ internal fun NavigateContent(
                 )
             }
 
+            // The tray owns the top-center slot; its REC shortcut keeps recording actions available.
             CenteredNavigateTimeChip(
                 visible =
                     !fullScreenPopupExpanded &&
-                        !shouldSuppressNavigateTime &&
-                        (showNavigateTime || traceRecordingState.active || traceRecordingState.saving),
-                showTime = showNavigateTime,
+                        !shortcutTrayExpanded &&
+                        !suppressNavigateTimeForLayout &&
+                        (
+                            (mapChrome.shows(MapFocusControl.TIME) && showNavigateTime) ||
+                                traceRecordingState.active ||
+                                traceRecordingState.saving
+                        ),
+                showTime = showNavigateTime && mapChrome.shows(MapFocusControl.TIME),
                 isScreenInteractive = screenState.isInteractive,
                 timeFormat = navigateTimeFormat,
                 recordingActive = traceRecordingState.active || traceRecordingState.saving,
@@ -1175,10 +1213,23 @@ internal fun NavigateContent(
             )
 
             DiagnosticsDebugOverlay(
-                label = markerMotionDebugOverlayLabel,
+                label = markerMotionDebugOverlayLabel.takeIf { mapChrome.showRoutineChrome },
                 screenSize = screenSize,
                 recordingStatusChipVisible = traceRecordingState.active || traceRecordingState.saving,
-                onCompassIssueNow = onCompassIssueNow,
+                onCompassIssueNow = onCompassIssueNow.takeIf { mapChrome.showRoutineChrome },
+            )
+
+            NavigationStartupNotices(
+                locationWaitMessage = startupLocationWaitMessage,
+                noActiveMapNotice = showNoActiveMapNotice,
+                hasActiveMap = hasActiveMap,
+                updatingMap = mapAppearanceApplyInProgress,
+                blockingPopupReason =
+                    when {
+                        fullScreenPopupExpanded -> "fullscreen_popup"
+                        recordingStatusMessage != null -> "recording_status"
+                        else -> null
+                    },
             )
 
             GpsEnvironmentWarningOverlay(
@@ -1231,6 +1282,15 @@ internal fun NavigateContent(
             NavigatePermissionRequiredContent(
                 sizing = sizing,
                 onPermissionLaunch = onPermissionLaunch,
+            )
+        }
+        MapFocusHint(visible = mapFocusState.hintVisible && !fullScreenPopupExpanded)
+        if (mapChrome.showExitControl) {
+            MapFocusExitControl(
+                edgePadding = sideButtonEdgePadding,
+                anchorSize = sideButtonSize,
+                highlighted = mapFocusState.exitHighlightVisible,
+                onClick = { onExitMapFocus("button") },
             )
         }
     }
@@ -1306,7 +1366,7 @@ private fun CenteredNavigateTimeChip(
             showTime -> formatNavigateClockTime(nowMillis, timeFormat)
             recordingSaving -> "SAVE"
             recordingPaused -> "PAUSE"
-            recordingActive -> "REC"
+            recordingActive -> stringResource(R.string.common_rec)
             else -> ""
         }
     val accentColor =
@@ -1426,9 +1486,7 @@ internal fun shouldEnterPanningAfterDoubleTap(
     return navigateHaversineMeters(center, marker) > thresholdMeters
 }
 
-internal fun shouldRefreshRouteToolOverlayForViewport(
-    routeToolSessionActive: Boolean,
-): Boolean = routeToolSessionActive
+internal fun shouldRefreshRouteToolOverlayForViewport(routeToolSessionActive: Boolean): Boolean = routeToolSessionActive
 
 private const val DOUBLE_TAP_PANNING_DISTANCE_THRESHOLD_METERS = 4.0
 private const val DOUBLE_TAP_PANNING_CHECK_DELAY_MS = 120L

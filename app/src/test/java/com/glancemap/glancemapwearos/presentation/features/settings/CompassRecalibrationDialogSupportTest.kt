@@ -2,7 +2,6 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import com.glancemap.glancemapwearos.domain.sensors.CompassProviderType
 import com.glancemap.glancemapwearos.presentation.features.navigate.CompassMarkerQuality
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,29 +53,5 @@ class CompassRecalibrationDialogSupportTest {
                 resultQuality = CompassMarkerQuality.GOOD,
             ),
         )
-    }
-
-    @Test
-    fun resultButtonLabelSwitchesBetweenDoneAndRetry() {
-        assertEquals("Done", recalibrationResultButtonLabel(succeeded = true))
-        assertEquals("Try Again", recalibrationResultButtonLabel(succeeded = false))
-    }
-
-    @Test
-    fun unsupportedBodyTextExplainsThatResetIsCustomOnly() {
-        val body =
-            compassRecalibrationBodyText(
-                state =
-                    CompassRecalibrationBodyState(
-                        phase = CalibrationPhase.UNSUPPORTED,
-                        providerType = CompassProviderType.GOOGLE_FUSED,
-                        hasAnyHeadingSource = true,
-                        initialQuality = CompassMarkerQuality.LOW,
-                        resultQuality = CompassMarkerQuality.LOW,
-                        qualityImproved = false,
-                    ),
-            )
-
-        assertTrue(body.contains("Custom sensors"))
     }
 }

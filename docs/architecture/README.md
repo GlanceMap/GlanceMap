@@ -19,6 +19,8 @@ This folder documents the watch-side architecture and major runtime flows.
 
 - `active-hike-sync.md`
   - Watch-owned live navigation snapshot shared with the companion dashboard.
+- `activity-elevation-profile.md`
+  - Corrected distance, grey gap connectors, loading, and display sampling for saved activities.
 
 ## Location Contributor Docs
 

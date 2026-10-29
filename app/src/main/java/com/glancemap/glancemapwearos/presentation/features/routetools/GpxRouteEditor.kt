@@ -1,5 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.routetools
 
+import androidx.annotation.StringRes
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPoint
 import com.glancemap.glancemapwearos.presentation.features.gpx.TrackPosition
 import org.mapsforge.core.model.LatLong
@@ -13,14 +15,14 @@ internal data class RouteToolSaveResult(
     val elevationLossMeters: Double,
     val estimatedDurationSec: Double?,
     val replacedCurrent: Boolean,
-    val successMessage: String? = null,
+    @StringRes val successMessageRes: Int? = null,
 ) {
-    val message: String
+    @get:StringRes val messageRes: Int
         get() =
-            successMessage ?: if (replacedCurrent) {
-                "GPX updated"
+            successMessageRes ?: if (replacedCurrent) {
+                R.string.gpx_gpx_updated
             } else {
-                "New GPX saved"
+                R.string.gpx_new_gpx_saved
             }
 }
 

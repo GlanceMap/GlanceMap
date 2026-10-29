@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.glancemap.glancemapwearos.core.routing.HikeRouteProfileParams
+import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 
@@ -53,6 +54,8 @@ internal data class NavigateSettingsState(
     val isGpxInspectionEnabled: Boolean,
     val isMetric: Boolean,
     val backButtonExitsNavigation: Boolean,
+    val backButtonClosesApp: Boolean,
+    val mapFocusVisibleControls: Set<MapFocusControl>,
     val poiIconSizePx: Int,
     val poiMarkerStyle: String,
     val poiMapLongPressActionsEnabled: Boolean,
@@ -159,6 +162,8 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
     val isGpxInspectionEnabled by settingsViewModel.isGpxInspectionEnabled.collectAsState()
     val isMetric by settingsViewModel.isMetric.collectAsState()
     val backButtonExitsNavigation by settingsViewModel.backButtonExitsNavigation.collectAsState()
+    val backButtonClosesApp by settingsViewModel.backButtonClosesApp.collectAsState()
+    val mapFocusVisibleControls by settingsViewModel.mapFocusVisibleControls.collectAsState()
     val poiIconSizePx by settingsViewModel.poiIconSizePx.collectAsState()
     val poiMarkerStyle by settingsViewModel.poiMarkerStyle.collectAsState()
     val poiMapLongPressActionsEnabled by settingsViewModel.poiMapLongPressActionsEnabled.collectAsState(
@@ -237,6 +242,8 @@ internal fun collectNavigateSettingsState(settingsViewModel: SettingsViewModel):
         isGpxInspectionEnabled = isGpxInspectionEnabled,
         isMetric = isMetric,
         backButtonExitsNavigation = backButtonExitsNavigation,
+        backButtonClosesApp = backButtonClosesApp,
+        mapFocusVisibleControls = mapFocusVisibleControls,
         poiIconSizePx = poiIconSizePx,
         poiMarkerStyle = poiMarkerStyle,
         poiMapLongPressActionsEnabled = poiMapLongPressActionsEnabled,

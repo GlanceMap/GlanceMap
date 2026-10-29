@@ -1813,7 +1813,7 @@ private fun SelectedFilesCompactSummary(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = fileNames.first(),
+            text = themeTransferDisplayLabel(fileNames.first()),
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1869,7 +1869,7 @@ private fun SelectedFilesCompactSummary(
                                     stringResource(
                                         R.string.transfer_selected_file_row,
                                         index + 1,
-                                        fileName,
+                                        themeTransferDisplayLabel(fileName),
                                     ),
                                 style = MaterialTheme.typography.bodySmall,
                                 overflow = TextOverflow.Ellipsis,
@@ -2700,4 +2700,15 @@ private fun localizedWeatherLocationLabel(label: String): String =
         "Planned day start" -> stringResource(R.string.weather_location_planned_day_start)
         "Route start" -> stringResource(R.string.weather_location_route_start)
         else -> label
+    }
+
+private fun themeTransferDisplayLabel(name: String): String =
+    if (com.glancemap.shared.transfer.MapsforgeThemePackage
+            .isTransferName(name)
+    ) {
+        "Mapsforge theme · ${name.dropLast(
+            com.glancemap.shared.transfer.MapsforgeThemePackage.TRANSFER_SUFFIX.length,
+        )}.zip"
+    } else {
+        name
     }
