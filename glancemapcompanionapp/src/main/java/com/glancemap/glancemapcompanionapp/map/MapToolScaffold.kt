@@ -170,7 +170,6 @@ private fun mapToolMapSurface(
     mapContent: @Composable () -> Unit,
 ) {
     var guidanceQuickControlExpanded by remember { mutableStateOf(false) }
-    var recordingQuickControlExpanded by remember { mutableStateOf(false) }
     val toolbarHeight = if (presentation.toolbarVisible) mapToolLauncherHeight else 0.dp
     Column(modifier = modifier) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -190,7 +189,6 @@ private fun mapToolMapSurface(
                             expanded = guidanceQuickControlExpanded,
                             onExpandedChange = { expanded ->
                                 guidanceQuickControlExpanded = expanded
-                                if (expanded) recordingQuickControlExpanded = false
                             },
                         )
                     }
@@ -203,11 +201,7 @@ private fun mapToolMapSurface(
                                 .padding(end = 8.dp),
                     ) {
                         PhoneRecordingQuickControl(
-                            expanded = recordingQuickControlExpanded,
-                            onExpandedChange = { expanded ->
-                                recordingQuickControlExpanded = expanded
-                                if (expanded) guidanceQuickControlExpanded = false
-                            },
+                            onOpenSettings = actions.onOpenRecording,
                         )
                     }
                 }

@@ -34,6 +34,7 @@ internal fun mapToolLauncher(
     modifier: Modifier = Modifier,
 ) {
     val expanded = presentation.launcherExpanded
+    val startRecording = rememberPhoneRecordingStartAction()
     val selectTool: (MapTool) -> Unit = { tool ->
         if (expanded) actions.onToggleLauncher()
         actions.onToolSelected(tool)
@@ -56,7 +57,7 @@ internal fun mapToolLauncher(
             ) {
                 mapShortcut(R.string.map_tool_shortcut_add_poi, Icons.Filled.Place) { openScreen(actions.onAddPoi) }
                 mapShortcut(R.string.map_tool_shortcut_rec, Icons.Filled.FiberManualRecord) {
-                    openScreen(actions.onOpenRecording)
+                    openScreen(startRecording)
                 }
                 mapShortcut(R.string.map_tool_shortcut_gpx, Icons.Filled.Route) { openScreen(actions.onOpenGpxTools) }
             }

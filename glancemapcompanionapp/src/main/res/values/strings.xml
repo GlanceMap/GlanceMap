@@ -148,8 +148,6 @@
     <string name="phone_rec_save">Save activity</string>
     <string name="phone_rec_stop">Stop</string>
     <string name="phone_rec_stop_and_save">Stop and save activity</string>
-    <string name="phone_rec_expand_controls">Expand recording controls</string>
-    <string name="phone_rec_collapse_controls">Collapse recording controls</string>
     <string name="phone_rec_discard">Discard</string>
     <string name="phone_rec_discard_title">Discard this recording?</string>
     <string name="phone_rec_discard_message">This recording and its recovery draft will be deleted.</string>
@@ -171,6 +169,12 @@
     <string name="phone_rec_profile_hike">Hike</string>
     <string name="phone_rec_profile_bike">Bike</string>
     <string name="phone_rec_settings_title">Recording settings</string>
+    <string name="phone_rec_settings_activity">Activity</string>
+    <string name="phone_rec_settings_gps_track">GPS &amp; track</string>
+    <string name="phone_rec_settings_elevation_sensors">Elevation &amp; sensors</string>
+    <string name="phone_rec_settings_feedback">Feedback</string>
+    <string name="phone_rec_settings_expanded">Expanded</string>
+    <string name="phone_rec_settings_collapsed">Collapsed</string>
     <string name="phone_rec_gps_preset">GPS preset: %1$s</string>
     <string name="phone_rec_screen_on_interval">Screen on: %1$s</string>
     <string name="phone_rec_screen_off_interval">Screen off: %1$s</string>
