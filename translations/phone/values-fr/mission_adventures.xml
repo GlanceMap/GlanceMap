@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="adventure_create_route">"Créer un itinéraire"</string>
+    <string name="adventure_latitude">"Latitude"</string>
+    <string name="adventure_longitude">"Longitude"</string>
+</resources>

@@ -1,40 +1,33 @@
 # Hosted Weblate setup and import safety
 
-Status: **repository preparation; owner authorization required**. This document
-is a setup worksheet, not a claim that a remote project or component exists.
-The public `glancemap` project API returned 404 during preparation. A private or
-differently named workspace cannot be ruled out without the owner's account.
-Do not create duplicates: check the owner's existing projects/components first.
+Status: the [GlanceMap project](https://hosted.weblate.org/projects/glancemap/)
+already exists on Hosted Weblate. On 29 October 2026 its public API listed the
+Wear OS App and glossary components, but no phone component. The watch component
+uses the GlanceMap GitHub repository and `main`; its five existing translations
+were reported complete. This confirms public project metadata only, not the
+account permissions, GitHub App authorization or outbound PR settings. Inspect
+the existing project and integration before changing anything; do not create a
+duplicate project or disturb the active watch component.
 
 ## Branch gate
 
-The existing checkout is `codex/watch-localization-readiness`. All five languages
-and the community workflow are proposed for `main` in
-[PR #115](https://github.com/GlanceMap/GlanceMap/pull/115). During integration,
-`main` was checked at `0847e6eb2c8155a4542da3464d67e5c1ffafd176` and still lacked
-the localization-ready locale files. This branch also translates the newer
-full-screen controls, auto-recenter feedback and activity elevation profile.
-
-**Production synchronization must target `main`, after these resources and CI
-reach it through normal maintainer review.** Do not configure the development
-branch as a permanent community source. Do not reconcile branches, merge, or
-publish infrastructure merely to complete Hosted Weblate setup.
-
-Before activation, rerun the branch/remote checks and regenerate the inventory.
-The numbers below are an initial import checklist, not validator language rules.
-While `main` is incomplete, prepare the workspace/component settings, keep
-translation editing and outbound synchronization locked, and do not activate an
-import that would omit the other four languages. A temporary development-branch
-preview, if later explicitly authorized, must stay locked with no outbound PRs;
-verify it again against `main` before production activation.
+The watch component is already connected to `main`. The phone component files
+and discovery settings are currently being prepared on the TrailCore branch.
+**Production phone synchronization must target `main` after those files and
+checks reach it through normal maintainer review.** Do not configure a
+development branch as the permanent community source. Before activating phone
+components, recheck the actual project, branch and import preview. A temporary
+development-branch preview must remain locked with no outbound PRs and be
+verified again against `main` before production activation.
 
 ## Owner authorization boundaries
 
 Only the owner needs to perform these account actions:
 
-1. Sign in at [Hosted Weblate](https://hosted.weblate.org/) and select or create
-   the workspace that will own GlanceMap. Share its real project URL afterwards.
-2. In that workspace, choose **Connect GitHub account**. Install/authorize the
+1. Sign in at [Hosted Weblate](https://hosted.weblate.org/) and open the existing
+   [GlanceMap project](https://hosted.weblate.org/projects/glancemap/).
+2. Check whether the project already has the required GitHub connection. If it
+   does not, choose **Connect GitHub account** and install/authorize the
    official [Hosted Weblate GitHub App](https://github.com/apps/hosted-weblate)
    for the GitHub organization that owns the repository. Grant access to the
    selected repository **GlanceMap/GlanceMap** only.
@@ -51,13 +44,18 @@ it is not an additional manual burden for translators.
 
 ## Wear OS component worksheet
 
+The following is the original setup worksheet, not a claim that every live
+setting matches it. The existing watch component is currently unlocked; do
+not lock, recreate or reimport it to set up the phone. Check live settings
+and permissions before changing the existing integration.
+
 | Setting | Prepared value / policy |
 |---|---|
 | Project | GlanceMap; suggested slug `glancemap` only if unused |
 | Component | Wear OS App; suggested slug `wear-os-app` only if unused |
 | Repository | `https://github.com/GlanceMap/GlanceMap.git` |
 | Production source branch | `main` |
-| Current repository-side setup branch | `codex/watch-localization-readiness` |
+| Current repository-side phone preparation | `codex/companion-trailcore-foundation` |
 | Source language | English (`en`) |
 | Monolingual base language file | `app/src/main/res/values/strings.xml` |
 | File mask | `app/src/main/res/values-*/strings.xml` |
@@ -68,7 +66,7 @@ it is not an additional manual burden for translators.
 | Outbound translation branch | Proposed `weblate-wear-os-app`; created later by Weblate, not by this task |
 | PR base | `main`; maintainer approval and localization CI required |
 | Edit base file / manage source strings | Off; English source changes originate in GitHub |
-| Initial outbound push | Off; keep component locked until the import checklist passes |
+| Initial outbound push for new components | Off; keep new phone components locked until import review |
 | Production push | PRs only; no direct commits to `main`, no automatic merge |
 | Automatic translation / bulk replacement | Off for the initial import |
 | Translation license | MIT for project-owned UI translation contributions; do not relicense third-party legal statements |
@@ -102,21 +100,72 @@ If the live Hosted UI differs, stop and verify its App-backed **PR** mode instea
 of silently choosing direct Git pushes. No standalone configuration file in this
 repository is automatically installed into Weblate.
 
+## Phone app component discovery
+
+The phone's English UI resources are split across 18 XML files. Keep those files
+in place and use a separate phone group of components; do not point a single
+component at only `values/strings.xml` or it will miss phone strings. The phone
+drafts live in `translations/phone/values-<locale>/<source-filename>.xml`, outside
+Android's shipped resources. This allows incremental, reviewed translation PRs
+without releasing an incomplete mixed-language UI. The existing GlanceMap
+project has no phone components yet; phone setup has not been activated.
+
+Using the current Weblate component-discovery add-on, prepare this source-file
+match. Its explicit list excludes non-translatable color, theme, and capability
+files. Update the list and its coverage test if another source file is added:
+
+```regex
+^glancemapcompanionapp/src/main/res/values/(?P<component>hike|map_address_search|map_layer_status|map_online_settings|map_perspective|map_search|map_toolbar|mission_adventures|mission_stages|poi_creation|recording_activity|recording_stop|route_discovery|route_preview|route_weather|strings|strings_brouter_online|terrain_preview)\.xml$
+```
+
+| Discovery setting | Prepared value |
+|---|---|
+| Format | Android String Resource (`aresource`) |
+| Component name template | `Phone app: {{ component }}` |
+| Monolingual base template | `glancemapcompanionapp/src/main/res/values/{{ component }}.xml` |
+| File mask template | `translations/phone/values-*/{{ component }}.xml` |
+| Language filter | The same Android locale filter used for the watch above |
+| Source language | English (`en`) |
+| Repository / branch / PR mode | Same GitHub App-backed, `main`-targeting PR workflow as Wear OS |
+| New translation template | Empty; let Weblate create target files |
+| Remove missing components automatically | Off; review source/component removal explicitly |
+| Automatic translation / bulk replacement | Off for the initial import |
+
+The discovery add-on's file-mask mode matches the English base files, so it can
+discover components even when a locale has no translated file for that component.
+See the [Weblate discovery documentation](https://docs.weblate.org/en/latest/admin/addons.html#component-discovery).
+Before activation, preview every source path, target mask and language mapping;
+check that all five imported drafts keep their values and that an unchanged export
+does not rewrite XML. The 301 watch-derived entries per locale are contextual
+starting suggestions, not automatically approved phone translations. Review
+meaning, placeholders, safety, navigation and destructive actions in context.
+
+During incremental translation PRs, CI checks every submitted draft's XML,
+arguments, markup, plural categories and preservation. Incomplete entries are
+reported, not counted as completed translations. Before shipping any locale,
+run `bash scripts/check-watch-translations.sh --phone` for strict completeness,
+obtain linguistic and safety review, check representative phone screens, then
+promote reviewed files into matching Android `values-<locale>` directories.
+Only then add that locale to a phone language picker and platform locale config.
+The strict command currently checks all draft locales together; complete all five
+or isolate and validate a release candidate before promotion. Legal translations
+remain separate and need the same maintainer review as on the watch.
+
 ## Existing-language import checklist
 
 | Android locale | File detected locally | Strings | Plurals | Legal documents | Weblate mapping | Hosted import |
 |---|---|---:|---:|---:|---|---|
-| de | `values-de/strings.xml` | 1744 | 58 | 14 | German (`de`) | Pending owner authorization; not verified |
-| es | `values-es/strings.xml` | 1744 | 58 | 14 | Spanish (`es`) | Pending owner authorization; not verified |
-| fr | `values-fr/strings.xml` | 1744 | 58 | 14 | French (`fr`) | Pending owner authorization; not verified |
-| it | `values-it/strings.xml` | 1744 | 58 | 14 | Italian (`it`) | Pending owner authorization; not verified |
-| pl | `values-pl/strings.xml` | 1744 | 58 | 14 | Polish (`pl`) | Pending owner authorization; not verified |
+| de | `values-de/strings.xml` | 1744 | 58 | 14 | German (`de`) | Present at 100% in public API; wording not audited |
+| es | `values-es/strings.xml` | 1744 | 58 | 14 | Spanish (`es`) | Present at 100% in public API; wording not audited |
+| fr | `values-fr/strings.xml` | 1744 | 58 | 14 | French (`fr`) | Present at 100% in public API; wording not audited |
+| it | `values-it/strings.xml` | 1744 | 58 | 14 | Italian (`it`) | Present at 100% in public API; wording not audited |
+| pl | `values-pl/strings.xml` | 1744 | 58 | 14 | Polish (`pl`) | Present at 100% in public API; wording not audited |
 
 English is the shared base, not separate USA/UK translations. Current validation
 covers every locale above. To refresh the machine-readable inventory and length
 reports, run `scripts/check-watch-translations.sh --report-dir build/reports/translations`.
 
-For **each** existing language, before enabling writes:
+For **each** existing language, if reimporting or reconfiguring the watch component:
 
 1. Check the real component's repository, branch, source language, mask and filter.
 2. Confirm the file is detected as an existing translation, not a new blank language.
@@ -234,9 +283,8 @@ Incoming GitHub changes are authoritative; review concurrent direct XML changes
 and pending Weblate edits to avoid conflicts. Do not resolve a conflict by bulk
 regeneration or automatic replacement of approved wording.
 
-Replace the single `WEBLATE_PROJECT_URL` placeholder in `TRANSLATING.md` with the
-verified real project page, and update the README's setup-pending Weblate link.
-Add a real status badge only once the service supplies a stable badge/link.
+The README and `TRANSLATING.md` link to the existing project. Add a status badge
+only once the service supplies a stable badge/link.
 
 The localization workflow runs for PRs to `main` and the current setup branch,
 including fork PRs. It uses `pull_request`, read-only repository permissions and

@@ -90,7 +90,7 @@ or app release.
 
 ## 🌍 Help translate GlanceMap
 
-Use [Weblate (project link pending setup)](TRANSLATING.md#translate-with-weblate--preferred),
+Use [GlanceMap on Weblate](https://hosted.weblate.org/projects/glancemap/),
 [report a wording correction](https://github.com/GlanceMap/GlanceMap/issues/new?template=translation_correction.yml),
 or read the [translation guide](TRANSLATING.md).
 

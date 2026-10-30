@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="activity_details_title">"Détails de l’activité"</string>
+    <string name="activity_short_recording">"REC court"</string>
+    <string name="activity_distance">"Distance"</string>
+    <string name="activity_steps">"Pas"</string>
+    <string name="activity_max_speed">"Vitesse max"</string>
+</resources>

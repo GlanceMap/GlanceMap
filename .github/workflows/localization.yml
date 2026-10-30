@@ -48,8 +48,21 @@ jobs:
           fi
           bash scripts/check-watch-translations.sh "${args[@]}"
 
+      - name: Validate phone translation drafts
+        run: |
+          args=(--phone --allow-incomplete --report-dir build/reports/translations/phone)
+          if [[ -n "$TRANSLATION_BASE_SHA" && ! "$TRANSLATION_BASE_SHA" =~ ^0+$ ]]; then
+            args+=(--preserve-from "$TRANSLATION_BASE_SHA")
+          fi
+          bash scripts/check-watch-translations.sh "${args[@]}"
+
       - name: Test the validator, including future regional and script locales
-        run: python3 -m unittest discover -s scripts/tests -p 'test_watch_translations.py' -v
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*translations.py' -v
+
+      - name: Check direct hard-coded phone UI strings
+        run: |
+          python3 scripts/check-phone-ui-strings.py
+          python3 -m unittest discover -s scripts/tests -p 'test_phone_ui_strings.py' -v
 
       - name: Preserve the existing French editorial checks
         run: python3 scripts/check-watch-french.py --report-dir build/reports/translations/french-editorial

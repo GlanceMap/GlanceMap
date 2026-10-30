@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="adventure_create_route">"Crear ruta"</string>
+    <string name="adventure_latitude">"Latitud"</string>
+    <string name="adventure_longitude">"Longitud"</string>
+</resources>

@@ -1,19 +1,20 @@
 # Help translate GlanceMap
 
-GlanceMap runs on very small watch displays. **When two translations are equally
-accurate and natural, prefer the shorter wording.** Preserve meaning first,
-then natural language, clarity, and compactness. Avoid cryptic abbreviations.
+GlanceMap runs on phones and very small watch displays. For watch translations,
+**when two translations are equally accurate and natural, prefer the shorter
+wording.** On both devices, preserve meaning first, then natural language and
+clarity. Avoid cryptic abbreviations.
 
 GitHub is the authoritative source. Community changes go through translation
 checks, a GitHub pull request, and maintainer review before merging.
 
 ## Translate with Weblate — preferred
 
-**Weblate project link: `WEBLATE_PROJECT_URL` — not configured yet.** This is an
-explicit setup placeholder, not a working translation URL. Until it is replaced,
-use the wording-reporting options or a direct GitHub contribution below.
+Use the [GlanceMap project on Hosted Weblate](https://hosted.weblate.org/projects/glancemap/).
+The Wear OS component and glossary are available there. Phone components are
+still being prepared in the repository and are not yet connected.
 
-Once the project opens:
+To contribute:
 
 1. Open GlanceMap on Weblate and choose your language.
 2. Translate or review a string. Read its context, comments, and glossary terms.
@@ -42,10 +43,12 @@ Maintainers can locate the string and apply/review a correction.
 ## Direct GitHub contribution
 
 Experienced contributors may edit `app/src/main/res/values-<locale>/strings.xml`
-and open a focused PR. Weblate remains preferred because it supplies shared
+for the watch or the matching files in `translations/phone/values-<locale>/`
+for phone drafts, and open a focused PR. Weblate remains preferred because it supplies shared
 context, review discussion, and translation checks.
 
-- Use `app/src/main/res/values/strings.xml` as the English source of truth.
+- Use `app/src/main/res/values/strings.xml` for watch English. Phone English is
+  in the corresponding file under `glancemapcompanionapp/src/main/res/values/`.
 - Leave `translatable="false"` names and technical values in the base file.
 - Preserve positional argument types, indexes and precision, such as `%1$s`,
   `%2$d`, `%1$.1f`, and `%%`. Arguments may be reordered, not dropped or added.
@@ -83,6 +86,32 @@ The canonical validator discovers locales, including Android regional and script
 qualifiers. It ignores display-only directories such as `values-round`,
 `values-night`, and `values-v31`. Configuration-specific language overrides are
 checked as overrides, rather than as separate languages.
+
+## Phone translations in progress
+
+The phone uses all translatable resources across `glancemapcompanionapp/src/main/res/values/*.xml`
+as its English source. German, Spanish, French, Italian, and Polish draft files in
+`translations/phone/values-<locale>/` currently reuse matching watch wording.
+These review drafts are outside the Android resources; the phone remains in
+English until a complete, reviewed language is promoted into the app.
+These drafts are incomplete and must not be treated as release-ready. In particular,
+navigation, recording, safety and destructive-action wording requires review.
+
+The phone uses the same format, markup and ICU/CLDR checks as the watch. To check
+work in progress, run:
+
+```sh
+bash scripts/check-watch-translations.sh --phone --allow-incomplete --report-dir build/reports/translations/phone
+python3 -m unittest discover -s scripts/tests -p 'test_phone_translations.py'
+```
+
+Omit `--allow-incomplete` for the strict release check; it fails until every phone
+resource has a translation. Localization CI validates incomplete drafts for
+structure; the strict check is required before promotion. The profile language
+picker currently offers system default and English. Add a language to the picker
+and Android locale configuration only after its translation is complete and
+reviewed, as on the watch. Checks do not prove linguistic correctness
+or screen fit.
 
 ## Watch readability
 
