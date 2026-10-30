@@ -5,11 +5,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -83,39 +81,17 @@ private fun libraryGpxImport(
     importing: Boolean,
     actions: PhoneLibraryActions,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var asRecording by rememberSaveable { mutableStateOf(false) }
     val launcher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) actions.onImportGpx(uri, asRecording, null)
+            if (uri != null) actions.onImportGpx(uri, false, null)
         }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Button(
-            onClick = {
-                asRecording = false
-                launcher.launch(arrayOf("*/*"))
-            },
-            enabled = !importing,
-            modifier = Modifier.weight(1f),
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.library_add_gpx))
-        }
-        Box {
-            IconButton(onClick = { expanded = true }, enabled = !importing) {
-                Icon(Icons.Filled.MoreVert, stringResource(R.string.library_more_import_options))
-            }
-            DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_import_recording)) },
-                    onClick = {
-                        asRecording = true
-                        expanded = false
-                        launcher.launch(arrayOf("*/*"))
-                    },
-                )
-            }
-        }
+    Button(
+        onClick = { launcher.launch(arrayOf("*/*")) },
+        enabled = !importing,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.library_add_gpx))
     }
 }

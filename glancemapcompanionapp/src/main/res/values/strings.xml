@@ -23,7 +23,6 @@
     <string name="library_offline_import_result">%1$d added · %2$d already installed · %3$d invalid</string>
     <string name="library_offline_import_error">Some files could not be imported. Existing offline data is still available.</string>
     <string name="library_add_gpx">Add GPX</string>
-    <string name="library_more_import_options">More GPX import options</string>
     <string name="library_import_map">Import map</string>
     <string name="library_choose_gpx">Choose GPX from Library</string>
     <string name="library_change_gpx">Change GPX from Library</string>
@@ -84,14 +83,13 @@
     <string name="library_refresh">"Refresh library"</string>
     <string name="library_import_gpx">"Import GPX"</string>
     <string name="library_import_route">"Import as route"</string>
-    <string name="library_import_recording">"Import as recording"</string>
     <string name="library_local_count">"%1$d items stored on this phone"</string>
     <string name="library_on_phone">"On phone"</string>
     <string name="library_empty_title">"No matching items"</string>
     <string name="library_empty_description">"Try another filter or add files using + or map tools."</string>
     <string name="library_gpx_summary">"%1$s · %2$.1f km · ↑ %3$d m"</string>
     <string name="library_received_summary">"Received GPX · %1$s"</string>
-    <string name="library_received_description">"This GPX is already stored on the phone. Choose whether to add it as a planned route or a recording."</string>
+    <string name="library_received_description">"This GPX is already stored on the phone. Add it to your library as a route, then organize it into a folder if needed."</string>
     <string name="library_poi_count">"POI collection · %1$d places"</string>
     <string name="library_poi_collection">"POI collection"</string>
     <string name="library_poi_unreadable">"POI collection · Could not read this file"</string>

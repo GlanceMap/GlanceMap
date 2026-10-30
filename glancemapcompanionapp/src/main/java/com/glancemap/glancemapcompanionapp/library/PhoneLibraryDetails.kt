@@ -77,17 +77,12 @@ private fun libraryDetailActions(
         }
         is PhoneLibraryItem.ReceivedGpx -> {
             Text(stringResource(R.string.library_received_description))
-            val importOptions =
-                listOf(
-                    false to R.string.library_import_route,
-                    true to R.string.library_import_recording,
-                )
-            importOptions.forEach { (recorded, label) ->
-                OutlinedButton(onClick = {
-                    val uri = Uri.fromFile(item.file)
-                    actions.onImportGpx(uri, recorded, item.exportId)
-                    onDismiss()
-                }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(label)) }
+            OutlinedButton(onClick = {
+                val uri = Uri.fromFile(item.file)
+                actions.onImportGpx(uri, false, item.exportId)
+                onDismiss()
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.library_import_route))
             }
         }
         is PhoneLibraryItem.Pois ->
