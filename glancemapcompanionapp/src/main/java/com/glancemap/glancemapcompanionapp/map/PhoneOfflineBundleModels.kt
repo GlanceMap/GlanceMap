@@ -61,6 +61,7 @@ internal data class PhoneOfflineBundleSelection(
     val includeDem: Boolean = true,
     val demSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
     val includeRefugesInfo: Boolean = false,
+    val localMapFileName: String? = null,
 ) {
     val canDownload: Boolean
         get() = includeMap || includePoi || includeRouting || includeDem || includeRefugesInfo
@@ -286,6 +287,13 @@ internal data class PhoneOfflineBundleOperation(
     val status: PhoneOfflineBundleOperationStatus = PhoneOfflineBundleOperationStatus.RUNNING,
 ) {
     fun forcesFor(index: Int): PhoneOfflineBundleRefreshForces = refreshForces.getOrNull(index) ?: PhoneOfflineBundleRefreshForces()
+
+    fun withUpdatedCurrentSelection(selection: PhoneOfflineBundleSelection): PhoneOfflineBundleOperation {
+        if (status != PhoneOfflineBundleOperationStatus.PAUSED ||
+            selections.getOrNull(nextSelectionIndex)?.area?.id != selection.area.id
+        ) return this
+        return copy(selections = selections.mapIndexed { index, item -> if (index == nextSelectionIndex) selection else item })
+    }
 }
 
 internal class PhoneOfflineBundleOperationStore(
@@ -350,7 +358,13 @@ internal class PhoneOfflineBundleOperationStore(
     private fun selectionFromJson(value: JSONObject?): PhoneOfflineBundleSelection? {
         value ?: return null
         val areaId = value.optString("area_id").takeIf(String::isNotBlank) ?: return null
-        val area = OamDownloadCatalog.areas.firstOrNull { it.id == areaId } ?: return null
+        val localMapFileName = value.optString("local_map_filename").takeIf { name ->
+            name.isNotBlank() && name == File(name).name && name.endsWith(".map", ignoreCase = true)
+        }
+        val area = OamDownloadCatalog.areas.firstOrNull { it.id == areaId }
+            ?: localMapFileName?.takeIf { areaId.matches(Regex("local-map-[0-9a-f]{64}")) }
+                ?.let { phoneLocalMapArea(areaId, it) }
+            ?: return null
         return PhoneOfflineBundleSelection(
             area = area,
             includeMap = value.optBoolean("include_map", true),
@@ -359,6 +373,7 @@ internal class PhoneOfflineBundleOperationStore(
             includeDem = value.optBoolean("include_dem", true),
             demSource = PhoneOfflineDemSource.fromId(value.optString("dem_source")),
             includeRefugesInfo = value.optBoolean("include_refuges_info", false),
+            localMapFileName = localMapFileName,
         )
     }
 
@@ -395,6 +410,7 @@ internal class PhoneOfflineBundleOperationStore(
             put("include_dem", includeDem)
             put("dem_source", demSource.id)
             put("include_refuges_info", includeRefugesInfo)
+            localMapFileName?.let { put("local_map_filename", it) }
             put("force_map", forces.forceMap)
             put("force_poi", forces.forcePoi)
             put("force_refuges_info", forces.forceRefugesInfo)
@@ -443,11 +459,13 @@ internal fun phoneOfflineBundleHealth(
     hasRecovery: Boolean = false,
     unavailableRoutingFileNames: List<String> = emptyList(),
     unavailableDemTileIds: List<String> = emptyList(),
+    expectsMap: Boolean = true,
+    expectsPoi: Boolean = true,
 ): PhoneOfflineBundleHealth {
     val expected =
         buildList {
-            add("map")
-            add("poi")
+            if (expectsMap) add("map")
+            if (expectsPoi) add("poi")
             if (expectsRefugesInfo) add("refuges.info")
             addAll(expectedRoutingFileNames.map { java.io.File(it).name })
             addAll(expectedDemTileIds.map { it.uppercase(Locale.ROOT) })

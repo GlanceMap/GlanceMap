@@ -2,8 +2,8 @@ package com.glancemap.glancemapcompanionapp.map
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.mapsforge.map.rendertheme.XmlRenderThemeStyleMenu
 import org.junit.Test
+import org.mapsforge.map.rendertheme.XmlRenderThemeStyleMenu
 
 class PhoneOfflineThemeCatalogTest {
     @Test
@@ -146,5 +146,29 @@ class PhoneOfflineThemeCatalogTest {
         assertEquals(setOf("base", "route-lines"), enabledPhoneOfflineThemeCategories(style, null))
         assertEquals(setOf("base"), enabledPhoneOfflineThemeCategories(style, emptySet()))
         assertEquals(setOf("base", "contour-lines"), enabledPhoneOfflineThemeCategories(style, setOf("contours")))
+    }
+
+    @Test
+    fun cyclicImportedOverlaysDoNotOverflow() {
+        val menu = XmlRenderThemeStyleMenu("test", "style", "en")
+        val style = menu.createLayer("style", true, true).apply { addCategory("base") }
+        val overlay = menu.createLayer("overlay", false, true).apply { addCategory("detail") }
+        style.addOverlay(overlay)
+        overlay.addOverlay(style)
+        assertEquals(setOf("base", "detail"), enabledPhoneOfflineThemeCategories(style, null))
+    }
+
+    @Test
+    fun deepImportedOverlayChainsDoNotOverflow() {
+        val menu = XmlRenderThemeStyleMenu("test", "style", "en")
+        val style = menu.createLayer("style", true, true)
+        var parent = style
+        repeat(5000) { index ->
+            val child = menu.createLayer("overlay-$index", false, true)
+            parent.addOverlay(child)
+            parent = child
+        }
+        parent.addCategory("last")
+        assertEquals(setOf("last"), enabledPhoneOfflineThemeCategories(style, null))
     }
 }

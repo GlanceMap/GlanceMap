@@ -17,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -1342,6 +1345,14 @@ internal fun CompanionMapScreen(
     )
     val markerTrustExpectedIntervalMillis =
         recordingState.locationIntervalMillis ?: mapLocationProfile?.expectedIntervalMillis ?: 10_000L
+    val visualLocation =
+        rememberPhoneMapVisualLocation(
+            rawLocation = mapLocation,
+            enabled = mapActive && hasLocationPermission && !mapUiState.mapMode.isOffline && terrainPreview == null,
+            sourceKey = recordingState.locationUpdatesActive,
+            following = mapUiState.mapMode.follow != PhoneMapFollowMode.FREE,
+            expectedIntervalMillis = markerTrustExpectedIntervalMillis,
+        )
     val markerTrustNowElapsedRealtimeMillis =
         rememberPhoneMapMarkerTrustNow(
             mapActive = mapActive,
@@ -1356,7 +1367,14 @@ internal fun CompanionMapScreen(
             expectedIntervalMillis = markerTrustExpectedIntervalMillis,
         )
     val compassConeTrustworthy =
-        locationMarkerFresh && isPhoneCompassTrustworthyForCone(compassState, markerTrustNowElapsedRealtimeMillis)
+        rememberPhoneCompassConeVisibility(
+            locationFresh = locationMarkerFresh,
+            compassTrustworthy =
+                isPhoneCompassTrustworthyForCone(
+                    state = compassState,
+                    nowElapsedRealtimeMillis = markerTrustNowElapsedRealtimeMillis,
+                ),
+        )
     LaunchedEffect(pendingOfflineMap) {
         val selectedMap = pendingOfflineMap ?: return@LaunchedEffect
         withFrameNanos { }
@@ -2170,6 +2188,13 @@ internal fun CompanionMapScreen(
                     hasSelectedRoutingFolder = hasSelectedRoutingFolder,
                     routingFolderSync = routingFolderSync,
                     offlineDataVersion = terrainDataVersion + routingDataVersion,
+                    offlineDataDownloadBusy = when (bundleUiState.download) {
+                        is PhoneOfflineBundleDownloadState.Downloading,
+                        is PhoneOfflineBundleDownloadState.Paused,
+                        is PhoneOfflineBundleDownloadState.Stopped,
+                        is PhoneOfflineBundleDownloadState.Failed -> true
+                        else -> false
+                    },
                     themeConfig = offlineThemeConfig,
                     settings = mapSettings,
                     compassSettings = compassSettings,
@@ -2236,6 +2261,11 @@ internal fun CompanionMapScreen(
             },
             onRenameOfflineMap = { map -> openContentRename(PhoneMapManagedContent.OfflineMap(map)) },
             onDeleteOfflineMap = { map -> openContentDelete(PhoneMapManagedContent.OfflineMap(map)) },
+            onDownloadMapData = { map, elevation, routing ->
+                val started = bundleViewModel.startForMap(map, elevation, routing, mapSettings.demSource)
+                if (started) showOfflineBundleDownload = true
+                started
+            },
             onDownloadElevationForBundleArea = { areaId ->
                 elevationBundleAreaId = areaId
                 showOfflineBundleDownload = true
@@ -3360,6 +3390,7 @@ internal fun CompanionMapScreen(
                 }
                 return@map
             }
+            val displayLocationState = locationState.copy(location = visualLocation.value)
             Box(modifier = Modifier.fillMaxSize().onSizeChanged { hikeMapViewport = it }) {
                 if (
                     storageMigrationState.phase.isPhoneStorageMigrationActive() ||
@@ -3378,7 +3409,7 @@ internal fun CompanionMapScreen(
                             )
                             synchronizeOnlineMapPresentation(
                                 runtime = activeMapRuntime,
-                                locationState = locationState,
+                                locationState = displayLocationState,
                                 mapMode = mapUiState.mapMode,
                                 mapSettings = mapSettings,
                                 tiltDegrees = onlineMapTiltDegrees,
@@ -3631,7 +3662,7 @@ internal fun CompanionMapScreen(
                                 )
                                 synchronizeOnlineMapPresentation(
                                     runtime = activeComparisonMapRuntime,
-                                    locationState = locationState,
+                                    locationState = displayLocationState,
                                     mapMode = mapUiState.mapMode,
                                     mapSettings =
                                         mapSettings.copy(
@@ -3917,7 +3948,7 @@ internal fun CompanionMapScreen(
                                                 compassPresentation
                                             },
                                         location =
-                                            locationState.location.takeIf {
+                                            displayLocationState.location.takeIf {
                                                 locationState.hasPermission && !comparisonOwnsFollowAndCommands
                                             },
                                         locationMarkerFresh =
@@ -4015,7 +4046,7 @@ internal fun CompanionMapScreen(
                                 )
                                 synchronizeOnlineMapPresentation(
                                     runtime = activeComparisonMapRuntime,
-                                    locationState = locationState,
+                                    locationState = displayLocationState,
                                     mapMode = mapUiState.mapMode,
                                     mapSettings =
                                         mapSettings.copy(
@@ -4300,7 +4331,7 @@ internal fun CompanionMapScreen(
                                         },
                                     compassPresentation = compassPresentation,
                                     location =
-                                        locationState.location.takeIf {
+                                        displayLocationState.location.takeIf {
                                             locationState.hasPermission && offlineComparisonActive
                                         },
                                     locationMarkerFresh =
@@ -5086,6 +5117,10 @@ internal fun CompanionMapScreen(
             config = offlineThemeConfig,
             onDismiss = { showOfflineThemeSelector = false },
             onChange = { config -> offlineThemeConfig = offlineThemePreferences.save(config) },
+            onCatalogChanged = {
+                offlineThemeConfig = offlineThemePreferences.load()
+                comparisonThemeConfig = offlineThemePreferences.loadComparison()
+            },
         )
     }
 
@@ -5104,6 +5139,7 @@ internal fun CompanionMapScreen(
             onStop = bundleViewModel::stop,
             onCancel = bundleViewModel::cancel,
             onResume = bundleViewModel::resume,
+            onUpdatePausedSelection = bundleViewModel::updatePausedSelection,
             onCheckForUpdates = bundleViewModel::checkForUpdates,
             onRefreshSelected = bundleViewModel::refreshSelected,
             onToggleRefreshSelection = bundleViewModel::toggleRefreshSelection,
@@ -5120,18 +5156,24 @@ private fun offlineThemeSelector(
     config: PhoneOfflineThemeConfig,
     onDismiss: () -> Unit,
     onChange: (PhoneOfflineThemeConfig) -> Unit,
+    onCatalogChanged: () -> Unit,
 ) {
     val themeResources = LocalResources.current
+    val catalogRevision by PhoneCustomThemes.changes.collectAsState()
+    val themeOptions = remember(catalogRevision) { PhoneOfflineThemeCatalog.themes }
     val selectedTheme = PhoneOfflineThemeCatalog.themeFor(config.themeId)
     PhoneMapPopupDialog(
         title = stringResource(R.string.map_theme_selector_title),
         onDismiss = onDismiss,
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 mapToolsMapSettingPicker(
                     label = stringResource(R.string.map_theme_selector_theme_label),
                     selectedLabel = selectedTheme.label,
-                    options = PhoneOfflineThemeCatalog.themes.map { theme -> theme.id to theme.label },
+                    options = themeOptions.map { theme -> theme.id to theme.label },
                     onSelect = { themeId -> onChange(PhoneOfflineThemeCatalog.resolve(themeId, styleId = null)) },
                 )
                 mapToolsMapSettingPicker(
@@ -5145,6 +5187,10 @@ private fun offlineThemeSelector(
                     onSelect = { styleId -> onChange(PhoneOfflineThemeCatalog.resolve(config.themeId, styleId)) },
                 )
                 phoneOfflineThemeOverlayControls(config, "base") { onChange(it) }
+                phoneCustomThemeControls(
+                    onImported = { themeId -> onChange(PhoneOfflineThemeCatalog.resolve(themeId, null)) },
+                    onChanged = onCatalogChanged,
+                )
             }
         },
         confirmButton = {

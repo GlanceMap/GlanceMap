@@ -41,6 +41,8 @@ internal fun LocationComponentOptions.withPhoneLocationMarker(
         .elevation(0f)
         .minZoomIconScale(PHONE_LOCATION_MARKER_SCALE)
         .maxZoomIconScale(PHONE_LOCATION_MARKER_SCALE)
+        // The trajectory already animates the puck and map together.
+        .trackingAnimationDurationMultiplier(0f)
         // The map uses immediate compass updates; a second SDK animation makes the cone lag behind it.
         .compassAnimationEnabled(false)
         .accuracyAlpha(if (settings.gpsAccuracyCircleEnabled) 0.25f else 0f)

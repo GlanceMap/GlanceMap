@@ -68,6 +68,7 @@ internal data class MapToolsMapsState(
     val hasSelectedRoutingFolder: Boolean = false,
     val routingFolderSync: PhoneRoutingFolderSyncResult = PhoneRoutingFolderSyncResult(),
     val offlineDataVersion: Long = 0L,
+    val offlineDataDownloadBusy: Boolean = false,
     val themeConfig: PhoneOfflineThemeConfig,
     val settings: PhoneMapSettings = PhoneMapSettings(),
     val compassSettings: PhoneCompassSettings = PhoneCompassSettings(),
@@ -187,6 +188,7 @@ internal data class MapToolsMapsActions(
     val onCompassSettingsChanged: (PhoneCompassSettings) -> Unit,
     val onCalibrateCompass: () -> Unit,
     val onOfflineDataChanged: () -> Unit = {},
+    val onDownloadMapData: (PhoneOfflineMap, Boolean, Boolean) -> Boolean = { _, _, _ -> false },
 )
 
 internal data class MapToolsLayerActions(

@@ -141,6 +141,7 @@ internal fun phoneMapsforgeTileCacheId(
             append(identity.themeConfig.themeId)
             append(':')
             append(identity.themeConfig.styleId)
+            identity.themeConfig.externalRevision?.let { append(':').append(it) }
             identity.themeConfig.enabledOverlayLayerIds?.let { overlayIds ->
                 append(':')
                 append(overlayIds.sorted().joinToString(","))

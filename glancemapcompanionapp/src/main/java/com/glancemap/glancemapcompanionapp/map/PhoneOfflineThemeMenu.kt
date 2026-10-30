@@ -277,11 +277,15 @@ internal fun enabledPhoneOfflineThemeCategories(
     style: XmlRenderThemeStyleLayer,
     enabledOverlayLayerIds: Set<String>?,
 ): Set<String> = buildSet {
-    fun addLayer(layer: XmlRenderThemeStyleLayer) {
+    val visited = hashSetOf<XmlRenderThemeStyleLayer>()
+    val pending = java.util.ArrayDeque<XmlRenderThemeStyleLayer>()
+    pending.add(style)
+    while (pending.isNotEmpty()) {
+        val layer = pending.removeLast()
+        if (!visited.add(layer)) continue
         addAll(layer.categories)
-        layer.overlays
+        layer.overlays.asReversed()
             .filter { overlay -> enabledOverlayLayerIds?.let { overlay.id in it } ?: overlay.isEnabled }
-            .forEach(::addLayer)
+            .forEach(pending::addLast)
     }
-    addLayer(style)
 }

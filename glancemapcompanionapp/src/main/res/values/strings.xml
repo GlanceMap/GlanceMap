@@ -1925,4 +1925,21 @@
     <string name="phone_theme_night_dynamic">Night · Dynamic scale</string>
     <string name="phone_tracking_stopped_positions_retained">Stopped; %1$d positions retained for retry</string>
     <string name="phone_tracking_processing_error">Tracking data could not be processed: %1$s</string>
+    <string name="map_bundle_content_map">Offline map (.map)</string>
+    <string name="map_custom_themes_title">Custom themes</string>
+    <string name="map_custom_theme_import">Import theme ZIP</string>
+    <string name="map_custom_theme_delete_title">Delete custom theme?</string>
+    <string name="map_custom_theme_delete_message">This removes all themes in this package.</string>
+    <string name="map_custom_theme_delete_failed">The theme package could not be removed.</string>
+    <string name="map_custom_theme_invalid">This is not a valid Mapsforge theme ZIP.</string>
+    <string name="map_custom_theme_missing_resources">The theme ZIP is missing required resources.</string>
+    <string name="map_custom_theme_too_large">The theme package is too large.</string>
+    <string name="map_custom_theme_damaged">The theme ZIP is damaged.</string>
+    <string name="library_map_data_action">Download map data for %1$s</string>
+    <string name="library_map_data_title">Download data for %1$s</string>
+    <string name="library_map_data_brouter">BRouter routing</string>
+    <string name="library_map_data_shared">Only missing files are downloaded. Files can be shared by other maps.</string>
+    <string name="library_map_data_no_bounds">The map coverage could not be read.</string>
+    <string name="library_map_data_busy">Finish or cancel the current offline download first.</string>
+    <string name="library_map_data_download">Download selected</string>
 </resources>

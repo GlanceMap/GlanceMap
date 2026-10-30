@@ -97,11 +97,12 @@ internal fun phoneOfflineBundleIntegrity(
     val storage = PhoneOfflineStorage(context)
     val entries =
         buildList {
-            add(
-                "map/${bundle.mapFileName}" to
-                    File(storage.mapsDirectory(), File(bundle.mapFileName).name),
-            )
-            add("poi/${bundle.poiFileName}" to File(storage.poiDirectory(), File(bundle.poiFileName).name))
+            if (bundle.mapFileName.isNotBlank()) {
+                add("map/${bundle.mapFileName}" to File(storage.mapsDirectory(), File(bundle.mapFileName).name))
+            }
+            if (bundle.poiFileName.isNotBlank()) {
+                add("poi/${bundle.poiFileName}" to File(storage.poiDirectory(), File(bundle.poiFileName).name))
+            }
             bundle.refugesInfoFileName?.let { name ->
                 add("refuges.info/$name" to File(storage.poiDirectory(), File(name).name))
             }
@@ -182,6 +183,8 @@ internal fun phoneOfflineBundleHealth(
         phoneOfflineBundleHealth(
             hasMap = hasMap,
             hasPoi = hasPoi,
+            expectsMap = bundle.mapFileName.isNotBlank(),
+            expectsPoi = bundle.poiFileName.isNotBlank(),
             expectsRefugesInfo = bundle.refugesInfoFileName != null,
             hasRefugesInfo = hasRefuges,
             expectedRoutingFileNames = bundle.routingFileNames,

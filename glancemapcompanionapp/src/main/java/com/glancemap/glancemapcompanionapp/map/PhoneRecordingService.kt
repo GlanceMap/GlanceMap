@@ -1278,6 +1278,10 @@ internal class PhoneRecordingService :
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() && it.isFinite() && it >= 0f },
                 fixElapsedRealtimeMillis = elapsedMillis,
                 altitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() },
+                speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it >= 0f },
+                bearingDegrees = location.bearing.takeIf { location.hasBearing() && it.isFinite() },
+                speedAccuracyMetersPerSecond = location.speedAccuracyMetersPerSecond.takeIf { location.hasSpeedAccuracy() && it.isFinite() && it >= 0f },
+                bearingAccuracyDegrees = location.bearingAccuracyDegrees.takeIf { location.hasBearingAccuracy() && it.isFinite() && it >= 0f },
             )
         publish(PhoneRecordingSessionStore.state.value.copy(latestLocation = fix))
 
@@ -1745,6 +1749,10 @@ internal class PhoneRecordingService :
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() && it.isFinite() && it >= 0f },
                 fixElapsedRealtimeMillis = elapsedMillis,
                 altitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() },
+                speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it >= 0f },
+                bearingDegrees = location.bearing.takeIf { location.hasBearing() && it.isFinite() },
+                speedAccuracyMetersPerSecond = location.speedAccuracyMetersPerSecond.takeIf { location.hasSpeedAccuracy() && it.isFinite() && it >= 0f },
+                bearingAccuracyDegrees = location.bearingAccuracyDegrees.takeIf { location.hasBearingAccuracy() && it.isFinite() && it >= 0f },
             )
         var current = PhoneRecordingSessionStore.state.value
         publish(current.copy(latestLocation = fix))

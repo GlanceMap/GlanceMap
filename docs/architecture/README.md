@@ -22,6 +22,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `activity-elevation-profile.md`
   - Corrected distance, grey gap connectors, loading, and display sampling for saved activities.
 
+- `phone-offline-map-data.md`
+  - Per-map elevation and routing downloads and their recovery path.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`

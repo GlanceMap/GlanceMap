@@ -2,6 +2,8 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.text.format.Formatter
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -24,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +57,7 @@ internal fun PhoneOfflineBundleDialog(
     onStop: () -> Unit,
     onCancel: () -> Unit,
     onResume: () -> Unit,
+    onUpdatePausedSelection: (PhoneOfflineBundleSelection) -> Unit,
     onCheckForUpdates: () -> Unit,
     onRefreshSelected: () -> Unit,
     onToggleRefreshSelection: (String) -> Unit,
@@ -65,16 +69,34 @@ internal fun PhoneOfflineBundleDialog(
     var query by remember { mutableStateOf("") }
     var selectedAreaId by remember(initialAreaId) { mutableStateOf(initialAreaId) }
     var selectedAreaFolder by remember { mutableStateOf<String?>(null) }
-    var includeRouting by remember(initialIncludeRouting) { mutableStateOf(initialIncludeRouting) }
-    var includeDem by remember { mutableStateOf(true) }
-    var includeRefugesInfo by remember { mutableStateOf(false) }
-    var demSource by remember(initialDemSource) { mutableStateOf(initialDemSource) }
-    var showingBundleContent by remember { mutableStateOf(false) }
     val state = uiState.download
+    val pausedSelection = uiState.pausedSelection
+    val editingPaused = state is PhoneOfflineBundleDownloadState.Paused
+    val optionKey = if (editingPaused) pausedSelection?.area?.id else null
+    var includeMap by remember(optionKey, editingPaused) { mutableStateOf(pausedSelection?.includeMap ?: true) }
+    var includePoi by remember(optionKey, editingPaused) { mutableStateOf(pausedSelection?.includePoi ?: true) }
+    var includeRouting by remember(optionKey, editingPaused, initialIncludeRouting) { mutableStateOf(pausedSelection?.includeRouting ?: initialIncludeRouting) }
+    var includeDem by remember(optionKey, editingPaused) { mutableStateOf(pausedSelection?.includeDem ?: true) }
+    var includeRefugesInfo by remember(optionKey, editingPaused) { mutableStateOf(pausedSelection?.includeRefugesInfo ?: false) }
+    var demSource by remember(optionKey, editingPaused, initialDemSource) { mutableStateOf(pausedSelection?.demSource ?: initialDemSource) }
+    var showingBundleContent by remember { mutableStateOf(false) }
+    fun savePausedOptions() {
+        if (editingPaused && pausedSelection != null) {
+            onUpdatePausedSelection(pausedSelection.copy(
+                includeMap = includeMap, includePoi = includePoi, includeRouting = includeRouting,
+                includeDem = includeDem, includeRefugesInfo = includeRefugesInfo, demSource = demSource,
+            ))
+        }
+    }
     val isDownloading = state is PhoneOfflineBundleDownloadState.Downloading
+    LaunchedEffect(isDownloading) {
+        if (isDownloading) showingBundleContent = false
+    }
     val isBusy = isDownloading || uiState.isCheckingUpdates
     val showingRefreshResults = uiState.updateChecks.isNotEmpty()
-    val canEditBundleContents = !isBusy && !showingRefreshResults && state is PhoneOfflineBundleDownloadState.Idle
+    val canEditBundleContents = !isBusy &&
+        ((state is PhoneOfflineBundleDownloadState.Idle && !showingRefreshResults) ||
+            (editingPaused && pausedSelection != null))
     val selectedArea = OamDownloadCatalog.areas.firstOrNull { it.id == selectedAreaId }
     val selectorState =
         PhoneOfflineBundleSelectorState(
@@ -89,14 +111,19 @@ internal fun PhoneOfflineBundleDialog(
         PhoneOfflineBundleContentScreen(
             onBack = { showingBundleContent = false },
             onDismiss = onDismiss,
+            allowMapAndPoi = pausedSelection?.localMapFileName == null,
+            includeMap = includeMap,
+            onIncludeMapChanged = { includeMap = it; savePausedOptions() },
+            includePoi = includePoi,
+            onIncludePoiChanged = { includePoi = it; savePausedOptions() },
             includeRouting = includeRouting,
-            onIncludeRoutingChanged = { includeRouting = it },
+            onIncludeRoutingChanged = { includeRouting = it; savePausedOptions() },
             includeDem = includeDem,
-            onIncludeDemChanged = { includeDem = it },
+            onIncludeDemChanged = { includeDem = it; savePausedOptions() },
             includeRefugesInfo = includeRefugesInfo,
-            onIncludeRefugesInfoChanged = { includeRefugesInfo = it },
+            onIncludeRefugesInfoChanged = { includeRefugesInfo = it; savePausedOptions() },
             demSource = demSource,
-            onDemSourceChanged = { demSource = it },
+            onDemSourceChanged = { demSource = it; savePausedOptions() },
         )
     } else {
         PhoneMapPopupDialog(
@@ -136,7 +163,7 @@ internal fun PhoneOfflineBundleDialog(
                         onFolderSelected = { selectedAreaFolder = it },
                         onFolderCleared = { selectedAreaFolder = null },
                     )
-                } else if (showingRefreshResults) {
+                } else if (showingRefreshResults && !editingPaused) {
                     phoneOfflineBundleRefreshResults(
                         checks = uiState.updateChecks,
                         selectedAreaIds = uiState.selectedRefreshAreaIds,
@@ -166,7 +193,7 @@ internal fun PhoneOfflineBundleDialog(
                             }
                         }
                     state is PhoneOfflineBundleDownloadState.Paused ->
-                        TextButton(onClick = onResume) {
+                        TextButton(onClick = onResume, enabled = pausedSelection?.canDownload == true) {
                             Text(stringResource(R.string.map_bundle_action_resume))
                         }
                     state is PhoneOfflineBundleDownloadState.Stopped ->
@@ -195,12 +222,14 @@ internal fun PhoneOfflineBundleDialog(
                         }
                     else ->
                         TextButton(
-                            enabled = selectedArea != null,
+                            enabled = selectedArea != null && (includeMap || includePoi || includeRouting || includeDem || includeRefugesInfo),
                             onClick = {
                                 selectedArea?.let { area ->
                                     onStart(
                                         PhoneOfflineBundleSelection(
                                             area = area,
+                                            includeMap = includeMap,
+                                            includePoi = includePoi,
                                             includeRouting = includeRouting,
                                             includeDem = includeDem,
                                             demSource = demSource,
@@ -248,6 +277,11 @@ private fun phoneOfflineBundleDismissButton(
 private fun PhoneOfflineBundleContentScreen(
     onBack: () -> Unit,
     onDismiss: () -> Unit,
+    allowMapAndPoi: Boolean,
+    includeMap: Boolean,
+    onIncludeMapChanged: (Boolean) -> Unit,
+    includePoi: Boolean,
+    onIncludePoiChanged: (Boolean) -> Unit,
     includeRouting: Boolean,
     onIncludeRoutingChanged: (Boolean) -> Unit,
     includeDem: Boolean,
@@ -270,6 +304,11 @@ private fun PhoneOfflineBundleContentScreen(
         },
         text = {
             bundleOptions(
+                allowMapAndPoi = allowMapAndPoi,
+                includeMap = includeMap,
+                onIncludeMapChanged = onIncludeMapChanged,
+                includePoi = includePoi,
+                onIncludePoiChanged = onIncludePoiChanged,
                 includeRouting = includeRouting,
                 onIncludeRoutingChanged = onIncludeRoutingChanged,
                 includeDem = includeDem,
@@ -574,6 +613,11 @@ private data class PhoneOfflineBundleSelectorState(
 @Composable
 @Suppress("LongParameterList") // Each option remains directly bound to its control.
 private fun bundleOptions(
+    allowMapAndPoi: Boolean,
+    includeMap: Boolean,
+    onIncludeMapChanged: (Boolean) -> Unit,
+    includePoi: Boolean,
+    onIncludePoiChanged: (Boolean) -> Unit,
     includeRouting: Boolean,
     onIncludeRoutingChanged: (Boolean) -> Unit,
     includeDem: Boolean,
@@ -584,7 +628,20 @@ private fun bundleOptions(
     onDemSourceChanged: (PhoneOfflineDemSource) -> Unit,
 ) {
     val textResources = LocalResources.current
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+        if (allowMapAndPoi) {
+            ListItem(
+                headlineContent = { Text(textResources.getString(R.string.map_bundle_content_map)) },
+                trailingContent = { Switch(checked = includeMap, onCheckedChange = onIncludeMapChanged) },
+            )
+            ListItem(
+                headlineContent = { Text(textResources.getString(R.string.transfer_download_poi_label)) },
+                trailingContent = { Switch(checked = includePoi, onCheckedChange = onIncludePoiChanged) },
+            )
+        }
+        if (allowMapAndPoi && !includeMap && (includeRouting || includeDem || includeRefugesInfo)) {
+            Text(stringResource(R.string.offline_bundle_maps_must_be_installed_before_routing_elevation))
+        }
         ListItem(
             headlineContent = { Text(textResources.getString(R.string.offline_bundle_brouter_routing)) },
             supportingContent = {

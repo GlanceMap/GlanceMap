@@ -2,7 +2,7 @@
 
 Some specialist Mapsforge `.map` files need the provider's render theme to display all their tags. The map and theme are separate: import `specialist.map` and `provider-theme.zip` independently.
 
-GlanceMap does not redistribute third-party imported maps or themes. Obtain them yourself and follow their provider's terms and licence. Imported packages stay in app-owned storage on your watch.
+GlanceMap does not redistribute third-party imported maps or themes. Obtain them yourself and follow their provider's terms and licence. Imported packages stay in app-owned storage on the device where they are installed.
 
 ## Import and select
 
@@ -13,6 +13,15 @@ GlanceMap does not redistribute third-party imported maps or themes. Obtain them
 5. The theme choice is remembered for this map. Switching to another map restores that map's choice or the existing global default. Choices survive navigation recreation, app restart and reboot. Map rename moves its choice; map deletion removes it.
 
 Hill shading, relief, DEM selection and label size retain the normal GlanceMap controls. An imported theme does not need hillshading instructions: terrain layers remain independent. Global night mode continues to use Mapsforge Dark and restores the map's selected theme when turned off.
+
+## Import on the phone
+
+On the phone, open an offline map and choose **Map settings → Map theme → Import theme ZIP**.
+The phone validates and installs the same package format as the watch and selects the first
+theme in the package. Other included themes appear in the theme picker. Use **Custom themes**
+in the same panel to remove a package. The phone uses its existing base and comparison theme
+selections; unlike the watch, those choices are currently global rather than per map.
+The ZIP is installed into the phone's own app storage independently of the watch.
 
 ## Replace and remove
 

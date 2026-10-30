@@ -3,6 +3,16 @@ package com.glancemap.glancemapcompanionapp.map
 import android.content.Context
 import kotlin.math.abs
 
+private val DEFAULT_HIDDEN_ONLINE_MAP_SOURCES =
+    setOf(
+        PhoneOnlineMapSource.PLAN_IGN_V2,
+        PhoneOnlineMapSource.IGN_ORTHOPHOTO,
+        PhoneOnlineMapSource.SWISS_TOPO,
+        PhoneOnlineMapSource.SWISS_IMAGE,
+        PhoneOnlineMapSource.USGS_TOPO,
+        PhoneOnlineMapSource.USGS_IMAGERY,
+    )
+
 internal enum class PhoneMapMarkerAnchor(
     val storageValue: String,
 ) {
@@ -169,7 +179,12 @@ internal class PhoneMapSettingsPreferences(
 
     @Suppress("LongMethod") // Preference keys are kept in one migration-safe read/write boundary.
     fun load(): PhoneMapSettings {
-        val hiddenOnlineSourceNames = preferences.getStringSet(KEY_HIDDEN_ONLINE_SOURCES, emptySet()).orEmpty()
+        val hiddenOnlineSourceNames =
+            preferences
+                .getStringSet(
+                    KEY_HIDDEN_ONLINE_SOURCES,
+                    DEFAULT_HIDDEN_ONLINE_MAP_SOURCES.map { it.name }.toSet(),
+                ).orEmpty()
         val settings =
             PhoneMapSettings(
                 markerAnchor =

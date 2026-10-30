@@ -98,6 +98,19 @@ internal class PhoneOfflineBundleDownloadClient(
         PhoneOfflineBundleDownloadService.start(applicationContext)
     }
 
+    fun pausedSelection(): PhoneOfflineBundleSelection? =
+        operationStore.load()?.takeIf { it.status == PhoneOfflineBundleOperationStatus.PAUSED }?.currentSelection()
+
+    fun updatePausedSelection(selection: PhoneOfflineBundleSelection): PhoneOfflineBundleSelection? {
+        val operation = operationStore.load() ?: return null
+        val updated = operation.withUpdatedCurrentSelection(selection)
+        if (updated == operation) return null
+        operationStore.save(updated)
+        return updated.currentSelection()
+    }
+
+    fun hasSavedOperation(): Boolean = operationStore.load() != null
+
     fun pause() = PhoneOfflineBundleDownloadService.requestPause(applicationContext)
 
     fun stop() = PhoneOfflineBundleDownloadService.requestStop(applicationContext)
@@ -106,8 +119,10 @@ internal class PhoneOfflineBundleDownloadClient(
 
     fun resume() {
         val operation = operationStore.load() ?: return
-        operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
-        PhoneOfflineBundleDownloadRuntime.publish(operation.asInitialState(applicationContext))
+        if (operation.currentSelection()?.canDownload != true) return
+        val resumed = operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING)
+        operationStore.save(resumed)
+        PhoneOfflineBundleDownloadRuntime.publish(resumed.asInitialState(applicationContext))
         PhoneOfflineBundleDownloadService.start(applicationContext)
     }
 
@@ -158,6 +173,10 @@ internal class PhoneOfflineBundleDownloadService : Service() {
             -> {
                 if (intent?.action == ACTION_START || intent?.action == ACTION_RESUME) {
                     operationStore.load()?.let { operation ->
+                        if (operation.currentSelection()?.canDownload != true) {
+                            publishStoppedState(operation, StopRequest.PAUSE)
+                            return START_NOT_STICKY
+                        }
                         operationStore.save(operation.copy(status = PhoneOfflineBundleOperationStatus.RUNNING))
                     }
                 }
@@ -238,6 +257,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
 
     private suspend fun runOperation(initialOperation: PhoneOfflineBundleOperation) {
         var operation = initialOperation
+        var completedBundle: PhoneInstalledBundle? = null
         try {
             for (index in initialOperation.nextSelectionIndex until initialOperation.selections.size) {
                 val selection = initialOperation.selections[index]
@@ -263,6 +283,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                     }
                 when (outcome) {
                     is PhoneOfflineBundleOutcome.Success -> {
+                        completedBundle = outcome.bundle
                         operation =
                             operation.copy(
                                 nextSelectionIndex = index + 1,
@@ -276,7 +297,7 @@ internal class PhoneOfflineBundleDownloadService : Service() {
                     }
                 }
             }
-            completeOperation(initialOperation.selections)
+            completeOperation(initialOperation.selections, completedBundle)
         } catch (exception: CancellationException) {
             handleCancellation(operation)
         } catch (exception: Exception) {
@@ -293,8 +314,8 @@ internal class PhoneOfflineBundleDownloadService : Service() {
         }
     }
 
-    private fun completeOperation(selections: List<PhoneOfflineBundleSelection>) {
-        val lastBundle = selections.lastOrNull()?.let { selection -> bundleStore.find(selection.area.id) }
+    private fun completeOperation(selections: List<PhoneOfflineBundleSelection>, completed: PhoneInstalledBundle?) {
+        val lastBundle = completed ?: selections.lastOrNull()?.let { selection -> bundleStore.find(selection.area.id) }
         operationStore.clear()
         PhoneOfflineBundleDownloadRuntime.publish(
             lastBundle?.let(PhoneOfflineBundleDownloadState::Completed)

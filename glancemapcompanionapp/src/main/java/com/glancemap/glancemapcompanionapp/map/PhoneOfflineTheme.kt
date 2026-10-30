@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.content.Context
 import android.content.res.AssetManager
 import android.util.Log
+import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderTheme
 import org.mapsforge.map.rendertheme.XmlRenderThemeMenuCallback
@@ -20,6 +21,7 @@ internal data class PhoneOfflineThemeConfig(
     val themeId: String,
     val styleId: String,
     val enabledOverlayLayerIds: Set<String>? = null,
+    val externalRevision: String? = null,
 )
 
 internal data class PhoneOfflineThemeStyle(
@@ -34,6 +36,7 @@ internal data class PhoneOfflineTheme(
     val defaultStyleId: String,
     val assetRoot: String? = null,
     val xmlFileName: String? = null,
+    val externalSource: RenderThemeSource.External? = null,
 )
 
 internal data class PhoneOfflineRenderTheme(
@@ -195,8 +198,23 @@ internal object PhoneOfflineThemeCatalog {
             defaultStyleId = "${OS_MAP_DAY_STYLE_PREFIX}os-landranger",
         )
 
-    val themes: List<PhoneOfflineTheme> =
+    private val builtInThemes =
         listOf(elevate, elevateWinter, hikeRideSight, voluntary, osMap, openHiking, frenchKiss, tiramisu, mapsforge)
+    @Volatile private var externalThemes: List<PhoneOfflineTheme> = emptyList()
+    val themes: List<PhoneOfflineTheme> get() = builtInThemes + externalThemes
+
+    fun setExternalThemes(sources: List<RenderThemeSource.External>) {
+        externalThemes = sources.map { source ->
+            PhoneOfflineTheme(
+                id = source.id,
+                label = source.displayName,
+                styles = listOf(PhoneOfflineThemeStyle(DEFAULT_STYLE_ID, "Default")),
+                defaultStyleId = DEFAULT_STYLE_ID,
+                externalSource = source,
+            )
+        }
+    }
+
     val defaultConfig = PhoneOfflineThemeConfig(ELEVATE_THEME_ID, ELEVATE_HIKING_STYLE_ID)
 
     fun resolve(
@@ -205,7 +223,7 @@ internal object PhoneOfflineThemeCatalog {
     ): PhoneOfflineThemeConfig {
         val theme = themes.firstOrNull { it.id == themeId } ?: elevate
         val style = theme.styles.firstOrNull { it.id == styleId }?.id ?: theme.defaultStyleId
-        return PhoneOfflineThemeConfig(theme.id, style)
+        return PhoneOfflineThemeConfig(theme.id, style, externalRevision = theme.externalSource?.revision)
     }
 
     fun resolve(config: PhoneOfflineThemeConfig): PhoneOfflineThemeConfig =
@@ -237,8 +255,11 @@ internal object PhoneOfflineThemeCatalog {
         config: PhoneOfflineThemeConfig,
         context: Context,
         onResourceProviderFailure: () -> Unit,
-    ): XmlRenderTheme =
-        when (config.themeId) {
+    ): XmlRenderTheme {
+        themeFor(config.themeId).externalSource?.let { source ->
+            return phoneExternalRenderTheme(source, styleMenuCallback(config.styleId, config.enabledOverlayLayerIds))
+        }
+        return when (config.themeId) {
             ELEVATE_THEME_ID ->
                 assetRenderTheme(
                     context = context,
@@ -293,6 +314,7 @@ internal object PhoneOfflineThemeCatalog {
             MAPSFORGE_THEME_ID -> mapsforgeTheme(config.styleId)
             else -> MapsforgeThemes.DEFAULT
         }
+    }
 
     private fun assetRenderTheme(
         context: Context,

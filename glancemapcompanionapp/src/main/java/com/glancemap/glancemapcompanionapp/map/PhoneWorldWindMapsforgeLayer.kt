@@ -68,7 +68,7 @@ internal class PhoneWorldWindMapsforgeLayer(
         DatabaseRenderer(mapFile, AndroidGraphicFactory.INSTANCE, mapsforgeCache, labelStore, true, true, null)
     private var closed = false
     private val themeIdentity =
-        "${themeConfig.themeId}:${themeConfig.styleId}:${themeConfig.enabledOverlayLayerIds?.sorted()}"
+        "${themeConfig.themeId}:${themeConfig.styleId}:${themeConfig.externalRevision}:${themeConfig.enabledOverlayLayerIds?.sorted()}"
 
     init {
         diagnostics.setSummaryProvider {

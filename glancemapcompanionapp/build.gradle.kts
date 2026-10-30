@@ -274,6 +274,7 @@ android {
 
     sourceSets {
         getByName("main") {
+            kotlin.directories.add(rootProject.file("shared-map-motion/src/main/kotlin").absolutePath)
             assets {
                 directories.add(rootProject.file("licenses").absolutePath)
                 directories.add(rootProject.file("shared-theme-assets").absolutePath)

@@ -22,6 +22,10 @@ internal data class PhoneMapLocation(
     val accuracyMeters: Float?,
     val fixElapsedRealtimeMillis: Long,
     val altitudeMeters: Double? = null,
+    val speedMetersPerSecond: Float? = null,
+    val bearingDegrees: Float? = null,
+    val speedAccuracyMetersPerSecond: Float? = null,
+    val bearingAccuracyDegrees: Float? = null,
 )
 
 internal data class PhoneMapLocationAndroidMetadata(
@@ -183,6 +187,10 @@ internal class PhoneMapLocationSource(
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
                 fixElapsedRealtimeMillis = location.elapsedRealtimeNanos / NANOSECONDS_PER_MILLISECOND,
                 altitudeMeters = location.altitude.takeIf { location.hasAltitude() && it.isFinite() },
+                speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it.isFinite() && it >= 0f },
+                bearingDegrees = location.bearing.takeIf { location.hasBearing() && it.isFinite() },
+                speedAccuracyMetersPerSecond = location.speedAccuracyMetersPerSecond.takeIf { location.hasSpeedAccuracy() && it.isFinite() && it >= 0f },
+                bearingAccuracyDegrees = location.bearingAccuracyDegrees.takeIf { location.hasBearingAccuracy() && it.isFinite() && it >= 0f },
             )
         val reason = subscription.updateReason(generation, fix)
         recordCallback(reason)

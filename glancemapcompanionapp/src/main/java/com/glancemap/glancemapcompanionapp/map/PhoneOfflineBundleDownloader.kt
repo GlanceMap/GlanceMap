@@ -45,10 +45,10 @@ internal fun buildPhoneOfflineRemoteFileRequestsForBundle(
     bundle: PhoneInstalledBundle,
 ): List<PhoneOfflineRemoteFileRequest> =
     buildList {
-        if (bundle.mapFileName.isNotBlank()) {
+        if (bundle.mapFileName.isNotBlank() && area.mapZipUrl.isNotBlank()) {
             add(PhoneOfflineRemoteFileRequest(area.mapZipUrl, phoneOfflineRemoteFileName(area.mapZipUrl)))
         }
-        if (bundle.poiFileName.isNotBlank()) {
+        if (bundle.poiFileName.isNotBlank() && area.poiZipUrl.isNotBlank()) {
             add(PhoneOfflineRemoteFileRequest(area.poiZipUrl, phoneOfflineRemoteFileName(area.poiZipUrl)))
         }
         bundle.routingFileNames.forEach { fileName ->
@@ -263,12 +263,12 @@ internal class PhoneOfflineBundleDownloader(
                 .associateBy { it.url }
                 .toMutableMap()
         val existingMap =
-            if (forces.forceMap) {
+            if (forces.forceMap && selection.includeMap) {
                 null
             } else {
                 resolvePhoneOfflineBundleLocalAsset(
                     candidateFileNames =
-                        phoneOfflineBundleMapCandidateFileNames(
+                        listOf(selection.localMapFileName) + phoneOfflineBundleMapCandidateFileNames(
                             area = area,
                             completedFileName = existing?.mapFileName,
                             recoveryFileName = recovery?.mapFileName,
@@ -277,7 +277,7 @@ internal class PhoneOfflineBundleDownloader(
                 )
             }
         val existingPoi =
-            if (forces.forcePoi) {
+            if (forces.forcePoi && selection.includePoi) {
                 null
             } else {
                 resolvePhoneOfflineBundleLocalAsset(
@@ -389,16 +389,9 @@ internal class PhoneOfflineBundleDownloader(
                 poiFileName = poiFileName,
             ),
         )
-        val storedMapFileName =
-            checkNotNull(mapResult?.fileName) {
-                applicationContext.getString(R.string.offline_bundle_a_map_is_required_for_a_phone)
-            }
-        val storedPoiFileName =
-            checkNotNull(poiResult?.fileName) {
-                applicationContext.getString(R.string.offline_bundle_poi_must_be_installed_for_a_phone)
-            }
-
-        val mapBounds = mapBounds(storedMapFileName)
+        val storedMapFileName = mapFileName ?: existing?.mapFileName.orEmpty()
+        val storedPoiFileName = poiFileName ?: existing?.poiFileName.orEmpty()
+        val mapBounds = mapFileName?.let(::mapBounds)
         val routingExpected =
             if (selection.includeRouting) {
                 val bounds =
@@ -698,12 +691,12 @@ internal class PhoneOfflineBundleDownloader(
                 unavailableDemTileIds = unavailableDem,
             )
         val completedBundle = bundle.copy(integrity = phoneOfflineBundleIntegrity(applicationContext, bundle))
-        bundleStore.upsert(completedBundle)
+        if (!area.id.startsWith(PHONE_LOCAL_MAP_AREA_PREFIX)) bundleStore.upsert(completedBundle)
         bundleStore.clearRecovery(area.id)
         return PhoneOfflineBundleOutcome.Success(
             bundle = completedBundle,
-            reusedMap = mapResult.reusedExisting,
-            reusedPoi = poiResult.reusedExisting,
+            reusedMap = mapResult?.reusedExisting == true,
+            reusedPoi = poiResult?.reusedExisting == true,
         )
     }
 

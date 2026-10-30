@@ -39,8 +39,8 @@ internal fun libraryBundleDetails(
     }
     if (expanded) {
         Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-            Text(stringResource(R.string.library_bundle_map, item.bundle.mapFileName))
-            Text(stringResource(R.string.library_bundle_poi, item.bundle.poiFileName))
+            if (item.bundle.mapFileName.isNotBlank()) Text(stringResource(R.string.library_bundle_map, item.bundle.mapFileName))
+            if (item.bundle.poiFileName.isNotBlank()) Text(stringResource(R.string.library_bundle_poi, item.bundle.poiFileName))
             item.bundle.refugesInfoFileName?.let { Text(it) }
             Text(stringResource(R.string.library_bundle_routing, item.bundle.routingFileNames.size))
             Text(stringResource(R.string.library_bundle_elevation, item.bundle.demTileIds.size))

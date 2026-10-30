@@ -50,6 +50,7 @@ internal data class PhoneOfflineBundleUiState(
     val installedAreaIds: Set<String> = emptySet(),
     val statusByAreaId: Map<String, PhoneOfflineBundleHealth> = emptyMap(),
     val download: PhoneOfflineBundleDownloadState = PhoneOfflineBundleDownloadState.Idle,
+    val pausedSelection: PhoneOfflineBundleSelection? = null,
     val isCheckingUpdates: Boolean = false,
     val updateChecks: List<PhoneOfflineBundleUpdateCheck> = emptyList(),
     val selectedRefreshAreaIds: Set<String> = emptySet(),
@@ -79,6 +80,18 @@ internal class PhoneOfflineBundleViewModel(
         downloadClient.start(selection.copy(area = area))
     }
 
+    fun startForMap(
+        map: PhoneOfflineMap,
+        includeElevation: Boolean,
+        includeRouting: Boolean,
+        source: PhoneOfflineDemSource,
+    ): Boolean {
+        if ((!includeElevation && !includeRouting) || downloadClient.hasSavedOperation()) return false
+        val existing = bundleStore.list().firstOrNull { it.mapFileName == map.displayName }
+        downloadClient.start(phoneMapDataSelection(map, existing, includeElevation, includeRouting, source))
+        return true
+    }
+
     fun pause() = downloadClient.pause()
 
     fun stop() = downloadClient.stop()
@@ -86,6 +99,12 @@ internal class PhoneOfflineBundleViewModel(
     fun cancel() = downloadClient.cancel()
 
     fun resume() = downloadClient.resume()
+
+    fun updatePausedSelection(selection: PhoneOfflineBundleSelection) {
+        downloadClient.updatePausedSelection(selection)?.let { updated ->
+            _uiState.update { it.copy(pausedSelection = updated) }
+        }
+    }
 
     fun refreshInstalledBundles() {
         viewModelScope.launch {
@@ -196,6 +215,7 @@ internal class PhoneOfflineBundleViewModel(
         _uiState.update { current ->
             current.copy(
                 download = state,
+                pausedSelection = if (state is PhoneOfflineBundleDownloadState.Paused) downloadClient.pausedSelection() else null,
                 updateChecks =
                     if (state is PhoneOfflineBundleDownloadState.Completed) emptyList() else current.updateChecks,
                 selectedRefreshAreaIds =
@@ -258,6 +278,8 @@ private fun PhoneInstalledBundle.toSelection(
 ): PhoneOfflineBundleSelection =
     PhoneOfflineBundleSelection(
         area = area,
+        includeMap = mapFileName.isNotBlank(),
+        includePoi = poiFileName.isNotBlank(),
         includeRouting = routingFileNames.isNotEmpty(),
         includeDem = demTileIds.isNotEmpty(),
         demSource = demSource,

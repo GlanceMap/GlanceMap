@@ -88,6 +88,9 @@ internal fun libraryItemRow(
                     }
                 Text(stringResource(status), style = MaterialTheme.typography.labelSmall)
             }
+            if (item is PhoneLibraryItem.OfflineMap) {
+                libraryMapDataButton(item, row.enabled, state.maps, actions.maps)
+            }
             libraryMapControl(row, visibility, state, actions)
             if (item.isNavigableGpx()) {
                 if (item is PhoneLibraryItem.ReceivedGpx) {
