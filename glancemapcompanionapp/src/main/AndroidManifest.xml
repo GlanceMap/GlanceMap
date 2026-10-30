@@ -40,6 +40,8 @@
         android:required="false" />
 
     <application
+        android:name=".PhoneGlanceMapApp"
+        android:localeConfig="@xml/phone_locales_config"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher_companionapp"
         android:label="@string/app_name"
@@ -55,6 +57,7 @@
 
         <activity
             android:name=".MainActivityMobile"
+            android:configChanges="locale|layoutDirection"
             android:exported="true"
             android:launchMode="singleTop"
             android:label="@string/app_name"

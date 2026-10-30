@@ -235,8 +235,13 @@ private fun MissionDayTimelineEventRow(event: MissionDayTimelineEvent) {
         )
         Text(text = event.localizedTitle(), style = MaterialTheme.typography.bodyLarge)
         event.detail?.let { detail ->
+            val displayedDetail = if (event.type == MissionDayTimelineEventType.CLIMB && event.ascentMeters != null) {
+                stringResource(R.string.mission_timeline_ascent, event.ascentMeters.toInt())
+            } else {
+                detail
+            }
             Text(
-                text = detail,
+                text = displayedDetail,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )

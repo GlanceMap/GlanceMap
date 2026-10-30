@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.ui.platform.LocalResources
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,7 +73,7 @@ internal fun MapToolFeatureSettingsSection.titleResource(tool: MapTool): Int =
         MapToolFeatureSettingsSection.POI_SOURCES -> R.string.map_tools_poi_settings_sources_heading
         MapToolFeatureSettingsSection.POI_APPEARANCE -> R.string.map_tools_poi_settings_appearance_heading
         MapToolFeatureSettingsSection.GENERAL_DATA -> R.string.map_tools_settings_data_title
-        MapToolFeatureSettingsSection.GENERAL_ACTIVITY -> R.string.map_tools_settings_activity_profile
+        MapToolFeatureSettingsSection.GENERAL_ACTIVITY -> R.string.phone_profile_title
         MapToolFeatureSettingsSection.GENERAL_SENSORS -> R.string.map_tools_settings_sensors_title
         MapToolFeatureSettingsSection.ROOT -> tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)
     }
@@ -246,6 +247,7 @@ private fun mapToolsMapsThemeSettings(
     state: MapToolsMapsState,
     actions: MapToolsMapsActions,
 ) {
+    val themeResources = LocalResources.current
     mapToolPanelColumn {
         Text(
             stringResource(
@@ -255,8 +257,8 @@ private fun mapToolsMapsThemeSettings(
                     .themeFor(state.themeConfig.themeId)
                     .styles
                     .firstOrNull { style -> style.id == state.themeConfig.styleId }
-                    ?.label
-                    ?: "Default",
+                    ?.localizedLabel(themeResources::getString)
+                    ?: themeResources.getString(R.string.map_theme_overlay_default),
             ),
         )
         OutlinedButton(onClick = actions.onOpenTheme, modifier = Modifier.fillMaxWidth()) {

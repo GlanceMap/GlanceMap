@@ -828,7 +828,7 @@ internal fun FilePickerScreen(
                                             point.longitude,
                                             null,
                                             label?.takeIf(String::isNotBlank)?.take(200)
-                                                ?: context.getString(R.string.weather_selected_location),
+                                                ?: fileSaveTextResources.getString(R.string.weather_selected_location),
                                         ),
                                     )
                                     activeHomeArea = CompanionHomeArea.ROUTE_WEATHER
@@ -961,7 +961,7 @@ internal fun FilePickerScreen(
                                                         var serviceStarted = false
                                                         try {
                                                             check(PhoneMapLocationContext.hasPermission(context)) {
-                                                                context.getString(
+                                                                fileSaveTextResources.getString(
                                                                     R.string.phone_guidance_location_permission_required,
                                                                 )
                                                             }
@@ -994,7 +994,7 @@ internal fun FilePickerScreen(
                                                                                         )
                                                                                 }
                                                                                     ?: error(
-                                                                                        context.getString(
+                                                                                        fileSaveTextResources.getString(
                                                                                             R.string.library_gpx_unavailable,
                                                                                         ),
                                                                                     )
@@ -1022,14 +1022,14 @@ internal fun FilePickerScreen(
                                                                         }
                                                                         else ->
                                                                             error(
-                                                                                context.getString(
+                                                                                fileSaveTextResources.getString(
                                                                                     R.string.phone_guidance_route_unavailable,
                                                                                 ),
                                                                             )
                                                                     }
                                                                 }
                                                             require(routeInputs.second.size >= 2) {
-                                                                context.getString(
+                                                                fileSaveTextResources.getString(
                                                                     R.string.phone_guidance_route_unavailable,
                                                                 )
                                                             }
@@ -1096,7 +1096,7 @@ internal fun FilePickerScreen(
                                                                     .makeText(
                                                                         context,
                                                                         error.message
-                                                                            ?: context.getString(
+                                                                            ?: fileSaveTextResources.getString(
                                                                                 R.string.phone_guidance_start_failed,
                                                                             ),
                                                                         Toast.LENGTH_LONG,
@@ -1182,7 +1182,7 @@ internal fun FilePickerScreen(
                                             plannedStartDistanceMeters = plannedStartDistanceMeters,
                                             phoneGuidanceDistanceMeters = phoneGuidanceDistanceMeters,
                                             phoneGuidancePositionLabel =
-                                                context.getString(
+                                                fileSaveTextResources.getString(
                                                     R.string.phone_guidance_weather_position,
                                                 ),
                                         )
@@ -1281,7 +1281,7 @@ internal fun FilePickerScreen(
                                             weatherRoute?.displayName
                                         } else {
                                             locationWeatherState.location?.label
-                                                ?: context.getString(R.string.weather_current_location)
+                                                ?: fileSaveTextResources.getString(R.string.weather_current_location)
                                         },
                                     isPreparingRoute = useRouteWeather && isPreparingWeatherRoute,
                                     isRoute = useRouteWeather,

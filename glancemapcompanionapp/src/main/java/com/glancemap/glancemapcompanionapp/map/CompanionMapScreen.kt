@@ -3159,7 +3159,7 @@ internal fun CompanionMapScreen(
                                     label = baseLabel,
                                     sourceLabel =
                                         if (base is PhoneMapComparisonLayer.Offline) {
-                                            effectiveBaseThemeConfig.summary()
+                                            effectiveBaseThemeConfig.summary(migrationTextResources::getString)
                                         } else {
                                             baseSourceLabel
                                         },
@@ -3175,7 +3175,7 @@ internal fun CompanionMapScreen(
                                         label = comparisonLabel,
                                         sourceLabel =
                                             if (comparison is PhoneMapComparisonLayer.Offline) {
-                                                comparisonThemeConfig.summary()
+                                                comparisonThemeConfig.summary(migrationTextResources::getString)
                                             } else {
                                                 comparisonSourceLabel.orEmpty()
                                             },
@@ -5121,6 +5121,7 @@ private fun offlineThemeSelector(
     onDismiss: () -> Unit,
     onChange: (PhoneOfflineThemeConfig) -> Unit,
 ) {
+    val themeResources = LocalResources.current
     val selectedTheme = PhoneOfflineThemeCatalog.themeFor(config.themeId)
     PhoneMapPopupDialog(
         title = stringResource(R.string.map_theme_selector_title),
@@ -5138,9 +5139,9 @@ private fun offlineThemeSelector(
                     selectedLabel =
                         selectedTheme.styles
                             .firstOrNull { style -> style.id == config.styleId }
-                            ?.label
-                            ?: "Default",
-                    options = selectedTheme.styles.map { style -> style.id to style.label },
+                            ?.localizedLabel(themeResources::getString)
+                            ?: themeResources.getString(R.string.map_theme_overlay_default),
+                    options = selectedTheme.styles.map { style -> style.id to style.localizedLabel(themeResources::getString) },
                     onSelect = { styleId -> onChange(PhoneOfflineThemeCatalog.resolve(config.themeId, styleId)) },
                 )
                 phoneOfflineThemeOverlayControls(config, "base") { onChange(it) }

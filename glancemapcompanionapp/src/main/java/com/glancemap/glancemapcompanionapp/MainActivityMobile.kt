@@ -1,5 +1,7 @@
 package com.glancemap.glancemapcompanionapp
 
+import com.glancemap.glancemapcompanionapp.localization.PhoneAppLanguageSettings
+import android.content.res.Configuration
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -43,6 +45,7 @@ class MainActivityMobile : ComponentActivity() {
     private var openLiveTrackingToken by mutableStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        PhoneAppLanguageSettings.applyLegacy(this)
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(application)
         PhoneDebugCapture.initialize(applicationContext)
@@ -104,6 +107,10 @@ class MainActivityMobile : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(PhoneAppLanguageSettings.applyLegacy(this, newConfig))
     }
 
     override fun onNewIntent(intent: Intent) {

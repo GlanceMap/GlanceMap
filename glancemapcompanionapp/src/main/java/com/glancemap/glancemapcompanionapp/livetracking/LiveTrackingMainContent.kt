@@ -259,7 +259,7 @@ internal fun ColumnScope.MainTrackingContent(
             }
             sessionState.lastError?.let { error ->
                 Text(
-                    text = error,
+                    text = localizedLiveTrackingMessage(error, textResources::getString),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

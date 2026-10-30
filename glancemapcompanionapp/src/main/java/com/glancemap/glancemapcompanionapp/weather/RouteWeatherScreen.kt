@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.weather
 
+import androidx.compose.ui.platform.LocalConfiguration
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,7 +37,6 @@ import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.routes.RouteWeatherUiState
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.util.Locale
 
 @Composable
 internal fun routeWeatherScreen(
@@ -106,6 +106,7 @@ private fun weatherLocationAndStatus(
     forecast: WeatherForecast,
     state: RouteWeatherUiState,
 ) {
+    val locale = LocalConfiguration.current.locales[0]
     val label =
         when (forecast.location.label) {
             "Route start" -> stringResource(R.string.weather_location_route_start)
@@ -117,7 +118,7 @@ private fun weatherLocationAndStatus(
         stringResource(
             R.string.route_weather_location,
             label,
-            String.format(Locale.getDefault(), "%.4f, %.4f", forecast.location.latitude, forecast.location.longitude),
+            String.format(locale, "%.4f, %.4f", forecast.location.latitude, forecast.location.longitude),
         ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.weather
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AcUnit
@@ -64,7 +65,7 @@ internal fun weatherDayLabel(
         today -> stringResource(R.string.route_weather_today)
         today.plusDays(1) -> stringResource(R.string.route_weather_tomorrow)
         null -> "—"
-        else -> date.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
+        else -> date.format(DateTimeFormatter.ofPattern("EEE d MMM", LocalConfiguration.current.locales[0]))
     }
 
 @Composable

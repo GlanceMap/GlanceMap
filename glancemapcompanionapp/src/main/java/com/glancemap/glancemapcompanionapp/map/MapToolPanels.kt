@@ -6,6 +6,8 @@
 
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.ui.platform.LocalResources
+import com.glancemap.glancemapcompanionapp.localization.phoneLanguagePicker
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -390,6 +392,7 @@ internal fun mapToolsMapsPanel(
             )
         }
         if (state.source is PhoneMapSource.Offline) {
+            val themeResources = LocalResources.current
             Text(
                 stringResource(
                     R.string.map_tools_maps_theme_value,
@@ -398,8 +401,8 @@ internal fun mapToolsMapsPanel(
                         .themeFor(state.themeConfig.themeId)
                         .styles
                         .firstOrNull { style -> style.id == state.themeConfig.styleId }
-                        ?.label
-                        ?: "Default",
+                        ?.localizedLabel(themeResources::getString)
+                        ?: themeResources.getString(R.string.map_theme_overlay_default),
                 ),
             )
         }
@@ -747,7 +750,7 @@ internal fun mapToolsSettingsPanel(
                     },
                 )
                 mapToolsSettingsSection(
-                    title = stringResource(R.string.map_tools_settings_activity_profile),
+                    title = stringResource(R.string.phone_profile_title),
                     summary =
                         stringResource(
                             R.string.map_tools_settings_activity_summary,
@@ -821,16 +824,16 @@ private fun mapToolsSensorSettings(capabilities: PhoneSensorCapabilities) {
     mapToolPanelColumn(verticalSpacing = 8.dp) {
         Text(stringResource(R.string.map_tools_settings_sensors_heading))
         listOf(
-            "GPS" to capabilities.gpsAvailable,
-            "Compass" to capabilities.compassAvailable,
-            "Heading sensor" to capabilities.headingSensorAvailable,
-            "Rotation vector" to capabilities.rotationVectorAvailable,
-            "Accelerometer" to capabilities.accelerometerAvailable,
-            "Magnetometer" to capabilities.magnetometerAvailable,
-            "Gyroscope" to capabilities.gyroscopeAvailable,
-            "Barometer" to capabilities.barometerAvailable,
-            "Step detector" to capabilities.stepDetectorAvailable,
-            "Step counter" to capabilities.stepCounterAvailable,
+            stringResource(R.string.phone_rec_sensor_gps) to capabilities.gpsAvailable,
+            stringResource(R.string.phone_sensor_compass) to capabilities.compassAvailable,
+            stringResource(R.string.phone_sensor_heading) to capabilities.headingSensorAvailable,
+            stringResource(R.string.phone_sensor_rotation) to capabilities.rotationVectorAvailable,
+            stringResource(R.string.phone_sensor_accelerometer) to capabilities.accelerometerAvailable,
+            stringResource(R.string.phone_sensor_magnetometer) to capabilities.magnetometerAvailable,
+            stringResource(R.string.phone_sensor_gyroscope) to capabilities.gyroscopeAvailable,
+            stringResource(R.string.phone_rec_sensor_barometer) to capabilities.barometerAvailable,
+            stringResource(R.string.phone_sensor_step_detector) to capabilities.stepDetectorAvailable,
+            stringResource(R.string.phone_rec_sensor_step_counter) to capabilities.stepCounterAvailable,
         ).forEach { (label, available) ->
             ListItem(
                 headlineContent = { Text(label) },
@@ -856,6 +859,7 @@ private fun mapToolsActivitySettings(
     settings: PhoneGeneralSettings,
     onSettingsChanged: (PhoneGeneralSettings) -> Unit,
 ) {
+    phoneLanguagePicker()
     Text(stringResource(R.string.map_tools_settings_activity_profile))
     OutlinedButton(
         onClick = {

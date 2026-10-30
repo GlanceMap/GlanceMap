@@ -515,5 +515,5 @@ private fun localizedSessionStatus(
             )
         "Tracking with errors" -> text(R.string.live_tracking_status_tracking_with_errors)
         "Stopped" -> text(R.string.live_tracking_status_stopped)
-        else -> status
+        else -> localizedLiveTrackingMessage(status, text)
     }

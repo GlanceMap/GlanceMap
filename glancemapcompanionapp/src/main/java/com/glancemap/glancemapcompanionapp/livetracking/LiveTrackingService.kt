@@ -2374,13 +2374,13 @@ class LiveTrackingService : Service() {
                     .setAction(if (isPaused) ACTION_RESUME else ACTION_PAUSE),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        val pauseResumeLabel = if (isPaused) "Resume" else "Pause"
+        val pauseResumeLabel = getString(if (isPaused) R.string.common_action_resume else R.string.common_action_pause)
         val builder =
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
-                .setContentTitle(if (isStopping) "Live tracking stopped" else "Live tracking running")
-                .setContentText(text)
+                .setContentTitle(getString(if (isStopping) R.string.tracking_notification_live_tracking_stopped else R.string.tracking_notification_live_tracking_running))
+                .setContentText(localizedLiveTrackingMessage(text, ::getString))
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -2390,7 +2390,7 @@ class LiveTrackingService : Service() {
         if (!isStopping) {
             builder
                 .addAction(0, pauseResumeLabel, pauseResumeIntent)
-                .addAction(0, "Stop live tracking", stopIntent)
+                .addAction(0, getString(R.string.tracking_notification_stop_live_tracking), stopIntent)
         }
         return builder
     }
@@ -2399,7 +2399,7 @@ class LiveTrackingService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Live Tracking", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, getString(R.string.live_tracking_title), NotificationManager.IMPORTANCE_LOW),
         )
     }
 

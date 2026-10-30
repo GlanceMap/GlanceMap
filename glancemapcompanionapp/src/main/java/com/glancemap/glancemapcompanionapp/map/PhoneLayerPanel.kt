@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -101,6 +102,7 @@ private fun layerMapSelectors(
     actions: MapToolsLayerActions,
     onSameMapSelected: () -> Unit,
 ) {
+    val textResources = LocalResources.current
     val base = state.base.asComparisonLayer(state.baseOnlineSource)
     val sourceGroups =
         mapPickerGroups(
@@ -121,7 +123,7 @@ private fun layerMapSelectors(
             )
             if (base is PhoneMapComparisonLayer.Offline) {
                 Text(
-                    state.baseThemeConfig.summary(),
+                    state.baseThemeConfig.summary(textResources::getString),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -145,7 +147,7 @@ private fun layerMapSelectors(
             layerComparisonPicker(state, actions, onSameMapSelected)
             if (state.comparison.layer is PhoneMapComparisonLayer.Offline) {
                 Text(
-                    state.comparisonThemeConfig.summary(),
+                    state.comparisonThemeConfig.summary(textResources::getString),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -300,6 +302,7 @@ private fun layerThemePicker(
     onChange: (PhoneOfflineThemeConfig) -> Unit,
     side: String,
 ) {
+    val textResources = LocalResources.current
     val theme = PhoneOfflineThemeCatalog.themeFor(config.themeId)
     Text(stringResource(if (side == "base") R.string.map_layer_base_source else R.string.map_layer_comparison))
     layerPicker(
@@ -313,9 +316,9 @@ private fun layerThemePicker(
         stringResource(R.string.map_theme_selector_style_label),
         theme.styles
             .firstOrNull { it.id == config.styleId }
-            ?.label
+            ?.localizedLabel(textResources::getString)
             .orEmpty(),
-        theme.styles.map { it.id to it.label },
+        theme.styles.map { it.id to it.localizedLabel(textResources::getString) },
         { onChange(PhoneOfflineThemeCatalog.resolve(theme.id, it)) },
         "layer-$side-style",
     )

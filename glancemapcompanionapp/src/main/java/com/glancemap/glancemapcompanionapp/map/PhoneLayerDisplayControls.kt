@@ -137,12 +137,12 @@ internal fun PhoneMapSource.asComparisonLayer(onlineSource: PhoneOnlineMapSource
         is PhoneMapSource.Offline -> PhoneMapComparisonLayer.Offline(map)
     }
 
-internal fun PhoneOfflineThemeConfig.summary(): String {
+internal fun PhoneOfflineThemeConfig.summary(text: (Int) -> String): String {
     val theme = PhoneOfflineThemeCatalog.themeFor(themeId)
     val style =
         theme.styles
             .firstOrNull { it.id == styleId }
-            ?.label
+            ?.localizedLabel(text)
             .orEmpty()
     return "${theme.label} · $style"
 }

@@ -264,7 +264,7 @@ fun LiveTrackingScreen(
                     recordedTrackDownloadStatusMessage =
                         textResources.getString(
                             R.string.live_tracking_download_failed_value,
-                            error.toArkluzFailureDetail(),
+                            localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                         )
                 }
                 isDownloadingRecordedTrack = false
@@ -309,7 +309,7 @@ fun LiveTrackingScreen(
                 recordedTrackSavePicker.launch(download.suggestedFileName)
             }.onFailure { error ->
                 recordedTrackDownloadStatusMessage =
-                    textResources.getString(R.string.live_tracking_download_failed_value, error.toArkluzFailureDetail())
+                    textResources.getString(R.string.live_tracking_download_failed_value, localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString))
                 isDownloadingRecordedTrack = false
             }
         }
@@ -357,7 +357,7 @@ fun LiveTrackingScreen(
                 alertRecipientStatusMessage =
                     textResources.getString(
                         R.string.live_tracking_could_not_check_sms_support_value,
-                        error.toArkluzFailureDetail(),
+                        localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                     )
             }
             isValidatingAlertRecipient = false
@@ -682,7 +682,7 @@ fun LiveTrackingScreen(
                                 saveSettingsStatusMessage =
                                     textResources.getString(
                                         R.string.live_tracking_save_failed_value,
-                                        error.toArkluzFailureDetail(),
+                                        localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                                     )
                             }
                         }
@@ -690,7 +690,7 @@ fun LiveTrackingScreen(
                         saveSettingsStatusMessage =
                             textResources.getString(
                                 R.string.live_tracking_could_not_verify_sms_alerts_value,
-                                error.toArkluzFailureDetail(),
+                                localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                             )
                     }
                 isSavingSettings = false
@@ -761,7 +761,7 @@ fun LiveTrackingScreen(
                     )
                 }.onFailure { error ->
                     sendStatusMessage =
-                        textResources.getString(R.string.live_tracking_send_failed_value, error.toArkluzFailureDetail())
+                        textResources.getString(R.string.live_tracking_send_failed_value, localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString))
                 }
                 isSendingPlan = false
                 isStartingSession = false
@@ -1034,7 +1034,7 @@ fun LiveTrackingScreen(
                                     sendStatusMessage =
                                         textResources.getString(
                                             R.string.live_tracking_send_failed_value,
-                                            error.toArkluzFailureDetail(),
+                                            localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                                         )
                                 }
                                 isSendingPlan = false
@@ -1076,7 +1076,7 @@ fun LiveTrackingScreen(
                                         deleteTracksStatusMessage =
                                             textResources.getString(
                                                 R.string.live_tracking_delete_failed_value,
-                                                error.toArkluzFailureDetail(),
+                                                localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                                             )
                                     }
                                     isDeletingTracks = false
@@ -1171,7 +1171,7 @@ fun LiveTrackingScreen(
                                             loginJoinStatusMessage =
                                                 textResources.getString(
                                                     R.string.live_tracking_unable_to_connect_value,
-                                                    error.toArkluzFailureDetail(),
+                                                    localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                                                 )
                                         }
                                         isLoginJoinLoading = false
@@ -1228,7 +1228,7 @@ fun LiveTrackingScreen(
                                             loginJoinStatusMessage =
                                                 textResources.getString(
                                                     R.string.live_tracking_unable_to_create_group_value,
-                                                    error.toArkluzFailureDetail(),
+                                                    localizedLiveTrackingMessage(error.toArkluzFailureDetail(), textResources::getString),
                                                 )
                                         }
                                         isLoginJoinLoading = false

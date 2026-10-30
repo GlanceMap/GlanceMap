@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp
 
+import com.glancemap.glancemapcompanionapp.localization.PhoneAppLanguageSettings
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -69,6 +70,7 @@ class PrivacyPolicyActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        PhoneAppLanguageSettings.applyLegacy(this)
         super.onCreate(savedInstanceState)
         val document = intent.toLegalDocumentOrNull()
         title = document?.let { getString(it.documentTitleResId) } ?: getString(R.string.settings_credits_legal_title)
