@@ -21,6 +21,8 @@ The first extraction is `com.glancemap.trailcore.geo`:
 The watch guidance layer adapts its Mapsforge `LatLong` values at its boundary and delegates
 geometry calculations to `:trailcore`. The companion uses the profile layer while importing its
 private GPX route library.
+When a managed route is on a removable volume outside Android FileProvider’s configured roots,
+the phone stages a private cache copy for its content URI; the original route stays on the SD card.
 
 ## Ownership Rules
 

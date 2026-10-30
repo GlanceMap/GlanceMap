@@ -1134,17 +1134,21 @@ internal fun FilePickerScreen(
                                                     }
                                                 },
                                                 onSendGpx = { id ->
-                                                    val uri = routeLibraryViewModel.contentUriFor(id)
-                                                    if (uri == null) {
-                                                        Toast
-                                                            .makeText(
-                                                                context,
-                                                                R.string.library_gpx_unavailable,
-                                                                Toast.LENGTH_SHORT,
-                                                            ).show()
-                                                    } else {
-                                                        viewModel.selectFilesForTransfer(context, listOf(uri))
-                                                        activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                                    coroutineScope.launch {
+                                                        val uri = withContext(Dispatchers.IO) {
+                                                            runCatching { routeLibraryViewModel.contentUriFor(id) }.getOrNull()
+                                                        }
+                                                        if (uri == null) {
+                                                            Toast
+                                                                .makeText(
+                                                                    context,
+                                                                    R.string.library_gpx_unavailable,
+                                                                    Toast.LENGTH_SHORT,
+                                                                ).show()
+                                                        } else {
+                                                            viewModel.selectFilesForTransfer(context, listOf(uri))
+                                                            activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                                        }
                                                     }
                                                 },
                                                 onFilterChanged = { libraryFilter = it },
@@ -1204,17 +1208,24 @@ internal fun FilePickerScreen(
                                                 }
                                             }
                                         } else {
-                                            val routeUri = routeLibraryViewModel.selectedRouteContentUri()
-                                            if (routeUri == null) {
-                                                Toast
-                                                    .makeText(
-                                                        context,
-                                                        "The selected GPX is no longer available.",
-                                                        Toast.LENGTH_SHORT,
-                                                    ).show()
-                                            } else {
-                                                viewModel.selectFilesForTransfer(context, listOf(routeUri))
-                                                activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                            val routeId = routeLibraryUiState.selectedRoute?.id
+                                            coroutineScope.launch {
+                                                val routeUri = withContext(Dispatchers.IO) {
+                                                    routeId?.let { id ->
+                                                        runCatching { routeLibraryViewModel.contentUriFor(id) }.getOrNull()
+                                                    }
+                                                }
+                                                if (routeUri == null) {
+                                                    Toast
+                                                        .makeText(
+                                                            context,
+                                                            "The selected GPX is no longer available.",
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                } else {
+                                                    viewModel.selectFilesForTransfer(context, listOf(routeUri))
+                                                    activeHomeArea = CompanionHomeArea.SEND_TO_WATCH
+                                                }
                                             }
                                         }
                                     },

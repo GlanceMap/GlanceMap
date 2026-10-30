@@ -496,11 +496,13 @@ class RouteLibraryRepository(
     }
 
     private fun contentUriForFile(file: File): Uri =
-        FileProvider.getUriForFile(
-            appContext,
-            "${appContext.packageName}.fileprovider",
-            file,
-        )
+        phoneRouteShareUri(file, appContext.cacheDir) { shareableFile ->
+            FileProvider.getUriForFile(
+                appContext,
+                "${appContext.packageName}.fileprovider",
+                shareableFile,
+            )
+        }
 
     private data class RouteLibraryIndex(
         @field:SerializedName(value = "routes", alternate = ["a"])
