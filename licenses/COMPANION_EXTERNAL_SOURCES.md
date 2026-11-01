@@ -66,31 +66,12 @@ This file lists third-party websites and APIs used by the companion app for down
    - Eligible French addresses use IGN first; unmatched requests fall back to Photon.
    - Both services are disabled by the companion's Online search switch.
 
-## 7) Maptoolkit Community online vector maps (reviewed 2026-10-17)
-
-- Hiking: https://styles.maptoolkit.org/hiking.json
-- Cycling: https://styles.maptoolkit.org/cycling.json
-- Styles, tiles, glyphs and sprites: `styles.maptoolkit.org`, `tiles.maptoolkit.org`,
-  `fonts.maptoolkit.org`, `icons.maptoolkit.org`; upstream terrain may use `tiles.mapterhorn.com`.
-- Community service: no API key; eligibility and fair-use limits apply.
-  Terms: https://www.maptoolkit.org/tos
-- Interactive online display only; no bulk download or offline archives are offered by this integration.
-- Required credits and logo: https://docs.maptoolkit.org/attribution/
-  The app keeps a clickable 24dp logo and linked copyright text visible for a Maptoolkit
-  base or comparison map, and leaves MapLibre's native attribution control enabled.
-- Unmodified official logo asset (227 × 72 pixels):
-  https://www.maptoolkit.org/assets/maptoolkit-attribution.png
-  Included in `glancemapcompanionapp/src/main/res/drawable-nodpi/maptoolkit_attribution.png`.
-- Map/data copyright: https://www.maptoolkit.com/copyright/ and
-  https://www.openstreetmap.org/copyright
-
-## 8) Optional 3D terrain preview (reviewed 2026-10-18)
+## 7) Optional 3D terrain preview (reviewed 2026-10-18)
 
 - MapLibre GL JS 5.24.0 is bundled locally, including its worker, CSS and BSD-3-Clause
   license, in `glancemapcompanionapp/src/main/assets/terrain-preview/`.
 - Upstream: https://github.com/maplibre/maplibre-gl-js/tree/v5.24.0
-- Maptoolkit Hiking/Cycling 3D styles use the same Community terms and attribution
-  described above. Esri satellite uses the existing World Imagery provider credits.
+- Esri satellite uses the existing World Imagery provider credits.
 - Terrain: https://tiles.mapterhorn.com/tilejson.json
   Attribution and source data licenses: https://mapterhorn.com/attribution
 - The preview is user-opened, online-only, and unavailable while offline mode is on.
@@ -98,7 +79,7 @@ This file lists third-party websites and APIs used by the companion app for down
   the preview. They are not submitted to a route-rendering or tracking service.
   Map tile requests disclose the viewed area, like the app's other online maps.
 
-## 9) Transparency note
+## 8) Transparency note
 
 - These sources are external to GlanceMap.
 - File availability, file quality, service uptime, and legal terms are controlled by each provider.

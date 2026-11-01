@@ -70,8 +70,6 @@ Providers used by the current app configuration include:
 - `overpass-api.de`
 - `tile.openstreetmap.org`
 - `tiles.mapterhorn.com` (hillshade and optional online 3D terrain preview)
-- `styles.maptoolkit.org`, `tiles.maptoolkit.org`, `fonts.maptoolkit.org`,
-  `icons.maptoolkit.org` (when a Maptoolkit online map is selected)
 - `brouter.de`
 - `download.mapsforge.org`
 - `arkluz.com`

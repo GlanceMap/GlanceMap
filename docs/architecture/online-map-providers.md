@@ -30,7 +30,9 @@ use `{z}/{x}/{y}`. IGN's current capabilities advertise the `PM_0_19` matrix set
 `OnlineMapProvider` describes exactly one of a raster URL template or a complete
 style URL. OpenFreeMap loads its vector style directly; raster providers retain
 the generated raster style. Credits for both displayed providers remain
-available when maps are compared.
+available when maps are compared. The active online provider credits also appear
+above the map search control; the renderer retains its own attribution control
+for any additional credits supplied by a style or terrain source.
 
 The renderer captures the original basemap paint opacity before adding GPX,
 POIs, location and other app overlays. Comparison opacity multiplies those

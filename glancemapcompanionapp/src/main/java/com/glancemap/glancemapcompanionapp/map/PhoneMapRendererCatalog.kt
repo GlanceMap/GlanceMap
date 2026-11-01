@@ -22,8 +22,6 @@ internal enum class PhoneOnlineMapSource {
     USGS_TOPO,
     USGS_IMAGERY,
     ESRI_WORLD_IMAGERY,
-    MAPTOOLKIT_HIKING,
-    MAPTOOLKIT_CYCLING,
 
     ;
 
@@ -182,23 +180,6 @@ internal object PhoneMapRendererCatalog {
             styleUrl = "https://tiles.openfreemap.org/styles/liberty",
         )
 
-    private val maptoolkitHikingProvider =
-        OnlineMapProvider(
-            id = "maptoolkit_hiking",
-            displayName = "Maptoolkit Hiking",
-            attribution =
-                "<a href=\"https://www.maptoolkit.com/copyright/\">© Maptoolkit</a> " +
-                    "<a href=\"https://www.openstreetmap.org/copyright\">© Openstreetmap</a>",
-            styleUrl = "https://styles.maptoolkit.org/hiking.json",
-        )
-
-    private val maptoolkitCyclingProvider =
-        maptoolkitHikingProvider.copy(
-            id = "maptoolkit_cycling",
-            displayName = "Maptoolkit Cycling",
-            styleUrl = "https://styles.maptoolkit.org/cycling.json",
-        )
-
     private val ignOrthophotoProvider =
         OnlineMapProvider(
             id = "ign_orthophoto",
@@ -308,8 +289,6 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.USGS_TOPO to usgsTopoProvider,
             PhoneOnlineMapSource.USGS_IMAGERY to usgsImageryProvider,
             PhoneOnlineMapSource.ESRI_WORLD_IMAGERY to esriWorldImageryProvider,
-            PhoneOnlineMapSource.MAPTOOLKIT_HIKING to maptoolkitHikingProvider,
-            PhoneOnlineMapSource.MAPTOOLKIT_CYCLING to maptoolkitCyclingProvider,
         )
 
     fun providerForOnlineSource(source: PhoneOnlineMapSource): OnlineMapProvider? = onlineProviders[source]

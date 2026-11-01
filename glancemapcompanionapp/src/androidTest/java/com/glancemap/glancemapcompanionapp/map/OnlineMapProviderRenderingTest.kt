@@ -54,8 +54,6 @@ class OnlineMapProviderRenderingTest {
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
                 PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
-                PhoneOnlineMapSource.MAPTOOLKIT_HIKING,
-                PhoneOnlineMapSource.MAPTOOLKIT_CYCLING,
             )
         sources.forEach { source ->
             val currentLabel = PhoneMapRendererCatalog.onlineSourceLabel(selected.value)

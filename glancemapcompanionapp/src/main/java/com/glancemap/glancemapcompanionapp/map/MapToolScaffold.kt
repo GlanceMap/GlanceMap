@@ -50,7 +50,6 @@ internal data class MapToolScaffoldState(
     val panel: MapToolPanelState,
     val launcherExpanded: Boolean = false,
     val fullScreenPage: Boolean = false,
-    val maptoolkitAttributionVisible: Boolean = false,
     val layersActive: Boolean = false,
     val toolbarVisible: Boolean = true,
 )
@@ -213,9 +212,6 @@ private fun mapToolMapSurface(
                     )
                 }
             }
-        }
-        if (presentation.maptoolkitAttributionVisible) {
-            phoneMaptoolkitAttribution()
         }
     }
 }

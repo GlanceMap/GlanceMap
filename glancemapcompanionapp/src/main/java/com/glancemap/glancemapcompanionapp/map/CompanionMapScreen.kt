@@ -2807,6 +2807,11 @@ internal fun CompanionMapScreen(
     val activeOnlineBaseProviderId = selectedOnlineProvider.id.takeIf { activeOnlineBaseSource != null }
     val activeOnlineComparisonSource = onlineComparison?.source
     val activeOnlineComparisonProviderId = onlineComparisonProvider?.id
+    val mapProviderAttributions =
+        listOfNotNull(
+            selectedOnlineProvider.takeIf { activeOnlineBaseSource != null },
+            onlineComparisonProvider.takeIf { terrainPreview == null && onlineComparisonActive },
+        ).map(OnlineMapProvider::attribution)
     val activeOnlineBase = PhoneMapLibreActiveSource(activeOnlineBaseSource, activeOnlineBaseProviderId)
     val activeOnlineComparison =
         PhoneMapLibreActiveSource(activeOnlineComparisonSource, activeOnlineComparisonProviderId)
@@ -3253,8 +3258,6 @@ internal fun CompanionMapScreen(
                             hasElevationData = hasElevationData,
                             comparisonActive = offlineComparisonActive || onlineComparisonActive,
                         ),
-                maptoolkitAttributionVisible =
-                    maptoolkitAttributionRequired(activeOnlineBaseSource, activeOnlineComparisonSource),
             ),
         actions =
             MapToolScaffoldActions(
@@ -3344,6 +3347,7 @@ internal fun CompanionMapScreen(
                                 .padding(start = 16.dp, end = 16.dp, top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        phoneMapAttribution(mapProviderAttributions)
                         phoneMapSearchControl(
                             presentation =
                                 PhoneMapSearchControlState(
@@ -4452,6 +4456,7 @@ internal fun CompanionMapScreen(
                             .padding(start = 16.dp, end = 16.dp, top = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    phoneMapAttribution(mapProviderAttributions)
                     phoneMapSearchControl(
                         presentation =
                             PhoneMapSearchControlState(

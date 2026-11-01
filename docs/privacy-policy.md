@@ -115,8 +115,6 @@ Providers used by the current app configuration include:
 - `overpass-api.de`
 - `tile.openstreetmap.org`
 - `tiles.mapterhorn.com` (online hillshade)
-- `styles.maptoolkit.org`, `tiles.maptoolkit.org`, `fonts.maptoolkit.org`,
-  `icons.maptoolkit.org` (when a Maptoolkit online map is selected)
 - `brouter.de`
 - `download.mapsforge.org`
 - `arkluz.com`
