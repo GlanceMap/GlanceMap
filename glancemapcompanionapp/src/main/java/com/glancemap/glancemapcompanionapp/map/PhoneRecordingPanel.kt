@@ -7,14 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,24 +24,23 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,7 +49,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.glancemap.glancemapcompanionapp.R
@@ -97,17 +93,12 @@ internal fun PhoneRecordingPanel(
 ) {
     val context = LocalContext.current
     val recording by PhoneRecordingSessionStore.state.collectAsState()
-    val stopRecording = phoneRecordingStopAction(recording)
     val settings by PhoneRecordingSettingsState.state.collectAsState()
     val preferences = remember(context) { PhoneRecordingSettingsPreferences(context) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    var confirmDiscard by remember { mutableStateOf(false) }
-    var permissionDenied by remember { mutableStateOf(false) }
     var activitySettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var gpsTrackSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var elevationSensorsSettingsExpanded by rememberSaveable { mutableStateOf(false) }
-    var feedbackSettingsExpanded by rememberSaveable { mutableStateOf(false) }
-    val startRecording = rememberPhoneRecordingStartAction { hasLocation -> permissionDenied = !hasLocation }
 
     LaunchedEffect(context) {
         val loaded = preferences.load()
@@ -128,21 +119,8 @@ internal fun PhoneRecordingPanel(
 
     val active = recording.session.isActive
     val paused = recording.session.phase == RecordingSessionPhase.PAUSED
-    val busy = recording.session.phase == RecordingSessionPhase.SAVING
     val profile = if (active) recording.activityProfile else general.settings.activityProfile
     val profileLabel = profileLabel(context, profile)
-    val unitDistance = formatRecordingDistance(context, recording.distanceMeters, general.settings.isMetric)
-    val elapsed = formatRecordingDuration(context, recording.session.elapsedMillis(nowMillis))
-    val startOrPause = {
-        if (!active) {
-            startRecording()
-        } else {
-            PhoneRecordingService.request(
-                context,
-                if (paused) PhoneRecordingService.ACTION_RESUME else PhoneRecordingService.ACTION_PAUSE,
-            )
-        }
-    }
     val statusResource =
         if (paused && recording.session.autoPaused) {
             R.string.phone_rec_status_auto_paused
@@ -169,58 +147,14 @@ internal fun PhoneRecordingPanel(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(stringResource(R.string.phone_rec_title))
         Text(stringResource(statusResource), color = activeStatusColor)
-        Text(stringResource(R.string.phone_rec_profile, profileLabel))
-        Text(stringResource(R.string.phone_rec_points, recording.points.size))
-        Text(stringResource(R.string.phone_rec_distance, unitDistance))
-        Text(stringResource(R.string.phone_rec_duration, elapsed))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(enabled = !busy, onClick = startOrPause) {
-                Icon(
-                    imageVector = if (active && !paused) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription =
-                        stringResource(
-                            when {
-                                !active -> R.string.phone_rec_start
-                                paused -> R.string.phone_rec_resume
-                                else -> R.string.phone_rec_pause
-                            },
-                        ),
-                )
-            }
-            if (active) {
-                IconButton(
-                    enabled = !busy,
-                    onClick = stopRecording,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = stringResource(R.string.phone_rec_stop),
-                    )
-                }
-                TextButton(enabled = !busy, onClick = { confirmDiscard = true }) {
-                    Text(stringResource(R.string.phone_rec_discard))
-                }
-            }
-        }
-        if (permissionDenied) Text(stringResource(R.string.phone_rec_status_permission))
+        phoneRecordingLiveStatisticsGrid(recording, general.settings, nowMillis)
         Text(stringResource(R.string.phone_rec_settings_title))
         PhoneRecordingSettingsSection(
-            title = stringResource(R.string.phone_rec_settings_activity),
+            title = stringResource(R.string.phone_profile_title),
             expanded = activitySettingsExpanded,
             onToggle = { activitySettingsExpanded = !activitySettingsExpanded },
         ) {
-            OutlinedButton(enabled = !active, onClick = {
-                val next =
-                    if (profile == PhoneActivityProfile.HIKE) PhoneActivityProfile.BIKE else PhoneActivityProfile.HIKE
-                onGeneralSettingsChanged(general.settings.copy(activityProfile = next))
-                PhoneRecordingSettingsState.publish(
-                    preferences.applyGpsPreset(settings, next, settings.gpsUsageProfile),
-                )
-            }) {
-                Text(stringResource(R.string.phone_rec_profile, profileLabel))
-            }
             OutlinedButton(
                 onClick = { onGeneralSettingsChanged(general.settings.copy(isMetric = !general.settings.isMetric)) },
             ) {
@@ -266,6 +200,54 @@ internal fun PhoneRecordingPanel(
                     },
                 )
             }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(R.string.phone_rec_auto_pause, profileLabel))
+            Switch(
+                enabled = !active,
+                checked = settings.autoPauseMode(profile) != RecordingSettings.RECORDING_AUTO_PAUSE_OFF,
+                onCheckedChange = { enabled ->
+                    val value =
+                        if (enabled) {
+                            RecordingSettings.RECORDING_AUTO_PAUSE_ALWAYS
+                        } else {
+                            RecordingSettings.RECORDING_AUTO_PAUSE_OFF
+                        }
+                    PhoneRecordingSettingsState.publish(
+                        preferences.save(
+                            if (profile == PhoneActivityProfile.BIKE) {
+                                settings.copy(bikeAutoPauseMode = value)
+                            } else {
+                                settings.copy(hikeAutoPauseMode = value)
+                            },
+                        ),
+                    )
+                },
+            )
+        }
+        OutlinedButton(enabled = !active, onClick = {
+            val modes =
+                listOf(
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_OFF,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
+                    RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES,
+                )
+            val index = modes.indexOf(settings.progressVibrationMode).coerceAtLeast(0)
+            PhoneRecordingSettingsState.publish(
+                preferences.save(settings.withProgressVibrationMode(modes[(index + 1) % modes.size])),
+            )
+        }) {
+            Text(
+                stringResource(
+                    R.string.phone_rec_progress_vibration,
+                    vibrationLabel(context, settings, general.settings.isMetric),
+                ),
+            )
         }
         PhoneRecordingSettingsSection(
             title = stringResource(R.string.phone_rec_settings_gps_track),
@@ -316,30 +298,6 @@ internal fun PhoneRecordingPanel(
                         R.string.phone_rec_screen_off_interval,
                         intervalLabel(context, settings.screenOffIntervalSeconds),
                     ),
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.phone_rec_auto_pause, profileLabel))
-                Switch(
-                    enabled = !active,
-                    checked = settings.autoPauseMode(profile) != RecordingSettings.RECORDING_AUTO_PAUSE_OFF,
-                    onCheckedChange = { enabled ->
-                        val value =
-                            if (enabled) {
-                                RecordingSettings.RECORDING_AUTO_PAUSE_ALWAYS
-                            } else {
-                                RecordingSettings.RECORDING_AUTO_PAUSE_OFF
-                            }
-                        PhoneRecordingSettingsState.publish(
-                            preferences.save(
-                                if (profile == PhoneActivityProfile.BIKE) {
-                                    settings.copy(bikeAutoPauseMode = value)
-                                } else {
-                                    settings.copy(hikeAutoPauseMode = value)
-                                },
-                            ),
-                        )
-                    },
                 )
             }
             OutlinedButton(enabled = !active, onClick = {
@@ -410,53 +368,6 @@ internal fun PhoneRecordingPanel(
                 Text(stringResource(R.string.phone_rec_no_elevation_sensor))
             }
         }
-        PhoneRecordingSettingsSection(
-            title = stringResource(R.string.phone_rec_settings_feedback),
-            expanded = feedbackSettingsExpanded,
-            onToggle = { feedbackSettingsExpanded = !feedbackSettingsExpanded },
-        ) {
-            OutlinedButton(enabled = !active, onClick = {
-                val modes =
-                    listOf(
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_OFF,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_500_METERS,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_1_KILOMETER,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_2_KILOMETERS,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_DISTANCE_5_KILOMETERS,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_15_MINUTES,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_30_MINUTES,
-                        RecordingSettings.RECORDING_PROGRESS_VIBRATION_TIME_60_MINUTES,
-                    )
-                val index = modes.indexOf(settings.progressVibrationMode).coerceAtLeast(0)
-                PhoneRecordingSettingsState.publish(
-                    preferences.save(settings.withProgressVibrationMode(modes[(index + 1) % modes.size])),
-                )
-            }) {
-                Text(
-                    stringResource(
-                        R.string.phone_rec_progress_vibration,
-                        vibrationLabel(context, settings, general.settings.isMetric),
-                    ),
-                )
-            }
-        }
-    }
-
-    if (confirmDiscard) {
-        AlertDialog(
-            onDismissRequest = { confirmDiscard = false },
-            title = { Text(stringResource(R.string.phone_rec_discard_title)) },
-            text = { Text(stringResource(R.string.phone_rec_discard_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDiscard = false
-                    PhoneRecordingService.request(context, PhoneRecordingService.ACTION_DISCARD)
-                }) { Text(stringResource(R.string.phone_rec_discard)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.phone_rec_cancel)) }
-            },
-        )
     }
 }
 
@@ -524,6 +435,7 @@ internal fun PhoneRecordingQuickControl(
         }
     val containerColor = if (paused) phoneRecordingPausedColor else phoneRecordingActiveColor
     val contentColor = if (paused) phoneRecordingPausedContentColor else Color.White
+    val status = stringResource(statusResource)
 
     Surface(
         modifier = modifier.testTag("phone-recording-quick-control"),
@@ -532,40 +444,18 @@ internal fun PhoneRecordingQuickControl(
         contentColor = contentColor,
         shadowElevation = 6.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 4.dp)) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(
-                    imageVector = if (paused) Icons.Filled.Pause else Icons.Filled.FiberManualRecord,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    stringResource(statusResource),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                IconButton(onClick = onOpenSettings) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = stringResource(R.string.phone_rec_settings_title),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.FiberManualRecord,
+                contentDescription = status,
+                modifier = Modifier.size(10.dp),
+            )
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
                 IconButton(
+                    modifier = Modifier.weight(1f).height(48.dp),
                     enabled = !busy,
                     onClick = {
                         PhoneRecordingService.request(
@@ -580,10 +470,16 @@ internal fun PhoneRecordingQuickControl(
                             stringResource(if (paused) R.string.phone_rec_resume else R.string.phone_rec_pause),
                     )
                 }
-                IconButton(enabled = !busy, onClick = stopRecording) {
+                IconButton(modifier = Modifier.weight(1f).height(48.dp), enabled = !busy, onClick = stopRecording) {
                     Icon(
                         imageVector = Icons.Filled.Stop,
                         contentDescription = stringResource(R.string.phone_rec_stop),
+                    )
+                }
+                IconButton(modifier = Modifier.weight(1f).height(48.dp), onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = stringResource(R.string.phone_rec_settings_title),
                     )
                 }
             }

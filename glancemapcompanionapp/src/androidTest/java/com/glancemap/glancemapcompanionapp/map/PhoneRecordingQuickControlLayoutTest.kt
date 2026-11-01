@@ -51,6 +51,7 @@ class PhoneRecordingQuickControlLayoutTest {
         var recenterTaps = 0
         var settingsTaps = 0
         showMap(onRecenter = { recenterTaps++ }, onOpenRecordingSettings = { settingsTaps++ })
+        assertRecordingActionsInOneRow(R.string.phone_rec_status_recording, R.string.phone_rec_pause)
         assertRecordingControlAlignedWithRecenter()
         assertClearOfRecenter()
         compose.onNodeWithTag("recenter").performClick()
@@ -77,6 +78,7 @@ class PhoneRecordingQuickControlLayoutTest {
         assertClearOfRecenter()
         compose.onNodeWithContentDescription(label(R.string.phone_rec_resume)).assertIsDisplayed()
         compose.onNodeWithContentDescription(label(R.string.phone_rec_settings_title)).assertIsDisplayed()
+        assertRecordingActionsInOneRow(R.string.phone_rec_status_auto_paused, R.string.phone_rec_resume)
         assertRecordingControlAlignedWithRecenter()
     }
 
@@ -139,6 +141,19 @@ class PhoneRecordingQuickControlLayoutTest {
         val recording = compose.onNodeWithTag("phone-recording-quick-control").fetchSemanticsNode().boundsInRoot
         val recenter = compose.onNodeWithTag("recenter").fetchSemanticsNode().boundsInRoot
         assertEquals(recenter.bottom, recording.bottom, 1f)
+    }
+
+    private fun assertRecordingActionsInOneRow(
+        status: Int,
+        pauseOrResume: Int,
+    ) {
+        val recording = compose.onNodeWithTag("phone-recording-quick-control").fetchSemanticsNode().boundsInRoot
+        val indicator = compose.onNodeWithContentDescription(label(status)).fetchSemanticsNode().boundsInRoot
+        listOf(pauseOrResume, R.string.phone_rec_stop, R.string.phone_rec_settings_title).forEach { action ->
+            val button = compose.onNodeWithContentDescription(label(action)).fetchSemanticsNode().boundsInRoot
+            assertEquals(indicator.center.y, button.center.y, 1f)
+            assertTrue(button.left >= indicator.right && button.right <= recording.right)
+        }
     }
 
     private fun assertOppositeSides() {

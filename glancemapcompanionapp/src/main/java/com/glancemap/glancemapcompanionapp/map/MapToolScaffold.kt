@@ -258,59 +258,73 @@ private fun mapToolPanelHeader(
     val isExpanded = state.mode == MapToolPanelMode.EXPANDED
     val tool = state.activeTool ?: return
     val libraryTabs = tool == MapTool.LIBRARY && state.contentMode == MapToolContentMode.MAIN
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 44.dp)
-                .padding(start = if (libraryTabs) 4.dp else 16.dp)
-                .testTag("map-tool-panel-header"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (fullScreenPage || state.hasFeatureSettingsBack) {
-            IconButton(onClick = actions.onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_action_back),
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compactRecording = tool == MapTool.REC && maxWidth < 320.dp
+        Column {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp)
+                        .padding(start = if (libraryTabs) 4.dp else 16.dp)
+                        .testTag("map-tool-panel-header"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (fullScreenPage || state.hasFeatureSettingsBack) {
+                    IconButton(onClick = actions.onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_action_back),
+                        )
+                    }
+                }
+                mapToolHeaderTitle(
+                    state = state,
+                    tool = tool,
+                    onFeatureSettings = actions.onFeatureSettings,
+                    headerContent = { currentTool -> if (!compactRecording) headerContent(currentTool) },
                 )
-            }
-        }
-        mapToolHeaderTitle(
-            state = state,
-            tool = tool,
-            onFeatureSettings = actions.onFeatureSettings,
-            headerContent = headerContent,
-        )
-        val nextSizeDescription =
-            when (state.nextSizeTarget) {
-                MapToolPanelSizeTarget.FULL -> stringResource(R.string.map_tool_action_expand_content_description)
-                MapToolPanelSizeTarget.DEFAULT ->
-                    stringResource(
-                        R.string.map_tool_action_default_size,
-                        (DEFAULT_MAP_TOOL_PANEL_FRACTION * 100).roundToInt(),
+                val nextSizeDescription = mapToolNextSizeDescription(state)
+                if (!fullScreenPage) {
+                    IconButton(onClick = actions.onCycleSize, modifier = resizeModifier) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
+                            contentDescription =
+                                nextSizeDescription + ". " + stringResource(R.string.map_tool_resize_hint),
+                        )
+                    }
+                }
+                IconButton(onClick = actions.onClose) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.common_action_close),
                     )
-                MapToolPanelSizeTarget.CUSTOM ->
-                    stringResource(
-                        R.string.map_tool_action_custom_size,
-                        (requireNotNull(state.customSplitFraction) * 100).roundToInt(),
-                    )
+                }
             }
-        if (!fullScreenPage) {
-            IconButton(onClick = actions.onCycleSize, modifier = resizeModifier) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Filled.UnfoldLess else Icons.Filled.UnfoldMore,
-                    contentDescription = nextSizeDescription + ". " + stringResource(R.string.map_tool_resize_hint),
-                )
+            if (compactRecording) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    headerContent(tool)
+                }
             }
-        }
-        IconButton(onClick = actions.onClose) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = stringResource(R.string.common_action_close),
-            )
         }
     }
 }
+
+@Composable
+private fun mapToolNextSizeDescription(state: MapToolPanelState): String =
+    when (state.nextSizeTarget) {
+        MapToolPanelSizeTarget.FULL -> stringResource(R.string.map_tool_action_expand_content_description)
+        MapToolPanelSizeTarget.DEFAULT ->
+            stringResource(
+                R.string.map_tool_action_default_size,
+                (DEFAULT_MAP_TOOL_PANEL_FRACTION * 100).roundToInt(),
+            )
+        MapToolPanelSizeTarget.CUSTOM ->
+            stringResource(
+                R.string.map_tool_action_custom_size,
+                (requireNotNull(state.customSplitFraction) * 100).roundToInt(),
+            )
+    }
 
 @Composable
 private fun RowScope.mapToolHeaderTitle(

@@ -52,5 +52,12 @@ Valid heart rates (1–255 bpm) are also written as Garmin TrackPointExtension v
 Activity timing, pause bridging, segmentation, filtering, distance and elevation
 algorithms are unchanged.
 
+The phone REC menu displays a live view of the recap metrics. Track summaries are
+calculated from recorded points off the UI thread using the same elevation,
+speed and calorie helpers as the saved recap. The service publishes its existing
+session step counter separately for presentation, tagged with the recording
+generation and restored from the draft; it does not change sensor acquisition,
+recording filters or saved statistics. Unsupported sensor metrics remain unknown.
+
 References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 [Garmin extension schema](https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd).

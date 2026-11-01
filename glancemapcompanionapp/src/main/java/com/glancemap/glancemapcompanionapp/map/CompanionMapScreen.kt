@@ -3171,6 +3171,10 @@ internal fun CompanionMapScreen(
         headerContent = header@{ tool ->
             if (!isVisible) return@header
             when (tool) {
+                MapTool.REC ->
+                    phoneRecordingHeaderActions(generalSettings) { settings ->
+                        generalSettings = generalSettingsPreferences.save(settings)
+                    }
                 MapTool.HIKE -> hikeHeaderAction()
                 MapTool.LIBRARY -> {
                     if (mapUiState.toolPanel.contentMode == MapToolContentMode.MAIN) libraryHeaderContent()

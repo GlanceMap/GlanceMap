@@ -51,26 +51,23 @@ class PhoneRecordingSettingsSectionsUiTest {
             }
         }
 
-        compose.onNodeWithText(label(R.string.phone_rec_settings_activity)).assertIsDisplayed()
-        compose.onNodeWithText(label(R.string.phone_rec_settings_gps_track)).assertIsDisplayed()
-        compose.onNodeWithText(label(R.string.phone_rec_settings_elevation_sensors)).assertIsDisplayed()
-        compose.onNodeWithText(label(R.string.phone_rec_settings_feedback)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_profile_title)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_settings_gps_track)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_settings_elevation_sensors)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(label(R.string.phone_rec_weights_title)).assertDoesNotExist()
         compose.onNode(hasText("GPS preset:", substring = true)).assertDoesNotExist()
         compose.onNode(hasText("Elevation:", substring = true)).assertDoesNotExist()
-        compose.onNode(hasText("Progress vibration:", substring = true)).assertDoesNotExist()
+        compose.onNode(hasText("Progress vibration:", substring = true)).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("Auto-pause", substring = true)).performScrollTo().assertIsDisplayed()
 
-        compose.onNodeWithText(label(R.string.phone_rec_settings_activity)).performClick()
-        compose.onNodeWithText(label(R.string.phone_rec_weights_title)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_profile_title)).performScrollTo().performClick()
+        compose.onNodeWithText(label(R.string.phone_rec_weights_title)).performScrollTo().assertIsDisplayed()
 
-        compose.onNodeWithText(label(R.string.phone_rec_settings_gps_track)).performClick()
-        compose.onNode(hasText("Screen on:", substring = true)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_settings_gps_track)).performScrollTo().performClick()
+        compose.onNode(hasText("Screen on:", substring = true)).performScrollTo().assertIsDisplayed()
 
-        compose.onNodeWithText(label(R.string.phone_rec_settings_elevation_sensors)).performClick()
-        compose.onNode(hasText("Sensors:", substring = true)).assertIsDisplayed()
-
-        compose.onNodeWithText(label(R.string.phone_rec_settings_feedback)).performClick()
-        compose.onNode(hasText("Progress vibration:", substring = true)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_settings_elevation_sensors)).performScrollTo().performClick()
+        compose.onNode(hasText("Sensors:", substring = true)).performScrollTo().assertIsDisplayed()
     }
 
     private fun label(resource: Int) = compose.activity.getString(resource)

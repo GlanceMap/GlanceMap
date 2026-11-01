@@ -27,8 +27,16 @@ internal fun phoneRecordingNeedsStopConfirmation(
         elapsedMillis < SHORT_RECORDING_DURATION_MILLIS ||
         distanceMeters < SHORT_RECORDING_DISTANCE_METERS
 
+private fun PhoneRecordingUiState.needsStopConfirmation(): Boolean {
+    val elapsed = session.elapsedMillis(System.currentTimeMillis())
+    return phoneRecordingNeedsStopConfirmation(points.size, elapsed, distanceMeters)
+}
+
 @Composable
-internal fun phoneRecordingStopAction(recording: PhoneRecordingUiState): () -> Unit {
+internal fun phoneRecordingStopAction(
+    recording: PhoneRecordingUiState,
+    alwaysConfirm: Boolean = false,
+): () -> Unit {
     val context = LocalContext.current
     var confirmStop by rememberSaveable(recording.session.generation) { mutableStateOf(false) }
     val canStop =
@@ -37,7 +45,11 @@ internal fun phoneRecordingStopAction(recording: PhoneRecordingUiState): () -> U
     if (confirmStop && canStop) {
         val canSave = recording.points.size >= 2
         val messageResource =
-            if (canSave) R.string.phone_rec_short_stop_message else R.string.phone_rec_no_track_stop_message
+            when {
+                !canSave -> R.string.phone_rec_no_track_stop_message
+                recording.needsStopConfirmation() -> R.string.phone_rec_short_stop_message
+                else -> R.string.phone_rec_stop_message
+            }
         AlertDialog(
             onDismissRequest = { confirmStop = false },
             title = { Text(stringResource(R.string.phone_rec_short_stop_title)) },
@@ -66,12 +78,7 @@ internal fun phoneRecordingStopAction(recording: PhoneRecordingUiState): () -> U
     }
     return {
         if (canStop) {
-            if (phoneRecordingNeedsStopConfirmation(
-                    recording.points.size,
-                    recording.session.elapsedMillis(System.currentTimeMillis()),
-                    recording.distanceMeters,
-                )
-            ) {
+            if (alwaysConfirm || recording.needsStopConfirmation()) {
                 confirmStop = true
             } else {
                 PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE)

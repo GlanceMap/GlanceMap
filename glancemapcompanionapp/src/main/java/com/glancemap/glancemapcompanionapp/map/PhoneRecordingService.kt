@@ -164,6 +164,11 @@ internal data class PhoneCompletedRecording(
     val statistics: RecordedActivityStatistics,
 )
 
+internal data class PhoneRecordingLiveSteps(
+    val generation: Long = 0L,
+    val count: Int? = null,
+)
+
 internal enum class PhoneRecordingMessage {
     IDLE,
     RECORDING,
@@ -179,9 +184,18 @@ internal enum class PhoneRecordingMessage {
 internal object PhoneRecordingSessionStore {
     private val mutableState = MutableStateFlow(PhoneRecordingUiState())
     val state: StateFlow<PhoneRecordingUiState> = mutableState.asStateFlow()
+    private val mutableSteps = MutableStateFlow(PhoneRecordingLiveSteps())
+    val steps: StateFlow<PhoneRecordingLiveSteps> = mutableSteps.asStateFlow()
 
     fun publish(value: PhoneRecordingUiState) {
         mutableState.value = value
+    }
+
+    fun publishSteps(
+        generation: Long,
+        count: Int?,
+    ) {
+        mutableSteps.value = PhoneRecordingLiveSteps(generation, count)
     }
 
     fun dismissCompletedRecording(id: String) {
@@ -499,6 +513,7 @@ internal class PhoneRecordingService :
                         val previous = lastSensorStepCount
                         if (PhoneRecordingSessionStore.state.value.session.acceptsFixes && previous != null) {
                             sessionStepCount = (sessionStepCount ?: 0) + (count - previous).coerceAtLeast(0)
+                            PhoneRecordingSessionStore.publishSteps(sessionLifecycle.state.generation, sessionStepCount)
                         }
                         latestStepCount = count
                         lastSensorStepCount = count
@@ -633,6 +648,7 @@ internal class PhoneRecordingService :
                     },
             )
         publish(recoveredState)
+        PhoneRecordingSessionStore.publishSteps(state.generation, sessionStepCount)
         vibrationTracker.rebase(
             settings = settings.progressVibrationSettings(),
             distanceMeters = draft.distanceMeters,
@@ -770,6 +786,7 @@ internal class PhoneRecordingService :
         draftJob?.cancelAndJoin()
         draftLock.withLock { withContext(Dispatchers.IO) { draftStore.clear() } }
         publish(PhoneRecordingUiState(session = discarded, settings = settings))
+        PhoneRecordingSessionStore.publishSteps(discarded.generation, null)
         if (PhoneGuidanceSessionStore.state.value.session != null) {
             configureLocationUpdates()
             updateNotification()
@@ -853,6 +870,7 @@ internal class PhoneRecordingService :
                 ),
             )
             unregisterRecordingSensors()
+            PhoneRecordingSessionStore.publishSteps(sessionLifecycle.state.generation, null)
             if (PhoneGuidanceSessionStore.state.value.session != null) {
                 configureLocationUpdates()
                 updateNotification()
@@ -2518,6 +2536,7 @@ internal class PhoneRecordingService :
         counters = PhoneRecordingCounters()
         gpsActiveDurationMillis = 0L
         sessionStepCount = null
+        PhoneRecordingSessionStore.publishSteps(sessionLifecycle.state.generation, null)
         latestStepCount = null
         lastSensorStepCount = null
     }
