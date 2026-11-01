@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
@@ -51,6 +53,7 @@ internal fun mapToolLauncher(
                         .align(Alignment.BottomEnd)
                         .padding(end = 12.dp, bottom = mapToolLauncherHeight + 8.dp)
                         .heightIn(max = 360.dp)
+                        .width(IntrinsicSize.Max)
                         .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -151,11 +154,25 @@ private fun mapShortcut(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    ExtendedFloatingActionButton(
-        modifier = Modifier.testTag("map-shortcut-$label"),
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("map-shortcut-$label"),
         onClick = onClick,
-        icon = { Icon(icon, contentDescription = null) },
-        text = { Text(stringResource(label)) },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                stringResource(label),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
